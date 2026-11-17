@@ -1,0 +1,1825 @@
+{
+  "scenario": "water_controls_wipe:el_dorado",
+  "model_hash": "235f2128740fa6c105de39b942a364f62269cbafde97ad98e797d4bd78ad20e1",
+  "implementation_hash": "af9d1ec966bb183e438a870eca7de4b6882682510a5e77815c6cacab0a505ff1",
+  "engine_version": "0.0.1",
+  "horizon_h": 2160,
+  "note": "Completed fatalities, serious casualties, economic loss and operational values at the declared horizon, with each outcome’s scope and input basis. Each value has six significant figures. A numerical residual below 0.000001 reads 0.",
+  "rows": [
+    {
+      "id": "early_kept",
+      "description": "Early response · Keeps hidden access",
+      "run": "early_kept",
+      "options": [
+        "Early response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 6,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 2,
+        "controls_crew.approval_time": 6,
+        "controls_crew.travel_time": 12,
+        "controls_crew.orientation_time": 24,
+        "field_crew.capacity": 200,
+        "field_crew.request_time": 2,
+        "field_crew.approval_time": 6,
+        "field_crew.travel_time": 12,
+        "field_crew.orientation_time": 24,
+        "parts.spares_on_hand": 400,
+        "parts.lead_time": 336.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 6,
+        "relief.transport": 8,
+        "relief.receiving": 8,
+        "relief.staffing": 8,
+        "relief.start_delay": 12,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 0.6,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 24,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 24,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1398.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 5664.8,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 3.19496,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0056648,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000127967,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "standard_kept",
+      "description": "Standard response · Keeps hidden access",
+      "run": "standard_kept",
+      "options": [
+        "Standard response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 12,
+        "responders.removal_time": 120,
+        "controls_crew.capacity": 80,
+        "controls_crew.request_time": 6,
+        "controls_crew.approval_time": 12,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 100,
+        "field_crew.request_time": 6,
+        "field_crew.approval_time": 12,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 150,
+        "parts.lead_time": 720.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 3,
+        "relief.transport": 4,
+        "relief.receiving": 5,
+        "relief.staffing": 4,
+        "relief.start_delay": 24,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 0.6,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 36,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 36,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1148.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 37927.8,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 21.7181,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 2120.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0056648,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000860053,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept",
+      "description": "Delayed response · Keeps hidden access",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 0.6,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 48,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 48,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 161267.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 92.5311,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4640.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0056648,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00367684,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_none",
+      "description": "Delayed response · No hidden access",
+      "run": "delayed_none",
+      "options": [
+        "Delayed response",
+        "No hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 0.6,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 48,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 48,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 49477.1,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 28.3489,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0056648,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00112254,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept_human",
+      "description": "Delayed response · Human team keeps hidden access",
+      "run": "delayed_kept_human",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access",
+        "Human team"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 48,
+        "attacker.rework_share": 0.2,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 0.6,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 48,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 48,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 49477.1,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 28.3489,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 256.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0056648,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00112254,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_20",
+      "description": "The controls crews do 20 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 20
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 20,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 20,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 0.6,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 48,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 48,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 185791.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 106.611,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 2320.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0056648,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00424069,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_160",
+      "description": "The controls crews do 160 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 160
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 160,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 0.6,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 48,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 48,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 148611.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 85.2649,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 20280.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0056648,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00338686,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_0",
+      "description": "El Dorado's operators cannot produce water by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "el_dorado.manual_share": 0
+        }
+      },
+      "changed": {
+        "el_dorado.manual_share": {
+          "value": 0,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 0,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 48,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 48,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1311740.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 753.054,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4640.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.253261,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.029912,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_1",
+      "description": "El Dorado's operators produce all of normal by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "el_dorado.manual_share": 1
+        }
+      },
+      "changed": {
+        "el_dorado.manual_share": {
+          "value": 1,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 1,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 48,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 48,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 5664.8,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 3.19496,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4640.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0056648,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000127967,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_1d",
+      "description": "Responders remove the credential a day after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 24
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 24,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 0.6,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 48,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 48,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 49477.1,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 28.3489,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0056648,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00112254,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_20d",
+      "description": "Responders remove the credential twenty days after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 480
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 480,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 480,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "el_dorado.reached": 1,
+        "el_dorado.demand": 73.7229369,
+        "el_dorado.nameplate": 101.5,
+        "el_dorado.storage": 93,
+        "el_dorado.usable_share": 0.8878,
+        "el_dorado.bought": 0,
+        "el_dorado.sold": 2.4909162,
+        "el_dorado.refill_time": 24,
+        "el_dorado.treat_disabled": 1,
+        "el_dorado.pump_disabled": 0.5,
+        "el_dorado.manual_ready": 1,
+        "el_dorado.manual_share": 0.6,
+        "el_dorado.activation_delay": 2,
+        "el_dorado.operator_duty": 2,
+        "el_dorado.controls_load": 600,
+        "el_dorado.field_load": 120,
+        "el_dorado.replace_load": 0,
+        "el_dorado.parts_per_hour": 0.1,
+        "el_dorado.clearance_time": 48,
+        "el_dorado.loss_share": 0.05,
+        "el_dorado.va_rate": 901571.16,
+        "el_dorado.water_dependence": 0.25,
+        "el_dorado.activity_kept": 0.5,
+        "el_dorado.recovery_factor": 1.5,
+        "el_dorado.catch_up_share": 0.3,
+        "el_dorado.catch_up_time": 720.0,
+        "georgetown_divide.reached": 1,
+        "georgetown_divide.demand": 3.6952381,
+        "georgetown_divide.nameplate": 6,
+        "georgetown_divide.storage": 2.824,
+        "georgetown_divide.usable_share": 0.8878,
+        "georgetown_divide.bought": 0,
+        "georgetown_divide.sold": 0,
+        "georgetown_divide.refill_time": 24,
+        "georgetown_divide.treat_disabled": 1,
+        "georgetown_divide.pump_disabled": 0.8,
+        "georgetown_divide.manual_ready": 1,
+        "georgetown_divide.manual_share": 0.9,
+        "georgetown_divide.activation_delay": 1,
+        "georgetown_divide.operator_duty": 0,
+        "georgetown_divide.controls_load": 40,
+        "georgetown_divide.field_load": 10,
+        "georgetown_divide.replace_load": 20,
+        "georgetown_divide.parts_per_hour": 0.1,
+        "georgetown_divide.clearance_time": 48,
+        "georgetown_divide.loss_share": 0.05,
+        "georgetown_divide.va_rate": 66237.48,
+        "georgetown_divide.water_dependence": 0.25,
+        "georgetown_divide.activity_kept": 0.5,
+        "georgetown_divide.recovery_factor": 1.5,
+        "georgetown_divide.catch_up_share": 0.3,
+        "georgetown_divide.catch_up_time": 720.0,
+        "el_dorado_homes.population": 128408,
+        "georgetown_divide_homes.population": 9434,
+        "el_dorado_hospitals.facilities": 1,
+        "el_dorado_hospitals.critical_need": 0.08333,
+        "el_dorado_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 375957.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 215.791,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 13560.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0056648,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00867067,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 137842.0,
+          "status": "estimated"
+        }
+      }
+    }
+  ]
+}

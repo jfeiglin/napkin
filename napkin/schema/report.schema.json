@@ -1,0 +1,1112 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "0.0.1"
+    },
+    "engine_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "library_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "scenario": {
+      "type": "string",
+      "minLength": 1
+    },
+    "variant": {
+      "description": "The variant of the scenario that the model is, or null for a model without variants.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "admissible": {
+      "type": "boolean"
+    },
+    "effective_edits": {
+      "type": "object",
+      "description": "The edit document of the study as given; a value that is not JSON reads null."
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    },
+    "runs": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/run"
+          },
+          {
+            "$ref": "#/$defs/table_run"
+          }
+        ]
+      }
+    },
+    "status": {
+      "enum": [
+        "accepted",
+        "rejected",
+        "reporting_failure"
+      ]
+    },
+    "implementation_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "uncertainty": {
+      "description": "A Monte Carlo study: its sampling settings and, for each run with uncertain values, the samples, the draws of each uncertain input, and a summary of each outcome at each report point. The runs report the central run, in which each distribution takes its central value.",
+      "$ref": "#/$defs/uncertainty"
+    }
+  },
+  "required": [
+    "schema_version",
+    "engine_version",
+    "model_hash",
+    "implementation_hash",
+    "library_hash",
+    "scenario",
+    "variant",
+    "title",
+    "admissible",
+    "effective_edits",
+    "diagnostics",
+    "runs",
+    "status"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "diagnostic": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "severity",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "row": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "number",
+          "minimum": 0
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "statuses": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "estimated",
+              "unestimated",
+              "not_applicable"
+            ]
+          }
+        }
+      },
+      "required": [
+        "t",
+        "values",
+        "statuses"
+      ],
+      "additionalProperties": true
+    },
+    "trace": {
+      "type": "object",
+      "description": "One committed rule firing: when, in which step, what it changed and why.",
+      "properties": {
+        "t": {
+          "type": "number",
+          "minimum": 0
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entity": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "changes": {
+          "type": "object"
+        },
+        "before": {
+          "type": "object"
+        },
+        "transfers": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "path": {
+          "type": "string"
+        },
+        "basis": {
+          "type": [
+            "object",
+            "string",
+            "null",
+            "array"
+          ],
+          "items": {
+            "type": [
+              "object",
+              "string"
+            ]
+          }
+        },
+        "fires": {
+          "type": "array",
+          "description": "The rules that the outcome names, which trigger after it, in order.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "semantic": {
+          "type": "boolean"
+        },
+        "picked": {
+          "description": "Who picked the outcome in a played run, or null when the model chose it.",
+          "enum": [
+            "reader",
+            "agent",
+            null
+          ]
+        }
+      },
+      "required": [
+        "t",
+        "step",
+        "rule",
+        "entity",
+        "event",
+        "outcome",
+        "label",
+        "changes",
+        "before",
+        "transfers",
+        "path",
+        "basis",
+        "fires",
+        "semantic",
+        "picked"
+      ],
+      "additionalProperties": false
+    },
+    "numerical_settings": {
+      "type": "object",
+      "properties": {
+        "rtol": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "atol_factor": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "max_step": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "resolution_step_h": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "actual_max_step_h": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "resolution_policy": {
+          "enum": [
+            "structural_exact",
+            "physical_resolution_cap"
+          ]
+        },
+        "integration_segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "start_h": {
+                "type": "number",
+                "minimum": 0
+              },
+              "end_h": {
+                "type": "number",
+                "minimum": 0
+              },
+              "max_step_h": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "exclusiveMinimum": 0
+              },
+              "resolution_policy": {
+                "enum": [
+                  "physical_resolution_cap"
+                ]
+              }
+            },
+            "required": [
+              "start_h",
+              "end_h",
+              "max_step_h",
+              "resolution_policy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "rtol",
+        "atol_factor",
+        "max_step",
+        "resolution_step_h",
+        "actual_max_step_h",
+        "resolution_policy",
+        "integration_segments"
+      ],
+      "additionalProperties": true
+    },
+    "run": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "options": {
+          "type": "array",
+          "description": "The run's options, in the order that the run names them; none for the run `base` of a model without options.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "starts": {
+          "type": "array",
+          "description": "The run's options that set start states: the key of its structure.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "horizon": {
+          "type": "number",
+          "minimum": 0
+        },
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "effective_inputs": {
+          "type": "object",
+          "description": "The value of every input and fixed value of the run, by entity.field, in its unit; a bool input is 1 or 0.",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "numerical_settings": {
+          "$ref": "#/$defs/numerical_settings"
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/row"
+          }
+        },
+        "reporting_points": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/row"
+          }
+        },
+        "trace": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trace"
+          }
+        },
+        "health": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "t": {
+                "type": "number",
+                "minimum": 0
+              },
+              "entities": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "t",
+              "entities"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "numerical_diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnostic"
+          }
+        },
+        "peaks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "description": "Per outcome: the parts it can depend on, which of them this run exercised, and digests of the library and every record cited.",
+          "properties": {
+            "library": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "records": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "parts": {
+              "type": "object"
+            },
+            "outcomes": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "basis": {
+                    "type": [
+                      "object",
+                      "null",
+                      "array"
+                    ],
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "kernel": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "exercised": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "possible": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "basis",
+                  "kernel",
+                  "exercised",
+                  "possible"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "library",
+            "records",
+            "parts",
+            "outcomes"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "label",
+        "options",
+        "starts",
+        "horizon",
+        "outcomes",
+        "effective_inputs",
+        "numerical_settings",
+        "samples",
+        "reporting_points",
+        "trace",
+        "health",
+        "numerical_diagnostics",
+        "peaks",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "table_run": {
+      "type": "object",
+      "description": "A run of a model with a table, from its hybrid core (docs/engine.md, \"Tables and tiers\"). What the report says of the rows of a table is by group: a class of rows that the engine runs as one family, named by the row that stands for it.",
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/run/properties/label"
+        },
+        "options": {
+          "$ref": "#/$defs/run/properties/options"
+        },
+        "starts": {
+          "$ref": "#/$defs/run/properties/starts"
+        },
+        "horizon": {
+          "$ref": "#/$defs/run/properties/horizon"
+        },
+        "outcomes": {
+          "$ref": "#/$defs/run/properties/outcomes"
+        },
+        "effective_inputs": {
+          "$ref": "#/$defs/run/properties/effective_inputs"
+        },
+        "numerical_settings": {
+          "type": "object",
+          "description": "The settings of the run, by name.",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "samples": {
+          "$ref": "#/$defs/run/properties/samples"
+        },
+        "reporting_points": {
+          "$ref": "#/$defs/run/properties/reporting_points"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": "string",
+                "minLength": 1
+              },
+              "set": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The table of the group."
+              },
+              "rows": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "inputs": {
+                "type": "object",
+                "description": "The least and the greatest value of each input over the rows of the group.",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "least": {
+                      "type": "number"
+                    },
+                    "greatest": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "least",
+                    "greatest"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "group",
+              "set",
+              "rows",
+              "inputs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "trace": {
+          "$ref": "#/$defs/run/properties/trace",
+          "description": "The steps of the things outside a table and of the rows that the caller names."
+        },
+        "events": {
+          "type": "array",
+          "description": "For each group, each event and each outcome: how many times it happened, in how many rows, and the first and the last time.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": "string",
+                "minLength": 1
+              },
+              "event": {
+                "type": "string",
+                "minLength": 1
+              },
+              "outcome": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "rows": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "first": {
+                "type": "number",
+                "minimum": 0
+              },
+              "last": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "group",
+              "event",
+              "outcome",
+              "count",
+              "rows",
+              "first",
+              "last"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "health": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "t": {
+                "type": "number",
+                "minimum": 0
+              },
+              "entities": {
+                "type": "object",
+                "description": "The things outside a table and the rows that the caller names."
+              },
+              "groups": {
+                "type": "object",
+                "description": "For each group: how many of its rows are in each status and in each value of each named state.",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "rows": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "health": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "modes": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "labels": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "rows",
+                    "health",
+                    "modes",
+                    "labels"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "t",
+              "entities",
+              "groups"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "peaks": {
+          "$ref": "#/$defs/run/properties/peaks"
+        },
+        "evidence": {
+          "$ref": "#/$defs/run/properties/evidence"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "options",
+        "starts",
+        "horizon",
+        "outcomes",
+        "effective_inputs",
+        "numerical_settings",
+        "samples",
+        "reporting_points",
+        "groups",
+        "trace",
+        "events",
+        "health",
+        "peaks",
+        "evidence"
+      ]
+    },
+    "uncertainty": {
+      "type": "object",
+      "properties": {
+        "settings": {
+          "type": "object",
+          "properties": {
+            "samples": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "method": {
+              "enum": [
+                "random",
+                "latin",
+                "sobol"
+              ]
+            },
+            "replicates": {
+              "type": "integer",
+              "minimum": 2
+            }
+          },
+          "required": [
+            "samples",
+            "seed",
+            "method"
+          ],
+          "additionalProperties": false
+        },
+        "runs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/uncertain_run"
+          }
+        }
+      },
+      "required": [
+        "settings",
+        "runs"
+      ],
+      "additionalProperties": false
+    },
+    "distribution": {
+      "description": "A distribution as the file or an edit writes it (`text`), with each argument in the unit of its parameter, or the source of an argument that reads other values.",
+      "type": "object",
+      "properties": {
+        "family": {
+          "enum": [
+            "uniform",
+            "triangular",
+            "pert",
+            "loguniform",
+            "normal",
+            "lognormal",
+            "beta",
+            "bernoulli",
+            "categorical"
+          ]
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "reads": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reads"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "family",
+        "args",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "uncertain_run": {
+      "type": "object",
+      "properties": {
+        "samples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "distribution": {
+                "$ref": "#/$defs/distribution"
+              },
+              "draws": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "number",
+                    "boolean",
+                    "string"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "distribution",
+              "draws"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "uncertain_inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "points": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/summary"
+                }
+              },
+              "series": {
+                "description": "The percentiles of the samples at each reporting time that the study asked for, for the bands of a chart; null where the outcome is not estimated in the central run and in every sample.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "t": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "p5": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "p25": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "p50": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "p75": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "p95": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "t",
+                    "p5",
+                    "p25",
+                    "p50",
+                    "p75",
+                    "p95"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "uncertain_inputs",
+              "points"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "events": {
+          "description": "For each event with several outcomes, how many samples took each outcome, all its firings counted.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      },
+      "required": [
+        "samples",
+        "inputs",
+        "outcomes"
+      ],
+      "additionalProperties": false
+    },
+    "summary": {
+      "description": "One outcome at one report point over the samples. It is estimated only when the outcome is estimated in the central run and in every sample; otherwise it gives the statuses that it met and no value.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "estimated": {
+              "const": true
+            },
+            "central": {
+              "type": "number"
+            },
+            "mean": {
+              "type": "number"
+            },
+            "sd": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "sem": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "p5": {
+              "type": "number"
+            },
+            "p25": {
+              "type": "number"
+            },
+            "p50": {
+              "type": "number"
+            },
+            "p75": {
+              "type": "number"
+            },
+            "p95": {
+              "type": "number"
+            },
+            "drivers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          },
+          "required": [
+            "estimated",
+            "central",
+            "mean",
+            "sd",
+            "sem",
+            "min",
+            "max",
+            "p5",
+            "p25",
+            "p50",
+            "p75",
+            "p95",
+            "drivers"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "estimated": {
+              "const": false
+            },
+            "statuses": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "estimated",
+                  "unestimated",
+                  "not_applicable"
+                ]
+              }
+            }
+          },
+          "required": [
+            "estimated",
+            "statuses"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "admissible": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runs": {
+            "maxProperties": 0
+          },
+          "uncertainty": {
+            "properties": {
+              "runs": {
+                "maxProperties": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

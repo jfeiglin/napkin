@@ -1,0 +1,357 @@
+[
+  {
+    "id": "E-SC43-LUMBERTON-CITY-RAW-2018",
+    "source": "lumberton_ncdeq2018_lwsp",
+    "locator": "Section 3 'Monthly Withdrawals & Purchases' and its note; 'Water Treatment Plants'",
+    "evidence_type": "regulatory_filing",
+    "shows": "Lumberton's 2018 plan says that its monthly values are blended raw water flows from the Lumber River and the wells, measured together at the raw water meter vault SE1, because neither source was metered on its own, and that the software counted the well water a second time, raising the 2018 total from 4.3917 (correct) to 4.9020 (incorrect) million gallons a day. Its highest maximum day is 8.5 million gallons a day in January 2018 (January average 5.3). The plant is the City of Lumberton Water Plant, 16.0 million gallons a day, on the Lumber River; finished storage was then 9.0 million gallons.",
+    "limits": "Self-reported by the water system; the plan says that DWR staff do not field verify the data. Raw water flows of 2018, before the wells were metered; the plan does not explain the January maximum. It shows that the wells feed the plant, so their supply is not a separate treatment capacity.",
+    "data": {
+      "max_day_use_jan_2018": {
+        "value": 8.5,
+        "unit": "Mgal/day",
+        "note": "Printed: Section 3, January 2018, 'Max Day Use (MGD)' 8.5000."
+      },
+      "corrected_total_2018": {
+        "value": 4.3917,
+        "unit": "Mgal/day",
+        "note": "Printed: Section 3 note, the total flow 'of 4.3917' that the software changed to 4.9020."
+      },
+      "finished_storage_2018": {
+        "value": 9.0,
+        "unit": "Mgal",
+        "note": "Printed: Section 1, 'finished water storage capacity? 9.0000 Million Gallons'."
+      }
+    },
+    "valid_for": {
+      "place": "City of Lumberton water system (PWSID 03-78-010; NC0378010), Robeson County, North Carolina",
+      "period": "calendar year 2018"
+    },
+    "quotes": [
+      {
+        "locator": "Section 3, January",
+        "text": "Jan 5.3000 8.5000"
+      },
+      {
+        "locator": "Section 3 note",
+        "text": "Monthly values represent blended raw water flows from both surface (Lumber River) and GW sources as measured at the raw water meter vault SE1 (see Plan map)."
+      },
+      {
+        "locator": "Section 3 note",
+        "text": "the well water total is being added to the raw water meter vault SE1 value a second time by the software program which changes the total flow of 4.3917 to 4.9020, the latter number being incorrect."
+      },
+      {
+        "locator": "Section 3 'Water Treatment Plants'",
+        "text": "City of Lumberton Water Plant 16.0000 Yes Yes Lumber River"
+      },
+      {
+        "locator": "Section 1 'Distribution System'",
+        "text": "What is this system's finished water storage capacity? 9.0000 Million Gallons"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "locator_checked": "Section 3 'Monthly Withdrawals & Purchases' and its note; 'Water Treatment Plants'",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Checked against the extracted text of the retrieved page on 2026-10-25.",
+      "content_sha256": "06347acd693a63b1fb9410403a08b99adac42868b9ec6038e504dc66010b9d9c",
+      "retrieval_sha256": "2fb024f4e25b2444eee91a4813fee17493dcb2cf4bc1423a770313da5e424d8b",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 5,
+        "total": 5
+      }
+    }
+  },
+  {
+    "id": "E-SC43-LUMBERTON-CITY-USE",
+    "source": "lumberton_ncdeq2025_lwsp",
+    "locator": "Section 2 'Water Use by Type'; Section 3 'Monthly Withdrawals & Purchases'; Section 5 'Projections' and 'Demand v/s Percent of Supply', 2025 column",
+    "evidence_type": "regulatory_filing",
+    "shows": "Lumberton's 2025 plan gives a maximum day use of 5.7 million gallons a day in January, June and December, the highest of the twelve months, and a 2025 total demand of 4.5767 million gallons a day, all of it service area demand (sales 0.0000). The ratio of the two is 1.2454 (derived). Of the total, metered use is 2.146 (derived: residential 1.2951, commercial 0.7468, industrial 0.0796, institutional 0.0245), system processes (backwash, line cleaning, flushing) take 2.2000 and unaccounted-for water is 0.2307.",
+    "limits": "Self-reported by the water system; the plan says that DWR staff do not field verify the data. One calendar year; earlier plans report higher maximum days (for 2018 see the related claim). The monthly figures are raw water flows, and nearly half of the 2025 demand is process water used in the plant and mains, not water used by customers.",
+    "data": {
+      "max_day_use_2025": {
+        "value": 5.7,
+        "unit": "Mgal/day",
+        "note": "Printed: Section 3, 'Max Day Use (MGD)' 5.7000 in January, June and December; the highest of the twelve months."
+      },
+      "total_demand_2025": {
+        "value": 4.5767,
+        "unit": "Mgal/day",
+        "note": "Printed: Section 5, 2025, 'Total Demand (MGD)' 4.5767 (service area demand 4.5767, sales 0.0000)."
+      },
+      "system_process_2025": {
+        "value": 2.2,
+        "unit": "Mgal/day",
+        "note": "Printed: Section 2, water used for system processes 2.2000 MGD."
+      },
+      "metered_use_2025": {
+        "value": 2.146,
+        "unit": "Mgal/day",
+        "note": "Derived: 1.2951 + 0.7468 + 0.0796 + 0.0245 = 2.1460, the metered average use by type."
+      },
+      "peak_ratio_2025": {
+        "value": 1.24544,
+        "unit": "ratio",
+        "note": "Derived: 5.7 / 4.5767 = 1.24544."
+      }
+    },
+    "valid_for": {
+      "place": "City of Lumberton water system (PWSID 03-78-010; NC0378010), Robeson County, North Carolina",
+      "period": "calendar year 2025"
+    },
+    "related": [
+      {
+        "claim": "E-SC43-LUMBERTON-CITY-RAW-2018",
+        "relation": "context_limitations",
+        "note": "The 2018 plan reports a maximum day of 8.5 MGD in raw water flows."
+      }
+    ],
+    "quotes": [
+      {
+        "locator": "Section 3 'Monthly Withdrawals & Purchases', January",
+        "text": "Jan 4.1644 5.7000"
+      },
+      {
+        "locator": "Section 3, June",
+        "text": "Jun 5.0203 5.7000"
+      },
+      {
+        "locator": "Section 3, December",
+        "text": "Dec 4.3199 5.7000"
+      },
+      {
+        "locator": "Section 5, 2025 column",
+        "text": "Service Area Demand 4.5767"
+      },
+      {
+        "locator": "Section 5, 2025 column",
+        "text": "Total Demand (MGD) 4.5767"
+      },
+      {
+        "locator": "Section 2 'Water Use by Type'",
+        "text": "Residential 8,045 1.2951 0 0.0000"
+      },
+      {
+        "locator": "Section 2",
+        "text": "How much water was used for system processes (backwash, line cleaning, flushing, etc.)? 2.2000 MGD"
+      },
+      {
+        "locator": "Section 5 'Projections', 2025 column",
+        "text": "Unaccounted-for 0.2307"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "locator_checked": "Section 2 'Water Use by Type'; Section 3 'Monthly Withdrawals & Purchases'; Section 5 'Projections' and 'Demand v/s Percent of Supply', 2025 column",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Checked against the extracted text of the retrieved page on 2026-10-25; table cells are separate text blocks, so each quote is one row. Ratio and metered sum derived.",
+      "content_sha256": "c97dc5ec29fe96ed7cf6f311b4dfadbe816101ffa343701f18365c2254a9adb5",
+      "retrieval_sha256": "d9a3375977e3b12b1d1011e8bdb4c82c2f2d1b4a039e2f17b8f6505a65b29348",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 8,
+        "total": 8
+      }
+    }
+  },
+  {
+    "id": "E-SC43-LUMBERTON-CITY-CAPACITY",
+    "source": "lumberton_ncdeq2025_lwsp",
+    "locator": "Section 3 'Ground Water Sources', 'Surface Water Sources' and 'Water Treatment Plants'; Section 5 'Demand v/s Percent of Supply'",
+    "evidence_type": "regulatory_filing",
+    "shows": "Lumberton has one water treatment plant, the City of Lumberton Water Plant on the Lumber River, with a permitted capacity of 16.0 million gallons a day. In 2025 it drew 3.75 million gallons a day on average from the Lumber River (maximum day 5.7) and pumped four wells in regular use (wells 4, 5, 7 and 8, from 0.15 to 0.60 million gallons a day on 140 to 203 days). The plan counts a ground water supply of 2.1456 and a total available supply of 18.1456 million gallons a day. Average daily production did not exceed 80% of the plant capacity for five consecutive days, and the system does not expect peak day demand to exceed the plant capacity within 10 years.",
+    "limits": "Self-reported by the water system; the plan says that DWR staff do not field verify the data. A permitted capacity, not a tested output. The plan does not say where the well water is treated; the 2018 plan says it blends with the river water at the raw water meter vault of the plant (related claim).",
+    "data": {
+      "plant_capacity": {
+        "value": 16.0,
+        "unit": "Mgal/day",
+        "note": "Printed: Section 3, 'City of Lumberton Water Plant 16.0000'."
+      },
+      "ground_water_supply": {
+        "value": 2.1456,
+        "unit": "Mgal/day",
+        "note": "Printed: Section 5, 2025, 'Ground Water Supply 2.1456'."
+      }
+    },
+    "valid_for": {
+      "place": "City of Lumberton water system (PWSID 03-78-010; NC0378010), Robeson County, North Carolina",
+      "period": "calendar year 2025"
+    },
+    "related": [
+      {
+        "claim": "E-SC43-LUMBERTON-CITY-RAW-2018",
+        "relation": "context_limitations",
+        "note": "Well and river water are measured together as raw water at the plant."
+      }
+    ],
+    "quotes": [
+      {
+        "locator": "Section 3 'Water Treatment Plants'",
+        "text": "City of Lumberton Water Plant 16.0000 Yes Yes Lumber River"
+      },
+      {
+        "locator": "Section 3 'Surface Water Sources'",
+        "text": "Lumber River none 3.7500 365 5.7000 16.0000 F 0.0000"
+      },
+      {
+        "locator": "Section 3 'Ground Water Sources', well 5",
+        "text": "5 0.6013 203 0.84 0.5760 Regular"
+      },
+      {
+        "locator": "Section 5, 2025 column",
+        "text": "Ground Water Supply 2.1456"
+      },
+      {
+        "locator": "Section 5, 2025 column",
+        "text": "Total Available Supply (MGD) 18.1456"
+      },
+      {
+        "locator": "Section 3, question under the plant table",
+        "text": "Did average daily water production exceed 80% of approved plant capacity for five consecutive days during 2025? No"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "locator_checked": "Section 3 'Ground Water Sources', 'Surface Water Sources' and 'Water Treatment Plants'; Section 5 'Demand v/s Percent of Supply'",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Checked against the extracted text of the retrieved page on 2026-10-25.",
+      "content_sha256": "5ac5a6370d4247ee34c24d65c071ba0915e5b2969514dc12260d1d884c262a71",
+      "retrieval_sha256": "d9a3375977e3b12b1d1011e8bdb4c82c2f2d1b4a039e2f17b8f6505a65b29348",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 6,
+        "total": 6
+      }
+    }
+  },
+  {
+    "id": "E-SC43-LUMBERTON-CITY-STORAGE",
+    "source": "lumberton_ncdeq2025_lwsp",
+    "locator": "Section 1 'Distribution System'; Section 3 surface water questions",
+    "evidence_type": "regulatory_filing",
+    "shows": "Lumberton reports a finished water storage capacity of 7.5000 million gallons in its 2025 plan, for about 251 miles of distribution lines. Its off-stream raw water storage is a separate 16 million gallons.",
+    "limits": "Self-reported by the water system; the plan says that DWR staff do not field verify the data. Nominal capacity, not the volume that can be drawn; the raw water storage is not finished water. Earlier plans give other totals (9.0 million gallons in 2018).",
+    "data": {
+      "finished_storage": {
+        "value": 7.5,
+        "unit": "Mgal",
+        "note": "Printed: Section 1, 'finished water storage capacity? 7.5000 Million Gallons'."
+      }
+    },
+    "valid_for": {
+      "place": "City of Lumberton water system (PWSID 03-78-010; NC0378010), Robeson County, North Carolina",
+      "period": "calendar year 2025"
+    },
+    "quotes": [
+      {
+        "locator": "Section 1 'Distribution System'",
+        "text": "What is this system's finished water storage capacity? 7.5000 Million Gallons"
+      },
+      {
+        "locator": "Section 1",
+        "text": "What are the estimated total miles of distribution system lines? 251 Miles"
+      },
+      {
+        "locator": "Section 3",
+        "text": "What is this system's off-stream raw water supply storage capacity? 16 Million gallons"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "locator_checked": "Section 1 'Distribution System'; Section 3 surface water questions",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Checked against the extracted text of the retrieved page on 2026-10-25.",
+      "content_sha256": "8af4efd9ddcb6284cc9e653a58fd1fae6886772b74c5d91c4edf5517426db1ac",
+      "retrieval_sha256": "d9a3375977e3b12b1d1011e8bdb4c82c2f2d1b4a039e2f17b8f6505a65b29348",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 3,
+        "total": 3
+      }
+    }
+  },
+  {
+    "id": "E-SC43-LUMBERTON-CITY-INTERCONNECT",
+    "source": "lumberton_ncdeq2025_lwsp",
+    "locator": "Section 1 'Water Conservation'; Section 2 'Water Sales'; Section 3 'Water Purchases From Other Systems'",
+    "evidence_type": "regulatory_filing",
+    "shows": "Lumberton has one interconnection, with Robeson County (PWSID 03-78-055), listed both as a sale and as a purchase: an emergency connection through an 8-inch pipe with a contract of 0.5000 million gallons a day that expires in 2029. No water passed through it in 2025 in either direction (0.0000 million gallons a day on 0 days). The plan answers yes to having an interconnection that can provide water in an emergency.",
+    "limits": "Self-reported by the water system; the plan says that DWR staff do not field verify the data. A contract amount for emergencies, not a tested flow. Robeson County is not in this scenario.",
+    "data": {
+      "emergency_contract": {
+        "value": 0.5,
+        "unit": "Mgal/day",
+        "note": "Printed: Sections 2 and 3, Robeson Co, contract 0.5000 MGD, use type Emergency."
+      },
+      "average_through_2025": {
+        "value": 0,
+        "unit": "Mgal/day",
+        "note": "Printed: Sections 2 and 3, Robeson Co, 0.0000 MGD on 0 days."
+      }
+    },
+    "valid_for": {
+      "place": "Interconnection between Lumberton (03-78-010) and Robeson County (03-78-055)",
+      "period": "calendar year 2025; contract to 2029"
+    },
+    "quotes": [
+      {
+        "locator": "Sections 2 'Water Sales' and 3 'Water Purchases From Other Systems'",
+        "text": "Robeson Co 03-78-055 0.0000 0 0.5000 2029 Yes Yes 8 Emergency"
+      },
+      {
+        "locator": "Section 1 'Water Conservation'",
+        "text": "Does this system have an interconnection with another system capable of providing water in an emergency? Yes"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "locator_checked": "Section 1 'Water Conservation'; Section 2 'Water Sales'; Section 3 'Water Purchases From Other Systems'",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Checked against the extracted text of the retrieved page on 2026-10-25. The Robeson County row appears with the same values in the sales and the purchases tables.",
+      "content_sha256": "99411fd7b2ac5d6a48d161dea5e6f15a90d36d8a7a321979b09dd3f6c83cbf15",
+      "retrieval_sha256": "d9a3375977e3b12b1d1011e8bdb4c82c2f2d1b4a039e2f17b8f6505a65b29348",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 2,
+        "total": 2
+      }
+    }
+  }
+]

@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.0.1",
+  "model_hash": "ffe42fe4a0b819ef40eb012ffc73d0979d7e658c44145a452ca29bfcf3f3fd2e",
+  "set": {
+    "effects_program.prior_strength": 300,
+    "effects_program.curve_shape": 3
+  }
+}

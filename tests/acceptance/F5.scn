@@ -1,0 +1,232 @@
+# F5: every construct of the language once (docs/language.md). The values in F5.expect.yaml are worked
+# out by hand from these lines; never change them to match a run.
+scenario "Every construct once"
+    summary "A tank drains into a basin until the operators close its drain. Two pumps empty the basin into
+        two buckets, the first served first, and two meters count."
+    horizon 10 h
+    timescales tank.level0 / tank.drain_rate
+    resolution 1.25 h
+    scope "Fixture"
+
+attacker:  @fixture
+    "The attacker, which opens the drain."
+    role adversary
+    event start when t >= 0 h:  @fixture
+        "The attacker opens the drain."
+        tank.drain = "open"
+
+tank:  @fixture
+    "The tank."
+    title "Water tank"
+    role operator
+    input level0 = 120 L in 100 L to 1000 L  @fixture
+        "Water in the tank at the start"
+    input drain_rate = 10 L/h in 1 L/h to 100 L/h  @fixture
+        "Rate of the drain"
+    var drain: "open" | "closed" = "closed"  @fixture
+        "Drain"
+    var siren: "off" | "on" = "off"  @fixture
+        "Siren"
+    var water: L = level0 size 120 L  @fixture
+        "Water in the tank"
+    output water
+        level
+    var drained: L = 0 L size 120 L  @fixture
+        "Water drained"
+    flow out at drain_rate while drain is "open":  @fixture
+        "Water leaves through the drain, and the meter of the drain counts it."
+        water -> basin.water
+        -> drained
+    event alarm when siren is "off" and water <= 70 L:  @fixture
+        loud 0.7:
+            "The alarm sounds loudly."
+            siren = "on"
+        soft 0.3:
+            "The alarm sounds softly."
+            siren = "on"
+    status degraded when drain is "closed"
+        "Drain closed"
+    status ok
+        "Draining"
+
+basin:  @fixture
+    "The basin."
+    role environment
+    let buckets = [bucket_a, bucket_b]
+    var water: L = 0 L size 120 L  @fixture
+        "Water in the basin"
+    var spill: L = 0 L size 10 L  @fixture
+        "Water spilled"
+    var logs: fraction = 0 size 1  @fixture
+        "Spills logged"
+    var surveyed: L = 0 L size 100 L  @fixture
+        "Water that the surveys found"
+    var noise: L = 0 L size 10 L  @fixture
+        "Noise in the surveys"
+    let held: L = sum(buckets.water)  @fixture
+        "Water in the buckets"
+    let fullest: L = max(buckets.water)  @fixture
+        "Water in the fullest bucket"
+    let emptiest: L = min(buckets.water)  @fixture
+        "Water in the emptiest bucket"
+    let full_buckets: fraction = count(buckets.full)  @fixture
+        "Buckets that are full"
+    flow pump_a: water -> bucket_a.water at 2 L/h  @fixture
+        "The first pump."
+    flow pump_b: water -> bucket_b.water at 2 L/h  @fixture
+        "The second pump."
+    share water limit 3 L/h order pump_a, pump_b  @fixture
+        "The pumps share 3 L/h, the first pump first."
+    event log:
+        "The basin logs a spill."
+        move 5 L from water to spill
+        logs += 1
+    event survey each tank.drain when any(buckets.full):  @fixture
+        "The basin surveys the buckets: once for each state of the drain, after a bucket is full."
+        surveyed += delayed(water, 1 h)
+        noise += uniform(1 L, 3 L)
+    status failed when all(buckets.full)
+        "Both buckets full"
+    status degraded when any(buckets.full)
+        "A bucket full"
+    status ok
+        "Room in the buckets"
+
+Bucket:  @fixture
+    "A bucket."
+    role environment
+    input fill_time = 3 h in 1 h to 24 h  @fixture
+        "Time at which the bucket counts as full"
+    var water: L = 0 L size 120 L  @fixture
+        "Water in the bucket"
+    var full = false  @fixture
+        "Full"
+    event fill once when t >= fill_time:  @fixture
+        "The bucket is full."
+        full = true
+
+bucket_a: Bucket
+    "The first bucket."
+
+bucket_b: Bucket
+    "The second bucket."
+    fill_time = 8 h  @fixture
+    water:
+        "Water in the second bucket"
+
+Meter:  @fixture
+    "A meter."
+    role environment
+    let step = 1 L/h  @fixture
+        "Rate of the first meter"
+    var reading: L = 0 L size 100 L  @fixture
+        "Reading"
+    flow tick: -> reading at copy * step  @fixture
+
+meters: Meter * 2
+    "Two meters: the second counts twice as fast as the first."
+
+operators:  @fixture
+    "The operators."
+    role operator
+    sees tank.drain, notice
+    input close_odds: fraction = 1 in 0 to 1  @fixture
+        "Chance that the operators close the drain"
+    input crew = "Crew Seven"  @fixture
+        "The crew on shift"
+    var calls: fraction = 3 in 0 to 3  @fixture
+        "Calls left"
+    var reports: fraction = 0 size 1  @fixture
+        "Reports filed"
+    event notice once when t >= 2 h:  @fixture
+        "The operators notice the drain."
+        calls -= 1
+    event decide once after 2 h when count(notice) > 0:  @fixture
+        "The operators weigh what to do."
+        choice
+        close close_odds if tank.drain is "open" else 0 when tank.drain is "open":
+            "They close the drain."
+            tank.drain = "closed"
+            basin.log
+        wait else:
+            "They wait."
+    event report once after 2.5 h when count(notice) > 0 while tank.drain is "open":  @fixture
+        "The shift of {crew} writes up the open drain."
+        reports += 1
+
+assert tank.level0 >= 100 L  @fixture
+    "The tank starts with at least 100 L."
+
+assert tank.water + basin.water + basin.spill + bucket_a.water + bucket_b.water is tank.level0 within 0.001 L
+    @fixture
+    "No water is lost."
+
+assert basin.water >= 0 L  @fixture
+    "The basin never holds less than nothing."
+
+output pumped: L = basin.held  @fixture
+    "Water pumped into the buckets"
+    about "The water in both buckets, reported two hours late."
+    scope "The two buckets."
+    lag 2 h
+
+output basin_water: L = basin.water  @fixture
+    "Water in the basin"
+    level
+
+output basin_above: L = basin.water - 30 L  @fixture
+    "Water in the basin above 30 L"
+    level
+    signed
+
+output fullest: L = basin.fullest  @fixture
+    "Water in the fullest bucket"
+    level
+
+output emptiest: L = basin.emptiest  @fixture
+    "Water in the emptiest bucket"
+    level
+
+output full_buckets: fraction = basin.full_buckets  @fixture
+    "Buckets that are full"
+    level
+
+output surveyed: L = basin.surveyed  @fixture
+    "Water that the surveys found"
+    level
+
+output noise: L = basin.noise  @fixture
+    "Noise in the surveys"
+    level
+
+output metered: L = sum(meters.reading)  @fixture
+    "Water counted by the meters"
+
+output calls_left: fraction = operators.calls  @fixture
+    "Calls left"
+    level
+
+output reports: fraction = operators.reports  @fixture
+    "Reports filed"
+    level
+
+output harm: people  @fixture
+    "Harm"
+    unestimated "The fixture estimates no harm."
+
+options "Response":
+    "Close":
+        "The operators close the drain."
+    "Wait":
+        "The operators wait."
+        operators.close_odds = 0  @fixture
+
+runs:
+    closing = "Close"
+    waiting = "Wait" versus closing
+        "The operators wait."
+
+notes:
+    fixture: "Every construct of the language once; the calculation never reads a note."
+
+record fixture: identity "Analytic contract fixture."

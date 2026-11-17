@@ -1,0 +1,122 @@
+{
+  "h": {
+    "kind": "time",
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 1,
+    "description": "Dimensions: time^1; scale 1 in execution units."
+  },
+  "hour": {
+    "kind": "time",
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 1,
+    "description": "Dimensions: time^1; scale 1 in execution units."
+  },
+  "hours": {
+    "kind": "time",
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 1,
+    "description": "Dimensions: time^1; scale 1 in execution units."
+  },
+  "day": {
+    "kind": "time",
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 24,
+    "description": "Dimensions: time^1; scale 24 in execution units."
+  },
+  "days": {
+    "kind": "time",
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 24,
+    "description": "Dimensions: time^1; scale 24 in execution units."
+  },
+  "week": {
+    "kind": "time",
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 168,
+    "description": "Dimensions: time^1; scale 168 in execution units."
+  },
+  "weeks": {
+    "kind": "time",
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 168,
+    "description": "Dimensions: time^1; scale 168 in execution units."
+  },
+  "month": {
+    "kind": "time",
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 730,
+    "description": "Dimensions: time^1; scale 730 in execution units."
+  },
+  "months": {
+    "kind": "time",
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 730,
+    "description": "Dimensions: time^1; scale 730 in execution units."
+  },
+  "year": {
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 8760,
+    "description": "Dimensions: time^1; scale 8760 in execution units."
+  },
+  "years": {
+    "dimensions": {
+      "time": 1
+    },
+    "scale": 8760,
+    "description": "Dimensions: time^1; scale 8760 in execution units."
+  },
+  "person": {
+    "kind": "count",
+    "dimensions": {
+      "people": 1
+    },
+    "scale": 1,
+    "description": "Dimensions: people^1; scale 1 in execution units."
+  },
+  "people": {
+    "kind": "count",
+    "dimensions": {
+      "people": 1
+    },
+    "scale": 1,
+    "description": "Dimensions: people^1; scale 1 in execution units."
+  },
+  "fraction": {
+    "kind": "dimensionless",
+    "dimensions": {},
+    "scale": 1,
+    "description": "Dimensions: dimensionless; scale 1 in execution units."
+  },
+  "ratio": {
+    "kind": "dimensionless",
+    "dimensions": {},
+    "scale": 1,
+    "description": "Dimensions: dimensionless; scale 1 in execution units."
+  },
+  "percentage_points": {
+    "kind": "dimensionless",
+    "dimensions": {},
+    "scale": 0.01,
+    "description": "Dimensions: dimensionless; scale 0.01 in execution units."
+  }
+}

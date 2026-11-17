@@ -1,0 +1,1528 @@
+{
+  "scenario": "water_controls_wipe:asheville",
+  "model_hash": "c91ea98775560dfb1e5c09170604c6746090cbcb6e9f108839186f87762757a5",
+  "implementation_hash": "af9d1ec966bb183e438a870eca7de4b6882682510a5e77815c6cacab0a505ff1",
+  "engine_version": "0.0.1",
+  "horizon_h": 2160,
+  "note": "Completed fatalities, serious casualties, economic loss and operational values at the declared horizon, with each outcome’s scope and input basis. Each value has six significant figures. A numerical residual below 0.000001 reads 0.",
+  "rows": [
+    {
+      "id": "early_kept",
+      "description": "Early response · Keeps hidden access",
+      "run": "early_kept",
+      "options": [
+        "Early response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 6,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 2,
+        "controls_crew.approval_time": 6,
+        "controls_crew.travel_time": 12,
+        "controls_crew.orientation_time": 24,
+        "field_crew.capacity": 200,
+        "field_crew.request_time": 2,
+        "field_crew.approval_time": 6,
+        "field_crew.travel_time": 12,
+        "field_crew.orientation_time": 24,
+        "parts.spares_on_hand": 400,
+        "parts.lead_time": 336.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 6,
+        "relief.transport": 8,
+        "relief.receiving": 8,
+        "relief.staffing": 8,
+        "relief.start_delay": 12,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 0.6,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 24,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1400.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 6559.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.996842,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00655963,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000188295,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "standard_kept",
+      "description": "Standard response · Keeps hidden access",
+      "run": "standard_kept",
+      "options": [
+        "Standard response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 12,
+        "responders.removal_time": 120,
+        "controls_crew.capacity": 80,
+        "controls_crew.request_time": 6,
+        "controls_crew.approval_time": 12,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 100,
+        "field_crew.request_time": 6,
+        "field_crew.approval_time": 12,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 150,
+        "parts.lead_time": 720.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 3,
+        "relief.transport": 4,
+        "relief.receiving": 5,
+        "relief.staffing": 4,
+        "relief.start_delay": 24,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 0.6,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 36,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1150.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 6559.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.996842,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00655963,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000188295,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept",
+      "description": "Delayed response · Keeps hidden access",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 0.6,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 48,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 6559.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.996842,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00655963,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000188295,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_none",
+      "description": "Delayed response · No hidden access",
+      "run": "delayed_none",
+      "options": [
+        "Delayed response",
+        "No hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 0.6,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 48,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 6559.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.996842,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00655963,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000188295,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept_human",
+      "description": "Delayed response · Human team keeps hidden access",
+      "run": "delayed_kept_human",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access",
+        "Human team"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 48,
+        "attacker.rework_share": 0.2,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 0.6,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 48,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 6559.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.996842,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 240.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00655963,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000188295,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_20",
+      "description": "The controls crews do 20 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 20
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 20,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 20,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 0.6,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 48,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 6559.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.996842,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00655963,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000188295,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_160",
+      "description": "The controls crews do 160 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 160
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 160,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 0.6,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 48,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 6559.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.996842,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 19200.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00655963,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000188295,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_0",
+      "description": "Asheville's operators cannot produce water by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "asheville.manual_share": 0
+        }
+      },
+      "changed": {
+        "asheville.manual_share": {
+          "value": 0,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 0,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 48,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1645590.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 250.074,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.328535,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 4.1689,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.0476904,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_1",
+      "description": "Asheville's operators produce all of normal by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "asheville.manual_share": 1
+        }
+      },
+      "changed": {
+        "asheville.manual_share": {
+          "value": 1,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 1,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 48,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 6559.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.996842,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00655963,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000188295,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_1d",
+      "description": "Responders remove the credential a day after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 24
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 24,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 0.6,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 48,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 6559.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.996842,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00655963,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000188295,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_20d",
+      "description": "Responders remove the credential twenty days after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 480
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 480,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 480,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "asheville.reached": 1,
+        "asheville.demand": 23.9242,
+        "asheville.nameplate": 44,
+        "asheville.storage": 27.356,
+        "asheville.usable_share": 0.8878,
+        "asheville.bought": 0,
+        "asheville.sold": 1.3596,
+        "asheville.refill_time": 24,
+        "asheville.treat_disabled": 1,
+        "asheville.pump_disabled": 0.5,
+        "asheville.manual_ready": 1,
+        "asheville.manual_share": 0.6,
+        "asheville.activation_delay": 2,
+        "asheville.operator_duty": 2,
+        "asheville.controls_load": 600,
+        "asheville.field_load": 120,
+        "asheville.replace_load": 0,
+        "asheville.parts_per_hour": 0.1,
+        "asheville.clearance_time": 48,
+        "asheville.loss_share": 0.05,
+        "asheville.va_rate": 1404575.35,
+        "asheville.water_dependence": 0.25,
+        "asheville.activity_kept": 0.5,
+        "asheville.recovery_factor": 1.5,
+        "asheville.catch_up_share": 0.3,
+        "asheville.catch_up_time": 720.0,
+        "asheville_homes.population": 157431,
+        "asheville_hospitals.facilities": 2,
+        "asheville_hospitals.critical_need": 0.08333,
+        "asheville_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 6559.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.996842,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 13800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00655963,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000188295,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 157431.0,
+          "status": "estimated"
+        }
+      }
+    }
+  ]
+}

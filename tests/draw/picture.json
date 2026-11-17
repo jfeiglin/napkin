@@ -1,0 +1,234 @@
+{
+  "name": "waterworks",
+  "title": "A water works and its town, a synthetic fixture for tests only",
+  "run": null,
+  "direction": "left-to-right",
+  "facts": {"run": null, "runs": 1, "horizon": null, "hidden": []},
+  "settings": {"looks": {"reads": "light", "follows": "light", "changes": "full", "fires": "full", "moves": "full"}, "bundle": ["reads", "follows"], "stocks": 4, "cards_per_column": 8, "card_width": null},
+  "cards": [
+    {
+      "id": "attacker",
+      "title": "Attacker",
+      "role": "adversary",
+      "icon": "target",
+      "template": null,
+      "copies": 1,
+      "actor": true, "starts": false, "file": "model.scn",
+      "place": {"column": 1, "row": null},
+      "stocks": [],
+      "stock_order": null,
+      "hidden_stocks": 0,
+      "pipes": [],
+      "machines": [
+        {
+          "var": "attacker.access",
+          "name": "Access to the plant",
+          "states": ["none", "gained", "kept", "lost"],
+          "initial": "none", "starts_by": [],
+          "transitions": [
+            {"from": ["none"], "to": "gained", "event": "attacker.break_in", "by": "attacker"},
+            {"from": ["gained"], "to": "kept", "event": "attacker.hold", "by": "attacker"},
+            {"from": ["gained", "kept"], "to": "lost", "event": "crews.lose", "by": "crews"}
+          ],
+          "place": "inside"
+        }
+      ],
+      "triggers": {
+        "level": "rules", "lines": 2,
+        "events": [
+          {"event": "attacker.break_in", "name": "break in", "text": "break in \u2014 from 2 h; once; sets access", "full": "break in \u2014 from 2 h; once; sets access", "label": "The attacker breaks in to the controls of the plant.", "rule": "t >= 2 h"},
+          {"event": "attacker.hold", "name": "hold", "text": "hold \u2014 when access is gained and hold time has passed since break in; once; sets access", "full": "hold \u2014 when access is gained and hold time has passed since break in; once; sets access", "label": null, "rule": "access is \"gained\" and since(break_in) >= hold_time"},
+          {"event": "attacker.take_over", "name": "take over", "text": "take over \u2014 when access is kept and mode of the water treatment plant of the town is normal; once; sets mode of the water treatment plant of the town; only with Attacker AI", "full": "take over \u2014 when access is kept and mode of the water treatment plant of the town is normal; once; sets mode of the water treatment plant of the town; only with Attacker AI", "label": "The attacker takes over the controls.", "rule": "access is \"kept\" and plant.mode is \"normal\""},
+          {"event": "attacker.degrade", "name": "degrade", "text": null, "full": "degrade \u2014 when access is kept and mode of the water treatment plant of the town is manual; after 1 h; sets mode of the water treatment plant of the town", "label": "The attacker slows the treatment.", "rule": "access is \"kept\" and plant.mode is \"manual\""}
+        ],
+        "more": 1
+      }
+    },
+    {
+      "id": "plant",
+      "title": "The water treatment plant of the town",
+      "role": "operator",
+      "icon": "factory",
+      "template": null,
+      "copies": 1,
+      "actor": false, "starts": false, "file": "model.scn",
+      "place": null,
+      "stocks": [
+        {"key": "plant.raw", "name": "Raw water", "kind": "stock"},
+        {"key": "plant.treated", "name": "Treated water", "kind": "stock"},
+        {"key": "plant.chlorine", "name": "Chlorine", "kind": "stock"},
+        {"key": "plant.sludge", "name": "Sludge", "kind": "stock"},
+        {"key": "plant.spare", "name": "Spare parts", "kind": "stock"},
+        {"key": "plant.treated_total", "name": "Water treated", "kind": "tally"},
+        {"key": "plant.alarms", "name": "Alarms raised", "kind": "tally"}
+      ],
+      "stock_order": null,
+      "hidden_stocks": 0,
+      "pipes": [
+        {"key": "->plant.raw", "flows": ["plant.intake"], "from": null, "to": "plant.raw", "label": "Intake"},
+        {"key": "plant.raw->plant.treated", "flows": ["plant.treat", "plant.bypass", "plant.overflow"], "from": "plant.raw", "to": "plant.treated", "label": "Treatment, bypass and overflow"},
+        {"key": "plant.raw->plant.sludge", "flows": ["plant.settle"], "from": "plant.raw", "to": "plant.sludge", "label": "Settling"},
+        {"key": "plant.treated->", "flows": ["plant.supply"], "from": "plant.treated", "to": null, "label": "Supply"},
+        {"key": "plant.chlorine->", "flows": ["plant.dose"], "from": "plant.chlorine", "to": null, "label": "Dosing"},
+        {"key": "->plant.treated_total", "flows": ["plant.count_treated"], "from": null, "to": "plant.treated_total", "label": "Water treated"}
+      ],
+      "machines": [
+        {
+          "var": "plant.mode",
+          "name": "Control of the plant",
+          "states": ["normal", "manual", "degraded", "shut_down", "restarting"],
+          "initial": "normal", "starts_by": [],
+          "transitions": [
+            {"from": ["normal", "manual"], "to": "degraded", "event": "attacker.degrade", "by": "attacker"},
+            {"from": ["normal"], "to": "manual", "event": "attacker.take_over", "by": "attacker"},
+            {"from": ["shut_down"], "to": "restarting", "event": "crews.restart", "by": "crews"},
+            {"from": ["restarting"], "to": "normal", "event": "crews.resume", "by": "crews"},
+            {"from": ["degraded"], "to": "shut_down", "event": "plant.shut", "by": "plant"},
+            {"from": null, "to": "shut_down", "event": "plant.trip", "by": "plant"}
+          ],
+          "place": "inside"
+        },
+        {
+          "var": "plant.valve",
+          "name": "Main valve",
+          "states": ["open", "closed"],
+          "initial": "open", "starts_by": [],
+          "transitions": [
+            {"from": ["open"], "to": "closed", "event": "crews.close", "by": "crews"}
+          ],
+          "place": "hidden"
+        }
+      ],
+      "triggers": {
+        "level": "count", "lines": 2,
+        "events": [
+          {"event": "plant.shut", "name": "shut", "text": null, "full": "shut \u2014 when mode is degraded and raw is above 900 Mgal; sets mode", "label": "The plant shuts down.", "rule": "mode is \"degraded\" and raw > 900 Mgal"},
+          {"event": "plant.trip", "name": "trip", "text": null, "full": "trip \u2014 when chlorine is at most 0 kg; sets mode", "label": null, "rule": "chlorine <= 0 kg"}
+        ],
+        "more": 0
+      }
+    },
+    {
+      "id": "crews",
+      "title": "Repair crews",
+      "role": "responder",
+      "icon": "wrench",
+      "template": "Crew",
+      "copies": 3,
+      "actor": true, "starts": false, "file": "model.scn",
+      "place": null,
+      "stocks": [
+        {"key": "crews.hours", "name": "Hours worked", "kind": "tally"}
+      ],
+      "stock_order": null,
+      "hidden_stocks": 0,
+      "pipes": [
+        {"key": "->crews.hours", "flows": ["crews.work"], "from": null, "to": "crews.hours", "label": "Work"}
+      ],
+      "machines": [
+        {
+          "var": "crews.status",
+          "name": "Work of the crews",
+          "states": ["waiting", "working", "done"],
+          "initial": "waiting", "starts_by": [],
+          "transitions": [
+            {"from": ["waiting"], "to": "working", "event": "crews.dispatch", "by": "crews"},
+            {"from": ["working"], "to": "done", "event": "crews.finish", "by": "crews"}
+          ],
+          "place": "beside"
+        }
+      ],
+      "triggers": {
+        "level": "names", "lines": 2,
+        "events": [
+          {"event": "crews.dispatch", "name": "dispatch", "text": "dispatch", "full": "dispatch \u2014 when fired by Attacker: degrade; sets status", "label": null, "rule": null},
+          {"event": "crews.finish", "name": "finish", "text": "finish", "full": "finish \u2014 when fired by Attacker: degrade; sets status", "label": null, "rule": null},
+          {"event": "crews.restart", "name": "restart", "text": "restart", "full": "restart \u2014 when fired by Attacker: degrade; sets status", "label": null, "rule": null},
+          {"event": "crews.resume", "name": "resume", "text": "resume", "full": "resume \u2014 when fired by Attacker: degrade; sets status", "label": null, "rule": null},
+          {"event": "crews.close", "name": "close", "text": "close", "full": "close \u2014 when fired by Attacker: degrade; sets status", "label": null, "rule": null},
+          {"event": "crews.lose", "name": "lose", "text": "lose", "full": "lose \u2014 when fired by Attacker: degrade; sets status", "label": null, "rule": null}
+        ],
+        "more": 0
+      }
+    },
+    {
+      "id": "town",
+      "title": "Town",
+      "role": "community",
+      "icon": "people",
+      "template": null,
+      "copies": 1,
+      "actor": false, "starts": false, "file": "model.scn",
+      "place": null,
+      "stocks": [
+        {"key": "town.without", "name": "People without water", "kind": "stock"},
+        {"key": "town.sick", "name": "People who fall ill", "kind": "tally"}
+      ],
+      "stock_order": null,
+      "hidden_stocks": 0,
+      "pipes": [
+        {"key": "->town.sick", "flows": ["town.fall_ill"], "from": null, "to": "town.sick", "label": "People fall ill"}
+      ],
+      "machines": [],
+      "triggers": null
+    },
+    {
+      "id": "hospital",
+      "title": "The regional hospital and its emergency department for the valley",
+      "role": "clinician",
+      "icon": "hospital",
+      "template": null,
+      "copies": 1,
+      "actor": false, "starts": false, "file": "model.scn",
+      "place": {"column": 4, "row": 1},
+      "stocks": [
+        {"key": "hospital.patients", "name": "Patients", "kind": "stock"}
+      ],
+      "stock_order": null,
+      "hidden_stocks": 0,
+      "pipes": [
+        {"key": "hospital.patients->", "flows": ["hospital.discharge"], "from": "hospital.patients", "to": null, "label": "Discharge"}
+      ],
+      "machines": [],
+      "triggers": {
+        "level": "hover", "lines": 2,
+        "events": [
+          {"event": "hospital.surge", "name": "surge", "text": null, "full": "surge \u2014 when sick of town is above 10 people; once; adds to patients", "label": "Many people come to the emergency department.", "rule": "town.sick > 10 people"}
+        ],
+        "more": 0
+      }
+    },
+    {
+      "id": "weather",
+      "title": "Weather",
+      "role": "environment",
+      "icon": "sun",
+      "template": null,
+      "copies": 1,
+      "actor": false, "starts": false, "file": "model.scn",
+      "place": null,
+      "stocks": [],
+      "stock_order": null,
+      "hidden_stocks": 0,
+      "pipes": [],
+      "machines": [],
+      "triggers": null
+    }
+  ],
+  "arrows": [
+    {"from": "attacker", "to": "plant", "kind": "changes", "count": 1, "values": ["plant.mode"], "how": ["sets"]},
+    {"from": "crews", "to": "attacker", "kind": "changes", "count": 1, "values": ["attacker.access"], "how": ["sets"]},
+    {"from": "crews", "to": "plant", "kind": "changes", "count": 1, "values": ["plant.mode"], "how": ["sets"]},
+    {"from": "plant", "to": "attacker", "kind": "reads", "count": 1, "values": ["plant.mode"], "how": []},
+    {"from": "plant", "to": "crews", "kind": "changes", "count": 1, "values": ["crews.status"], "how": ["sets"]},
+    {"from": "plant", "to": "crews", "kind": "reads", "count": 2, "values": ["plant.mode", "plant.treated"], "how": []},
+    {"from": "plant", "to": "hospital", "kind": "reads", "count": 1, "values": ["plant.treated"], "how": []},
+    {"from": "plant", "to": "town", "kind": "moves", "count": 1, "values": ["town.without"], "how": []},
+    {"from": "plant", "to": "town", "kind": "reads", "count": 1, "values": ["plant.treated"], "how": []},
+    {"from": "town", "to": "hospital", "kind": "reads", "count": 1, "values": ["town.sick"], "how": []}
+  ],
+  "groups": [
+    {"label": "Water systems", "members": ["plant", "town"]}
+  ],
+  "panels": null
+}

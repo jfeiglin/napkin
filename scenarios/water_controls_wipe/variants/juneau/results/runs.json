@@ -1,0 +1,1528 @@
+{
+  "scenario": "water_controls_wipe:juneau",
+  "model_hash": "f847c520d772212dea0a3dbe32284ca318a84a30ce51750f9eaba459ad42b6d8",
+  "implementation_hash": "af9d1ec966bb183e438a870eca7de4b6882682510a5e77815c6cacab0a505ff1",
+  "engine_version": "0.0.1",
+  "horizon_h": 2160,
+  "note": "Completed fatalities, serious casualties, economic loss and operational values at the declared horizon, with each outcome’s scope and input basis. Each value has six significant figures. A numerical residual below 0.000001 reads 0.",
+  "rows": [
+    {
+      "id": "early_kept",
+      "description": "Early response · Keeps hidden access",
+      "run": "early_kept",
+      "options": [
+        "Early response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 6,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 2,
+        "controls_crew.approval_time": 6,
+        "controls_crew.travel_time": 12,
+        "controls_crew.orientation_time": 24,
+        "field_crew.capacity": 200,
+        "field_crew.request_time": 2,
+        "field_crew.approval_time": 6,
+        "field_crew.travel_time": 12,
+        "field_crew.orientation_time": 24,
+        "parts.spares_on_hand": 400,
+        "parts.lead_time": 336.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 6,
+        "relief.transport": 8,
+        "relief.receiving": 8,
+        "relief.staffing": 8,
+        "relief.start_delay": 12,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 0.6,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 24,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1400.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1605.25,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.198413,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00160525,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 6.18435e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "standard_kept",
+      "description": "Standard response · Keeps hidden access",
+      "run": "standard_kept",
+      "options": [
+        "Standard response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 12,
+        "responders.removal_time": 120,
+        "controls_crew.capacity": 80,
+        "controls_crew.request_time": 6,
+        "controls_crew.approval_time": 12,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 100,
+        "field_crew.request_time": 6,
+        "field_crew.approval_time": 12,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 150,
+        "parts.lead_time": 720.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 3,
+        "relief.transport": 4,
+        "relief.receiving": 5,
+        "relief.staffing": 4,
+        "relief.start_delay": 24,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 0.6,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 36,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1150.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 10652.7,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 1.3167,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00160525,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000411893,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept",
+      "description": "Delayed response · Keeps hidden access",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 0.6,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 48,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 93903.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 11.6066,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00160525,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00365234,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_none",
+      "description": "Delayed response · No hidden access",
+      "run": "delayed_none",
+      "options": [
+        "Delayed response",
+        "No hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 0.6,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 48,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 19506.3,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.41102,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00160525,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000754792,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept_human",
+      "description": "Delayed response · Human team keeps hidden access",
+      "run": "delayed_kept_human",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access",
+        "Human team"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 48,
+        "attacker.rework_share": 0.2,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 0.6,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 48,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 22543.1,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.78638,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 240.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00160525,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000872822,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_20",
+      "description": "The controls crews do 20 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 20
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 20,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 20,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 0.6,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 48,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 88744.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 10.969,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00160525,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00345035,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_160",
+      "description": "The controls crews do 160 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 160
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 160,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 0.6,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 48,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 83970.2,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 10.3789,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 19200.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00160525,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00326405,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_0",
+      "description": "Juneau's operators cannot produce water by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "juneau.manual_share": 0
+        }
+      },
+      "changed": {
+        "juneau.manual_share": {
+          "value": 0,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 0,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 48,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 364821.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 45.0927,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0404069,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.0141905,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_1",
+      "description": "Juneau's operators produce all of normal by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "juneau.manual_share": 1
+        }
+      },
+      "changed": {
+        "juneau.manual_share": {
+          "value": 1,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 1,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 48,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1605.25,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.198413,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00160525,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 6.18435e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_1d",
+      "description": "Responders remove the credential a day after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 24
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 24,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 0.6,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 48,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 19506.3,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.41102,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00160525,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000754792,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_20d",
+      "description": "Responders remove the credential twenty days after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 480
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 480,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 480,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "juneau.reached": 1,
+        "juneau.demand": 4.7619,
+        "juneau.nameplate": 5.024,
+        "juneau.storage": 11,
+        "juneau.usable_share": 0.8878,
+        "juneau.bought": 0,
+        "juneau.sold": 0,
+        "juneau.refill_time": 24,
+        "juneau.treat_disabled": 1,
+        "juneau.pump_disabled": 0.5,
+        "juneau.manual_ready": 1,
+        "juneau.manual_share": 0.6,
+        "juneau.activation_delay": 2,
+        "juneau.operator_duty": 2,
+        "juneau.controls_load": 600,
+        "juneau.field_load": 120,
+        "juneau.replace_load": 0,
+        "juneau.parts_per_hour": 0.1,
+        "juneau.clearance_time": 48,
+        "juneau.loss_share": 0.05,
+        "juneau.va_rate": 461317.55,
+        "juneau.water_dependence": 0.25,
+        "juneau.activity_kept": 0.5,
+        "juneau.recovery_factor": 1.5,
+        "juneau.catch_up_share": 0.3,
+        "juneau.catch_up_time": 720.0,
+        "juneau_homes.population": 38526,
+        "juneau_hospitals.facilities": 1,
+        "juneau_hospitals.critical_need": 0.08333,
+        "juneau_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 233397.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 28.8484,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 13800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00160525,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00918642,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 38526.0,
+          "status": "estimated"
+        }
+      }
+    }
+  ]
+}

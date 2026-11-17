@@ -1,0 +1,1449 @@
+{
+  "schema_version": "2",
+  "record_kind": "scenario_assumption_inventory",
+  "scenario": "cyber_learning_loop",
+  "authoritative_basis": {
+    "path": "scenarios/cyber_learning_loop/evidence/assumptions.json",
+    "sha256": "2d202c217eca9b1d24dce214a5281081332fd9271eb84bca849e6799ac0cee24"
+  },
+  "status_policy": "Each assumption retains its authored review status. This inventory adds no review.",
+  "counts": {
+    "assumptions": 14,
+    "origin": {
+      "model": 14
+    },
+    "authoritative_review_status": {
+      "unreviewed": 14
+    },
+    "reachable_in_current_scenarios": 14,
+    "retained_without_current_scenario_reference": 0
+  },
+  "assumptions": [
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-AI",
+      "title": "How AI progress reaches the cyber force",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/ai_pace",
+        "record:/ai_path",
+        "record:/ai_reversal",
+        "record:/analysis_ai",
+        "record:/analyst_ai_options",
+        "record:/assessment_ai",
+        "record:/no_ai_path",
+        "record:/planning_ai",
+        "record:/research_ai",
+        "record:/stage_ai",
+        "record:/stage_compute",
+        "record:/stage_paths",
+        "record:/stage_split",
+        "record:/stage_supervision",
+        "record:/surveillance_planning_ai",
+        "record:/tailoring",
+        "record:/tools_channel"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-AI-CAMPAIGN",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-AI-STRATEGY-2026",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-AVENGERS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-BCG-FRONTIER",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-BDA-24H",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-BDA-HOURS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-BLACKSKY-BDA",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-BUNDESWEHR",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-BUNDESWEHR-LIMITS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-AN-CENTCOM-2024",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-CIA-COWORKER",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-CIA-USES",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-CONVERGENCE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-AN-CSET-SUMMARY",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-AN-CYBER-BDA-METHODS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-AN-CYBERCOM-AI-FUNDING",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-CYBERCOM-TASK-FORCE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-CYBERCOM-TRAFFIC",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-DELOITTE-TIME",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-DELTA",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-FACTSET",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-AN-GOSPEL-MIMRAN",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-AN-GOSPEL-RATE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-AN-GOSPEL-UNIT",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-HUMAN-JUDGMENT",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-AN-IDF-PACE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-IRAN-38-DAYS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-IRAN-BDA-LOOP",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-IRAN-FIRST-DAY",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-IRAN-REVIEW",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-AN-IRAN-WAPO-COUNTS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-LAVENDER",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-AN-MAVEN-1000-RECS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-MAVEN-DAILY",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-MAVEN-USERS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-MCKINSEY-POTENTIAL",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-AN-NGA-75",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SC45-AN-NGA-TIMELINES",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-NSA-REVIEW",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-AN-OSIRIS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-SABLE-SPEAR",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-SCALE-DAMAGE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-SCSP-HMT",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-TARGET-PASS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-WORKFLOW-WAIT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-CVE-GENIE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-AISI-DOUBLING",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-AISI-NO-DEFENDERS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-OP-AISI-RANGES",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-ASTRA-CRITICAL",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-CAISI-CTF",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-CAISI-LAG",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-OP-CROWDSTRIKE-AI-OPS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-CVP-CYSCENARIO",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-FRI-AUTONOMY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-OP-GLASSWING-DIFFUSION",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-OP-GLASSWING-OUTLOOK",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-GLASSWING-SPREAD",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-GLM53-EXPLOITS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-GLM53-OPEN-WEIGHTS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-OP-HACKERONE-AI",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-JADEPUFFER",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-OP-MDDR-MANUAL",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-MDDR-WEAPONIZATION",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-OP-METR-DOUBLING",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-MYTHOS5-ACCESS",
+          "relation": "defines_conditions"
+        },
+        {
+          "claim": "E-SC45-OP-NCSC-2027-LOOP",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-NCSC-2027-STATES",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-NCSC-CHINA",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-NCSC-HUMANS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-PALISADE-CTF",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-TIR-HUMANS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-AI-TRIAGE-ERRORS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-SG-ASR-THRESHOLD",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-SG-LANGUAGE-LIMITS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-SG-MT-EDIT-DATA",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-MT-EDIT-TREND",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-NSA-GENAI-USE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-NSA-LINGUIST-GAP",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-NSA-SPEECH-TECH",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-SG-NSA-TRIAGE-2026",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-NSCAI-AI-READY",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-POSTEDIT-LANGUAGES",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-SG-POSTEDIT-NOVEL",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-SPEECH-LIMITS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-TRANSLATOR-EXPOSURE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-SG-TRANSLATOR-EXPOSURE-RISE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-WF-GAZA-TARGETS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-WF-IDF-TARGETS",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-WF-MAVEN-EXERCISE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-WF-MAVEN-IRAN",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-WF-MAVEN-VENDOR",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-ZD-AI-FORECAST",
+          "relation": "consistent_with"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-CAPABILITIES",
+      "title": "How flaws and tools are found, used and burned",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/capability_burn",
+        "record:/capability_pool",
+        "record:/capability_reserve",
+        "record:/capability_sources",
+        "record:/capability_use",
+        "record:/loss_routes",
+        "record:/one_day_chance",
+        "record:/research_basis",
+        "record:/research_split",
+        "record:/target_kinds"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-KEV-FIX",
+          "relation": "reports_value"
+        },
+        {
+          "claim": "E-SC45-MYTHOS-FLAWS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-OP-AI-FLAWS-EXPLOITED",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-OP-CROWDSTRIKE-PREDISCLOSURE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-CVP-FINDS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-GLASSWING-LAUNCH",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-GLASSWING-LEDGER",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-OP-GLASSWING-RATE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-OP-GLASSWING-SEVERITY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-OP-GLASSWING-TRIAGE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-OP-KEV-1H2026",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-NCSC-2027-STATES",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-OPUS46-FLAWS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-WF-VULN-PURCHASES",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZD-2022-VARIANTS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZD-2023-ACTORS",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-ZD-2024-ACTORS",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-ZD-2025-ACTORS",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-ZD-2025-CHAINS",
+          "relation": "specifies_component"
+        },
+        {
+          "claim": "E-SC45-ZD-2025-SCOPE",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-ZD-2025-TARGETS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-CHAINS",
+          "relation": "specifies_component"
+        },
+        {
+          "claim": "E-SC45-ZD-CSV-REUSE",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-ZD-DBIR-2026-VECTOR",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZD-EDGE-SHARE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZD-ESPIONAGE-VECTOR",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-ETERNALBLUE",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-ZD-EXCHANGE-AFTER",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-ZD-EXCHANGE-SHARED",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-ZD-EXPLOIT-TIME",
+          "relation": "specifies_component"
+        },
+        {
+          "claim": "E-SC45-ZD-FANNY-STUXNET",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-ZD-FIX-COST",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-ZD-IN-USE-LIFE",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-ZD-IN-USE-NEWS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-ZD-INDUSTROYER",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-ZD-LIFE-STATUS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZD-MTRENDS-VECTORS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZD-NDAY-DELAY",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-NDAY-GAP",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-ZD-OT-KEV",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-OT-ROUTES",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-OT-TRIAGE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-PRC-SHARING",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-ZD-SHARED-EXPLOIT",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-ZD-STUXNET-FOUR",
+          "relation": "specifies_component"
+        },
+        {
+          "claim": "E-SC45-ZD-TRITON",
+          "relation": "specifies_component"
+        },
+        {
+          "claim": "E-SC45-ZD-TTE-2025",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-TTE-TREND",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-VECTORS-2025",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZD-VENDOR-SPREAD",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-ZERO-SHARE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-ZERODAY-2025",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZERODAY-LIFE",
+          "relation": "calibrates"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-COSTS",
+      "title": "What an attack costs in expert work",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/access_decay",
+        "record:/access_split",
+        "record:/access_stage",
+        "record:/assessment_stage",
+        "record:/cost_learning",
+        "record:/execution_stage",
+        "record:/exposure_basis",
+        "record:/lead_time",
+        "record:/payload_stage",
+        "record:/planning_stage",
+        "record:/stage_basis",
+        "record:/stage_work",
+        "record:/waiting_cost"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-AI-CAMPAIGN",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-ARES-PREP",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-CIA-APPROVAL",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-AN-GOSPEL-MIMRAN",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SC45-AN-GS-APPROVAL",
+          "relation": "reports_value"
+        },
+        {
+          "claim": "E-SC45-AN-GS-AUTHORIZATION",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-HAMMER-FINAL",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-NSPM13-AUTHORITY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-AN-NSPM13-DELEGATION",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-AN-NSPM13-SPEED",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-AN-TARGET-BANK",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-CMF-SIZE",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SC45-CVE-GENIE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-OP-CAI-SPEED",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-CROWDSTRIKE-BREAKOUT",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-OP-GLM53-SUPERVISION",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-OP-MYTHOS-COST",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-OP-MYTHOS-PRICE",
+          "relation": "specifies_component"
+        },
+        {
+          "claim": "E-SC45-OP-NCSC-HUMANS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-OP-TIR-HUMANS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-OP-TIR-SCALE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OPS-2011",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SC45-POLAND-2025",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-WF-ASSESSMENT-COLLECTION",
+          "relation": "specifies_component"
+        },
+        {
+          "claim": "E-SC45-WF-CMF-TEAM-SIZES",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-WF-CYBERCOM-INTEL-GAP",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-WF-ELECTION-OPS-2020",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-WF-GLOWING-SYMPHONY-SCALE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-WF-HUNT-FORWARD-2024",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-VOLT-PREPOSITION",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-DEFENDERS",
+      "title": "How the defenders answer",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/alertness_fades",
+        "record:/alertness_today",
+        "record:/attention_cap",
+        "record:/common_factor",
+        "record:/defender_ai",
+        "record:/defender_basis",
+        "record:/dispersed_targets",
+        "record:/hardening",
+        "record:/known_flaws",
+        "record:/outcome_correlation",
+        "record:/patch_tiers",
+        "record:/plan_concentration",
+        "record:/rediscovery",
+        "record:/shared_failure",
+        "record:/threat_flow"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-OP-GLASSWING-LEDGER",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-NCSC-2027-EXPLOIT-TIME",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-NCSC-PATCH-RACE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-OP-ZERODAY-CLOCK",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-STUXNET",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-1H2025",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-2024-COUNT",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-2025-SCOPE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZD-AI-FORECAST",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-COLLISION",
+          "relation": "contradicts"
+        },
+        {
+          "claim": "E-SC45-ZD-COLLISION-NEWS",
+          "relation": "reports_value"
+        },
+        {
+          "claim": "E-SC45-ZD-COLLISION-PRIVATE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZD-COLLISIONS-2022",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-ZD-EDGE-FIX-TIMES",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-EDGE-FIXED",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-ZD-EDGE-MASS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-EXCHANGE-SHARED",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-ZD-KEV-COVERAGE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-ZD-KEV-DEADLINES",
+          "relation": "reports_value"
+        },
+        {
+          "claim": "E-SC45-ZD-KEV-SEVERITY",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-ZD-LONGEVITY",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SC45-ZD-OT-ADVISORIES",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-OT-NOPATCH-2024",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-OT-TRIAGE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-ZD-REDISCOVERY",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-ZD-STOCKPILE-DATA",
+          "relation": "defines_conditions"
+        },
+        {
+          "claim": "V-C01",
+          "relation": "consistent_with"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-EXPERTS",
+      "title": "The four kinds of expert",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/analyst_basis",
+        "record:/analyst_load",
+        "record:/analyst_split",
+        "record:/analyst_staffing",
+        "record:/operator_basis",
+        "record:/operator_priority",
+        "record:/research_share",
+        "record:/surveillance_analysts",
+        "record:/surveillance_priority",
+        "record:/workforce"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-AN-CSET-SUMMARY",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-DESERT-STORM-BDA-COVERAGE",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-AN-GOSPEL-UNIT",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-GENIE-2011",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-NSA-WORKFORCE",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SC45-SG-FBI-LINGUISTS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-TEMPORA",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-WF-CMF-BUILD-2015",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-WF-CMF-GROWTH-2028",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-WF-CMF-STRUCTURE",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SC45-WF-CMF-TEAM-SIZES",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SC45-WF-DLI-PROFICIENCY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-WF-IC-WORKFORCE-2013",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-WF-NCF",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-WF-REDSPICE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-WF-SIGINT-LANGUAGE-READINESS",
+          "relation": "reports_value"
+        },
+        {
+          "claim": "E-SC45-WF-SIGINT-LINGUIST-GROWTH",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-WF-TAO-SIZE",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-WF-UNIT81-RESEARCH",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-WF-UNIT8200-SIZE",
+          "relation": "context_limitations"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-LEARNING",
+      "title": "How the force learns and forgets",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/access_lessons",
+        "record:/assessment_basis",
+        "record:/assessment_time",
+        "record:/burned_lessons",
+        "record:/forgetting",
+        "record:/learning_basis",
+        "record:/learning_curve",
+        "record:/learning_forms",
+        "record:/lessons_today"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-AN-CYBER-BDA-METHODS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-GS-ASSESSMENT",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-CARTER-ISIS",
+          "relation": "consistent_with"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-NOISE",
+      "title": "How noisy the yearly assessment is",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/assessment_bias",
+        "record:/assessment_common",
+        "record:/assessment_noise"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-AN-GS-ASSESSMENT",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-AN-HAMMER-INITIAL",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-CARTER-ISIS",
+          "relation": "consistent_with"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-PLANNING",
+      "title": "When plans count on cyber attacks",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/doctrine_feedback",
+        "record:/doctrine_lapse",
+        "record:/doctrine_time",
+        "record:/forecast_error",
+        "record:/objective_share",
+        "record:/plan_lengths",
+        "record:/plan_spread",
+        "record:/plan_test",
+        "record:/plan_tolerance",
+        "record:/planning_basis",
+        "record:/shared_depth",
+        "record:/wartime"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-POLAND-2025",
+          "relation": "consistent_with"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-POLITICS",
+      "title": "What attribution costs",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/attribution_channels",
+        "record:/escalation",
+        "record:/infrastructure_channel",
+        "record:/politics_basis",
+        "record:/sanction_cost"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-NOTPETYA-ATTRIBUTION",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-NOTPETYA-SANCTIONS",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-POLAND-2025",
+          "relation": "context_limitations"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-RETURNS",
+      "title": "What an attack gives",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/diminishing_value",
+        "record:/risk_value",
+        "record:/success_basis",
+        "record:/targets_basis",
+        "record:/value_basis",
+        "record:/value_learning",
+        "record:/value_scale"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-NOTPETYA-DAMAGE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-POLAND-2025",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SC45-STUXNET",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "V-C01",
+          "relation": "mechanism_precedent"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-SPLIT",
+      "title": "How the leaders split the operators",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/budget_cycle",
+        "record:/discount_rate",
+        "record:/experts_pool",
+        "record:/funding_forms",
+        "record:/funding_response",
+        "record:/funding_rules",
+        "record:/funding_speed",
+        "record:/revealed_split",
+        "record:/share_today",
+        "record:/split_basis",
+        "record:/split_limits"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-CARTER-ISIS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-CMF-SIZE",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SC45-CYBERCOM-BUDGET",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SC45-NSA-WORKFORCE",
+          "relation": "calibrates"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-STRUCTURE",
+      "title": "How the model of a country's cyber force works",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/harm_outside",
+        "record:/period_start",
+        "record:/program_basis"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-CARTER-ISIS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-ZD-HANDOFF",
+          "relation": "context_limitations"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-SURGE",
+      "title": "What a one-off surge of money buys",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/expert_cost",
+        "record:/surge_2025",
+        "record:/surge_basis"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-SURGE-2025",
+          "relation": "reports_value"
+        }
+      ]
+    },
+    {
+      "scenario": "cyber_learning_loop",
+      "id": "A-SC45-SURVEILLANCE",
+      "title": "What surveillance gives",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/collection_basis",
+        "record:/collection_queue",
+        "record:/surveillance_accesses",
+        "record:/surveillance_ai",
+        "record:/surveillance_alert",
+        "record:/surveillance_basis",
+        "record:/surveillance_builders",
+        "record:/surveillance_loss",
+        "record:/surveillance_returns",
+        "record:/surveillance_use"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-SC45-AI-CAMPAIGN",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-CARTER-ISIS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-IMPLANT-COUNT",
+          "relation": "reports_value"
+        },
+        {
+          "claim": "E-SC45-SG-ACTIVE-IMPLANTS",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-SG-FBI-2004-DELAYS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-SG-FBI-2009",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-SG-FBI-INTAKE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-SG-FBI-PRIORITY",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-SG-FBI-TIMELINESS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-SG-FBI-UNREVIEWED",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-SG-GCHQ-SELECTION",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-SG-LINGUIST-YIELD",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-MYSTIC-BUFFER",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-SG-MYSTIC-LISTENED",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-SG-NSA-BULK-FUNNEL",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC45-SG-NSA-OVERLOAD",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-SG-NSA-TRIAGE-2026",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SC45-SG-TEMPORA",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SC45-TURBINE",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-WF-ARMY-LINGUIST-SHORTFALL",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC45-WF-SIGINT-LANGUAGE-READINESS",
+          "relation": "mechanism_support"
+        }
+      ]
+    }
+  ]
+}

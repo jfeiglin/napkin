@@ -1,0 +1,17 @@
+{
+  "doc": "Distributions as an edit document writes them, and the arguments that the reader of an edit gives for each, in the unit of the input. tests/model/test_distribution_contracts.py reads them with that reader (napkin/model/uncertain.py).",
+  "cases": [
+    {"input": {"type": "number", "unit": "h"}, "family": "uniform", "args": {"min": 2, "max": 10}, "text": "uniform(2 h, 10 h)"},
+    {"input": {"type": "number", "unit": "h"}, "family": "triangular", "args": {"min": 2, "mode": 6, "max": 10}, "text": "triangular(2 h, 6 h, 10 h)"},
+    {"input": {"type": "number", "unit": "people/h"}, "family": "pert", "args": {"min": 0.5, "mode": 1.25, "max": 4}, "text": "pert(0.5 people/h, 1.25 people/h, 4 people/h)"},
+    {"input": {"type": "number", "unit": "h"}, "family": "loguniform", "args": {"min": 0.001, "max": 100}, "text": "loguniform(0.001 h, 100 h)"},
+    {"input": {"type": "number", "unit": "h"}, "family": "normal", "args": {"mean": 6, "sd": 1.5, "min": 2, "max": 10}, "text": "normal(6 h, 1.5 h, min=2 h, max=10 h)"},
+    {"input": {"type": "number", "unit": "h"}, "family": "lognormal", "args": {"median": 6, "gsd": 1.5, "min": 2, "max": 18}, "text": "lognormal(6 h, 1.5, min=2 h, max=18 h)"},
+    {"input": {"type": "number", "unit": "fraction"}, "family": "beta", "args": {"a": 2, "b": 3}, "text": "beta(2, 3)"},
+    {"input": {"type": "number", "unit": "h"}, "family": "uniform", "args": {"min": 1e-7, "max": 2.5e21}, "text": "uniform(1e-7 h, 2.5e+21 h)"},
+    {"input": {"type": "number", "unit": "people/day"}, "family": "uniform", "args": {"min": -0.1891891891891892, "max": 0}, "text": "uniform(-0.1891891891891892 people/day, 0 people/day)"},
+    {"input": {"type": "number", "unit": "fraction"}, "family": "uniform", "args": {"min": 0.1, "max": 0.3}, "text": "uniform(0.1 fraction, 0.3 fraction)"},
+    {"input": {"type": "bool", "unit": null}, "family": "bernoulli", "args": {"p": 0.3}, "text": "bernoulli(0.3)"},
+    {"input": {"type": "names", "unit": null, "values": ["slow", "fast", "stopped"]}, "family": "categorical", "args": {"slow": 0.2, "fast": 0.7, "stopped": 0.1}, "text": "categorical(slow=0.2, fast=0.7, stopped=0.1)"}
+  ]
+}

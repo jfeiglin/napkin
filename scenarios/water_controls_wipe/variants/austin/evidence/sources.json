@@ -1,0 +1,95 @@
+[
+  {
+    "id": "austin_austin2026_bond_statement",
+    "type": "report",
+    "title": "Preliminary Official Statement: City of Austin, Texas, Water and Wastewater System Revenue Refunding and Improvement Bonds, Series 2026",
+    "author": [
+      {
+        "literal": "City of Austin, Texas"
+      }
+    ],
+    "publisher": "City of Austin, Texas",
+    "issued": {
+      "date-parts": [
+        [
+          2026,
+          3
+        ]
+      ]
+    },
+    "URL": "https://services.austintexas.gov/edims/document.cfm?id=468742",
+    "genre": "Draft preliminary official statement, council meeting backup of March 12, 2026 (File ID 26-1193)",
+    "custom": {
+      "metadata_status": "Checked on 2026-10-25 against the retrieved PDF (83 pages): each page is headed 'City of Austin, Council Meeting Backup: March 12, 2026, File ID: 26-1193'. The cover reads 'Preliminary Official Statement dated March [16], 2026' for '$[529,310,000]* Water and Wastewater System Revenue Refunding and Improvement Bonds, Series 2026', and the pages are marked DRAFT. The bracketed date and amount are placeholders of the draft.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://services.austintexas.gov/edims/document.cfm?id=468742",
+        "notes": "Retrieved https://services.austintexas.gov/edims/document.cfm?id=468742 at 2026-10-25T16:18:35Z (curl, HTTP 200, 1677045 bytes, sha256 98af6691da9f87c9a0795f99d5230c7ddb499247a4d41afca3dd9eadc5ec86f4); text by gs-10.07.1 txtwrite-pages, sha256 6ec2ab91752338c97e1a0d19858e78c630a93357152eb7bd127c473126b31020.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://services.austintexas.gov/edims/document.cfm?id=468742",
+          "final_url": "https://services.austintexas.gov/edims/document.cfm?id=468742",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:18:35Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 1677045,
+          "sha256": "98af6691da9f87c9a0795f99d5230c7ddb499247a4d41afca3dd9eadc5ec86f4",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "6ec2ab91752338c97e1a0d19858e78c630a93357152eb7bd127c473126b31020"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "austin_austinwater2024_conservation_plan",
+    "type": "report",
+    "title": "City of Austin Water Conservation Plan",
+    "author": [
+      {
+        "literal": "Austin Water, City of Austin"
+      }
+    ],
+    "publisher": "City of Austin, Texas",
+    "issued": {
+      "date-parts": [
+        [
+          2024,
+          11,
+          21
+        ]
+      ]
+    },
+    "URL": "https://services.austintexas.gov/edims/document.cfm?id=440216",
+    "genre": "Water conservation plan and utility profile under 30 TAC §288.2 and §288.5",
+    "custom": {
+      "metadata_status": "Checked on 2026-10-25 against the retrieved PDF (61 pages): the cover reads 'City of Austin Water Conservation Plan, Developed to Meet Requirements Outlined in 30 TAC §288.2 and §288.5, November 21, 2024', and the running header reads 'Water Conservation Plan and Utility Profile'. The Director's message is signed by the Austin Water Director. The City document server gives no other title.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://services.austintexas.gov/edims/document.cfm?id=440216",
+        "notes": "Retrieved https://services.austintexas.gov/edims/document.cfm?id=440216 at 2026-10-25T16:14:02Z (curl, HTTP 200, 1963473 bytes, sha256 06e1c1973f7d5580342d466f8352f1c6dd13144e31ec6ea1c3dd4d0d3ea1776f); text by gs-10.07.1 txtwrite-pages, sha256 cb5bc6095ee719fec2eab915135d5d20f92deae79bd176993c3d48275c9aee1d.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://services.austintexas.gov/edims/document.cfm?id=440216",
+          "final_url": "https://services.austintexas.gov/edims/document.cfm?id=440216",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:14:02Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 1963473,
+          "sha256": "06e1c1973f7d5580342d466f8352f1c6dd13144e31ec6ea1c3dd4d0d3ea1776f",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "cb5bc6095ee719fec2eab915135d5d20f92deae79bd176993c3d48275c9aee1d"
+          }
+        }
+      }
+    }
+  }
+]

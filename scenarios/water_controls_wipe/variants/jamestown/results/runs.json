@@ -1,0 +1,2177 @@
+{
+  "scenario": "water_controls_wipe:jamestown",
+  "model_hash": "1a6b056b559471be9c1e650e16b46f1938157b717f91d146a48047e70a59f3a9",
+  "implementation_hash": "af9d1ec966bb183e438a870eca7de4b6882682510a5e77815c6cacab0a505ff1",
+  "engine_version": "0.0.1",
+  "horizon_h": 2160,
+  "note": "Completed fatalities, serious casualties, economic loss and operational values at the declared horizon, with each outcome’s scope and input basis. Each value has six significant figures. A numerical residual below 0.000001 reads 0.",
+  "rows": [
+    {
+      "id": "early_kept",
+      "description": "Early response · Keeps hidden access",
+      "run": "early_kept",
+      "options": [
+        "Early response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 6,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 2,
+        "controls_crew.approval_time": 6,
+        "controls_crew.travel_time": 12,
+        "controls_crew.orientation_time": 24,
+        "field_crew.capacity": 200,
+        "field_crew.request_time": 2,
+        "field_crew.approval_time": 6,
+        "field_crew.travel_time": 12,
+        "field_crew.orientation_time": 24,
+        "parts.spares_on_hand": 400,
+        "parts.lead_time": 336.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 6,
+        "relief.transport": 8,
+        "relief.receiving": 8,
+        "relief.staffing": 8,
+        "relief.start_delay": 12,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 24,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 0.6,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 24,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 24,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1398.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 18478.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.49733,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0184785,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000585157,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "standard_kept",
+      "description": "Standard response · Keeps hidden access",
+      "run": "standard_kept",
+      "options": [
+        "Standard response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 12,
+        "responders.removal_time": 120,
+        "controls_crew.capacity": 80,
+        "controls_crew.request_time": 6,
+        "controls_crew.approval_time": 12,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 100,
+        "field_crew.request_time": 6,
+        "field_crew.approval_time": 12,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 150,
+        "parts.lead_time": 720.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 3,
+        "relief.transport": 4,
+        "relief.receiving": 5,
+        "relief.staffing": 4,
+        "relief.start_delay": 24,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 36,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 0.6,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 36,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 36,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1148.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 18478.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.49733,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1840.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0184785,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000585157,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept",
+      "description": "Delayed response · Keeps hidden access",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 48,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 0.6,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 48,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 48,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 18478.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.49733,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 3880.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0184785,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000585157,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_none",
+      "description": "Delayed response · No hidden access",
+      "run": "delayed_none",
+      "options": [
+        "Delayed response",
+        "No hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 48,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 0.6,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 48,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 48,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 18478.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.49733,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0184785,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000585157,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept_human",
+      "description": "Delayed response · Human team keeps hidden access",
+      "run": "delayed_kept_human",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access",
+        "Human team"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 48,
+        "attacker.rework_share": 0.2,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 48,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 0.6,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 48,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 48,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 18478.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.49733,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 256.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0184785,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000585157,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_20",
+      "description": "The controls crews do 20 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 20
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 20,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 20,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 48,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 0.6,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 48,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 48,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 18478.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.49733,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1880.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0184785,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000585157,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_160",
+      "description": "The controls crews do 160 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 160
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 160,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 48,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 0.6,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 48,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 48,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 18478.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.49733,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 19680.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0184785,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000585157,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_0",
+      "description": "Greensboro's operators cannot produce water by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "greensboro.manual_share": 0
+        }
+      },
+      "changed": {
+        "greensboro.manual_share": {
+          "value": 0,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 48,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 0,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 48,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 48,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 2367240.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 316.364,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 3880.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.483052,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.0756808,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_1",
+      "description": "Greensboro's operators produce all of normal by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "greensboro.manual_share": 1
+        }
+      },
+      "changed": {
+        "greensboro.manual_share": {
+          "value": 1,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 48,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 1,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 48,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 48,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 18478.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.49733,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 3880.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0184785,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000585157,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_1d",
+      "description": "Responders remove the credential a day after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 24
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 24,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 48,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 0.6,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 48,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 48,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 18478.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.49733,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0184785,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000585157,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_20d",
+      "description": "Responders remove the credential twenty days after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 480
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 480,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 480,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "jamestown.reached": 1,
+        "jamestown.demand": 0.781186,
+        "jamestown.nameplate": 0,
+        "jamestown.storage": 0.4672,
+        "jamestown.usable_share": 0.8878,
+        "jamestown.bought": 0,
+        "jamestown.sold": 0,
+        "jamestown.refill_time": 24,
+        "jamestown.treat_disabled": 1,
+        "jamestown.pump_disabled": 0.8,
+        "jamestown.manual_ready": 1,
+        "jamestown.manual_share": 0.9,
+        "jamestown.activation_delay": 1,
+        "jamestown.operator_duty": 0,
+        "jamestown.controls_load": 40,
+        "jamestown.field_load": 10,
+        "jamestown.replace_load": 20,
+        "jamestown.parts_per_hour": 0.1,
+        "jamestown.clearance_time": 48,
+        "jamestown.loss_share": 0.05,
+        "jamestown.va_rate": 64398.71,
+        "jamestown.water_dependence": 0.25,
+        "jamestown.activity_kept": 0.5,
+        "jamestown.recovery_factor": 1.5,
+        "jamestown.catch_up_share": 0.3,
+        "jamestown.catch_up_time": 720.0,
+        "greensboro.reached": 1,
+        "greensboro.demand": 42.7067082,
+        "greensboro.nameplate": 54,
+        "greensboro.storage": 31.8,
+        "greensboro.usable_share": 0.8878,
+        "greensboro.bought": 12.6918104,
+        "greensboro.sold": 0.0018754,
+        "greensboro.refill_time": 24,
+        "greensboro.treat_disabled": 1,
+        "greensboro.pump_disabled": 0.5,
+        "greensboro.manual_ready": 1,
+        "greensboro.manual_share": 0.6,
+        "greensboro.activation_delay": 2,
+        "greensboro.operator_duty": 2,
+        "greensboro.controls_load": 600,
+        "greensboro.field_load": 120,
+        "greensboro.replace_load": 0,
+        "greensboro.parts_per_hour": 0.1,
+        "greensboro.clearance_time": 48,
+        "greensboro.loss_share": 0.05,
+        "greensboro.va_rate": 3145507.26,
+        "greensboro.water_dependence": 0.25,
+        "greensboro.activity_kept": 0.5,
+        "greensboro.recovery_factor": 1.5,
+        "greensboro.catch_up_share": 0.3,
+        "greensboro.catch_up_time": 720.0,
+        "high_point.reached": 1,
+        "high_point.demand": 16.6043258,
+        "high_point.nameplate": 24,
+        "high_point.storage": 19,
+        "high_point.usable_share": 0.8878,
+        "high_point.bought": 3.3257055,
+        "high_point.sold": 0.0119304,
+        "high_point.refill_time": 24,
+        "high_point.treat_disabled": 1,
+        "high_point.pump_disabled": 0.5,
+        "high_point.manual_ready": 1,
+        "high_point.manual_share": 0.6,
+        "high_point.activation_delay": 2,
+        "high_point.operator_duty": 2,
+        "high_point.controls_load": 600,
+        "high_point.field_load": 120,
+        "high_point.replace_load": 0,
+        "high_point.parts_per_hour": 0.1,
+        "high_point.clearance_time": 48,
+        "high_point.loss_share": 0.05,
+        "high_point.va_rate": 1167916.76,
+        "high_point.water_dependence": 0.25,
+        "high_point.activity_kept": 0.5,
+        "high_point.recovery_factor": 1.5,
+        "high_point.catch_up_share": 0.3,
+        "high_point.catch_up_time": 720.0,
+        "high_point_to_jamestown.capacity": 1.5,
+        "greensboro_to_jamestown.capacity": 0.125,
+        "jamestown_homes.population": 6543,
+        "greensboro_homes.population": 319588,
+        "high_point_homes.population": 118662,
+        "greensboro_hospitals.facilities": 1,
+        "greensboro_hospitals.critical_need": 0.08333,
+        "greensboro_hospitals.days_on_hand": 48.0,
+        "high_point_hospitals.facilities": 1,
+        "high_point_hospitals.critical_need": 0.08333,
+        "high_point_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1048.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 18478.5,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.49733,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 12560.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0184785,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000585157,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 444793.0,
+          "status": "estimated"
+        }
+      }
+    }
+  ]
+}

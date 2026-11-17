@@ -1,0 +1,792 @@
+{
+  "schema_version": "2",
+  "record_kind": "scenario_assumption_inventory",
+  "scenario": "iv_fluid_shortage",
+  "authoritative_basis": {
+    "path": "scenarios/iv_fluid_shortage/evidence/assumptions.json",
+    "sha256": "f68b306e62511e3f392db8a988cdbf199e730e05605497a367cff956b5a038d3"
+  },
+  "status_policy": "Each assumption retains its authored review status. This inventory adds no review.",
+  "counts": {
+    "assumptions": 9,
+    "origin": {
+      "author": 3,
+      "model": 2,
+      "model_redteam": 4
+    },
+    "authoritative_review_status": {
+      "unreviewed": 9
+    },
+    "reachable_in_current_scenarios": 9,
+    "retained_without_current_scenario_reference": 0
+  },
+  "assumptions": [
+    {
+      "scenario": "iv_fluid_shortage",
+      "id": "A-AI-CYBER-OPERATIONS",
+      "title": "AI agents can run each cyber action in the scenario",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Repository scenario authoring agent",
+        "date": "2026-10-04"
+      },
+      "places": [
+        "attacker"
+      ],
+      "cited_claims": [
+        {
+          "claim": "AI-AGENT-TRUST-2026",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "AI-ORCHESTRATION-2026",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "iv_fluid_shortage",
+      "id": "A-AI-TEMPO",
+      "title": "How fast the attacker answers the defenders' recovery",
+      "origin": "author",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Repository scenario authoring agent",
+        "date": "2026-10-08"
+      },
+      "places": [
+        "record:/ai_tempo"
+      ],
+      "cited_claims": [
+        {
+          "claim": "AI-ORCHESTRATION-2026",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-CYOTE15-TIMING",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-MANDIANT22",
+          "relation": "calibrates"
+        }
+      ]
+    },
+    {
+      "scenario": "iv_fluid_shortage",
+      "id": "A-SC10-CONSEQUENCES-2026",
+      "title": "Stated patient mix for urgent fluid care, and the economic accounts counted",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "deliveries/shipping_cost",
+        "high_risk_patients/harm_delay",
+        "high_risk_patients/serious_share",
+        "high_risk_patients/share",
+        "high_risk_patients/treated_risk",
+        "high_risk_patients/untreated_risk",
+        "hospitals/procedure_value",
+        "hospitals/procedure_volume",
+        "manufacturer/recovery_cost",
+        "manufacturer/value_added_rate",
+        "output:/loss_bn",
+        "record:/a_consequences_2026_three_inputs_turn",
+        "record:/distinct_people",
+        "record:/rescue_capacity",
+        "resuscitation_reserve/courses_missed"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-ASHP24-IMPACT",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-NOTPETYA-MERCK",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-WHO21-INITIAL-REHYDRATION",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-WHO21-SEVERE-DEHYDRATION-RISK",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "iv_fluid_shortage",
+      "id": "A-SC10-RETAMPER",
+      "title": "Altered records pass the restart checks until compared with the product",
+      "origin": "author",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Repository scenario authoring agent",
+        "date": "2026-10-08"
+      },
+      "places": [
+        "attacker/alter_on_procurement/done",
+        "attacker/alter_on_restart/done",
+        "deliveries",
+        "manufacturer/altered_records_found",
+        "options:/Access/Keeps hidden access/attacker.access",
+        "other_care_reserve/held",
+        "record:/a_retamper_altered_records_found",
+        "record:/a_retamper_attacker_watches_emergency",
+        "record:/a_retamper_release_restarts_checks",
+        "record:/a_retamper_release_restarts_through",
+        "record:/card_units_held_back",
+        "record:/found_by_product_check",
+        "record:/product_reconciliation",
+        "record:/reset_delay",
+        "records",
+        "release_team/product_work",
+        "resuscitation_reserve/held"
+      ],
+      "cited_claims": [
+        {
+          "claim": "AI-ORCHESTRATION-2026",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "ATTACK-T1565.001",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-HSIC23-REDISRUPT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-IV-CGMP-DATA-INTEGRITY",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-MANDIANT22",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-MTRENDS26",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-TA18-ACCESS",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-WST26-PARTIAL-RESTART",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "GENERIC-RECOVERY-INTEGRITY",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "V-PA-IR01",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "iv_fluid_shortage",
+      "id": "A-SC10-causal-interference",
+      "title": "How the attacker's actions and the response interact",
+      "origin": "author",
+      "origin_declared": true,
+      "selection_status": null,
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Selected implementation-plan assumption; not independently scientifically reviewed",
+        "date": "2026-09-17"
+      },
+      "places": [
+        "manufacturer/foothold_removed",
+        "record:/a_causal_interference_defender_response_sam",
+        "record:/a_causal_interference_qualification_work_st",
+        "record:/a_causal_interference_release_work_ready",
+        "record:/a_causal_interference_team_does_release",
+        "record:/release_team_knows_its_work",
+        "release_team/reserve",
+        "release_team/restart_release"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-IV-CGMP-DATA-INTEGRITY",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "GENERIC-RECOVERY-INTEGRITY",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "V-PA-IR01",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "iv_fluid_shortage",
+      "id": "A-SC10-pilot",
+      "title": "How the IV-fluid supply works in this scenario",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "deliveries/first_arrival",
+        "hospitals/emergency_procurement",
+        "record:/a_pilot_assumed_brief",
+        "record:/card_text_pilot"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-AHA24-BAXTER-ALLOC",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-AHA24-BAXTER-SHARE",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-ASAHI25-RESTART",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-ASAHI26-CONTAINMENT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-ASAHI26-REVENUE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-ASAHI26-SHIPMENT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-ASHP24-IMPACT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-ASHP24-INVENTORY",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-ASPE25-DURATION",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-ASPE25-REASONS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-BAXTER24DEC-ALLOC",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-BSX26-8K-OPS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-BSX26-8K-REVENUE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-BSX26-SEP03-SHIP",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CLX23-MANUAL",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CLX23-PRELIM",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CLX23-Q1",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CLX23-RECOVERY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CLX23-RESTART",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CLX24-RESTOCK",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CMC25-JLR-HALT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CMC25-JLR-LOSS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CMC25-JLR-OT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-COR24-NO-OPS-IMPACT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CROSIG21-HALT",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-CROSIG21-PROPAGATION",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CROSIG21-SUBSTITUTES",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CROSIG21-SWITCHING",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-DRL20-RESTORE-UNDERWAY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-EXPD22-10Q-COSTS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-EXPD22-LOG-CONTINUITY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-EXPD22-LOG-RESTORE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-FDA24OCT-IMPORT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-FDA24OCT-RESTART",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-FDA25-SALINE-END",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-GORGENS26-STOCK",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-GORGENS26-TRIAGE",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-HSIC23-RESIDUAL",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-HSIC23-SALESLOSS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-HUBBUCH26-NULL",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-HUSSAIN26-OR-BAGS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-JBS21-PROGRESS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-JBS21-RANSOM",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-JBS21-RESOLVED",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-KUTTAB19-MORTALITY",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-NHSEL24-SYNNOVIS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-ONEBLOOD24-REVERIFY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-ONEBLOOD24-SHORTAGE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-PHUONG19-MORTALITY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-PREMIER24-BUFFER",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-PREMIER24-RESPONSE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-RECKITT17-DISRUPT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-RECKITT17-REVENUE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-RECORD25-NYBC",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-REG25-SYNNOVIS-DEATH",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-STACKS26-NULL",
+          "relation": "contradicts"
+        },
+        {
+          "claim": "E-SUNPHARMA23-FY23-OUTCOME",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-TRUVETA24-ED-SALINE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-UNFI25-LOSTSALES",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-UNH24-10Q-COSTS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-VAIL17-MORTALITY",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-WST26-CUSTOMER-MITIGATION",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-WST26-ENCRYPT-OFFLINE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-WST26-PARTIAL-RESTART",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-WST26-Q2-RESULTS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-WST26-RESTORED",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "SC10-CLOVERS-LIMIT",
+          "relation": "bounds"
+        }
+      ]
+    },
+    {
+      "scenario": "iv_fluid_shortage",
+      "id": "RT-SC10-CYBER-SHORTAGE",
+      "title": "IT ransomware at a dominant fluid maker stops deliveries to the hospitals",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "manufacturer/stops_shipping",
+        "record:/rt_cyber_shortage_manufacturer_s_release"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-BAXTER24DEC-LAG",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-BSX26-8K-OPS",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-BSX26-RESTORED",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-COLONIAL",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-CROSIG21-HALT",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-CYBERSCOOP20-FRESENIUS-PRODUCTION",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-DRL20-ISOLATE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-EXPD22-10Q-OUTAGE",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-HSIC23-ORDERS",
+          "relation": "contradicts"
+        },
+        {
+          "claim": "E-HSIC23-REDISRUPT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-HSIC23-SCOPE",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-HYDRO19",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-IV-CGMP-DATA-INTEGRITY",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-IV-FDA-SHORTAGE",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-KREBS20-FRESENIUS-LIMITED",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-KREBS20-SNAKE-ICS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-NHSBT24-AMBER",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-NHSBT25-STANDDOWN",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-NOTPETYA-MERCK",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-NOTPETYA-MERCK-SHORTAGE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-NYBCE25-MUTUALAID",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-NYBCE25-RESTORE",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-OCTA24-CLOSURE",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-ONEBLOOD24-NORMAL",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-ONEBLOOD24-SHORTAGE",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-RECORD24-OCTA-CLOSURE",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-SUNPHARMA23-AUDIT",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SUNPHARMA23-INITIAL",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SUNPHARMA23-REVENUE",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-UNFI25-RESTORE",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-UNH24-8K-ONSET",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-UNH24-ACCESS-WORKAROUNDS",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-UNH24-APR-RESTORE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-UNH24-PHARMACY-RESTORE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-WST26-RESTORED",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "iv_fluid_shortage",
+      "id": "RT-SC10-INTEGRITY-REVERIFY",
+      "title": "If the attacker keeps write access, rechecks add 168 work-hours before qualified release",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "record:/records_work",
+        "release_team/records_work"
+      ],
+      "cited_claims": [
+        {
+          "claim": "ATTACK-T1565.001",
+          "relation": "contradicts"
+        },
+        {
+          "claim": "E-ASAHI26-CONTAINMENT",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-BSX26-SEP05-QUALITY",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-EMA20-SCOPE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-EMA21-MANIPULATION",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-IV-CGMP-DATA-INTEGRITY",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-ONEBLOOD24-RECORDS",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-ONEBLOOD24-REVERIFY",
+          "relation": "bounds"
+        },
+        {
+          "claim": "GENERIC-RECOVERY-INTEGRITY",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "iv_fluid_shortage",
+      "id": "RT-SECTOR-SC10-2026",
+      "title": "Operating inputs chosen for SC10",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Repository scenario authoring agent",
+        "date": "2026-10-04"
+      },
+      "places": [
+        "deliveries/daily_supply",
+        "deliveries/earliest_receipt",
+        "deliveries/lead_time",
+        "hospitals/days_on_hand",
+        "manufacturer/release_allowed",
+        "manufacturer/study_length",
+        "other_makers/daily_supply",
+        "record:/foothold_removal_time",
+        "record:/pace",
+        "record:/rt_sector_2026_assumes_l_day",
+        "record:/start_delay",
+        "release_team/ordinary_work",
+        "resuscitation_patients/course_volume"
+      ],
+      "cited_claims": [
+        {
+          "claim": "AI-ORCHESTRATION-2026",
+          "relation": "mechanism_support"
+        }
+      ]
+    }
+  ]
+}

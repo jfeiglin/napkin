@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Edits of the input values of a scenario's runs",
+  "description": "Inputs are named entity.field. `set` edits every run, `options` the runs that name an option, and `runs` one run. The narrower edit wins: one run, then one option, then every run; every edit wins over the value that an option gives and over the default. A bool input takes true or false, a named input one of its names, and a number is in the unit of the input's type. A value can also be a distribution, written as in a scenario file with its units, such as \"pert(48 h, 96 h, 200 h)\"; its arguments are numbers. Fixed fields cannot be edited.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "0.0.1"
+    },
+    "model_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "set": {
+      "$ref": "#/$defs/values"
+    },
+    "options": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/option"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/values"
+      }
+    },
+    "runs": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/run"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/values"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "model_hash"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "input": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[0-9]+)?\\.[A-Za-z][A-Za-z0-9_]*$"
+    },
+    "values": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/input"
+      },
+      "additionalProperties": {
+        "type": [
+          "number",
+          "boolean",
+          "string"
+        ],
+        "minLength": 1
+      }
+    },
+    "option": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+    }
+  }
+}

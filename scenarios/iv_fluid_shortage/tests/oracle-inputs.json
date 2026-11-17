@@ -1,0 +1,146 @@
+{
+  "scenarios/tests/oracle_common.py": {
+    "scenarios": [
+      "iv_fluid_shortage"
+    ],
+    "parameters": {},
+    "other_names": [
+      "x"
+    ]
+  },
+  "scenarios/iv_fluid_shortage/tests/shortage.py": {
+    "scenarios": [
+      "iv_fluid_shortage"
+    ],
+    "parameters": {
+      "act_h": {
+        "iv_fluid_shortage": "hospitals.start_delay"
+      },
+      "ai_retask_h": {
+        "iv_fluid_shortage": "attacker.reaction_time"
+      },
+      "buffer_days": {
+        "iv_fluid_shortage": "hospitals.days_on_hand"
+      },
+      "cancelled_procedure_value_added": {
+        "iv_fluid_shortage": "hospitals.procedure_value"
+      },
+      "clinical_delay_h": {
+        "iv_fluid_shortage": "high_risk_patients.harm_delay"
+      },
+      "containment_h": {
+        "iv_fluid_shortage": "manufacturer.foothold_removal_time"
+      },
+      "course_volume": {
+        "iv_fluid_shortage": "resuscitation_patients.course_volume"
+      },
+      "deep_reconcile_h": {
+        "iv_fluid_shortage": "release_team.product_work"
+      },
+      "extra_delay_h": {
+        "iv_fluid_shortage": "release_team.records_work"
+      },
+      "fluid_dependent_share": {
+        "iv_fluid_shortage": "high_risk_patients.share"
+      },
+      "independent_release_enabled": {
+        "iv_fluid_shortage": "manufacturer.release_allowed"
+      },
+      "independent_supply": {
+        "iv_fluid_shortage": "other_makers.daily_supply"
+      },
+      "other_course_volume": {
+        "iv_fluid_shortage": "hospitals.procedure_volume"
+      },
+      "other_demand": {
+        "iv_fluid_shortage": "other_care_reserve.daily_need"
+      },
+      "qualification_rate": {
+        "iv_fluid_shortage": "release_team.pace"
+      },
+      "qualification_work_h": {
+        "iv_fluid_shortage": "release_team.ordinary_work"
+      },
+      "recovery_h": {
+        "iv_fluid_shortage": "manufacturer.study_length"
+      },
+      "release_lead_h": {
+        "iv_fluid_shortage": "deliveries.lead_time"
+      },
+      "replacement_logistics_cost": {
+        "iv_fluid_shortage": "deliveries.shipping_cost"
+      },
+      "replacement_supply": {
+        "iv_fluid_shortage": "deliveries.daily_supply"
+      },
+      "rescue_capacity": {
+        "iv_fluid_shortage": "hospitals.rescue_capacity"
+      },
+      "reset_h": {
+        "iv_fluid_shortage": "manufacturer.reset_delay"
+      },
+      "restoration_cost": {
+        "iv_fluid_shortage": "manufacturer.recovery_cost"
+      },
+      "resus_demand": {
+        "iv_fluid_shortage": "resuscitation_reserve.daily_need"
+      },
+      "serious_survivor_fraction": {
+        "iv_fluid_shortage": "high_risk_patients.serious_share"
+      },
+      "supplier_value_added_rate": {
+        "iv_fluid_shortage": "manufacturer.value_added_rate"
+      },
+      "suspect_h": {
+        "iv_fluid_shortage": "manufacturer.time_to_find"
+      },
+      "treated_fatality": {
+        "iv_fluid_shortage": "high_risk_patients.treated_risk"
+      },
+      "untreated_fatality": {
+        "iv_fluid_shortage": "high_risk_patients.untreated_risk"
+      }
+    },
+    "other_names": [
+      "activate",
+      "altered",
+      "cancelled",
+      "clocks",
+      "completed",
+      "contain",
+      "course_litres",
+      "exhausted",
+      "extra",
+      "first_tampering",
+      "held",
+      "high_risk",
+      "independent_day",
+      "lead",
+      "other_care",
+      "other_day",
+      "p",
+      "p_death",
+      "pending",
+      "permanent_loss_fraction",
+      "persistent",
+      "potential",
+      "rate",
+      "re_receipt",
+      "receipt",
+      "receipt_h",
+      "release",
+      "rescued",
+      "reset",
+      "restoration_resources",
+      "resus_day",
+      "resuscitation",
+      "rework_done",
+      "short",
+      "t",
+      "unmet_courses",
+      "unresolved",
+      "until",
+      "work"
+    ]
+  }
+}

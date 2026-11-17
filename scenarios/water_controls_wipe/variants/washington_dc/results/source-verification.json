@@ -1,0 +1,1070 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 12,
+    "claims": 26,
+    "source_access": {
+      "accessible": 8,
+      "third_party_primary_retrieval": 4
+    },
+    "source_status": {
+      "verified": 8,
+      "partial": 4,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 8,
+      "third_party_primary_retrieval": 4
+    },
+    "claim_status": {
+      "verified": 20,
+      "partial": 6,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 20,
+      "third_party_primary_retrieval": 6
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 20,
+      "third_party_primary_retrieval/partial": 6
+    },
+    "sources_with_retrieval": 12,
+    "claims_with_quotes": 26,
+    "claim_quote_match_records": 26,
+    "claims_reachable": 26,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "dc_arlington2014_wdsmp",
+      "title": "Water Distribution System Master Plan: An Element of Arlington County\u2019s Comprehensive Plan (Draft)",
+      "url": "https://arlington.granicus.com/MetaViewer.php?view_id=&clip_id=2812&meta_id=125542",
+      "original_url": "https://arlington.granicus.com/MetaViewer.php?view_id=&clip_id=2812&meta_id=125542",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved with curl from the County Board agenda system and read in the Ghostscript text extraction.",
+      "retrieval": {
+        "requested_url": "https://arlington.granicus.com/MetaViewer.php?view_id=&clip_id=2812&meta_id=125542",
+        "final_url": "https://arlington.granicus.com/MetaViewer.php?view_id=&clip_id=2812&meta_id=125542",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:19:36Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 1360032,
+        "sha256": "17d6fcde8ed42aa284666ec71f34205cadb531746f968a837ee43d50cc91cecd",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "13a9edb89b8d11bf66a6cd580775aa32ed3e22817bc2deaed0ef63c74d26d653"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-ARLINGTON-PLAN",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Water System History and Description (printed pp. 3 to 5); System Demands and Table 5 (printed pp. 21 to 22); Maximum Day Demand (printed p. 23)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the plan text in the extraction.",
+          "content_sha256": "4ab89ddf2527e9e6dddd0cbe7c696a505b37e16aba8530995b47bbd1a64ba1d6",
+          "retrieval_sha256": "17d6fcde8ed42aa284666ec71f34205cadb531746f968a837ee43d50cc91cecd",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 9,
+            "total": 9
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_arlington2025_wqr",
+      "title": "Water Quality Overview 2025",
+      "url": "https://www.arlingtonva.us/files/sharedassets/public/v/1/water/documents/ac_wqr2025_final.pdf",
+      "original_url": "https://arlingtonva.us/files/sharedassets/public/v/1/water/documents/ac_wqr2025_final.pdf",
+      "access": "third_party_primary_retrieval",
+      "status": "partial",
+      "method": "third_party_primary_retrieval",
+      "date": "2026-10-25",
+      "notes": "The county site refused curl (HTTP 403). The Internet Archive CDX index and captures reset the connection on repeated tries. The text comes from the TinyFish fetch tool.",
+      "retrieval": {
+        "requested_url": "https://arlingtonva.us/files/sharedassets/public/v/1/water/documents/ac_wqr2025_final.pdf",
+        "final_url": "https://www.arlingtonva.us/files/sharedassets/public/v/1/water/documents/ac_wqr2025_final.pdf",
+        "http_status": null,
+        "retrieved_at": "2026-10-25T16:26:45Z",
+        "tool": "tinyfish",
+        "media_type": "text/plain",
+        "bytes": 18004,
+        "sha256": "6dabc9edbd930e3861aebd6ffa36edbcf012a7149d07ea8c96975e7389a0b130",
+        "text": {
+          "extractor": "utf8-decode-v1",
+          "sha256": "6dabc9edbd930e3861aebd6ffa36edbcf012a7149d07ea8c96975e7389a0b130"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-ARLINGTON-PEAK",
+          "status": "partial",
+          "date": "2026-10-25",
+          "method": "third_party_primary_retrieval",
+          "locator_checked": "Page 2, Where does your water come from?",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read in the TinyFish text rendering of the document; the quotes come from that rendering, not from the original bytes. Integration: partial because method third_party_primary_retrieval.",
+          "content_sha256": "18fa01171d2c7502b2e30262efe6ae51733d9e0ef3b885afa2b3eeac35d3271b",
+          "retrieval_sha256": "6dabc9edbd930e3861aebd6ffa36edbcf012a7149d07ea8c96975e7389a0b130",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_arlington_water_page",
+      "title": "Water",
+      "url": "https://www.arlingtonva.us/Government/Programs/Water-Utilities/Water",
+      "original_url": "https://www.arlingtonva.us/Government/Programs/Water-Utilities/Water",
+      "access": "third_party_primary_retrieval",
+      "status": "partial",
+      "method": "third_party_primary_retrieval",
+      "date": "2026-10-25",
+      "notes": "The county site refused curl (HTTP 403). The Internet Archive CDX index reset the connection on repeated tries. The text comes from the TinyFish fetch tool.",
+      "retrieval": {
+        "requested_url": "https://www.arlingtonva.us/Government/Programs/Water-Utilities/Water",
+        "final_url": "https://www.arlingtonva.us/Government/Programs/Water-Utilities/Water",
+        "http_status": null,
+        "retrieved_at": "2026-10-25T16:26:43Z",
+        "tool": "tinyfish",
+        "media_type": "text/plain",
+        "bytes": 1922,
+        "sha256": "502141fa35054bfef184776e0de9cc0d4d4013173556110f67e9fba9373b15d3",
+        "text": {
+          "extractor": "utf8-decode-v1",
+          "sha256": "502141fa35054bfef184776e0de9cc0d4d4013173556110f67e9fba9373b15d3"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-ARLINGTON-CONNECTION",
+          "status": "partial",
+          "date": "2026-10-25",
+          "method": "third_party_primary_retrieval",
+          "locator_checked": "Sections The Source of Arlington\u2019s Water and Facilities",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read in the TinyFish text rendering of the document; the quotes come from that rendering, not from the original bytes. Integration: partial because method third_party_primary_retrieval.",
+          "content_sha256": "ec0494819f8ba49a2a4456fe42cbab1511dc50c5f7fe874c5721fb0bb776578e",
+          "retrieval_sha256": "502141fa35054bfef184776e0de9cc0d4d4013173556110f67e9fba9373b15d3",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_dcwater2026_acfr_fy2025",
+      "title": "Annual Comprehensive Financial Report, Fiscal Years Ended September 30, 2025 and 2024",
+      "url": "https://www.dcwater.com/sites/default/files/document/2026-03/documents/FY%202025%20ACFR%20_%20Final.pdf",
+      "original_url": "https://www.dcwater.com/sites/default/files/document/2026-03/documents/FY%202025%20ACFR%20_%20Final.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved with curl and read in the Ghostscript text extraction.",
+      "retrieval": {
+        "requested_url": "https://www.dcwater.com/sites/default/files/document/2026-03/documents/FY%202025%20ACFR%20_%20Final.pdf",
+        "final_url": "https://www.dcwater.com/sites/default/files/document/2026-03/documents/FY%202025%20ACFR%20_%20Final.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:04:00Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 15335524,
+        "sha256": "26074723cffa4f79e299c3dc5566e14b2e5d71765e346c43aeabcdc7b665ca09",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "9582103e7c6d6bb25b154e042802f4f8b4a88b6133384b3969657f1f5f37be19"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-DCWATER-MAXDAY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Statistical Section, Exhibit 18 Water Demand, Last Ten Fiscal Years, printed p. 103",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read all ten rows of Exhibit 18 in the extracted text. The ratio is derived arithmetic.",
+          "content_sha256": "008b18cc20248ef99fb0816e148f50fd9d90b9c6c25352fa19c40157c06c5739",
+          "retrieval_sha256": "26074723cffa4f79e299c3dc5566e14b2e5d71765e346c43aeabcdc7b665ca09",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 7,
+            "total": 7
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-DCWATER-PURCHASE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Notes to the Financial Statements, Note 1 (printed p. 34) and Note 2(f) Capital Assets (printed p. 37)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Notes 1 and 2(f) in the extracted text.",
+          "content_sha256": "44f82c90cf2da15a3b66bddd6d91b798348f5d40f0d0a52f85e665b4ab3bc764",
+          "retrieval_sha256": "26074723cffa4f79e299c3dc5566e14b2e5d71765e346c43aeabcdc7b665ca09",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_dcwater2026_budget_fy2027",
+      "title": "FY 2027 Approved Budget: Budget Overview",
+      "url": "https://www.dcwater.com/sites/default/files/document/2026-05/documents/FY%202027%20Approved%20Budget_Budget%20Overview.pdf",
+      "original_url": "https://www.dcwater.com/sites/default/files/document/2026-05/documents/FY%202027%20Approved%20Budget_Budget%20Overview.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved with curl and read in the Ghostscript text extraction.",
+      "retrieval": {
+        "requested_url": "https://www.dcwater.com/sites/default/files/document/2026-05/documents/FY%202027%20Approved%20Budget_Budget%20Overview.pdf",
+        "final_url": "https://www.dcwater.com/sites/default/files/document/2026-05/documents/FY%202027%20Approved%20Budget_Budget%20Overview.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:03:56Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 4192135,
+        "sha256": "0370f106237c25dd9a1c6a838a1c59504d95f8fdb4f08c5cd000fe25efc17b59",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "4607ea2a07cdc2aa2eea6fa114f2bcfc7716107e5ab230fd6093634d175dd86a"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-DCWATER-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Budget Overview, Facts at a Glance, Pumped and Treated Water Storage, printed p. 29",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Facts at a Glance page in the extracted text.",
+          "content_sha256": "31a4008832b7fe643d80a25ce20a0358c517a1bcdbe6c98bec53f7f993c62568",
+          "retrieval_sha256": "0370f106237c25dd9a1c6a838a1c59504d95f8fdb4f08c5cd000fe25efc17b59",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-AQUEDUCT-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Budget Overview, Facts at a Glance, Pumped and Treated Water Storage, printed p. 29",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Facts at a Glance page in the extracted text.",
+          "content_sha256": "62a670e46a34d3992e9276aeab23afc00ac4ee44d0e9e1ea5644a2ec0bf90a47",
+          "retrieval_sha256": "0370f106237c25dd9a1c6a838a1c59504d95f8fdb4f08c5cd000fe25efc17b59",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_fairfaxcounty2025_cip_water",
+      "title": "FY 2026 - FY 2030 Adopted Capital Improvement Program: Water Supply",
+      "url": "https://www.fairfaxcounty.gov/budget/sites/budget/files/Assets/Documents/fy2026/adopted/cip/62%20WATER%20SUPPLY.pdf",
+      "original_url": "https://www.fairfaxcounty.gov/budget/sites/budget/files/Assets/Documents/fy2026/adopted/cip/62%20WATER%20SUPPLY.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved with curl and read in the Ghostscript text extraction.",
+      "retrieval": {
+        "requested_url": "https://www.fairfaxcounty.gov/budget/sites/budget/files/Assets/Documents/fy2026/adopted/cip/62%20WATER%20SUPPLY.pdf",
+        "final_url": "https://www.fairfaxcounty.gov/budget/sites/budget/files/Assets/Documents/fy2026/adopted/cip/62%20WATER%20SUPPLY.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:04:26Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 359060,
+        "sha256": "88401b20bd625e333d4ce04cca0dafb72368027f0043064a5543c52a3e79e0c2",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "fb83e427eeef2579bc5690e8ebcf161c900b8576cd070df98db7d5a167fd49a3"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-FAIRFAX-PLANTS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Water Supply, Fairfax Water, printed p. 236",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Water Supply section in the extracted text. The sum is derived arithmetic.",
+          "content_sha256": "8f7fc006914507006b77c3d8867541475f1cacc38d5ee946397e7a86aade571f",
+          "retrieval_sha256": "88401b20bd625e333d4ce04cca0dafb72368027f0043064a5543c52a3e79e0c2",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-FAIRFAX-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Water Supply, printed p. 237",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Water Supply section in the extracted text. The sum is derived arithmetic.",
+          "content_sha256": "66a41029845fb361da1e954dc6a859229377961d79e60240006d1d748b731147",
+          "retrieval_sha256": "88401b20bd625e333d4ce04cca0dafb72368027f0043064a5543c52a3e79e0c2",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 1,
+            "total": 1
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-FAIRFAX-CONTRACT",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Water Supply, Fairfax Water, printed p. 236",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Water Supply section in the extracted text.",
+          "content_sha256": "9e790837c62592f53f55d70e3acc5e2f8f7ed04864341c96e5da91c636fe6b73",
+          "retrieval_sha256": "88401b20bd625e333d4ce04cca0dafb72368027f0043064a5543c52a3e79e0c2",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 1,
+            "total": 1
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_fairfaxwater2025_budget_2026",
+      "title": "2026 Annual Budget",
+      "url": "https://www.fairfaxwater.org/sites/default/files/budget/2026%20Budget%20-%20Adopted%20Final%2012-11-2025.pdf",
+      "original_url": "https://www.fairfaxwater.org/sites/default/files/budget/2026%20Budget%20-%20Adopted%20Final%2012-11-2025.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved with curl and read in the Ghostscript text extraction.",
+      "retrieval": {
+        "requested_url": "https://www.fairfaxwater.org/sites/default/files/budget/2026%20Budget%20-%20Adopted%20Final%2012-11-2025.pdf",
+        "final_url": "https://www.fairfaxwater.org/sites/default/files/budget/2026%20Budget%20-%20Adopted%20Final%2012-11-2025.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:04:20Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 442415,
+        "sha256": "1621e171ea944579cc3106d1f066e325ae567e2cf9c21d97e929f73a3daba949",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "a44eab2d9834e0245632634d3a07fa679251a03ea2f3ab78c07cb19bfc4bfdaa"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-FAIRFAX-SUPPLY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section IV Water Production (Supply), Sources of Supply, printed p. 16",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Sections III and IV in the extracted text. The sum of the two own sources is derived arithmetic.",
+          "content_sha256": "180745f746ca219f3d6392ca0291eda0e9bc4ec648d6f6b066d7176fed5226e3",
+          "retrieval_sha256": "1621e171ea944579cc3106d1f066e325ae567e2cf9c21d97e929f73a3daba949",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-FAIRFAX-WHOLESALE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section III Water Sales, printed p. 15; introduction, printed p. 1",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section III, the revenue table and Exhibit 1 in the extracted text.",
+          "content_sha256": "2f407d4f32dcda5358d8d13dd00ec8f93aeabec23e238854850134c8a30b99c8",
+          "retrieval_sha256": "1621e171ea944579cc3106d1f066e325ae567e2cf9c21d97e929f73a3daba949",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_icprb2025_wma_supply_study",
+      "title": "2025 Washington Metropolitan Area Water Supply Study: Demand and Resource Availability Forecast for the Year 2050",
+      "url": "https://www.potomacriver.org/wp-content/uploads/2025/12/2025_WMA_Water_Supply_Study_ICPRB_Dec-2025-export.pdf",
+      "original_url": "https://www.potomacriver.org/wp-content/uploads/2025/12/2025_WMA_Water_Supply_Study_ICPRB_Dec-2025-export.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved with curl and read in the Ghostscript text extraction.",
+      "retrieval": {
+        "requested_url": "https://www.potomacriver.org/wp-content/uploads/2025/12/2025_WMA_Water_Supply_Study_ICPRB_Dec-2025-export.pdf",
+        "final_url": "https://www.potomacriver.org/wp-content/uploads/2025/12/2025_WMA_Water_Supply_Study_ICPRB_Dec-2025-export.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:03:13Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 12425557,
+        "sha256": "2ee07c17d80fb962d9399408677522914f666bac69eaa7c739ff0cb31fb99d45",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "768482e8c22fd335e5547af6565c4a5ceccff724a5e65623cdcf330944fd51e7"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-AQUEDUCT-PLANT",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 2.3.3 Washington Aqueduct (printed p. 2-7); Table 5-5 (printed p. 5-13)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 2.3.3 and Table 5-5 in the extracted text. The 345 MGD sum is derived arithmetic.",
+          "content_sha256": "fd0db3962da0f8b9df9dbbb17d39a6605ab187772a2ae5db1694731f216172e1",
+          "retrieval_sha256": "2ee07c17d80fb962d9399408677522914f666bac69eaa7c739ff0cb31fb99d45",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-AQUEDUCT-CUSTOMERS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 2.3.3 (printed p. 2-7); Table 3-16 (printed p. 3-26); Table 4-2 (printed p. 4-4); Table A.2-30 (printed p. A-46)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 2.3.3, Tables 3-16 and 4-2 and Appendix Table A.2-30 in the extracted text. The 5.1 MGD difference is derived arithmetic.",
+          "content_sha256": "b424fe2806f351333f8f712002ef36cb089a25118828be65db96ea28a41f45a9",
+          "retrieval_sha256": "2ee07c17d80fb962d9399408677522914f666bac69eaa7c739ff0cb31fb99d45",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 10,
+            "total": 10
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-ARLINGTON-PURCHASES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Appendix A.2.16 and Table A.2-30 (printed pp. A-45 to A-46); Appendix A.2.17 (printed p. A-48)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Appendix A.2.16, A.2.17 and Table A.2-30 in the extracted text. The rotated row labels extract out of order; the quoted rows are contiguous in the text.",
+          "content_sha256": "5c97a4a286defc4b372c911436cb20de307ffe52ae1dcb148b579ae1ad0e12d1",
+          "retrieval_sha256": "2ee07c17d80fb962d9399408677522914f666bac69eaa7c739ff0cb31fb99d45",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-FAIRFAX-PEAKDAY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 2.2.2, Seasonal and Annual Variability, printed p. 2-5",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 2.2.2 in the extracted text.",
+          "content_sha256": "18fe9393f5570aea8b8dd36946435d1f8257c4fada2196669a341b34f883a8cb",
+          "retrieval_sha256": "2ee07c17d80fb962d9399408677522914f666bac69eaa7c739ff0cb31fb99d45",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-WSSC-PEAKDAY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 2.2.2, Seasonal and Annual Variability, printed p. 2-5; Table 4-2 (printed p. 4-4)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 2.2.2 and Table 4-2 in the extracted text.",
+          "content_sha256": "78c174f6489e070dfbc3b1af893aa57f93cbc27803cc2bfc923582fda50d5729",
+          "retrieval_sha256": "2ee07c17d80fb962d9399408677522914f666bac69eaa7c739ff0cb31fb99d45",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-FAIRFAX-TIE-LIMITS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 5.8 and Table 5-5 (printed pp. 5-12 to 5-13); Appendix A.2.18 and Table A.2-34 (printed pp. A-51 to A-52)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 5.8, Table 5-5, Appendix A.2.18 and Table A.2-34 in the extracted text. The row label of the 31 MGD limit wraps over two lines of the table.",
+          "content_sha256": "a76a1be60ae8665a6fd418cb2dd22e0408eaf7a095da5c894f102b1281b8405c",
+          "retrieval_sha256": "2ee07c17d80fb962d9399408677522914f666bac69eaa7c739ff0cb31fb99d45",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-WSSC-PLANT-RATINGS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 2.3.2 WSSC Water (printed p. 2-7); Table 5-5 (printed p. 5-13)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 2.3.2 and Table 5-5 in the extracted text. The Patuxent rows of Table 5-5 extract out of order and are not used.",
+          "content_sha256": "29e1470aba2b5446355ef5315e0ca0f813b4d8aaec4341bb08a278602f4d79d3",
+          "retrieval_sha256": "2ee07c17d80fb962d9399408677522914f666bac69eaa7c739ff0cb31fb99d45",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_montgomery2022_wsp_ch3",
+      "title": "Montgomery County Comprehensive Water Supply and Sewerage Systems Plan, Chapter 3: Water Supply Systems (State Approved 2022-2031 Plan)",
+      "url": "https://web.archive.org/web/20260213132335/https://www.montgomerycountymd.gov/DEP/Resources/Files/Water-Supply-Wastewater/water-sewer-plan/water-sewer-plan-chapter-3.pdf",
+      "original_url": "https://www.montgomerycountymd.gov/DEP/Resources/Files/Water-Supply-Wastewater/water-sewer-plan/water-sewer-plan-chapter-3.pdf",
+      "access": "third_party_primary_retrieval",
+      "status": "partial",
+      "method": "third_party_primary_retrieval",
+      "date": "2026-10-25",
+      "notes": "The county URL now returns HTTP 404. The Internet Archive capture of 2026-02-13 reset the connection when fetched directly. TinyFish fetched the archive capture: https://web.archive.org/web/20260213132335/https://www.montgomerycountymd.gov/DEP/Resources/Files/Water-Supply-Wastewater/water-sewer-plan/water-sewer-plan-chapter-3.pdf",
+      "retrieval": {
+        "requested_url": "https://www.montgomerycountymd.gov/DEP/Resources/Files/Water-Supply-Wastewater/water-sewer-plan/water-sewer-plan-chapter-3.pdf",
+        "final_url": "https://web.archive.org/web/20260213132335/https://www.montgomerycountymd.gov/DEP/Resources/Files/Water-Supply-Wastewater/water-sewer-plan/water-sewer-plan-chapter-3.pdf",
+        "http_status": null,
+        "retrieved_at": "2026-10-25T16:26:49Z",
+        "tool": "tinyfish",
+        "media_type": "text/plain",
+        "bytes": 156560,
+        "sha256": "3e729c8f73245cf1e6a53dd9c2091b116c9e5689f04dbb22ca8d0e873453c1c9",
+        "text": {
+          "extractor": "utf8-decode-v1",
+          "sha256": "3e729c8f73245cf1e6a53dd9c2091b116c9e5689f04dbb22ca8d0e873453c1c9"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-WSSC-STORAGE-MONTGOMERY",
+          "status": "partial",
+          "date": "2026-10-25",
+          "method": "third_party_primary_retrieval",
+          "locator_checked": "Section I.E.4, Page 3-26; Table 3-T6, Page 3-27",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read in the TinyFish text rendering of the document; the quotes come from that rendering, not from the original bytes. Integration: partial because method third_party_primary_retrieval.",
+          "content_sha256": "b308f49418a33984dbceec36507ae5f4a69e6f262802e94e0e82a81c7567c7ac",
+          "retrieval_sha256": "3e729c8f73245cf1e6a53dd9c2091b116c9e5689f04dbb22ca8d0e873453c1c9",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-WSSC-MAXDAY-HISTORY",
+          "status": "partial",
+          "date": "2026-10-25",
+          "method": "third_party_primary_retrieval",
+          "locator_checked": "Table 3-T8, Page 3-30",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read in the TinyFish text rendering of the document; the quotes come from that rendering, not from the original bytes. Read all 26 rows of Table 3-T8. Integration: partial because method third_party_primary_retrieval.",
+          "content_sha256": "9b3d304adb66293c3317f798356e34edd61c12f2f8d2eecaf61c6bc41c75075e",
+          "retrieval_sha256": "3e729c8f73245cf1e6a53dd9c2091b116c9e5689f04dbb22ca8d0e873453c1c9",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 7,
+            "total": 7
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-WSSC-SALES",
+          "status": "partial",
+          "date": "2026-10-25",
+          "method": "third_party_primary_retrieval",
+          "locator_checked": "Table 3-T7, Page 3-28",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read in the TinyFish text rendering of the document; the quotes come from that rendering, not from the original bytes. Integration: partial because method third_party_primary_retrieval.",
+          "content_sha256": "ea795efa87732c0c8c81f42f91a1a1f8d43bd9247080e70bee909b1e1a6c294f",
+          "retrieval_sha256": "3e729c8f73245cf1e6a53dd9c2091b116c9e5689f04dbb22ca8d0e873453c1c9",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_peer2023_dcwater_iea",
+      "title": "2023 Independent Engineering Assessment of the DC Water Wastewater and Water System",
+      "url": "https://www.dcwater.com/sites/default/files/finance/Engineering%20Feasibility%20Report%202023.pdf",
+      "original_url": "https://www.dcwater.com/sites/default/files/finance/Engineering%20Feasibility%20Report%202023.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved with curl and read in the Ghostscript text extraction.",
+      "retrieval": {
+        "requested_url": "https://www.dcwater.com/sites/default/files/finance/Engineering%20Feasibility%20Report%202023.pdf",
+        "final_url": "https://www.dcwater.com/sites/default/files/finance/Engineering%20Feasibility%20Report%202023.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:12:42Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 15611182,
+        "sha256": "6d461541a1fc0ac894bf0ccc1e1b0cb63959052a746292b18792aa27540a6269",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "3a39bda3b8c1a1c92999d31b964c71e305729b4d6b96beeed965208698164645"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-DCWATER-PUMPING",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 4.3.4 Pumping Stations and Exhibit 4-12 (printed p. 48); Section 4.3.4.2.1 (printed p. 49); Section 4.3.1 (printed p. 44)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Sections 4.3.1 to 4.3.4 and Exhibit 4-12 in the extracted text.",
+          "content_sha256": "b8ffdf680dfedd07f8816b6c7be07727245d0ca64a9238b6f4e99dfcc7fd79a0",
+          "retrieval_sha256": "6d461541a1fc0ac894bf0ccc1e1b0cb63959052a746292b18792aa27540a6269",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        },
+        {
+          "id": "E-SC43-DC-AQUEDUCT-RESERVOIRS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 4.3.5 Water Storage Facilities and Sections 4.3.5.1.1 to 4.3.5.1.3 (printed pp. 50 to 51)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 4.3.5 and Exhibit 4-14 in the extracted text. The sum is derived arithmetic; the two-column layout splits sentences, and each quote is contiguous in the text.",
+          "content_sha256": "dd3abd0b52d2942a7ddeb6dd967f303c32288e0995a078b9894f77a05e75b99f",
+          "retrieval_sha256": "6d461541a1fc0ac894bf0ccc1e1b0cb63959052a746292b18792aa27540a6269",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_princegeorges2019_wsp_ch3",
+      "title": "Adopted 2018 Water and Sewer Plan, Chapter 3: Water Plan for Community Systems",
+      "url": "https://www.princegeorgescountymd.gov/sites/default/files/media-document/dcv28018_2018-wsp_chap3_adopted_cr642019-n.pdf",
+      "original_url": "https://www.princegeorgescountymd.gov/sites/default/files/media-document/dcv28018_2018-wsp_chap3_adopted_cr642019-n.pdf",
+      "access": "third_party_primary_retrieval",
+      "status": "partial",
+      "method": "third_party_primary_retrieval",
+      "date": "2026-10-25",
+      "notes": "The county site refused curl (HTTP 403), also at its DocumentCenter address. The Internet Archive CDX index reset the connection on repeated tries. The text comes from the TinyFish fetch tool.",
+      "retrieval": {
+        "requested_url": "https://www.princegeorgescountymd.gov/sites/default/files/media-document/dcv28018_2018-wsp_chap3_adopted_cr642019-n.pdf",
+        "final_url": "https://www.princegeorgescountymd.gov/sites/default/files/media-document/dcv28018_2018-wsp_chap3_adopted_cr642019-n.pdf",
+        "http_status": null,
+        "retrieved_at": "2026-10-25T16:26:47Z",
+        "tool": "tinyfish",
+        "media_type": "text/plain",
+        "bytes": 285563,
+        "sha256": "2d4c03277adbd31d256e69f7597ee363c87ee605d9bf10a5a0e0c15e4f86b949",
+        "text": {
+          "extractor": "utf8-decode-v1",
+          "sha256": "2d4c03277adbd31d256e69f7597ee363c87ee605d9bf10a5a0e0c15e4f86b949"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-WSSC-STORAGE-PG",
+          "status": "partial",
+          "date": "2026-10-25",
+          "method": "third_party_primary_retrieval",
+          "locator_checked": "Table 3-5, page 3-9",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read in the TinyFish text rendering of the document; the quotes come from that rendering, not from the original bytes. Read all 18 rows of Table 3-5; the sums are derived arithmetic. Integration: partial because method third_party_primary_retrieval.",
+          "content_sha256": "2de11fd760ea3251ce5159aa20dcbfb0828019977732cb6dd1ac704c98cf3de3",
+          "retrieval_sha256": "2d4c03277adbd31d256e69f7597ee363c87ee605d9bf10a5a0e0c15e4f86b949",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 12,
+            "total": 12
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    },
+    {
+      "source_id": "dc_wssc_about",
+      "title": "About WSSC Water",
+      "url": "https://www.wsscwater.com/who-we-are/about-wssc-water",
+      "original_url": "https://www.wsscwater.com/who-we-are/about-wssc-water",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved with curl and read in the HTML text extraction.",
+      "retrieval": {
+        "requested_url": "https://www.wsscwater.com/who-we-are/about-wssc-water",
+        "final_url": "https://www.wsscwater.com/who-we-are/about-wssc-water",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:04:33Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=utf-8",
+        "bytes": 112625,
+        "sha256": "34899188d67c6a4c8dbd8f3df2d7a053d1bb784b722046b95f64078fa9496c7c",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "e5ba626820978bdcd6665aa983282a6f66166ca6bd511b0f8f4f4bea736cb141"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-DC-WSSC-NAMEPLATE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section WSSC Water Operates and Maintains, list of facilities",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the page text in the extraction.",
+          "content_sha256": "937ea50916d21c4a801439202bddd9724a6162521afe8a0eb2b024d13b8ba1dc",
+          "retrieval_sha256": "34899188d67c6a4c8dbd8f3df2d7a053d1bb784b722046b95f64078fa9496c7c",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 1,
+            "total": 1
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:washington_dc"
+          ],
+          "scenario": "water_controls_wipe:washington_dc"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:washington_dc"
+      ],
+      "scenario": "water_controls_wipe:washington_dc"
+    }
+  ],
+  "scenario": "water_controls_wipe:washington_dc"
+}

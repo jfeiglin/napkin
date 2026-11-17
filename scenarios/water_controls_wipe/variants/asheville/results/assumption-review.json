@@ -1,0 +1,18 @@
+{
+  "schema_version": "2",
+  "record_kind": "scenario_assumption_inventory",
+  "scenario": "water_controls_wipe:asheville",
+  "authoritative_basis": {
+    "path": "scenarios/water_controls_wipe/variants/asheville/evidence/assumptions.json",
+    "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+  },
+  "status_policy": "Each assumption retains its authored review status. This inventory adds no review.",
+  "counts": {
+    "assumptions": 0,
+    "origin": {},
+    "authoritative_review_status": {},
+    "reachable_in_current_scenarios": 0,
+    "retained_without_current_scenario_reference": 0
+  },
+  "assumptions": []
+}

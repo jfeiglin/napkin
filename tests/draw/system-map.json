@@ -1,0 +1,272 @@
+{
+ "map": {
+  "columns": [
+   {
+    "role": "adversary",
+    "label": "Attacker"
+   },
+   {
+    "role": "operator",
+    "label": "Operators"
+   },
+   {
+    "role": "responder",
+    "label": "Responders"
+   },
+   {
+    "role": "community",
+    "label": "Residents"
+   }
+  ],
+  "nodes": [
+   {
+    "id": "attacker",
+    "title": "Attacker",
+    "role": "adversary",
+    "icon": "target",
+    "drawn": true,
+    "status": false,
+    "members": [
+     "attacker"
+    ],
+    "copies": null,
+    "column": 0,
+    "row": 0
+   },
+   {
+    "id": "plant",
+    "title": "Plant",
+    "role": "operator",
+    "icon": "factory",
+    "drawn": true,
+    "status": true,
+    "members": [
+     "plant"
+    ],
+    "copies": null,
+    "column": 1,
+    "row": 0
+   },
+   {
+    "id": "operators",
+    "title": "Operators",
+    "role": "responder",
+    "icon": "shield",
+    "drawn": true,
+    "status": false,
+    "members": [
+     "operators"
+    ],
+    "copies": null,
+    "column": 2,
+    "row": 0
+   },
+   {
+    "id": "wards",
+    "title": "Wards",
+    "role": "community",
+    "icon": "people",
+    "drawn": true,
+    "status": false,
+    "members": [
+     "wards_1",
+     "wards_2"
+    ],
+    "copies": 2,
+    "column": 3,
+    "row": 0
+   },
+   {
+    "id": "town",
+    "title": "Town",
+    "role": "community",
+    "icon": "people",
+    "drawn": false,
+    "status": false,
+    "members": [
+     "town"
+    ],
+    "copies": null
+   }
+  ],
+  "parts": [
+   {
+    "kind": "event",
+    "node": "attacker",
+    "name": "attacker.strike",
+    "place": "attacker/strike",
+    "line": 12,
+    "label": "The AI opens the valve."
+   },
+   {
+    "kind": "status",
+    "node": "plant",
+    "name": "plant.status",
+    "place": "plant/status:",
+    "line": 26,
+    "label": null
+   },
+   {
+    "kind": "flow",
+    "node": "plant",
+    "name": "plant.escape",
+    "place": "plant/escape",
+    "line": 24,
+    "label": "Gas escapes."
+   },
+   {
+    "kind": "event",
+    "node": "operators",
+    "name": "operators.isolate",
+    "place": "operators/isolate",
+    "line": 35,
+    "label": "The operators close the valve."
+   },
+   {
+    "kind": "flow",
+    "node": "wards",
+    "name": "wards.arrive",
+    "place": "Ward/arrive",
+    "line": 43,
+    "label": null
+   },
+   {
+    "kind": "flow",
+    "node": "town",
+    "name": "town.evacuate",
+    "place": "town/evacuate",
+    "line": 51,
+    "label": null
+   }
+  ],
+  "values": {
+   "attacker.strike": {
+    "node": "attacker",
+    "kind": "event",
+    "part": 0
+   },
+   "plant.valve": {
+    "node": "plant",
+    "kind": "state",
+    "label": null
+   },
+   "plant.store": {
+    "node": "plant",
+    "kind": "stock",
+    "label": null
+   },
+   "plant.spare": {
+    "node": "plant",
+    "kind": "stock",
+    "label": null
+   }
+  },
+  "relations": [
+   {
+    "kind": "changes",
+    "by": "attacker",
+    "of": "plant",
+    "value": "plant.valve",
+    "part": 0,
+    "how": "sets",
+    "line": 15
+   },
+   {
+    "kind": "reads",
+    "by": "operators",
+    "of": "attacker",
+    "value": "attacker.strike",
+    "part": 3,
+    "how": "time",
+    "line": 35
+   },
+   {
+    "kind": "changes",
+    "by": "operators",
+    "of": "plant",
+    "value": "plant.valve",
+    "part": 3,
+    "how": "sets",
+    "line": 37
+   },
+   {
+    "kind": "reads",
+    "by": "wards",
+    "of": "plant",
+    "value": "plant.store",
+    "part": 4,
+    "line": 43
+   },
+   {
+    "kind": "moves",
+    "by": "town",
+    "of": "plant",
+    "value": "plant.spare",
+    "part": 5,
+    "how": "from",
+    "line": 51
+   }
+  ],
+  "variants": [
+   {
+    "starts": [],
+    "lacks": [],
+    "arrows": [
+     {
+      "from": "attacker",
+      "to": "plant",
+      "kind": "changes",
+      "values": 1
+     },
+     {
+      "from": "attacker",
+      "to": "operators",
+      "kind": "reads",
+      "values": 1
+     },
+     {
+      "from": "plant",
+      "to": "wards",
+      "kind": "reads",
+      "values": 1
+     },
+     {
+      "from": "operators",
+      "to": "plant",
+      "kind": "changes",
+      "values": 1
+     }
+    ]
+   },
+   {
+    "starts": [
+     "Kept"
+    ],
+    "lacks": [
+     0,
+     3
+    ],
+    "arrows": [
+     {
+      "from": "plant",
+      "to": "wards",
+      "kind": "reads",
+      "values": 1
+     }
+    ]
+   }
+  ]
+ },
+ "runs": {
+  "a": {
+   "variant": 0,
+   "labels": {}
+  },
+  "b": {
+   "variant": 1,
+   "labels": {
+    "0": "The human team opens the valve."
+   }
+  }
+ }
+}

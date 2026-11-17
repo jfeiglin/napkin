@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "Cite napkin, and record the model hash, the implementation hash and the edit document of each calculation that you report."
+title: "napkin: a small typed language for simulation models, and its engine"
+type: software
+version: 0.0.1
+date-released: 2026-11-17
+repository-code: "https://github.com/jfeiglin/napkin"
+url: "https://github.com/jfeiglin/napkin"
+license: MIT
+authors:
+  - family-names: Feiglin
+    given-names: Jake

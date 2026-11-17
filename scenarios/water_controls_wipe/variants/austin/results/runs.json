@@ -1,0 +1,1528 @@
+{
+  "scenario": "water_controls_wipe:austin",
+  "model_hash": "9886481b78da21e3de6ee6cb752d1b8ea76c881fab64155931b3d78cee5ee416",
+  "implementation_hash": "af9d1ec966bb183e438a870eca7de4b6882682510a5e77815c6cacab0a505ff1",
+  "engine_version": "0.0.1",
+  "horizon_h": 2160,
+  "note": "Completed fatalities, serious casualties, economic loss and operational values at the declared horizon, with each outcome’s scope and input basis. Each value has six significant figures. A numerical residual below 0.000001 reads 0.",
+  "rows": [
+    {
+      "id": "early_kept",
+      "description": "Early response · Keeps hidden access",
+      "run": "early_kept",
+      "options": [
+        "Early response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 6,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 2,
+        "controls_crew.approval_time": 6,
+        "controls_crew.travel_time": 12,
+        "controls_crew.orientation_time": 24,
+        "field_crew.capacity": 200,
+        "field_crew.request_time": 2,
+        "field_crew.approval_time": 6,
+        "field_crew.travel_time": 12,
+        "field_crew.orientation_time": 24,
+        "parts.spares_on_hand": 400,
+        "parts.lead_time": 336.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 6,
+        "relief.transport": 8,
+        "relief.receiving": 8,
+        "relief.staffing": 8,
+        "relief.start_delay": 12,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 0.6,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 24,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1400.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 46471.8,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 8.75654,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0464718,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00260309,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "standard_kept",
+      "description": "Standard response · Keeps hidden access",
+      "run": "standard_kept",
+      "options": [
+        "Standard response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 12,
+        "responders.removal_time": 120,
+        "controls_crew.capacity": 80,
+        "controls_crew.request_time": 6,
+        "controls_crew.approval_time": 12,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 100,
+        "field_crew.request_time": 6,
+        "field_crew.approval_time": 12,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 150,
+        "parts.lead_time": 720.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 3,
+        "relief.transport": 4,
+        "relief.receiving": 5,
+        "relief.staffing": 4,
+        "relief.start_delay": 24,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 0.6,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 36,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1150.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 77851.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 14.6692,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0464718,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00436929,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept",
+      "description": "Delayed response · Keeps hidden access",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 0.6,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 48,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 355629.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 67.0102,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0464718,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.0200978,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_none",
+      "description": "Delayed response · No hidden access",
+      "run": "delayed_none",
+      "options": [
+        "Delayed response",
+        "No hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 0.6,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 48,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 113311.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 21.3508,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0464718,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.0063672,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept_human",
+      "description": "Delayed response · Human team keeps hidden access",
+      "run": "delayed_kept_human",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access",
+        "Human team"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 48,
+        "attacker.rework_share": 0.2,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 0.6,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 48,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 113311.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 21.3508,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 240.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0464718,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.0063672,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_20",
+      "description": "The controls crews do 20 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 20
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 20,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 20,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 0.6,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 48,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 346277.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 65.248,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0464718,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.0195635,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_160",
+      "description": "The controls crews do 160 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 160
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 160,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 0.6,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 48,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 281268.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 52.9984,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 19200.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0464718,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.0158754,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_0",
+      "description": "Austin Water's operators cannot produce water by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "austin_water.manual_share": 0
+        }
+      },
+      "changed": {
+        "austin_water.manual_share": {
+          "value": 0,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 0,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 48,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 11950100.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2251.72,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 11.2511,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 87.231,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.675813,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_1",
+      "description": "Austin Water's operators produce all of normal by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "austin_water.manual_share": 1
+        }
+      },
+      "changed": {
+        "austin_water.manual_share": {
+          "value": 1,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 1,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 48,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 46471.8,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 8.75654,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0464718,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.00260309,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_1d",
+      "description": "Responders remove the credential a day after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 24
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 24,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 0.6,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 48,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 113311.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 21.3508,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0464718,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.0063672,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_20d",
+      "description": "Responders remove the credential twenty days after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 480
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 480,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 480,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "austin_water.reached": 1,
+        "austin_water.demand": 210.157,
+        "austin_water.nameplate": 335,
+        "austin_water.storage": 176,
+        "austin_water.usable_share": 0.8878,
+        "austin_water.bought": 0,
+        "austin_water.sold": 11.3354,
+        "austin_water.refill_time": 24,
+        "austin_water.treat_disabled": 1,
+        "austin_water.pump_disabled": 0.5,
+        "austin_water.manual_ready": 1,
+        "austin_water.manual_share": 0.6,
+        "austin_water.activation_delay": 2,
+        "austin_water.operator_duty": 2,
+        "austin_water.controls_load": 600,
+        "austin_water.field_load": 120,
+        "austin_water.replace_load": 0,
+        "austin_water.parts_per_hour": 0.1,
+        "austin_water.clearance_time": 48,
+        "austin_water.loss_share": 0.05,
+        "austin_water.va_rate": 19417580.22,
+        "austin_water.water_dependence": 0.25,
+        "austin_water.activity_kept": 0.5,
+        "austin_water.recovery_factor": 1.5,
+        "austin_water.catch_up_share": 0.3,
+        "austin_water.catch_up_time": 720.0,
+        "austin_water_homes.population": 1115323,
+        "austin_water_hospitals.facilities": 11,
+        "austin_water_hospitals.critical_need": 0.08333,
+        "austin_water_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 809977.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 152.621,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 13800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0464718,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.0463104,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 1115320.0,
+          "status": "estimated"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,313 @@
+[
+  {
+    "id": "E-SC43-JACKSON-JXN-METERED",
+    "source": "jackson_jxnwater2025_q2_report",
+    "locator": "Executive Summary, Water Production (Total O.B. Curtis (OBC) and J.H. Fewell (JHF)), printed page 10 of 86",
+    "evidence_type": "regulatory_filing",
+    "shows": "The Interim Third-Party Manager reports that June 2025 had a total average daily demand on the plants of 34.9 MGD, against 38.4 MGD in June 2024. Based on metered flow, the demand on the JXN Water system is approximately 18 MGD. Once daily demand drops below 30 MGD, the O.B. Curtis plant alone could meet the water supply needs.",
+    "limits": "The metered figure is approximate and the report does not give its period. The difference between plant output and metered flow is mostly water lost from the pipes. The report gives no highest day and no rated capacity of the plants.",
+    "data": {
+      "june_2025_average_daily_demand": {
+        "value": 34.9,
+        "unit": "Mgal/day",
+        "note": "Printed: 'June 2025 saw a total average daily demand of 34.9 MGD'."
+      },
+      "metered_demand": {
+        "value": 18.0,
+        "unit": "Mgal/day",
+        "note": "Printed: 'total demand on the JXN Water system is approximately 18 MGD'."
+      }
+    },
+    "valid_for": {
+      "place": "City of Jackson water system (MS0250008), Hinds County, Mississippi, operated by JXN Water",
+      "period": "second quarter of 2025",
+      "as_of": "report of July 31, 2025"
+    },
+    "quotes": [
+      {
+        "locator": "Executive Summary, Water Production, page 10 of 86",
+        "text": "June 2025 saw a total average daily demand of 34.9 MGD. Compared with June 2024’s demand of 38.4 MGD, a reduction of more than 9 percent year over year."
+      },
+      {
+        "locator": "Executive Summary, Water Production, page 10 of 86",
+        "text": "Based on metered flow, total demand on the JXN Water system is approximately 18 MGD. Once daily demand drops below 30 MGD, total water supply needs could be met with only the OB Curtis plant in operation."
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Read the executive summary and the production table of the extracted text.",
+      "content_sha256": "7b13715fea9b5070c6a47b9aa1ed95c771b0c15540db769e9640e570258990f9",
+      "retrieval_sha256": "ca20204bcf1a5103591b73d8281ffb1324f2b97055080b86bdbdb30bd6a46e7c",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 2,
+        "total": 2
+      }
+    }
+  },
+  {
+    "id": "E-SC43-JACKSON-JXN-PRODUCTION",
+    "source": "jackson_jxnwater2026_q2_report",
+    "locator": "Executive Summary, Water Production (printed p. 10); Water Production (into Distribution System) table (printed p. 45)",
+    "evidence_type": "regulatory_filing",
+    "shows": "The Interim Third-Party Manager reports the average daily water production into the distribution system of the two plants for each quarter. For the last four quarters it was 40.4 MGD (Q3 2025), 35.9 MGD (Q4 2025), 37.0 MGD (Q1 2026) and 35.1 MGD (Q2 2026); over the 365 days from July 2025 to June 2026 that is 37.1 MGD (derived, each quarter weighted by its days). Production was 47 to 56 MGD a quarter in 2023. The report estimates the water loss at about 50% (17 mgd), against more than 65% (35 mgd) in October 2023.",
+    "limits": "Quarterly means of plant output, which includes the water lost from the pipes: the report gives no highest day. Production falls each year as leaks are repaired, so a figure from an earlier year overstates the present need. The loss is an estimate.",
+    "data": {
+      "production_q3_2025": {
+        "value": 40.4,
+        "unit": "Mgal/day",
+        "note": "Printed: production table, Total row, Q3 2025 column."
+      },
+      "production_q4_2025": {
+        "value": 35.9,
+        "unit": "Mgal/day",
+        "note": "Printed: production table, Total row, Q4 2025 column."
+      },
+      "production_q1_2026": {
+        "value": 37.0,
+        "unit": "Mgal/day",
+        "note": "Printed: production table, Total row, Q1 2026 column."
+      },
+      "production_q2_2026": {
+        "value": 35.1,
+        "unit": "Mgal/day",
+        "note": "Printed: production table, Total row, Q2 2026 column."
+      },
+      "production_12_month_average": {
+        "value": 37.1060274,
+        "unit": "Mgal/day",
+        "note": "Derived: (40.4 x 92 + 35.9 x 92 + 37.0 x 90 + 35.1 x 91) / 365 days, July 2025 to June 2026."
+      },
+      "estimated_water_loss": {
+        "value": 17.0,
+        "unit": "Mgal/day",
+        "note": "Printed: p. 10, 'Estimated water loss is approximately 50% (17 mgd)'."
+      }
+    },
+    "valid_for": {
+      "place": "City of Jackson water system (MS0250008), Hinds County, Mississippi, operated by JXN Water",
+      "period": "quarterly averages from Q1 2023 to Q2 2026",
+      "as_of": "report of July 31, 2026",
+      "population": "all customers of the system that the two plants supply"
+    },
+    "quotes": [
+      {
+        "locator": "Production table, title, printed p. 45",
+        "text": "Water Production (into Distribution System) in million gallons per day"
+      },
+      {
+        "locator": "Production table, OBC Conventional row",
+        "text": "OBC Conventional 1.8 5.9 5.4 5.1 7.6 8.8 10.9 11.4 9.5 13.6 17.6 16.1 13.3 15.1"
+      },
+      {
+        "locator": "Production table, OBC Membrane row",
+        "text": "OBC Membrane 14.8 14.8 14.5 13 14.6 17.1 16 17.1 16.8 18.2 19.1 21.7 22.4 21.8"
+      },
+      {
+        "locator": "Production table, JH Fewell row",
+        "text": "JH Fewell 18.5 16.3 16 22.3 12.2 14 12.7 12.2 12.1 16.6 19.3 15.9 11.5 13.4"
+      },
+      {
+        "locator": "Production table, Total row",
+        "text": "Total 35.1 37.0 35.9 40.4 34.4 39.9 39.6 40.7 38.4 48.5 55.9 53.7 47.2 50.2"
+      },
+      {
+        "locator": "Executive Summary, Water Production, printed p. 10",
+        "text": "The daily demand on the water plants continues to trend down. The quarterly average was 35.1 mgd."
+      },
+      {
+        "locator": "Executive Summary, Water Production, printed p. 10",
+        "text": "Estimated water loss is approximately 50% (17 mgd) compared to more than 65% (35 mgd) in October 2023."
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Read the executive summary and the production table of the extracted text. The column order is Q2 2026, Q1 2026, Q4 2025, Q3 2025 and so back to Q1 2023, as the header shows. The 12-month mean is arithmetic on the printed quarterly means.",
+      "content_sha256": "13ec402792c406893b2e0d17def7bb38d867f28a523c8a60bbb7494e2aa738fe",
+      "retrieval_sha256": "8817069c457ad2a43759ac9e0f7673cb64db448152e1893913725e3451b30532",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 7,
+        "total": 7
+      }
+    }
+  },
+  {
+    "id": "E-SC43-JACKSON-JXN-PLANTS",
+    "source": "jackson_msdh2021_inspection",
+    "locator": "Design Capacity Sheet of December 8, 2021: Fewell design capacity (p. 2) and O B Curtis treatment capacity (pp. 2-4); inspection report comment 7",
+    "evidence_type": "regulatory_filing",
+    "shows": "The Mississippi State Department of Health rates the two plants of the City of Jackson in its November 2021 survey. It sets a maximum treatment capacity of 20 MGD at J.H. Fewell. At O.B. Curtis, each side, conventional and membrane, was rated at 25 MGD; in 2021 the department credited only 16.8 MGD to each side, for the four filters and four membrane trains in service, 33.6 MGD in all. The rated capacities sum to 70 MGD and the credited ones to 53.6 MGD (derived). With the service pumps that were working, the design capacity of the two plants was 34 + 38 = 72 MGD.",
+    "limits": "A state survey of November 2021, before the plant failures of August 2022 and the repairs that JXN Water has made since 2023; the credited capacities changed as filters, trains and pumps came back. The 20 MGD at Fewell is a limit that the department set from turbidity data; the plant averaged 22.3 MGD in the third quarter of 2025, so that limit has changed since.",
+    "data": {
+      "fewell_treatment_capacity": {
+        "value": 20.0,
+        "unit": "Mgal/day",
+        "note": "Printed: 'Rated treatment capacity of plant = 20 MGD (limiting factor)'."
+      },
+      "curtis_side_rated_capacity": {
+        "value": 25.0,
+        "unit": "Mgal/day",
+        "note": "Printed: 'EACH SIDE WAS RATED AT 25 MGD.'"
+      },
+      "curtis_credited_capacity_2021": {
+        "value": 33.6,
+        "unit": "Mgal/day",
+        "note": "Printed: 'TOTAL TREATMENT CAPACITY AT OB CURTIS = Conventional (16.8 MGD) + Membrane (16.8 MGD) = 33.6 MGD'."
+      },
+      "rated_capacity_total": {
+        "value": 70.0,
+        "unit": "Mgal/day",
+        "note": "Derived: 25 + 25 MGD (O.B. Curtis, each side as rated) + 20 MGD (J.H. Fewell)."
+      },
+      "credited_capacity_total_2021": {
+        "value": 53.6,
+        "unit": "Mgal/day",
+        "note": "Derived: 16.8 + 16.8 + 20 MGD."
+      }
+    },
+    "valid_for": {
+      "place": "City of Jackson water system (MS0250008), Hinds County, Mississippi, operated by JXN Water",
+      "period": "sanitary survey of November 8-10, 2021",
+      "as_of": "design capacity sheet of December 8, 2021"
+    },
+    "quotes": [
+      {
+        "locator": "Design Capacity Sheet, Fewell CT calculations",
+        "text": "MSDH IS SETTING A MAXIMUM TREATMENT CAPACITY OF 20 MGD."
+      },
+      {
+        "locator": "Design Capacity Sheet, Fewell design capacity",
+        "text": "Rated treatment capacity of plant = 20 MGD (limiting factor)"
+      },
+      {
+        "locator": "Design Capacity Sheet, O B Curtis",
+        "text": "CAPACITY OF THE PLANT HAS BEEN LOWERED TO REFLECT WHAT THE PLANT CAN ACTUALLY TREAT. EACH SIDE WAS RATED AT 25 MGD."
+      },
+      {
+        "locator": "Design Capacity Sheet, O B Curtis",
+        "text": "TOTAL TREATMENT CAPACITY AT OB CURTIS = Conventional (16.8 MGD) + Membrane (16.8 MGD) = 33.6 MGD"
+      },
+      {
+        "locator": "Design Capacity Sheet, total system design capacity, p. 4",
+        "text": "TOTAL CAPACITY OF FEWELL AND OB CURTIS PLANTS = 34 MGD + 38 MGD = 72 MGD"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Read the inspection report, the capacity assessment form and the design capacity sheet in the extracted text. The sums of 70 and 53.6 MGD are arithmetic on the printed figures.",
+      "content_sha256": "2d87be9309475c6d86d7b425fe1f47fbd891f24d0c14ea1eb7fc22e52da1993b",
+      "retrieval_sha256": "8cc2b73afea13978a4ae733f062286c7b7c07970d09028300b82f15f4e13529d",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 5,
+        "total": 5
+      }
+    }
+  },
+  {
+    "id": "E-SC43-JACKSON-JXN-STORAGE",
+    "source": "jackson_msdh2021_inspection",
+    "locator": "Design Capacity Sheet of December 8, 2021: Fewell design capacity (p. 2), O B Curtis design capacity (p. 3) and total system design capacity (p. 4)",
+    "evidence_type": "regulatory_filing",
+    "shows": "The survey counts 13.8 MG of storage at J.H. Fewell (a 3.8 MG clearwell and two 5 MG ground tanks), a 10 MG clearwell at O.B. Curtis, and 7.75 MG of elevated storage in nine tanks: 31.55 MG in all (derived). It leaves out three elevated tanks: the 1.0 MG Byram tank, offline since November 2020, and the 0.2 MG Suncrest and 1.0 MG Elaine tanks, which were empty on the day of the survey.",
+    "limits": "A count of November 2021. The 31.55 MG leaves out 2.2 MG of tanks that were offline or empty then; with them the total is 33.75 MG (derived). The survey also says that the plants could not pump enough water to keep all elevated tanks full. The figures are total capacities, not the volume that operators can draw down.",
+    "data": {
+      "fewell_plant_storage": {
+        "value": 13.8,
+        "unit": "Mgal",
+        "note": "Printed: 'Total storage located at the plant = 3.8 MG + 10 MG = 13.8 MG'."
+      },
+      "curtis_clearwell_storage": {
+        "value": 10.0,
+        "unit": "Mgal",
+        "note": "Printed: 'Total storage located at the plant (clearwell capacity) = 10 MG'."
+      },
+      "elevated_storage_counted": {
+        "value": 7.75,
+        "unit": "Mgal",
+        "note": "Printed: 'TOTAL ELEVATED STORAGE ON SYSTEM: ... = 7.75 MG'."
+      },
+      "storage_total_counted": {
+        "value": 31.55,
+        "unit": "Mgal",
+        "note": "Derived: 13.8 + 10 + 7.75 MG."
+      },
+      "elevated_storage_left_out": {
+        "value": 2.2,
+        "unit": "Mgal",
+        "note": "Derived: 1.0 MG (Byram) + 0.2 MG (Suncrest) + 1.0 MG (Elaine)."
+      }
+    },
+    "valid_for": {
+      "place": "City of Jackson water system (MS0250008), Hinds County, Mississippi, operated by JXN Water",
+      "period": "sanitary survey of November 8-10, 2021",
+      "as_of": "design capacity sheet of December 8, 2021"
+    },
+    "quotes": [
+      {
+        "locator": "Design Capacity Sheet, Fewell design capacity",
+        "text": "Clearwell volume = 3.8 MG 2 additional ground storage tanks @ 5MG each = 10 MG Total storage located at the plant = 3.8 MG + 10 MG = 13.8 MG"
+      },
+      {
+        "locator": "Design Capacity Sheet, O B Curtis design capacity",
+        "text": "Total storage located at the plant (clearwell capacity) = 10 MG"
+      },
+      {
+        "locator": "Design Capacity Sheet, total system design capacity",
+        "text": "TOTAL ELEVATED STORAGE ON SYSTEM: 0.5 MG + 1.0 + 0.5 + 1.5 + 1.0 + 0.5 + 1.0 + 0.25 + 1.5 = 7.75 MG"
+      },
+      {
+        "locator": "Design Capacity Sheet, notes under elevated storage",
+        "text": "1.0 MG Byram tank taken out of calculations due to being offline (11-09-2020)"
+      },
+      {
+        "locator": "Design Capacity Sheet, notes under elevated storage",
+        "text": "0.2 MG Suncrest tank & 1.0 MG Elaine tank taken out of calculations due to being empty"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Read the storage lines of the design capacity sheet and comment 7(d) of the report in the extracted text. The totals are arithmetic on the printed figures.",
+      "content_sha256": "f999c944691811530e772780860b0c6719944266af065d2c631d7a18818d8306",
+      "retrieval_sha256": "8cc2b73afea13978a4ae733f062286c7b7c07970d09028300b82f15f4e13529d",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 5,
+        "total": 5
+      }
+    }
+  }
+]

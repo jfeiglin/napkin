@@ -1,0 +1,123 @@
+# Expected results of F5, worked out by hand from the lines of F5.scn. They are independent of the
+# engine: never change them to match a run.
+#
+# Both runs. The start opens the drain at t = 0. The drain moves 10 L/h from the tank (120 L) to the
+# basin while it is open. The pumps ask 2 L/h each from the basin; the share gives them 3 L/h, the
+# first pump first, so bucket_a fills at 2 L/h and bucket_b at 1 L/h: held(t) = 3 t. The basin never
+# runs empty (it fills at 10 - 3 = 7 L/h while the drain is open), so the pumps run the whole 10 h.
+# The output pumped is held two hours late: pumped(5) = held(3) = 9 L, pumped(10) = held(8) = 24 L.
+# Meter copy k fills at k * 1 L/h: metered(t) = 3 t. The operators notice at t = 2 (one call less:
+# 3 - 1 = 2), and decide 2 h later, at t = 4. The report triggers at t = 2 too (after decide: the
+# order of the lines) and is due 2.5 h later, at t = 4.5, while the drain stays open.
+#
+# The buckets. bucket_a is full at its fill_time, 3 h (the template's value), and bucket_b at 8 h
+# (its own): full_buckets, count(buckets.full), is 1 at t = 5 and 2 at t = 10; any(buckets.full)
+# holds from t = 3 and all(buckets.full) from t = 8, so the basin is failed at the end. The fullest
+# bucket is bucket_a, max(buckets.water) = 2 t: 10 L and 20 L; the emptiest is bucket_b,
+# min(buckets.water) = t: 5 L and 10 L.
+#
+# The survey triggers at most once in each window of tank.drain, once a bucket is full: at t = 3
+# (window "open", the moment bucket_a is full) in both runs, and again when the drain's state changes.
+# Each survey adds the basin's water 1 h earlier, delayed(water, 1 h), and the median of
+# uniform(1 L, 3 L), 2 L, to the noise (the central run takes the median). The basin holds 7 t while
+# the drain is open: the survey at t = 3 adds water(2) = 14 L.
+#
+# closing (close_odds 1: the central run takes close, which can happen while the drain is open): the
+# drain closes at t = 4 and the basin logs a spill, which moves 5 L to the spill. Tank: 120 - 40 = 80 L
+# from t = 4, so the alarm (70 L) never sounds. Basin: 7 * 4 - 5 = 23 L at t = 4, then -3 L/h: 20 L
+# at t = 5, 5 L at t = 10. Above 30 L: -10 L and -25 L. The drain is closed at the end: the tank is
+# degraded. The closed drain opens a new window of the survey at t = 4, after the log of the same
+# moment: it adds water(3) = 21 L, surveyed = 14 + 21 = 35 L and noise = 2 + 2 = 4 L. The report waits
+# while the drain is open: the closed drain cancels it at t = 4 (no step of the story), it is once, so
+# it stays spent, and no report is filed.
+#
+# waiting (close_odds 0: the central run takes wait, the else): the drain stays open. Tank:
+# 120 - 10 t: 70 L at t = 5, which sounds the alarm, loud (0.7 against 0.3), and 20 L at t = 10.
+# Basin: 7 t: 35 L and 70 L. Above 30 L: 5 L and 40 L. The drain is open at the end: the tank is ok.
+# The survey has one window, "open": surveyed = 14 L and noise = 2 L. The report fires at t = 4.5
+# (a delayed event's own outcome has no text, so no step of the story) and files one report.
+#
+# The step. The resolution gives the solver's longest step, 1.25 h. The timescale
+# level0 / drain_rate is 120 L / 10 L/h = 12 h, which allows 12 / 8 = 1.5 h, so the step is 1.25 h.
+# Every segment of F5 has constant rates, so the step changes no value above.
+version: 1
+fixture: F5
+step_h: 1.25
+runs:
+  closing:
+    story:
+      - {t: 0, event: attacker.start.done}
+      - {t: 2, event: operators.notice.done}
+      - {t: 2, event: operators.decide}
+      - {t: 2, event: operators.report}
+      - {t: 3, event: bucket_a.fill.done}
+      - {t: 3, event: basin.survey.done}
+      - {t: 4, event: operators.decide.close}
+      - {t: 4, event: basin.log.done}
+      - {t: 4, event: basin.survey.done}
+      - {t: 8, event: bucket_b.fill.done}
+    mid:
+      tank.water.output: 80
+      pumped: 9
+      basin_water: 20
+      basin_above: -10
+      fullest: 10
+      emptiest: 5
+      full_buckets: 1
+      surveyed: 35
+      noise: 4
+      metered: 15
+      calls_left: 2
+      reports: 0
+    final:
+      tank.water.output: 80
+      pumped: 24
+      basin_water: 5
+      basin_above: -25
+      fullest: 20
+      emptiest: 10
+      full_buckets: 2
+      surveyed: 35
+      noise: 4
+      metered: 30
+      calls_left: 2
+      reports: 0
+    health: {tank: degraded, basin: failed}
+  waiting:
+    story:
+      - {t: 0, event: attacker.start.done}
+      - {t: 2, event: operators.notice.done}
+      - {t: 2, event: operators.decide}
+      - {t: 2, event: operators.report}
+      - {t: 3, event: bucket_a.fill.done}
+      - {t: 3, event: basin.survey.done}
+      - {t: 4, event: operators.decide.wait}
+      - {t: 5, event: tank.alarm.loud}
+      - {t: 8, event: bucket_b.fill.done}
+    mid:
+      tank.water.output: 70
+      pumped: 9
+      basin_water: 35
+      basin_above: 5
+      fullest: 10
+      emptiest: 5
+      full_buckets: 1
+      surveyed: 14
+      noise: 2
+      metered: 15
+      calls_left: 2
+      reports: 1
+    final:
+      tank.water.output: 20
+      pumped: 24
+      basin_water: 70
+      basin_above: 40
+      fullest: 20
+      emptiest: 10
+      full_buckets: 2
+      surveyed: 14
+      noise: 2
+      metered: 30
+      calls_left: 2
+      reports: 1
+    health: {tank: ok, basin: failed}

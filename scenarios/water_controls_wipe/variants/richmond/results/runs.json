@@ -1,0 +1,1528 @@
+{
+  "scenario": "water_controls_wipe:richmond",
+  "model_hash": "c9b860241d0afe53af476b1ce9faf79de68301b3ff0e52d0477f925e545ce379",
+  "implementation_hash": "af9d1ec966bb183e438a870eca7de4b6882682510a5e77815c6cacab0a505ff1",
+  "engine_version": "0.0.1",
+  "horizon_h": 2160,
+  "note": "Completed fatalities, serious casualties, economic loss and operational values at the declared horizon, with each outcome’s scope and input basis. Each value has six significant figures. A numerical residual below 0.000001 reads 0.",
+  "rows": [
+    {
+      "id": "early_kept",
+      "description": "Early response · Keeps hidden access",
+      "run": "early_kept",
+      "options": [
+        "Early response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 6,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 2,
+        "controls_crew.approval_time": 6,
+        "controls_crew.travel_time": 12,
+        "controls_crew.orientation_time": 24,
+        "field_crew.capacity": 200,
+        "field_crew.request_time": 2,
+        "field_crew.approval_time": 6,
+        "field_crew.travel_time": 12,
+        "field_crew.orientation_time": 24,
+        "parts.spares_on_hand": 400,
+        "parts.lead_time": 336.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 6,
+        "relief.transport": 8,
+        "relief.receiving": 8,
+        "relief.staffing": 8,
+        "relief.start_delay": 12,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 0.6,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 24,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1400.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 9735.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.17357,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00973563,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000551381,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "standard_kept",
+      "description": "Standard response · Keeps hidden access",
+      "run": "standard_kept",
+      "options": [
+        "Standard response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 12,
+        "responders.removal_time": 120,
+        "controls_crew.capacity": 80,
+        "controls_crew.request_time": 6,
+        "controls_crew.approval_time": 12,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 100,
+        "field_crew.request_time": 6,
+        "field_crew.approval_time": 12,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 150,
+        "parts.lead_time": 720.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 3,
+        "relief.transport": 4,
+        "relief.receiving": 5,
+        "relief.staffing": 4,
+        "relief.start_delay": 24,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 0.6,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 36,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1150.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 9735.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.17357,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00973563,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000551381,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept",
+      "description": "Delayed response · Keeps hidden access",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 0.6,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 48,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 9735.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.17357,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00973563,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000551381,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_none",
+      "description": "Delayed response · No hidden access",
+      "run": "delayed_none",
+      "options": [
+        "Delayed response",
+        "No hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 0.6,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 48,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 9735.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.17357,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00973563,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000551381,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept_human",
+      "description": "Delayed response · Human team keeps hidden access",
+      "run": "delayed_kept_human",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access",
+        "Human team"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 48,
+        "attacker.rework_share": 0.2,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 0.6,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 48,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 9735.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.17357,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 240.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00973563,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000551381,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_20",
+      "description": "The controls crews do 20 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 20
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 20,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 20,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 0.6,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 48,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 9735.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.17357,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00973563,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000551381,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_160",
+      "description": "The controls crews do 160 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 160
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 160,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 0.6,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 48,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 9735.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.17357,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 19200.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00973563,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000551381,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_0",
+      "description": "Richmond's operators cannot produce water by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "richmond.manual_share": 0
+        }
+      },
+      "changed": {
+        "richmond.manual_share": {
+          "value": 0,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 0,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 48,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 2516630.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 561.861,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.556314,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 27.4262,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.143901,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_1",
+      "description": "Richmond's operators produce all of normal by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "richmond.manual_share": 1
+        }
+      },
+      "changed": {
+        "richmond.manual_share": {
+          "value": 1,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 1,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 48,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 9735.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.17357,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 4800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00973563,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000551381,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_1d",
+      "description": "Responders remove the credential a day after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 24
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 24,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 0.6,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 48,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 9735.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.17357,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00973563,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000551381,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_20d",
+      "description": "Responders remove the credential twenty days after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 480
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 480,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 480,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "richmond.reached": 1,
+        "richmond.demand": 52.1656,
+        "richmond.nameplate": 132,
+        "richmond.storage": 69,
+        "richmond.usable_share": 0.8878,
+        "richmond.bought": 0,
+        "richmond.sold": 41.2262,
+        "richmond.refill_time": 24,
+        "richmond.treat_disabled": 1,
+        "richmond.pump_disabled": 0.5,
+        "richmond.manual_ready": 1,
+        "richmond.manual_share": 0.6,
+        "richmond.activation_delay": 2,
+        "richmond.operator_duty": 2,
+        "richmond.controls_load": 600,
+        "richmond.field_load": 120,
+        "richmond.replace_load": 0,
+        "richmond.parts_per_hour": 0.1,
+        "richmond.clearance_time": 48,
+        "richmond.loss_share": 0.05,
+        "richmond.va_rate": 4112990.15,
+        "richmond.water_dependence": 0.25,
+        "richmond.activity_kept": 0.5,
+        "richmond.recovery_factor": 1.5,
+        "richmond.catch_up_share": 0.3,
+        "richmond.catch_up_time": 720.0,
+        "richmond_homes.population": 233655,
+        "richmond_hospitals.facilities": 3,
+        "richmond_hospitals.critical_need": 0.08333,
+        "richmond_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 9735.63,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 2.17357,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 13800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00973563,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.000551381,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 233655.0,
+          "status": "estimated"
+        }
+      }
+    }
+  ]
+}

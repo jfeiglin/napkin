@@ -1,0 +1,60 @@
+{
+  "scenarios/water_controls_wipe/tests/water_service.py": {
+    "scenarios": [
+      "water_controls_wipe:asheville"
+    ],
+    "parameters": {
+      "recognition_time": {
+        "water_controls_wipe:asheville": "responders.recognition_time"
+      },
+      "removal_time": {
+        "water_controls_wipe:asheville": "responders.removal_time"
+      },
+      "controls_request_time": {
+        "water_controls_wipe:asheville": "controls_crew.request_time"
+      },
+      "controls_approval_time": {
+        "water_controls_wipe:asheville": "controls_crew.approval_time"
+      },
+      "controls_travel_time": {
+        "water_controls_wipe:asheville": "controls_crew.travel_time"
+      },
+      "controls_orientation_time": {
+        "water_controls_wipe:asheville": "controls_crew.orientation_time"
+      },
+      "field_request_time": {
+        "water_controls_wipe:asheville": "field_crew.request_time"
+      },
+      "field_approval_time": {
+        "water_controls_wipe:asheville": "field_crew.approval_time"
+      },
+      "field_travel_time": {
+        "water_controls_wipe:asheville": "field_crew.travel_time"
+      },
+      "field_orientation_time": {
+        "water_controls_wipe:asheville": "field_crew.orientation_time"
+      },
+      "controls_capacity": {
+        "water_controls_wipe:asheville": "controls_crew.capacity"
+      },
+      "field_capacity": {
+        "water_controls_wipe:asheville": "field_crew.capacity"
+      },
+      "approved_supply": {
+        "water_controls_wipe:asheville": "relief.approved_supply"
+      },
+      "transport": {
+        "water_controls_wipe:asheville": "relief.transport"
+      },
+      "receiving": {
+        "water_controls_wipe:asheville": "relief.receiving"
+      },
+      "staffing": {
+        "water_controls_wipe:asheville": "relief.staffing"
+      },
+      "relief_start_delay": {
+        "water_controls_wipe:asheville": "relief.start_delay"
+      }
+    }
+  }
+}

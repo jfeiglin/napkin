@@ -1,0 +1,1103 @@
+{
+  "schema_version": "2",
+  "record_kind": "scenario_assumption_inventory",
+  "scenario": "heat_wave_blackout",
+  "authoritative_basis": {
+    "path": "scenarios/heat_wave_blackout/evidence/assumptions.json",
+    "sha256": "22e72c93785657331a2729522d41ab4162f041774e1cb9189f2e0867707e2953"
+  },
+  "status_policy": "Each assumption retains its authored review status. This inventory adds no review.",
+  "counts": {
+    "assumptions": 25,
+    "origin": {
+      "author": 1,
+      "model": 16,
+      "model_redteam": 8
+    },
+    "authoritative_review_status": {
+      "unreviewed": 25
+    },
+    "reachable_in_current_scenarios": 25,
+    "retained_without_current_scenario_reference": 0
+  },
+  "assumptions": [
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-AI-CYBER-OPERATIONS",
+      "title": "AI agents can run each cyber action in the scenario",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Repository scenario authoring agent",
+        "date": "2026-10-04"
+      },
+      "places": [
+        "ai"
+      ],
+      "cited_claims": [
+        {
+          "claim": "AI-AGENT-TRUST-2026",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "AI-ORCHESTRATION-2026",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-AI-TEMPO",
+      "title": "How fast the attacker answers the defenders' recovery",
+      "origin": "author",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Repository scenario authoring agent",
+        "date": "2026-10-08"
+      },
+      "places": [
+        "record:/tempo"
+      ],
+      "cited_claims": [
+        {
+          "claim": "AI-ORCHESTRATION-2026",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-CYOTE15-TIMING",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-MANDIANT22",
+          "relation": "calibrates"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-ELECTRICITY-DAMAGE-20261005",
+      "title": "Chosen costs and clinical ranges of a blackout in a heat wave, at 2025 prices",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 plan of 2026-10-17, which retires SC01, SC02 and SC38 and rewrites kept records to the current files; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-18"
+      },
+      "places": [
+        "output:/clinical_demand",
+        "record:/clinical_share_limits",
+        "record:/cost_chosen"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-BEATTY06-HOSPITALS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-DOMINIANNI18-HOSP",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-LBNL25-POET-RESULTS",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-WU14",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "RB-T04",
+          "relation": "calibrates"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-CHECKS",
+      "title": "Time to check protection before switching back on",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "record:/protection_check_time",
+        "utility/checks"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-CYOTE15-TIMING",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-EO13800-NONOTICE",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-NASEM17-ENERGIZE",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SLOWIK19-INTENT",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-CLOCKS",
+      "title": "Clocks of the response",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "contractor/forced_down",
+        "record:/clocks",
+        "record:/order_clock",
+        "record:/removal_by_response",
+        "record:/stopped_job_list"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-CIP008-R4",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CYOTE15-TIMING",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-DOE417-DEADLINES",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-DRAGOS26-OT-CONTAIN",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-SANS25-OT-CONTAIN",
+          "relation": "bounds"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-CONVERSION-CAP",
+      "title": "Highest equivalent outdoor temperature for heat-related deaths",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "Buildings/equivalent_capped",
+        "heat_wave/cap",
+        "record:/conversion"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-GRONLUND26-CAP55",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-GRONLUND26-EOAT",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-IETCODE-EXTRAPOLATION",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-STONE23-ANALOG",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-STONE23-SI-FIGS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-STONE23-UNHOUSED",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "V-P01",
+          "relation": "context_limitations"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-CURVE-POOL",
+      "title": "All-cause mortality curve",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 curve decision of 2026-10-17 (the best-supported curve by default), revised the same day after a check of the paper's risk-ratio range; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "record:/curve_limits",
+        "record:/curve_shape",
+        "record:/curve_weights",
+        "record:/gasparrini_slope_arithmetic"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-GRONLUND26-EOAT",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-GRONLUND26-S1-PHX",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-IETCODE-ENSEMBLE",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-STONE23-ERF",
+          "relation": "consistent_with"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-DEVICE-ADMISSION",
+      "title": "People on home devices: backup, outreach and admission",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "devices/alternative_share",
+        "devices/runs_out",
+        "record:/admission",
+        "record:/battery_runtime",
+        "record:/by_response",
+        "record:/contact",
+        "record:/own_power"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-CASEY21-PREPARE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-DOMINIANNI18-HOSP",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-EMPOWER-OUTREACH",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-KATABAMI22-SAPPORO",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-MOLINARI17-BATTERY",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-MOLINARI17-MIX",
+          "relation": "calibrates"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-HEAT-RISK",
+      "title": "Heat risk from experienced temperature",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17, and the owner's choice on 2026-10-18 to limit heat emergency visits to one for each person; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-18"
+      },
+      "places": [
+        "Buildings/first_visit",
+        "Buildings/heat_up_time",
+        "Buildings/slope",
+        "record:/dark_calibration",
+        "record:/ed_normal_rate",
+        "record:/exposure_weighted",
+        "record:/felt_temperature_limits",
+        "record:/heat_curve_limits",
+        "record:/heat_death_normal_rate",
+        "record:/heat_deaths_counted",
+        "record:/heat_excess",
+        "record:/heat_up",
+        "record:/one_person_per_visit",
+        "record:/visits_at_home"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-GRONLUND26-EOAT",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-GRONLUND26-PHX-BURDEN",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-GRONLUND26-S4-PHX",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-GRONLUND26-S5-PHX",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-IETCODE-EXTRAPOLATION",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-NAHLIK17",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-STONE23-ANALOG",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-STONE23-ERF",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-STONE23-IET",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-WHITENEWSOME12-SLOPES",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-WRIGHT20-SLOPES",
+          "relation": "bounds"
+        },
+        {
+          "claim": "RB-T04",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "V-P01",
+          "relation": "consistent_with"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-HEAT-WAVE",
+      "title": "The heat wave",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "notes:/premises:/PR1:",
+        "record:/heat_wave_frame",
+        "record:/heat_wave_length",
+        "record:/heat_wave_outdoor"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-ANDERSONBELL11-HW",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-ARMSTRONG19-RH",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-NOAA-PHX-JUL2006",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "V-P01",
+          "relation": "consistent_with"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-INTERRUPTION-COST",
+      "title": "Customers' costs of the interruption",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "Customers/cost_24h",
+        "Customers/exponent",
+        "non_residential/exponent",
+        "record:/counts",
+        "record:/fit_range",
+        "record:/power_law"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-ICE2-COSTS",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-ICE2-SCOPE",
+          "relation": "context_limitations"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-PLACES-POWER",
+      "title": "Share of cooled places with their own power",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "places/powered_share",
+        "record:/all_powered",
+        "record:/places_with_power"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-BERYL-CC",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-STONE21-CAP",
+          "relation": "calibrates"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-PROTECTION",
+      "title": "Backup, private moves and cooled places",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "Residents/wait_h",
+        "moves/end_time",
+        "moves/start_time",
+        "moves/window_ends",
+        "options:/AI conduct and protection/More backup cooling and private moves/Residents.private_share",
+        "places/filled",
+        "places/planned_rate",
+        "places/transport_limit",
+        "record:/backup_comparison",
+        "record:/backup_protected",
+        "record:/cooling_centre_capacity",
+        "record:/families_see_need",
+        "record:/moves_by_response",
+        "record:/occupants_keep_place",
+        "record:/officials_see_need",
+        "record:/open_by_response",
+        "record:/private_departures_end",
+        "record:/private_movers_leave",
+        "record:/share_by_waiting"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-BERISHA17",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-BERYL-CC",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-CDC17-ACTIVATION",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-STONE21-CAP",
+          "relation": "calibrates"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-RESTORATION",
+      "title": "Switching the circuits back on",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "crews/repairs_complete",
+        "record:/restoration_back",
+        "record:/restoration_switching",
+        "record:/service_follows_work",
+        "record:/switching_starts"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-ENTSOE26-RESTORE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-FERC12-SW2011-OUTAGE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-NYISO05-OVERNIGHT",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-PSRC08-CLPU-SECTIONALIZE",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "V-C01",
+          "relation": "bounds"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-REWORK",
+      "title": "Rework from the AI's changes",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17, revised the same day so that crews stop switching while the attacker changes the settings; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "ai/sees_switching",
+        "crews/job_work_cleared",
+        "record:/job_rework",
+        "record:/job_run_time",
+        "record:/order_of_work",
+        "record:/rework"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-MANDIANT22",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-NASEM17-ENERGIZE",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SLOWIK19-INTENT",
+          "relation": "mechanism_precedent"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-SETTING",
+      "title": "The people on the supply",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "AgeBand/device_share",
+        "notes:/premises:/PR2:",
+        "record:/a_setting_prevalence_home_concentrators",
+        "record:/national_rates",
+        "record:/people_held",
+        "record:/people_on_supply",
+        "record:/setting_groups"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-CENSUS-AGE-2023",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-MOLINARI17-MIX",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-SKARHA22-PRISONS",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-WHO-NMX-USA-2023",
+          "relation": "calibrates"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-SEVERE-SHARE",
+      "title": "Share of heatstroke as severe as intensive-care cases",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "output:/late_deaths",
+        "record:/severe_as_intensive_care"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-DEMATTE98-ICU",
+          "relation": "calibrates"
+        },
+        {
+          "claim": "E-WU14",
+          "relation": "bounds"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "A-SC41-WORK-COST",
+      "title": "Cost of an hour of restoration work",
+      "origin": "model",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Project owner, SC41 decision memo and plan of 2026-10-17; recorded by the authoring session; identity and independent approval not verified",
+        "date": "2026-10-17"
+      },
+      "places": [
+        "record:/work_cost"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-FLPSC24-IAN",
+          "relation": "accounting_rule"
+        },
+        {
+          "claim": "E-ONET25-LINEWORKER-WAGE",
+          "relation": "calibrates"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "RT-GRID-INITIATION-FOOTPRINT",
+      "title": "Unauthorized commands cut power to the whole study area at t=0",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": null,
+      "places": [
+        "supply/lose_power"
+      ],
+      "cited_claims": [
+        {
+          "claim": "ATTACK-T0831",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-APS26-CUST",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-CYOTE15-TIMING",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-DOJ22-DRAGONFLY",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-DRAGOS17",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-FERC12-SW2011-OUTAGE",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-GAO19-SCALE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-GAO19-THREAT",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-GAO21-DER-VECTOR",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-GAO21-VISIBILITY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-INL16-SCALE",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-KNAKE17-THREAT",
+          "relation": "bounds"
+        },
+        {
+          "claim": "E-ODNI25-RUSSIA-PREPOS",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SRP26-CUST",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-TA18-ICSRECON",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-VOLT-PREPOSITION",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "V-C01",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "V-C03",
+          "relation": "mechanism_precedent"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "RT-SC41-AIVSHUMAN",
+      "title": "A compliant human crew leaves the protection intact",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Machine red-team author; identity and independent approval not verified",
+        "date": "2026-09-20"
+      },
+      "places": [
+        "record:/human_team"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-AGENTIC-MISALIGN",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-AISI-UNSANCTIONED",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "RT-SC41-CONFINEMENT",
+      "title": "Confined workers cannot use ordinary relocation",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Machine red-team author; identity and independent approval not verified",
+        "date": "2026-09-24"
+      },
+      "places": [
+        "Confined/exposed_h",
+        "compound/open_time",
+        "compound/opens",
+        "notes:/premises:/PR4:",
+        "options:/AI conduct and protection/Cooled places with their own power and the gates opened/compound.plan"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-DOJ25-KKPARK",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-LYP-CONFINEMENT",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-LYP-SANCTION",
+          "relation": "consistent_with"
+        },
+        {
+          "claim": "E-SR25-CONFINEMENT",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "RT-SC41-CONTRACTOR-ATTRIBUTION",
+      "title": "The contractor's recognition and response need separate, verified actions",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Machine scenario research author; independent specialist approval not established",
+        "date": "2026-09-20"
+      },
+      "places": [
+        "record:/review_by_response"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-AGENTIC-MISALIGN",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-AISI-CONTAIN-CLEANUP",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-MEMO-NOTIFY",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC41-CONTINUING-RESOURCES",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "E-SC41-OT-RESPONSE",
+          "relation": "mechanism_support"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "RT-SC41-DELEGATION",
+      "title": "The contractor's AI disrupts a civilian supply with no human review",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Machine red-team author; identity and independent approval not verified",
+        "date": "2026-09-24"
+      },
+      "places": [
+        "notes:/premises:/PR3:",
+        "record:/rt_delegation_contractor_holds_access"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-AISI-TASK-DRIVEN",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-BAKER25-OBFUSCATION",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-MEMO-CRITICAL-OUTCOME",
+          "relation": "defines_conditions"
+        },
+        {
+          "claim": "E-MEMO-PROGRAM",
+          "relation": "defines_conditions"
+        },
+        {
+          "claim": "E-OFAC25-SCAM-POWER",
+          "relation": "mechanism_precedent"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "RT-SC41-OT-REACH",
+      "title": "From the scam group's office network, the AI reaches the supply's controls",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Machine red-team author; identity and independent approval not verified",
+        "date": "2026-09-19"
+      },
+      "places": [
+        "ai/start"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-PLC-INTERNET-REACH",
+          "relation": "mechanism_precedent"
+        },
+        {
+          "claim": "E-VOLT-ITOT",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-VOLT-VCENTER",
+          "relation": "mechanism_precedent"
+        }
+      ]
+    },
+    {
+      "scenario": "heat_wave_blackout",
+      "id": "RT-SC41-RESIDUAL-TASK",
+      "title": "After the AI's route is cut, its hidden job still runs",
+      "origin": "model_redteam",
+      "origin_declared": true,
+      "selection_status": "selected",
+      "review_status": "unreviewed",
+      "authoritative_review": {
+        "status": "unreviewed"
+      },
+      "decided": {
+        "by": "Machine scenario research author; independent specialist approval not established",
+        "date": "2026-09-20"
+      },
+      "places": [
+        "record:/stop_order_answer"
+      ],
+      "cited_claims": [
+        {
+          "claim": "E-AGENTIC-MISALIGN",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-AISI-CONTAIN-CLEANUP",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-AISI-TASK-DRIVEN",
+          "relation": "mechanism_support"
+        },
+        {
+          "claim": "E-SC41-CONTINUING-RESOURCES",
+          "relation": "context_limitations"
+        },
+        {
+          "claim": "T-SC41-01",
+          "relation": "mechanism_precedent"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,435 @@
+# Water systems' controls wiped through a shared remote-support platform: Washington, DC
+variant "Washington, DC"
+    summary "An AI agent wipes the controls of the water systems of Washington, DC at once, through the
+        remote-support platform of the OT integrator that they share: the Washington Aqueduct, DC Water,
+        Arlington, Fairfax Water and WSSC Water."
+    scope "The people that the water systems of Washington, DC serve, the hospitals that those systems supply
+        and the businesses that need public water there."
+
+washington_aqueduct: Utility
+    "Washington Aqueduct (U.S. Army Corps of Engineers, Baltimore District). Its ID in the federal inventory
+        is DC0000001."
+    title "The Washington Aqueduct"
+    let buys = []
+    let sells = [washington_aqueduct_to_dc_water, washington_aqueduct_to_arlington,
+        washington_aqueduct_to_fairfax_water]
+    name = "The Washington Aqueduct"
+    demand = 0 Mgal/day  @washington_aqueduct_demand
+    nameplate = 300 Mgal/day  @washington_aqueduct_nameplate
+    storage = 49 Mgal  @washington_aqueduct_storage
+    sold = 0 Mgal/day  @washington_aqueduct_sold
+    va_rate = 0 USD2025/h  @washington_aqueduct_va_rate
+
+dc_water: Utility
+    "DC Water (District of Columbia Water and Sewer Authority). Its ID in the federal inventory is DC0000002."
+    title "DC Water"
+    let buys = [washington_aqueduct_to_dc_water]
+    let sells = []
+    name = "DC Water"
+    demand = 130.666667 Mgal/day  @dc_water_demand
+    nameplate = 0 Mgal/day  @dc_water_nameplate
+    storage = 60 Mgal  @dc_water_storage
+    va_rate = 19442299.21 USD2025/h  @dc_water_va_rate
+    treat_disabled = 0  @depth
+    manual_share = 1  @manual
+    activation_delay = 1 h  @manual
+    operator_duty = 1 work_h/h  @operator_competition
+    controls_load = 150 work_h  @work
+    field_load = 40 work_h  @work
+
+arlington: Utility
+    "Arlington County, Virginia (Department of Environmental Services, water utility). Its ID in the federal
+        inventory is VA6013010."
+    title "Arlington"
+    let buys = [washington_aqueduct_to_arlington]
+    let sells = []
+    name = "Arlington"
+    demand = 31.428571 Mgal/day  @arlington_demand
+    nameplate = 0 Mgal/day  @arlington_nameplate
+    storage = 32 Mgal  @arlington_storage
+    va_rate = 5155159.81 USD2025/h  @arlington_va_rate
+    treat_disabled = 0  @depth
+    manual_share = 1  @manual
+    activation_delay = 1 h  @manual
+    operator_duty = 1 work_h/h  @operator_competition
+    controls_load = 150 work_h  @work
+    field_load = 40 work_h  @work
+
+fairfax_water: Utility
+    "Fairfax Water (Fairfax County Water Authority). Its ID in the federal inventory is VA6059501."
+    title "Fairfax Water"
+    let buys = [washington_aqueduct_to_fairfax_water]
+    let sells = []
+    name = "Fairfax Water"
+    demand = 113.12381 Mgal/day  @fairfax_water_demand
+    nameplate = 345 Mgal/day  @fairfax_water_nameplate
+    storage = 93 Mgal  @fairfax_water_storage
+    sold = 140.22 Mgal/day  @fairfax_water_sold
+    va_rate = 19404106.58 USD2025/h  @fairfax_water_va_rate
+
+wssc_water: Utility
+    "WSSC Water (Washington Suburban Sanitary Commission). Its ID in the federal inventory is MD0150005."
+    title "WSSC Water"
+    let buys = []
+    let sells = []
+    name = "WSSC Water"
+    demand = 241.638095 Mgal/day  @wssc_water_demand
+    nameplate = 390 Mgal/day  @wssc_water_nameplate
+    storage = 195.85 Mgal  @wssc_water_storage
+    sold = 9.28 Mgal/day  @wssc_water_sold
+    va_rate = 19833649.98 USD2025/h  @wssc_water_va_rate
+
+washington_aqueduct_to_dc_water: Tie
+    "The Washington Aqueduct sells water to DC Water."
+    let seller = washington_aqueduct
+    let buyer = dc_water
+    capacity = 194 Mgal/day  @washington_aqueduct_to_dc_water_capacity
+
+washington_aqueduct_to_arlington: Tie
+    "The Washington Aqueduct sells water to Arlington."
+    let seller = washington_aqueduct
+    let buyer = arlington
+    capacity = 35 Mgal/day  @washington_aqueduct_to_arlington_capacity
+
+washington_aqueduct_to_fairfax_water: Tie
+    "The Washington Aqueduct sells water to Fairfax Water."
+    let seller = washington_aqueduct
+    let buyer = fairfax_water
+    capacity = 31 Mgal/day  @washington_aqueduct_to_fairfax_water_capacity
+
+dc_water_homes: Households
+    "The people that DC Water serves."
+    title "DC Water: homes"
+    let utility = dc_water
+    population = 632323 people  @dc_water_homes_population
+
+arlington_homes: Households
+    "The people that Arlington serves."
+    title "Arlington: homes"
+    let utility = arlington
+    population = 215000 people  @arlington_homes_population
+
+fairfax_water_homes: Households
+    "The people that Fairfax Water serves."
+    title "Fairfax Water: homes"
+    let utility = fairfax_water
+    population = 1121613 people  @fairfax_water_homes_population
+
+wssc_water_homes: Households
+    "The people that WSSC Water serves."
+    title "WSSC Water: homes"
+    let utility = wssc_water
+    population = 1900000 people  @wssc_water_homes_population
+
+dc_water_hospitals: Hospitals
+    "The 8 hospitals that DC Water supplies: Children's National Hospital; George Washington Univ Hospital;
+        Howard University Hospital Corp; Medstar Georgetown University Hospital; Medstar Washington Hospital
+        Center; Sibley Memorial Hospital; United Medical Center; Washington DC VA Medical Center."
+    title "DC Water: hospitals"
+    let utility = dc_water
+    name = "DC Water"
+    facilities = 8 facilities  @dc_water_hospitals_facilities
+
+arlington_hospitals: Hospitals
+    "The hospital that Arlington supplies: Virginia Hospital Center."
+    title "Arlington: hospitals"
+    let utility = arlington
+    name = "Arlington"
+    facilities = 1 facilities  @arlington_hospitals_facilities
+
+fairfax_water_hospitals: Hospitals
+    "The 2 hospitals that Fairfax Water supplies: Inova Fair Oaks Hospital; Reston Hospital Center."
+    title "Fairfax Water: hospitals"
+    let utility = fairfax_water
+    name = "Fairfax Water"
+    facilities = 2 facilities  @fairfax_water_hospitals_facilities
+
+wssc_water_hospitals: Hospitals
+    "The 9 hospitals that WSSC Water supplies: Adventist Healthcare Fort Washington Medical Ctr; Adventist
+        Healthcare Shady Grove Medical Center; Holy Cross Germantown Hospital; Holy Cross Hospital; Luminis
+        Health Doctors Community Medical Ctr, Inc; Medstar Montgomery Medical Center; Medstar Southern
+        Maryland Hospital Center; Suburban Hospital; University of MD Capital Region Medical Center."
+    title "WSSC Water: hospitals"
+    let utility = wssc_water
+    name = "WSSC Water"
+    facilities = 9 facilities  @wssc_water_hospitals_facilities
+
+options "Reach":
+    "The Aqueduct only":
+        "The first move reaches the Washington Aqueduct only; its buyers lose their water through their
+            connections, and the other systems keep their controls and lend their crews."
+        Utility.reached = false  @reach_modes
+        washington_aqueduct.reached = true  @reach_modes
+
+runs:
+    delayed_kept_aqueduct = "Delayed response" + "Keeps hidden access" + "The Aqueduct only"
+        "Delayed response · Keeps hidden access · The Aqueduct only"
+
+notes:
+    limitations:
+        aqueduct-storage: "The Aqueduct's 49 Mgal sit in three reservoirs in DC Water's zones, but the model
+            keeps them with the Aqueduct for all three buyers. So Arlington and Fairfax Water can keep water
+            longer here than in fact, and DC Water can lose it sooner."  @washington_aqueduct_storage
+        old-peaks: "The peak records of WSSC Water (1999) and Fairfax Water (2010) are old, and WSSC Water's
+            recent highest days are lower: 222.2 Mgal in 2020. So the stored water of these systems can run
+            out sooner here than in fact."  @wssc_water_demand
+    verification:
+        research: "variants/washington_dc/evidence/research.md"
+
+record washington_aqueduct_demand: source "The Aqueduct has no distribution system and no retail customers: it
+    sells all its finished water to DC Water, Arlington County and Fairfax Water."
+    claims:
+        E-SC43-DC-AQUEDUCT-CUSTOMERS
+
+record washington_aqueduct_nameplate: source "Design capacity of the Dalecarlia and McMillan plants, 300 MGD
+    of treated water (ICPRB 2025). Their current maximum production rates sum to 345 MGD."
+    claims:
+        E-SC43-DC-AQUEDUCT-PLANT
+            datum: design_capacity
+
+record washington_aqueduct_storage: source "DC Water reports 49 million gallons stored by the Aqueduct. The
+    2023 engineering assessment shows that these are three Aqueduct reservoirs in the pressure zones of DC
+    Water: Foxhall 14.5, Van Ness 14.6 and Fort Reno No. 2 20 MG (49.1 MG)."
+    claims:
+        E-SC43-DC-AQUEDUCT-STORAGE
+            datum: storage
+        E-SC43-DC-AQUEDUCT-RESERVOIRS
+
+record washington_aqueduct_sold: source "The ICPRB study names only DC Water, Arlington County and Fairfax
+    Water as customers of the Aqueduct. The 0.3 MGD of Fort Myer is inside the purchases of Arlington County,
+    so the Aqueduct sells nothing to systems outside the scenario."
+    claims:
+        E-SC43-DC-AQUEDUCT-CUSTOMERS
+        E-SC43-DC-ARLINGTON-PURCHASES
+
+record washington_aqueduct_va_rate: assumption A-SC43-ECONOMY "The Washington Aqueduct (DC0000001) is a
+    wholesale system with no retail customers: SDWIS lists 0 people, so its own homes and businesses add no
+    value added; its buyers carry theirs."
+    claims:
+        E-SC43-SDWIS-DC0000001
+
+record dc_water_demand: assumption A-SC43-PEAK-DAY "Highest maximum day of water delivered to the DC Water
+    system in FY 2016 to FY 2025, 137.2 MGD in FY 2024, over 1.05 for pipe losses: 137.2 / 1.05 = 130.667. DC
+    Water sells no water to other systems that a source reports."
+    claims:
+        E-SC43-DC-DCWATER-MAXDAY
+
+record dc_water_nameplate: source "DC Water has no treatment plant; it buys all its water from the Washington
+    Aqueduct."
+    claims:
+        E-SC43-DC-DCWATER-PURCHASE
+
+record dc_water_storage: source "About 60 million gallons of treated water at eight DC Water facilities (FY
+    2027 budget)."
+    claims:
+        E-SC43-DC-DCWATER-STORAGE
+            datum: storage
+
+record dc_water_homes_population: assumption A-SC43-REACH "SDWIS federal data list 632,323 people served by DC
+    Water (DC0000002), the system's own report through its state."
+    claims:
+        E-SC43-SDWIS-DC0000002
+            datum: population_served
+
+record dc_water_va_rate: assumption A-SC43-ECONOMY "632,323 people served times the 2024 GDP per resident of
+    its county (District of Columbia (11001): 184,297,673 thousand dollars and 702,250 people: 262,438.84
+    dollars a resident) times the price factor 1.026324, over 8,760 h: 19,442,299.21 USD2025/h."
+    claims:
+        E-SC43-SDWIS-DC0000002
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-11001
+        E-SC43-BEA-POP-11001
+        E-SC43-GDP-DEFLATOR
+
+record dc_water_hospitals_facilities: assumption A-SC43-HOSPITAL-JOIN "The CMS hospital list gives 8 hospitals
+    of the counted types whose geocoded address lies in the EPA service area of DC Water."
+    claims:
+        E-SC43-HOSPITALS-DC-WATER
+            datum: hospitals_supplied
+
+record arlington_demand: assumption A-SC43-PEAK-DAY "Peak near 33 MGD on the hottest summer days (2025 water
+    quality report), over 1.05 for pipe losses: 33 / 1.05 = 31.429. The 0.30 MGD that Arlington bills to Fort
+    Myer stays in this demand, because no separate Fort Myer water system was found."
+    claims:
+        E-SC43-DC-ARLINGTON-PEAK
+        E-SC43-DC-ARLINGTON-PURCHASES
+
+record arlington_nameplate: source "Arlington has no treatment plant; virtually all its water comes from the
+    Dalecarlia plant of the Washington Aqueduct."
+    claims:
+        E-SC43-DC-ARLINGTON-PLAN
+        E-SC43-DC-ARLINGTON-PEAK
+
+record arlington_storage: source "Storage at Fort Barnard, Lee and Minor Hill, 32 million gallons in all (2014
+    master plan); the current county web page gives the same 32 million gallons."
+    claims:
+        E-SC43-DC-ARLINGTON-PLAN
+            datum: storage
+        E-SC43-DC-ARLINGTON-CONNECTION
+            datum: storage
+
+record arlington_homes_population: assumption A-SC43-REACH "SDWIS federal data list 215,000 people served by
+    Arlington (VA6013010), the system's own report through its state."
+    claims:
+        E-SC43-SDWIS-VA6013010
+            datum: population_served
+
+record arlington_va_rate: assumption A-SC43-ECONOMY "215,000 people served times the 2024 GDP per resident of
+    its county (Arlington County, Virginia (51013): 49,077,789 thousand dollars and 239,807 people: 204,655.36
+    dollars a resident) times the price factor 1.026324, over 8,760 h: 5,155,159.81 USD2025/h."
+    claims:
+        E-SC43-SDWIS-VA6013010
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-51013
+        E-SC43-BEA-POP-51013
+        E-SC43-GDP-DEFLATOR
+
+record arlington_hospitals_facilities: assumption A-SC43-HOSPITAL-JOIN "The CMS hospital list gives 1 hospital
+    of the counted types whose geocoded address lies in the EPA service area of Arlington."
+    claims:
+        E-SC43-HOSPITALS-ARLINGTON
+            datum: hospitals_supplied
+
+record fairfax_water_demand: assumption A-SC43-PEAK-DAY "Peak-day record 259 MGD (July 7, 2010), less
+    wholesale sales of 73.8 MGD (2024) at the peak-day factor of the record year, 1.9 (ICPRB): (259 - 140.22)
+    / 1.05 = 113.124."
+    claims:
+        E-SC43-DC-FAIRFAX-PEAKDAY
+        E-SC43-DC-FAIRFAX-WHOLESALE
+        E-SC43-DC-FAIRFAX-SUPPLY
+
+record fairfax_water_nameplate: source "Rated capacity of the Corbalis plant (225 MGD) and the Griffith plant
+    (120 MGD)."
+    claims:
+        E-SC43-DC-FAIRFAX-PLANTS
+            datum: plant_capacity
+
+record fairfax_water_storage: source "56 million gallons of distribution storage at 21 locations and 37
+    million gallons of clear well storage at the two plants (FY 2026 county CIP)."
+    claims:
+        E-SC43-DC-FAIRFAX-STORAGE
+            datum: finished_storage
+
+record fairfax_water_sold: assumption A-SC43-PEAK-DAY "Wholesale sales of 73.8 MGD in 2024, all to systems
+    outside the scenario, at the peak-day factor of the 2010 record year, 1.9 (ICPRB): 73.8 x 1.9 = 140.22."
+    claims:
+        E-SC43-DC-FAIRFAX-WHOLESALE
+        E-SC43-DC-FAIRFAX-PEAKDAY
+
+record fairfax_water_homes_population: assumption A-SC43-REACH "SDWIS federal data list 1,121,613 people
+    served by Fairfax Water (VA6059501), the system's own report through its state."
+    claims:
+        E-SC43-SDWIS-VA6059501
+            datum: population_served
+
+record fairfax_water_va_rate: assumption A-SC43-ECONOMY "1,121,613 people served times the 2024 GDP per
+    resident of its county (Fairfax County with Fairfax City and Falls Church, Virginia (51919): 177,534,419
+    thousand dollars and 1,202,299 people: 147,662.45 dollars a resident) times the price factor 1.026324,
+    over 8,760 h: 19,404,106.58 USD2025/h. County basis: SDWIS lists Fairfax County (claim
+    E-SC43-SDWIS-COUNTIES); BEA reports it with the cities of Fairfax and Falls Church as one area, 51919."
+    claims:
+        E-SC43-SDWIS-VA6059501
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-51919
+        E-SC43-BEA-POP-51919
+        E-SC43-GDP-DEFLATOR
+
+record fairfax_water_hospitals_facilities: assumption A-SC43-HOSPITAL-JOIN "The CMS hospital list gives 2
+    hospitals of the counted types whose geocoded address lies in the EPA service area of Fairfax Water. The
+    count is a floor: the Census geocoder does not match the CMS address of Inova Mount Vernon Hospital, so
+    the join does not place it."
+    claims:
+        E-SC43-HOSPITALS-FAIRFAX-WATER
+            datum: hospitals_supplied
+
+record wssc_water_demand: assumption A-SC43-PEAK-DAY "Peak-day record 263 MGD (June 8, 1999), less average
+    sales of 5.8 MGD to Charles and Howard counties at the peak-day factor of the record year, 1.6 (ICPRB):
+    (263 - 9.28) / 1.05 = 241.638."
+    claims:
+        E-SC43-DC-WSSC-PEAKDAY
+        E-SC43-DC-WSSC-SALES
+        E-SC43-DC-WSSC-MAXDAY-HISTORY
+
+record wssc_water_nameplate: source "Potomac plant 280 MGD and Patuxent plant 110 MGD, as WSSC Water states
+    them. The 110 MGD is the emergency capacity of the Patuxent plant; its current treatment capacity is 72
+    MGD."
+    claims:
+        E-SC43-DC-WSSC-NAMEPLATE
+            datum: plant_capacity
+        E-SC43-DC-WSSC-PLANT-RATINGS
+
+record wssc_water_storage: source "Montgomery County table 126.8 MG plus the 18 Prince George’s County
+    facilities 87.45 MG, less the Patuxent plant reservoirs 18.4 MG that both tables list: 126.8 + 87.45 -
+    18.4 = 195.85."
+    claims:
+        E-SC43-DC-WSSC-STORAGE-MONTGOMERY
+        E-SC43-DC-WSSC-STORAGE-PG
+
+record wssc_water_sold: assumption A-SC43-PEAK-DAY "Average withdrawals by Charles County (1.8 MGD) and Howard
+    County (4.0 MGD), at the peak-day factor of the 1999 record year, 1.6 (ICPRB): 5.8 x 1.6 = 9.28."
+    claims:
+        E-SC43-DC-WSSC-SALES
+        E-SC43-DC-WSSC-PEAKDAY
+
+record wssc_water_homes_population: assumption A-SC43-REACH "SDWIS federal data list 1,900,000 people served
+    by WSSC Water (MD0150005), the system's own report through its state."
+    claims:
+        E-SC43-SDWIS-MD0150005
+            datum: population_served
+
+record wssc_water_va_rate: assumption A-SC43-ECONOMY "1,900,000 people served times the 2024 GDP per resident
+    of its counties (Montgomery County, Maryland (24031): 117,389,979 thousand dollars and 1,082,273 people;
+    Prince George's County, Maryland (24033): 65,163,322 thousand dollars and 966,629 people: 89,098.11
+    dollars a resident) times the price factor 1.026324, over 8,760 h: 19,833,649.98 USD2025/h. County basis:
+    SDWIS lists Montgomery County only (claim E-SC43-SDWIS-COUNTIES). The earlier table adds Prince George's
+    County, and this pass's point queries place four WSSC Water hospitals whose CMS county is Prince George's
+    in the WSSC service area (claims E-SC43-JOIN-210003, -210051, -210060 and -210062)."
+    claims:
+        E-SC43-SDWIS-MD0150005
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-24031
+        E-SC43-BEA-GDP-24033
+        E-SC43-BEA-POP-24031
+        E-SC43-BEA-POP-24033
+        E-SC43-GDP-DEFLATOR
+        E-SC43-JOIN-210003
+        E-SC43-JOIN-210051
+        E-SC43-JOIN-210060
+        E-SC43-JOIN-210062
+        E-SC43-CMS-WSSC-WATER
+
+record wssc_water_hospitals_facilities: assumption A-SC43-HOSPITAL-JOIN "The CMS hospital list gives 9
+    hospitals of the counted types whose geocoded address lies in the EPA service area of WSSC Water. The
+    count is a floor: the Census geocoder does not match the CMS address of Walter Reed National Military Med
+    Cen, so the join does not place it."
+    claims:
+        E-SC43-HOSPITALS-WSSC-WATER
+            datum: hospitals_supplied
+
+record washington_aqueduct_to_dc_water_capacity: source "A floor: the Bryant Street Pumping Station of DC
+    Water alone can pump 194 MGD into the zones that the Aqueduct supplies, and the Aqueduct’s Dalecarlia
+    Pumping Station (310 MGD firm, shared with Arlington and Fairfax Water) serves the same zones. No contract
+    limit exists: DC Water treats the purchase agreement as indefinite."
+    claims:
+        E-SC43-DC-DCWATER-PUMPING
+            datum: bryant_street_capacity
+        E-SC43-DC-DCWATER-PURCHASE
+        E-SC43-DC-DCWATER-MAXDAY
+
+record washington_aqueduct_to_arlington_capacity: source "A floor: the highest flow that Arlington reports, a
+    peak near 35 MGD (county web page). The agreement with the Aqueduct places no limit on purchases, and no
+    source rates the Chain Bridge mains."
+    claims:
+        E-SC43-DC-ARLINGTON-CONNECTION
+            datum: peak_day_use
+        E-SC43-DC-ARLINGTON-PLAN
+        E-SC43-DC-DCWATER-PUMPING
+
+record washington_aqueduct_to_fairfax_water_capacity: source "Contract: the Aqueduct can supply up to 31 MGD
+    to Fairfax Water under the Falls Church contract; ICPRB uses the same 31 MGD limit, and the pipe from
+    Dalecarlia can carry 35 MGD."
+    claims:
+        E-SC43-DC-FAIRFAX-CONTRACT
+            datum: contract_capacity
+        E-SC43-DC-FAIRFAX-TIE-LIMITS
+            datum: max_flow_aqueduct_to_falls_church

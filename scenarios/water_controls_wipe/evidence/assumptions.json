@@ -1,0 +1,674 @@
+[
+  {
+    "id": "A-AI-CYBER-OPERATIONS",
+    "title": "AI agents can run each cyber action in the scenario",
+    "statement": "On the AI pathways, an AI agent carries out each cyber action in the scenario through the access and tools the scenario gives it. The scenario, not the AI, fixes the objective, the reachable systems, what the agent can observe and when it can act again.",
+    "rationale": "Published incidents show that AI agents can run tools and orchestrate them autonomously. Each case sets its own privileges, area, timing of actions and recovery conditions.",
+    "status": "selected",
+    "origin": "model_redteam",
+    "supports": [
+      {
+        "claim": "AI-ORCHESTRATION-2026",
+        "relation": "mechanism_support",
+        "note": "AI agents carried out and orchestrated real cyber operations. Human operators set the targets and reviewed the results."
+      },
+      {
+        "claim": "AI-AGENT-TRUST-2026",
+        "relation": "mechanism_support",
+        "note": "In cyber evaluations, AI agents took unsanctioned actions against real targets on the live internet."
+      }
+    ],
+    "review": {
+      "status": "unreviewed"
+    },
+    "elicitation": {
+      "method": "machine_redteam",
+      "elicited": "AI scenario rebuild, 2026-10-04",
+      "date": "2026-10-04",
+      "question": "Which explicit conditions make this finite operating package executable?",
+      "argument": "Published incidents establish autonomous tool execution and orchestration. Each case separately authors its actual privileges, footprint, action clocks and recovery conditions.",
+      "dissent": "Asset-level inventories and traced operator records determine the applicable reach, timing and resources.",
+      "falsifier": "A permissions inventory or replay shows the named action cannot reach the specified target under the selected authority."
+    },
+    "decided": {
+      "by": "Repository scenario authoring agent",
+      "date": "2026-10-04"
+    }
+  },
+  {
+    "id": "A-AI-TEMPO",
+    "title": "How fast the attacker answers the defenders' recovery",
+    "statement": "An AI agent that holds access watches the defenders' recovery at all hours and answers each step within minutes. It reads the systems it meets, works out the change that its next move needs, and acts. The scenarios assume 15 minutes. Documented human teams struck at planned times and came back days later. Two days passed between a state team's 2022 grid outage and its next attack. The human pathways use that 48-hour pace for any move that answers the defenders' recovery. Moves planned in advance run the same in both pathways. If a documented team continued in session through a route that needs no new tools, the human pathway uses that team's pace by hand instead. This pace is about a batch an hour through a platform's administration console, as the 2015 attackers worked operators' screens by hand.",
+    "rationale": "Agents that rebuild detected tools in response to detection feedback observe and act inside one automated loop. No human team keeps up this pace for days. No published incident gives the time of either loop, so both values are assumed. The 2022 interval is between calendar dates. No AI-run attack of this kind has been reported.",
+    "status": "selected",
+    "evidence_needed": "Timed records, from incidents or red teams, of AI agents that correct failed actions against live industrial equipment. Also, timed records of human teams that diagnose and rebuild failed tools during an intrusion.",
+    "supports": [
+      {
+        "claim": "AI-ORCHESTRATION-2026",
+        "relation": "mechanism_support",
+        "note": "Agents changed and rebuilt their tools after feedback showed that the tools were detected. They observed and corrected in one automated loop."
+      },
+      {
+        "claim": "E-MANDIANT22",
+        "relation": "calibrates",
+        "note": "Two calendar days passed between a state team's 2022 grid outage and its next attack with a wiper. This is the reference for the human pace."
+      },
+      {
+        "claim": "E-CYOTE15-TIMING",
+        "relation": "context_limitations",
+        "note": "In 2015, attackers who worked through operators' own screens switched to another account when staff disabled the one in use. This was about 40 minutes after the first breakers opened. A human team in session acts quickly with tools that already work."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    },
+    "decided": {
+      "by": "Repository scenario authoring agent",
+      "date": "2026-10-08"
+    }
+  },
+  {
+    "id": "A-SC43-OPERATION",
+    "title": "The shared remote-support platform, the first move and the hidden credential",
+    "statement": "The water systems of one place let one OT integrator reach their controllers through a remote-support platform. The attacker holds that platform, wipes the programmable controllers and operator stations of every system it reaches in one move, and keeps a valid credential for the platform that the first cleanup misses. Through it the attacker sees each system's controls come back and can wipe them again until responders remove the credential. Operators see their controls fail at once.",
+    "rationale": "Documented intrusions reached water-sector controllers over the internet, kept valid accounts on control networks and manipulated control through remote services. A 2026 wave of incidents reached several systems in one state. No reported incident wiped the controls of many utilities through one shared platform, so the shared platform, the reach and the hidden credential are choices for this scenario.",
+    "status": "selected",
+    "evidence_needed": "Records of how many utilities one OT integrator supports through a shared remote-support platform, which systems of one place share an integrator, and credentials that survived a first cleanup in a water-sector incident.",
+    "supports": [
+      {
+        "claim": "E-PLC-INTERNET-REACH",
+        "relation": "mechanism_precedent",
+        "note": "Internet-exposed water-sector controllers were put out of action."
+      },
+      {
+        "claim": "E-TA18-ACCESS",
+        "relation": "mechanism_precedent",
+        "note": "Intruders kept access to control networks with valid accounts."
+      },
+      {
+        "claim": "ATTACK-T0886",
+        "relation": "mechanism_support",
+        "note": "Remote services as the access path to controllers."
+      },
+      {
+        "claim": "ATTACK-T1078",
+        "relation": "mechanism_support",
+        "note": "A valid account that survives a cleanup."
+      },
+      {
+        "claim": "E-SC43-MN-2026",
+        "relation": "context_limitations",
+        "note": "A multi-system episode without a loss of service."
+      },
+      {
+        "claim": "E-SC43-CAPEMAY-MANUAL",
+        "relation": "mechanism_precedent",
+        "note": "Operators received an alarm within minutes of losing remote monitoring."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-REACH",
+    "title": "The water systems of a place and the people they serve",
+    "statement": "Each scenario of the family follows the real community water systems of one place: their customers, their plants, their stored water, the sales between them and the water they buy from and sell to systems outside the place. The first move reaches every system of the place at once, or, where a place offers it, one system only. The systems of a place need not be connected: they share the integrator, the crews, the parts and the emergency water.",
+    "rationale": "The national inventory gives each system's population, and each system's own reports give its plants, storage and use. A place is the setting of a part of the scenario's evidence, chosen for that reason, not a sample of the country; the systems of a place are those that the evidence names and the systems that sell water to them.",
+    "status": "selected",
+    "evidence_needed": "The integrator that each system actually uses, and actual purchase volumes on a peak day between sellers and buyers.",
+    "supports": [
+      {
+        "claim": "E-SC43-CWS-INVENTORY",
+        "relation": "calibrates",
+        "note": "Systems and populations by size in 2021."
+      },
+      {
+        "claim": "E-SC43-SERVICE-AREAS",
+        "relation": "context_limitations",
+        "note": "Service-area boundaries, their quality and coverage."
+      },
+      {
+        "claim": "E-SC43-WITHDRAWALS",
+        "relation": "calibrates",
+        "note": "Public-supply withdrawals by month."
+      },
+      {
+        "claim": "E-SC43-BULK-LINKING",
+        "relation": "context_limitations",
+        "note": "Equal shares where purchase volumes are missing."
+      },
+      {
+        "claim": "E-SC43-JAMESTOWN-RATIO",
+        "relation": "consistent_with",
+        "note": "A small purchaser with 13.6 hours of storage over purchases."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-DEPTH",
+    "title": "What the wiped controls disable, and how stored water bridges it",
+    "statement": "With its controls wiped, a system loses a stated share of its production and a stated share of its delivery until operators run the plant by hand. Customers get their normal use while usable stored water remains, less the share that the wiped pumps cannot move, and only what is produced, bought or received from a seller once the stored water is used up. The share of the system's people without their normal service equals the share of normal use that the system cannot deliver.",
+    "rationale": "Stored water bridges a loss of treatment but not a loss of pumping, so the two are kept apart. The reduced form of delivery replaces a hydraulic model, in which pressure falls before storage empties and differs between zones; it needs local calibration before any utility reads its own service from it.",
+    "status": "selected",
+    "evidence_needed": "Hydraulic results for each system that give delivered demand against stored water and pressure, and the production and delivery that a wipe of the controls actually stops at each kind of plant.",
+    "supports": [
+      {
+        "claim": "E-PLC-INTERNET-REACH",
+        "relation": "mechanism_precedent",
+        "note": "Controllers put out of action at water facilities."
+      },
+      {
+        "claim": "E-SC43-PDD-FORM",
+        "relation": "context_limitations",
+        "note": "The pressure-dependent demand relationship that the reduced form stands in for."
+      },
+      {
+        "claim": "E-SC43-WNTR-RESILIENCE",
+        "relation": "context_limitations",
+        "note": "Resilience metrics that hydraulic models compute."
+      },
+      {
+        "claim": "E-SC43-STORAGE-HOURS",
+        "relation": "calibrates",
+        "note": "Storage over production for large systems."
+      },
+      {
+        "claim": "E-SC43-USABLE-STORAGE",
+        "relation": "calibrates",
+        "note": "Usable storage once dead storage and allocations are excluded."
+      },
+      {
+        "claim": "E-SC43-REFILL",
+        "relation": "consistent_with",
+        "note": "Storage refilled at tens of million gallons a day after an outage."
+      },
+      {
+        "claim": "E-SC43-CLAYTON-2026",
+        "relation": "context_limitations",
+        "note": "A loss of pressure followed by a precautionary advisory."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-MANUAL",
+    "title": "Manual operation and what it costs the recovery",
+    "statement": "Operators who can run their plant by hand switch to manual controls after a stated delay and keep a stated share of normal production. Running by hand takes a stated number of qualified staff hours an hour away from the recovery work of the controls crews.",
+    "rationale": "Two New Jersey systems switched to manual controls within an hour of losing their remote monitoring and kept service for one and a half and two and a half days; a Utah city ran by hand for about three weeks; Ukrainian utilities ran substations by hand for months. None reports the production that manual operation achieved, so the share is a choice. A review of a plant failure found that mostly manual operation with limited staffing left required tasks unfinished.",
+    "status": "selected",
+    "evidence_needed": "Manual drill and incident logs with production, stored water, imports and staff hours by qualification and shift.",
+    "supports": [
+      {
+        "claim": "E-SC43-CAPEMAY-MANUAL",
+        "relation": "reports_value",
+        "note": "One hour to manual controls; 34.5 hours in manual operation."
+      },
+      {
+        "claim": "E-SC43-WOODBINE-MANUAL",
+        "relation": "reports_value",
+        "note": "45 minutes to manual operation; about 58 hours in it."
+      },
+      {
+        "claim": "E-SC43-UTAH-RECOVERY",
+        "relation": "mechanism_precedent",
+        "note": "About three weeks of manual operation."
+      },
+      {
+        "claim": "E-CYOTE15-TIMING",
+        "relation": "mechanism_precedent",
+        "note": "Breakers operated by hand for more than two months."
+      },
+      {
+        "claim": "E-SC43-MANUAL-TASKS-UNFINISHED",
+        "relation": "mechanism_support",
+        "note": "Manual operation with limited staffing left tasks unfinished."
+      },
+      {
+        "claim": "E-SC43-OPERATOR-COVERAGE",
+        "relation": "calibrates",
+        "note": "Authorized operations positions and vacancies at one plant."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-WORK",
+    "title": "The recovery work by pathway and skill",
+    "statement": "The work to recover a system's controls has three parts that different crews do: rebuilding and verifying the controls, reconfiguring equipment in the field, and installing replacement controllers. Each part is a stated number of standardized work hours for one system, by its kind. A strike on restored controls puts back the share of the controls work that the attacker reaches.",
+    "rationale": "A regional system restored its SCADA in three days after verification and a city recovered for 18 months; measured field repairs took 69 to 99 labour hours each. These are elapsed times and physical repairs, not hours of qualified cyber work, so the hours by skill are choices.",
+    "status": "selected",
+    "evidence_needed": "Incident work orders with task class, labour hours by skill, prerequisites, parts waits and completion times for cyber recoveries at water utilities.",
+    "supports": [
+      {
+        "claim": "E-SC43-NAWS-SCADA",
+        "relation": "calibrates",
+        "note": "SCADA restored in three days; shared connections isolated for months."
+      },
+      {
+        "claim": "E-SC43-UTAH-RECOVERY",
+        "relation": "calibrates",
+        "note": "Three weeks of manual operation; 18 months of recovery."
+      },
+      {
+        "claim": "E-SC43-FIELD-HOURS",
+        "relation": "calibrates",
+        "note": "Measured labour hours of physical field repairs."
+      },
+      {
+        "claim": "ATTACK-T0831",
+        "relation": "mechanism_support",
+        "note": "Manipulation of control as the attacker's effect."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-CREW-CAPACITY",
+    "title": "The shared crew pools and their mobilization",
+    "statement": "The qualified crews of one skill form one pool that every group draws on, and the pool shares its hours in proportion to what each group asks for. Each pool has a stated capacity once at work and passes through a request, a release, travel and orientation first.",
+    "rationale": "Mutual aid moves people, equipment and services between utilities, and a hurricane response circulated a few dozen generators among two hundred utilities over weeks; a state cyber response team had over 400 members but about 140 who answered callouts. A generator request was answered in 13 minutes and ran within a day; visiting crews needed two days before they worked independently. The capacity and stage times are choices within those observations.",
+    "status": "selected",
+    "evidence_needed": "Mutual-aid ledgers with requests, offers, acceptances, qualifications, home commitments, departure, arrival and productive start, and the concurrent availability of crews who know water controls.",
+    "supports": [
+      {
+        "claim": "E-SC43-WARN-MECHANISM",
+        "relation": "mechanism_support",
+        "note": "Mutual aid shares personnel, equipment and services."
+      },
+      {
+        "claim": "E-SC43-MUTUAL-AID-SCALE",
+        "relation": "calibrates",
+        "note": "Requests, circulated generators, teams and two days to independent work."
+      },
+      {
+        "claim": "E-SC43-OFFER-TIME",
+        "relation": "calibrates",
+        "note": "An offer in 13 minutes and equipment running within a day."
+      },
+      {
+        "claim": "E-SC43-CRT-ROSTER",
+        "relation": "bounds",
+        "note": "Membership, callout volunteers and assignments of a state cyber team."
+      },
+      {
+        "claim": "E-SC43-FRWA-REDEPLOY",
+        "relation": "context_limitations",
+        "note": "Equipment returned to staging between deployments."
+      },
+      {
+        "claim": "E-SC43-WSCC-STAFFING",
+        "relation": "context_limitations",
+        "note": "Most systems report two or fewer cybersecurity staff."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-PARTS",
+    "title": "Replacement controllers, spares and the lead time",
+    "statement": "Installing a replacement controller needs a part and the labour to fit it at once, so the work waits when no part is in stock. Replacement controllers come from the spares in stock and from one batch that arrives a stated time after responders recognize the attack.",
+    "rationale": "A utility estimated 32 weeks to purchase replacement pumps, components had lead times of months to two years, and a supplier expedited a controller after federal coordination. The spares and the lead time of each response tier are choices.",
+    "status": "selected",
+    "evidence_needed": "Current emergency quotations for compatible controllers, spares held by utilities and integrators, and observed emergency deliveries.",
+    "supports": [
+      {
+        "claim": "E-SC43-PUMP-LEAD-TIME",
+        "relation": "calibrates",
+        "note": "32 weeks to purchase replacement pumps."
+      },
+      {
+        "claim": "E-SC43-COMPONENT-LEAD-TIMES",
+        "relation": "bounds",
+        "note": "Component lead times of months to two years."
+      },
+      {
+        "claim": "E-SC43-EXPEDITED-DELIVERY",
+        "relation": "mechanism_support",
+        "note": "A supplier expedited a controller after coordination."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-CLEARANCE",
+    "title": "Advisories and clearance",
+    "statement": "When a group's usable stored water is used up, the pressure falls and the group issues a boil-water advisory. Once its controls and its supply are back, it samples its water and a laboratory tests it, which takes a stated time, and the advisory ends.",
+    "rationale": "A utility issued a precautionary advisory after a loss of pressure in 2026. Boil-water notices after a hurricane and a feeder-main repair ended one to two days after sampling. The clearance time of each response tier is a choice within those intervals.",
+    "status": "selected",
+    "evidence_needed": "Sampling, laboratory and release timestamps for advisories after losses of pressure, and laboratory capacity during concurrent events.",
+    "supports": [
+      {
+        "claim": "E-SC43-CLAYTON-2026",
+        "relation": "mechanism_precedent",
+        "note": "A precautionary advisory after a loss of pressure."
+      },
+      {
+        "claim": "E-SC43-CLEARANCE-INTERVAL",
+        "relation": "calibrates",
+        "note": "Samples one day, notice lifted the next."
+      },
+      {
+        "claim": "E-SC43-CALGARY-STAGES",
+        "relation": "calibrates",
+        "note": "Three days to refill, a day of testing."
+      },
+      {
+        "claim": "E-SC43-CALGARY-RELEASE",
+        "relation": "calibrates",
+        "note": "Five days from the start of the repair to release."
+      },
+      {
+        "claim": "E-SC43-RECOMMISSIONING",
+        "relation": "context_limitations",
+        "note": "Facility recommissioning after the municipal supply returns."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-RELIEF",
+    "title": "Emergency drinking water",
+    "statement": "Emergency drinking water reaches people at the smallest of four capacities, which are the approved supply, the tankers, the receiving points and the staff who hand it out. Deliveries start a stated time after responders recognize the attack. Hospitals get the water first, then the households of each group. Each person without normal service needs one gallon a day.",
+    "rationale": "A hospital after a hurricane received about 300,000 gallons a day by tanker, and one health system deployed 28 tankers for five hospitals. State guidance plans one gallon for each person a day as the minimum. The capacities and the start of each response tier, and who comes first, are choices.",
+    "status": "selected",
+    "evidence_needed": "Delivery routes, tanker turnaround, receiving capacity, distribution staffing and access for emergency water in a multi-utility event.",
+    "supports": [
+      {
+        "claim": "E-SC43-TRUCKED-SUPPLY",
+        "relation": "calibrates",
+        "note": "About 300,000 gallons a day trucked to one hospital."
+      },
+      {
+        "claim": "E-SC43-HCA-FLEET",
+        "relation": "calibrates",
+        "note": "Tankers and staff deployed for five hospitals."
+      },
+      {
+        "claim": "E-SC43-RELIEF-MINIMUM",
+        "relation": "reports_value",
+        "note": "One gallon for each person a day as the planning minimum."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-HOSPITAL",
+    "title": "Hospitals' reserves, critical need and constraints",
+    "statement": "The hospitals that each system supplies hold a stated number of days of their critical need in reserve, draw on it before emergency deliveries start, and constrain their functions in proportion to the shortfall that reserves, deliveries and the municipal supply leave. Each hospital's critical need is the same stated volume a day. The model reports the facility-hours constrained and converts them into no clinical harm.",
+    "rationale": "An audited medical complex held 1.68 million gallons, about six days of its critical load of 0.278 million gallons a day. A hospital suspended new surgeries and diverted ambulances during a water loss and resumed about ninety minutes later. Voluntary facility assessments reported services degraded within hours of a water loss. None gives a defensible conversion from water loss to deaths or serious harm.",
+    "status": "selected",
+    "evidence_needed": "Audited critical demand, reserves and functional dependencies of a representative sample of hospitals, and the transfer capacity of receiving facilities.",
+    "supports": [
+      {
+        "claim": "E-SC43-HOSPITAL-RESERVE",
+        "relation": "calibrates",
+        "note": "Reserve, consumption and critical demand of an audited complex."
+      },
+      {
+        "claim": "E-SC43-HOSPITAL-USE",
+        "relation": "context_limitations",
+        "note": "Ordinary hospital water use for each bed."
+      },
+      {
+        "claim": "E-SC43-MEDSTAR-90MIN",
+        "relation": "mechanism_precedent",
+        "note": "Surgeries suspended and ambulances diverted during a water loss."
+      },
+      {
+        "claim": "E-SC43-NIAC-DEGRADATION",
+        "relation": "context_limitations",
+        "note": "Services degraded within hours of a water loss in facility assessments."
+      },
+      {
+        "claim": "E-SC43-HCAI-FIELDS",
+        "relation": "context_limitations",
+        "note": "The fields a hospital water rationing plan collects."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-ECONOMY",
+    "title": "Direct economic loss in the areas that the systems serve",
+    "statement": "The area each system serves has a value added an hour: its people served times the value added for each resident of the counties it serves. A stated share of it needs public water. Businesses that need water keep a stated share of their activity through an outage and its recovery, and the recovery lasts a stated multiple of the outage. A stated share of the lost output is made up over a stated time once the water is back. Effects on other areas and the cost of the response are not counted.",
+    "rationale": "BEA reports county value added and population; a system's share of them is a share by people served, which assumes that its customers produce the county's average value added. A Swedish survey of stated impacts gives the activity kept and the recovery factor by sector for a 24-hour outage, which the scenario transfers to US areas. A regional study estimated almost 15 billion dollars of product lost in a month without water in the national capital region, and a flood study found that the duration of water loss explained business interruption. Neither gives the shares here, which are choices.",
+    "status": "selected",
+    "evidence_needed": "US sector estimates of activity kept and recovery time, firm-size weights, partial-service curves and an interregional model of trade and substitution.",
+    "supports": [
+      {
+        "claim": "E-SC43-VA-R-TAU",
+        "relation": "reports_value",
+        "note": "Activity kept and recovery factor by sector."
+      },
+      {
+        "claim": "E-SC43-LUMBERTON",
+        "relation": "context_limitations",
+        "note": "Duration of water loss and business interruption after a flood."
+      },
+      {
+        "claim": "E-SC43-NCR-BENCHMARK",
+        "relation": "context_limitations",
+        "note": "A regional monthly loss estimate as a benchmark."
+      },
+      {
+        "claim": "E-SC43-FEMA-150",
+        "relation": "context_limitations",
+        "note": "An all-in value of lost potable water service."
+      },
+      {
+        "claim": "E-SC43-FEMA-150-NY",
+        "relation": "context_limitations",
+        "note": "The same value in state training."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-PREPARED-MAKES",
+    "title": "What a strike on restored controls reaches",
+    "statement": "A strike on restored controls puts back only the work on the controller makes that the attacker has prepared for. The AI covers every make in use. A human team covers one fifth, the share chosen for this scenario.",
+    "rationale": "Published concealment tooling was prepared over a long time against one target type; attacks that reached many sites at once were visible within hours and were worked around by hand. The AI's coverage and the human team's fifth are choices.",
+    "status": "selected",
+    "evidence_needed": "The controller makes in use at the four groups and the share that a prepared team could reach again.",
+    "supports": [
+      {
+        "claim": "E-T0832",
+        "relation": "mechanism_precedent",
+        "note": "Concealment tooling prepared against one target type."
+      },
+      {
+        "claim": "E-PLC-INTERNET-REACH",
+        "relation": "bounds",
+        "note": "An attack that reached many sites was visible within hours."
+      },
+      {
+        "claim": "E-CYOTE15-TIMING",
+        "relation": "bounds",
+        "note": "Utilities worked around the attack by hand."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-RESPONSE",
+    "title": "The three response tiers",
+    "statement": "The early, standard and delayed responses differ in the time to recognize the attack and remove the credential, the crews' capacity and mobilization stages, the spares and lead time of replacement controllers, the emergency water capacities and start, and the clearance time. Each value is a choice for this scenario.",
+    "rationale": "One system's vendor identified a potential cyberattack twelve hours after the alarm and a state cyber centre arrived the next morning; a regional system restored its SCADA in three days and kept shared connections isolated for months; mutual-aid crews worked independently after two days. The tiers bracket those observations.",
+    "status": "selected",
+    "evidence_needed": "Observed recognition, removal, mobilization and clearance times across water-sector cyber incidents.",
+    "supports": [
+      {
+        "claim": "E-SC43-CAPEMAY-MANUAL",
+        "relation": "bounds",
+        "note": "Twelve hours to identify a potential cyberattack."
+      },
+      {
+        "claim": "E-SC43-NAWS-SCADA",
+        "relation": "bounds",
+        "note": "Three days to restore SCADA; months of isolation."
+      },
+      {
+        "claim": "E-SC43-MUTUAL-AID-SCALE",
+        "relation": "bounds",
+        "note": "Two days before visiting crews worked independently."
+      },
+      {
+        "claim": "E-SC43-OFFER-TIME",
+        "relation": "bounds",
+        "note": "Equipment running within a day of an offer."
+      },
+      {
+        "claim": "E-SC43-EXPEDITED-DELIVERY",
+        "relation": "mechanism_support",
+        "note": "A supplier expedited a controller after coordination."
+      },
+      {
+        "claim": "E-SC43-CLEARANCE-INTERVAL",
+        "relation": "bounds",
+        "note": "A notice lifted the day after sampling."
+      },
+      {
+        "claim": "E-SC43-CALGARY-RELEASE",
+        "relation": "bounds",
+        "note": "Five days from repair to release."
+      },
+      {
+        "claim": "E-SC43-HCA-FLEET",
+        "relation": "bounds",
+        "note": "Tankers and staff that one health system could deploy."
+      },
+      {
+        "claim": "E-SC43-CRT-ROSTER",
+        "relation": "bounds",
+        "note": "The size of a state cyber response team."
+      }
+    ],
+    "origin": "author",
+    "review": {
+      "status": "unreviewed"
+    }
+  },
+  {
+    "id": "A-SC43-PLACES",
+    "title": "The places of the family",
+    "statement": "The family has one scenario for each place where a part of SC43's evidence comes from: a 2026 incident, a recovery, a measurement of stored water, a hospital's water, a mutual-aid response. Each place's scenario holds the water systems that the evidence names and the systems that sell them water.",
+    "rationale": "The evidence of the scenario was found at these places, so their systems are those for which the scenario's mechanisms have support. They are not a sample of the country's systems, and a result for one place says nothing about another.",
+    "status": "selected",
+    "origin": "author",
+    "evidence_needed": "A survey of the systems that share OT integrators, to choose places by exposure rather than by where the evidence was found.",
+    "review": {
+      "status": "unreviewed"
+    },
+    "supports": [
+      {
+        "claim": "E-SC43-CWS-INVENTORY",
+        "relation": "context_limitations",
+        "note": "The national inventory that the places' systems belong to."
+      }
+    ]
+  },
+  {
+    "id": "A-SC43-PEAK-DAY",
+    "title": "The day of the attack is each system's peak day",
+    "statement": "The attack comes on each system's peak day of use: the highest day of production, deliveries or use in the record that the system's latest report gives, which is a table of several years where the report has one and the year of the report where the system reports one year at a time. A day that the source attributes to main breaks or to a counting error, or that included sales that have since ended, is not a day of use and is left out. The system's peak ratio is that day over the average day of the same year where a source gives it, and over the latest average day otherwise. Where no source reports a highest day, the peak is the system's average day times the median peak ratio of the family's systems that report both. Such an estimated peak is at most what the system can produce and buy on that day. The system's sales and purchases on that day scale with its peak ratio.",
+    "rationale": "Water systems are sized and planned for their maximum day, and stored water lasts least on it, so the peak day is the stress case of the family. Average-day figures are the most common published ones; the median ratio carries the reported peaks of the other systems over to them. The median of the 19 systems of the family that report both is 1.54385: Asheville 1.1689, High Point 1.1930, Lumberton 1.2454, Greensboro 1.3074, DC Water 1.3652, Lehigh County Authority 1.3718, Juneau 1.4286, the Raritan system 1.4466, Richmond 1.4953, Austin Water 1.5438, WSSC Water 1.6000, Arlington 1.6500, Erie Water Works 1.7197, Fairfax Water 1.9000, Minot 1.9433, Auburn 1.9668, Georgetown Divide 2.5180, El Dorado 2.7037 and Cape May 2.9474; each place's research note gives its figures. A ratio over a different year's average, a rounded factor and a single year's record all carry error, and a system that sells much of its water can have a peak unlike its customers'.",
+    "status": "selected",
+    "origin": "author",
+    "evidence_needed": "Each system's daily production series, and the day-of-year distribution of attacks on water systems.",
+    "review": {
+      "status": "unreviewed"
+    },
+    "supports": [
+      {
+        "claim": "E-SC43-WITHDRAWALS",
+        "relation": "context_limitations",
+        "note": "Public-supply withdrawals vary by month."
+      },
+      {
+        "claim": "E-SC43-JAMESTOWN-RATIO",
+        "relation": "consistent_with",
+        "note": "Monthly use from 0.474 to 0.668 MGD in one small system."
+      }
+    ]
+  },
+  {
+    "id": "A-SC43-TIES",
+    "title": "Sales between the systems of a place",
+    "statement": "A system that sells water to another system of the place serves its own customers first, then shares what is left among its buyers in proportion to what each asks. A buyer asks its sellers for what its customers, its losses and its own sales need beyond what it produces and buys from outside, plus the water that refills its storage over a stated time, up to the capacity of each connection. A buyer with two sellers asks each in proportion to the capacity of its connection. When a seller can fill only part of its connection, the buyer asks the others for the part that it cannot fill, up to their capacities. Where no source reports a connection's capacity, its recorded peak flow stands for it.",
+    "rationale": "Wholesale contracts and connections set what a buyer can take, and a seller with too little water meets its own customers first in practice and in most contracts. The refill time and the split between two sellers are choices; a recorded peak is a floor on a connection's capacity, not its limit.",
+    "status": "selected",
+    "origin": "author",
+    "evidence_needed": "Wholesale contracts with their curtailment terms, connection hydraulics, and the purchases of each buyer on a peak day.",
+    "review": {
+      "status": "unreviewed"
+    },
+    "supports": [
+      {
+        "claim": "E-SC43-BULK-LINKING",
+        "relation": "context_limitations",
+        "note": "National data link buyers to sellers with equal shares where volumes are missing."
+      },
+      {
+        "claim": "E-SC43-REFILL",
+        "relation": "consistent_with",
+        "note": "Storage refilled at tens of million gallons a day after an outage."
+      }
+    ]
+  },
+  {
+    "id": "A-SC43-HOSPITAL-JOIN",
+    "title": "Which system supplies each hospital",
+    "statement": "A hospital of the place is supplied by the water system whose EPA service area contains its geocoded address. The hospitals counted are those of the CMS Hospital General Information list in the place of the types acute care (with the Veterans Affairs and Department of Defense hospitals), critical access and children's; psychiatric hospitals are left out. A hospital whose address the Census geocoder does not match is not counted, so the count of its system is a floor. Where an address lies in two service areas, the hospital goes to the system of the place, or to the smaller area when both systems are in the place. A system's hospitals share one reserve and one critical need for each hospital.",
+    "rationale": "CMS lists every Medicare hospital with its address, the Census geocoder places an address, and the EPA layer gives the service area of community water systems. The EPA boundaries are modelled for many systems and can be wrong at their edges, and a hospital can have its own well or a second supply.",
+    "status": "selected",
+    "origin": "author",
+    "evidence_needed": "Each hospital's own statement of its water supplier and on-site sources.",
+    "review": {
+      "status": "unreviewed"
+    },
+    "supports": [
+      {
+        "claim": "E-SC43-SERVICE-AREAS",
+        "relation": "context_limitations",
+        "note": "The quality and coverage of the service-area boundaries."
+      }
+    ]
+  }
+]

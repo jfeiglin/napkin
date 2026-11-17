@@ -1,0 +1,111 @@
+# Water systems' controls wiped through a shared remote-support platform: Clayton County, Georgia
+variant "Clayton County, Georgia"
+    summary "An AI agent wipes the controls of the water system of Clayton County, Georgia through the
+        remote-support platform of the OT integrator that it uses."
+    scope "The people that the water system of Clayton County, Georgia serves, the hospitals that it supplies
+        and the businesses that need public water there."
+
+clayton_county: Utility
+    "Clayton County Water Authority, Georgia. Its ID in the federal inventory is GA0630000."
+    title "Clayton County Water Authority"
+    let buys = []
+    let sells = []
+    name = "Clayton County Water Authority"
+    demand = 39.333333 Mgal/day  @clayton_county_demand
+    nameplate = 42 Mgal/day  @clayton_county_nameplate
+    storage = 32.2 Mgal  @clayton_county_storage
+    bought = 0 Mgal/day  @clayton_county_bought
+    sold = 0.7 Mgal/day  @clayton_county_sold
+    va_rate = 3086091.63 USD2025/h  @clayton_county_va_rate
+
+clayton_county_homes: Households
+    "The people that Clayton County Water Authority serves."
+    title "Clayton County Water Authority: homes"
+    let utility = clayton_county
+    population = 298374 people  @clayton_county_homes_population
+
+clayton_county_hospitals: Hospitals
+    "The hospital that Clayton County Water Authority supplies: Southern Regional Medical Center."
+    title "Clayton County Water Authority: hospitals"
+    let utility = clayton_county
+    name = "Clayton County Water Authority"
+    facilities = 1 facilities  @clayton_county_hospitals_facilities
+
+notes:
+    limitations:
+        on-demand-connections: "The Authority can open its connections with Atlanta, DeKalb and Fayette on
+            demand, for about 8 and 2 Mgal a day. The model's purchases are the same at every hour, so it
+            cannot open them when the Authority needs water, and the interruption can be longer here than in
+            fact."  @clayton_county_bought
+        capped-peak: "No source gives Clayton's highest day, and the median estimate is above its plants' 42
+            Mgal a day, so the model takes that capacity as the peak. Water systems are sized for their
+            highest day, so the true peak is probably lower, and the stored water can run out sooner here than
+            in fact."  @clayton_county_demand
+    verification:
+        research: "variants/clayton/evidence/research.md"
+
+record clayton_county_demand: assumption A-SC43-PEAK-DAY "No source reports a highest day. The average
+    production of 28.15 MGD times the family median ratio 1.54385 gives 43.4593 MGD, more than the 42 MGD that
+    the three plants can produce, and the Authority buys no water on a normal day. So the peak is the plants'
+    capacity; less the sale to College Park (0.7 MGD, taken as its peak-day amount), over 1.05: (42 - 0.7) /
+    1.05 = 39.3333."
+    claims:
+        E-SC43-CLAYTON-CLAYTON-COUNTY-PLANTS
+        E-SC43-CLAYTON-CLAYTON-COUNTY-COLLEGE-PARK
+
+record clayton_county_nameplate: source "The three surface water plants: W.J. Hooper 20, J.W. Smith 12 and
+    Terry R. Hicks 10 MGD, 42 MGD in all, the capacity that both the 2025 financial report and the 2026-2027
+    budget give."
+    claims:
+        E-SC43-CLAYTON-CLAYTON-COUNTY-PLANTS
+            datum: production_capacity
+        E-SC43-CLAYTON-CLAYTON-COUNTY-SYSTEM
+            datum: production_capacity
+
+record clayton_county_storage: source "Three clear wells (6.7 MG), seven ground storage tanks (23 MG) and four
+    elevated tanks (2.5 MG): 32.2 MG."
+    claims:
+        E-SC43-CLAYTON-CLAYTON-COUNTY-SYSTEM
+            datum: storage_total
+        E-SC43-CLAYTON-CLAYTON-COUNTY-PLANTS
+
+record clayton_county_bought: source "The Authority produces its water from its reservoirs and the Flint
+    River. Its six connections with Atlanta (about 8 MGD, or about 5 MGD in the 2025 report) and those with
+    DeKalb and Fayette (up to 2 MGD) are for supply on demand, not routine purchases."
+    claims:
+        E-SC43-CLAYTON-CLAYTON-COUNTY-PLANTS
+        E-SC43-CLAYTON-CLAYTON-COUNTY-INTERCONNECTIONS
+        E-SC43-CLAYTON-CLAYTON-COUNTY-SYSTEM
+
+record clayton_county_sold: assumption A-SC43-PEAK-DAY "College Park, a separate water system with a permanent
+    connection from the Authority and a wholesale agreement, gets about 0.7 MGD from it according to a College
+    Park document that could not be opened. The figure is taken as the peak-day sale, without the peak ratio,
+    because it may be a capacity."
+    claims:
+        E-SC43-CLAYTON-CLAYTON-COUNTY-COLLEGE-PARK
+            datum: ccwa_supply_to_college_park
+        E-SC43-CLAYTON-CLAYTON-COUNTY-BUYERS
+        E-SC43-CLAYTON-CLAYTON-COUNTY-INTERCONNECTIONS
+
+record clayton_county_homes_population: assumption A-SC43-REACH "SDWIS federal data list 298,374 people served
+    by Clayton County Water Authority (GA0630000), the system's own report through its state."
+    claims:
+        E-SC43-SDWIS-GA0630000
+            datum: population_served
+
+record clayton_county_va_rate: assumption A-SC43-ECONOMY "298,374 people served times the 2024 GDP per
+    resident of its county (Clayton County, Georgia (13063): 26,281,522 thousand dollars and 297,703 people:
+    88,281.01 dollars a resident) times the price factor 1.026324, over 8,760 h: 3,086,091.63 USD2025/h."
+    claims:
+        E-SC43-SDWIS-GA0630000
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-13063
+        E-SC43-BEA-POP-13063
+        E-SC43-GDP-DEFLATOR
+
+record clayton_county_hospitals_facilities: assumption A-SC43-HOSPITAL-JOIN "The CMS hospital list gives 1
+    hospital of the counted types whose geocoded address lies in the EPA service area of Clayton County Water
+    Authority."
+    claims:
+        E-SC43-HOSPITALS-CLAYTON-COUNTY
+            datum: hospitals_supplied

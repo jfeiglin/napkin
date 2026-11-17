@@ -1,0 +1,32 @@
+[layout]
+card_width = 300   # wide enough for the names of the two tallies
+
+[place]
+operator  = { column = 1 }
+reservoir = { column = 2 }
+
+[icon]
+drop = ["reservoir"]
+
+[triggers]
+rules = ["operator"]
+lines = 3          # the whole rule of the choice
+
+[equations]
+things = ["reservoir"]
+width  = 640
+
+[references]
+show = true
+
+[symbol.reservoir]
+water     = "W"
+spilled   = "S"
+risk_time = "T"
+storm     = "q_in"
+spill     = "q_out"
+at_risk   = "a"
+inflow    = "i"
+spillway  = "sigma"
+risk      = "rho"
+gate      = "G"

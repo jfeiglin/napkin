@@ -1,0 +1,200 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 1,
+    "claims": 5,
+    "source_access": {
+      "accessible": 1
+    },
+    "source_status": {
+      "verified": 1,
+      "partial": 0,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 1
+    },
+    "claim_status": {
+      "verified": 5,
+      "partial": 0,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 5
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 5
+    },
+    "sources_with_retrieval": 1,
+    "claims_with_quotes": 5,
+    "claim_quote_match_records": 5,
+    "claims_reachable": 5,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "auburn_auburn2025_water_plan",
+      "title": "2024 Water System Plan",
+      "url": "https://cdnsm5-hosted.civiclive.com/UserFiles/Servers/Server_11470554/File/City%20Hall/Public%20Works/Water/Draft%20Water%20Comprehensive%20Plan%20-%20updated%20May%202025.pdf",
+      "original_url": "https://cdnsm5-hosted.civiclive.com/UserFiles/Servers/Server_11470554/File/City%20Hall/Public%20Works/Water/Draft%20Water%20Comprehensive%20Plan%20-%20updated%20May%202025.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://cdnsm5-hosted.civiclive.com/UserFiles/Servers/Server_11470554/File/City%20Hall/Public%20Works/Water/Draft%20Water%20Comprehensive%20Plan%20-%20updated%20May%202025.pdf at 2026-10-25T16:03:12Z (curl, HTTP 200, 13363763 bytes, sha256 476b8bf4a44143f24b16a6d0aebe366c790090d8f9bfff56547fccef7b278806); text by gs-10.07.1 txtwrite-pages, sha256 5a6cf14a6c3817b5e3d743e9c0fd00df3654527e2088782f10ca3be111f22fe0.",
+      "retrieval": {
+        "requested_url": "https://cdnsm5-hosted.civiclive.com/UserFiles/Servers/Server_11470554/File/City%20Hall/Public%20Works/Water/Draft%20Water%20Comprehensive%20Plan%20-%20updated%20May%202025.pdf",
+        "final_url": "https://cdnsm5-hosted.civiclive.com/UserFiles/Servers/Server_11470554/File/City%20Hall/Public%20Works/Water/Draft%20Water%20Comprehensive%20Plan%20-%20updated%20May%202025.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:03:12Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 13363763,
+        "sha256": "476b8bf4a44143f24b16a6d0aebe366c790090d8f9bfff56547fccef7b278806",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "5a6cf14a6c3817b5e3d743e9c0fd00df3654527e2088782f10ca3be111f22fe0"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-AUBURN-AUBURN-PEAK-DAY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Chapter 2, Section 2.3.2 and Table 2-9 Historical Annual ADD, MDD, Peak Day, and Peaking Factor, printed p. 2-11 (PDF p. 76); Executive Summary ES.2, printed p. ES-5 (PDF p. 29); Table ES-1, printed p. ES-6 (PDF p. 30)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Sections ES.2, 2.3.1 and 2.3.2, Tables 2-7, 2-9 and ES-1 in the extracted text of the retrieved PDF on 2026-10-25. The ratio 1.96677 is derived. The 2016 maximum day of 12.56 mgd in Table 2-9 is above the range that the executive summary gives; both are quoted.",
+          "content_sha256": "8b94b54d0315f7a303c679a08397841de57fc27a902af4ea0174950ceb30078f",
+          "retrieval_sha256": "476b8bf4a44143f24b16a6d0aebe366c790090d8f9bfff56547fccef7b278806",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 11,
+            "total": 11
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:auburn"
+          ],
+          "scenario": "water_controls_wipe:auburn"
+        },
+        {
+          "id": "E-SC43-AUBURN-AUBURN-SALES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Chapter 2, Section 2.2.2.1 Historical Wholesale Consumption, printed p. 2-6 (PDF p. 71); Table 2-6, printed p. 2-8 (PDF p. 73); Section 1.6.1.2, printed p. 1-21 (PDF p. 62); Section 3.4.1.2, printed p. 3-36 (PDF p. 141); Table ES-1, printed p. ES-6 (PDF p. 30)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Sections 1.6.1, 2.2.2.1, 2.6.2 and 3.4.1.2, Table 2-6 and Table ES-1 in the extracted text of the retrieved PDF on 2026-10-25. The 2020 daily average for Algona is derived from the annual figure.",
+          "content_sha256": "3bdd2408cdb012de5ee6e9e72668b09b0164fbe11b00ea18d1e779c86849c309",
+          "retrieval_sha256": "476b8bf4a44143f24b16a6d0aebe366c790090d8f9bfff56547fccef7b278806",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 12,
+            "total": 12
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:auburn"
+          ],
+          "scenario": "water_controls_wipe:auburn"
+        },
+        {
+          "id": "E-SC43-AUBURN-AUBURN-SOURCE-CAPACITY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Chapter 3, Table 3-19 Supply Analysis with Largest Source Out of Service and its notes, printed p. 3-36 (PDF p. 141); Table 2-12, printed p. 2-16 (PDF p. 81); Section 3.1.2.1, printed p. 3-15 (PDF p. 120)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Sections 2.5, 2.6, 3.1.2, 3.1.3 and 3.4.1, Tables 2-12, 3-5, 3-6 and 3-19 in the extracted text of the retrieved PDF on 2026-10-25. The sum of the own sources and the 9,040 gpm well total of Table 2-12 are derived.",
+          "content_sha256": "e5b8531205dfa3266115f06f53d26d592947c57d2f632f7d69143715fe5f372c",
+          "retrieval_sha256": "476b8bf4a44143f24b16a6d0aebe366c790090d8f9bfff56547fccef7b278806",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 11,
+            "total": 11
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:auburn"
+          ],
+          "scenario": "water_controls_wipe:auburn"
+        },
+        {
+          "id": "E-SC43-AUBURN-AUBURN-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Chapter 3, Section 3.1.4 Storage Facilities, printed p. 3-20 (PDF p. 125); Table 3-7 Inventory of Storage Reservoirs, printed p. 3-21 (PDF p. 126); Table 3-29 System-Wide Storage Analysis for the 2024 Scenario, printed p. 3-45 (PDF p. 150)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 3.1.4, Table 3-7, Section 3.4.2.3 and Table 3-29 in the extracted text of the retrieved PDF on 2026-10-25. The 15.8 MG sum of Table 3-7 is derived.",
+          "content_sha256": "657458ce92a2ca7355399be072606d7edb25673b374e191a96342079382c71fc",
+          "retrieval_sha256": "476b8bf4a44143f24b16a6d0aebe366c790090d8f9bfff56547fccef7b278806",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 14,
+            "total": 14
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:auburn"
+          ],
+          "scenario": "water_controls_wipe:auburn"
+        },
+        {
+          "id": "E-SC43-AUBURN-AUBURN-PURCHASES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Chapter 1, Section 1.6.1.1 City of Tacoma, printed p. 1-17 (PDF p. 58); Chapter 2, Section 2.3.1 and Table 2-7 Historical Annual Water Supply by Source, printed p. 2-10 (PDF p. 75); Section 2.6, printed p. 2-16 (PDF p. 81); Section 8.2.3.1.1, printed p. 8-9 (PDF p. 221)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Sections 1.6.1, 2.3.1, 2.6 and 8.2.3.1.1 and Table 2-7 in the extracted text of the retrieved PDF on 2026-10-25. Table 2-7 prints a dash, not a zero, for the purchases of 2017 to 2022; the text says that there were none.",
+          "content_sha256": "0930427573748eda98869333f64c97196da83e306400bb0fa9904e571c309bec",
+          "retrieval_sha256": "476b8bf4a44143f24b16a6d0aebe366c790090d8f9bfff56547fccef7b278806",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 8,
+            "total": 8
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:auburn"
+          ],
+          "scenario": "water_controls_wipe:auburn"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:auburn"
+      ],
+      "scenario": "water_controls_wipe:auburn"
+    }
+  ],
+  "scenario": "water_controls_wipe:auburn"
+}

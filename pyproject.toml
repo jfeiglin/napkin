@@ -1,0 +1,69 @@
+[project]
+name = "napkin-sim"
+version = "0.0.1"
+description = "A small typed language for simulation models, and its engine"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE.txt", "ASSET_NOTICES.md"]
+authors = [{name = "Jake Feiglin"}]
+dependencies = ["jsonschema>=4.26,<5", "numpy>=2.5,<3", "scipy>=1.18,<2"]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "pytest-xdist==3.8.0", "mpmath==1.4.1", "hypothesis==6.168.0", "ruff==0.16.9",
+       "PyYAML==6.0.3"]
+
+[project.urls]
+Repository = "https://github.com/jfeiglin/napkin"
+Issues = "https://github.com/jfeiglin/napkin/issues"
+
+[project.scripts]
+napkin = "napkin.cli:main"
+
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = false
+# The wheel ships the engine only: the language, the compiler, the engine, the draw package and the
+# `napkin` command. The catalogue (`scenarios/`), the examples and the maintainer tools (`tools/`) stay
+# in the repository. The prelude and the compiler's schemas are files of the package (`napkin/std/`,
+# `napkin/schema/`).
+packages = ["napkin", "napkin.commands", "napkin.core", "napkin.model", "napkin.model.analysis", "napkin.model.language", "napkin.model.lower", "napkin.engine",
+            "napkin.engine.continuous", "napkin.engine.timeline", "napkin.dynamics", "napkin.draw", "napkin.schema"]
+
+[tool.setuptools.package-data]
+# The prelude: the units that every model has.
+"napkin" = ["std/units.json"]
+"napkin.schema" = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "scenarios"]
+# Deep tests run by hand: python -B -m tools.check --deep (or pytest -m deep).
+addopts = "--import-mode=importlib --strict-markers -m 'not deep'"
+markers = [
+    "deep: a detailed or slow check run by hand (check --deep), never by the automatic check",
+    "scenario_contract: a central integration check restricted to the selected scenario inputs",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PLE", "PLW"]
+ignore = [
+    "E501",    # long literal strings and data tables; the formatter owns code layout
+    "RUF001",  # typographic quotes and dashes are deliberate in reader-facing text
+    "RUF002",
+    "RUF003",
+    "B023",    # nested functions here run within their defining iteration
+    "B905",    # zipped sequences are built in parallel; strictness adds noise, not safety
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["napkin", "tools", "tests", "scenarios"]

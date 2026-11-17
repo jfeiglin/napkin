@@ -1,0 +1,568 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Evidence pack",
+  "description": "Research output consumed only by tools.evidence.integrate. A source pack records what one pass retrieved and checked for one source; an assumption pack upserts or retires assumption records owned by one scenario group.",
+  "if": {
+    "required": [
+      "kind"
+    ],
+    "properties": {
+      "kind": {
+        "const": "assumptions"
+      }
+    }
+  },
+  "then": {
+    "$ref": "#/$defs/assumption_pack"
+  },
+  "else": {
+    "$ref": "#/$defs/source_pack"
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "owner": {
+      "description": "The owner of the folder that the pack writes (tools/catalogue.py): a package, `<package>` (its folder `scenarios/<package>/`), or a variant of a package, `<package>:<variant>` (its folder `scenarios/<package>/variants/<variant>/`).",
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*(:[a-z][a-z0-9_]*)?$"
+    },
+    "retrieval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_url",
+        "final_url",
+        "http_status",
+        "retrieved_at",
+        "tool",
+        "media_type",
+        "bytes",
+        "sha256",
+        "cache_path",
+        "text"
+      ],
+      "properties": {
+        "requested_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "final_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "archived_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "http_status": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 100,
+          "maximum": 599
+        },
+        "retrieved_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|\\+00:00)$"
+        },
+        "tool": {
+          "enum": [
+            "curl",
+            "archive",
+            "tinyfish",
+            "manual"
+          ]
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "cache_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "extractor",
+            "sha256",
+            "cache_path"
+          ],
+          "properties": {
+            "extractor": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "cache_path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "action",
+        "check"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "enum": [
+            "new",
+            "reverify",
+            "revise"
+          ]
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shows": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limits": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quotes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "locator",
+              "text"
+            ],
+            "properties": {
+              "locator": {
+                "type": "string",
+                "minLength": 1
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "unit"
+            ],
+            "properties": {
+              "value": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string",
+                "minLength": 1
+              },
+              "note": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ci95": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          }
+        },
+        "valid_for": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "related": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "claim",
+              "relation"
+            ],
+            "properties": {
+              "claim": {
+                "type": "string",
+                "minLength": 1
+              },
+              "relation": {
+                "$ref": "library.schema.json#/$defs/relation"
+              },
+              "note": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "check": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "opened",
+            "checked_fields",
+            "field_verdicts",
+            "notes"
+          ],
+          "properties": {
+            "opened": {
+              "type": "boolean",
+              "description": "This pass itself opened the document text the quotes come from."
+            },
+            "method": {
+              "enum": [
+                "primary_full_text",
+                "primary_indexed_extract",
+                "third_party_primary_retrieval"
+              ]
+            },
+            "retrieval_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "locator_checked": {
+              "type": "string",
+              "minLength": 1
+            },
+            "checked_fields": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "field_verdicts": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^(match|unchecked|mismatch(: .+)?)$"
+              }
+            },
+            "notes": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "new",
+                  "revise"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "locator",
+              "evidence_type",
+              "shows",
+              "limits"
+            ]
+          }
+        }
+      ]
+    },
+    "source_pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pack_version",
+        "pack_id",
+        "agent",
+        "date",
+        "source",
+        "retrievals",
+        "claims",
+        "access_failures",
+        "scenario"
+      ],
+      "properties": {
+        "pack_version": {
+          "const": "1"
+        },
+        "kind": {
+          "const": "source"
+        },
+        "pack_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "action",
+            "access"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "action": {
+              "enum": [
+                "new",
+                "reverify"
+              ]
+            },
+            "csl": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {},
+                "title": {},
+                "author": {},
+                "editor": {},
+                "issued": {},
+                "accessed": {},
+                "URL": {},
+                "DOI": {},
+                "ISBN": {},
+                "publisher": {},
+                "publisher-place": {},
+                "container-title": {},
+                "collection-title": {},
+                "volume": {},
+                "issue": {},
+                "page": {},
+                "number": {},
+                "edition": {},
+                "genre": {},
+                "language": {}
+              }
+            },
+            "access": {
+              "enum": [
+                "accessible",
+                "third_party_primary_retrieval",
+                "unavailable",
+                "site_only",
+                "indexed_extract_only"
+              ]
+            },
+            "method": {
+              "enum": [
+                "primary_full_text",
+                "primary_indexed_extract",
+                "third_party_primary_retrieval"
+              ]
+            },
+            "metadata_status": {
+              "type": "string",
+              "minLength": 1
+            },
+            "notes": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "action": {
+                    "const": "new"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "csl"
+                ],
+                "properties": {
+                  "csl": {
+                    "required": [
+                      "type",
+                      "title",
+                      "URL"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "retrievals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/retrieval"
+          }
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim"
+          }
+        },
+        "access_failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "url",
+              "tool",
+              "http_status",
+              "error"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "tool": {
+                "enum": [
+                  "curl",
+                  "archive",
+                  "tinyfish",
+                  "manual"
+                ]
+              },
+              "http_status": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 100,
+                "maximum": 599
+              },
+              "error": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "scenario": {
+          "$ref": "#/$defs/owner"
+        }
+      }
+    },
+    "assumption_pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pack_version",
+        "kind",
+        "upsert",
+        "retire",
+        "scenario"
+      ],
+      "properties": {
+        "pack_version": {
+          "const": "1"
+        },
+        "kind": {
+          "const": "assumptions"
+        },
+        "upsert": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "retire": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "mode"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mode": {
+                "enum": [
+                  "delete",
+                  "mark_replaced"
+                ]
+              },
+              "replaced_by": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "scenario": {
+          "$ref": "#/$defs/owner"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+"""Packaged project scenarios resources."""

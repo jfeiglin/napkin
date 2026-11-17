@@ -1,0 +1,409 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 6,
+    "claims": 7,
+    "source_access": {
+      "accessible": 5,
+      "third_party_primary_retrieval": 1
+    },
+    "source_status": {
+      "verified": 5,
+      "partial": 1,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 5,
+      "third_party_primary_retrieval": 1
+    },
+    "claim_status": {
+      "verified": 6,
+      "partial": 1,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 6,
+      "third_party_primary_retrieval": 1
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 6,
+      "third_party_primary_retrieval/partial": 1
+    },
+    "sources_with_retrieval": 6,
+    "claims_with_quotes": 7,
+    "claim_quote_match_records": 7,
+    "claims_reachable": 7,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "juneau_akpublic2013_cruise_water",
+      "title": "Juneau Has Cruise Industry Feeling Thirsty",
+      "url": "https://alaskapublic.org/2013/11/21/juneau-has-cruise-industry-feeling-thirsty/",
+      "original_url": "https://alaskapublic.org/2013/11/21/juneau-has-cruise-industry-feeling-thirsty/",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://alaskapublic.org/2013/11/21/juneau-has-cruise-industry-feeling-thirsty/ at 2026-10-25T17:24:13Z (curl, HTTP 200, 166480 bytes, sha256 4c9f62eb28691774beb2d7529c00ce0bc064cfaeb859539941eda2005818f330); text by html.parser-py3.14 blocks-v1, sha256 293a0432acb77fe60e7601519601ec816e616b882d609808d6634c829399b5d0.",
+      "retrieval": {
+        "requested_url": "https://alaskapublic.org/2013/11/21/juneau-has-cruise-industry-feeling-thirsty/",
+        "final_url": "https://alaskapublic.org/2013/11/21/juneau-has-cruise-industry-feeling-thirsty/",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T17:24:13Z",
+        "tool": "curl",
+        "media_type": "text/html;charset=UTF-8",
+        "bytes": 166480,
+        "sha256": "4c9f62eb28691774beb2d7529c00ce0bc064cfaeb859539941eda2005818f330",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "293a0432acb77fe60e7601519601ec816e616b882d609808d6634c829399b5d0"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JUNEAU-CBJ-PEAK",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Article text, paragraphs 3 to 19",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole story. It gives no highest day with a date and no capacity for each source; the five million gallons a day appears both as the summer peak and as the design capacity.",
+          "content_sha256": "400f4079cf56a6f860bd41e677c56321f41f8f359848d1804a38dc9a63b93b5e",
+          "retrieval_sha256": "4c9f62eb28691774beb2d7529c00ce0bc064cfaeb859539941eda2005818f330",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 7,
+            "total": 7
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:juneau"
+          ],
+          "scenario": "water_controls_wipe:juneau"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:juneau"
+      ],
+      "scenario": "water_controls_wipe:juneau"
+    },
+    {
+      "source_id": "juneau_cbj2012_water_supply_plan",
+      "title": "Municipal Drinking Water Supply Plan",
+      "url": "http://media.ktoo.org/2016/07/FINAL-Municipal-Drinking-Water-Supply-Plan.pdf",
+      "original_url": "http://media.ktoo.org/2016/07/FINAL-Municipal-Drinking-Water-Supply-Plan.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved http://media.ktoo.org/2016/07/FINAL-Municipal-Drinking-Water-Supply-Plan.pdf at 2026-10-25T16:39:40Z (curl, HTTP 200, 929153 bytes, sha256 24108b6e65e97937276cb8d032bd0c578fafd04758f9b0bd45b3bb9a84267724); text by gs-10.07.1 txtwrite-pages, sha256 5adbf7f5c90cc23cd078c970f38c964283024ffed24aae1c4ed876dae8e9606f.",
+      "retrieval": {
+        "requested_url": "http://media.ktoo.org/2016/07/FINAL-Municipal-Drinking-Water-Supply-Plan.pdf",
+        "final_url": "http://media.ktoo.org/2016/07/FINAL-Municipal-Drinking-Water-Supply-Plan.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:39:40Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 929153,
+        "sha256": "24108b6e65e97937276cb8d032bd0c578fafd04758f9b0bd45b3bb9a84267724",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "5adbf7f5c90cc23cd078c970f38c964283024ffed24aae1c4ed876dae8e9606f"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JUNEAU-CBJ-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Purpose and Existing Supply Infrastructure Maintenance, item 3 Mill Tunnel",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole draft plan (four pages of text). The 11 million gallons is given once, for the 7 reservoirs of the distribution system; the Mill Tunnel volume is given separately in the maintenance section.",
+          "content_sha256": "8ef6107847cdfe25bee7238ce57bfab060a2bc175d789d81df256584996d2202",
+          "retrieval_sha256": "24108b6e65e97937276cb8d032bd0c578fafd04758f9b0bd45b3bb9a84267724",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:juneau"
+          ],
+          "scenario": "water_controls_wipe:juneau"
+        },
+        {
+          "id": "E-SC43-JUNEAU-CBJ-SUPPLY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Purpose, Current Use, Existing Supply Infrastructure Maintenance items 1 and 4, and Water Supply Expansion Preference",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole draft plan. The plan gives no rated capacity for the Last Chance Basin well field and no highest day; the figures above are all the supply figures it prints.",
+          "content_sha256": "7df01a8b7f70740fcb8c1911cb862354319027261e5d01afd67e51871687ccc8",
+          "retrieval_sha256": "24108b6e65e97937276cb8d032bd0c578fafd04758f9b0bd45b3bb9a84267724",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 7,
+            "total": 7
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:juneau"
+          ],
+          "scenario": "water_controls_wipe:juneau"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:juneau"
+      ],
+      "scenario": "water_controls_wipe:juneau"
+    },
+    {
+      "source_id": "juneau_cbj2025_acfr_fy24",
+      "title": "City and Borough of Juneau Annual Comprehensive Financial Report for the Fiscal Year July 1, 2023 through June 30, 2024",
+      "url": "https://juneau.org/wp-content/uploads/2025/02/CBJ-FY24-ACFR.pdf",
+      "original_url": "https://juneau.org/wp-content/uploads/2025/02/CBJ-FY24-ACFR.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://juneau.org/wp-content/uploads/2025/02/CBJ-FY24-ACFR.pdf at 2026-10-25T17:33:47Z (curl, HTTP 200, 6076941 bytes, sha256 76f3c3dd9cf17b7bb202483cc54014823625110b634641705c01c159d79af5a0); text by gs-10.07.1 txtwrite-pages, sha256 ce9be6058b6ced1313f715a0cbd29bd88053133fcae8f0c32eeebc3f2a117934.",
+      "retrieval": {
+        "requested_url": "https://juneau.org/wp-content/uploads/2025/02/CBJ-FY24-ACFR.pdf",
+        "final_url": "https://juneau.org/wp-content/uploads/2025/02/CBJ-FY24-ACFR.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T17:33:47Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 6076941,
+        "sha256": "76f3c3dd9cf17b7bb202483cc54014823625110b634641705c01c159d79af5a0",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "ce9be6058b6ced1313f715a0cbd29bd88053133fcae8f0c32eeebc3f2a117934"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JUNEAU-CBJ-DELIVERED",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Statistical section, 'Capital Asset Statistics and Operating Indicators by Function/Program, Last 10 Fiscal Years', Water Services (printed p. 229)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the statistical tables for Water Services on printed pp. 229-230 and searched the whole report for other water volumes, capacities and storage; there are none. The '1' after each figure is the footnote mark; the columns are 2024, 2023, 2022, 2021 and 2020.",
+          "content_sha256": "56b1c3487819c87259cecda746745e90db25f71fb6a499123696517730f8e31c",
+          "retrieval_sha256": "76f3c3dd9cf17b7bb202483cc54014823625110b634641705c01c159d79af5a0",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:juneau"
+          ],
+          "scenario": "water_controls_wipe:juneau"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:juneau"
+      ],
+      "scenario": "water_controls_wipe:juneau"
+    },
+    {
+      "source_id": "juneau_cbj2026_sc_outage_plan",
+      "title": "Drinking Water Utility 2026 Water Management Plan during the Upcoming Water Supply System Outage",
+      "url": "https://juneau.org/engineering-public-works/utilities-division/drinking-water-utility-2026-water-management-plan",
+      "original_url": "https://juneau.org/engineering-public-works/utilities-division/drinking-water-utility-2026-water-management-plan",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://juneau.org/engineering-public-works/utilities-division/drinking-water-utility-2026-water-management-plan at 2026-10-25T17:56:23Z (curl, HTTP 200, 1056988 bytes, sha256 57c1c430565c948d0c15786a8d12c4dc22a7fd778140a8a7335090c9fdb4b4e3); text by html.parser-py3.14 blocks-v1, sha256 003fc637763d0cd9bcadabe15b51d02cdd9eea07d6db60100889729b0717f42e.",
+      "retrieval": {
+        "requested_url": "https://juneau.org/?p=340631",
+        "final_url": "https://juneau.org/engineering-public-works/utilities-division/drinking-water-utility-2026-water-management-plan",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T17:56:23Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 1056988,
+        "sha256": "57c1c430565c948d0c15786a8d12c4dc22a7fd778140a8a7335090c9fdb4b4e3",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "003fc637763d0cd9bcadabe15b51d02cdd9eea07d6db60100889729b0717f42e"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JUNEAU-CBJ-SC-OUTAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Page text, paragraphs 1 to 6 and the list of mitigative measures",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole page. It gives no water volumes or capacities.",
+          "content_sha256": "961061336ab8dc3857032b5883b24f27acff48926c00e22abd50a9be26c8e52a",
+          "retrieval_sha256": "57c1c430565c948d0c15786a8d12c4dc22a7fd778140a8a7335090c9fdb4b4e3",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:juneau"
+          ],
+          "scenario": "water_controls_wipe:juneau"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:juneau"
+      ],
+      "scenario": "water_controls_wipe:juneau"
+    },
+    {
+      "source_id": "juneau_cbj2026_water_system_page",
+      "title": "Water Utility Water System Information",
+      "url": "https://juneau.org/engineering-public-works/utilities-division/joshuatestpage",
+      "original_url": "https://juneau.org/engineering-public-works/utilities-division/joshuatestpage",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://juneau.org/engineering-public-works/utilities-division/joshuatestpage at 2026-10-25T16:39:45Z (curl, HTTP 200, 1059599 bytes, sha256 11cc1ecfec20d48def853ef9cc1c8fd8e4c3ddb4c1441662226f6bc0d78a2231); text by html.parser-py3.14 blocks-v1, sha256 9867eeedc18bde8cbee5f965256e2be4c1c811a211deb9be2bab6ea32c67deb0.",
+      "retrieval": {
+        "requested_url": "https://juneau.org/engineering-public-works/utilities-division/joshuatestpage",
+        "final_url": "https://juneau.org/engineering-public-works/utilities-division/joshuatestpage",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:39:45Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 1059599,
+        "sha256": "11cc1ecfec20d48def853ef9cc1c8fd8e4c3ddb4c1441662226f6bc0d78a2231",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "9867eeedc18bde8cbee5f965256e2be4c1c811a211deb9be2bab6ea32c67deb0"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JUNEAU-CBJ-PLANTS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Tabs 'Water System Information', 'Last Chance Basin' and 'Salmon Creek Water Filtration Plant'",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole page, all three tabs. No other capacity, demand or storage figure is on it.",
+          "content_sha256": "22e32f4ba94e7959b600fddc8e963b6da80cfd38b9404cafcc18c983296381d5",
+          "retrieval_sha256": "11cc1ecfec20d48def853ef9cc1c8fd8e4c3ddb4c1441662226f6bc0d78a2231",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:juneau"
+          ],
+          "scenario": "water_controls_wipe:juneau"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:juneau"
+      ],
+      "scenario": "water_controls_wipe:juneau"
+    },
+    {
+      "source_id": "juneau_ktoo2014_water_conservation",
+      "title": "City urges water conservation",
+      "url": "https://www.ktoo.org/2014/05/09/city-urges-water-conservation/",
+      "original_url": "https://www.ktoo.org/2014/05/09/city-urges-water-conservation/",
+      "access": "third_party_primary_retrieval",
+      "status": "partial",
+      "method": "third_party_primary_retrieval",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ktoo.org/2014/05/09/city-urges-water-conservation/ at 2026-10-25T18:47:29Z (tinyfish, HTTP None, 3619 bytes, sha256 dc0a60296a3a79b025d8dda95d94a13329c745eead05cffd03662bff33a6f961); text by utf8-decode-v1, sha256 dc0a60296a3a79b025d8dda95d94a13329c745eead05cffd03662bff33a6f961. Access failed: https://www.ktoo.org/2014/05/09/city-urges-water-conservation/ via curl (HTTP 403): curl: (22) The requested URL returned error: 403 (the user agent was not changed). Access failed: https://web.archive.org/cdx/search/cdx?url=ktoo.org/2014/05/09/city-urges-water-conservation/&output=json&limit=-3 via archive (HTTP None): Connection reset: the tunnel to web.archive.org closed before the CDX lookup completed (two tries on 2026-10-25).",
+      "retrieval": {
+        "requested_url": "https://www.ktoo.org/2014/05/09/city-urges-water-conservation/",
+        "final_url": "https://www.ktoo.org/2014/05/09/city-urges-water-conservation/",
+        "http_status": null,
+        "retrieved_at": "2026-10-25T18:47:29Z",
+        "tool": "tinyfish",
+        "media_type": "text/plain",
+        "bytes": 3619,
+        "sha256": "dc0a60296a3a79b025d8dda95d94a13329c745eead05cffd03662bff33a6f961",
+        "text": {
+          "extractor": "utf8-decode-v1",
+          "sha256": "dc0a60296a3a79b025d8dda95d94a13329c745eead05cffd03662bff33a6f961"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JUNEAU-CBJ-LCB-OUTPUT",
+          "status": "partial",
+          "date": "2026-10-25",
+          "method": "third_party_primary_retrieval",
+          "locator_checked": "Original story of Friday, May 9, 2014, and the update of Monday, May 12, 2014",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the text that the third-party tool (TinyFish) rendered from the KTOO page on 2026-10-25, after a direct fetch got HTTP 403 and the archive could not be reached. Read the whole story and its update. The daily output is derived from the printed rate in gallons a minute. Integration: partial because method third_party_primary_retrieval.",
+          "content_sha256": "92fba06f9fec9300c111e04ab60ff5a5b1670232f5c4837e5d50fec7cf0d505c",
+          "retrieval_sha256": "dc0a60296a3a79b025d8dda95d94a13329c745eead05cffd03662bff33a6f961",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:juneau"
+          ],
+          "scenario": "water_controls_wipe:juneau"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:juneau"
+      ],
+      "scenario": "water_controls_wipe:juneau"
+    }
+  ],
+  "scenario": "water_controls_wipe:juneau"
+}

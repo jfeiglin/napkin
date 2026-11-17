@@ -1,0 +1,18 @@
+{
+  "asheville": {"lon": -82.552, "lat": 35.5947},
+  "auburn": {"lon": -122.2307, "lat": 47.3087},
+  "austin": {"lon": -97.7391, "lat": 30.2694},
+  "camden": {"lon": -75.1208, "lat": 39.9291},
+  "cape_may": {"lon": -74.8173, "lat": 39.0808},
+  "clayton": {"lon": -84.3585, "lat": 33.5397},
+  "el_dorado": {"lon": -120.6526, "lat": 38.7803},
+  "jackson": {"lon": -90.1792, "lat": 32.2989},
+  "jamestown": {"lon": -79.9326, "lat": 35.9887},
+  "juneau": {"lon": -134.4293, "lat": 58.3013},
+  "lehigh": {"lon": -75.4902, "lat": 40.5988},
+  "los_angeles": {"lon": -118.2381, "lat": 34.0496},
+  "lumberton": {"lon": -79.0098, "lat": 34.6211},
+  "minot": {"lon": -101.3013, "lat": 48.2321},
+  "richmond": {"lon": -77.4394, "lat": 37.5411},
+  "washington_dc": {"lon": -77.0406, "lat": 38.8995}
+}

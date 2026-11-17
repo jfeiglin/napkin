@@ -1,0 +1,18 @@
+[layout]
+card_width = 280   # wide enough for the name of the stock
+
+[icon]
+wrench = ["tuners"]
+
+[equations]
+things = ["tuners"]
+
+[references]
+show = true
+
+[symbol.tuners]
+due   = "D"
+done  = "N"
+tune  = "q"
+rate  = "r"
+staff = "s"

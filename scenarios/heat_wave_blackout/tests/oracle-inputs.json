@@ -1,0 +1,295 @@
+{
+  "scenarios/heat_wave_blackout/tests/outage.py": {
+    "scenarios": [
+      "heat_wave_blackout"
+    ],
+    "parameters": {
+      "alt_share": {
+        "heat_wave_blackout": "devices.alternative_share"
+      },
+      "backup_conf_65_74": {
+        "heat_wave_blackout": "confined_65_to_74.backup_share"
+      },
+      "backup_conf_75": {
+        "heat_wave_blackout": "confined_75_and_over.backup_share"
+      },
+      "backup_conf_under_65": {
+        "heat_wave_blackout": "confined_under_65.backup_share"
+      },
+      "backup_res_65_74": {
+        "heat_wave_blackout": "residents_65_to_74.backup_share"
+      },
+      "backup_res_75": {
+        "heat_wave_blackout": "residents_75_and_over.backup_share"
+      },
+      "backup_res_under_65": {
+        "heat_wave_blackout": "residents_under_65.backup_share"
+      },
+      "battery_h": {
+        "heat_wave_blackout": "devices.battery_hours"
+      },
+      "cap_c": {
+        "heat_wave_blackout": "heat_wave.cap"
+      },
+      "check_h": {
+        "heat_wave_blackout": "utility.check_time"
+      },
+      "cleanup_h": {
+        "heat_wave_blackout": "contractor.cleanup_time"
+      },
+      "conc_factor": {
+        "heat_wave_blackout": "devices.concentrator_factor"
+      },
+      "contain_h": {
+        "heat_wave_blackout": "utility.contain_time"
+      },
+      "cost24_non": {
+        "heat_wave_blackout": "non_residential.cost_24h"
+      },
+      "cost24_res": {
+        "heat_wave_blackout": "residential.cost_24h"
+      },
+      "cost_multiplier": {
+        "heat_wave_blackout": "crews.cost_multiplier"
+      },
+      "curve_ext_bobb": {
+        "heat_wave_blackout": "heat_wave.bobb_extension"
+      },
+      "curve_ext_gasparrini": {
+        "heat_wave_blackout": "heat_wave.gasparrini_extension"
+      },
+      "curve_ext_nordio": {
+        "heat_wave_blackout": "heat_wave.nordio_extension"
+      },
+      "curve_ext_schwartz": {
+        "heat_wave_blackout": "heat_wave.schwartz_extension"
+      },
+      "curve_slope_bobb": {
+        "heat_wave_blackout": "heat_wave.bobb_slope"
+      },
+      "curve_slope_gasparrini": {
+        "heat_wave_blackout": "heat_wave.gasparrini_slope"
+      },
+      "curve_slope_nordio": {
+        "heat_wave_blackout": "heat_wave.nordio_slope"
+      },
+      "curve_slope_schwartz": {
+        "heat_wave_blackout": "heat_wave.schwartz_slope"
+      },
+      "curve_threshold_bobb": {
+        "heat_wave_blackout": "heat_wave.bobb_threshold"
+      },
+      "curve_threshold_gasparrini": {
+        "heat_wave_blackout": "heat_wave.gasparrini_threshold"
+      },
+      "curve_threshold_nordio": {
+        "heat_wave_blackout": "heat_wave.nordio_threshold"
+      },
+      "curve_threshold_schwartz": {
+        "heat_wave_blackout": "heat_wave.schwartz_threshold"
+      },
+      "curve_top_bobb": {
+        "heat_wave_blackout": "heat_wave.bobb_top"
+      },
+      "curve_top_gasparrini": {
+        "heat_wave_blackout": "heat_wave.gasparrini_top"
+      },
+      "curve_top_nordio": {
+        "heat_wave_blackout": "heat_wave.nordio_top"
+      },
+      "curve_top_schwartz": {
+        "heat_wave_blackout": "heat_wave.schwartz_top"
+      },
+      "curve_weight_bobb": {
+        "heat_wave_blackout": "heat_wave.bobb_weight"
+      },
+      "curve_weight_gasparrini": {
+        "heat_wave_blackout": "heat_wave.gasparrini_weight"
+      },
+      "curve_weight_nordio": {
+        "heat_wave_blackout": "heat_wave.nordio_weight"
+      },
+      "curve_weight_schwartz": {
+        "heat_wave_blackout": "heat_wave.schwartz_weight"
+      },
+      "customers_non": {
+        "heat_wave_blackout": "non_residential.customers"
+      },
+      "customers_res": {
+        "heat_wave_blackout": "residential.customers"
+      },
+      "determination_h": {
+        "heat_wave_blackout": "utility.determination_time"
+      },
+      "devshare_65_74": {
+        "heat_wave_blackout": "aged_65_to_74.device_share"
+      },
+      "devshare_75": {
+        "heat_wave_blackout": "aged_75_and_over.device_share"
+      },
+      "devshare_under_65": {
+        "heat_wave_blackout": "under_65.device_share"
+      },
+      "ed_rate": {
+        "heat_wave_blackout": "heat_wave.ed_rate"
+      },
+      "ed_slope": {
+        "heat_wave_blackout": "heat_wave.ed_slope"
+      },
+      "ed_threshold": {
+        "heat_wave_blackout": "heat_wave.ed_threshold"
+      },
+      "hdeath_rate": {
+        "heat_wave_blackout": "heat_wave.heat_death_rate"
+      },
+      "hdeath_slope": {
+        "heat_wave_blackout": "heat_wave.heat_death_slope"
+      },
+      "hdeath_threshold": {
+        "heat_wave_blackout": "heat_wave.heat_death_threshold"
+      },
+      "heat_h": {
+        "heat_wave_blackout": "heat_wave.length"
+      },
+      "heatstroke_fatality": {
+        "heat_wave_blackout": "hospitals.heatstroke_fatality"
+      },
+      "heatstroke_share": {
+        "heat_wave_blackout": "hospitals.heatstroke_share"
+      },
+      "held": {
+        "heat_wave_blackout": "compound.held"
+      },
+      "iet_off_compound": {
+        "heat_wave_blackout": "compound_buildings.iet_off_mean"
+      },
+      "iet_off_homes": {
+        "heat_wave_blackout": "homes.iet_off_mean"
+      },
+      "iet_on_compound": {
+        "heat_wave_blackout": "compound_buildings.iet_on"
+      },
+      "iet_on_homes": {
+        "heat_wave_blackout": "homes.iet_on"
+      },
+      "job_h": {
+        "heat_wave_blackout": "job.run_time"
+      },
+      "late_fatality": {
+        "heat_wave_blackout": "hospitals.late_fatality"
+      },
+      "lineworkers": {
+        "heat_wave_blackout": "crews.lineworkers"
+      },
+      "moves_end_h": {
+        "heat_wave_blackout": "moves.end_time"
+      },
+      "moves_start_h": {
+        "heat_wave_blackout": "moves.start_time"
+      },
+      "obeys": {
+        "heat_wave_blackout": "ai.obeys"
+      },
+      "order_delay_h": {
+        "heat_wave_blackout": "contractor.order_delay"
+      },
+      "order_transit_h": {
+        "heat_wave_blackout": "contractor.order_transit"
+      },
+      "outdoor_c": {
+        "heat_wave_blackout": "heat_wave.outdoor"
+      },
+      "outreach_h": {
+        "heat_wave_blackout": "outreach.start_time"
+      },
+      "people": {
+        "heat_wave_blackout": "supply.people_served"
+      },
+      "people_per_visit": {
+        "heat_wave_blackout": "hospitals.people_per_visit"
+      },
+      "power_non": {
+        "heat_wave_blackout": "non_residential.exponent"
+      },
+      "power_res": {
+        "heat_wave_blackout": "residential.exponent"
+      },
+      "powered_share": {
+        "heat_wave_blackout": "places.powered_share"
+      },
+      "private_res_65_74": {
+        "heat_wave_blackout": "residents_65_to_74.private_share"
+      },
+      "private_res_75": {
+        "heat_wave_blackout": "residents_75_and_over.private_share"
+      },
+      "private_res_under_65": {
+        "heat_wave_blackout": "residents_under_65.private_share"
+      },
+      "rate_65_74": {
+        "heat_wave_blackout": "aged_65_to_74.death_rate"
+      },
+      "rate_75": {
+        "heat_wave_blackout": "aged_75_and_over.death_rate"
+      },
+      "rate_under_65": {
+        "heat_wave_blackout": "under_65.death_rate"
+      },
+      "reach": {
+        "heat_wave_blackout": "outreach.reach"
+      },
+      "react_h": {
+        "heat_wave_blackout": "ai.reaction_time"
+      },
+      "removal_h": {
+        "heat_wave_blackout": "contractor.removal_time"
+      },
+      "review_h": {
+        "heat_wave_blackout": "contractor.review_time"
+      },
+      "rework_share": {
+        "heat_wave_blackout": "ai.rework_share"
+      },
+      "severe_share": {
+        "heat_wave_blackout": "hospitals.severe_share"
+      },
+      "share_65_74": {
+        "heat_wave_blackout": "aged_65_to_74.share"
+      },
+      "share_75": {
+        "heat_wave_blackout": "aged_75_and_over.share"
+      },
+      "share_under_65": {
+        "heat_wave_blackout": "under_65.share"
+      },
+      "slope_compound": {
+        "heat_wave_blackout": "compound_buildings.slope"
+      },
+      "slope_homes": {
+        "heat_wave_blackout": "homes.slope"
+      },
+      "vent_admission": {
+        "heat_wave_blackout": "devices.ventilator_admission"
+      },
+      "vent_share": {
+        "heat_wave_blackout": "devices.ventilator_share"
+      },
+      "visit_limit": {
+        "heat_wave_blackout": "heat_wave.visit_limit"
+      },
+      "wage": {
+        "heat_wave_blackout": "crews.wage"
+      },
+      "warm_compound_h": {
+        "heat_wave_blackout": "compound_buildings.heat_up_time"
+      },
+      "warm_homes_h": {
+        "heat_wave_blackout": "homes.heat_up_time"
+      },
+      "work_h": {
+        "heat_wave_blackout": "crews.work"
+      }
+    },
+    "other_names": []
+  }
+}

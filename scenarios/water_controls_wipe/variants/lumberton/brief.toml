@@ -1,0 +1,51 @@
+show = ["person_days_lost", "unserved_volume", "rework_caused", "deaths", "casualties", "economic_loss",
+    "people_interrupted_now", "people_under_advisory", "restored_share", "emergency_water_deficit",
+    "hospital_hours_constrained", "work_remaining", "people_followed", "wider_loss", "people_beyond_week"]
+drivers = ["lumberton_homes.population", "lumberton.storage", "lumberton.treat_disabled",
+    "lumberton.manual_share", "lumberton.controls_load", "controls_crew.capacity",
+    "responders.recognition_time", "responders.removal_time", "attacker.reaction_time",
+    "attacker.rework_share"]
+featured = ["delayed_kept", "delayed_kept_human"]
+# The name of the attack on the pages, and the group of options that holds the responses of the
+# defenders.
+attack = "AI operation wipes the controls of the water systems of a place through their integrator's platform"
+choice_group = "Response"
+
+# The rows of the run table after the runs: each sweep runs one run with other values of some
+# inputs (`set`, by the names that edits give them, in the units of the inputs).
+
+[[sweep]]
+id = "capacity_20"
+description = "The controls crews do 20 work hours an hour"
+run = "delayed_kept"
+set = {"controls_crew.capacity" = 20}
+
+[[sweep]]
+id = "capacity_160"
+description = "The controls crews do 160 work hours an hour"
+run = "delayed_kept"
+set = {"controls_crew.capacity" = 160}
+
+[[sweep]]
+id = "manual_0"
+description = "Lumberton's operators cannot produce water by hand"
+run = "delayed_kept"
+set = {"lumberton.manual_share" = 0}
+
+[[sweep]]
+id = "manual_1"
+description = "Lumberton's operators produce all of normal by hand"
+run = "delayed_kept"
+set = {"lumberton.manual_share" = 1}
+
+[[sweep]]
+id = "removal_1d"
+description = "Responders remove the credential a day after recognition"
+run = "delayed_kept"
+set = {"responders.removal_time" = 24}
+
+[[sweep]]
+id = "removal_20d"
+description = "Responders remove the credential twenty days after recognition"
+run = "delayed_kept"
+set = {"responders.removal_time" = 480}

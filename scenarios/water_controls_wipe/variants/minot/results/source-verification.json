@@ -1,0 +1,951 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 14,
+    "claims": 19,
+    "source_access": {
+      "accessible": 14
+    },
+    "source_status": {
+      "verified": 14,
+      "partial": 0,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 14
+    },
+    "claim_status": {
+      "verified": 19,
+      "partial": 0,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 19
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 19
+    },
+    "sources_with_retrieval": 14,
+    "claims_with_quotes": 19,
+    "claim_quote_match_records": 19,
+    "claims_reachable": 19,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "minot_dwr2023_naws_project_update",
+      "title": "NAWS Project Update",
+      "url": "https://ndlegis.gov/assembly/68-2023/testimony/HAPPEDU-2020-20230309-23353-F-SPILLAI-GRINOLDS_SINDHUJA_A.pdf",
+      "original_url": "https://ndlegis.gov/assembly/68-2023/testimony/HAPPEDU-2020-20230309-23353-F-SPILLAI-GRINOLDS_SINDHUJA_A.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://ndlegis.gov/assembly/68-2023/testimony/HAPPEDU-2020-20230309-23353-F-SPILLAI-GRINOLDS_SINDHUJA_A.pdf at 2026-10-25T16:05:38Z (curl, HTTP 200, 12958565 bytes, sha256 15e60ee29a1eede449c90a2b35b30e9105823ed370522509fac32b9be031a4fe); text by gs-10.07.1 txtwrite-pages, sha256 939b47f7e0b98e02a1523dd766978034e2c675a648733bd4862c783fdae16ea4.",
+      "retrieval": {
+        "requested_url": "https://ndlegis.gov/assembly/68-2023/testimony/HAPPEDU-2020-20230309-23353-F-SPILLAI-GRINOLDS_SINDHUJA_A.pdf",
+        "final_url": "https://ndlegis.gov/assembly/68-2023/testimony/HAPPEDU-2020-20230309-23353-F-SPILLAI-GRINOLDS_SINDHUJA_A.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:05:38Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 12958565,
+        "sha256": "15e60ee29a1eede449c90a2b35b30e9105823ed370522509fac32b9be031a4fe",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "939b47f7e0b98e02a1523dd766978034e2c675a648733bd4862c783fdae16ea4"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-MINOT-CAPACITY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Slides Minot Interim Water Supply (PDF p. 20) and Minot Water Treatment Plant (PDF p. 22)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read all 33 slides. The dash before 17 is printed in the slide; the figure is 17 MGD.",
+          "content_sha256": "383ae95c46f48f1d30b7d9e201a61c48a20a59e6b02bd09bb301a4c4a29a0230",
+          "retrieval_sha256": "15e60ee29a1eede449c90a2b35b30e9105823ed370522509fac32b9be031a4fe",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        },
+        {
+          "id": "E-SC43-MINOT-NAWS-RESERVOIRS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Slides Lansford Reservoir & Pump Station (PDF p. 25) and Bottineau Reservoir & Pump Station (PDF p. 29)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read all 33 slides; no other reservoir volume of the treated-water system is printed. The South Prairie reservoir of 10.5 million gallons (PDF p. 16) is on the raw water line and is not finished-water storage.",
+          "content_sha256": "748a9ca6b30204981dc053fc16551836190cda8c101f5001fcde6ba43a4dae82",
+          "retrieval_sha256": "15e60ee29a1eede449c90a2b35b30e9105823ed370522509fac32b9be031a4fe",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_dwr2024_naws_brochure",
+      "title": "North Dakota's Northwest Area Water Supply Project",
+      "url": "https://www.swc.nd.gov/pdfs/naws_brochure.pdf",
+      "original_url": "https://www.swc.nd.gov/pdfs/naws_brochure.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.swc.nd.gov/pdfs/naws_brochure.pdf at 2026-10-25T16:05:35Z (curl, HTTP 200, 6126510 bytes, sha256 2ada4e320ea248b803a792db3124acd92a3aee6abf65ce34f0d1273c82965905); text by gs-10.07.1 txtwrite-pages, sha256 6499e2b51bdb0cf1bf59c4d85426ca469cba4aa4ab42435a973eada7504f0a03.",
+      "retrieval": {
+        "requested_url": "https://www.swc.nd.gov/pdfs/naws_brochure.pdf",
+        "final_url": "https://www.swc.nd.gov/pdfs/naws_brochure.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:05:35Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 6126510,
+        "sha256": "2ada4e320ea248b803a792db3124acd92a3aee6abf65ce34f0d1273c82965905",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "6499e2b51bdb0cf1bf59c4d85426ca469cba4aa4ab42435a973eada7504f0a03"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-NAWS-DESIGN",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Page 1, Project Features (after completion); page 2, Purpose & Need and Project Users; page 3, Construction Resumes",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read all four pages; the feature list is laid out in columns, so the counts (1, 5, 1) stand beside the labels in the extracted text.",
+          "content_sha256": "a99787fdc56cbb8e37e608d3803c1e734e10afc2010598f0d5e9793e6a6621d5",
+          "retrieval_sha256": "2ada4e320ea248b803a792db3124acd92a3aee6abf65ce34f0d1273c82965905",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 7,
+            "total": 7
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_dwr2025_naws_authority_nov",
+      "title": "NAWS Authority Meeting, November 25, 2025: meeting packet",
+      "url": "https://www.dwr.nd.gov/pdfs/home_page/2025_11_25_naws_authority_meeting.pdf",
+      "original_url": "https://www.dwr.nd.gov/pdfs/home_page/2025_11_25_naws_authority_meeting.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.dwr.nd.gov/pdfs/home_page/2025_11_25_naws_authority_meeting.pdf at 2026-10-25T16:04:13Z (curl, HTTP 200, 795855 bytes, sha256 62e2e4445ea0422f32534a73e58be1e9013daa2074ea5c06af7e91a7018c06b2); text by gs-10.07.1 txtwrite-pages, sha256 847f0fff20f9609d8d904f567d1542d47d55c4dac34077f25f8c5639644c2d18.",
+      "retrieval": {
+        "requested_url": "https://www.dwr.nd.gov/pdfs/home_page/2025_11_25_naws_authority_meeting.pdf",
+        "final_url": "https://www.dwr.nd.gov/pdfs/home_page/2025_11_25_naws_authority_meeting.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:04:13Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 795855,
+        "sha256": "62e2e4445ea0422f32534a73e58be1e9013daa2074ea5c06af7e91a7018c06b2",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "847f0fff20f9609d8d904f567d1542d47d55c4dac34077f25f8c5639644c2d18"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-MINOT-PRODUCTION",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Agenda item G, Assumptions for 2026 NAWS Water Rate Estimation, table Water Sales Projection (memo Page 6 of 11, PDF p. 11)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole rate memorandum (agenda item G, 11 pages) in the extracted text and checked each row against PDF p. 11. The average days and the sum of the two meters are arithmetic on the printed totals; 2024 has 366 days. The headings Annuaized and Volune are spelled so in the source.",
+          "content_sha256": "5fadb859eee30997af942c2567ab5e2760d1da45a2e5b8ef8fe10dc232aa12e4",
+          "retrieval_sha256": "62e2e4445ea0422f32534a73e58be1e9013daa2074ea5c06af7e91a7018c06b2",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 8,
+            "total": 8
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        },
+        {
+          "id": "E-SC43-MINOT-NAWS-BUYERS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Agenda item G, NAWS 2026 Water Rate (memo Page 2 of 11, PDF p. 7)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes"
+          ],
+          "notes": "Read the rate memorandum and the September 25, 2025 minutes in the packet. The list of contract customers names nine systems; the brochure of March 2024 lists the same systems and the City of Minot as served by NAWS.",
+          "content_sha256": "eed586f8dba5f515d044114d8fcc7c41e268e155097eb5edbbe1867c7253a1e3",
+          "retrieval_sha256": "62e2e4445ea0422f32534a73e58be1e9013daa2074ea5c06af7e91a7018c06b2",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_dwr2026_naws_authority_may",
+      "title": "NAWS Authority Meeting, May 28, 2026: meeting packet",
+      "url": "https://www.dwr.nd.gov/pdfs/home_page/2026_05_28_naws_authority_meeting.pdf",
+      "original_url": "https://www.dwr.nd.gov/pdfs/home_page/2026_05_28_naws_authority_meeting.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.dwr.nd.gov/pdfs/home_page/2026_05_28_naws_authority_meeting.pdf at 2026-10-25T16:04:18Z (curl, HTTP 200, 13783327 bytes, sha256 8b18150fc93e794f2a770033d18ea371406995804a9467806e11d92a36cabe61); text by gs-10.07.1 txtwrite-pages, sha256 80c8c4d54324b499aaabedda2c2fb26efc2e42c8de04b30f3fbbbc87cb351c10.",
+      "retrieval": {
+        "requested_url": "https://www.dwr.nd.gov/pdfs/home_page/2026_05_28_naws_authority_meeting.pdf",
+        "final_url": "https://www.dwr.nd.gov/pdfs/home_page/2026_05_28_naws_authority_meeting.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:04:18Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 13783327,
+        "sha256": "8b18150fc93e794f2a770033d18ea371406995804a9467806e11d92a36cabe61",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "80c8c4d54324b499aaabedda2c2fb26efc2e42c8de04b30f3fbbbc87cb351c10"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-NAWS-PUMPS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Agenda item J, draft High Service Pump Station Operations and Maintenance Agreement, sections 2, 4, 5.1 and 6 (PDF pp. 22-24)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole draft agreement (PDF pp. 22-25). The daily figure is arithmetic on the printed pump-curve maximum. The July 23, 2026 State Water Commission memo on the same agreement gives the same 87% and 13% from 2023-2025 use; it was not needed for these figures.",
+          "content_sha256": "55d3a5d1dd18e59a149c43a0c6958af6fa347bbfd0aa69dfabbdb16dbf28e4c3",
+          "retrieval_sha256": "8b18150fc93e794f2a770033d18ea371406995804a9467806e11d92a36cabe61",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        },
+        {
+          "id": "E-SC43-MINOT-NAWS-BIOTA",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Agenda item K, NAWS Biota Water Treatment Plant Operations Update, May 20, 2026 (PDF pp. 28-29); agenda item L, NAWS Construction Update, Contract 7-2A/4-1A (PDF p. 33)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes"
+          ],
+          "notes": "Read the Biota memo (two pages) and the construction memo (five pages). The November 25, 2025 packet expected substantial completion in fall 2026, so the plant was not in service at any time from November 2025 to May 2026.",
+          "content_sha256": "cd8e0c599c94f5a3295eba72db97ae09401f8bb857ffe2be2766ef1c575873e3",
+          "retrieval_sha256": "8b18150fc93e794f2a770033d18ea371406995804a9467806e11d92a36cabe61",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        },
+        {
+          "id": "E-SC43-MINOT-NAWS-BOTTINEAU",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Agenda item L, NAWS Construction Update, Contract 4-4B/5-4B Bottineau Reservoir and Booster Pump Station (PDF pp. 33-34)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the construction memo. The Operations Update of the same packet (PDF p. 37) says the current design for the Souris Reservoir and Pump Station cannot deliver 1,250 gallons a minute, which shows it is still in design.",
+          "content_sha256": "4de13170c0e949b807c39e40191c2174988c1da63c6999f201f8a2f77cb5a685",
+          "retrieval_sha256": "8b18150fc93e794f2a770033d18ea371406995804a9467806e11d92a36cabe61",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_hei2014_distribution_master_plan",
+      "title": "City of Minot Water Distribution System Modeling and Master Plan",
+      "url": "https://www.minotnd.gov/DocumentCenter/View/8321/Water-Distribution-System-Modeling-and-Master-Plan?bidId=",
+      "original_url": "https://www.minotnd.gov/DocumentCenter/View/8321",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.minotnd.gov/DocumentCenter/View/8321/Water-Distribution-System-Modeling-and-Master-Plan?bidId= at 2026-10-25T16:07:03Z (curl, HTTP 200, 52726104 bytes, sha256 f4b75507a2853c4ce3dd3637b5ff100a34ea081ccd7ab6f1ceacd0431d23a302); text by gs-10.07.1 txtwrite-pages, sha256 62f27b14c263231e93b4f0f5590db1f5c9e481503a683b88b9ad4c7ab6b40d4f.",
+      "retrieval": {
+        "requested_url": "https://www.minotnd.gov/DocumentCenter/View/8321",
+        "final_url": "https://www.minotnd.gov/DocumentCenter/View/8321/Water-Distribution-System-Modeling-and-Master-Plan?bidId=",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:07:03Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 52726104,
+        "sha256": "f4b75507a2853c4ce3dd3637b5ff100a34ea081ccd7ab6f1ceacd0431d23a302",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "62f27b14c263231e93b4f0f5590db1f5c9e481503a683b88b9ad4c7ab6b40d4f"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-MINOT-STORAGE-2014",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Technical Memorandum 2, Storage Reservoirs and Tanks, Table 2-6 (PDF p. 32)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Technical Memorandum 2 and Table 2-6 in the extracted text and in the rendered page; the rows sum to 12,500,000 gallons (3 x 3,000,000 + 1,000,000 + 3 x 500,000 + 1,000,000).",
+          "content_sha256": "ae12966c10812bb516112245b21c6434b71fa979fd7388937bec8035d5d6eb2a",
+          "retrieval_sha256": "f4b75507a2853c4ce3dd3637b5ff100a34ea081ccd7ab6f1ceacd0431d23a302",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        },
+        {
+          "id": "E-SC43-MINOT-MINOT-PRODUCTION-2012",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Executive Summary (PDF p. 2); Technical Memorandum 1, Tables 1-1 and 1-2 (PDF p. 19)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Technical Memorandum 1 in full. The daily equivalents are arithmetic (gpm x 1,440).",
+          "content_sha256": "e3af982a6460d92c032214b9bc83dc2a58224d892d4c18ab5d42546628053db1",
+          "retrieval_sha256": "f4b75507a2853c4ce3dd3637b5ff100a34ea081ccd7ab6f1ceacd0431d23a302",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_kenmarenews2009_naws_tower",
+      "title": "Huge tower is sign of approaching NAWS water",
+      "url": "https://kenmarend.com/kenmare-news/features/huge-tower-is-sign-of-approaching-naws-water/",
+      "original_url": "https://kenmarend.com/kenmare-news/features/huge-tower-is-sign-of-approaching-naws-water/",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://kenmarend.com/kenmare-news/features/huge-tower-is-sign-of-approaching-naws-water/ at 2026-10-25T16:12:49Z (curl, HTTP 200, 34748 bytes, sha256 bcdc60110f34c0fd321b85b995446d76294c9533a5cd6178f276b184a906d983); text by html.parser-py3.14 blocks-v1, sha256 97a82b6278ca8594b523023fb95ee951570d1cd3fc214988c4c5e18f30fc8296.",
+      "retrieval": {
+        "requested_url": "https://kenmarend.com/kenmare-news/features/huge-tower-is-sign-of-approaching-naws-water/",
+        "final_url": "https://kenmarend.com/kenmare-news/features/huge-tower-is-sign-of-approaching-naws-water/",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:12:49Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 34748,
+        "sha256": "bcdc60110f34c0fd321b85b995446d76294c9533a5cd6178f276b184a906d983",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "97a82b6278ca8594b523023fb95ee951570d1cd3fc214988c4c5e18f30fc8296"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-NAWS-KENMARE-TOWER",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Article body, paragraphs 1, 2 and 5-6",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole article. The NAWS brochure of March 2024 counts one elevated storage reservoir in the project, which agrees with this tower.",
+          "content_sha256": "46655ba094eb5e7e7f58429c0e7c5ac084d1114e0dc8b7dd537cce005cc82ab4",
+          "retrieval_sha256": "bcdc60110f34c0fd321b85b995446d76294c9533a5cd6178f276b184a906d983",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_kfyr2018_north_tower",
+      "title": "New water tower coming into form in north Minot",
+      "url": "https://www.kfyrtv.com/content/news/New-water-tower-coming-into-form-in-north-Minot-489578591.html",
+      "original_url": "https://www.kfyrtv.com/content/news/New-water-tower-coming-into-form-in-north-Minot-489578591.html",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.kfyrtv.com/content/news/New-water-tower-coming-into-form-in-north-Minot-489578591.html at 2026-10-25T16:13:31Z (curl, HTTP 200, 149079 bytes, sha256 10df112c8a1e556ae984995b3fa8f0cddf3b5949f80911502631dc08d60f9956); text by html.parser-py3.14 blocks-v1, sha256 94481ac38deb07c791302060a9444193bb51fa668ad0e60f323a22c4b4b40647.",
+      "retrieval": {
+        "requested_url": "https://www.kfyrtv.com/content/news/New-water-tower-coming-into-form-in-north-Minot-489578591.html",
+        "final_url": "https://www.kfyrtv.com/content/news/New-water-tower-coming-into-form-in-north-Minot-489578591.html",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:13:31Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=utf-8",
+        "bytes": 149079,
+        "sha256": "10df112c8a1e556ae984995b3fa8f0cddf3b5949f80911502631dc08d60f9956",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "94481ac38deb07c791302060a9444193bb51fa668ad0e60f323a22c4b4b40647"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-MINOT-NORTH-TOWER",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Article body, paragraphs 1-5",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole article.",
+          "content_sha256": "1f521f60de1c1e4271dc4c90430f0cd0bb6ba6e92d5c10ee877aaf1f6e613592",
+          "retrieval_sha256": "10df112c8a1e556ae984995b3fa8f0cddf3b5949f80911502631dc08d60f9956",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_minot2021_blog_naws",
+      "title": "Latest events show why NAWS is so important",
+      "url": "https://minotnd.gov/Blog.aspx?IID=47",
+      "original_url": "https://minotnd.gov/Blog.aspx?IID=47",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://minotnd.gov/Blog.aspx?IID=47 at 2026-10-25T16:03:38Z (curl, HTTP 200, 209313 bytes, sha256 90586a32114fbbdc05ab06243651f3c9f1819e935e9e224d077c60e7b20a8bca); text by html.parser-py3.14 blocks-v1, sha256 ec295e047d33e3149e14a113f50c2e247a7eb988045208fe2ccbe5cdd6ca6e9e.",
+      "retrieval": {
+        "requested_url": "https://minotnd.gov/Blog.asp?IID=47",
+        "final_url": "https://minotnd.gov/Blog.aspx?IID=47",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:03:38Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=utf-8",
+        "bytes": 209313,
+        "sha256": "90586a32114fbbdc05ab06243651f3c9f1819e935e9e224d077c60e7b20a8bca",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "ec295e047d33e3149e14a113f50c2e247a7eb988045208fe2ccbe5cdd6ca6e9e"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-MINOT-OUTSIDE-USE-2021",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Blog post body, paragraphs 5 and 9",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole post.",
+          "content_sha256": "f66a93ef22751a971cdc4b6341ea9820c38361479508d69d496c8b3c9ae7fd44",
+          "retrieval_sha256": "90586a32114fbbdc05ab06243651f3c9f1819e935e9e224d077c60e7b20a8bca",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_minot2026_wtp_page",
+      "title": "Water Treatment Plant",
+      "url": "https://minotnd.gov/739/Water-Treatment-Plant",
+      "original_url": "https://minotnd.gov/739/Water-Treatment-Plant",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://minotnd.gov/739/Water-Treatment-Plant at 2026-10-25T16:03:35Z (curl, HTTP 200, 120705 bytes, sha256 977f5d1ff3b97168e15e8a030f2ca6e4c4fc9ef5321650bd2e044119d12b9ef4); text by html.parser-py3.14 blocks-v1, sha256 63617b9bd77a2104ea72bf2ac122a8bdc01a315ca28795ac0e8730a3ce064b24.",
+      "retrieval": {
+        "requested_url": "https://minotnd.gov/739/Water-Treatment-Plant",
+        "final_url": "https://minotnd.gov/739/Water-Treatment-Plant",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:03:35Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=utf-8",
+        "bytes": 120705,
+        "sha256": "977f5d1ff3b97168e15e8a030f2ca6e4c4fc9ef5321650bd2e044119d12b9ef4",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "63617b9bd77a2104ea72bf2ac122a8bdc01a315ca28795ac0e8730a3ce064b24"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-MINOT-TANKS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Page body, first paragraph",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole page.",
+          "content_sha256": "add91eb55dc37d720fc58a9fc83102495d098349977f931b6c22f35f18ce8a0b",
+          "retrieval_sha256": "977f5d1ff3b97168e15e8a030f2ca6e4c4fc9ef5321650bd2e044119d12b9ef4",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_minotdailynews2020_water_use",
+      "title": "City of Minot ends request to limit water use",
+      "url": "https://www.minotdailynews.com/news/local-news/2020/06/city-of-minot-ends-request-to-limit-water-use/",
+      "original_url": "https://www.minotdailynews.com/news/local-news/2020/06/city-of-minot-ends-request-to-limit-water-use/",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.minotdailynews.com/news/local-news/2020/06/city-of-minot-ends-request-to-limit-water-use/ at 2026-10-25T16:07:55Z (curl, HTTP 200, 124446 bytes, sha256 4b70f6f05fdcf4d452d19d1ba88dfc02b517bc6c52eb34296256343b290e968c); text by html.parser-py3.14 blocks-v1, sha256 94316a721bb19bb2d8e8d3c3664a21fe89507564bd49ca92a1f5d2970d0b2652.",
+      "retrieval": {
+        "requested_url": "https://www.minotdailynews.com/news/local-news/2020/06/city-of-minot-ends-request-to-limit-water-use/",
+        "final_url": "https://www.minotdailynews.com/news/local-news/2020/06/city-of-minot-ends-request-to-limit-water-use/",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:07:55Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 124446,
+        "sha256": "4b70f6f05fdcf4d452d19d1ba88dfc02b517bc6c52eb34296256343b290e968c",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "94316a721bb19bb2d8e8d3c3664a21fe89507564bd49ca92a1f5d2970d0b2652"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-MINOT-PEAK",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Article body, paragraph 5",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole article. The scenario uses the lower end, 13 million gallons per day, as the highest day that a source reports.",
+          "content_sha256": "b2a0b45537f6bbbd2fab5c89f80c4d93ed74100786ff5103831c55e250558ffd",
+          "retrieval_sha256": "4b70f6f05fdcf4d452d19d1ba88dfc02b517bc6c52eb34296256343b290e968c",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 1,
+            "total": 1
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_minotdailynews2021_restriction",
+      "title": "City of Minot issues mandatory water restriction",
+      "url": "https://www.minotdailynews.com/news/local-news/2021/06/city-of-minot-issues-mandatory-water-restriction/",
+      "original_url": "https://www.minotdailynews.com/news/local-news/2021/06/city-of-minot-issues-mandatory-water-restriction/",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.minotdailynews.com/news/local-news/2021/06/city-of-minot-issues-mandatory-water-restriction/ at 2026-10-25T16:06:27Z (curl, HTTP 200, 124719 bytes, sha256 f7c1cb41de752f6e7b88256120c845a128f71874f8abcfa4bbb46df98b4e38bf); text by html.parser-py3.14 blocks-v1, sha256 d9202199b724db5e31918ea4b789ca7d1df3696a4dc6c4ecd571dc2c03b10c2c.",
+      "retrieval": {
+        "requested_url": "https://www.minotdailynews.com/news/local-news/2021/06/city-of-minot-issues-mandatory-water-restriction",
+        "final_url": "https://www.minotdailynews.com/news/local-news/2021/06/city-of-minot-issues-mandatory-water-restriction/",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:06:27Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 124719,
+        "sha256": "f7c1cb41de752f6e7b88256120c845a128f71874f8abcfa4bbb46df98b4e38bf",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "d9202199b724db5e31918ea4b789ca7d1df3696a4dc6c4ecd571dc2c03b10c2c"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-MINOT-USE-2021",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Article body, paragraphs 2, 4, 5 and 7",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole article.",
+          "content_sha256": "da558674b6f1557af7a9b4d48c6d8d34b7eb9e1f8e883db42c20af7e67f756f8",
+          "retrieval_sha256": "f7c1cb41de752f6e7b88256120c845a128f71874f8abcfa4bbb46df98b4e38bf",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_minotdailynews2021_sw_tower",
+      "title": "Water tower changes southwest Minot landscape",
+      "url": "https://www.minotdailynews.com/news/local-news/2021/10/water-tower-changes-southwest-minot-landscape/",
+      "original_url": "https://www.minotdailynews.com/news/local-news/2021/10/water-tower-changes-southwest-minot-landscape/",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.minotdailynews.com/news/local-news/2021/10/water-tower-changes-southwest-minot-landscape/ at 2026-10-25T16:13:33Z (curl, HTTP 200, 126242 bytes, sha256 b3a7e9b22c2046a6bc39e7da502ca7bf96b998b0af5308445c3e922bc6ec0785); text by html.parser-py3.14 blocks-v1, sha256 e6e4e5c9a66952770b05fba9a26657574991813d43c1d4f28dabda1df7aa4ccd.",
+      "retrieval": {
+        "requested_url": "https://www.minotdailynews.com/news/local-news/2021/10/water-tower-changes-southwest-minot-landscape/",
+        "final_url": "https://www.minotdailynews.com/news/local-news/2021/10/water-tower-changes-southwest-minot-landscape/",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:13:33Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 126242,
+        "sha256": "b3a7e9b22c2046a6bc39e7da502ca7bf96b998b0af5308445c3e922bc6ec0785",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "e6e4e5c9a66952770b05fba9a26657574991813d43c1d4f28dabda1df7aa4ccd"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-MINOT-SW-TOWER",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Article body, paragraphs 1-3",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole article.",
+          "content_sha256": "7b77ad5807f666d4d5d18bd627ebed49d2520fcf99ae7ed42aaccbc141ad66df",
+          "retrieval_sha256": "b3a7e9b22c2046a6bc39e7da502ca7bf96b998b0af5308445c3e922bc6ec0785",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_minotdailynews2025_naws_funds",
+      "title": "NAWS seeks funds to continue construction",
+      "url": "https://www.minotdailynews.com/news/local-news/2025/01/naws-seeks-funds-to-continue-construction/",
+      "original_url": "https://www.minotdailynews.com/news/local-news/2025/01/naws-seeks-funds-to-continue-construction/",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.minotdailynews.com/news/local-news/2025/01/naws-seeks-funds-to-continue-construction/ at 2026-10-25T16:03:55Z (curl, HTTP 200, 129010 bytes, sha256 ccedb517b0523f10987283c09df07b8687e17143e464adf96e3116d4bf687955); text by html.parser-py3.14 blocks-v1, sha256 8422558b7dcbadd4ae91706e676eed1ef906f0487a9caa9f76c70ec7ec347efe.",
+      "retrieval": {
+        "requested_url": "https://www.minotdailynews.com/news/local-news/2025/01/naws-seeks-funds-to-continue-construction",
+        "final_url": "https://www.minotdailynews.com/news/local-news/2025/01/naws-seeks-funds-to-continue-construction/",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:03:55Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 129010,
+        "sha256": "ccedb517b0523f10987283c09df07b8687e17143e464adf96e3116d4bf687955",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "8422558b7dcbadd4ae91706e676eed1ef906f0487a9caa9f76c70ec7ec347efe"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-MINOT-CAPACITY-2025",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Article body, quotation of Sindhuja Pillai-Grinolds (paragraph 4)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole article. The Biota plant was still under construction in May 2026, so the article's present tense for its capacity describes the design.",
+          "content_sha256": "a2542ccd8af3901718beb758b871bbc85304f530d78f875b38080ac3667e2ad5",
+          "retrieval_sha256": "ccedb517b0523f10987283c09df07b8687e17143e464adf96e3116d4bf687955",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    },
+    {
+      "source_id": "minot_swc2022_naws_flow_demands",
+      "title": "NAWS Flow Demands: Exhibit 1 to Amendment No. 2",
+      "url": "https://ndlegis.gov/assembly/68-2023/testimony/HNATRES-1218-20230119-14432-F-JONASSON_DAN.pdf",
+      "original_url": "https://ndlegis.gov/assembly/68-2023/testimony/HNATRES-1218-20230119-14432-F-JONASSON_DAN.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://ndlegis.gov/assembly/68-2023/testimony/HNATRES-1218-20230119-14432-F-JONASSON_DAN.pdf at 2026-10-25T16:06:25Z (curl, HTTP 200, 92560 bytes, sha256 9876026a3a1d8f821120b5a08897449670419cc59cc6c54caec4f11c37cc8597); text by gs-10.07.1 txtwrite-pages, sha256 fda7dc92b33457092d0b3c44bd872235a48cbeea3085399c2a58c8627c0823f7.",
+      "retrieval": {
+        "requested_url": "https://ndlegis.gov/assembly/68-2023/testimony/HNATRES-1218-20230119-14432-F-JONASSON_DAN.pdf",
+        "final_url": "https://ndlegis.gov/assembly/68-2023/testimony/HNATRES-1218-20230119-14432-F-JONASSON_DAN.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:06:25Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 92560,
+        "sha256": "9876026a3a1d8f821120b5a08897449670419cc59cc6c54caec4f11c37cc8597",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "fda7dc92b33457092d0b3c44bd872235a48cbeea3085399c2a58c8627c0823f7"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-MINOT-NAWS-CONTRACT",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Exhibit 1 to Amendment No. 2, single table (PDF p. 1)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole one-page table. The percentages are shares of 10,439,300 gallons a day (1,439,300 + 9,000,000), which checks: 1,439,300 / 10,439,300 = 13.8%.",
+          "content_sha256": "09ba83d5ebdf02523e5d6f92f6a961d4d2cd7406f32b6d9ecda133713969b0da",
+          "retrieval_sha256": "9876026a3a1d8f821120b5a08897449670419cc59cc6c54caec4f11c37cc8597",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 7,
+            "total": 7
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:minot"
+          ],
+          "scenario": "water_controls_wipe:minot"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:minot"
+      ],
+      "scenario": "water_controls_wipe:minot"
+    }
+  ],
+  "scenario": "water_controls_wipe:minot"
+}

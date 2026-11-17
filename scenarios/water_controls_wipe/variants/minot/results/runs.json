@@ -1,0 +1,1825 @@
+{
+  "scenario": "water_controls_wipe:minot",
+  "model_hash": "a1071c35d3a22b3e8b630eccc650ffd2176c4b712bd428b93e568106f9b48812",
+  "implementation_hash": "af9d1ec966bb183e438a870eca7de4b6882682510a5e77815c6cacab0a505ff1",
+  "engine_version": "0.0.1",
+  "horizon_h": 2160,
+  "note": "Completed fatalities, serious casualties, economic loss and operational values at the declared horizon, with each outcome’s scope and input basis. Each value has six significant figures. A numerical residual below 0.000001 reads 0.",
+  "rows": [
+    {
+      "id": "early_kept",
+      "description": "Early response · Keeps hidden access",
+      "run": "early_kept",
+      "options": [
+        "Early response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 6,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 2,
+        "controls_crew.approval_time": 6,
+        "controls_crew.travel_time": 12,
+        "controls_crew.orientation_time": 24,
+        "field_crew.capacity": 200,
+        "field_crew.request_time": 2,
+        "field_crew.approval_time": 6,
+        "field_crew.travel_time": 12,
+        "field_crew.orientation_time": 24,
+        "parts.spares_on_hand": 400,
+        "parts.lead_time": 336.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 6,
+        "relief.transport": 8,
+        "relief.receiving": 8,
+        "relief.staffing": 8,
+        "relief.start_delay": 12,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 0.8,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 24,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 24,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1400.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1421.67,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.297561,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00142167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 3.98911e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "standard_kept",
+      "description": "Standard response · Keeps hidden access",
+      "run": "standard_kept",
+      "options": [
+        "Standard response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 12,
+        "responders.removal_time": 120,
+        "controls_crew.capacity": 80,
+        "controls_crew.request_time": 6,
+        "controls_crew.approval_time": 12,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 100,
+        "field_crew.request_time": 6,
+        "field_crew.approval_time": 12,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 150,
+        "parts.lead_time": 720.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 3,
+        "relief.transport": 4,
+        "relief.receiving": 5,
+        "relief.staffing": 4,
+        "relief.start_delay": 24,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 0.8,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 36,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 36,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1150.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1421.67,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.297561,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1400.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00142167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 3.98911e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept",
+      "description": "Delayed response · Keeps hidden access",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 0.8,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 48,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 48,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1421.67,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.297561,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 3800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00142167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 3.98911e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_none",
+      "description": "Delayed response · No hidden access",
+      "run": "delayed_none",
+      "options": [
+        "Delayed response",
+        "No hidden access"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 0.8,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 48,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 48,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1421.67,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.297561,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00142167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 3.98911e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "delayed_kept_human",
+      "description": "Delayed response · Human team keeps hidden access",
+      "run": "delayed_kept_human",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access",
+        "Human team"
+      ],
+      "edits": null,
+      "changed": {},
+      "inputs": {
+        "attacker.reaction_time": 48,
+        "attacker.rework_share": 0.2,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 0.8,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 48,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 48,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1421.67,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.297561,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 400.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00142167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 3.98911e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_20",
+      "description": "The controls crews do 20 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 20
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 20,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 20,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 0.8,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 48,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 48,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1421.67,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.297561,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 1400.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00142167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 3.98911e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "capacity_160",
+      "description": "The controls crews do 160 work hours an hour",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "controls_crew.capacity": 160
+        }
+      },
+      "changed": {
+        "controls_crew.capacity": {
+          "value": 160,
+          "assumption": "A-SC43-CREW-CAPACITY"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 160,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 0.8,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 48,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 48,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1421.67,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.297561,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 20200.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00142167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 3.98911e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_0",
+      "description": "Minot's operators cannot produce water by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "minot.manual_share": 0
+        }
+      },
+      "changed": {
+        "minot.manual_share": {
+          "value": 0,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 0,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 48,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 48,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 487536.0,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 102.043,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 3800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.0987167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.605973,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 0.013806,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "manual_1",
+      "description": "Minot's operators produce all of normal by hand",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "minot.manual_share": 1
+        }
+      },
+      "changed": {
+        "minot.manual_share": {
+          "value": 1,
+          "assumption": "A-SC43-MANUAL"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 240,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 1,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 48,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 48,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1421.67,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.297561,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 3800.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00142167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 3.98911e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_1d",
+      "description": "Responders remove the credential a day after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 24
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 24,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 24,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 0.8,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 48,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 48,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1421.67,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.297561,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00142167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 3.98911e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    },
+    {
+      "id": "removal_20d",
+      "description": "Responders remove the credential twenty days after recognition",
+      "run": "delayed_kept",
+      "options": [
+        "Delayed response",
+        "Keeps hidden access"
+      ],
+      "edits": {
+        "set": {
+          "responders.removal_time": 480
+        }
+      },
+      "changed": {
+        "responders.removal_time": {
+          "value": 480,
+          "assumption": "A-SC43-RESPONSE"
+        }
+      },
+      "inputs": {
+        "attacker.reaction_time": 0.25,
+        "attacker.rework_share": 1,
+        "responders.recognition_time": 24,
+        "responders.removal_time": 480,
+        "controls_crew.capacity": 40,
+        "controls_crew.request_time": 12,
+        "controls_crew.approval_time": 24,
+        "controls_crew.travel_time": 24,
+        "controls_crew.orientation_time": 48,
+        "field_crew.capacity": 60,
+        "field_crew.request_time": 12,
+        "field_crew.approval_time": 24,
+        "field_crew.travel_time": 24,
+        "field_crew.orientation_time": 48,
+        "parts.spares_on_hand": 50,
+        "parts.lead_time": 1440.0,
+        "parts.batch": 1000,
+        "parts.issue_limit": 1000,
+        "relief.ration": 1,
+        "relief.approved_supply": 1,
+        "relief.transport": 2,
+        "relief.receiving": 5,
+        "relief.staffing": 2,
+        "relief.start_delay": 48,
+        "minot.reached": 1,
+        "minot.demand": 10.2021,
+        "minot.nameplate": 18,
+        "minot.storage": 14,
+        "minot.usable_share": 0.8878,
+        "minot.bought": 0,
+        "minot.sold": 717000,
+        "minot.refill_time": 24,
+        "minot.treat_disabled": 1,
+        "minot.pump_disabled": 0.7,
+        "minot.manual_ready": 1,
+        "minot.manual_share": 0.8,
+        "minot.activation_delay": 1,
+        "minot.operator_duty": 2,
+        "minot.controls_load": 400,
+        "minot.field_load": 80,
+        "minot.replace_load": 0,
+        "minot.parts_per_hour": 0.1,
+        "minot.clearance_time": 48,
+        "minot.loss_share": 0.05,
+        "minot.va_rate": 425105.14,
+        "minot.water_dependence": 0.25,
+        "minot.activity_kept": 0.5,
+        "minot.recovery_factor": 1.5,
+        "minot.catch_up_share": 0.3,
+        "minot.catch_up_time": 720.0,
+        "naws.reached": 1,
+        "naws.demand": 0,
+        "naws.nameplate": 0,
+        "naws.storage": 8.5,
+        "naws.usable_share": 0.8878,
+        "naws.bought": 0,
+        "naws.sold": 1.24789,
+        "naws.refill_time": 24,
+        "naws.treat_disabled": 1,
+        "naws.pump_disabled": 0.5,
+        "naws.manual_ready": 1,
+        "naws.manual_share": 0.6,
+        "naws.activation_delay": 2,
+        "naws.operator_duty": 2,
+        "naws.controls_load": 600,
+        "naws.field_load": 120,
+        "naws.replace_load": 0,
+        "naws.parts_per_hour": 0.1,
+        "naws.clearance_time": 48,
+        "naws.loss_share": 0.05,
+        "naws.va_rate": 0,
+        "naws.water_dependence": 0.25,
+        "naws.activity_kept": 0.5,
+        "naws.recovery_factor": 1.5,
+        "naws.catch_up_share": 0.3,
+        "naws.catch_up_time": 720.0,
+        "minot_to_naws.capacity": 1439300,
+        "minot_homes.population": 48743,
+        "minot_hospitals.facilities": 1,
+        "minot_hospitals.critical_need": 0.08333,
+        "minot_hospitals.days_on_hand": 48.0
+      },
+      "outcomes": {
+        "parts.spares.output": {
+          "value": 1050.0,
+          "status": "estimated"
+        },
+        "person_days_lost": {
+          "value": 1421.67,
+          "status": "estimated"
+        },
+        "unserved_volume": {
+          "value": 0.297561,
+          "status": "estimated"
+        },
+        "rework_caused": {
+          "value": 13000.0,
+          "status": "estimated"
+        },
+        "people_interrupted_now": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "people_under_advisory": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "restored_share": {
+          "value": 1.0,
+          "status": "estimated"
+        },
+        "emergency_water_deficit": {
+          "value": 0.00142167,
+          "status": "estimated"
+        },
+        "hospital_hours_constrained": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "work_remaining": {
+          "value": 0.0,
+          "status": "estimated"
+        },
+        "economic_loss": {
+          "value": 3.98911e-05,
+          "status": "estimated"
+        },
+        "deaths": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "casualties": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "wider_loss": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_beyond_week": {
+          "value": null,
+          "status": "unestimated"
+        },
+        "people_followed": {
+          "value": 48743.0,
+          "status": "estimated"
+        }
+      }
+    }
+  ]
+}

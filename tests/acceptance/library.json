@@ -1,0 +1,161 @@
+{
+  "schema_version": "0.0.1",
+  "id": "acceptance",
+  "title": "Synthetic acceptance-test library",
+  "units": {
+    "h": {
+      "kind": "time",
+      "dimensions": {
+        "time": 1
+      },
+      "scale": 1
+    },
+    "fraction": {
+      "kind": "dimensionless",
+      "dimensions": {},
+      "scale": 1
+    },
+    "per_h": {
+      "kind": "rate",
+      "dimensions": {
+        "time": -1
+      },
+      "scale": 1
+    },
+    "L": {
+      "kind": "volume",
+      "dimensions": {
+        "volume": 1
+      },
+      "scale": 1
+    },
+    "L/h": {
+      "kind": "rate",
+      "dimensions": {
+        "volume": 1,
+        "time": -1
+      },
+      "scale": 1
+    },
+    "m3": {
+      "kind": "volume",
+      "dimensions": {
+        "volume": 1
+      },
+      "scale": 1000
+    },
+    "people": {
+      "kind": "count",
+      "dimensions": {
+        "people": 1
+      },
+      "scale": 1
+    },
+    "units": {
+      "kind": "count",
+      "dimensions": {
+        "units": 1
+      },
+      "scale": 1
+    },
+    "units/h": {
+      "kind": "rate",
+      "dimensions": {
+        "units": 1,
+        "time": -1
+      },
+      "scale": 1
+    },
+    "unit_h": {
+      "kind": "exposure",
+      "dimensions": {
+        "units": 1,
+        "time": 1
+      },
+      "scale": 1
+    }
+  },
+  "sources": [
+    {
+      "id": "synthetic-test-source",
+      "title": "Synthetic acceptance-test source",
+      "custom": {
+        "verification": {
+          "status": "unverified",
+          "date": "2026-10-11",
+          "method": "fixture only",
+          "notes": "Not a real source."
+        }
+      }
+    }
+  ],
+  "claims": [
+    {
+      "id": "T_DATUM",
+      "source": "synthetic-test-source",
+      "locator": "synthetic-test-record/inventory",
+      "shows": "A deliberately synthetic exact datum for validator tests only.",
+      "limits": "Not a real source. It exists only to test datum checks.",
+      "data": {
+        "inventory": {
+          "value": 100,
+          "unit": "L"
+        }
+      },
+      "verification": {
+        "status": "unverified",
+        "date": "2026-10-11",
+        "method": "fixture_only_not_a_real_source",
+        "notes": "Synthetic acceptance-test record.",
+        "checked_fields": [],
+        "content_sha256": "80314e3c5dcfa25a2b28fe68f1706ffdbc05135d41acd182b7549905e5fd5975"
+      }
+    }
+  ],
+  "assumptions": [
+    {
+      "id": "T_RESOURCE",
+      "title": "T_RESOURCE",
+      "statement": "Synthetic one-crew availability, FIFO ordering and execution durations.",
+      "rationale": "Synthetic acceptance-test evidence; not scientific support.",
+      "review": {
+        "status": "unreviewed"
+      },
+      "origin": "author",
+      "supports": []
+    },
+    {
+      "id": "T_SHIPMENT",
+      "title": "T_SHIPMENT",
+      "statement": "Synthetic shipment quantities, fixed transit durations and receiver consumption.",
+      "rationale": "Synthetic acceptance-test evidence; not scientific support.",
+      "review": {
+        "status": "unreviewed"
+      },
+      "origin": "author",
+      "supports": []
+    },
+    {
+      "id": "T_JOB",
+      "title": "T_JOB",
+      "statement": "Synthetic detached-job duration, work rate, cancellation authority and damage effect.",
+      "rationale": "Synthetic acceptance-test evidence; not scientific support.",
+      "review": {
+        "status": "unreviewed"
+      },
+      "origin": "author",
+      "supports": []
+    },
+    {
+      "id": "T_VINTAGE",
+      "title": "T_VINTAGE",
+      "statement": "Synthetic cohort fractions, risk coefficients and three-hour report lag.",
+      "rationale": "Synthetic acceptance-test evidence; not scientific support.",
+      "review": {
+        "status": "unreviewed"
+      },
+      "origin": "author",
+      "supports": []
+    }
+  ]
+}
