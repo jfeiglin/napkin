@@ -1,0 +1,8 @@
+# What the scripts write when they run.
+m_*/
+two_*/
+sp_*/
+listed/
+*.npy
+*.npz
+*.out

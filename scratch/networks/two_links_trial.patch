@@ -1,0 +1,356 @@
+--- a/napkin/model/hybrid.py	2026-11-17 14:21:11.245336224 +0000
++++ b/napkin/model/hybrid.py	2026-11-17 15:02:21.285219142 +0000
+@@ -230,7 +230,7 @@
+     # one class, or with a link into its own class, is a class of one.
+     for key, into in links.items():
+         targets = [ids.get((head, number)) for _, head, number in into]
+-        if len(set(targets)) < len(targets) or ids[key] in targets:
++        if ids[key] in targets:   # SPIKE: two links into one class are no class of one any more
+             signatures[key] = (*signatures[key], ('alone', key[1]))
+     ids = _ids(signatures)
+     out = {}
+@@ -306,6 +306,7 @@
+     families: tuple
+     path: str
+     facts: MappingProxyType = MappingProxyType({})
++    roles: MappingProxyType = MappingProxyType({})
+ 
+     def proved(self, run, resolved=None, given=None):
+         """What the checks of the values proved of a run for every row of each table (the stocks with
+@@ -441,14 +442,40 @@
+     if limits:
+         raise ModelError(limits)
+     found = classes(file)
++    # SPIKE: a stand-in for each link of a class. The first link of a class into a class of rows reads
++    # the representative of that class; the second link into the same class reads its second row, and
++    # so on: so the name of a stand-in says which link a read came through (`roles`).
++    class_of = {of.name(k): of for group in found.values() for of in group for k in of.rows}
++    things_ = {thing.name: thing for thing in file.things}
++    extra = {name: set() for name in found}
++    by_slot, roles = {}, {}
++    for name, group in found.items():
++        table = things_[name].table
++        for of in group:
++            cells = dict(zip((c.name for c in table.columns), table.rows[of.representative - 1].cells))
++            seen = {}
++            for column in table.columns:
++                target = class_of.get(cells[column.name])
++                if target is None:
++                    continue
++                i = seen[id(target)] = seen.get(id(target), -1) + 1
++                row = target.rows[min(i, len(target.rows) - 1)]
++                extra[target.set].add(row)
++                stand = target.name(row)
++                roles.setdefault((_host(of.name(of.representative)), _host(stand)), column.name)
++                for k in of.rows:
++                    by_slot[of.name(k), column.name] = stand
+     kept = Kept(
+-        rows={name: [of.representative for of in group] for name, group in found.items()},
++        rows={
++            name: sorted({of.representative for of in group} | extra[name]) for name, group in found.items()
++        },
+         stands={
+             of.name(k): of.name(of.representative)
+             for group in found.values()
+             for of in group
+             for k in of.rows
+         },
++        by_slot=by_slot,
+     )
+     model = front.compile_file(file, path.as_posix(), thaw(library), files=files, only=kept)
+     listed = front.listed_structures(file, path.as_posix(), thaw(library), files=files, only=kept)
+@@ -481,7 +508,7 @@
+     drawn = drawn_from_columns(model, families)
+     if drawn:
+         raise ModelError(drawn)
+-    core = Hybrid(model, MappingProxyType(listed), tuple(families), path.as_posix())
++    core = Hybrid(model, MappingProxyType(listed), tuple(families), path.as_posix(), roles=MappingProxyType(roles))
+     # The model of the representatives is checked and proved for one row of each class. The checks
+     # of the values are made once more for each declared run, over the range of the rows of each
+     # class (`row_facts`).
+--- a/napkin/model/language/resolve.py	2026-11-17 07:59:25.407787466 +0000
++++ b/napkin/model/language/resolve.py	2026-11-17 15:02:21.286767788 +0000
+@@ -131,6 +131,7 @@
+ 
+     rows: dict
+     stands: dict
++    by_slot: dict = dataclasses.field(default_factory=dict)
+ 
+ 
+ class Resolver:
+@@ -491,7 +492,9 @@
+                 if ENTITY_NAME.fullmatch(cell):
+                     # In a model of representatives, a link names the instance that stands for its
+                     # target.
+-                    target = cell if self.only is None else self.only.stands.get(cell, cell)
++                    target = cell
++                    if self.only is not None:
++                        target = self.only.by_slot.get((f'{thing.name}.{k}', column.name)) or self.only.stands.get(cell, cell)
+                     links[column.name] = LinkBind(place, row.line, column.name, target, False)
+                 else:
+                     self.fail(place, f'the cell {cell!r} names no entity')
+--- a/napkin/engine/timeline/plan.py	2026-11-17 07:59:25.403096179 +0000
++++ b/napkin/engine/timeline/plan.py	2026-11-17 15:03:04.113020267 +0000
+@@ -425,7 +425,9 @@
+                 item.path,
+                 thawed(item.expr),
+             )
+-            for index, (name, item) in enumerate(s.state_checks.items())
++            for index, (name, item) in enumerate(
++                (n, i) for n, i in s.state_checks.items() if not self.ghost(n)
++            )
+         )
+         # The checks of the inputs, which hold before a run (`input_failures`): each with what the
+         # diagnostic of a failure says of it.
+@@ -443,7 +445,9 @@
+                 item.severity,
+                 thawed(item.basis),
+             )
+-            for index, (name, item) in enumerate(s.input_checks.items())
++            for index, (name, item) in enumerate(
++                (n, i) for n, i in s.input_checks.items() if not self.ghost(n)
++            )
+         )
+         partitions = []
+         for name, item in s.partitions.items():
+@@ -493,21 +497,62 @@
+                     )
+                 other = others.pop()
+                 to = np.array([item[1] for item in found], dtype=int)
+-                if other in space.links and not np.array_equal(space.links[other], to):
+-                    raise Outside(f'two links of {space.host} into one class')
+-                space.links[other] = to
++                # SPIKE: a link is known by its name: two links of a class can go into one class.
++                space.links[link] = (other, to)
++                space.links.setdefault(other, to)   # the first link into a class, for a write through it
+                 back = {}
+                 for j, k in enumerate(to.tolist()):
+                     back.setdefault(k, []).append(j)
+-                space.linked_from[other] = {k: np.array(rows, dtype=int) for k, rows in back.items()}
++                space.linked_from[link] = {k: np.array(rows, dtype=int) for k, rows in back.items()}
+         self.spaces = tuple(spaces)
++        # SPIKE: the rows that stand in for a link in the parts of a representative (`Hybrid.roles`):
++        # {host of a stand-in that is no representative: (its space, the host of its representative)}.
++        self.stand_ins, self.roles = {}, dict(getattr(core, 'roles', {}) or {})
++        for family in core.families:
++            for host in family.hosts:
++                if host != family.host:
++                    self.stand_ins[host] = (self.space_of_host[family.host], family.host)
++        self.via = {}   # {name@link: (the name of the representative, the link)}
+ 
+     def space_of(self, name):
+         found = self.space_by_name.get(name)
+         if found is None:
+-            found = self.space_by_name[name] = self.space_of_host.get(name.split('.', 1)[0], SCALARS)
++            host = name.split('.', 1)[0]
++            if host in self.stand_ins:
++                found = self.stand_ins[host][0]
++            else:
++                found = self.space_of_host.get(host, SCALARS)
++            self.space_by_name[name] = found
+         return found
+ 
++    def ghost(self, name):
++        """SPIKE: whether a part belongs to a row that only stands in for a link: the plan makes no
++        part of it. The name of a check holds its host after the template and the number."""
++        parts = name.split('.')
++        return parts[0] in self.stand_ins or (len(parts) > 2 and parts[-1] in self.stand_ins)
++
++    def routed(self, node, space):
++        """SPIKE: a node of a part of `space` with each read through a link as the name `name@link`:
++        the name of the value of the representative of the class that the link goes into."""
++        host = self.spaces[space].host
++
++        def change(part):
++            if isinstance(part, expr.Ref) and '.' in part.name and '@' not in part.name:
++                other, _, member = part.name.partition('.')
++                link = self.roles.get((host, other))
++                if link is not None and other != host:
++                    base = f'{self.stand_ins[other][1] if other in self.stand_ins else other}.{member}'
++                    name = f'{base}@{link}'
++                    if name not in self.via:
++                        self.via[name] = (base, link)
++                        self.kind[name] = self.kind[base]
++                        self.space_by_name[name] = self.space_of(base)
++                    return expr.ref(name)
++                return part
++            return _children_changed(part, change)
++
++        return change(node)
++
+     def check_space(self, name):
+         """The space of a check or a partition. The builder names one by the template of its thing and
+         its number (`Tank.0`), and by the thing too when the template has more than one instance in
+@@ -531,13 +576,16 @@
+     def how(self, reader, name, where):
+         """How a part of the space `reader` reads `name`: SAME (the same instance), ALL (one value
+         for every instance) or LINK (the instance that its row links to)."""
++        if name in self.via:
++            return (LINK, self.via[name][1])
+         other = self.space_of(name)
+         if other == reader:
+             return SAME
+         if self.spaces[other].count == 1:
+             return ALL
+         if other in self.spaces[reader].links:
+-            return LINK
++            link = next(k for k, v in self.spaces[reader].links.items() if isinstance(k, str) and v[0] == other)
++            return (LINK, link)
+         raise Outside(f'{where} reads {name}, a value of a family, outside a list')
+ 
+     # ---- the names ------------------------------------------------------------------------------
+@@ -546,6 +594,8 @@
+         s, units = self.s, self.units
+         self.values = {}  # name -> start value(s): an array over the instances of its space
+         for name, parameter in s.parameters.items():
++            if self.ghost(name):
++                continue
+             space = self.spaces[self.space_of(name)]
+             member = name.split('.', 1)[1] if '.' in name else name
+             if space.family is not None and member in space.family.values:
+@@ -554,9 +604,13 @@
+                 column = np.full(space.count, float(resolved.values[name]))
+             self.values[name] = column
+             self.kind[name] = 'value'
+-        self.parameter_scale = {name: units.scale(item.unit) for name, item in s.parameters.items()}
++        self.parameter_scale = {
++            name: units.scale(item.unit) for name, item in s.parameters.items() if not self.ghost(name)
++        }
+         self.modes = {}
+         for name, mode in s.modes.items():
++            if self.ghost(name):
++                continue
+             space = self.spaces[self.space_of(name)]
+             column = np.empty(space.count, dtype=object)
+             column[:] = mode.initial
+@@ -565,6 +619,8 @@
+             self.kind[name] = self.kind[name + ENTERED] = 'value'
+             self.modes[name] = tuple(mode.values)
+         for event in s.events:
++            if self.ghost(event):
++                continue
+             space = self.spaces[self.space_of(event)]
+             self.values[event + COUNT] = np.zeros(space.count, dtype=np.int64)
+             self.values[event + TIME] = np.zeros(space.count)
+@@ -573,7 +629,8 @@
+         for name in self._formulas:
+             self.kind[name] = 'formula'
+         for name in s.quantities:
+-            self.kind[name] = 'value'  # `_forms` says which ones move, and how
++            if not self.ghost(name):
++                self.kind[name] = 'value'  # `_forms` says which ones move, and how
+ 
+     # ---- the expressions ------------------------------------------------------------------------
+ 
+@@ -584,7 +641,7 @@
+         _no_text(source, where)
+         if isinstance(source, (bool, int, float)):
+             source = repr(source)
+-        made = self._inline(self._lists(expr.read(source), space, where))
++        made = self.routed(self._inline(self._lists(expr.read(source), space, where)), space)
+         for name in expr.names(made):
+             if name == 't':
+                 continue
+@@ -627,6 +684,8 @@
+                 return part
+             terms = []
+             for arg in part.args:
++                if any(name.split('.', 1)[0] in self.stand_ins for name in expr.names(arg)):
++                    continue   # SPIKE: a stand-in is no member of the list of its class
+                 found = {self.space_of(name) for name in expr.names(arg)} - {SCALARS}
+                 if len(found) > 1:
+                     raise Outside(f'{where}: a member of a list that names two families')
+@@ -640,7 +699,7 @@
+         return change(node)
+ 
+     def _aggregate(self, function, terms, where):
+-        terms = tuple(Term(term.space, self._inline(term.node)) for term in terms)
++        terms = tuple(Term(term.space, self.routed(self._inline(term.node), term.space)) for term in terms)
+         key = (function, terms)
+         for name, found in self.aggregates.items():
+             if (found.function, found.terms) == key:
+@@ -687,14 +746,18 @@
+     def _quantities(self):
+         s, units = self.s, self.units
+         # The parts of each rate: (sign, node, whether it is a flow), and the flow of each part.
+-        self.parts = {name: [] for name in s.quantities}
+-        self.part_flows = {name: [] for name in s.quantities}
++        self.parts = {name: [] for name in s.quantities if not self.ghost(name)}
++        self.part_flows = {name: [] for name in s.quantities if not self.ghost(name)}
+         for name, item in s.rates.items():
++            if self.ghost(name):
++                continue
+             space = self.space_of(name)
+             self.parts[name].append((1.0, self.node(item.expr, space, f'the rate of {name}'), False))
+             self.part_flows[name].append(None)
+         self.flows, self.flow_source = {}, {}
+         for key, flow in s.flows.items():
++            if self.ghost(key):
++                continue
+             space = self.space_of(key)
+             node = self.node(flow.rate, space, f'the flow {key}')
+             self.flows[key] = node
+@@ -712,6 +775,8 @@
+         # would have another bound than the plan.
+         self.bound_reads = set()
+         for name, item in s.quantities.items():
++            if self.ghost(name):
++                continue
+             space = self.space_of(name)
+             scale = units.scale(item.unit)
+             minimum, maximum = self._bound(name, 'minimum'), self._bound(name, 'maximum')
+@@ -1072,6 +1137,8 @@
+             discrete = analysis.discrete_names(s)
+         rules = []
+         for name, rule in s.rules.items():
++            if self.ghost(name):
++                continue
+             where = f'the event {name}'
+             space = self.space_of(name)
+             # The names of the values that the rule draws or reads of the past: its other
+@@ -1349,6 +1416,7 @@
+             if name == 't':
+                 return
+             entry = (*reader, how or self.how(space, name, where))
++            name = self.via[name][0] if name in self.via else name
+             found = readers.setdefault(name, [])
+             if entry not in found:
+                 found.append(entry)
+--- a/napkin/engine/timeline/run.py	2026-11-17 07:59:25.403096179 +0000
++++ b/napkin/engine/timeline/run.py	2026-11-17 15:03:04.114695144 +0000
+@@ -808,9 +808,13 @@
+ 
+     # ---- reading a name -------------------------------------------------------------------------
+ 
+-    def index(self, space, other, J):
+-        """The places, in the space `other` of a name, of the instances J of `space`."""
++    def index(self, space, other, J, name=None):
++        """The places, in the space `other` of a name, of the instances J of `space`. SPIKE: a name
++        that is read through a link (`plan.via`) has the places that the link gives."""
+         plan = self.plan
++        if name in plan.via:
++            to = plan.spaces[space].links[plan.via[name][1]][1]
++            return to if J is None else to[J]
+         if plan.spaces[other].count == 1:
+             return ONE
+         if other == space:
+@@ -825,7 +829,9 @@
+             return self.aggregate(name, t, trial)
+         if kind == 'unknown':
+             raise Unknown(name)
+-        at = self.index(space, plan.space_of(name), J)
++        at = self.index(space, plan.space_of(name), J, name)
++        if name in plan.via:
++            name = plan.via[name][0]
+         if kind == 'value' or self.starting:
+             column = self.v[name]
+         elif kind == 'line':
+@@ -2164,7 +2170,7 @@
+             return None
+         if how == SAME:
+             return set(J)
+-        back = self.plan.spaces[space].linked_from[self.plan.space_of(name)]
++        back = self.plan.spaces[space].linked_from[how[1]]
+         found = set()
+         for k in J:
+             found.update(back.get(k, ()))

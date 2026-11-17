@@ -245,8 +245,8 @@ two forms and gave six commands and tools a choice between them. This draft take
 
 Measured on 2026-11-17, on one machine with 4 processors, with SciPy 1.18.1 (HiGHS 1.12.0), each
 workload once. The network is synthetic: 30,000 random places, 35,000 routes between near places and
-15,000 sources. The solver numbers are those of a prototype outside the repository. No published
-test network was used.
+15,000 sources. The numbers of the solver and of the trials are those of prototypes, which are no
+part of the package. No published test network was used.
 
 | Question | Result |
 | --- | --- |
