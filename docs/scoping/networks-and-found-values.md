@@ -1,412 +1,377 @@
 # Values that the engine finds, for networks
 
-**Status:** draft.
+**Status:** draft. The owner took the decisions of [the last section](#the-decisions) on 2026-11-17.
 
-This page plans five engine features that let napkin model networks: places joined by routes, with
-amounts on the routes that must balance and a best allocation within limits. The first feature is a
-new kind of value, which the engine finds so that stated conditions hold together. The other four let
-such a model run at a large size, with its places and routes in tables, and let a reader edit it and
-read its report as for any other model. Nothing in the features knows what a place or a route is: the
-author writes them as things, and the physics of a route as plain formulas. The references to files
-and lines were checked against the code on 2026-11-17.
+This page plans four engine features that let napkin model networks: places joined by routes, with
+amounts on the routes that must balance and a best allocation within limits. Nothing in the features
+knows what a place or a route is: the author writes them as things, and the physics of a route as
+plain formulas.
+
+A first draft planned five features. This draft follows a measurement of the solver paths and two
+trials of the engine ([What was measured](#what-was-measured)). They changed the plan, and each
+change says why. The references to files and lines were checked against the code on 2026-11-17.
 
 ## The need
 
 ### Networks need two calculations that napkin cannot make
 
-Many systems are networks. Two calculations recur in them:
+Many systems are networks: water between utilities, medical supply, patients moved between
+hospitals, evacuation, electricity, fuel, a market, repair crews and their sites. Two calculations
+recur in them:
 
 - **A balance.** The amounts on all routes depend on one another, and they must balance at each
   place. They are simultaneous equations.
 - **A best allocation within limits.** Serve the most need, or cut the least, within the capacity of
   each route and each source. This is an optimization over the whole network at once.
 
-Some use cases:
+napkin cannot make either today. Each value comes from values that are already known, in a fixed
+order, and the compiler refuses a circle of formulas (the code `cycle`). `assert` checks a
+condition and cannot make it true. A share splits one stock among its flows
+([language.md](../language.md), §2.5) and does not balance a network.
 
-| Use case | Places | Routes | What the engine finds | A goal |
-| --- | --- | --- | --- | --- |
-| Water between utilities (the ties between the systems of a place in `water_controls_wipe`) | Utilities | Ties and pipes | The water on each tie, and the need served | Serve the most need |
-| Medical supply (`iv_fluid_shortage`) | Makers, distributors, hospitals | Shipments | The amount on each route | Serve the most courses of care |
-| Patients moved between hospitals | Hospitals | Transfers | The patients moved on each route | Leave the fewest patients without a bed |
-| Evacuation | Zones and shelters | Roads | The people on each road | Move the most people in time |
-| Electricity | Substations | Lines | The power on each line, from the physics that the author writes | Cut the least load |
-| Fuel and gas | Terminals, stations, users | Pipelines and trucks | The amount on each route | Cut the least supply |
-| A market | Sellers and buyers | Trades | The amount of each trade, so that supply equals demand | Clear the market at the least cost |
-| Repair work | Crews and sites | Assignments | The work of each crew at each site, as a rate | Restore the most service |
+### A large network does not fit the engine of today
 
-napkin cannot make either calculation today:
-
-- Each value comes from values that are already known, in a fixed order. The compiler refuses a
-  circle of formulas (the code `cycle`, [compiler.md](../compiler.md), "What is known for a
-  structure"). This is deliberate: it makes each value traceable and provable.
-- `assert` checks a condition. It cannot make a condition true.
-- A share splits one stock among the flows that take from it ([language.md](../language.md), §2.5).
-  It does not balance a network.
-
-The cases of the catalogue needed no more until now.
-
-### A large network does not fit the paths of today
-
-A model with a table runs in the hybrid core: one class of rows is one family, and the engine runs a
-family on arrays ([engine.md](../engine.md), "Tables and tiers"). Four limits stop a network of tens
-of thousands of routes:
-
-- **Two links into one class.** A row with two links into one class is a class of one
-  (`napkin/model/hybrid.py:229-235`), and the plan refuses two links of a space into one class
-  (`napkin/engine/timeline/plan.py:497`). A route has two ends in the same class of places, so each
-  route would be a class of its own, and the fast path would fall back to the flat build.
+- **Two links into one table.** A route has two ends in the table of places. A row with two links
+  into one class of rows is a class of one (`napkin/model/hybrid.py:229-235`), so the compiler
+  writes each route out. A sum over more than 150 routes is then refused: a model of 200 such routes
+  does not compile.
 - **No list of the routes that end at a place.** A cell of a table names one entity, never a list
-  (`napkin/model/language/resolve.py:435`). A place cannot find the routes that end at it without a
-  list that the author writes by hand.
-- **No edit of a row.** With `--set`, `--edits` or `--option`, `napkin run` writes each row of the
-  table out ([cli.md](../cli.md), "A model with a table"; `napkin/commands/run.py:104-121`). A sum
-  over more rows than the limit of 150 operations one inside the other is then refused.
-- **The flat path elsewhere.** `evaluate_study`, `napkin compile`, `napkin draw`, the catalogue's
-  check, its tests (`tests/helpers.py:30`, `scenarios/tests/test_catalogue.py:45`) and the publisher
-  all build the flat structure, which a model of 80,000 rows cannot use.
-
-### The scale to reach
+  (`napkin/model/language/resolve.py:435`). And a template cannot read a list over the rows of a
+  table in a line of its own (`lists_in_templates`, `hybrid.py:116`).
+- **Two paths around one engine.** One engine runs every model, but a model has two compiled forms,
+  each with its own study and its own report. The flat form writes each row of a table out. The
+  hybrid core holds a table as columns. Edits, options, samples, play and the run store are on the
+  flat side only, so a large table cannot use them (`napkin/commands/run.py:104-121`).
 
 The design aims at a network of about 30,000 places, 35,000 routes and 15,000 sources, solved at
-each hour of a week, with failures that spread from route to route (a cascade). The national power
-grid of a large country is one network of this size, and other use cases of the table above can
-reach it too. These sizes are targets of the plan, not measurements of a model.
+each hour of a week, with failures that spread from route to route (a cascade). The sizes are
+targets of the plan, not measurements of a model.
 
 ## The scope
-
-The five features:
 
 | Feature | What it adds |
 | --- | --- |
 | A. Found values | `find`, `make` and `goal`: values that the engine finds so that linear conditions hold, with the best values by a linear goal |
-| B. Reverse lists | `let routes_in: [Route] by to`, and two links of a row into one class without a class of one |
-| C. Edits on the rows of a table | An edit document that sets an input of any row, checked once on arrays |
-| D. Models with a table everywhere | Each public path runs a large model with a table through the hybrid core |
-| E. Reports and the run store for table runs | The rows with events, the rows that a reader names, exact peaks, a stored report, and a process that keeps a compiled model |
+| B. Links between the rows of tables | Two links of a row into one table, a link of a row into its own table, a list in a line of a template, and `let routes_in: [Route] by destination` |
+| C. One path for every model | Each public function reads the hybrid core. A model with no table is a core with no table. An edit can set an input of any row |
+| D. Reports and the run store for large tables | The rows with events, the rows that a reader names, exact peaks, a stored report, and a process that keeps a compiled model |
 
 Not in the first version:
 
 - conditions or goals that are not linear in the found values, and found values that must be whole
   numbers;
+- `make` with `<=` or `>=`;
 - a derivative through a solve, and the analysis of the dynamics (`napkin/dynamics/`) of a model
   with found values;
-- `--option` combinations of a model with a table, which stay on the flat path;
-- a native tier for formulas, unless the speed gates need it;
+- updates of a factorization, a memo of problems, islands in parallel and a native tier for
+  formulas: the measurements do not call for them;
 - any one model of a network: each use case is a model of its own, written with these features.
 
 ## The design
 
 ### A. Found values
 
-An example: towns that share water through pipes, in the syntax of today. Only `find`, `make` and
-`goal` are new, and the two reverse lists are feature B:
+An example: towns that share water through pipes. Only `find`, `make` and `goal` are new, and the
+two reverse lists are feature B:
 
 ```
 Town:
-    let pipes_in: [Pipe] by to          # Feature B: every Pipe whose `to` is this town
-    let pipes_out: [Pipe] by from
+    let pipes_in: [Pipe] by destination     # Feature B: every Pipe whose `destination` is this town
+    let pipes_out: [Pipe] by origin
     input supply: Mgal/day = 10 Mgal/day in 0 Mgal/day to 50 Mgal/day  @r
     input need: Mgal/day = 8 Mgal/day in 0 Mgal/day to 50 Mgal/day  @r
     find used: Mgal/day in 0 Mgal/day to supply  @r
     find served: Mgal/day in 0 Mgal/day to need  @r
     make used + sum(pipes_in.carried) is served + sum(pipes_out.carried)  @r
 Pipe:
-    let from: Town
-    let to: Town
+    let origin: Town
+    let destination: Town
     input capacity: Mgal/day = 5 Mgal/day in 0 Mgal/day to 20 Mgal/day  @r
     find carried: Mgal/day in 0 Mgal/day to capacity  @r
 goal most sum(Town.served)  @r
 ```
 
 A network with physics on its routes is the same model. The author writes the physics as a plain
-`let`, and the engine knows nothing of it. For example, the power on a line in the usual linear
-approximation of a power grid, where `angle` is a found value of each end:
+`let`. For example, the power on a line in the usual linear approximation of a power grid, where
+`angle` is a found value of each end:
 
 ```
-let carried: MW = (from.angle - to.angle) * susceptance if up else 0 MW
+let carried: MW = (origin.angle - destination.angle) * susceptance if up else 0 MW
 ```
 
 **The lines.**
 
 - `find x: U in lo to hi [near n]`. The type and the range are necessary, and the engine keeps the
-  value in the range. `lo`, `hi` and `n` read only values that change at moments. `near` is 0 when
-  the line does not give it, clipped into the range.
-- `make L is R`, `make L <= R` or `make L >= R`, each with an optional `when K`. The condition is
-  linear in the found values; `<`, `>`, `and`, `or` and `not` are refused. `K` reads only values that
-  change at moments, and when `K` is false the condition is dropped: for example, a route that is
-  down.
-- A `make` can be under a thing or at the top level.
-- `goal least E` or `goal most E`: at most one in a model, linear in the found values.
-- Each of the three cites a record, as an input does.
-- A formula of found values is a plain `let`.
-- The words: `find` and `make` are verbs of ASD-STE100. `holds` is not used, because the docs use it
-  for `assert`. `least` and `most` are not `min` and `max`, which are functions.
+  value in the range. `near` is 0 when the line does not give it, clipped into the range. A range
+  of no width makes the value a constant.
+- `make L is R`, with an optional `when K`, under a thing or at the top level. When `K` is false
+  the condition is dropped: for example, a route that is down.
+- `goal least E` or `goal most E`: at most one in a model.
+- Each of the three cites a record, as an input does. A formula of found values is a plain `let`.
+- **No `<=` and no `>=` in the first version.** A limit on one found value is its range. A limit on
+  a sum is a found value for what is left: `find idle: h in 0 h to hours` and
+  `make sum(work) + idle is hours`. So each part of the rule of the one answer is in the file, and
+  the engine solves one kind of condition. The two signs can come later, and they break no model.
+- **The words.** `find`, `make` and `goal` start a line. `near`, `by`, `least` and `most` are words
+  in their own lines only, so a model that has one as a name keeps its meaning (a test names an
+  outcome `most`). `to` and `from` are reserved words of today (`language/lex.py:37`), so no link
+  has one of them as its name.
 
 **One answer.** Among the best answers, the engine takes the one nearest to `near`: the answer with
 the least Σ((x − near)/(hi − lo))². That answer is unique, and it does not depend on the units. So:
 
-- a cut that is necessary spreads evenly over the places that can take it;
 - a source moves as little as it must from its normal output, when `near` is that output;
-- a network whose values are fixed only up to a constant, such as the angles of a power grid or the
-  heads of a water system with no fixed level, needs no reference place.
+- a cut that is necessary goes to every place that can take it. The shares are not equal: the cut
+  of a place grows with the square of its range. A model that needs equal shares has one found value
+  for the share;
+- a network whose values are fixed only up to a constant, such as the angles of a power grid, needs
+  no reference place. Such a value takes part in the rule too, and a narrow range pulls the answer
+  toward its `near`. The author gives it a wide range, and the modelling guide says so.
 
 **Limits of the first version, checked from the structure.** Conditions and the goal are linear in
-the found values. Coefficients, ranges, `near` and `when` read only inputs, lets of inputs, named
-states, and number states that only steps change. They read no stock, no `t`, no found value in a
-range, and no output.
+the found values. Coefficients, ranges, `near` and `when` read only values that change at moments:
+inputs, lets of inputs, named states, and number states that only steps change. They read no stock,
+no `t`, no found value in a range, and no output.
 
-**No new class of crossing.** A found value is a function of values that change only at moments, and
-the engine solves again after each step that writes one of them. So found values are constant between
-moments. A condition on a found value is a discrete trigger; a flow at a found rate is a straight
-line, exact between moments; and an output that reads only such values has an exact peak, read at the
-moments.
+#### When the engine solves
+
+The engine solves at the start of a run. At a moment, the rules that are due go one at a time, as
+today, and the found values keep the values of the last solve. When no rule is due, the engine
+solves again if a step wrote a value that a solve reads. It then reads the rules that read found
+values, and their steps go. The moment ends when no rule is due. `max_steps` limits a moment, as
+today.
+
+- **Why.** Take 1,000 routes that fail at one moment. With a solve after each step, a route can trip
+  on the amounts of a network with 400 of them down. That network never exists, and it depends on
+  the order of the rows. And the cost follows the steps. In the trial of a cascade, 3,910 trips
+  took 14 solves in this way. A solve after each step takes about 4,900.
+- **What it means for a model.** The steps that go between two solves read the found values of the
+  first of them. A model whose routes must trip one at a time gives each trip a delay.
+- **No new class of crossing.** Found values are constant between moments. So a condition on a
+  found value is a discrete trigger, a flow at a found rate is a straight line, and an output that
+  reads only such values has an exact peak, read at the moments.
+
+#### How the engine solves
+
+An island is a set of found values and conditions that no condition joins to another set. The plan
+finds the islands once, from the structure. A solve takes only the islands whose inputs a step
+wrote. For one island:
+
+1. **A first try.** Each value of the goal is put at the best end of its range, and the nearest
+   step (below) runs. When the conditions hold, that is the answer: no cut is necessary. The engine
+   leaves this try out when the last solve of the island needed a cut.
+2. **The goal.** The HiGHS solver that SciPy bundles solves the linear program of the goal. The run
+   keeps one solver for each island, so a program starts from the last basis. The binding of today
+   (`napkin/engine/continuous/highs.py`) reads the same private interface of SciPy.
+3. **The best answers.** A value whose reduced cost is not zero is at one end of its range in every
+   best answer, and each answer that has those values there is a best one. The engine holds them
+   there. So the number of the goal does not go into the next step, and neither does its roundoff.
+4. **The nearest step.** A Newton method on the sparse system of the conditions finds the answer
+   nearest to `near`, with an exact line search. It is new code of about 150 lines. Each of its
+   trial answers is in the ranges, so the engine checks one thing: the residual of each condition.
+   It also compares the goal of the answer with the goal of step 2.
+
+What the first draft planned, and the measurements do not call for:
+
+- **A quadratic program in HiGHS.** It took 73 s at one tenth of the scale.
+- **Updates of a factorization (Woodbury), a memo of problems, islands in parallel.** A
+  factorization at the scale takes 65 ms to 140 ms, and a cascade takes tens of solves.
+- **highspy as a new dependency.** The bundled solver gives the warm start.
+
+**The same result again.** The same build, computer and inputs give the same bits, as for every run
+([engine.md](../engine.md#the-same-result-again)). What a solver keeps belongs to one run, never to
+a plan or a process. The first draft also promised the same bits for one state of the network at
+two times of a run. This draft does not: two such answers agree within the tolerance.
 
 **Failures.** Two new codes stop a run: `infeasible`, which names the island and its worst
-conditions, and `solve`, a residual above the tolerance after the polish. A problem cannot be
-unbounded, because each range is finite. A numerical failure invalidates the run, as every
-numerical failure does.
+conditions, and `solve`, a residual above the tolerance. A problem cannot be unbounded, because each
+range is finite.
 
-**Derivatives.** A derivative through a solve is unsupported in the first version.
+**Derivatives and evidence.** A derivative through a solve is unsupported in the first version.
 `napkin/engine/timeline/influence.py` adds conservative edges from each value that a solve reads to
-each found value of its island, so a derivative that it calls structurally zero stays zero.
-`napkin/dynamics/` refuses a model with `find`, by name.
+each found value of its island, and `napkin/dynamics/` refuses a model with `find`, by name. The
+records of `find`, `make` and `goal` count as used in the evidence trail.
 
-**Evidence.** The records of `find`, `make` and `goal` count as used in the evidence trail.
+### B. Links between the rows of tables
 
-### B. Reverse lists, and two links into one class
+The hybrid core lowers one row of each class, its representative. The engine reads a name of another
+class as the row that the link names. With two links into one class, both links give the same name,
+so the engine cannot say which link a read came through.
 
-`let routes_in: [Route] by to` lists every `Route` whose link `to` names this thing, in the order of
-the model. The compiler binds it, and no instance binds it. It works on things written out and on
-tables.
+- **A stand-in for each link.** In the parts of a representative, the first link into a class names
+  the first row of that class, the second link names its second row, and so on. A stand-in is never
+  the row that reads it. So the name says which link a read came through. The checks and the proofs
+  of the compiler read two rows, as they read any two things: a difference of two ends is no zero.
+- **In the plan.** `Space.links` is keyed by the name of the link. The plan writes each read through
+  a link with its link (`plan.py`, `how`), and it makes no part of a row that only stands in.
+- **The same rule lifts three limits:** two links into one table, a link of a row into its own
+  table, and a list over a table in a line of its template. The trial made the first of them, in
+  about 150 lines.
+- **Reverse lists.** `let routes_in: [Route] by destination` lists every `Route` whose link
+  `destination` names this thing, in the order of the model. The compiler binds it. In the engine,
+  a sum over it is one sum for each row, over the rows that link to it (`Space.linked_from`).
 
-- `Space.links` is keyed by the pair (space, link), not by the target space. This changes `Plan.how`
-  (`plan.py:531`) and lifts the refusal of two links into one class (`plan.py:497`).
-- A reverse list reads the index of the rows that link to each row, which the plan already builds
-  (`Space.linked_from`, `plan.py:498-502`).
-- `classes` in `napkin/model/hybrid.py` no longer makes a row with two links into one class a class
-  of one (`:229-235`). It keeps that rule for a link into its own class. The representative records
-  which link a read came through.
+### C. One path for every model
 
-### C. Edits on the rows of a table
+A model with no table is a hybrid core with no family (`hybrid.py`, `Hybrid`). So the core can
+serve every model, and one compiled form needs one study and one report. The first draft kept the
+two forms and gave six commands and tools a choice between them. This draft takes the choice away.
 
-An edit can set an input of any row. The engine is mostly ready for it: a `Run` takes an array for
-each input (`napkin/engine/timeline/run.py:724-737`), and `Run.admit` proves the run again over the
-ranges that it was given (`run.py:3390`).
+- **What reads the core:** `evaluate_study`, `evaluate_uncertainty`, `Session`, the run store, each
+  command that reads a model, `tools.check`, `tools.publish` and the tests of the catalogue. A model
+  with no table still gives its whole record (`Trajectory`).
+- **Edits.** An edit sets an input of any row (`set.k.member`). A `Run` takes an array for each
+  input already (`napkin/engine/timeline/run.py:724-737`), and `Run.admit` proves the run again over
+  the ranges that it was given (`run.py:3390`). The values are checked once, on arrays, as one
+  transaction over the declared runs.
+- **What is left of the flat form.** It writes a small table out, as the definition in the tests
+  (`hybrid.problems`).
+- **What the table side lacks today:** edits, options, samples, play and the run store; an output
+  that reads an output with a lag; and a report that reads its peaks as fast as the flat one.
 
-- **One check.** A new `Hybrid.rows()` gives `{set: {row: representative}}`. (`rows_of`, at
-  `hybrid.py:546`, gives the ranges of the rows of each class, which is another job.)
-  `napkin/model/runs.py` resolves `set.k.member` to the `Input` of the representative, with the
-  row's cell as its default, so the same checks of the values run. `values_of` gives an array over
-  the rows.
-- **One transaction.** In each declared run: `Plan.of(core, run, values)` and `Run.admit`, with the
-  checks of the inputs of each row and the proofs again over the given ranges. `timeline.admit`
-  takes the arrays of the families.
-- **Diagnostics.** The `ValueError` of `bound_reads` (`run.py:729`) becomes a diagnostic, and an
-  error names `set.k.member`.
-- **Classes stay.** A class records no value of an input (the module docstring of `hybrid.py`), so
-  an edit moves no row to another class.
-- **Entry points.** `reports.study_of(…, edits=None)`, and `napkin run --set` and `--edits` through
-  `run_table`, which no longer write the rows out. `--option` combinations stay on the flat path.
-
-### D. Models with a table everywhere
-
-`evaluate_study`, `napkin compile`, `napkin draw`, `tools.check`, the catalogue's tests and
-`tools.publish` route a model through `hybrid.compile` and `study_of` when it has a table, or when its
-flat build is refused for its size. The structure of the model decides, never its name. The envelope
-of the report stays the same.
-
-### E. Reports and the run store for table runs
+### D. Reports and the run store for large tables
 
 - `table_run.affected`: the rows with any event, up to a cap, with a count of the others.
 - `table_run.rows`: the outputs of the rows that `--rows` names. It can name a whole small table,
   such as a table of regions.
-- An output that changes only at moments is recorded at each moment. Its peak is exact, and
-  `PEAK_WORK` (`reports.peaks`) never thins it.
-- The run store keeps table runs. The full record of a run at the scale above is estimated at about
-  100 MB, so the store keeps its report.
-- A process that keeps a compiled model: a Python object, an extension of `napkin.Session`, that holds
-  the hybrid core and runs many edit documents.
+- An output that changes only at moments is recorded at each moment, as the run goes. Its peak is
+  exact, and `PEAK_WORK` (`reports.peaks`) never thins it.
+- The run store keeps the report of a run of a large table, not its full record: the full record of
+  a run at the scale is estimated at about 100 MB.
+- A process that keeps a compiled model: an extension of `napkin.Session` that holds the core and
+  runs many edit documents.
 
-### Speed
+## What was measured
 
-| What is slow at scale | The fix |
+Measured on 2026-11-17, on one machine with 4 processors, with SciPy 1.18.1 (HiGHS 1.12.0), each
+workload once. The network is synthetic: 30,000 random places, 35,000 routes between near places and
+15,000 sources. The solver numbers are those of a prototype outside the repository. No published
+test network was used.
+
+| Question | Result |
 | --- | --- |
-| Each command compiles 80,000 rows | The process of feature E keeps the compiled model |
-| Each edit is checked in each run, for each row | One check on arrays; only the classes that an edit touches are proved again (feature C) |
-| The public paths write the rows out | Feature D |
-| Each route would be a class | Feature B |
-| A solve at each hour over a large network | The fast path: solve the least-squares (KKT) system of the equalities toward `near`. Take that answer when the ranges and the inequalities hold and the goal is at its best over the box of the ranges, which is the usual case, with no cut. Keep the factorization of each island; an hourly step changes only the right-hand side, so it costs one back-substitution |
-| A route that fails changes a few coefficients | A Woodbury update from the rows that change; a new factorization after K updates, or when the update is ill-conditioned |
-| A cut is necessary | A linear program, warm-started from the island's last basis; then a quadratic program for the one answer nearest to `near`; then one polish solve of the final active set, in a canonical order. The polish makes the result the same bit for bit, whatever the history |
-| Every island at every moment | Only the islands whose inputs change. A memo by the digest of a problem reuses the answers of a normal day. Islands run in parallel, each with a solver of one thread |
-| A family falls to the general tier (Python for each row) | The families of a network model stay in the fast tier, and a test fails if one falls |
-| The peaks of every row | Exact peaks at moments (feature E) |
-| A report of 80,000 rows | Only the rows with events (feature E) |
-| The same study again | The run store (feature E) |
-| Formulas in Python | A native tier, later, and only if the gates need it |
+| The engine of today at the scale, with no found value | 65,000 rows compile in 2.3 s; 1,000 steps run in 0.13 s |
+| Routes with two ends in one table, today | A model of 200 routes is refused |
+| The same, with a stand-in for each link (a trial in a copy of the package) | 30,000 places and 35,000 routes are two families; the compile takes 2.3 s; a run of 6,748 events takes 0.7 s. The events are those of the flat model at 20 and at 100 routes. 224 of 226 tests of the timeline, the hybrid core and the table command pass; the other two fail for a reason of the trial |
+| The linear program of the goal, in the bundled HiGHS | 1.1 s to 1.7 s cold; 30 ms to 240 ms from the last basis of one kept solver |
+| A quadratic program in the bundled HiGHS | 73 s for 3,000 places |
+| One sparse factorization, and one solve with it | 65 ms and 1.4 ms for the normal equations (residual 3e-10); 141 ms and 5 ms for the whole system (residual 7e-14) |
+| The nearest step, when no cut is necessary | One factorization |
+| The nearest step, when a cut is necessary | 7 to 26 factorizations, 1.2 s to 2.6 s; after one more route fails, 1 to 3 factorizations, 0.16 s to 0.34 s |
+| The nearest step after every need changes, in a network that is short at each hour | 3 to 29 factorizations, 0.4 s to 2.7 s; one case took 5.9 s |
+| A cascade after 1,000 routes fail, with a solve when the steps of a moment are done | 3,910 trips in 14 solves, 82 s in the prototype (each program cold, and a rule to stop that is too strict) |
+| Each run of each model with no table, through the table side of today | 113 runs of 21 models. 106 runs give the same outcomes (the largest difference is 2e-14 of a value) and the same steps in the same order. The table side refuses the 7 runs of one model, in which an output reads an output with a lag. On the largest model a run takes about 5 s on both sides; the report takes 4.4 s, where the flat one takes 0.1 s |
 
-**The solver.** First choice: the HiGHS solver that SciPy bundles, through the binding of
-`napkin/engine/continuous/highs.py`. That binding gives the results of `linprog`, bit for bit
-(`tests/engine/test_highs.py`), but it reads SciPy's private interface (`scipy.optimize._highspy`)
-and makes a new solver for each program, so it has no warm start today. If it cannot give a warm
-start or a quadratic program, use highspy (MIT licence). highspy is a new dependency: it needs a
-wheel for aarch64 and the owner's approval.
+**The speed.** The targets of the first draft were illustrative, and this page sets no minimum. A
+week of hourly solves costs seconds for a network that needs no cut on a normal day. It costs
+minutes for a network that is short at each hour. The tests assert counts, never times.
 
 ## The changes
 
 **Compiler (`napkin/model/`):**
 
-- Lexer and parser: `find`, `make`, `goal`, `least`, `most`, `near` and `by` in `NOT_UNITS`
-  (`language/lex.py`); `find` in `FIELD_KINDS` (`language/parse.py:51`); `make` and `goal` read as
-  `assert` is read, under a thing (`thing()`, `parse.py:756`) and at the top level (`parse.py:584`);
-  new nodes in `language/nodes.py`; the words in `KEYWORDS` of `language/format.py`.
+- Lexer and parser: `find` as a kind of field (`language/parse.py:51`); `make` and `goal` read as
+  `assert` is read; `near` in `NOT_UNITS` (`language/lex.py`); `by` in the line of a link.
 - Identity: `identity` in `language/evidence.py` leaves out the new fields of a file that does not
-  write them, so the `model_hash` of each model of today stays the same ([extending.md](../extending.md),
-  "The identity of a model").
-- Resolution: `language/resolve.py`, `semantic.py` and `resolved.py`.
+  write them, so the `model_hash` of each model of today stays the same.
 - Linearity in one place: a new `napkin/core/linear.py`, `linear(node, found) -> (constant, {name:
-  coefficient})`. It goes through `+`, `−`, `*` and `/` by a side that reads no found value,
-  `if`/`else` whose test reads none, lets and `sum`. Anything else is the code `solve`. The compiler
-  and the engine both use it.
-- Builder: `lower/builder.py` writes the new parts `found`, `conditions` and `goals` (`SECTIONS` of
-  `structure.py`). `lower/starts.py` keeps what the conditions read.
-- Checks (`analysis/structure.py`): `discrete_names` (`:103`) adds the found names, and a new
-  `_solve_errors` checks the units, the linearity and the limits of the first version.
-- Proofs (`analysis/values.py`): the interval of a found value is its range, so the asserts and the
-  outputs that read it are proved. A tally fed at a found rate gets its sign proved. Feasibility is
-  checked when the model runs.
-- Hybrid core (`hybrid.py`): feature B in `classes`, and `Hybrid.rows()` for feature C.
+  coefficient})`, which the compiler and the engine both use.
+- Builder, checks and proofs: the new parts `found`, `conditions` and `goals`; `discrete_names`
+  (`analysis/structure.py:103`) adds the found names; a new `_solve_errors` checks the units, the
+  linearity and the limits of the first version; the interval of a found value is its range.
+- Hybrid core (`hybrid.py`, `language/resolve.py`): the stand-ins of feature B in `classes`,
+  `compile` and `Kept`; reverse lists in `Resolver.links`; no refusal of `lists_in_templates`.
 
-**Engine (`napkin/engine/timeline/`):**
+**Engine (`napkin/engine/`):**
 
-- A new `solve.py`, with a `SolvePlan` that `Plan.made` builds. For each condition it keeps its space
-  and its terms. Each value that a coefficient, a range or `near` reads gets a reader of the kind
-  `solve`, so `Run.closure` reaches it.
-- In `Run.apply` (`run.py:2222`), after the writes and before `closure` (`run.py:2189`), the islands
-  whose inputs changed are solved again. The found values that change are written as values, and
-  events read them as they read any value. `Run.start` solves once.
-- Islands are the connected parts of the bipartite graph of the conditions and the found values, with
-  nonzero coefficients only (`scipy.sparse.csgraph`). Nothing in the engine knows what a place or a
-  route is.
-- `plan.py`: `Space.links` by (space, link) for feature B.
-- `reports.py`: `study_of` with edits, `table_run.affected`, `table_run.rows` and the exact peaks.
+- A new `timeline/solve.py`: the islands, the terms of each condition as sparse arrays, the nearest
+  step and its check. `continuous/highs.py` gets a solver that keeps its program.
+- `timeline/plan.py`: links by name and reads through a link; each value that a coefficient, a
+  range or `near` reads gets a reader of the kind `solve`.
+- `timeline/run.py`: a solve in `start`, and in `settle` when no rule is due. `apply` takes one
+  place for each write today: it gets a write of a whole column, which the record of the past keeps
+  as an array.
+- One study and one report over the core: `study.py`, `report.py`, `timeline/reports.py`,
+  `session.py`, `store.py`.
 
-**Schemas and identity:** `report.schema.json` gets `solves` (the counts by path, the moments with a
-linear program, the largest residual) and the new codes. `edits.schema.json` needs no change. The
-implementation hash covers the new modules, and `CLOSURE` in `tests/test_api.py` names them.
-
-**Commands and tools:** `napkin run --set` and `--edits` on a table model (feature C); the paths of
-feature D in `napkin compile`, `napkin draw`, `tools.check` and `tools.publish`; the run store
-(`napkin/store.py`) for table runs.
-
-**Docs:**
-
-- [language.md](../language.md): reverse lists in §2.3; a new section "Values that the engine finds";
-  the refusals; the reserved words.
-- [compiler.md](../compiler.md): the new parts, linearity, the proofs, the changes of the hybrid core.
-- [engine.md](../engine.md): "One moment", a new section "The solve", "When a run stops", "Tables and
-  tiers", "The run store".
-- [python-api.md](../python-api.md): the new parts, edits of rows, the process that keeps a model.
-- [cli.md](../cli.md): "A model with a table".
-- [extending.md](../extending.md): "A declaration that the engine solves".
-- [design.md](../design.md): the measurements, the limits that remain, and each decision with its
-  reason (the words, the rule of the one answer, the solver and any dependency, reverse lists, the
-  edits of a table model, the run store, the minimums of speed).
+**Schemas and docs:** `report.schema.json` gets `solves` (the counts by path, the moments with a
+linear program, the largest residual) and the two codes. `edits.schema.json` needs no change. Each
+page of `docs/` gets its part, and [design.md](../design.md) records the measurements and each
+decision with its reason.
 
 ## The order of the work
 
-1. **S0, measure first.** On a synthetic network of 30,000 places and 35,000 routes, and on
-   published test networks of a similar size where their terms allow (for example benchmark cases
-   of power grids or of water systems): a KKT factorization and its Woodbury update, and warm linear
-   and quadratic programs through each binding.
-2. **B, C and D**, in parallel.
-3. **A on the flat path.**
-4. **A in the hybrid core**, with the speed work.
-5. **E.**
+1. **B**, the links between the rows of tables. Each later part needs it.
+2. **C**, one path. It can go beside B, and it ends when the comparison of the catalogue shows no
+   difference.
+3. **A**, in two parts. First the solve as a module of its own, tested with exact fractions. Then
+   its place in a moment, once, in the timeline engine: a model with no table is the case of no
+   family.
+4. **D.**
 
 ## The checks
 
 The tests follow [CONTRIBUTING.md](../../CONTRIBUTING.md#testing): independent mathematics,
 properties and counterexamples, and synthetic models in `tests/` with generic names.
 
-**Feature A:**
-
-- Exact closed forms with `Fraction`: the flows of networks of two places and of a triangle, and the
-  projection of the one answer, x = n − W⁻¹Aᵀ(AW⁻¹Aᵀ)⁻¹(An − b).
-- The towns of the example, written out by hand: the best value equals the minimum cut, found by
-  enumerating every cut of small random graphs.
-- Small linear programs: the optima by exact enumeration of the vertices.
-- Properties: the residuals and the ranges hold; the goal is monotone in a capacity; two parts that do
-  not connect give the results of two models; the order of the rows does not matter; a run equals its
-  repeat, and equals a run that reaches the same problem by another history, bit for bit.
-- Refusals by name: a condition that is not linear, `<`, a range that reads a stock, `t` in a
-  condition, a problem that is infeasible.
-
-**Feature B:** a model written out and its table form give the same sums; a network of 30,000 rows
-stays a few classes; the flat build and the hybrid build of a small file agree.
-
-**Feature C:** on small tables, the flat study of the same edits is the definition: each outcome,
-status and time. A transaction is refused when one run fails.
-
-**Mutations.** As the ledger records for other features: drop a term, flip a sign, skip a solve,
-merge islands, skip the polish, and the like for B and C. Each mutation must fail a test.
-
-**Gates.** The tests assert counts, never times, so that they do not depend on the machine:
-one factorization for each structure of an island, none for a step that changes only the right-hand
-side, and the rows evaluated after a step. The times are measured and recorded in
-[design.md](../design.md), "What was measured". Proposed minimums for a network at the scale above,
-for the owner to set:
-
-| Measure | Proposed minimum |
-| --- | --- |
-| Compile of the network | 30 s or less |
-| A week of hourly solves with no failure | 60 s or less |
-| 1,000 places or routes down, with a cascade | 120 s or less from a cold start; 60 s or less in the process that keeps the model |
-| Memory | 4 GB or less |
-| Growth of the time with the size, from about a third of the scale to the full scale | a power of 1.3 or less |
-
-**Acceptance.** A network model at the scale above needs each of these, and each has a synthetic test
-model:
-
-- `find`, `make` with `when`, and `goal least` on tables of 30,000 places, 35,000 routes and 15,000
-  sources, with two links into one class and reverse lists;
-- an event that reads a found value, such as a route that trips when the amount on it passes a share
-  of its rating: `abs(carried) >= margin * rating`;
-- a flow at a found rate, such as need that is not served, into a tally;
-- edits of the inputs of any rows through `napkin run --edits`, `evaluate_study` and the process that
-  keeps a model;
-- a model with a table through `tools.check`, `tools.publish`, `napkin compile` and `napkin draw`;
-- the outputs of the rows of a small table, such as regions, in the report;
-- the speed gates, met or reported.
+- **A, exact answers.** Closed forms with `Fraction`: the flows of networks of two places and of a
+  triangle, and the projection of the one answer, x = n − W⁻¹Aᵀ(AW⁻¹Aᵀ)⁻¹(An − b). The best value
+  of the towns equals the minimum cut, found by enumerating every cut of small random graphs. Small
+  linear programs have their optima by exact enumeration of the vertices.
+- **A, properties.** The residuals and the ranges hold; the goal is monotone in a capacity; two
+  parts that do not connect give the results of two models; the order of the rows does not matter;
+  a run equals its repeat, bit for bit.
+- **A, counts.** Many steps of one moment make one solve. An island whose inputs no step wrote is
+  not solved again.
+- **A, refusals by name.** A condition that is not linear, `<=`, a range that reads a stock, `t` in
+  a condition, a problem that is infeasible.
+- **B.** A model written out and its table form give the same sums and the same events. A network
+  of 30,000 rows stays a few classes. A difference of the two ends of a route is no zero in the
+  proofs.
+- **C.** On small tables, the flat study of the same edits is the definition: each outcome, status
+  and time. A transaction is refused when one run fails. For the catalogue, `tools.compare` shows no
+  difference, and each committed summary matches a fresh render.
+- **Mutations.** Drop a term, flip a sign, skip a solve, merge islands, hold no value at its end,
+  and the like for B and C. Each mutation must fail a test.
+- **Acceptance, at the scale.** A synthetic model with `find`, `make` with `when` and `goal least`
+  on two tables with reverse lists; a cascade of routes that trip on a found value; a flow at a
+  found rate into a tally; edits of any rows; and the outputs of the rows of a small table.
 
 ## The risks and the open questions
 
-**Decisions for the owner**, each recorded in [design.md](../design.md) before its part is built:
-
-- the new words of the language, and the rule of the one answer nearest to `near`;
-- the minimums of speed above;
-- highspy as a new dependency, if S0 shows that the binding of today cannot give a warm start or a
-  quadratic program;
-- `--set` and `--edits` on a table model no longer write the rows out, as they do today;
-- the run store keeps the reports of table runs, not their full records.
-
 **Risks:**
 
-- `highs.py` reads a private interface of SciPy, which a new version of SciPy can change. A warm
-  start through it is not yet tried.
-- The fast path assumes that a cut is rare. A network that often needs a linear program is slower,
-  and S0 must show by how much.
-- A Woodbury update can lose accuracy; the rule to factorize again must be tested on ill-conditioned
-  cases.
-- Results that are the same bit for bit, whatever the history, rest on the polish solve. A test must
-  try histories that reach the same problem by other paths.
-- Some use cases want whole numbers, such as crews or beds. The first version finds rates and shares,
-  not whole numbers, and a model must say so where it matters.
+- The nearest step is new numerical code. In the prototype a problem with many equal answers took
+  up to 29 factorizations, and its rule to stop was too strict for values with a wide range.
+- A network that is short at each hour is slow at the scale: up to seconds for each solve.
+- `highs.py` reads a private interface of SciPy, which a new version of SciPy can change.
+- Feature C goes through every public function. The comparison of the two sides read the outcomes
+  and the steps of each run, not its health or its evidence.
+- A model can make steps without end at one moment. `max_steps` stops such a run.
 - The identity of the models of today must not move: `tools.compare` over the whole catalogue shows
   it before the language changes land.
 
 **Open questions:**
 
-- Which published test networks S0 uses, and on what terms.
-- The cap of `table_run.affected`.
+- The tolerance of a condition, and the rule to stop the nearest step. A proposal: the residual of a
+  condition against the sizes of its terms.
+- How `infeasible` names the worst conditions. The bundled interface of HiGHS has tools for it; they
+  are not yet tried.
 - Whether a `goal` can sit under a thing, or only at the top level.
+- The cap of `table_run.affected`.
+- Which published test networks the checks use, and on what terms.
+
+## The decisions
+
+Taken by the owner on 2026-11-17:
+
+- The engine solves when the steps of a moment are done, not after each step.
+- `make` has `is` only in the first version.
+- A run gives the same bits again. The page promises no more of two equal states in one run.
+- One path for every model, before feature A.
+- The targets of speed were illustrative: the page sets no minimum.
+
+Still for the owner, each recorded in [design.md](../design.md) before its part is built:
+
+- the new words of the language, and the rule of the one answer nearest to `near`;
+- the run store keeps the reports of runs of large tables, not their full records.
