@@ -15,8 +15,9 @@ and the request of what to record.
   forecast under the mode) or `player`, whose answers are the `picks`, each keyed by the choice's
   site and the occurrence that makes it.
 - **Budgets** count work, never seconds, so a run that succeeds on one machine succeeds on another:
-  the linear programs of one fair-sharing step and the iterations of one final distance step. A
-  step that cannot finish within its budget stops the run with a diagnostic that names it.
+  the linear programs of one fair-sharing step, the Newton steps of each distance stage, and the
+  iterations of its exact fallback. A step that cannot finish within its budget stops the run with
+  a diagnostic that names it.
 - **The request** says until when and what to record. It is not part of what a run computes, so the
   key of a stored run leaves it out (`canonical.configuration_bytes`, R-A4a-08).
 """
@@ -92,11 +93,14 @@ class Limits:
 
 @dataclass(frozen=True)
 class Budgets:
-    """The work that one solve may spend on its two costly steps (D0): linear programs of the
-    fair-sharing step, and iterations of the final distance step."""
+    """The work that one solve may spend on its two costly steps (D0), in the units of the solve
+    library (`napkin/engine/solve/solver.py`, `Budget`): the linear programs of the fair-sharing
+    step over all its tiers, the Newton steps of each distance stage, and the iterations of the QP
+    that is the exact fallback of a distance stage. The defaults are the library's."""
 
-    fair_sharing: int = 10_000
-    distance: int = 100_000
+    fair_programs: int = 1_000
+    newton_steps: int = 500
+    qp_iterations: int = 100_000
 
     def __post_init__(self):
         _positive(self)

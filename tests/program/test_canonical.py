@@ -93,7 +93,7 @@ def test_a_change_of_a_configuration_gives_other_bytes():
         Configuration(request, controllers=(Controller('dispatcher', PLAYER),)),
         Configuration(request, picks=(Pick('depot.ask.step[0].do[0].choice[0]', 'depot.ask#0', 'SEND'),)),
         Configuration(request, limits=Limits(max_rounds=10)),
-        Configuration(request, budgets=Budgets(fair_sharing=5)),
+        Configuration(request, budgets=Budgets(fair_programs=5)),
         Configuration(request, numerics=Numerics(rtol=1e-6)),
     ]
     found = [configuration_bytes(configuration) for configuration in variants]

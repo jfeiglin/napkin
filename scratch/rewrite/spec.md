@@ -1012,8 +1012,9 @@ Six prototypes tested this design outside the engine. Their results are measurem
 | The fair-sharing step alone, 3,000 places, four cases with 552 to 1,880 claims short | 50 to 172 linear programs; 1.1 to 4.4 s |
 | The fair-sharing step alone, 30,000 places, one case with 4,315 claims short | 467 linear programs; 128 s |
 | The same size with a heavier shortage | It failed partway: a later program was infeasible |
-| The final distance step after fair sharing, 3,000 places | 38 s with the QP solver of HiGHS. The prototype’s own method did not converge |
+| The final distance step after fair sharing, 3,000 places, in the prototype | 38 s with the QP solver of HiGHS. The prototype’s own method did not converge |
 | The final distance step with inequality rows, 200 small random cases | It matched an exact reference to 7e-9 |
+| The solve library of the build, the four cases at 3,000 places, the whole selection order | The final distance step after fair sharing converged in 2.1 to 5.3 s (98 to 177 Newton steps), with no fallback. The QP solver of HiGHS, its exact fallback, did not finish on these faces in this run |
 | Flows that join and leave a kept problem: 2; then 1.5 each; then 2; then none | Each answer equal to a problem formed fresh. At 30,000 places, 300 flows joined in 0.90 s, against 6.12 s formed fresh |
 | A flow that takes more than its request, in a bridge of five routes | Total unmet 4.65, against 9.20 with each use capped at its request |
 

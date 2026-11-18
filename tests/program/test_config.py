@@ -57,7 +57,7 @@ def test_a_configuration_that_no_run_can_take_is_refused(settings):
     [
         lambda: Limits(max_rounds=0),
         lambda: Limits(max_active=-1),
-        lambda: Budgets(fair_sharing=0),
+        lambda: Budgets(fair_programs=0),
         lambda: Numerics(rtol=0.0),
         lambda: Request(-1),
         lambda: Request('2 h'),

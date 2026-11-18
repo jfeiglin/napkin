@@ -19,10 +19,10 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] 6 `timeline/run.py` split by moves into ten modules (`a4b/split_run.py`, `a4b/LAYOUT.md`)
   - [x] the last run of the old suite, with durations: 5,485 passed, 3 skipped, 5 min 52 s (`b0/last-old-suite.txt`)
 - [x] Gate G0 (2026-11-18): the owner's decisions are `g0-decisions.md`; `spec.md` is the settled proposal. See "Changes after G0" below
-- [ ] B1 contract, oracle and solve library: three tracks (`briefs/b1-*.md`)
+- [x] B1 contract, oracle and solve library: three tracks (`briefs/b1-*.md`)
   - [x] the program (`napkin/program/`, `tests/program/`: 421 tests, 65 examples for the 32 acceptance rows)
   - [x] the oracle, phase 1: the semantics of G0 (`tests/reference/`, 127 tests)
-  - [ ] the solve library (`napkin/engine/solve/`, `tests/engine/solve/`)
+  - [x] the solve library (`napkin/engine/solve/`, `tests/engine/solve/`: 173 tests; the four cases at 3,000 places run the whole order in 4 to 10 s)
   - [x] the oracle, phase 2: it runs all 65 programs of `tests/program/examples.py`, and each gives its expected results
 - [ ] S0 skeleton: two tracks at work (`briefs/s0-front.md`, `briefs/s0-engine.md`); the dormant list is filled (6 folders, 108 files)
 - [ ] S1 templates, tables and collections
