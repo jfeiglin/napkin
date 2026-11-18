@@ -71,7 +71,6 @@ tests/model/test_copies_and_start.py
 tests/model/test_desugar.py
 tests/model/test_diagnostic_places.py
 tests/model/test_distribution_contracts.py
-tests/model/test_hybrid.py
 tests/model/test_identity.py
 tests/model/test_kept_parts.py
 tests/model/test_library.py
@@ -95,8 +94,6 @@ tests/model/test_start_states.py
 tests/model/test_state_assignment.py
 tests/model/test_structure.py
 tests/model/test_structure_checks.py
-tests/model/test_tables.py
-tests/model/test_template_lists.py
 tests/model/test_units.py
 tests/model/test_views.py
 tests/test_bench.py
