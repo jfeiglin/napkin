@@ -100,6 +100,31 @@
     "texts with a brace": 26,
     "| (named values)": 68
   },
+  "calls in expressions": {
+    "q": 1289,
+    "max": 110,
+    "sum": 52,
+    "exp": 46,
+    "since": 31,
+    "min": 30,
+    "ln": 28,
+    "clip": 27,
+    "sqrt": 23,
+    "erf": 14,
+    "count": 9,
+    "abs": 4,
+    "elapsed": 4,
+    "expm1": 3,
+    "pert": 1,
+    "normal": 1
+  },
+  "functions that the proposal does not have": [],
+  "forms in expressions": {
+    "a ** b": 32,
+    "a if C else b": 99,
+    "a text in an expression (a named value)": 417,
+    "expressions": 2956
+  },
   "examples": {
     "**": [
       "scenarios/cyber_learning_loop/model.scn:658",

@@ -145,6 +145,66 @@ def census(base):
     return files, names, units, type_units, notes, examples
 
 
+def expressions(base):
+    """What the expressions of the present models hold, read with the present expression reader
+    (`expressions.tree`, which gives Python's tree): the calls by function, the chains of comparisons
+    by the way they point, and the other forms."""
+    import ast
+    from dataclasses import fields, is_dataclass
+
+    from napkin.model.language import expressions as reader
+    from napkin.model.language import nodes, parse
+
+    calls, forms, examples = Counter(), Counter(), defaultdict(list)
+
+    def found_in(node, seen):
+        if isinstance(node, nodes.Expr):
+            yield node
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                yield from found_in(item, seen)
+        elif is_dataclass(node) and id(node) not in seen:
+            seen.add(id(node))
+            for item in fields(node):
+                yield from found_in(getattr(node, item.name), seen)
+
+    files = sorted([*Path(base, 'examples').rglob('*.scn'), *Path(base, 'scenarios').rglob('*.scn')])
+    for path in files:
+        where = str(path.relative_to(base))
+        parsed = parse.parse(path.read_text(encoding='utf-8'))
+        for found in found_in(parsed, set()):
+            if not found.tokens:
+                continue
+            try:
+                tree, _ = reader.tree(found.tokens)
+            except Exception:  # a list of names, a lag: no expression of values
+                forms['not an expression of values (a list, a lag)'] += 1
+                continue
+            forms['expressions'] += 1
+            units_written = set()  # the unit of `q(2, 'h')` is a text of the reader, not of the model
+            for part in ast.walk(tree):
+                if isinstance(part, ast.Call) and isinstance(part.func, ast.Name):
+                    calls[part.func.id] += 1
+                    if part.func.id == 'q':
+                        units_written.add(id(part.args[1]))
+                elif id(part) in units_written:
+                    continue
+                elif isinstance(part, ast.Compare) and len(part.ops) > 1:
+                    up = all(isinstance(op, (ast.Lt, ast.LtE)) for op in part.ops)
+                    down = all(isinstance(op, (ast.Gt, ast.GtE)) for op in part.ops)
+                    key = 'chains of comparisons that point one way' if up or down else 'chains of comparisons that point two ways, or hold =='
+                    forms[key] += 1
+                    if len(examples[key]) < 4:
+                        examples[key].append(f'{where}:{found.line}')
+                elif isinstance(part, ast.IfExp):
+                    forms['a if C else b'] += 1
+                elif isinstance(part, ast.BinOp) and isinstance(part.op, ast.Pow):
+                    forms['a ** b'] += 1
+                elif isinstance(part, ast.Constant) and isinstance(part.value, str):
+                    forms['a text in an expression (a named value)'] += 1
+    return calls, forms, examples
+
+
 def unit_registry(base):
     """The names of the units that the prelude, the library and the packages declare."""
     declared = Counter()
@@ -173,6 +233,8 @@ def main(argv):
 
     files, names, units, type_units, notes, examples = census(args.base)
     declared_units = unit_registry(args.base)
+    calls, expression_forms, form_examples = expressions(args.base)
+    known = new.FUNCTIONS | new.DISTRIBUTIONS | {'q'}
 
     every = defaultdict(set)  # name -> kinds
     for kind, table in names.items():
@@ -236,7 +298,10 @@ def main(argv):
         ),
         'declared units': {'distinct': len(declared_units), **forms(Counter(dict.fromkeys(declared_units, 1)))},
         'notation counts': dict(sorted(notes.items())),
-        'examples': dict(examples),
+        'calls in expressions': dict(sorted(calls.items(), key=lambda item: -item[1])),
+        'functions that the proposal does not have': sorted(set(calls) - known),
+        'forms in expressions': dict(sorted(expression_forms.items())),
+        'examples': {**dict(examples), **dict(form_examples)},
         'where': {
             word: {kind: sorted(names[kind][word]) for kind in kinds}
             for word, kinds in {**reserved, **contextual, **type_words, **python}.items()
@@ -260,7 +325,7 @@ def main(argv):
         out.append(f'## {title}')
         out.append('')
         if not found:
-            out.append(f'None. {note}'.strip())
+            out.append('None.')
             out.append('')
             return
         if note:
@@ -319,7 +384,25 @@ def main(argv):
     out.append('| Form | Count |')
     out.append('| --- | ---: |')
     for key, count in summary['notation counts'].items():
+        out.append(f'| {key.replace("|", "&#124;")} | {count} |')
+    out.append('')
+    out.append('## Expressions')
+    out.append('')
+    out.append('Each expression of a model, read with the present reader (`expressions.tree`).')
+    out.append('')
+    out.append('| Form | Count |')
+    out.append('| --- | ---: |')
+    for key, count in summary['forms in expressions'].items():
         out.append(f'| {key} | {count} |')
+    for key in ('chains of comparisons that point one way', 'chains of comparisons that point two ways, or hold =='):
+        if key not in summary['forms in expressions']:
+            out.append(f'| {key} | 0 |')
+    out.append('')
+    listed = ', '.join(f'`{name}` {count}' for name, count in summary['calls in expressions'].items())
+    out.append(f'Calls by function: {listed}.')
+    missing = summary['functions that the proposal does not have']
+    out.append('')
+    out.append(f'Functions that the present models call and the proposal does not have: {", ".join(missing) or "none"}.')
     out.append('')
     out.append('## Examples')
     out.append('')

@@ -22,7 +22,7 @@ present lexer and parser. `census_names.py` makes this file again.
 
 ## Reserved words that a present model declares
 
-None. Each of these names must change.
+None.
 
 ## Contextual words that a present model declares
 
@@ -94,7 +94,24 @@ Unit words outside the proposed grammar: none.
 | texts | 3289 |
 | texts over several lines | 945 |
 | texts with a brace | 26 |
-| | (named values) | 68 |
+| &#124; (named values) | 68 |
+
+## Expressions
+
+Each expression of a model, read with the present reader (`expressions.tree`).
+
+| Form | Count |
+| --- | ---: |
+| a ** b | 32 |
+| a if C else b | 99 |
+| a text in an expression (a named value) | 417 |
+| expressions | 2956 |
+| chains of comparisons that point one way | 0 |
+| chains of comparisons that point two ways, or hold == | 0 |
+
+Calls by function: `q` 1289, `max` 110, `sum` 52, `exp` 46, `since` 31, `min` 30, `ln` 28, `clip` 27, `sqrt` 23, `erf` 14, `count` 9, `abs` 4, `elapsed` 4, `expm1` 3, `pert` 1, `normal` 1.
+
+Functions that the present models call and the proposal does not have: none.
 
 ## Examples
 
