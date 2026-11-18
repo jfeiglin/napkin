@@ -168,10 +168,16 @@ class Kept:
         if valid:
             gone = set(index.tolist())
             rows = [status for i, status in enumerate(rows) if i not in gone]
+            spare = iter([j for j, status in enumerate(cols) if status == BASIC])
             for i in extra:
                 choice = next((j for j in held[i] if cols[j] == BASIC), None)
-                if choice is None:
-                    choice = next((j for j, status in enumerate(cols) if status == BASIC), None)
+                while choice is None:
+                    choice = next(spare, -1)
+                    if choice == -1:
+                        choice = None
+                        break
+                    if cols[choice] != BASIC:
+                        choice = None
                 if choice is None:
                     # no basic column is left: a basic row gives its place
                     k = next(k for k, status in enumerate(rows) if status == BASIC)

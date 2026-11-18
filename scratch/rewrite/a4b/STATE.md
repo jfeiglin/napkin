@@ -16,7 +16,8 @@
 - More cases in `cases.py`: `frozen_formula` (2.0 at 2.75 h, B 6.0), `contact` (16-1e-12 fires at
   0 h, 16-1e-6 never, `>` stops with a message), `budgets` (max_active, max_occurrences messages).
 - `spike/measure.py` written and run (best of three, 1,000 x 100). Not binding: 52.8 s, start 75.6 us,
-  finish 17.3 us, 3.5 predictions per change. Binding: see FINDINGS. `--scale` not run.
+  finish 17.3 us, 3.5 predictions per change. Binding: 118.3 s, start 84.6 us, finish 19.4 us,
+  1,653 predictions per change, 743,652 timeline entries. Load 3.4 -> 7.5. `--scale` not run.
 - `FINDINGS.md`: the harness REFUSED the write of a findings .md by a subagent; the full text went to
   the main session in the handback. Not written: `proofs.py`, `test_spike.py`.
 
