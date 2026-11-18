@@ -1,0 +1,18 @@
+{
+ "rows": [
+  {
+   "places": 300,
+   "routes": 350,
+   "depletions": 228,
+   "moves": 349,
+   "largest_difference_L": 5.512390544026857e-11
+  },
+  {
+   "places": 3000,
+   "routes": 3500,
+   "depletions": 2450,
+   "moves": 3498,
+   "largest_difference_L": 4.2803094402188435e-11
+  }
+ ]
+}

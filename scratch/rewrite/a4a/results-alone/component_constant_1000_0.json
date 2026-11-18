@@ -1,0 +1,18 @@
+{
+ "kind": "constant",
+ "places": 1000,
+ "routes": 1166,
+ "rings": false,
+ "stores": 2000,
+ "flows": 2166,
+ "horizon_h": 300.0,
+ "runs": 1,
+ "load": [
+  1.0,
+  1.46,
+  2.44
+ ],
+ "dense_matrix_MB": 34.656,
+ "failed": "SimulationError: The moment t=1 h does not settle within 1000 steps; next: routes_1001.ship",
+ "peak_memory_MB": 801.203125
+}

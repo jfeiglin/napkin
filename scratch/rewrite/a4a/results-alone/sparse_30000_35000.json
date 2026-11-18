@@ -1,0 +1,30 @@
+{
+ "places": 30000,
+ "routes": 35000,
+ "stores": 60000,
+ "flows": 65000,
+ "horizon_h": 48.0,
+ "jacobian_nonzeros": 94998,
+ "dense_jacobian_MB": 28800.0,
+ "load": [
+  1.12,
+  2.88,
+  3.27
+ ],
+ "ms_per_evaluation": 0.5696116000308393,
+ "integrate_s": 32.02123518100052,
+ "solver_steps": 302,
+ "evaluations": 2784,
+ "jacobians": 35,
+ "factorizations": 72,
+ "least_stock_at_end": 5.764491526165586e-18,
+ "conservation_error_L": 0.0,
+ "resting_stores_in_the_state": 15311,
+ "stand_in_sharing_ms": 38.33436266662223,
+ "stand_in_sharing_sweeps": 33,
+ "linear_program_s": 0.22550521099947218,
+ "linear_program_status": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+ "estimate_run_with_a_program_at_each_evaluation_h": 0.1743906965062585,
+ "estimate_run_with_the_stand_in_sharing_at_each_evaluation_s": 106.72286566387629,
+ "peak_memory_MB": 359.4140625
+}

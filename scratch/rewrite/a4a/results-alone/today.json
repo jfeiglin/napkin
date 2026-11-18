@@ -1,0 +1,77 @@
+{
+ "load": [
+  1.01,
+  2.17,
+  2.95
+ ],
+ "trajectory": [
+  {
+   "places": 30,
+   "quantities": 60,
+   "segments": 29,
+   "snapshots": 65,
+   "steps": 35,
+   "trace": 35,
+   "pickle_zlib_bytes": 58006,
+   "pack_s": 0.0035474050000630086,
+   "state_copies_bytes": 75840
+  },
+  {
+   "places": 100,
+   "quantities": 200,
+   "segments": 81,
+   "snapshots": 198,
+   "steps": 116,
+   "trace": 116,
+   "pickle_zlib_bytes": 573012,
+   "pack_s": 0.03959921000023314,
+   "state_copies_bytes": 761600
+  },
+  {
+   "places": 300,
+   "quantities": 600,
+   "segments": 234,
+   "snapshots": 585,
+   "steps": 350,
+   "trace": 350,
+   "pickle_zlib_bytes": 8007572,
+   "pack_s": 0.4877834310000253,
+   "state_copies_bytes": 6734400
+  }
+ ],
+ "table_path": {
+  "places": 30000,
+  "routes": 35000,
+  "compile_s": 2.518413643999338,
+  "plan_s": 0.09595859599994583,
+  "run_s": 5.124415403000057,
+  "run_with_record_s": 5.705382355000438,
+  "steps": 35000,
+  "undo_entries": 175000,
+  "line_log_entries": 35000,
+  "block_log_entries": 0,
+  "record_bytes": 39252838,
+  "log_bytes": 28064113,
+  "report_three_times_s": 0.03229339300014544,
+  "readings": [
+   57.718350579,
+   243.69872168700002,
+   3070.4443758029997
+  ]
+ },
+ "lag_on_the_table_path": {
+  "350": {
+   "report_one_time_s": 0.026248711999869556,
+   "value": 1.7394412162404371
+  },
+  "3500": {
+   "report_one_time_s": 1.6719814829993993,
+   "value": 20.873615793067426
+  },
+  "35000": {
+   "report_one_time_s": 191.2137986429998,
+   "value": 203.84109499944387
+  }
+ },
+ "peak_memory_MB": 1132.78515625
+}

@@ -1,0 +1,27 @@
+{
+ "kind": "linear",
+ "places": 30,
+ "routes": 35,
+ "rings": false,
+ "stores": 60,
+ "flows": 65,
+ "horizon_h": 300.0,
+ "runs": 3,
+ "load": [
+  1.02,
+  1.03,
+  1.53
+ ],
+ "dense_matrix_MB": 0.0312,
+ "build_s": 0.08668203399975027,
+ "simulate_s": 1.0532668579999154,
+ "evaluations": 5175,
+ "segments": 20,
+ "steps": 35,
+ "ms_per_evaluation": 0.14666321450597797,
+ "share_of_run_in_evaluations": 0.6917798554922878,
+ "share_of_evaluation_in_allocation": 0.780541141450312,
+ "linear_programs": 0,
+ "linear_program_s": 0.0,
+ "peak_memory_MB": 131.40625
+}

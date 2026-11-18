@@ -14,7 +14,8 @@ What was not verified:
 - A1: no type checker ran; types were applied to 13 models by hand. 16 refusals belong to a checker
   that does not exist (R-A1-04, 05, 09, 12, 15, 17, 19, 20, 21, 23, 24, 26, 29, 30, 31, 32).
 - A5: nothing was executed; no new compiler exists. A4b: R-A4b-07 rests on two runs and no checker.
-- A4a: `measure.py` was not run end to end; 150 stores and 10,000,000 pieces are not tuned.
+- A4a: the limits of 150 stores and 10,000,000 pieces are not tuned. (`measure.py` has since run
+  end to end, alone: Part 9, line 7.)
   A2: `switch`, `sees` and chance have no case in its interpreter.
 
 ## Part 1. Decisions that need your word (most weight first)
@@ -599,7 +600,11 @@ The findings change the content of some stages, not their order:
 6. **M, the catalogue.** A5's translator does the mechanical lines (96%) and its check guards each
    package. The work by hand is the 172 flows with several pairs and the 75 events with several
    outcomes. `iv_fluid_shortage` and 15 variants were not translated by hand in the prototype.
-7. **Before S2.** `a4a/measure.py` runs end to end, alone, so that its limits can be cited.
+7. **Done on 2026-11-18.** `a4a/measure.py` ran end to end, alone (38 minutes, load 1.0;
+   `a4a/results-alone.md`). It confirms the limit of one component. With 600 stores: 12.6 s and
+   865 MB when the requests are constant; 861 s with rings; a memory error above 5 GB, or 683 s,
+   when the requests read a stock. With 200 stores: 8 to 16 s when the requests read a stock. With
+   2,000 stores the present general tier fails ("does not settle within 1000 steps").
 8. **Still open in the keel.** The one last run of the old test suite.
 9. **Agents** run on the `opus` model from now on, to save usage.
 

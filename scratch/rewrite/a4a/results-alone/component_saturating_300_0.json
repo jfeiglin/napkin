@@ -1,0 +1,18 @@
+{
+ "kind": "saturating",
+ "places": 300,
+ "routes": 350,
+ "rings": false,
+ "stores": 600,
+ "flows": 650,
+ "horizon_h": 300.0,
+ "runs": 1,
+ "load": [
+  1.01,
+  1.02,
+  1.44
+ ],
+ "dense_matrix_MB": 3.12,
+ "failed": "MemoryError: more than 5 GB",
+ "peak_memory_MB": 4883.14453125
+}

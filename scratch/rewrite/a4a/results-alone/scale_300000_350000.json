@@ -1,0 +1,33 @@
+{
+ "places": 300000,
+ "routes": 350000,
+ "stores": 600000,
+ "flows": 650000,
+ "horizon_h": 48.0,
+ "csv_bytes": 29122841,
+ "write_csv_s": 0.7405809809997663,
+ "build_s": 2.4325514180000027,
+ "start_s": 1.0754314960004194,
+ "run_s": 15.756462448998718,
+ "moments": 502760,
+ "depletions": 152936,
+ "moves": 349824,
+ "line_restarts": 1431253,
+ "share_steps": 216739,
+ "microseconds_per_moment": 31.339928492717632,
+ "resting_at_end": 152936,
+ "total_start_L": 32972556.62,
+ "total_end_L": 32972556.62,
+ "conservation_error_L": 0.0,
+ "moved_by_flows_and_lots_L": 19769368.614365384,
+ "connected_sets": 33507,
+ "largest_set_stores": 520850,
+ "sets_of_two_stores": 29124,
+ "peak_memory_MB": 844.00390625,
+ "load": [
+  1.0,
+  1.49,
+  2.47
+ ],
+ "runs": 1
+}

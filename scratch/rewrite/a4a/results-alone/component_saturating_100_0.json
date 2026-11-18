@@ -1,0 +1,27 @@
+{
+ "kind": "saturating",
+ "places": 100,
+ "routes": 116,
+ "rings": false,
+ "stores": 200,
+ "flows": 216,
+ "horizon_h": 300.0,
+ "runs": 3,
+ "load": [
+  1.02,
+  1.03,
+  1.46
+ ],
+ "dense_matrix_MB": 0.3456,
+ "build_s": 0.2704153429986036,
+ "simulate_s": 11.02190865800003,
+ "evaluations": 22737,
+ "segments": 57,
+ "steps": 116,
+ "ms_per_evaluation": 0.43926715780725906,
+ "share_of_run_in_evaluations": 0.8358299072486272,
+ "share_of_evaluation_in_allocation": 0.8362401633054259,
+ "linear_programs": 0,
+ "linear_program_s": 0.0,
+ "peak_memory_MB": 376.66015625
+}

@@ -1,0 +1,14 @@
+{
+ "places": 30000,
+ "routes": 35000,
+ "rows in the order of their ids": {
+  "named_values": 60000,
+  "values_with_other_bits": 0,
+  "largest_difference_L": 0.0
+ },
+ "rows in the order of the file": {
+  "named_values": 60000,
+  "values_with_other_bits": 2929,
+  "largest_difference_L": 1.3500311979441904e-13
+ }
+}
