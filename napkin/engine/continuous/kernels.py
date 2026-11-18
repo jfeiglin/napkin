@@ -12,8 +12,7 @@ from scipy.linalg import expm
 
 from ...core import expr as nodes
 from ...expressions import evaluate, names_in, stock_face_dependencies
-from ...model import structure as typed
-from ...model.ir import EVENT_TIME_TOLERANCE_H
+from .system import EVENT_TIME_TOLERANCE_H
 
 
 @dataclass
@@ -24,7 +23,7 @@ class Segment:
     store: dict  # the discrete store throughout the segment
 
 
-# The closed-form solutions of a segment, as values rather than closures so a trajectory pickles.
+# The closed-form solutions of a segment, as values rather than closures so a record of them pickles.
 @dataclass
 class Affine:
     start: float
@@ -139,7 +138,7 @@ class Classifier:
     def proven_zero(self, expr, assumptions=frozenset(), seen=frozenset()):
         """Whether an expression (a number or a node) is proved zero in this segment.
         `assumptions` holds the nodes that a branch knows not to be zero."""
-        node = typed.node(expr)
+        node = nodes.read(expr)
         key = (node, assumptions, seen)
         if key not in self._zero:
             self._zero[key] = self._proven_zero(node, assumptions, seen)
@@ -176,7 +175,7 @@ class Classifier:
                 if name in index:
                     return lower[index[name]] >= 0
                 if name in computed and name not in visiting:
-                    return nonnegative(typed.node(computed[name]['expr']), visiting | {name})
+                    return nonnegative(nodes.read(computed[name]['expr']), visiting | {name})
             if isinstance(n, nodes.Binary):
                 if n.op in ('add', 'mul'):
                     return nonnegative(n.left, visiting) and nonnegative(n.right, visiting)
@@ -248,7 +247,7 @@ class Classifier:
             parameters = {name: self.env[name] for name in s.resolved.parameters}
             self._face_inputs = (frozenset(self.env), parameters, tuple(parameters.items()))
         names, parameters, parameter_key = self._face_inputs
-        key = (typed.node(expr), frozenset(self.dynamic_dependencies), names, parameter_key)
+        key = (nodes.read(expr), frozenset(self.dynamic_dependencies), names, parameter_key)
         if key not in s.face_proofs:
             s.face_proofs[key] = stock_face_dependencies(
                 expr,
@@ -337,7 +336,7 @@ def repayment_shapes(system):
         return s.analysis['repayment']
     shapes = []
     for signal in s.computed.values():
-        for node in nodes.breadth_first(typed.node(signal['expr'])):
+        for node in nodes.breadth_first(nodes.read(signal['expr'])):
             if not (isinstance(node, nodes.Call) and node.function == 'min' and len(node.args) == 2):
                 continue
             left, right = node.args
@@ -428,7 +427,7 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
             if not weight:
                 continue
             group = next((key for key, g in couplings.items() if name in g.flows), name)
-            key = (group, typed.node(flow.rate))
+            key = (group, nodes.read(flow.rate))
             grouped[key] = grouped.get(key, 0) + weight
         if any(weight < 0 for weight in grouped.values()):
             return None
@@ -513,7 +512,7 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
                 return float(evaluate(node, env, units)), {}
             return None
 
-        value = walk(typed.node(expr))
+        value = walk(nodes.read(expr))
         if value is None:
             return None
         return value[0], {k: v for k, v in value[1].items() if v != 0}

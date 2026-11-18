@@ -11,10 +11,9 @@ from scipy.optimize import OptimizeResult, brentq
 
 from ...core import expr as nodes
 from ...expressions import ExpressionError, compile_program, evaluate, names_in
-from ...model import structure as typed
-from ...model.ir import EVENT_TIME_TOLERANCE_H
 from ..errors import SimulationError
 from ..solvers import radau_rate
+from .system import EVENT_TIME_TOLERANCE_H
 
 # The other side of the surface of `abs(x)`: the number zero.
 ZERO = nodes.read('0')
@@ -545,7 +544,7 @@ def switching_surfaces(system):
     sources, seen, pending = [], set(), [f.rate for f in s.flows.values()]
     pending += [d.expr for d in s.resolved.rates.values()] + [g.capacity for g in s.groups.values()]
     while pending:
-        expr = typed.node(pending.pop())
+        expr = nodes.read(pending.pop())
         if expr in seen:
             continue
         seen.add(expr)
@@ -740,7 +739,7 @@ def chattering(system, field, solution, diagnostics, failed=None):
     return SimulationError(message, [*diagnostics, item])
 
 
-def numerical_segment(system, run, field, trajectory, roots, descriptors, end, repayment_surfaces):
+def numerical_segment(system, run, field, context, roots, descriptors, end, repayment_surfaces):
     """Integrate one segment with Radau, up to `end` or its first terminal root.
 
     Returns the solver solution, the bound targets that it reaches at its end and the watched level
@@ -794,8 +793,8 @@ def numerical_segment(system, run, field, trajectory, roots, descriptors, end, r
     # Every numerical field observes declared physical resolution. An evolving
     # clock state can create the same forcing as literal time. The exact affine
     # and compartment kernels supply structurally proved fast paths.
-    trajectory.settings['resolution_policy'] = 'physical_resolution_cap'
-    trajectory.settings['actual_max_step_h'] = s.max_step
+    context.settings['resolution_policy'] = 'physical_resolution_cap'
+    context.settings['actual_max_step_h'] = s.max_step
 
     def integrate():
         # Physical resolution complements adaptive error control.
@@ -816,7 +815,7 @@ def numerical_segment(system, run, field, trajectory, roots, descriptors, end, r
         solution = integrate()
     except ValueError as exc:
         raise SimulationError(
-            f'Numerical event location failed at {time:g} h: {exc}', trajectory.diagnostics
+            f'Numerical event location failed at {time:g} h: {exc}', context.diagnostics
         ) from exc
     # A switching surface that fires within the event tolerance of the start is
     # already at its switch; it is disarmed for this segment only.
@@ -827,11 +826,11 @@ def numerical_segment(system, run, field, trajectory, roots, descriptors, end, r
         switches = [root for k, root in enumerate(switches) if k not in fired]
         solution = integrate()
     if solution.status == STALLED:
-        raise chattering(s, field, solution, trajectory.diagnostics)
+        raise chattering(s, field, solution, context.diagnostics)
     if not solution.success:
         # A solver whose steps fall below the spacing of the doubles at a switch chatters too.
         if solution.short is not None:
-            stopped = chattering(s, field, solution, trajectory.diagnostics, solution.message)
+            stopped = chattering(s, field, solution, context.diagnostics, solution.message)
             if stopped.diagnostics[-1]['surfaces']:
                 raise stopped
         raise SimulationError(f'Integrator failed: {solution.message}')
@@ -840,10 +839,10 @@ def numerical_segment(system, run, field, trajectory, roots, descriptors, end, r
         raise SimulationError(
             f'A hidden excursion inside one solver step at {flagged:g} h crosses a bound or threshold '
             'and back; declare a shorter physical time scale',
-            trajectory.diagnostics,
+            context.diagnostics,
         )
     reached = float(solution.t[-1])
-    trajectory.settings['integration_segments'].append(
+    context.settings['integration_segments'].append(
         {
             'start_h': start,
             'end_h': reached,

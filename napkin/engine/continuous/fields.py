@@ -23,10 +23,10 @@ class Field:
     """The rate of every quantity at one time and state. Requested flow rates are cut to their
     group capacities and coupled fractions, then allocated where an active bound holds a stock."""
 
-    def __init__(self, system, run, trajectory):
+    def __init__(self, system, run, context):
         self.system = system
         self.run = run
-        self.trajectory = trajectory
+        self.context = context  # the formulas, the diagnostics and the settings (`system.Context`)
         self._program = None
         self._pattern = None
         # The faces change only between segments; their arrays serve every evaluation of a segment.
@@ -37,15 +37,13 @@ class Field:
         self.allocation = Allocation(system)
 
     def environment(self, at, state):
-        return self.trajectory._environment(at, state, self.run.store)
+        return self.context.environment(at, state, self.run.store)
 
     def compiled(self, at, state):
         """Every computed value, rate, flow rate and group capacity from one generated program of the
         run: the inputs are literals in it, and it reads the time, the store and the state directly."""
         s = self.system
         if self._program is None:
-            if self.trajectory._order is None:
-                self.environment(at, state)
             outputs = (
                 [s.resolved.rates[name].expr for name in s.derivative_ids]
                 + [f.rate for f in s.flows.values()]
@@ -88,13 +86,13 @@ class Field:
     def _formulas_for(self, sources):
         """The formulas that `sources` read, directly or through other formulas, in their order."""
         needed, pending = set(), list(sources)
-        computed = dict(self.trajectory._order)
+        computed = dict(self.context.order)
         while pending:
             for name in names_in(pending.pop()):
                 if name in computed and name not in needed:
                     needed.add(name)
                     pending.append(computed[name])
-        return [(name, source) for name, source in self.trajectory._order if name in needed]
+        return [(name, source) for name, source in self.context.order if name in needed]
 
     def values_program(self, sources):
         """`values(at, state)`: the values of `sources` from one generated program that reads the
@@ -104,8 +102,6 @@ class Field:
         key = tuple(sources)
         program = self._value_programs.get(key)
         if program is None:
-            if self.trajectory._order is None:
-                self.environment(run.time, run.y)
             try:
                 program = compile_program(
                     self._formulas_for(sources),
@@ -135,7 +131,7 @@ class Field:
     def rates(self, at, state):
         s, run = self.system, self.run
         lower, upper, index, flows, groups = s.lower, s.upper, s.index, s.flows, s.groups
-        diagnostics = self.trajectory.diagnostics
+        diagnostics = self.context.diagnostics
         run.evaluations += 1
         if run.evaluations > s.cfg.max_evaluations:
             raise SimulationError('Numerical evaluation budget exceeded', diagnostics)

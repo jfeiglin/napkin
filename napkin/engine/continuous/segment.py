@@ -1,9 +1,9 @@
 """One segment of the continuous part of a run: the step that an engine takes between two moments.
 
 `advance` is that step. The timeline engine (`engine/timeline/component.py`) takes it for one
-instance of a space in its general tier: the things outside the tables of a model, or one instance
-of a family whose flows need the allocation in full. It gives the step a system, the state that
-changes, a field and the level rules that are watched; the step reads nothing else.
+connected set of stores and flows. It gives the step a system, the state that changes, a field, the
+level rules that are watched and the context of the run (`system.Context`); the step reads nothing
+else.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ class Advance:
     numerical: Any = None
 
 
-def advance(system, run, field, watcher, trajectory, end):
+def advance(system, run, field, watcher, context, end):
     """The segment from `run.time` and `run.y` as far as `end`: a closed form where the structure of
     the segment proves one (`kernels`), else the solver (`integrate.numerical_segment`). The caller
     has cleared the faces of the segment before (`run.right_faces`, `run.zero_faces`). `watcher`
@@ -65,7 +65,7 @@ def advance(system, run, field, watcher, trajectory, end):
         reached, solution, targets, due = exact
         return Advance(end=reached, solution=solution, targets=targets, due=tuple(due), exact=True)
     solution, located, due = numerical_segment(
-        s, run, field, trajectory, roots, descriptors, end, repayment_surfaces
+        s, run, field, context, roots, descriptors, end, repayment_surfaces
     )
     return Advance(
         end=float(solution.t[-1]), solution=solution.sol, targets=located, due=tuple(due), numerical=solution
