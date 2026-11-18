@@ -37,7 +37,7 @@ from collections import Counter
 
 import numpy as np
 from exact import ExactSum, total
-from expr import REDUCTIONS, X, conjuncts, ev, lift, names
+from expr import X, conjuncts, ev, lift, names
 from program import SINK, SOURCE, After, Assign, Move, SetFlow, Start, Until
 
 TOL = 1e-8  # a moment takes the times within this of the earliest (EVENT_TIME_TOLERANCE_H)
@@ -1064,7 +1064,7 @@ class Engine:
 
     def join(self, decl, flow, env, pool, owner):
         """A flow joins the network: one new edge, in the member lists of its two endpoints."""
-        edges, scope = self.edges, self.flow_decls[decl][0]
+        edges = self.edges
         edge = edges.add()
         edges.pool[edge], edges.owner[edge], edges.decl[edge] = pool, owner, decl
         edges.request[edge] = ev(lift(flow.request), env)
