@@ -68,6 +68,8 @@ class E:
     __le__, __ge__, __lt__, __gt__ = _op('<='), _op('>='), _op('<'), _op('>')
     __and__, __or__ = _op('and'), _op('or')
 
+    del _op, _rop
+
     def __neg__(self):
         return E('neg', self)
 
