@@ -747,7 +747,10 @@ def _write(node, bare_in):
     if isinstance(node, Formula):
         return f'formula({write(node.body)})'
     if isinstance(node, Collection):
-        return '<' + ', '.join(write(item, ATOM) for item in node.items) + '>'
+        items = [
+            f'({write(item)})' if isinstance(item, Quantity) else write(item, ATOM) for item in node.items
+        ]  # `<2 h>` would end the unit with `>`
+        return '<' + ', '.join(items) + '>'
     if isinstance(node, (Member, Method)):
         base = write(node.base, ATOM)
         if isinstance(node.base, (Quantity, expr.Const)):
@@ -2516,10 +2519,11 @@ def one_line(text, what):
     return found[0]
 
 
-def parse_expression(text, bare_in=True):
-    """The node of an expression that is written on its own."""
+def parse_expression(text, bare_in=True, statement=False):
+    """The node of an expression that is written on its own. With `statement` it is the head of a line
+    of a stage, where `.start(...)` can stand."""
     cursor = Cursor(one_line(text, 'an expression'))
-    found = Expressions(cursor).expression(bare_in)
+    found = Expressions(cursor, statement).expression(bare_in)
     cursor.end('the expression ends here: what follows does not belong to it')
     return found
 

@@ -161,22 +161,30 @@ def test_hunt():
 # ---- 6. an expression reads back --------------------------------------------------------------------------
 
 
-def expressions(node, after_equals=False):
-    """(expression, whether it stands after `=`) for each expression of a tree of the parser."""
+def expressions(node, place='value'):
+    """(expression, its place) for each expression of a tree of the parser. The place is `after =`
+    (the value of a declaration or of an assignment), `start` (the line that starts an event) or
+    `value` (anywhere else)."""
     if isinstance(node, expr.Node):
-        yield node, after_equals
+        yield node, place
     elif isinstance(node, (list, tuple)):
         for item in node:
             yield from expressions(item)
     elif is_dataclass(node):
         for item in fields(node):
             value = getattr(node, item.name)
-            yield from expressions(value, item.name == 'value' and isinstance(node, P.AFTER_EQUALS))
+            if item.name == 'value' and isinstance(node, P.AFTER_EQUALS):
+                yield from expressions(value, 'after =')
+            elif isinstance(node, P.Start):
+                yield from expressions(value, 'start')
+            else:
+                yield from expressions(value)
 
 
-def reads_back(node, after_equals=False):
-    written = P.write(node, bare_in=not after_equals)
-    again = P.parse_expression(written, bare_in=not after_equals)
+def reads_back(node, place='value'):
+    bare_in = place != 'after ='
+    written = P.write(node, bare_in=bare_in)
+    again = P.parse_expression(written, bare_in=bare_in, statement=place == 'start')
     assert again is node, f'{written!r} reads back as {P.sexpr(again)}, not {P.sexpr(node)}'
 
 
@@ -184,13 +192,13 @@ def test_round_trip_corpus():
     count = 0
     for path, context in corpus_files():
         tree = P.parse(path.read_text(encoding='utf-8'), context)
-        for node, after_equals in expressions(tree.items):
-            reads_back(node, after_equals)
+        for node, place in expressions(tree.items):
+            reads_back(node, place)
             count += 1
     for _, columns in rows_of('inline.txt'):
         found = P.parse_inline(columns[0], columns[2])
-        for node, after_equals in expressions(found):
-            reads_back(node, after_equals)
+        for node, place in expressions(found):
+            reads_back(node, place)
             count += 1
     return f'{count} expressions of the corpus read back from their text to the same node'
 
@@ -278,7 +286,7 @@ def test_round_trip_random(examples=3000):
     @given(strategies())
     def reads(node):
         reads_back(node)
-        reads_back(node, after_equals=True)
+        reads_back(node, 'after =')
         count['trees'] += 1
         count['nodes'] += sum(1 for _ in expr.walk(node))
 
@@ -335,7 +343,7 @@ CORE_CASES = [
     ('2 m^2', {}, 2.0, 'm^2'),
     ('2 * this.delay', {'this.delay': (3, 'h')}, 6.0, 'h'),
     ('max(0, need - use_rate)', {'need': (5, 'L/h'), 'use_rate': (8, 'L/h')}, 0, 'L/h'),
-    ('max(0 W, request - actual)', {'request': (6, 'W'), 'actual': (4, 'W')}, 2, 'W'),
+    ('max(0 W, request - actual)', {'request': (6, 'W'), 'actual': (4, 'W')}, 2.0, 'W'),
     ('fill * (0.5 Wh/L)', {'fill': (2, 'L/h')}, 1.0, 'W'),
     ('min(6 W, (10 Wh - energy) / (1 h))', {'energy': (7, 'Wh')}, 3.0, 'W'),
     ('1 day + 12 h', {}, 36.0, 'h'),
