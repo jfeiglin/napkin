@@ -374,7 +374,7 @@ class Frames:
         self.done_count = np.zeros(members, dtype=np.int64)
         self.active_count = np.zeros(members, dtype=np.int64)
         self.gates = {}  # step -> (Cond, Predictions)
-        self.gate_reached = np.zeros(64, dtype=np.int64)
+        self.gate_reached = np.full(64, -1, dtype=np.int64)
         self.bounds = {}  # local store -> Predictions of the time at which it reaches a bound
         self.decl = {}  # local flow -> its place among the flow declarations of the program
 
@@ -389,7 +389,7 @@ class Frames:
         self.c.place[row] = self.n_alive
         self.n_alive += 1
         if row >= len(self.gate_reached):
-            self.gate_reached = np.concatenate([self.gate_reached, np.zeros(len(self.gate_reached), np.int64)])
+            self.gate_reached = np.concatenate([self.gate_reached, np.full(len(self.gate_reached), -1, np.int64)])
         for _, predictions in self.gates.values():
             predictions.fit(row + 1)
         for predictions in self.bounds.values():
@@ -418,8 +418,9 @@ class TriggerState:
         self.reset = trigger.reset
         self.rcond = Cond(engine, trigger.reset[1], scope) if trigger.reset and trigger.reset[0] == 'when' else None
         self.armed = np.ones(members, dtype=bool)
-        self.reached = np.zeros(members, dtype=np.int64)
-        self.reset_reached = np.zeros(members, dtype=np.int64)
+        # The moment at which a prediction came due; -1: none yet (moment 0 is the setup).
+        self.reached = np.full(members, -1, dtype=np.int64)
+        self.reset_reached = np.full(members, -1, dtype=np.int64)
         every = np.arange(members)
         self.main = Predictions(engine, 'trigger', ('trigger', *self.ident), lambda: every)
         self.again = Predictions(engine, 'reset', ('reset', *self.ident), lambda: every)

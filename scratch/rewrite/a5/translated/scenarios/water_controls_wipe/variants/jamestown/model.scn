@@ -1,0 +1,286 @@
+# Water systems' controls wiped through a shared remote-support platform: Jamestown, North Carolina
+variant "Jamestown, North Carolina"
+    summary "An AI agent wipes the controls of the water systems of Jamestown, North Carolina at once, through
+        the remote-support platform of the OT integrator that they share: Jamestown, Greensboro and High
+        Point."
+    scope "The people that the water systems of Jamestown, North Carolina serve, the hospitals that those
+        systems supply and the businesses that need public water there."
+
+jamestown: Utility
+    "Town of Jamestown, North Carolina. Its ID in the federal inventory is NC0241030."
+    title "Jamestown"
+    buys = <high_point_to_jamestown, greensboro_to_jamestown>
+    sells = <>
+    name = "Jamestown"
+    demand = 0.781186 Mgal/day  @jamestown_demand
+    nameplate = 0 Mgal/day  @jamestown_nameplate
+    storage = 0.4672 Mgal  @jamestown_storage
+    bought = 0 Mgal/day  @jamestown_bought
+    va_rate = 64398.71 USD2025/h  @jamestown_va_rate
+    pump_disabled = 0.8  @depth
+    manual_share = 0.9  @manual
+    activation_delay = 1 h  @manual
+    operator_duty = 0 work_h/h  @operator_competition
+    controls_load = 40 work_h  @work
+    field_load = 10 work_h  @work
+    replace_load = 20 work_h  @work
+
+greensboro: Utility
+    "City of Greensboro, North Carolina. Its ID in the federal inventory is NC0241010."
+    title "Greensboro"
+    buys = <>
+    sells = <greensboro_to_jamestown>
+    name = "Greensboro"
+    demand = 42.7067082 Mgal/day  @greensboro_demand
+    nameplate = 54 Mgal/day  @greensboro_nameplate
+    storage = 31.8 Mgal  @greensboro_storage
+    bought = 12.6918104 Mgal/day  @greensboro_bought
+    sold = 0.0018754 Mgal/day  @greensboro_sold
+    va_rate = 3145507.26 USD2025/h  @greensboro_va_rate
+
+high_point: Utility
+    "City of High Point, North Carolina. Its ID in the federal inventory is NC0241020."
+    title "High Point"
+    buys = <>
+    sells = <high_point_to_jamestown>
+    name = "High Point"
+    demand = 16.6043258 Mgal/day  @high_point_demand
+    nameplate = 24 Mgal/day  @high_point_nameplate
+    storage = 19 Mgal  @high_point_storage
+    bought = 3.3257055 Mgal/day  @high_point_bought
+    sold = 0.0119304 Mgal/day  @high_point_sold
+    va_rate = 1167916.76 USD2025/h  @high_point_va_rate
+
+high_point_to_jamestown: Tie
+    "High Point sells water to Jamestown."
+    seller = high_point
+    buyer = jamestown
+    capacity = 1.5 Mgal/day  @high_point_to_jamestown_capacity
+
+greensboro_to_jamestown: Tie
+    "Greensboro sells water to Jamestown."
+    seller = greensboro
+    buyer = jamestown
+    capacity = 0.125 Mgal/day  @greensboro_to_jamestown_capacity
+
+jamestown_homes: Households
+    "The people that Jamestown serves."
+    title "Jamestown: homes"
+    utility = jamestown
+    population = 6543 people  @jamestown_homes_population
+
+greensboro_homes: Households
+    "The people that Greensboro serves."
+    title "Greensboro: homes"
+    utility = greensboro
+    population = 319588 people  @greensboro_homes_population
+
+high_point_homes: Households
+    "The people that High Point serves."
+    title "High Point: homes"
+    utility = high_point
+    population = 118662 people  @high_point_homes_population
+
+greensboro_hospitals: Hospitals
+    "The hospital that Greensboro supplies: The Moses H. Cone Memorial Hospital."
+    title "Greensboro: hospitals"
+    utility = greensboro
+    name = "Greensboro"
+    facilities = 1 facilities  @greensboro_hospitals_facilities
+
+high_point_hospitals: Hospitals
+    "The hospital that High Point supplies: High Point Regional Health System."
+    title "High Point: hospitals"
+    utility = high_point
+    name = "High Point"
+    facilities = 1 facilities  @high_point_hospitals_facilities
+
+notes:
+    limitations:
+        ptrwa-through-sellers: "Most of Jamestown's water is PTRWA water that High Point and Greensboro pass
+            through their mains. The model counts it as the cities' purchase and sale, so a wipe of a city
+            cuts it. The plans do not say whether that water needs the cities' pumps or controls. If it does
+            not, the town's interruption is longer here than in fact."  @jamestown_bought
+        contracts: "At the peak ratio, the purchases of Greensboro from PTRWA and Reidsville, and of High
+            Point from PTRWA, go above their contracts. The model gives the two cities this water during the
+            event, so their stored water can last longer here than in fact."  @greensboro_bought
+    verification:
+        research: "variants/jamestown/evidence/research.md"
+
+record jamestown_demand: assumption "The 2025 plan gives a total demand of 0.5313 MGD and no highest day. The
+    peak use is 0.5313 x 1.54385 (the family median ratio of highest to average day) = 0.8202 MGD; the town
+    sells no water, so demand is 0.8202 / 1.05 = 0.7812 MGD."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-JAMESTOWN-TOWN-USE
+
+record jamestown_nameplate: source "The town has no plant of its own: its 2025 plan lists no treatment plant
+    and a surface and ground water supply of 0.0000 MGD, and it buys all its water."
+    claims:
+        E-SC43-JAMESTOWN-TOWN-PURCHASES
+
+record jamestown_storage: source "Finished water storage capacity of 0.4672 million gallons, reported in the
+    2025 plan."
+    claims:
+        E-SC43-JAMESTOWN-TOWN-STORAGE
+            datum: finished_water_storage
+
+record jamestown_bought: assumption "The only seller outside the scenario is PTRWA, and the town bought 0.0000
+    MGD directly from it in 2025; its PTRWA water comes through High Point and Greensboro, so it is in the two
+    ties."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-JAMESTOWN-TOWN-PURCHASES
+            datum: purchase_ptrwa_average
+
+record jamestown_homes_population: assumption "SDWIS federal data list 6,543 people served by Jamestown
+    (NC0241030), the system's own report through its state."
+    assumption A-SC43-REACH
+    claims:
+        E-SC43-SDWIS-NC0241030
+            datum: population_served
+
+record jamestown_va_rate: assumption "6,543 people served times the 2024 GDP per resident of its county
+    (Guilford County, North Carolina (37081): 46,944,911 thousand dollars and 558,816 people: 84,007.81
+    dollars a resident) times the price factor 1.026324, over 8,760 h: 64,398.71 USD2025/h."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-NC0241030
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-37081
+        E-SC43-BEA-POP-37081
+        E-SC43-GDP-DEFLATOR
+
+record greensboro_demand: assumption "The highest day of 2025 is 44.9818 MGD (January), which includes sales.
+    The ratio to the total demand is 44.9818 / 34.4067 = 1.3074; demand is (44.9818 - 0.1069 x 1.3074) / 1.05
+    = 42.7067 MGD."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-JAMESTOWN-GREENSBORO-MAXDAY
+
+record greensboro_nameplate: source "Sum of the permitted capacities of the Lake Townsend WTP (30 MGD) and the
+    Mitchell Water Treatment Plant (24 MGD)."
+    claims:
+        E-SC43-JAMESTOWN-GREENSBORO-PLANTS
+            datum: plant_capacity_total
+
+record greensboro_storage: source "Finished water storage capacity of 31.8 million gallons, reported in the
+    2025 plan."
+    claims:
+        E-SC43-JAMESTOWN-GREENSBORO-STORAGE
+            datum: finished_water_storage
+
+record greensboro_bought: assumption "Average 2025 purchases from PTRWA (6.7714), Burlington (1.9446) and
+    Reidsville (0.9920 MGD), 9.708 MGD, times the peak ratio 1.3074 = 12.6918 MGD."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-JAMESTOWN-GREENSBORO-PURCHASES
+        E-SC43-JAMESTOWN-GREENSBORO-MAXDAY
+
+record greensboro_sold: assumption "The only sale outside the scenario is to Burlington: 0.0044 MGD on 119
+    days, 0.0014 MGD over the year, times the peak ratio 1.3074 = 0.0019 MGD."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-JAMESTOWN-GREENSBORO-SALES
+        E-SC43-JAMESTOWN-GREENSBORO-MAXDAY
+
+record greensboro_homes_population: assumption "SDWIS federal data list 319,588 people served by Greensboro
+    (NC0241010), the system's own report through its state."
+    assumption A-SC43-REACH
+    claims:
+        E-SC43-SDWIS-NC0241010
+            datum: population_served
+
+record greensboro_va_rate: assumption "319,588 people served times the 2024 GDP per resident of its county
+    (Guilford County, North Carolina (37081): 46,944,911 thousand dollars and 558,816 people: 84,007.81
+    dollars a resident) times the price factor 1.026324, over 8,760 h: 3,145,507.26 USD2025/h."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-NC0241010
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-37081
+        E-SC43-BEA-POP-37081
+        E-SC43-GDP-DEFLATOR
+
+record greensboro_hospitals_facilities: assumption "The CMS hospital list gives 1 hospital of the counted
+    types whose geocoded address lies in the EPA service area of Greensboro."
+    assumption A-SC43-HOSPITAL-JOIN
+    claims:
+        E-SC43-HOSPITALS-GREENSBORO
+            datum: hospitals_supplied
+
+record high_point_demand: assumption "The highest day of 2025 is 17.87 MGD (October), which includes sales.
+    The ratio to the total demand is 17.87 / 14.9786 = 1.1930; demand is (17.87 - 0.365 x 1.1930) / 1.05 =
+    16.6043 MGD."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-JAMESTOWN-HIGHPOINT-MAXDAY
+
+record high_point_nameplate: source "Permitted capacity of the Frank L. Ward Water Filtration plant, the only
+    plant of the city."
+    claims:
+        E-SC43-JAMESTOWN-HIGHPOINT-PLANT
+            datum: ward_plant_capacity
+
+record high_point_storage: source "Finished water storage capacity of 19.0 million gallons, reported in the
+    2025 plan."
+    claims:
+        E-SC43-JAMESTOWN-HIGHPOINT-STORAGE
+            datum: finished_water_storage
+
+record high_point_bought: assumption "Average 2025 purchases from PTRWA (2.7510), Davidson Water (0.0354) and
+    Archdale (0.0012 MGD), 2.7876 MGD, times the peak ratio 1.1930 = 3.3257 MGD."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-JAMESTOWN-HIGHPOINT-PURCHASES
+        E-SC43-JAMESTOWN-HIGHPOINT-MAXDAY
+
+record high_point_sold: assumption "The only sale outside the scenario is to Archdale, 0.0100 MGD in 2025,
+    times the peak ratio 1.1930 = 0.0119 MGD."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-JAMESTOWN-HIGHPOINT-SALES
+        E-SC43-JAMESTOWN-HIGHPOINT-MAXDAY
+
+record high_point_homes_population: assumption "SDWIS federal data list 118,662 people served by High Point
+    (NC0241020), the system's own report through its state."
+    assumption A-SC43-REACH
+    claims:
+        E-SC43-SDWIS-NC0241020
+            datum: population_served
+
+record high_point_va_rate: assumption "118,662 people served times the 2024 GDP per resident of its county
+    (Guilford County, North Carolina (37081): 46,944,911 thousand dollars and 558,816 people: 84,007.81
+    dollars a resident) times the price factor 1.026324, over 8,760 h: 1,167,916.76 USD2025/h."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-NC0241020
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-37081
+        E-SC43-BEA-POP-37081
+        E-SC43-GDP-DEFLATOR
+
+record high_point_hospitals_facilities: assumption "The CMS hospital list gives 1 hospital of the counted
+    types whose geocoded address lies in the EPA service area of High Point."
+    assumption A-SC43-HOSPITAL-JOIN
+    claims:
+        E-SC43-HOSPITALS-HIGH-POINT
+            datum: hospitals_supplied
+
+record high_point_to_jamestown_capacity: source "Contract of 1.5 MGD that both plans print: 0.5 MGD of PTRWA
+    water that comes through High Point and a separate 1.0 MGD High Point contract. It is a contract amount,
+    not a pipe capacity."
+    claims:
+        E-SC43-JAMESTOWN-TOWN-PURCHASES
+            datum: purchase_high_point_contract
+        E-SC43-JAMESTOWN-HIGHPOINT-SALES
+            datum: sale_jamestown_contract
+
+record greensboro_to_jamestown_capacity: source "Contract of 0.125 MGD that both plans print: PTRWA water that
+    comes through Greensboro under the PTRWA contract of Greensboro. It is a contract amount, not a pipe
+    capacity."
+    claims:
+        E-SC43-JAMESTOWN-TOWN-PURCHASES
+            datum: purchase_greensboro_contract
+        E-SC43-JAMESTOWN-GREENSBORO-SALES
+            datum: sale_jamestown_contract
