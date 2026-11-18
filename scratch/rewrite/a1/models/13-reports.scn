@@ -1,0 +1,20 @@
+# Blocks 05, 07 and 26 of the spec, with the declarations that they assume.
+Utility:
+    unserved: L = 0
+
+east: Utility
+west: Utility
+
+initial_unserved = sum(Utility.instances.unserved)
+unserved_volume = formula(sum(Utility.instances.unserved))
+    "Volume currently unserved"
+
+weekly_unserved: people = none @no_cohorts
+    "People continuously without service for a week"
+
+record no_cohorts: assumption "Daily totals do not identify the same people across days."
+
+z = 3
+x = formula(2 * z)
+y = formula(x + z)
+dy_dz = y.diff(z)

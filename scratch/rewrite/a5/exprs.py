@@ -127,7 +127,7 @@ def canonical(node):
         inner = canonical(node[2])
         value = number_value(inner[1])
         return ('num', str((-value).normalize()) if value is not None else '-' + inner[1], inner[2])
-    if kind in ('name', 'text', 'none', 'else'):
+    if kind in ('name', 'text', 'none', 'else', 'old'):
         return node
     if kind == 'call':
         return ('call', node[1], [canonical(arg) for arg in node[2]])

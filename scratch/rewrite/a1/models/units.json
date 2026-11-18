@@ -1,0 +1,10 @@
+{
+  "g": {"dimensions": {"mass": 1}, "scale": 1},
+  "kg": {"dimensions": {"mass": 1}, "scale": 1000},
+  "L": {"dimensions": {"volume": 1}, "scale": 1},
+  "W": {"dimensions": {"power": 1}, "scale": 1},
+  "kW": {"dimensions": {"power": 1}, "scale": 1000},
+  "Wh": {"dimensions": {"power": 1, "time": 1}, "scale": 1},
+  "crew_h": {"dimensions": {"crew_time": 1}, "scale": 1},
+  "work_unit": {"dimensions": {"work": 1}, "scale": 1}
+}

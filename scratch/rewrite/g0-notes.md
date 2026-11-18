@@ -6,7 +6,7 @@ Facts that came up beside the prototypes and that `rulings.md` must not lose. Ea
 
 | # | Today | The spec | Source | Slice |
 | --- | --- | --- | --- | --- |
-| 1 | A flow with legs where one leg asks and one asks nothing is an error of the run | Allowed: the leg that asks nothing moves nothing, and the fraction follows the other legs | `napkin/engine/allocation.py:165`, `tests/engine/test_rationing.py:116` | S3 |
+| 1 | A flow with legs where one leg asks and one asks nothing is an error of the run | Allowed: the leg that asks nothing moves nothing, and the fraction follows the other legs | `napkin/engine/allocation.py:165`, `tests/engine/test_rationing.py:116`; the fast tier has a second copy of the rule at `timeline/run.py:1289` (A4b) | S3 |
 | 2 | Two outflows of one stock with no share are a compile error | The default is `proportional()` | `tests/engine/test_runtime.py` (triage, engine part 2) | S2 |
 | 3 | Two flows with legs that share a resource at an empty stock split it "upstream first": 0.5, 0.25, 0.25 | Max-min sharing would give 1/3 each. Not run: A2 or A3 must confirm | `tests/engine/test_coupled_queue_boundaries.py` (triage, engine part 1) | S3 |
 | 4 | Events that are due at one moment go in the order of their lines in the file | The order of simultaneous starts is an open item (A2) | `tests/engine/test_moment.py`; one test each in `test_public_engine.py` and `test_finite_face_kernel.py` | S4 |
@@ -48,3 +48,20 @@ Facts that came up beside the prototypes and that `rulings.md` must not lose. Ea
 - `tests/test_compare.py`: 36 of its 45 tests use made-up records. G0 decides the tool.
 - `needs.csv` gives `catalogue` too often, as its header says: the two engine parts corrected
   six files to `source` or `none`.
+
+## From the prototypes, before their findings
+
+- A4a: the present table path cannot make a transfer between two rows of one table by a small
+  change. With its two refusals removed it runs and gives a wrong answer: the debit and the credit
+  land on one stock. A layout of its own (pools, links by id, one sparse network) gives the right
+  stocks, also with the rows reordered, and runs 30,000 places and 35,000 routes to 48 h in 1.4 s.
+- A4a: a set that runs as one component has a practical limit. 30, 100 and 300 places take 0.08,
+  0.86 and 12.3 s; with rings, 300 places gave no result in 10 minutes.
+- A4b: today a prediction that comes due makes its crossing hold with no look at the value
+  (`timeline/run.py:2447`); only the version of the rule protects it. A flow that joins is in no
+  list of the plan (`plan.py:690-709`), so the new engine must count a join and a leave as a write.
+- A5: the mechanical translator handles 6,691 of 6,960 logical lines of the catalogue (96%). Left
+  for a person: 172 flows with several pairs, 75 events with several outcomes, 11 `versus`, 11
+  `since(e.outcome)`.
+- A5: the catalogue never uses tables, copies, `change`, `each`, `while` on an event, `delayed`,
+  `any` or `all`. Every crossing that the old compiler classified uses `<=` or `>=`.

@@ -1,0 +1,4 @@
+id,supply_limit: W,base_need: W,critical
+junction,8,0,false
+clinic,0,6,true
+garden,0,6,false

@@ -1,0 +1,62 @@
+# Blocks 22, 23, 24 and 25 of the spec, with the declarations that they assume.
+Customer:
+    water: L = 0 in [0, 100]
+
+Crew:
+    hours: crew_h = 40 in [0, 40]
+    used: crew_h = 0
+    pace_now = formula(4 crew_h/h)
+
+town: Customer
+team: Crew
+
+depot:
+    supply: L = 60 in [0, 60]
+    water: L = 0 in [0, 100]
+    customer = town
+    crew = team
+    delivery_request: L/h = 2 L/h
+    speeds = uniform(1 L/h, 3 L/h)
+    controls_work: work_unit = 16 in [0, 16]
+    controls_done: work_unit = 0
+    flow restore:
+        flow labor: this.crew.hours -> this.crew.used
+            request = 4 crew_h/h
+        flow work: this.controls_work -> this.controls_done
+            request = 8 work_unit/h
+    progress = formula(this.restore.served_fraction)
+    labor_rate = formula(this.restore.labor.actual_rate)
+    deliver = event(amount: L, setup: h):
+        batch: L = 0 L in [0 L, amount]
+        flow delivery: batch -> this.customer.water
+            request = formula(this.delivery_request)
+
+        after setup:
+            move amount from this.supply to batch
+
+        until batch <= 0 L
+    deliver_reserved = event(amount: L, target_rate: L/h, setup: h):
+        batch: L = 0 L in [0 L, amount]
+        flow delivery: batch -> this.customer.water
+            capacity = 0 L/h
+            request = target_rate
+
+        after 0 h:
+            move amount from this.supply to batch
+
+        after setup:
+            delivery.capacity = none
+            delivery.request = this.speeds.draw()
+
+        until batch <= 0 L
+    receive = event(amount: L, starting_rate: L/h, rate_change: L/h^2):
+        remaining: L = amount in [0 L, amount]
+        readonly started_at: h = t
+        flow delivery: remaining -> this.water
+            request = formula(max(0 L/h, starting_rate + rate_change * (t - started_at)))
+
+        until remaining <= 0 L
+    start_all = event():
+        after 0 h:
+            this.deliver.start(20 L, 1 h)
+            this.receive.start(20 L, 5 L/h, 5 L/h^2)

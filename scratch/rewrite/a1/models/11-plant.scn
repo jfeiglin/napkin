@@ -1,0 +1,62 @@
+# Blocks 16, 17, 18, 20 and 21 of the spec, with the declarations that they assume.
+Machine:
+    operational: bool = false
+    repair = event(duration: h):
+        after duration:
+            this.operational = true
+
+mill: Machine
+press: Machine
+
+plant:
+    machines = Machine.instances
+    repair_times = uniform(1 h, 3 h)
+    action: enum[REPAIR, RESUME] = REPAIR
+    inspections = 0
+    safe: bool = true
+    clearance_received: bool = false
+    passes_test: bool = true
+    operational: bool = false
+    repair = event():
+        after 2 h when this.passes_test:
+            this.operational = true
+            this.service_restored.start()
+    resume = event():
+        after 0 h:
+            this.operational = true
+    service_restored = event():
+        after 0 h
+    inspect_equipment = event():
+        after 1 h
+    record_clearance = event():
+        after 0 h
+    decide = event():
+        after 0 h:
+            switch this.action:
+                REPAIR:
+                    this.repair.start()
+                RESUME:
+                    this.resume.start()
+            this.inspections += 1
+    repair_all = event():
+        after 2 h:
+            this.machines.repair.start(this.repair_times.draw())
+    inspect = event(delay: h):
+        after delay:
+            delay = 2 h
+
+        after delay when this.safe:
+            this.inspect_equipment.start()
+
+        until this.clearance_received
+
+        after 0 h:
+            this.record_clearance.start()
+    clock = event():
+        when t >= 3 h:
+            this.clock.start()
+            reset after 3 h
+
+        after 0 h:
+            this.inspections += 1
+    restored = formula(count(this.service_restored.occurrences) > 0 and since(this.service_restored) >= 3 h)
