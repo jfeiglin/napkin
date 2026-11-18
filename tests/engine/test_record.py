@@ -13,7 +13,7 @@ import pytest
 
 from napkin.engine import read, run
 from napkin.engine.timeline import Outside
-from napkin.engine.timeline.record import Curve, key_of, unit_of
+from napkin.engine.timeline.record import key_of, unit_of
 from napkin.program.build import (
     BOOL,
     SINK,
@@ -43,7 +43,7 @@ from napkin.program.config import (
     Quantity,
     Request,
 )
-from napkin.program.record import History, Key, Piece
+from napkin.program.record import Curve, History, Key, Piece
 
 UNITS = {
     'h': {'time': 1},
@@ -164,7 +164,7 @@ def test_a_drain_in_proportion_follows_its_exponential_through_curved_pieces():
     assert at(record, program, 'clinic.delivery.actual_rate', *times) == pytest.approx(
         [4 * math.exp(-t / 2) for t in times], rel=1e-9
     )
-    assert any(isinstance(piece.rate, Curve) for piece in record.history(Key('tank', ('water',))).pieces)
+    assert any(isinstance(piece.curve, Curve) for piece in record.history(Key('tank', ('water',))).pieces)
 
 
 def test_a_capacity_holds_the_rate_until_the_request_falls_below_it():
@@ -214,7 +214,7 @@ def test_the_reader_names_each_path_by_its_member_and_gives_its_declared_unit():
 
 def test_a_curved_piece_reads_the_increase_of_its_series():
     """T2(u) = 2u^2 - 1 over 2 h: from u = -1 (1) to u = 0 (-1) it falls by 2."""
-    history = History(Key('', ('x',)), (Piece(0, 1.0, Curve(2.0, (0.0, 0.0, 1.0))),))
+    history = History(Key('', ('x',)), (Piece(0, 1.0, curve=Curve(2.0, (0.0, 0.0, 1.0))),))
     assert history.at(1.0) == pytest.approx(-1.0)
     assert history.at(2.0) == pytest.approx(1.0)
 

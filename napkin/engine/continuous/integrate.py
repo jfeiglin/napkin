@@ -11,9 +11,9 @@ from scipy.optimize import OptimizeResult, brentq
 
 from ...core import expr as nodes
 from ...expressions import ExpressionError, compile_program, evaluate, names_in
+from ...program.config import Numerics
 from ..errors import SimulationError
 from ..solvers import radau_rate
-from .system import EVENT_TIME_TOLERANCE_H
 
 # The other side of the surface of `abs(x)`: the number zero.
 ZERO = nodes.read('0')
@@ -256,9 +256,9 @@ def next_limit(length, far, check, ceiling):
 LONGEST_WAIT = 32
 
 # A segment is stalled after STALLED_STEPS accepted steps in a row, each shorter than the shortest
-# time between two moments that the engine tells apart (`EVENT_TIME_TOLERANCE_H`): it has then
-# moved less than 1e-5 h in that many steps. This is what a rate that switches back and forth at a
-# condition makes the solver do (`Limit.accepted`).
+# time between two moments that the engine tells apart (the run's `Numerics.crossing`): with the
+# default, it has then moved less than 1e-5 h in that many steps. This is what a rate that switches
+# back and forth at a condition makes the solver do (`Limit.accepted`).
 STALLED_STEPS = 1000
 # The status of an integration that stopped stalled (`radau`).
 STALLED = -2
@@ -278,22 +278,23 @@ class Limit:
       solution where a longer step fails each time, about one step in `LONGEST_WAIT` is lost,
       and not each second one.
 
-    It also counts the accepted steps in a row that are shorter than `EVENT_TIME_TOLERANCE_H`
-    (`accepted`): after `STALLED_STEPS` of them, the segment is stalled."""
+    It also counts the accepted steps in a row that are shorter than `moment`, the time between two
+    moments that the engine tells apart (`accepted`): after `STALLED_STEPS` of them, the segment is
+    stalled. A run gives its own (`Numerics.crossing`); the default is that of a configuration."""
 
-    def __init__(self, check, ceiling):
+    def __init__(self, check, ceiling, moment=Numerics.crossing):
         self.check, self.ceiling, self.allowed = check, ceiling, ceiling
+        self.moment = moment
         self.wait, self.after = 0, 1
-        # The accepted steps in a row that are shorter than the event time tolerance, and the time
-        # at which the first of them started.
+        # The accepted steps in a row that are shorter than a moment, and the time at which the
+        # first of them started.
         self.brief, self.brief_from = 0, None
 
     def accepted(self, start, end):
         """The solver accepted a step from `start` to `end`. True when the segment is stalled: this
-        step and the `STALLED_STEPS - 1` accepted steps before it are each shorter than
-        `EVENT_TIME_TOLERANCE_H`. A step that is not used does not change the count; a longer step
-        starts it again."""
-        if end - start < EVENT_TIME_TOLERANCE_H:
+        step and the `STALLED_STEPS - 1` accepted steps before it are each shorter than `moment`. A
+        step that is not used does not change the count; a longer step starts it again."""
+        if end - start < self.moment:
             if self.brief == 0:
                 self.brief_from = float(start)
             self.brief += 1
@@ -324,13 +325,14 @@ class Limit:
             self.wait, self.after = self.after, min(2 * self.after, LONGEST_WAIT)
 
 
-def radau(fun, interval, initial, roots=None, check=None, **options):
+def radau(fun, interval, initial, roots=None, check=None, moment=Numerics.crossing, **options):
     """`solve_ivp(fun, interval, initial, method='Radau', dense_output=True, events=...)` for roots
     that each end the integration.
 
     `roots` (a `Roots`) gives the values of all its roots together (`values`), and the value of one
-    root to locate its crossing (`locate`). The first root in time ends the integration. `options`
-    go to the Radau solver.
+    root to locate its crossing (`locate`). The first root in time ends the integration. `moment` is
+    the time between two moments that the engine tells apart, which tells a stalled solver
+    (`Limit`). `options` go to the Radau solver.
 
     With no `check`, the roots are read at each accepted step: the steps, the roots and the result
     of `solve_ivp`, bit for bit. `check` is the interval, from the start of the integration, at
@@ -361,7 +363,7 @@ def radau(fun, interval, initial, roots=None, check=None, **options):
     half = None if check is None else check / 2
     halves = 0  # the halves of a check interval before the step, from the start
     # The longest step that the differences of the steps before allow the solver now.
-    limit = None if check is None else Limit(check, solver.max_step)
+    limit = None if check is None else Limit(check, solver.max_step, moment)
     while status is None:
         if check is not None:
             solver.max_step = limit.allowed
@@ -718,7 +720,7 @@ def chattering(system, field, solution, diagnostics, failed=None):
     steps = (
         f'the solver failed ({failed})'
         if failed is not None
-        else f'the steps of the solver stayed shorter than {EVENT_TIME_TOLERANCE_H:g} h for '
+        else f'the steps of the solver stayed shorter than {s.cfg.crossing:g} h for '
         f'{STALLED_STEPS} steps in a row, from t = {first:g} h'
     )
     message = (
@@ -805,6 +807,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
             y,
             roots=Roots(s, field.environment, armed, field.values_program) if armed else None,
             check=s.max_step,
+            moment=s.cfg.crossing,
             rtol=s.cfg.rtol,
             atol=s.atol,
             jac_sparsity=field.jacobian_pattern(),
@@ -819,7 +822,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
         ) from exc
     # A switching surface that fires within the event tolerance of the start is
     # already at its switch; it is disarmed for this segment only.
-    while solution.success and switches and solution.t[-1] - start <= EVENT_TIME_TOLERANCE_H:
+    while solution.success and switches and solution.t[-1] - start <= s.cfg.crossing:
         fired = {k - len(roots) for k, te in enumerate(solution.t_events) if len(te) and k >= len(roots)}
         if not fired:
             break
@@ -854,7 +857,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
     if reached == end:
         located.update(depletion_targets)
     for root, hits in zip(roots + switches, solution.t_events or []):
-        if root.target is not None and len(hits) and abs(float(hits[-1]) - reached) <= EVENT_TIME_TOLERANCE_H:
+        if root.target is not None and len(hits) and abs(float(hits[-1]) - reached) <= s.cfg.crossing:
             located[root.target[0]] = root.target[1]
     due = [
         descriptor[1]

@@ -28,7 +28,7 @@ def usd(name, initial=0, **bounds):
 
 
 def exp(x):
-    return build._call('exp', x)  # the builder has no handle of `exp`
+    return build.call('exp', x)
 
 
 def recovery(hours):

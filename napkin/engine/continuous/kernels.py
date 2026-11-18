@@ -12,7 +12,6 @@ from scipy.linalg import expm
 
 from ...core import expr as nodes
 from ...expressions import evaluate, names_in, stock_face_dependencies
-from .system import EVENT_TIME_TOLERANCE_H
 
 
 @dataclass
@@ -320,8 +319,8 @@ def affine_segment(system, run, classifier, departures, derivative, descriptors,
                     stops.append(crossing)
                     crossings.append((crossing, desc))
     end = min([end] + [stop for stop in stops if stop <= end])
-    targets = {i: limit for at, i, limit in exact_targets if abs(at - end) <= EVENT_TIME_TOLERANCE_H}
-    due = [desc for at, desc in crossings if abs(at - end) <= EVENT_TIME_TOLERANCE_H]
+    targets = {i: limit for at, i, limit in exact_targets if abs(at - end) <= s.cfg.crossing}
+    due = [desc for at, desc in crossings if abs(at - end) <= s.cfg.crossing]
     return end, Affine(time, y.copy(), derivative.copy()), targets, due
 
 
@@ -703,6 +702,6 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
                     crossings.append((crossing, desc))
                 if start < crossing < end:
                     end = crossing
-    targets = {i: target for at, i, target in exact_targets if abs(at - end) <= EVENT_TIME_TOLERANCE_H}
-    due = [desc for at, desc in crossings if abs(at - end) <= EVENT_TIME_TOLERANCE_H]
+    targets = {i: target for at, i, target in exact_targets if abs(at - end) <= s.cfg.crossing}
+    due = [desc for at, desc in crossings if abs(at - end) <= s.cfg.crossing]
     return (end, MatrixExponential.of(matrix, dimension, start, state), targets, due), repayment_surfaces

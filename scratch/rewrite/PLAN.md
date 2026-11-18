@@ -24,10 +24,10 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] the oracle, phase 1: the semantics of G0 (`tests/reference/`, 127 tests)
   - [x] the solve library (`napkin/engine/solve/`, `tests/engine/solve/`: 173 tests; the four cases at 3,000 places run the whole order in 4 to 10 s)
   - [x] the oracle, phase 2: it runs all 65 programs of `tests/program/examples.py`, and each gives its expected results
-- [ ] S0 skeleton (`briefs/s0-front.md`, `briefs/s0-engine.md`); the dormant list is filled (6 folders, 110 files)
+- [x] S0 skeleton (`briefs/s0-front.md`, `briefs/s0-engine.md`); the dormant list is filled (6 folders, 110 files)
   - [x] the front end: the whole notation parses and formats; the subset of S0 lowers (`tests/language/`, 197 tests); `examples/piano_tuners` in the new language
   - [x] the engine: it reads programs only; `napkin.engine.run` and `read`; the key of a stored run; five engine test files ported (`b1/s0-engine/STATE.md`)
-  - [ ] the switch: `napkin run`, `fmt` and `compile` on the new path; delete the old compiler; the closure list and the key of a stored run; the contract changes that the two tracks asked for (`b1/s0-front/STATE.md`)
+  - [x] the switch: `napkin run`, `fmt` and `compile` on the new path; the old compiler deleted (6,097 lines); the contract changes of both tracks (`b1/s0-switch/STATE.md`). 2,044 live tests pass
 - [ ] S1 templates, tables and collections
 - [ ] S2 the flow network and sharing
 - [ ] S3 reversible flows and flows with legs
@@ -64,7 +64,8 @@ These override the text of this plan below, wherever the two differ. The owner's
    repository. What happens to it and to its committed outputs is asked of the owner at stage C.
 6. **Reachability is kept (D16).** The analysis of `napkin/model/lower/starts.py` (what can fire
    under an effective configuration) is ported as proof metadata, not retired. Pruning work by it
-   is a separate optimization.
+   is a separate optimization. The old file went with `lower/` at the switch of S0; port it from
+   commit `81b367b` in S4, when events and named states exist.
 7. **Reports (D10).** No `output`, no report block in a model. The caller selects paths and times.
    A lag needs the never-falls proof.
 8. **Inputs (D2).** An override follows the declared type; a distribution-valued input exists.

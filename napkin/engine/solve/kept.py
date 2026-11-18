@@ -49,10 +49,12 @@ class Run:
 
 
 def _options():
+    # The thread count is left at HiGHS's default, as linprog leaves it. The process has one pool of
+    # threads, made by the first instance that runs; an instance that asks another count than that
+    # pool's fails to solve. The simplex and the QP solver run serially either way.
     options = highs.HighsOptions()
     options.output_flag = False
     options.log_to_console = False
-    options.threads = 1
     return options
 
 

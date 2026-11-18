@@ -172,8 +172,10 @@ class Reduce:
 @dataclass(frozen=True)
 class Distribution:
     """A distribution: a family and its parameters. A numeric family has its parameters in one unit
-    (`uniform(1 h, 3 h)` is `('uniform', (1, 3), unit='h')`); `categorical` has a weight for each
-    outcome, a member of the enum `enum`."""
+    (`uniform(1 h, 3 h)` is `('uniform', (1, 3), unit='h')`), except a parameter of shape, which is a
+    plain number whatever `unit` says: the second parameter of `lognormal`, its geometric standard
+    deviation (`lognormal(4 h, 1.5)` is `('lognormal', (4, 1.5), unit='h')`). `categorical` has a
+    weight for each outcome, a member of the enum `enum`."""
 
     family: str
     params: tuple[Number, ...]
@@ -185,7 +187,11 @@ class Distribution:
 @dataclass(frozen=True)
 class Draw:
     """`d.draw()`: one value of a distribution under the run's mode. `site` is its place in the
-    program; a run keys each draw by its site and by the member or occurrence that executes it."""
+    program; a run keys each draw by its site and by the member or occurrence that executes it.
+
+    While a program is built, a draw carries a temporary site, distinct for each draw (`?3`, or
+    `?lowered3` from the front end); `build.Builder.finish` replaces it with the draw's place in the
+    program (`machine.repair_time.draw[0]`). A program that `finish` made has no temporary site."""
 
     source: Path | Distribution
     site: str

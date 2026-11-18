@@ -1,0 +1,192 @@
+"""`napkin run`: the values of named paths at chosen times, from source, on the new engine.
+
+Each expected value is worked out independently: the median of a PERT distribution with mpmath, the
+lines of the tank of the spec by hand, the window of a yes/no by hand.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import mpmath
+import pytest
+
+from tests.commands.call import TANK, UNITS, napkin, package
+
+ROOT = Path(__file__).resolve().parents[2]
+PIANO_TUNERS = ROOT / 'examples' / 'piano_tuners'
+
+
+def pert_median(low, mode, high):
+    """The median of `pert(low, mode, high)`: low + (high - low) x, where x is the median of the beta
+    distribution with alpha = 1 + 4 (mode - low) / (high - low) and beta = 1 + 4 (high - mode) /
+    (high - low)."""
+    with mpmath.workdps(40):
+        span = mpmath.mpf(high - low)
+        alpha, beta = 1 + 4 * (mode - low) / span, 1 + 4 * (high - mode) / span
+        x = mpmath.findroot(
+            lambda x: mpmath.betainc(alpha, beta, 0, x, regularized=True) - mpmath.mpf(1) / 2,
+            (mode - low) / span,
+        )
+        return float(low + span * x)
+
+
+def test_the_piano_tuners_do_three_tuner_years_at_the_median_rate():
+    """A median run draws the median of pert(600, 1000, 1200) tunings per tuner-year; 3 tuners for
+    1 year do 3 times it, which is under the 5,000 tunings that the pianos need, so the flow never
+    reaches the bound of `due`."""
+    median = pert_median(600, 1000, 1200)
+    assert median == pytest.approx(974.5124957975274, rel=1e-12)  # mpmath at 40 digits
+    done = 3 * median
+    assert done < 5000
+
+
+def test_napkin_run_gives_the_closed_form_of_the_piano_tuners(capsys):
+    median = pert_median(600, 1000, 1200)
+    found = napkin(capsys, 'run', PIANO_TUNERS, '--json', '--at', '0h,6months,1year')
+    assert found.code == 0, found.err
+    doc = found.doc
+    assert doc['title'] == 'Piano tuners'
+    assert doc['mode'] == 'median'
+    assert doc['times'] == [0, 4380, 8760]
+    values = doc['values']
+    assert values['tuners.rate']['unit'] == 'tunings/tuner/year'
+    assert values['tuners.rate']['values'] == pytest.approx([median] * 3, rel=1e-12)
+    assert values['tunings_done']['unit'] == 'tunings'
+    assert values['tunings_done']['values'] == pytest.approx([0, 1.5 * median, 3 * median], rel=1e-9)
+    assert values['tuners.done']['values'] == pytest.approx([0, 1.5 * median, 3 * median], rel=1e-9)
+    assert values['tuners.due']['values'] == pytest.approx(
+        [5000, 5000 - 1.5 * median, 5000 - 3 * median], rel=1e-9
+    )
+    assert values['tuners.need']['values'] == [5000, 5000, 5000]
+    assert values['tunings_done']['label'] == 'Tunings done in the year'
+    assert doc['diagnostics'] == []
+
+
+def test_napkin_run_prints_every_named_value_in_the_order_of_the_file(capsys):
+    """With no --value and no --at: each value at the start and the horizon, a flow's actual rate,
+    request and capacity under its line, the top-level formula last as the file writes it."""
+    found = napkin(capsys, 'run', PIANO_TUNERS)
+    assert found.code == 0, found.err
+    lines = found.out.splitlines()
+    assert lines[0] == 'Piano tuners: a median run to 8760 h'
+    assert lines[1].split() == ['unit', '0', 'h', '8760', 'h']
+    rows = {line.split()[0]: line.split()[1:] for line in lines[2:]}
+    assert list(rows) == [
+        'tuners.rate',
+        'tuners.staff',
+        'tuners.need',
+        'tuners.due',
+        'tuners.done',
+        'tuners.tune.actual_rate',
+        'tuners.tune.request',
+        'tuners.tune.capacity',
+        'tunings_done',
+    ]
+    # Six significant figures: 3 times the median is 2923.537...
+    assert rows['tunings_done'] == ['tunings', '0', f'{3 * pert_median(600, 1000, 1200):.6g}']
+    assert rows['tunings_done'][-1] == '2923.54'
+    assert rows['tuners.staff'] == ['tuner', '3', '3']
+
+
+def test_the_tank_of_the_spec_delivers_3_litres_an_hour_until_2_h_40_min(tmp_path, capsys):
+    """8 L at 3 L/h: empty at 8/3 h = 2 h 40 min; the request stays 3 L/h and the capacity 5 L/h."""
+    model = package(tmp_path / 'tank', TANK, UNITS)
+    found = napkin(capsys, 'run', model, '--json', '--at', '0h,1h,159min,160min,161min,3h,4h')
+    assert found.code == 0, found.err
+    values = found.doc['values']
+    rate, water = values['clinic.delivery.actual_rate'], values['tank.water']
+    assert (rate['unit'], water['unit']) == ('L/h', 'L')
+    assert rate['values'][:3] == pytest.approx([3, 3, 3])
+    assert rate['values'][4:] == [0, 0, 0]
+    assert water['values'] == pytest.approx([8, 5, 0.05, 0, 0, 0, 0], abs=1e-9)
+    assert values['clinic.delivery.request']['values'] == [3] * 7
+    assert values['clinic.delivery.capacity']['values'] == [5] * 7
+
+
+def test_the_tank_holds_0_litres_after_it_empties(tmp_path, capsys):
+    model = package(tmp_path / 'tank', TANK, UNITS)
+    found = napkin(capsys, 'run', model, '--value', 'tank.water', '--value', 'clinic.delivery.actual_rate')
+    assert found.code == 0, found.err
+    rows = [line.split() for line in found.out.splitlines()[2:]]
+    assert rows == [['tank.water', 'L', '8', '0'], ['clinic.delivery.actual_rate', 'L/h', '3', '0']]
+
+
+def test_a_formula_reads_its_value_at_the_time_asked(tmp_path, capsys):
+    """`water` is 8 - 3t, so the yes/no below is true only while t is in [0.9, 0.90333] h: a window
+    narrower than the points at which a fit of the formula is checked. A read evaluates the formula
+    at the time asked, so it sees the window."""
+    text = TANK.replace(
+        'readonly water: L = 8 in [0, 20]\n',
+        'readonly water: L = 8 in [0, 20]\n'
+        '    narrow: formula(bool) = formula(this.water <= 5.3 L and this.water >= 5.29 L)\n',
+    )
+    model = package(tmp_path / 'narrow', text, UNITS)
+    found = napkin(capsys, 'run', model, '--json', '--value', 'tank.narrow', '--at', '0.89h,0.9017h,0.91h')
+    assert found.code == 0, found.err
+    assert found.doc['values']['tank.narrow'] == {'unit': '', 'label': None, 'values': [False, True, False]}
+
+
+def test_a_model_that_does_not_compile_prints_its_problem_with_its_place(tmp_path, capsys):
+    model = package(tmp_path / 'tank', TANK.replace('water: L =', 'water: Lx ='), UNITS)
+    found = napkin(capsys, 'run', model)
+    assert found.code == 1
+    # `    readonly water: Lx`: Lx starts at the 21st column of the 5th line.
+    assert found.err.splitlines() == [
+        f'{model / "model.scn"}:5:21: error: Lx is no unit and no template [unknown_name]'
+    ]
+    as_json = napkin(capsys, 'run', model, '--json')
+    assert as_json.code == 1
+    (problem,) = as_json.doc['diagnostics']
+    assert (problem['code'], problem['line'], problem['column']) == ('unknown_name', 5, 21)
+
+
+def test_a_run_that_stops_prints_the_values_before_it_stopped_then_why(tmp_path, capsys):
+    """A request of 3 L/h * 2 L / (water - 2 L) has no bound as the tank nears 2 L: (water - 2 L)^2
+    is 36 - 12 t, so 2 L at 3 h, and the run stops before its horizon. At the start the request is
+    3 * 2 / 6 = 1 L/h."""
+    text = TANK.replace(
+        '        capacity = 5 L/h\n        request = 3 L/h\n',
+        '        request = formula(3 L/h * (2 L / (tank.water - 2 L)))\n',
+    )
+    model = package(tmp_path / 'stops', text, UNITS)
+    found = napkin(capsys, 'run', model, '--json', '--at', '0h,3.5h')
+    assert found.code == 1
+    doc = found.doc
+    (problem,) = doc['diagnostics']
+    assert problem['code'] == 'run'
+    assert problem['message'].startswith('the run stops at ')
+    assert doc['times'][0] == 0
+    assert 3.5 not in doc['times']
+    assert doc['values']['tank.water']['values'][0] == 8
+    assert doc['values']['clinic.delivery.request']['values'][0] == pytest.approx(1, rel=1e-12)
+    text_mode = napkin(capsys, 'run', model)
+    assert text_mode.code == 1
+    assert text_mode.err.splitlines()[-1].endswith('[run]')
+
+
+@pytest.mark.parametrize(
+    'argv, message',
+    [
+        (('--value', 'tank.waterr'), 'no named value of the model; did you mean tank.water?'),
+        (('--at', '2 minutes'), 'minutes is not a unit of time of the model'),
+        (('--at', '2L'), 'L is not a unit of time of the model'),
+        (('--at', '3'), 'give the unit of time'),
+        (('--at', '5h'), 'the run goes from 0 h to 4 h'),
+        (('--at', 'soon'), 'give a number and a unit of time'),
+    ],
+)
+def test_a_path_or_a_time_that_the_model_does_not_have_is_a_usage_error(tmp_path, capsys, argv, message):
+    """Without `min`, the tank's units of time are the prelude's (h, day, week, ...), which have no
+    `minutes`; `L` is a unit of volume; the run ends at 4 h."""
+    model = package(tmp_path / 'tank', TANK, {'L': UNITS['L']})
+    found = napkin(capsys, 'run', model, *argv)
+    assert found.code == 2
+    assert message in found.err
+
+
+def test_a_model_that_is_not_there_is_a_usage_error(tmp_path, capsys):
+    assert napkin(capsys, 'run', tmp_path / 'nowhere').code == 2
+    (tmp_path / 'notes.txt').write_text('no model', encoding='utf-8')
+    assert napkin(capsys, 'run', tmp_path / 'notes.txt').code == 2
+    assert napkin(capsys, 'run', tmp_path).code == 2

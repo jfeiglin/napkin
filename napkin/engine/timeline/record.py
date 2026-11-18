@@ -10,17 +10,22 @@ pieces of each value of a run:
   as the run makes them, while the bounds and the faces of each segment hold (`Recorder.segment`).
   On a straight segment (a closed form of constant rates) a store has one exact piece of its rate,
   and a flow one constant piece. A curved segment (an exponential closed form, or the solver) gives
-  pieces whose rate is a `Curve`: the value follows a Chebyshev series of degree `DEGREE` over the
-  piece, within the tolerance of the value, and a piece is cut in two until it does. A solver's
-  segment is fitted step by step: its dense output is a cubic in each step, which the series holds
-  exactly. The state that a segment starts from opens its pieces, so a settled bound is a jump.
+  pieces with a `Curve` (`napkin/program/record.py`): the value follows a Chebyshev series of
+  degree `DEGREE` over the piece, within the tolerance of the value, and a piece is cut in two until
+  it does. A solver's segment is fitted step by step: its dense output is a cubic in each step,
+  which the series holds exactly. The state that a segment starts from opens its pieces, so a
+  settled bound is a jump.
 - **A formula, and a request or a capacity written as one,** is made after the run from the
   histories of what it reads: between two times at which one of them has a piece, it is fitted as
-  a curve is, and a yes/no takes a piece at each change, located to within the time between two
-  moments. A formula that cannot be evaluated holds `Unavailable` with the reason.
+  a curve is, and a yes/no takes a piece at each change, located to within the crossing tolerance
+  of the run (`Numerics.crossing`). A formula that cannot be evaluated holds `Unavailable` with the
+  reason. A record that keeps only some values keeps what their formulas read too.
 
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of
-each path.
+each path. It evaluates a formula at each time that it is asked from the recorded values of what
+the formula reads, and never reads the formula's fitted pieces: a fit is checked at a few points of
+each piece only, so it could lose a kink between two of them, or a yes/no that changes and changes
+back.
 """
 
 from __future__ import annotations
@@ -34,10 +39,13 @@ from numpy.polynomial import chebyshev
 
 from ...core.errors import ExpressionError
 from ...expressions import evaluate
-from ...program.record import Entry, History, Key, Manifest, Piece, Record, Unavailable
+from ...program.config import Configuration, Request
+from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Record, Unavailable
 from ..continuous.kernels import Affine, MatrixExponential
-from ..continuous.system import EVENT_TIME_TOLERANCE_H
-from .plan import FORMULA, RATE, name_of
+from .plan import FORMULA, RATE, Plan, name_of
+
+# What evaluating a formula can raise: it then holds `Unavailable` with the reason.
+FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError)
 
 DEGREE = 8
 # The points of a fit on [-1, 1], and the points between them at which a fit is checked, with the
@@ -53,22 +61,6 @@ RELATIVE = 1e-12
 MOST = 4096
 
 
-@dataclass(frozen=True)
-class Curve:
-    """The rate of a curved piece: the Chebyshev series `coefficients` of the value over `length`
-    hours from the start of the piece. A piece reads `value + rate * (time - t)`, and so does a curved
-    one: `rate * elapsed` is the increase of the series from the start of the piece."""
-
-    length: float
-    coefficients: tuple[float, ...]
-
-    def __mul__(self, elapsed):
-        u = 2.0 * float(elapsed) / self.length - 1.0
-        return float(chebyshev.chebval(u, self.coefficients) - chebyshev.chebval(-1.0, self.coefficients))
-
-    __rmul__ = __mul__
-
-
 def _times(start, end, points):
     return start + (points + 1.0) * 0.5 * (end - start)
 
@@ -77,7 +69,8 @@ def fitted(values, start, end, tolerance):
     """The pieces of k values from `start` to `end`: one list for each value, each piece a (time,
     value, rate). `values(times)` gives an array of one row for each time; `tolerance` holds one
     number for each value, which a fit may widen to `RELATIVE` of the value's largest size in the
-    piece. A value that the series holds as a line has a number for its rate."""
+    piece. A value that the series holds as a line has a number for its rate, and any other a
+    `Curve` in its place, which the record's piece keeps in its own field (`_history`)."""
     found = [[] for _ in tolerance]
     pending, cuts = [(start, end)], 0
     while pending:
@@ -215,10 +208,15 @@ class Recorder:
         for name in plan.ordered({name for name, value in plan.values.items() if value.kind == FORMULA}):
             histories[name] = self._history(plan.values[name].key, self.formula(name, histories, end))
         request = plan.configuration.request
+        # What a kept formula reads is kept too, so that `read` can evaluate it.
+        keys = set(request.keys)
+        for value in plan.values.values():
+            if value.kind == FORMULA and value.key in request.keys:
+                keys |= {plan.values[read].key for read in plan.formula_reads(value.node)[0]}
         kept = [
             history
             for history in histories.values()
-            if history.pieces and (request.everything or history.key in request.keys)
+            if history.pieces and (request.everything or history.key in keys)
         ]
         manifest = Manifest(request.horizon, request.everything, request.keys)
         trace = tuple(self.trace) + ((failure,) if failure is not None else ())
@@ -226,7 +224,15 @@ class Recorder:
 
     @staticmethod
     def _history(key, pieces):
-        return History(key, tuple(Piece(t, value, rate) for t, value, rate in _compact(pieces)))
+        """The history of a value from its pieces (t, value, rate), a `Curve` in place of the rate of
+        a curved piece."""
+        return History(
+            key,
+            tuple(
+                Piece(t, value, curve=rate) if isinstance(rate, Curve) else Piece(t, value, rate)
+                for t, value, rate in _compact(pieces)
+            ),
+        )
 
     def formula(self, name, histories, end):
         """The pieces of a formula from the histories of what it reads."""
@@ -254,47 +260,47 @@ class Recorder:
             for time in times:
                 try:
                     size = max(size, abs(float(at(time))))
-                except (ExpressionError, ArithmeticError, ValueError, LookupError):
+                except FAILURES:
                     continue
         tolerance = np.array([plan.numerics.atol_factor * size])
         pieces = []
         for a, b in pairwise(bounds):
             try:
                 first = at(a)
-            except (ExpressionError, ArithmeticError, ValueError, LookupError) as problem:
+            except FAILURES as problem:
                 pieces.append((a, Unavailable(str(problem)), 0.0))
                 continue
             if b <= a:
                 pieces.append((a, bool(first) if value.boolean else float(first), 0.0))
             elif value.boolean:
-                pieces += self._switches(at, a, b, bool(first))
+                pieces += _switches(at, a, b, bool(first), plan.numerics.crossing)
             else:
                 try:
                     found = fitted(lambda ts: np.array([[float(at(t))] for t in ts]), a, b, tolerance)[0]
-                except (ExpressionError, ArithmeticError, ValueError, LookupError) as problem:
+                except FAILURES as problem:
                     found = [(a, Unavailable(str(problem)), 0.0)]
                 pieces += found
         return pieces
 
-    @staticmethod
-    def _switches(at, a, b, first):
-        """The pieces of a yes/no from a to b: one at a, and one at each change, which bisection
-        locates between the points of a fit."""
-        pieces, value = [(a, first, 0.0)], first
-        points = _times(a, b, np.concatenate([[-1.0], _CHECKS[1:-1], [1.0]]))
-        for before, after in pairwise(points):
-            if bool(at(after)) == value:
-                continue
-            left, right = before, after
-            while right - left > EVENT_TIME_TOLERANCE_H:
-                middle = 0.5 * (left + right)
-                if bool(at(middle)) == value:
-                    left = middle
-                else:
-                    right = middle
-            value = not value
-            pieces.append((right, value, 0.0))
-        return pieces
+
+def _switches(at, a, b, first, crossing):
+    """The pieces of a yes/no from a to b: one at a, and one at each change, which bisection locates
+    between the points of a fit to within the crossing tolerance."""
+    pieces, value = [(a, first, 0.0)], first
+    points = _times(a, b, np.concatenate([[-1.0], _CHECKS[1:-1], [1.0]]))
+    for before, after in pairwise(points):
+        if bool(at(after)) == value:
+            continue
+        left, right = before, after
+        while right - left > crossing:
+            middle = 0.5 * (left + right)
+            if bool(at(middle)) == value:
+                left = middle
+            else:
+                right = middle
+        value = not value
+        pieces.append((right, value, 0.0))
+    return pieces
 
 
 def _reader(history):
@@ -305,10 +311,7 @@ def _reader(history):
         k = bisect_right(times, time) - 1
         if k < 0:
             raise LookupError(f'{history.key} has no value at {time} h')
-        piece = history.pieces[k]
-        if piece.rate == 0 or isinstance(piece.value, (bool, str, Unavailable)):
-            return piece.value
-        return piece.value + piece.rate * (time - piece.t)
+        return history.pieces[k].at(time)
 
     return at
 
@@ -359,20 +362,61 @@ def unit_of(program, key):
     return getattr(part.type, 'unit', '')
 
 
+class _Values:
+    """The values of a record at a time, with each formula evaluated from the recorded values of what
+    it reads, in canonical units. The plan of the program names each formula with its node: what a
+    configuration sets changes no formula, so the plan of a request to the record's horizon serves
+    every run of the program."""
+
+    def __init__(self, record, program):
+        self.record = record
+        self.plan = Plan.of(program, Configuration(Request(record.manifest.horizon)))
+        self.done = {}
+
+    def at(self, name, t):
+        """The value of an engine name at a time: from its history, or for a formula from what it
+        reads, `Unavailable` when it cannot be evaluated. A value that the record does not hold is a
+        LookupError."""
+        if (name, t) in self.done:
+            return self.done[name, t]
+        value = self.plan.values[name]
+        if value.kind != FORMULA:
+            try:
+                history = self.record.history(value.key)
+            except KeyError:
+                raise LookupError(f'the record holds no value of {name}') from None
+            found = history.at(t)
+        else:
+            env = {read: self.at(read, t) for read in sorted(self.plan.reads(name))}
+            env['t'] = float(t)
+            try:
+                for item in env.values():
+                    if isinstance(item, Unavailable):
+                        raise ExpressionError(item.reason)
+                found = evaluate(value.node, env, self.plan.units)
+                found = bool(found) if value.boolean else float(found)
+            except FAILURES as problem:
+                found = Unavailable(str(problem))
+        self.done[name, t] = found
+        return found
+
+
 def read(record, program, paths, times):
     """The values of named paths at chosen times, each in its declared unit: one `Reading` for each
-    path, in order. A time that the record does not hold is a LookupError."""
+    path, in order. A formula, and a request, a capacity or an actual rate that is one, is evaluated
+    at each time from the recorded values of what it reads (see the module). A time that the record
+    does not hold is a LookupError, and so is a formula whose reads it does not hold."""
+    values_at = _Values(record, program)
     found = []
     for path in paths:
         key = key_of(program, path)
         unit = unit_of(program, key)
         scale = 1.0 if unit == '' else float(program.unit(unit).scale)
-        history = record.history(key)
         values = []
         for t in times:
             if not record.manifest.holds(key, t):
                 raise LookupError(f'{path}: the record holds no value at {t} h')
-            value = history.at(t)
+            value = values_at.at(name_of(key), t)
             if not isinstance(value, (bool, str, Unavailable)):
                 value = float(value) / scale
             values.append(value)

@@ -59,7 +59,7 @@ def test_the_surfaces_of_a_run_are_those_of_each_form_with_a_side_that_moves():
     rate = (
         fmin(level, this.cap) / hour
         + clip(level, this.low, this.high) / hour
-        + build._call('abs', level - this.mid) / hour  # the builder has no handle of `abs`
+        + build.call('abs', level - this.mid) / hour
         + ifelse(level > this.mark, this.gain, none)
         + ifelse(level + this.mid != this.mark, this.gain, none)
         + fmax(this.low, this.mid, level) / hour

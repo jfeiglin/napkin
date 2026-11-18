@@ -7,7 +7,9 @@ and the request of what to record.
 
 - **An input value** follows the declared type (D2): a number with a unit of its dimension, a
   yes/no, an enum member, a text, or a distribution for a distribution-valued input. A number
-  overrides a default draw: the draw is skipped.
+  overrides a default draw: the draw is skipped. Its unit is a spelling of the program's table, or a
+  unit of the library that the program does not spell, given whole with its dimension and scale
+  (`parts.Unit`), so a caller can write a repair time in days for a model that spells only hours.
 - **The mode** is `sampled` (each executed draw samples, under the seed) or `median` (a numeric
   draw is its distribution's median, a categorical one the most likely eligible outcome, the first
   declared of them on a tie). A median run has no seed.
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields
 
+from .parts import Unit
 from .record import Key
 from .refs import Distribution, EnumValue, Number
 
@@ -39,10 +42,11 @@ class ConfigurationError(ValueError):
 
 @dataclass(frozen=True)
 class Quantity:
-    """A number in a unit of the program's table (`''` for a plain number)."""
+    """A number in a unit: a spelling of the program's table (`''` for a plain number), or a unit of
+    the library with its dimension and scale, `Unit('day', (('time', 1),), Fraction(24))`."""
 
     number: Number
-    unit: str = ''
+    unit: str | Unit = ''
 
 
 @dataclass(frozen=True)
@@ -110,7 +114,8 @@ class Budgets:
 class Numerics:
     """The numerical settings: the relative tolerance of integration, the absolute tolerance of a
     store as a factor of its scale, the longest step (h), the most evaluations of one run, and the
-    tolerance in time of a crossing (h)."""
+    tolerance in time of a crossing (h), which is also the time between two moments that the engine
+    tells apart."""
 
     rtol: float = 1e-9
     atol_factor: float = 1e-10

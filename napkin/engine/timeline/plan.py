@@ -270,7 +270,8 @@ class Plan:
         self.distributions[name] = init
 
     def _given_node(self, given, name, unit, boolean):
-        """The node of the value that a configuration gives an input, in canonical units (D2)."""
+        """The node of the value that a configuration gives an input, in canonical units (D2). Its
+        unit is a spelling of the program's table, or a unit of the library given whole."""
         found = given.value
         if boolean:
             if not isinstance(found, bool):
@@ -279,12 +280,16 @@ class Plan:
         if not isinstance(found, Quantity) or isinstance(found.number, bool):
             raise ConfigurationError(f'{name} is a number in {unit or "no unit"}: it takes a quantity')
         try:
-            declared, written = self.program.unit(unit), self.program.unit(found.unit)
+            declared = self.program.unit(unit)
+            written = found.unit if isinstance(found.unit, p.Unit) else self.program.unit(found.unit)
         except KeyError:
-            raise ConfigurationError(f'{name}: the unit {found.unit!r} is not in the program') from None
+            raise ConfigurationError(
+                f'{name}: the unit {found.unit!r} is not in the program; '
+                'give a unit of the library with its dimension and scale'
+            ) from None
         if not declared.compatible(written):
             raise ConfigurationError(
-                f'{name} is in {unit or "no unit"}: {found.unit or "no unit"} does not convert'
+                f'{name} is in {unit or "no unit"}: {written.name or "no unit"} does not convert'
             )
         return nodes.const(float(found.number) * float(written.scale))
 

@@ -13,20 +13,24 @@ The tank of the spec, which delivers 3 L/h until it empties at 2 hours 40 minute
     program = b.finish()
 
 An expression is written with handles (`X`): `this`, `local` (a bare name), `item`, `root`, `t`, a
-member that `entity`, `member`, `named` or a table gives, `q(number, unit)`, and the functions
-below. A handle on a path takes more steps by attribute (`this.origin.level`), and operators make
-nodes of `napkin/core/expr` (`&`, `|`, `~` are `and`, `or`, `not`). The part constructors (`value`,
-`flow`, `event`, `after`, `solver`, ...) make the records of `parts.py`, and `Builder` puts them
-into templates, members, the root and the setup.
+member that `entity`, `member`, `named` or a table gives, `q(number, unit)`, `call` of a function
+of the language (`call('abs', x)`), and the functions below. A handle on a path takes more steps by
+attribute (`this.origin.level`), and operators make nodes of `napkin/core/expr` (`&`, `|`, `~` are
+`and`, `or`, `not`). A node that no operator makes, such as a chain of comparisons or an `and` of
+three values, is made with `napkin/core/expr` and wrapped as `X(node, reads)` (see `X`). The part
+constructors (`value`, `flow`, `event`, `after`, `solver`, ...) make the records of `parts.py`, and
+`Builder` puts them into templates, members, the root and the setup.
 
 `finish()` makes the program and checks it (`check.check`), raising `ProgramError` with each
 refusal. On the way it gives each part its origin from its place (`grinder.refill.step[0].do[1]`),
-each draw and choice its site (`<origin>.draw[0]`), each name of a node the spelling of its read,
-each flow without a unit the unit of its ends per hour, and the program the table of the units
-that it spells. A unit is spelled with `*` and `/` over the units that the builder is given
-(`L/h`, `person*year`, D12). A bare number where a declared unit is expected (an initializer, a
-bound, a table cell) takes that unit, as in the language. The rows of a table with ids are kept in
-the order of their ids (R-A4a-02); the other members in the order of their declarations.
+each draw and choice its site (`<origin>.draw[0]`, in place of the temporary site that `draw` and
+`choose` give), each name of a node the spelling of its read, each flow without a unit the unit of
+its ends per hour (`1/h` for ends that are plain numbers, as the front end writes it), and the
+program the table of the units that it spells. A unit is spelled with `*` and `/` over the units
+that the builder is given (`L/h`, `person*year`, `1/h`, D12). A bare number where a declared unit is
+expected (an initializer, a bound, a table cell) takes that unit, as in the language. The rows of a
+table with ids are kept in the order of their ids (R-A4a-02); the other members in the order of
+their declarations.
 """
 
 from __future__ import annotations
@@ -76,8 +80,20 @@ _TOKENS = itertools.count()
 
 
 class X:
-    """A handle on an expression while a program is built: a node and the read of each of its
-    names. A handle on a path (`_path`) takes more steps by attribute."""
+    """A handle on an expression while a program is built: a node of `napkin/core/expr` and the read
+    of each of its names. A handle on a path (`_path`) takes more steps by attribute.
+
+    `X(node, reads)` wraps any node, with `reads` as {name in the node: its read}: the way to write
+    a node that no operator and no function of this module makes, such as a chain of comparisons
+    or an `and` of more than two values. `0 <= this.share < 1`, which reads the share once::
+
+        X(
+            nodes.compare(['le', 'lt'], [nodes.written(0), nodes.ref('share'), nodes.written(1)]),
+            {'share': Path(THIS, ('share',))},
+        )
+
+    Each read is a record of `refs.py` (a `Path`, `TIME`, a `Draw`, ...), and `finish` spells the
+    names of the node after their reads."""
 
     __slots__ = ('_node', '_path', '_reads')
 
@@ -347,18 +363,25 @@ def in_range(value, lower, upper):
     return _apply(lambda lo, x, hi: nodes.compare(['le', 'le'], [lo, x, hi]), lower, value, upper)
 
 
-def _call(function, *args):
+def call(function, *args):
+    """`function(args...)`: a call of a function of the language's closed list
+    (`napkin/core/expr.FUNCTIONS`): `abs`, `exp`, `expm1`, `ln`, `log1p`, `sqrt`, `erf`, `min`, `max`,
+    `clip`, and `sum`, `any` and `all` of their arguments (of a collection they are `fsum`, `fany`
+    and `fall`). A number with a unit is `q`. Any other name is a ValueError."""
+    if function not in nodes.FUNCTIONS or function == 'q':
+        names = ', '.join(sorted(nodes.FUNCTIONS - {'q'}))
+        raise ValueError(f'{function!r} is no function of the language: one of {names}')
     return _apply(lambda *parts: nodes.call(function, parts), *args)
 
 
 def fmin(*args):
     """`min(a, b, ...)`; of one collection or projection, its reduction."""
-    return _read(Reduce('min', _path(args[0]))) if len(args) == 1 else _call('min', *args)
+    return _read(Reduce('min', _path(args[0]))) if len(args) == 1 else call('min', *args)
 
 
 def fmax(*args):
     """`max(a, b, ...)`; of one collection or projection, its reduction."""
-    return _read(Reduce('max', _path(args[0]))) if len(args) == 1 else _call('max', *args)
+    return _read(Reduce('max', _path(args[0]))) if len(args) == 1 else call('max', *args)
 
 
 def fsum(collection):
@@ -383,12 +406,12 @@ def fall(collection):
 
 def clip(value, lower, upper):
     """`clip(value, lower, upper)`."""
-    return _call('clip', value, lower, upper)
+    return call('clip', value, lower, upper)
 
 
 def sqrt(value):
     """`sqrt(value)`."""
-    return _call('sqrt', value)
+    return call('sqrt', value)
 
 
 def since(event):
@@ -1076,7 +1099,9 @@ def _spellings(value, found):
 
 
 def _flow_units(program, template):
-    """A template whose flows without a unit take the unit of an end, or of a literal rate, per hour."""
+    """A template whose flows without a unit take the unit of a literal rate, or of an end per hour:
+    `L/h`, and `1/h` for an end that is a plain number, the spelling that the front end writes and
+    that composes from the unit of time (D12)."""
     resolver = checking.Resolver(program)
 
     def unit_of(flow, scope):
@@ -1094,7 +1119,7 @@ def _flow_units(program, template):
             if isinstance(end, Path):
                 store = resolver.resolve(end, scope, '')
                 if store is not None and store.kind == 'value' and isinstance(store.part.type, p.Number):
-                    return replace(flow, unit=f'{store.part.type.unit}/h')
+                    return replace(flow, unit=f'{store.part.type.unit or "1"}/h')
         return flow
 
     scope = checking.Scope(template)

@@ -10,10 +10,12 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   'actual_rate')`, `('water', 'outflow', 'actual_rate')`).
 - **A history** is a list of pieces in time order. From its time on, until the next piece, a piece
   reads `value + rate * (time - t)`: a constant has rate 0, a stored quantity between moments the
-  rate of its line. A jump is a new piece at the same time, and a read at a time gives the last
-  piece at or before it, so a read at a moment sees what its last round committed. A value that
-  could not be read holds `Unavailable` with the reason (D7). Numbers are in the canonical unit of
-  the value's dimension (a literal `q(n, unit)` is n times the unit's scale), times in hours.
+  rate of its line. A curved piece has a `Curve` instead, a Chebyshev series that the value
+  follows over the piece, so a reader needs nothing of the engine that made it. A jump is a new
+  piece at the same time, and a read at a time gives the last piece at or before it, so a read at
+  a moment sees what its last round committed. A value that could not be read holds `Unavailable`
+  with the reason (D7). Numbers are in the canonical unit of the value's dimension (a literal
+  `q(n, unit)` is n times the unit's scale), times in hours.
 - **The trace** has one entry for each start, finish, stage commit, firing, draw, choice, move, solve,
   pause and failure, in the order in which they happened, with the round of its time (0 is the
   setup at time 0, then 1, 2, ... at each time; a firing is in the round whose settled results it
@@ -49,12 +51,45 @@ class Unavailable:
 
 
 @dataclass(frozen=True)
+class Curve:
+    """The shape of a curved piece over `length` hours from its time: the Chebyshev series
+    `coefficients` (of T0, T1, ...) in u = 2 * elapsed / length - 1, which runs from -1 at the time
+    of the piece to 1 at its end. The piece reads its value plus the increase of the series since
+    its time (`increase`)."""
+
+    length: Number
+    coefficients: tuple[float, ...]
+
+    def _series(self, u):
+        # Clenshaw's recurrence: b_k = c_k + 2 u b_(k+1) - b_(k+2), and the sum is c_0 + u b_1 - b_2.
+        after = latest = 0.0
+        for coefficient in reversed(self.coefficients[1:]):
+            latest, after = coefficient + 2.0 * u * latest - after, latest
+        return self.coefficients[0] + u * latest - after if self.coefficients else 0.0
+
+    def increase(self, elapsed):
+        """The increase of the series from the time of the piece to `elapsed` hours after it."""
+        u = 2.0 * float(elapsed) / float(self.length) - 1.0
+        return self._series(u) - self._series(-1.0)
+
+
+@dataclass(frozen=True)
 class Piece:
-    """From time `t` until the next piece: `value + rate * (time - t)`."""
+    """From time `t` until the next piece: `value + rate * (time - t)`, or, for a piece with a
+    `curve`, `value` plus the increase of its curve since `t`."""
 
     t: Number
     value: Any
     rate: Number = 0
+    curve: Curve | None = None
+
+    def at(self, time):
+        """The value of the piece at a time at or after its own."""
+        if isinstance(self.value, (bool, str, Unavailable)):
+            return self.value
+        if self.curve is not None:
+            return self.value + self.curve.increase(time - self.t)
+        return self.value if self.rate == 0 else self.value + self.rate * (time - self.t)
 
 
 @dataclass(frozen=True)
@@ -74,9 +109,7 @@ class History:
             found = piece
         if found is None:
             raise LookupError(f'{self.key} has no value at {time} h')
-        if found.rate == 0 or isinstance(found.value, (bool, str, Unavailable)):
-            return found.value
-        return found.value + found.rate * (time - found.t)
+        return found.at(time)
 
 
 @dataclass(frozen=True)

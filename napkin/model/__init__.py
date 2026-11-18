@@ -1,8 +1,10 @@
-"""The scenario language: read a model file and build its model (docs/language.md, docs/python-api.md).
+"""The scenario language: read a model file and lower it to its program (docs/language.md).
 
-The front end (`language/`) reads a file into its semantic model (`semantic`), `lower` writes the engine's
-flat structures from it, `runs` gives the values of its runs under an edit document, and `model`
-builds, checks and proves the model that the engine runs.
+The front end (`language/`) parses a file, `semantic` declares it (names, types and units),
+`lowering` writes it as a program (`napkin/program`), and `compile` is the entry of all three
+(`load_scenario`, `compile_text`). `library` gives a model its units and its records. The modules
+`ir`, `runs`, `views`, `uncertain` and `analysis/` hold work of the old compiler that a later stage
+ports; nothing on the path from a file to a run loads `runs`, `views` or `analysis/`.
 
 Each name of the package loads its module on first use, as the names of `napkin` do
 (`napkin/__init__.py`). So the import of one module of the compiler loads no other part of it. This
@@ -13,9 +15,10 @@ from importlib import import_module as _import_module
 
 # The names of the package: {name: the module of the package that defines it}.
 _EXPORTS = {
-    'Model': 'model',
+    'LanguageError': 'language.problems',
     'ModelError': 'ir',
     'SourceError': 'load',
+    'compile_text': 'compile',
     'load_json': 'load',
     'load_library': 'library',
     'load_scenario': 'compile',

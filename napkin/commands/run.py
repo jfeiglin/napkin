@@ -1,296 +1,212 @@
-"""`napkin run`: run a scenario's runs and print their outcomes (docs/cli.md).
+"""`napkin run`: compile a model, run it in its default configuration, and print the values of named
+paths at chosen times (docs/cli.md).
 
-The command reads the TARGET, compiles its model and runs one study: every run, or each `--run`
-(D-30: the model is then checked for those runs only, and the output says so). Before the model
-compiles, each `--run` must name a run that the files declare (`common.check_runs`). `--option` puts
-options into each run in place of its own (`napkin.package.combined`, which checks the combination
-and the edit document), one study for each run, and the reports merge into one. The engine does
-every check; this command prints what the report holds: for each run, each outcome with its value
-and unit at the end of the run and at each `--at` time, or why it has no value; with `--events`,
-the events and their times; and the warnings of the study. `--json` prints the report as JSON
-instead (`common.compact`).
+The default run of a model is a median run to the horizon of its scenario line
+(`napkin.model.compile`); `napkin.engine.run` gives its record and `napkin.engine.read` the values,
+each in its declared unit. The command prints the value of each path of `--value`, or of every named
+value of the model in the order of the file (a flow's actual rate, request and capacity under its
+line), at each time of `--at`, or at the start and at the horizon. A number has six significant
+figures, a yes/no is `true` or `false`, and a value that cannot be evaluated is `unavailable`, with
+its reason under the table. `--json` prints one JSON document instead: the model, its title, the
+times in hours and, for each path, its unit, its label and its values, each number in full and
+`{"unavailable": reason}` for a value that has none.
 
-Exit codes: 0 when the study is admitted, 1 when the model does not compile or the study is
-rejected, 2 for a command line that is wrong.
+A model that does not compile, or that the engine does not run yet, prints each problem
+(`file:line:column: error: message [code]`) and exits 1. A run that stops prints the values up to
+the time at which it stopped, then why, and exits 1. A path or a time that the model does not have
+is a usage error (exit 2).
 """
 
 import sys
-from pathlib import Path
 
 from . import common
 
-SUMMARY = "run a scenario's runs and print their outcomes"
+SUMMARY = 'run a model and print the values of named paths at chosen times'
 
 DESCRIPTION = """\
-Compile a scenario and run its runs: every run, or each --run. Print each outcome at the end of the
-run, with its unit and its status. With --run, the model is checked for those runs only; `napkin
-compile` checks every run. Exit 0 ok, 1 diagnostics."""
+Compile a model and run it in its default configuration: a median run to the horizon of its
+scenario line. Print each named value (or each of --value) at the start and the horizon (or at
+each of --at). Exit 0 ok, 1 diagnostics, 2 usage."""
 
 EXAMPLES = """\
 examples:
   napkin run examples/piano_tuners
-  napkin run scenarios/water_controls_wipe --variant juneau --run early_kept --option "Delayed response\""""
+  napkin run examples/piano_tuners --value tunings_done,tuners.due --at 0h,6months,1year"""
 
-# What a report gives in place of the value of an outcome that has none: never a number.
-NO_VALUE = {'unestimated': 'not estimated', 'not_applicable': 'not applicable'}
+# The fields of a flow that a run records, in the order in which they are listed.
+FLOW_FIELDS = ('actual_rate', 'request', 'capacity')
 
 
 def configure(parser):
-    """The description, the examples and the arguments of `napkin run`: `args.variant`; `args.run`,
-    `args.option` and `args.set` (lists, empty when not given); `args.at` (the text, or None);
-    `args.edits` (a Path, or None); `args.events` and `args.no_store` (True or False); `args.json`
-    (None, `compact` or `full`: `cli.main` gives `--json` its value before it parses, so the flag never
-    takes the TARGET); and `args.target`."""
+    """The description, the examples and the arguments of `napkin run`: `args.at` and `args.value`
+    (lists of texts, each a list with commas; empty when not given), `args.json` (True or False) and
+    `args.model`."""
     parser.description = DESCRIPTION
     parser.epilog = EXAMPLES
-    common.add_variant(parser)
-    parser.add_argument(
-        '--run',
-        action='append',
-        default=[],
-        metavar='NAME',
-        help='run only this run (repeatable; default every run)',
-    )
-    parser.add_argument(
-        '--option',
-        action='append',
-        default=[],
-        metavar='[GROUP=]OPTION',
-        help='put this option into the run in place of its group\'s choice, e.g. --option "Delayed response"; '
-        'the combination is checked when asked (repeatable)',
-    )
-    parser.add_argument(
-        '--set',
-        action='append',
-        default=[],
-        metavar='NAME=VALUE',
-        help='give an input a value in its own unit for every run: --set tuners.rate=4, --set plan=fast '
-        '(a word is text; otherwise JSON)',
-    )
     parser.add_argument(
         '--at',
-        metavar='TIME,…',
-        help='also give every output at these times, e.g. --at 24h,7days (default: only at the end of the run)',
-    )
-    parser.add_argument('--edits', type=Path, metavar='FILE', help='apply an edit document (docs/cli.md)')
-    parser.add_argument('--events', action='store_true', help="print each run's events and their times")
-    parser.add_argument(
-        '--rows',
-        metavar='NAME,…',
-        help='for a model with a table: the rows whose own events and health the report gives, '
-        'e.g. --rows sites_3,sites_40 (the others are counted by group)',
+        action='append',
+        default=[],
+        metavar='TIMES',
+        help='the times, each a number and a unit of time of the model: --at 2h,160min (default: the '
+        'start and the horizon)',
     )
     parser.add_argument(
-        '--json',
-        nargs='?',
-        const='compact',
-        choices=('compact', 'full'),
-        metavar='full',
-        help='print the report as JSON (schema 0.0.1): outcomes, statuses and events; `full` adds the trace, '
-        'the index and the evidence',
+        '--value',
+        action='append',
+        default=[],
+        metavar='PATHS',
+        help='the paths of the values: --value tank.water,clinic.delivery.actual_rate (default: every '
+        'named value)',
     )
-    parser.add_argument(
-        '--no-store',
-        action='store_true',
-        help='neither read nor write the run store (or set NAPKIN_STORE=off)',
-    )
-    common.add_target(parser)
+    parser.add_argument('--json', action='store_true', help='print one JSON document')
+    common.add_model(parser)
 
 
 def main(args):
-    """Run the study that the arguments name and print its report; give the exit code."""
-    target = common.one_target(args.target, args.variant)
-    runs = list(dict.fromkeys(args.run)) or None
-    core, why = common.table_core(target)
-    # A value of an input, an option and an edit document are not for the groups of a table yet:
-    # with one of them, a model with a table runs as before, with each row written out.
-    given = (('--option', args.option), ('--set', args.set), ('--edits', args.edits))
-    edited = next((flag for flag, value in given if value), None)
-    if core is not None and edited is None:
-        return run_table(args, target, core, runs)
-    if core is not None:
-        why = f'{edited} is not for the groups of a table yet'
-    if args.rows:
-        reason = f'with {edited}, the model runs' if core is not None else 'this model runs'
-        raise common.UsageError(
-            f'--rows names rows of a table that the model runs by group: {reason} with each row written out'
-        )
-    if why:
-        # The note is no part of a JSON document: with --json it goes to the standard error.
-        note = f'note: this model runs with each row of its table written out: {why}'
-        print(note, file=sys.stderr if args.json is not None else sys.stdout)
-    settings = common.parse_set(args.set)
-    model = load(target, runs)
-    options = common.parse_options(model, args.option)
-    times = common.parse_times(model, args.at) if args.at is not None else []
-    edits = common.read_edits(model, args.edits, settings)
-    common.use_store(not args.no_store)
-    report = study_report(model, runs, options, edits, [t for _, t in times])
-    if args.json is not None:
-        full = args.json == 'full'
-        doc = common.compact(
-            report, full=full, index=model.index if full else None, admitted=model.admission_runs
-        )
-        common.write_json(doc, sys.stdout)
-        return 0 if report['admissible'] else 1
-    note = common.scope_note(model)
-    if note:
-        print(f'note: {note}')
-    if not report['admissible']:
-        sys.stdout.flush()
-        sys.stderr.write('The study is rejected:\n')
-        common.show_diagnostics(report['diagnostics'], sys.stderr)
-        return 1
-    for k, (name, run) in enumerate(report['runs'].items()):
-        if k:
-            print()
-        show_run(name, run, times, events=args.events)
-    sys.stdout.flush()
-    common.show_diagnostics(report['diagnostics'], sys.stderr)
-    return 0
-
-
-def run_table(args, target, core, runs):
-    """`napkin run` of a model with a table: the runs of its hybrid core (`timeline/reports.study_of`).
-    The outcomes print as those of any model. What the report says of the rows of a table is by
-    group (a class of rows that the engine runs as one family): each group with its rows, and with
-    `--events` how often each of its events happened. `--rows` names rows whose own events print.
-    A run with an option, an edit or a value of an input does not come here (`main`)."""
-    from ..engine.timeline import reports
-
-    model = core.model
-    names = list(common.check_runs(target, runs)) or list(model.runs)
-    times = common.parse_times(model, args.at) if args.at is not None else []
-    rows = [name.strip() for name in (args.rows or '').split(',') if name.strip()]
+    """Compile, run and print what the arguments ask; give the exit code."""
+    entry = common.entry_of(args.model)
     try:
-        report = reports.study_of(core, names, [t for _, t in times], rows)
-    except ValueError as exc:
-        raise common.UsageError(f'--rows: {exc}') from None
-    if args.json is not None:
-        common.write_json(compact_table(report, full=args.json == 'full'), sys.stdout)
-        return 0 if report['admissible'] else 1
-    if not report['admissible']:
-        sys.stdout.flush()
-        sys.stderr.write('The study is rejected:\n')
-        common.show_diagnostics(report['diagnostics'], sys.stderr)
+        model = common.compiled(entry)
+        record = recorded(model, entry)
+    except common.Failed as failed:
+        if not args.json:
+            raise
+        common.write_json(
+            {'model': common.shown(entry), 'diagnostics': list(map(common.problem_json, failed.problems))},
+            sys.stdout,
+        )
         return 1
-    for k, (name, run) in enumerate(report['runs'].items()):
-        if k:
-            print()
-        show_run(name, run, times, events=args.events)
-        show_groups(run, events=args.events)
+    times = common.times_of(model, args.at)
+    paths = chosen(named(model, record), args.value)
+    stop = None if record.failure is None else float(record.failure.t)
+    times = [(text, t) for text, t in times if stop is None or t <= stop]
+    readings = read(model, record, paths, times)
+    stopped = [] if stop is None else [stopped_at(record.failure, entry)]
+    if args.json:
+        common.write_json(document(model, entry, times, readings, stopped), sys.stdout)
+        return 1 if stopped else 0
+    horizon = common.number(float(model.configuration.request.horizon))
+    print(f'{model.declared.scenario.title}: a median run to {horizon} h')
+    if times:
+        rows = [['', 'unit', *(text for text, _ in times)]]
+        rows += [[path, unit, *map(cell, values)] for path, unit, _, values in readings]
+        for row in common.table(rows):
+            print(row)
+    for path, _, _, values in readings:
+        for (text, _), value in zip(times, values):
+            if unavailable(value):
+                print(f'{path} at {text}: unavailable: {value.reason}')
     sys.stdout.flush()
-    common.show_diagnostics(report['diagnostics'], sys.stderr)
+    if stopped:
+        raise common.Failed(stopped)
     return 0
 
 
-def show_groups(run, *, events=False):
-    """Print the groups of the rows of the tables of one run: each group by the row that stands for
-    it, with its table and the number of its rows; and, with `events`, how many times each event of
-    the group happened, in how many rows, and from when to when."""
-    print('  groups of rows:')
-    for group in run['groups']:
-        print(f'    {group["group"]}: {group["rows"]} rows of {group["set"]}')
-        if not events:
-            continue
-        for item in run['events']:
-            if item['group'] != group['group'] or item['outcome'] is None:
-                continue
-            span = f'at {common.number(item["first"])} h'
-            if item['last'] != item['first']:
-                span = f'from {common.number(item["first"])} h to {common.number(item["last"])} h'
-            print(
-                f'      {item["event"]} ({item["outcome"]}): {item["count"]} times in {item["rows"]} rows, {span}'
+def recorded(model, entry):
+    """The record of the default run of a compiled model (`napkin.engine.run`). A part that the
+    engine does not run yet, and a configuration that the program cannot take, are a Failed."""
+    from ..engine import run
+    from ..engine.timeline import Outside
+    from ..program.config import ConfigurationError
+
+    try:
+        return run(model.program, model.configuration)
+    except Outside as error:
+        raise common.Failed(
+            [common.problem('later_slice', f'the engine does not run this yet: {error}', entry)]
+        ) from None
+    except ConfigurationError as error:
+        raise common.Failed([common.problem('configuration', error, entry)]) from None
+
+
+def named(model, record):
+    """The path of every named value of a model that its record holds, in the order of the file: each
+    value of an entity and of the top level, and each recorded field of a flow under its line."""
+    from ..engine.timeline.plan import name_of
+    from ..model.semantic import DeclaredFlow
+
+    declared = model.declared
+    parts = sorted(
+        [*(part for entity in declared.entities for part in entity.parts), *declared.root],
+        key=lambda part: part.line,
+    )
+    written = []
+    for part in parts:
+        if isinstance(part, DeclaredFlow):
+            written += [f'{part.path}.{field}' for field in FLOW_FIELDS]
+        else:
+            written.append(part.path)
+    held = [name_of(history.key) for history in record.histories]
+    found = [path for path in written if path in held]
+    return found + [path for path in held if path not in found]
+
+
+def chosen(paths, items):
+    """The paths of the `--value` items (each a list with commas), each once, in the order given; all
+    of `paths` with no item. A path that names no value of the model is a UsageError, with the
+    closest paths."""
+    if not items:
+        return paths
+    found = []
+    for path in (piece.strip() for text in items for piece in text.split(',')):
+        if path not in paths:
+            raise common.UsageError(
+                f'--value {path}: no named value of the model' + common.close(path, paths)
             )
+        if path not in found:
+            found.append(path)
+    return found
 
 
-def compact_table(report, *, full=False):
-    """The `--json` document of `napkin run` for a model with a table: what `common.compact` gives of
-    each run, with its `groups` and the events of each group (`group_events`); with `full`, also the
-    health of the groups at each time and the peaks."""
-    from ..model.ir import thaw
+def read(model, record, paths, times):
+    """[(path, unit, label, values)] of the paths at the times (`napkin.engine.read`). The label is
+    the first text of the declared part (of the flow, for a field of a flow), or None."""
+    from ..engine import read
 
-    doc = common.compact(report, full=full)
-    doc.pop('index', None)
-    for name, run in report.get('runs', {}).items():
-        shown = doc['runs'][name]
-        shown['groups'] = thaw(run['groups'])
-        shown['group_events'] = thaw(run['events'])
-        if full:
-            shown['health'] = thaw(run['health'])
-            shown['peaks'] = thaw(run['peaks'])
-    return doc
+    declared = model.declared
+    found = []
+    for reading in read(record, model.program, paths, [t for _, t in times]):
+        part = declared.part(reading.path) or declared.part(reading.path.rpartition('.')[0])
+        found.append((reading.path, reading.unit, getattr(part, 'text', None), reading.values))
+    return found
 
 
-def load(target, runs):
-    """The model of `target`, checked for `runs` only, or for every run when `runs` is None or empty
-    (`common.load`). Before the model compiles, each run must be one that the files declare
-    (`common.check_runs`): any other is a UsageError with the closest names. `napkin draw` loads its
-    model the same way."""
-    return common.load(target, runs=list(common.check_runs(target, runs)) or None)
+def stopped_at(failure, entry):
+    """The diagnostic of a run that stopped: when, and why."""
+    message = failure.detail('message') or 'the run failed'
+    return common.problem('run', f'the run stops at {common.number(float(failure.t))} h: {message}', entry)
 
 
-def study_report(model, runs, options, edits, times):
-    """The report of the study: `evaluate_study(model, edits, runs=runs)` and `sample_result` at
-    `times`. With `options`, one study for each run (every run, or each of `runs`) on the model of
-    that run with those options (`package.combined`, which checks the edit document on the whole
-    model and then the combination), and the reports merged (`common.merged`). A combination or an
-    edit document that the engine refuses gives a rejected report with its diagnostics, as a study
-    does; no other run starts after it."""
-    from ..engine import evaluate_study, sample_result
-    from ..engine.study import StudyResult
-    from ..model import ModelError
-    from ..package import combined
+def unavailable(value):
+    """Whether a value read from a record is `Unavailable` (D7)."""
+    from ..program.record import Unavailable
 
-    if not options:
-        return sample_result(evaluate_study(model, edits, runs=runs), times)
-    reports = []
-    for run in runs or list(model.runs):
-        try:
-            derived, document = combined(model, run, options, edits)
-        except ModelError as exc:
-            found = [{**item, 'run': item.get('run') or run} for item in exc.diagnostics]
-            reports.append(
-                sample_result(StudyResult(model.model_hash, False, found, edits or {}, model=model))
-            )
-            break
-        reports.append(sample_result(evaluate_study(derived, document, runs=[run]), times))
-        if not reports[-1]['admissible']:
-            break
-    return common.merged(reports, edits=edits)
+    return isinstance(value, Unavailable)
 
 
-def show_run(name, run, times, *, events=False):
-    """Print one run of a report: its name and its label, when that is another name (and its options,
-    when the label does not name them); a table of each outcome's label and its value with its unit,
-    or why it has none, at each time of `times` ([(point, t)], `common.parse_times`) and at the end of
-    the run; and, with `events`, each event of the run with its time."""
-    options, label = ' · '.join(run['options']), run['label']
-    title = name if label in (None, '', name) else f'{name}: {label}'
-    print(title + (f' ({options})' if options and options != label else ''))
-    points = run['reporting_points']
-    end = points['final']['t']
-    columns = [(f'at {common.number(t)} h', points[point]) for point, t in times if t != end]
-    columns.append((f'at the end ({common.number(end)} h)', points['final']))
-    rows = [['', *(head for head, _ in columns)]]
-    for outcome, item in run['outcomes'].items():
-        rows.append([item['label'] or outcome, *(shown(row, outcome, item['unit']) for _, row in columns)])
-    for row in common.table(rows):
-        print(f'  {row}'.rstrip())
-    if events:
-        found = [entry for entry in run['trace'] if entry.get('outcome') is not None]
-        print('  events:' if found else '  events: none')
-        width = max((len(common.number(entry['t'])) for entry in found), default=0)
-        for entry in found:
-            text = entry.get('label') or entry['event']
-            print(f'    {common.number(entry["t"]):>{width}} h  {text}  ({entry["event"]})')
+def cell(value):
+    """A value as the table shows it."""
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    return 'unavailable' if unavailable(value) else common.number(value)
 
 
-def shown(row, outcome, unit):
-    """The value of an outcome at a reporting point, with its unit; or, for an outcome that the report
-    does not estimate, why it has no value."""
-    status = row['statuses'].get(outcome)
-    value = row['values'].get(outcome)
-    if status != 'estimated' or value is None:
-        return NO_VALUE.get(status, str(status).replace('_', ' '))
-    return f'{common.number(value)} {unit}'
+def document(model, entry, times, readings, stopped):
+    """The JSON document of `--json` (see the module)."""
+
+    def shown(value):
+        return {'unavailable': value.reason} if unavailable(value) else value
+
+    return {
+        'model': common.shown(entry),
+        'title': model.declared.scenario.title,
+        'mode': model.configuration.mode,
+        'horizon': float(model.configuration.request.horizon),
+        'times': [t for _, t in times],
+        'values': {
+            path: {'unit': unit, 'label': label, 'values': [shown(value) for value in values]}
+            for path, unit, label, values in readings
+        },
+        'diagnostics': [common.problem_json(item) for item in stopped],
+    }

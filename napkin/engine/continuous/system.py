@@ -12,7 +12,8 @@ them:
 - the `Run`: the time, the state, the store of the values that do not move, and the bounds and
   faces that hold the state in the present segment.
 
-`EVENT_TIME_TOLERANCE_H` is the time between two moments that the engine tells apart.
+The time between two moments that the engine tells apart, to which it locates a crossing, is the
+run's own: `Numerics.crossing` of its configuration, which a system holds as `cfg.crossing`.
 """
 
 from __future__ import annotations
@@ -23,9 +24,6 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ...expressions import compile_program, evaluate
-
-# Two moments closer than this, in hours, are one moment; a crossing is located to within it.
-EVENT_TIME_TOLERANCE_H = 1e-8
 
 
 def step_cap(numerics):
