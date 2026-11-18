@@ -1,5 +1,14 @@
 # Rulings for gate G0
 
+> **Superseded at gate G0.** The owner decided on 2026-11-18 (`g0-decisions.md`), and `spec.md` now
+> holds the settled design. This file stays as the record of what the prototypes proposed. Where it
+> differs from `g0-decisions.md`, the decision record wins. The owner changed, among others: D1
+> (`categorical(...).draw()`, no `chance(...)`), D2 (distribution-valued inputs), D3 (moving rates at
+> any size, no refusal), D4 (no `none`), D5 (a stale solver read is an error), D7 (frozen formulas
+> keep their results), D8 (`in [0,]`), D9 (no required publisher), D10 (no report block), D11
+> (`if` in a stage), D12 (units with `*` and `/`), D14, D16 (reachability kept as proof metadata),
+> local sharing by default, and writes to live occurrences.
+
 Sources: `a1/`, `a2/`, `a4a/`, `a4b/`, `a5/` FINDINGS.md, `g0-notes.md`, `open-items.md`. All six prototypes have reported. Ruling ids are R-<prototype>-<nn>.
 
 ## Part 0. How to read this
@@ -606,6 +615,6 @@ The findings change the content of some stages, not their order:
    when the requests read a stock. With 200 stores: 8 to 16 s when the requests read a stock. With
    2,000 stores the present general tier fails ("does not settle within 1000 steps").
 8. **Still open in the keel.** The one last run of the old test suite.
-9. **Agents** run on the `opus` model from now on, to save usage.
+9. **Agents** run on another model from now on, to save usage.
 
 All six prototypes have reported, and every ruling is in this document.

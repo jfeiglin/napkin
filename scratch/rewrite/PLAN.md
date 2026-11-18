@@ -18,8 +18,12 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] 5 the derivative code deleted (`cf5c8d3`; proved bit for bit on 370 cases, `b0/bitwise.py`)
   - [x] 6 `timeline/run.py` split by moves into ten modules (`a4b/split_run.py`, `a4b/LAYOUT.md`)
   - [x] the last run of the old suite, with durations: 5,485 passed, 3 skipped, 5 min 52 s (`b0/last-old-suite.txt`)
-- [ ] Gate G0: `rulings.md` is complete and waits for the owner's answers (2026-11-18). Then the spec is edited to hold the rulings. `open-items.md` lists every open item of the spec
-- [ ] B1 contract, oracle and solve library
+- [x] Gate G0 (2026-11-18): the owner's decisions are `g0-decisions.md`; `spec.md` is the settled proposal. See "Changes after G0" below
+- [ ] B1 contract, oracle and solve library: three tracks (`briefs/b1-*.md`)
+  - [ ] the program (`napkin/program/`, `tests/program/`)
+  - [ ] the oracle, phase 1: the semantics of G0 (`tests/reference/`)
+  - [ ] the solve library (`napkin/engine/solve/`, `tests/engine/solve/`)
+  - [ ] the oracle, phase 2: it reads the programs of `tests/program/examples.py`
 - [ ] S0 skeleton
 - [ ] S1 templates, tables and collections
 - [ ] S2 the flow network and sharing
@@ -34,6 +38,36 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
 - [ ] Gate G3
 - [ ] F finish
 
+### Changes after G0
+
+These override the text of this plan below, wherever the two differ. The owner's record
+(`g0-decisions.md`) overrides both.
+
+1. **The spec.** `spec.md` is the proposal settled at G0. The prototypes' translations and the oracle
+   used spellings that G0 replaced (a separate `chance(...)`, `none`, a report block, `size`, `^`
+   in units); they are made again where they are used.
+2. **Local sharing.** Each endpoint shares among its own flows by its own rule, by default. Fair
+   sharing across endpoints happens only inside a declared solver. The solve library serves the
+   declared solvers. The network of S2 computes local sharing, also when [0, 0] junctions and full
+   or empty stores make several rates depend on one another.
+3. **Moving rates at any size (D3).** Choice 2 below changes. A large connected set whose rates read
+   moving quantities runs on a sparse integrator (A4a: 60,000 stores to 48 h in 32 s while no store
+   rests at a bound). Holding rates between moments is an optimization for a set in which nothing
+   moves. Nothing is refused for its size: a large model may stop with an explicit failure of
+   time, memory or accuracy, and its size never changes its equations.
+4. **Solver budgets (D0)** count deterministic work (linear programs, iterations), never seconds,
+   so that a run that succeeds on one machine succeeds on another.
+5. **No required publisher (D9).** Stage C does not port `tools/publish` as a requirement of the
+   repository. What happens to it and to its committed outputs is asked of the owner at stage C.
+6. **Reachability is kept (D16).** The analysis of `napkin/model/lower/starts.py` (what can fire
+   under an effective configuration) is ported as proof metadata, not retired. Pruning work by it
+   is a separate optimization.
+7. **Reports (D10).** No `output`, no report block in a model. The caller selects paths and times.
+   A lag needs the never-falls proof.
+8. **Inputs (D2).** An override follows the declared type; a distribution-valued input exists.
+9. **Worktrees.** The tracks of B1 work in the main checkout, each in new directories that no other
+   track touches, because the harness makes an agent's worktree from `main`, not from this branch.
+
 ### If the session is cut off
 
 Everything that matters is in the repository, pushed. The working memory of an agent is not: it
@@ -47,7 +81,7 @@ lives in the session's container, which is reclaimed after a time with no activi
   here as a patch from time to time.
 - A subagent may be refused when it writes a new report file. It then gives the text in its last
   message, and the main session saves it, from the transcript of the agent, with a script.
-- From 2026-11-18 the agents run on the `opus` model, to save usage.
+- From 2026-11-18 the agents run on another model, to save usage.
 - `g0-notes.md` holds what the main session learned beside the prototypes. `open-items.md` is the
   checklist for `rulings.md`. `tests-triage.csv` is the finished test triage.
 
