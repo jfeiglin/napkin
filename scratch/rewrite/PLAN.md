@@ -5,18 +5,18 @@
 Each session starts by reading this file and `spec.md`, and ends by updating this list.
 
 - [x] Step 0: the spec and the plan in `scratch/rewrite/`, the environment, the base worktree
-- [ ] A1 notation and types
-- [ ] A2 reference semantics
+- [x] A1 notation and types (`a1/FINDINGS.md`, 32 rulings)
+- [x] A2 reference semantics (`a2/FINDINGS.md`, 23 rulings; 96 tests)
 - [ ] A3 solver numerics
-- [ ] A4 engine at scale, as two prototypes: A4a (links and flows across tables, connected sets, the record) and A4b (members that come and go, the map of the engine code)
-- [ ] A5 catalogue fit
+- [x] A4 engine at scale, as two prototypes: A4a (`a4a/FINDINGS.md`, 8 rulings; its `measure.py` is not yet run end to end) and A4b (`a4b/FINDINGS.md`, 8 rulings; `a4b/LAYOUT.md`)
+- [x] A5 catalogue fit (`a5/FINDINGS.md`, 15 rulings)
 - [ ] B0 keel, beside Phase A
   - [x] 1 imports that survive
   - [x] 2 `tests/units.py`
   - [x] 3 the dormant list
   - [x] 4 the test triage: `tests-triage.csv` (the parts are in `triage/`)
-  - [ ] 5 the derivative code deleted (an agent at work in its own worktree; brief `briefs/b0-derivatives.md`)
-  - [ ] 6 `timeline/run.py` split by moves (after A4's layout note)
+  - [x] 5 the derivative code deleted (`cf5c8d3`; proved bit for bit on 370 cases, `b0/bitwise.py`)
+  - [x] 6 `timeline/run.py` split by moves into ten modules (`a4b/split_run.py`, `a4b/LAYOUT.md`)
   - [ ] the last run of the old suite, with durations
 - [ ] Gate G0: `rulings.md`, the owner's answers, the spec edited. `open-items.md` lists every open item of the spec; each needs a ruling
 - [ ] B1 contract, oracle and solve library
@@ -42,10 +42,12 @@ lives in the session's container, which is reclaimed after a time with no activi
 - Each prototype keeps `scratch/rewrite/aN/STATE.md`: what is done, each decision and why, what is
   in progress, the steps that remain. A fresh agent, on any model, continues from the brief
   (`briefs/aN.md`), that file and the other files of the folder.
-- The removal of the derivative code (B0-5) happens in a worktree that is not pushed. Its state is
-  in `b0/STATE.md`, and `b0/derivatives-wip.patch` is its diff against the commit `1a5f8e8`, saved
-  from time to time. A fresh agent applies the patch to a new worktree and goes on from the brief
-  (`briefs/b0-derivatives.md`).
+- A worktree of an agent is not pushed, and it starts at `origin/main`, not at this branch: its
+  first step is a fast-forward to this branch. When an agent works in a worktree, save its diff
+  here as a patch from time to time.
+- A subagent may be refused when it writes a new report file. It then gives the text in its last
+  message, and the main session saves it, from the transcript of the agent, with a script.
+- From 2026-11-18 the agents run on the `opus` model, to save usage.
 - `g0-notes.md` holds what the main session learned beside the prototypes. `open-items.md` is the
   checklist for `rulings.md`. `tests-triage.csv` is the finished test triage.
 

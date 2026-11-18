@@ -109,6 +109,38 @@ class _Newton:
         q = 0.5 * float(self.w @ (z - c) ** 2) + float(y @ r)
         return z, r, q
 
+    def search(self, c, y, step, slope0):
+        """The exact step along `step`: the derivative of the dual along it is piecewise linear and falls;
+        between events its slope is minus the sum of w g^2 over the coordinates that are free."""
+        u = c - (self.ET @ y) / self.w
+        g = (self.ET @ step) / self.w
+        mv = g != 0
+        u, g, w, zl, zu = u[mv], g[mv], self.w[mv], self.zl[mv], self.zu[mv]
+        with np.errstate(divide='ignore', invalid='ignore'):
+            a_l = np.where(np.isfinite(zl), (u - zl) / g, np.where(g > 0, np.inf, -np.inf))
+            a_u = np.where(np.isfinite(zu), (u - zu) / g, np.where(g > 0, -np.inf, np.inf))
+        enter, leave = np.minimum(a_l, a_u), np.maximum(a_l, a_u)
+        wg2 = w * g * g
+        now = (enter <= 0) & (leave > 0)
+        later = enter > 0
+        alphas = np.r_[enter[later], leave[(now | later) & np.isfinite(leave)]]
+        change = np.r_[-wg2[later], wg2[(now | later) & np.isfinite(leave)]]
+        order = np.argsort(alphas, kind='stable')
+        alphas, change = alphas[order], change[order]
+        slopes = -float(wg2[now].sum()) + np.r_[0.0, np.cumsum(change)]
+        widths = np.diff(np.r_[0.0, alphas])
+        values = slope0 + np.cumsum(slopes[:-1] * widths)
+        at = np.flatnonzero(values <= 0.0)
+        if not len(at):
+            last = slopes[-1]
+            base = float(values[-1]) if len(values) else slope0
+            left = float(alphas[-1]) if len(alphas) else 0.0
+            return left + base / -last if last < 0 else None
+        k = int(at[0])
+        before = slope0 if k == 0 else float(values[k - 1])
+        left = 0.0 if k == 0 else float(alphas[k - 1])
+        return left + before / -slopes[k] if slopes[k] < 0 else left
+
     def solve(self, c, y, tol, max_newton, stats):
         z, r, q = self.point(c, y)
         if not self.m:
@@ -128,12 +160,10 @@ class _Newton:
             slope = float(r @ step)
             if slope <= 0:
                 step, slope = r.copy(), float(r @ r)
-            alpha = 1.0
-            for _ in range(60):
-                z1, r1, q1 = self.point(c, y + alpha * step)
-                if q1 >= q + 1e-4 * alpha * slope:
-                    break
-                alpha *= 0.5
+            alpha = self.search(c, y, step, slope)
+            if alpha is None:
+                raise ValueError('the conditions cannot hold together (the dual has no maximum)')
+            z1, r1, q1 = self.point(c, y + alpha * step)
             y = y + alpha * step
             z, r, q = z1, r1, q1
             stats.newton += 1
