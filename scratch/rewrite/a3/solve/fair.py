@@ -54,7 +54,7 @@ def sequential(kept, face, F, primal=True, log=None, limit=None):
         kept._set_basis(cols, list(basis.row_status))
     single = np.diff(F.indptr) == 1
     pending = np.ones(K, bool)
-    saved = kept.s.getOptionValue('simplex_strategy')
+    saved = kept.s.getOptionValue('simplex_strategy')[1]
     i0 = kept.iterations
     try:
         while pending.any():

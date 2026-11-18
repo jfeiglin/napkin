@@ -1,4 +1,10 @@
-# A3 state (checkpoint 1, 2026-11-18 about 18:30; update at each milestone)
+# A3 state (checkpoint 2, taken over by a second agent; update at each milestone)
+
+## Checkpoint 2 (second agent)
+- Written and passing: `solve/ranked.py` (pin and row), `solve/fair.py` (sequential exact with lower-bound fixes, `brute` reference), `solve/distance.py` (slacks + proximal point + dual semismooth Newton; `exact` enumeration), `solve/select.py` (whole order, restores the kept instance after each solve, `replace` for join/leave), `cases.py` (16 cases pass: all expected answers, kW, membership).
+- Mended in `lp.py`: `getRowEntries` returns 3 values; an empty program (`kModelEmpty`) is an empty answer.
+- Explore scripts are in `a3/explore/` (not the tmp folder). No FINDINGS.md draft existed.
+
 
 ## Done, and where
 - `solve/lp.py`: `Kept`, one HiGHS instance that keeps its program and basis (costs, bounds, add/delete columns and rows, basis repair after a delete). Works.

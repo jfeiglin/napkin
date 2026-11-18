@@ -161,8 +161,8 @@ class Kept:
                     extra.append(i)
         held = {}
         for i in extra:
-            status, count, columns, _ = self.s.getRowEntries(i)
-            held[i] = list(columns[:count]) if count else []
+            columns = self.s.getRowEntries(i)[1]     # (status, columns, values)
+            held[i] = [int(j) for j in columns]
         self.s.deleteRows(len(index), _i32(index))
         self.m -= len(index)
         if valid:
@@ -212,6 +212,8 @@ class Kept:
         status, x, d, r, y, value = self.run()
         if status == OPTIMAL:
             return x, d, r, y, value
+        if status == h.HighsModelStatus.kModelEmpty:      # no column: the answer is empty
+            return np.zeros(self.n), np.zeros(self.n), np.zeros(self.m), np.zeros(self.m), 0.0
         name = str(status).split('.')[-1]
         if status == h.HighsModelStatus.kInfeasible:
             raise SolveError('infeasible', f'{what} has no answer within its conditions')

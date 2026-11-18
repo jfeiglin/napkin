@@ -50,7 +50,7 @@ def nearest(A, row_lower, row_upper, lower, upper, target, weight, tol=TOL, eps=
     size = np.abs(A) @ np.where(np.isfinite(np.abs(x)), np.abs(x), 0.0) + np.abs(shift)
     empty = np.diff(B.indptr) == 0
     for i in np.flatnonzero(empty):
-        slack = tol * (1.0 + size[i])
+        slack = 1e-7 * (1.0 + size[i])     # the rows were met by an earlier stage to its tolerance
         if lo_r[i] > slack or hi_r[i] < -slack:
             raise ValueError(f'row {i} holds only fixed columns and does not hold')
     keep = np.flatnonzero(~empty)
