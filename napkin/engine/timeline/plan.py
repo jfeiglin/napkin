@@ -50,6 +50,7 @@ refused too: a value of this slice is a number or a yes/no.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, replace
 
 from ...core import expr as nodes
@@ -214,6 +215,7 @@ def _renamed(node, names):
     raise Outside(f'an expression node of kind {type(node).__name__}')
 
 
+@functools.cache
 def _uses(item, start):
     """Whether a read, a path or a start reads the start of kind `start` (This or Item)."""
     if isinstance(item, Path):
