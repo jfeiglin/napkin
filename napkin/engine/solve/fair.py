@@ -14,7 +14,10 @@ A held claim gets the lower bound F_i . x >= t* - FIX, never an equality: t* is 
 feasibility tolerance of HiGHS, and an equality at the computed level made a later program
 infeasible at 30,000 places (A3). A held claim cannot rise above its level in the later programs
 without lowering a claim at that level, so the lower bound holds it. A claim of one column is held by
-a bound of that column, and any other claim by a row.
+a bound of that column, and any other claim by a row. The programs run at HiGHS's tightest primal
+tolerance, so that t* - FIX can be reached: at the default 1e-7, t* came out high by more than FIX on
+a random network of 8 places, the face that the distance step reads was empty at 1e-9, and its
+method could not converge.
 
 After the first program of a tier only bounds change, and the last answer stays feasible, so the
 later programs run the primal simplex from the last basis (A3: 5 to 40 iterations each at 3,000
@@ -35,7 +38,7 @@ import scipy.sparse as sp
 
 from . import ranked
 from .failures import FAIR_BUDGET, NUMERICAL, SolveFailure
-from .kept import INF, PRIMAL_SIMPLEX
+from .kept import INF, PRIMAL_SIMPLEX, TIGHT
 from .scaled import row_max
 
 TAU = 1e-9  # a dual above this holds its claim
@@ -76,7 +79,7 @@ def _tier(kept, face, F, tier, budget, work):
     kept.start_at_upper(t)
     reached = []  # t* of each program
     try:
-        with ExitStack() as primal:
+        with ExitStack() as primal, kept.option('primal_feasibility_tolerance', TIGHT):
             while pending.any():
                 if work.fair_programs >= budget.fair_programs:
                     raise _exceeded(step, reached, levels, pending, budget)

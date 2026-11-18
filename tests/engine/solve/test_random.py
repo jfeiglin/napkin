@@ -317,3 +317,15 @@ def test_fair_sharing_on_networks_against_brute_force(seed):
         face, np.r_[row_lower, -np.inf], np.r_[row_upper, best.fun + 1e-9], lower, upper, claims
     )
     assert answer.levels == pytest.approx(want, abs=1e-6)
+
+
+@pytest.mark.deep
+def test_a_wider_sweep():
+    """The three families with ten times the seeds (about 15 s): 300 whole orders, 340 distance
+    steps and 44 networks."""
+    for seed in range(30, 330):
+        test_the_whole_order_against_the_exact_reference(seed)
+    for seed in range(60, 400):
+        test_the_distance_step_against_the_exact_nearest_point(seed)
+    for seed in range(16, 60):
+        test_fair_sharing_on_networks_against_brute_force(seed)
