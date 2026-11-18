@@ -243,19 +243,24 @@ class _Dual:
         z, r = self.point(c, y)
         if not self.m:
             return z, y, 0.0, 0, TOL
-        best, since = np.inf, 0
+        best, since, lm = np.inf, 0, self.lm
         for used in range(max(steps, 0)):
             if np.all(np.abs(r) <= tolerance):
                 return z, y, float(np.abs(r).max()), used, TOL
             size = float(np.abs(r).max())
             best, since = (size, 0) if size <= 0.5 * best else (best, since + 1)
-            if since >= STALL and np.all(np.abs(r) <= tolerance * (FEASIBLE / TOL)):
-                return z, y, size, used, FEASIBLE
+            if since >= STALL:
+                if np.all(np.abs(r) <= tolerance * (FEASIBLE / TOL)):
+                    return z, y, size, used, FEASIBLE
+                # a stall above that: the Newton system is near singular along a direction that no
+                # free coordinate covers, and the exact search can cycle along it (seen on a random
+                # network of 8 places), so the step takes the Levenberg-Marquardt term from now on
+                best, since, lm = size, 0, True
             u = c - (self.ET @ y) / self.w
             free = (u > self.zl) & (u < self.zu)
             # Levenberg-Marquardt: delta follows the residual, a power of ten, so that one
             # factorization serves while the free set and delta stay
-            delta = 10.0 ** np.clip(np.ceil(np.log10(size)) - 2, -14, -4) if self.lm else DELTA
+            delta = 10.0 ** np.clip(np.ceil(np.log10(size)) - 2, -14, -4) if lm else DELTA
             key = (free.tobytes(), delta)
             if self.factor is None or self.factor[0] != key:
                 self.K.data[self.diagonal] = np.r_[
