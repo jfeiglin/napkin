@@ -284,7 +284,7 @@ def test_round_trip_random(examples=3000):
 
     count = Counter()
 
-    @settings(max_examples=examples, deadline=None, suppress_health_check=list(HealthCheck), database=None)
+    @settings(max_examples=examples, deadline=None, suppress_health_check=list(HealthCheck), database=None, derandomize=True)
     @given(strategies())
     def reads(node):
         reads_back(node)

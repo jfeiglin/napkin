@@ -345,7 +345,7 @@ def deep_size(value, seen=None):
     return size
 
 
-def today(out, routes=35000, places=30000):
+def today(out, routes=35000, places=30000, quick=False):
     from napkin.engine import timeline
     from napkin.engine.timeline import reports
     from napkin.model import hybrid
@@ -373,8 +373,9 @@ def today(out, routes=35000, places=30000):
     # 2. The record of the table path: what each value and each line was before each change.
     table = {'places': places, 'routes': routes}
     path = write_baseline(Path(out) / 'today' / 'table', places, routes, lagged=False)
-    core = hybrid.compile(path)
-    plan = timeline.Plan.of(core)
+    t_compile, core = best(lambda: hybrid.compile(path), 1)
+    t_plan, plan = best(lambda: timeline.Plan.of(core), 1)
+    table.update(compile_s=t_compile, plan_s=t_plan)
     t_plain, _ = best(lambda: timeline.run(plan), 1)
     t_record, result = best(lambda: timeline.run(plan, record=True), 1)
     run = result.run
@@ -394,7 +395,7 @@ def today(out, routes=35000, places=30000):
     # 3. The same model with a uniform lag on its output: a report integrates the history piece by
     #    piece, and each reading of a piece reads every row.
     lagged = {}
-    for count in (350, 3500, 35000):
+    for count in (350, 3500) if quick else (350, 3500, 35000):
         path = write_baseline(Path(out) / 'today' / f'lag_{count}', max(1, count * 6 // 7), count, lagged=True)
         core = hybrid.compile(path)
         result = timeline.run(timeline.Plan.of(core), record=True)
@@ -425,6 +426,6 @@ if __name__ == '__main__':
     elif part == 'scale':
         scale(out, int(sys.argv[3]), int(sys.argv[4]), runs=int(sys.argv[5]) if len(sys.argv) > 5 else 3)
     elif part == 'today':
-        today(out)
+        today(out, quick='quick' in sys.argv[3:])
     else:
         raise SystemExit(__doc__)

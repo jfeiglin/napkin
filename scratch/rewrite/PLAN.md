@@ -34,6 +34,21 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
 - [ ] Gate G3
 - [ ] F finish
 
+### If the session is cut off
+
+Everything that matters is in the repository, pushed. The working memory of an agent is not: it
+lives in the session's container, which is reclaimed after a time with no activity.
+
+- Each prototype keeps `scratch/rewrite/aN/STATE.md`: what is done, each decision and why, what is
+  in progress, the steps that remain. A fresh agent, on any model, continues from the brief
+  (`briefs/aN.md`), that file and the other files of the folder.
+- The removal of the derivative code (B0-5) happens in a worktree that is not pushed. Its state is
+  in `b0/STATE.md`, and `b0/derivatives-wip.patch` is its diff against the commit `1a5f8e8`, saved
+  from time to time. A fresh agent applies the patch to a new worktree and goes on from the brief
+  (`briefs/b0-derivatives.md`).
+- `g0-notes.md` holds what the main session learned beside the prototypes. `open-items.md` is the
+  checklist for `rulings.md`. `tests-triage.csv` is the finished test triage.
+
 ### To set up a session
 
 ```bash

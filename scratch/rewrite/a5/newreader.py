@@ -565,6 +565,8 @@ class Reader:
         value.text = (holder.get('texts') or [None])[0]
         value.records = tuple(cites) + tuple(holder.get('cites', ()))
         self.classify(value, written, readonly, is_input, body, equals is not None)
+        if expr is not None and expr[0] == 'text':
+            f.say(expr[1])
         # An instance line: `m = v` in an instance of a template sets a member, and declares none.
         template = f.things.get(thing, {}).get('template') if thing is not None else None
         if template is not None and written is None and not readonly and not is_input:

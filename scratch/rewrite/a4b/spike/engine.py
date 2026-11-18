@@ -376,6 +376,7 @@ class Frames:
         self.gates = {}  # step -> (Cond, Predictions)
         self.gate_reached = np.zeros(64, dtype=np.int64)
         self.bounds = {}  # local store -> Predictions of the time at which it reaches a bound
+        self.decl = {}  # local flow -> its place among the flow declarations of the program
 
     def active_rows(self):
         return self.alive[: self.n_alive]
@@ -621,7 +622,7 @@ class Engine:
                     self.spool_of[key] = len(self.spools)
                     self.spools.append(('local', template, event, store, predictions))
                 for flow in event.flows:
-                    frames.c.column('decl:' + flow.name, np.int32, len(self.flow_decls))
+                    frames.decl[flow.name] = len(self.flow_decls)
                     self.flow_decls.append((scope, flow))
                 for place, step in enumerate(event.steps):
                     if isinstance(step, Until):
@@ -722,6 +723,8 @@ class Engine:
                 stores.out_cap[ids] = ev(lift(store.out_capacity), env)
                 stores.in_cap[ids] = ev(lift(store.in_capacity), env)
                 self.size(ids)
+                if self.record:
+                    self.pieces.extend((int(sid), 0.0, float(stores.y0[sid]), 0.0) for sid in ids)
         for decl, (scope, flow) in enumerate(self.flow_decls):
             if scope[0] != 'member':
                 continue
@@ -932,8 +935,7 @@ class Engine:
             if self.record:
                 self.pieces.append((sid, t, float(stores.y0[sid]), 0.0))
         for flow in event.flows:
-            decl = int(getattr(c, 'decl:' + flow.name)[0])
-            getattr(c, 'flow:' + flow.name)[row] = self.join(decl, flow, env, frames.pool, row)
+            getattr(c, 'flow:' + flow.name)[row] = self.join(frames.decl[flow.name], flow, env, frames.pool, row)
         self.wrote(('occ', template.name, event.name), member)
         if self.say:
             self.log.append((t, f'{frames.name(row)} starts'))
@@ -1173,7 +1175,7 @@ class Engine:
         changed starts again from where it is."""
         stores, edges = self.stores, self.edges
         self.count['network passes'] += 1
-        changed_many = []
+        changed_many, settled = [], set()
         passes = 0
         while self.dirty:
             passes += 1
@@ -1194,27 +1196,43 @@ class Engine:
                 limit = min(limit, self.side_total(sid, 'out'))
             caps = edges.capacity[ids]
             inside = other >= 0
+            decides = np.ones(len(ids), dtype=bool)
             if inside.any():
                 far = other[inside]
-                held = (stores.rest[far] > 0) if side == 'out' else (stores.rest[far] < 0)
-                tight = np.isfinite(stores.in_cap[far] if side == 'out' else stores.out_cap[far])
+                if side == 'out':
+                    # A sink with a limit of its own decides the flows into it.
+                    tight = np.isfinite(stores.in_cap[far])
+                    held = stores.rest[far] > 0
+                else:
+                    # A flow from a store is decided at that store; a flow from outside, here.
+                    tight = np.ones(len(far), dtype=bool) if not math.isfinite(limit) else (
+                        np.isfinite(stores.out_cap[far]) | (stores.rest[far] < 0)
+                    )
+                    held = np.zeros(len(far), dtype=bool)
                 if tight.any() and math.isfinite(limit):
                     raise RunStopped(
                         f'{self.store_name(sid)}: a flow that is limited at both of its ends is outside '
                         'the spike (the solve library of S2)'
                     )
+                if tight.any():
+                    decides[np.flatnonzero(inside)[tight]] = False
+                    if side == 'out':
+                        for s_far in np.unique(far[tight]).tolist():
+                            if (s_far, 'in') not in settled:
+                                self.dirty.add((s_far, 'in'))
                 if held.any():
-                    # The far end rests on a bound: the flow gets what the far end lets through.
+                    # The far end rests on its upper bound: the flow gets what that store lets out.
                     caps = caps.copy()
-                    through = np.array(
-                        [self.side_total(int(s), 'out' if side == 'out' else 'in') for s in far[held]]
-                    )
-                    caps[np.flatnonzero(inside)[held]] = through
-            if math.isfinite(limit) or not np.all(np.isinf(caps)) or side == 'out' or not inside.any():
+                    caps[np.flatnonzero(inside)[held]] = [self.side_total(int(s_far), 'out') for s_far in far[held]]
+            settled.add((sid, side))
+            if not decides.any():
+                continue
+            if decides.all():
                 sums = (self.out_sum if side == 'out' else self.in_sum)[sid]
                 new = share(edges.request[ids], caps, limit, edges.rank[ids], sums)
             else:
-                continue  # the other ends decide these rates
+                new = edges.rate[ids].copy()
+                new[decides] = np.minimum(edges.request[ids], caps)[decides]
             moved = new != edges.rate[ids]
             if not moved.any():
                 continue
@@ -1349,7 +1367,7 @@ class Engine:
                 for far in column[members.now()].tolist():
                     if far != OUTSIDE:
                         self.dirty.add((far, 'out' if not falling else 'in'))
-            self.wrote(key, row, network=True)
+            self.wrote(key, row)
 
     # ---- the reader graph ----------------------------------------------------------------------------
 
@@ -1372,7 +1390,8 @@ class Engine:
             rows = np.unique(np.atleast_1d(np.concatenate([np.atleast_1d(chunk) for chunk in chunks])))
             for reader, how in self.readers[key]:
                 if (reader[0] == 'request') != (only == 'request'):
-                    kept.setdefault(key, []).append(rows)
+                    if only == 'request':
+                        kept[key] = [rows]  # its other readers are read after the sharing
                     continue
                 if reader[0] == 'trigger':
                     self.read_triggers.setdefault(reader[1:], []).append(self.members_for(how, rows))
