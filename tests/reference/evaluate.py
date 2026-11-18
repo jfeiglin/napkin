@@ -204,6 +204,7 @@ class _Boundary:
 
 
 SOURCE, SINK = _Boundary('SOURCE'), _Boundary('SINK')
+ITEM = '<item>'  # the bare name of the member that the test of a `where` is about; no model can spell it
 
 
 class NeedsSettle(Exception):
@@ -428,6 +429,36 @@ class Ev:
 
     def _attr(self, base, name):
         return self.attr(self.ref(base), name)
+
+    def _member(self, id):
+        """A member named by its id (`sites.clinic`), whatever names the scope has."""
+        if id not in self.run.ents:
+            raise RunFailed(f'no member is named {id!r}')
+        return self.run.ents[id]
+
+    def _instances(self, template):
+        """`Template.instances`, keyed by creation number."""
+        return Coll((x.number, x, x) for x in self.run.ents.values() if x.template.name == template)
+
+    def _occurrence(self, receiver, event, n):
+        """The start number n, from 0, of an event on a receiver: `tank.receive#0` in a key."""
+        occs = self.view.occs.get((self._member(receiver), event), [])
+        if n >= len(occs):
+            raise RunFailed(f'{receiver}.{event}#{n} has not started by t = {self.view.t} h')
+        return occs[n]
+
+    def _where(self, source, test):
+        """`source.where(test)`: the members for which the test holds, with their keys. The test
+        reads the member as the bare name `ITEM`, and the enclosing scope as it is."""
+        c = self.val(source)
+        if not isinstance(c, Coll):
+            raise RunFailed(f'{show(source)}.where(...) needs a collection')
+        kept = []
+        for item in c.items:
+            scope = Scope(self.scope.this, self.scope.occ, {**self.scope.extra, ITEM: item[1]})
+            if self.fork(scope).truth(test):
+                kept.append(item)
+        return Coll(kept)
 
     def attr(self, obj, name):
         """The field, flow, event, solver or setting called `name` of what `obj` names."""

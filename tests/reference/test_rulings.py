@@ -242,7 +242,7 @@ def test_13_budget():
         RunFailed, match=r'3 occurrences of desk.ticket are active at once \(max_active = 3\)'
     ) as e:
         run(m, 10, max_active=3)
-    assert 'desk.ticket#1, started at 0 h and waits at `until this.open`' in str(e.value)
+    assert 'desk.ticket#0, started at 0 h and waits at `until this.open`' in str(e.value)
     assert run(m, 10).read(count(N.desk.ticket.occurrences)) == 11
 
 

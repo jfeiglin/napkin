@@ -38,6 +38,7 @@ import itertools
 from collections import Counter
 from fractions import Fraction
 from statistics import NormalDist
+from typing import NamedTuple
 
 from . import network
 from .errors import Diagnostic, NotCovered, Paused, RunFailed
@@ -68,6 +69,20 @@ from .poly import Irrational, plain
 
 _MISSING = object()
 BUILTIN = ('started', 'done', 'active')
+
+
+class Entry(NamedTuple):
+    """One entry of the trace: its kind ('start', 'done', 'stage' for a stage that ran its body,
+    'skip' for one whose guard was false, 'fire', 'solve', 'draw', 'choice', 'move', 'release',
+    'moment'), the time, the occurrence, member, trigger or solver that it is about, the step of a
+    stage, the round of its time (0 is the setup), and the origin of its part in a program."""
+
+    kind: str
+    t: Fraction
+    label: str
+    step: object = None
+    round: int = 0
+    origin: str = ''
 
 
 class Tx:
@@ -369,7 +384,7 @@ class Run:
     def _moment(self, setup=False):
         t = self.view.t
         if self.held is None:
-            self.trace.append(('moment', t))
+            self._note('moment', '')
             self.rounds = 0
             if setup:  # round zero: the setup statements commit as one stage, then settle and check
                 self.phase, self.round_written = 'stages', set()
@@ -426,6 +441,18 @@ class Run:
 
     # --- step 1: stages ----------------------------------------------------------------------------
 
+    def _note(self, kind, label, step=None, origin=''):
+        """Add an entry to the trace, at the time and in the round where the run is."""
+        self.trace.append(Entry(kind, self.view.t, label, step, self.rounds, origin))
+
+    def _quantity(self, cell, value):
+        """A number of a cell in its declared unit, for a message: `8 L`."""
+        declared = self.fields.get(cell)
+        unit = declared.unit if declared is not None else ''
+        if not unit or not isinstance(value, Fraction):
+            return str(value)
+        return f'{value / (self.model.units.get(unit) or scale_of(unit))} {unit}'
+
     def scope_of(self, owner):
         """The scope in which the cells of an owner are read."""
         if isinstance(owner, Occ):
@@ -450,7 +477,7 @@ class Run:
                 raise type(e)(f'{e} [stage {occ.step + 1} of {occ.label}, t = {self.view.t} h]') from None
         self.scheduled.remove(occ)
         occ.due, self.kept_draws = None, {}
-        self.trace.append(('stage', self.view.t, occ.label, occ.step, ran))
+        self._note('stage' if ran else 'skip', occ.label, occ.step, step.origin)
         self._commit(tx)
         self._reach(occ, occ.step + 1)
 
@@ -561,18 +588,19 @@ class Run:
                     f'outside its range [{lo}, {hi}]; nothing is moved'
                 )
         tx.writes.update(after)
-        tx.moves.append((src, dst, amount))
+        tx.moves.append((src, dst, amount, s.origin))
 
     def _commit(self, tx):
         """Publish the writes of a stage and register the occurrences that it queued."""
         view, t = self.view, self.view.t
         moved = Counter()
-        for src, dst, amount in tx.moves:
+        for src, dst, amount, origin in tx.moves:
             self._note_store(src)
             self._note_store(dst)
             moved[src] -= amount
             moved[dst] += amount
             self.ledger.append(('move', t, src, dst, amount))
+            self._note('move', tx.occ.label if tx.occ is not None else '', origin=origin)
         for cell, value in tx.writes.items():
             old = view.cells.get(cell)
             if (
@@ -588,6 +616,8 @@ class Run:
             if old != value:  # `elapsed` restarts only when the committed value differs
                 view.entered[cell] = t
         self.round_written |= set(tx.writes)
+        for decision in self.stage_decisions:  # a choice is in the trace once its stage commits
+            self._note('choice', decision['owner'], origin=decision['site'])
         self.decisions += self.stage_decisions
         self.stage_decisions = []
         starts, tx.starts, tx.writes, tx.moves = tx.starts, [], {}, []
@@ -604,7 +634,7 @@ class Run:
             raise RunFailed(
                 f'{ent.id}.{event.name}.start: {len(event.params)} arguments are declared and {len(args)} are given'
             )
-        occ = Occ(next(self.occ_numbers), ent, event, len(occs) + 1, tuple(args))
+        occ = Occ(next(self.occ_numbers), ent, event, len(occs), tuple(args))  # numbered from 0
         for name, v in (('started', t), ('done', False), ('active', True), *zip(event.params, args)):
             view.cells[Cell(occ, name)] = v
             view.entered[Cell(occ, name)] = t
@@ -630,7 +660,7 @@ class Run:
                 self._range(cell, d, ev, view.cells[cell])
             view.entered[cell] = t
         occs.append(occ)
-        self.trace.append(('start', t, occ.label))
+        self._note('start', occ.label, origin=event.origin)
         if self.phase == 'conditions':
             self.again = True
         self._reach(occ, 0)
@@ -705,7 +735,7 @@ class Run:
             left = view.cells[cell]
             if left != 0:
                 raise RunFailed(
-                    f'{occ.label} cannot finish at t = {t} h: its store {label(cell)} still holds {left}. '
+                    f'{occ.label} cannot finish at t = {t} h: its store {label(cell)} still holds {self._quantity(cell, left)}. '
                     'Wait for it to drain, move the rest to a named stock, or send it to SINK.'
                 )
         for cell, v in list(view.cells.items()):
@@ -716,7 +746,7 @@ class Run:
                 view.live.remove(f)
                 self.round_written |= network.stores_of(f)  # the flow leaves its endpoints' collections
         view.cells[Cell(occ, 'done')], view.cells[Cell(occ, 'active')] = True, False
-        self.trace.append(('done', t, occ.label))
+        self._note('done', occ.label, origin=occ.event.origin)
         if self.phase == 'conditions':
             self.again = True
 
@@ -759,7 +789,7 @@ class Run:
         for trig in fires:
             self._fire(trig)
         for occ in releases:
-            self.trace.append(('release', t, occ.label, occ.step))
+            self._note('release', occ.label, occ.step)
             self._reach(occ, occ.step + 1)
 
     def _gates(self):
@@ -788,7 +818,7 @@ class Run:
             trig.rearm_at = t + Ev(self, self.view, Scope(trig.ent, None, caps), may_draw=True).num(
                 trig.decl.reset[1]
             )
-        self.trace.append(('fire', t, trig.label))
+        self._note('fire', trig.label, origin=trig.decl.origin)
         self.again = True
         self._commit(tx)
 
@@ -871,23 +901,29 @@ class Run:
 
     # --- draws and choices ---------------------------------------------------------------------------
 
-    def _key(self, node, ev):
-        """The key of a draw or a choice: its site in the model and its owner (occurrence or firing)."""
+    def _site(self, node):
+        """The site of a draw or a choice: its place in the model (in a program, the program's site)."""
+        return self.sites.get(id(node), show(node))
+
+    def _owner(self, ev):
+        """Who executes a draw or a choice: the occurrence, the firing, or the member."""
         s = ev.scope
-        who = (
-            s.occ.label
-            if s.occ is not None
-            else ev.shared.context or (s.this.id if s.this is not None else 'model')
-        )
-        return f'{self.sites.get(id(node), show(node))}|{who}'
+        if s.occ is not None:
+            return s.occ.label
+        return ev.shared.context or (s.this.id if s.this is not None else 'model')
+
+    def _key(self, node, ev):
+        """The key of a draw or a choice: its site and its owner, never its place in a stream."""
+        return f'{self._site(node)}|{self._owner(ev)}'
 
     def _uniform(self, key):
         digest = hashlib.sha256(f'{self.config.seed}|{key}'.encode()).digest()
         return Fraction(int.from_bytes(digest[:8], 'big') * 2 + 1, 2**65)
 
-    def draw(self, dist, node, ev, eligible=None):
+    def draw(self, dist, node, ev, eligible=None, traced=True):
         """An executed `.draw()`: the median in a median run, a keyed sample in a sampled run. A
-        draw that a paused stage made is kept and given again when the stage resumes."""
+        draw that a paused stage made is kept and given again when the stage resumes. The draw of
+        a forecast is traced as its choice (`traced` false)."""
         key = self._key(node, ev)
         if key in self.kept_draws:
             value = self.kept_draws[key]
@@ -906,6 +942,8 @@ class Run:
             else:
                 raise NotCovered(f'a sampled draw of the distribution {dist.kind}')
             self.draws.append((key, value))
+            if traced:
+                self._note('draw', self._owner(ev), origin=self._site(node))
         self.stage_draws[key] = value
         return value
 
@@ -951,12 +989,14 @@ class Run:
         record = {
             'time': self.view.t,
             'key': key,
+            'site': self._site(node),
+            'owner': self._owner(ev),
             'actor': actor.id,
             'options': options,
             'probabilities': dict(dist.params),
         }
         if actor.id not in self.config.controllers:
-            value = self.draw(dist, node, ev, eligible)
+            value = self.draw(dist, node, ev, eligible, traced=False)
             self.stage_decisions.append({**record, 'by': 'forecast', 'value': value})
             return value
         if ev.tx is None or ev.tx.occ is None:
@@ -983,9 +1023,12 @@ class Run:
         given (the run itself works in canonical units). A read changes nothing."""
         at = self.view.t if at is None else number(at)
         frames = [f for f in self.frames if f.t <= at]
-        if not frames or at > self.view.t:
+        if (self.error is not None or self.paused is not None) and at == self.view.t:
+            frame = self.view.copy()  # where the run stopped: what its rounds had committed
+        elif not frames or at > self.view.t:
             raise RunFailed(f'the run has no record at t = {at} h')
-        frame = frames[-1].copy()
+        else:
+            frame = frames[-1].copy()
         tau = at - frame.t
         if tau > 0:
             for cell, p in frame.levels.items():
@@ -1074,12 +1117,13 @@ def _forward(d, later):
 
 
 def _sites(model):
-    """A stable name for each place of the model where a draw or a choice is written."""
-    sites = {}
+    """A stable name for each place of the model where a draw or a choice is written: the site that a
+    program gave it, or else its path in the model."""
+    sites = dict(model.sites)
 
     def walk(x, path):
         if isinstance(x, E):
-            if x._k == 'call' and x._a[1] in ('draw', 'choose'):
+            if x._k == 'call' and x._a[1] in ('draw', 'choose') and id(x) not in sites:
                 sites[id(x)] = path
             for i, a in enumerate(x._a):
                 walk(a, f'{path}/{i}')

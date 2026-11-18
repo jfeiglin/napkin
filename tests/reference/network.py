@@ -200,7 +200,7 @@ def solve(run, comp):
             raise type(e)(f'{e} [{who}, t = {run.view.t} h]') from None
         run.cache[comp.key] = (problem['signature'], answer)
         who = label(comp.sols[0][0]) if comp.sols else 'network'
-        run.trace.append(('solve', run.view.t, who))
+        run._note('solve', who, origin=comp.sols[0][1].origin if comp.sols else '')
     for var, value in answer.items():
         run.view.results[var] = value
     comp.busy, comp.done = False, True

@@ -32,7 +32,18 @@
 - D7: formulas (and flow-setting formulas) freeze before the occurrence's flows leave; a failure
   is stored as `Failed(reason)`. Writes to a finished occurrence fail.
 
+## Phase 2 — DONE
+- `from_program.py`: Program and Configuration -> the oracle's Model and Config (reads records,
+  walks `napkin.core.expr` nodes as data; no napkin evaluation code). `value_at` reads a record
+  Key in its declared unit; `traced` maps record kinds (commit, finish, ...) to oracle entries.
+- `test_programs.py`: all 65 examples of `tests/program/examples.py` pass, no xfail, no edit to
+  examples.py. tests/reference 192 passed (~5.5 s); with tests/program and tests/core: 1008.
+- Oracle changes for it (no semantic rule changed): occurrences numbered from 0 (`#0`, as record
+  keys); trace entries carry round and origin, with draws, choices (at commit) and moves; a stage
+  whose guard is false is 'skip', not a commit; the retirement message states its unit ("8 L");
+  a read of a stopped run at its stop time gives the committed state; new read nodes (member by
+  id, n-th occurrence, `where` with an item); Model keeps the program's units and sites.
+
 ## Remaining
-- Phase 2 (later message): read the programs of `tests/program/` instead of `model.py` records.
 - Rows only partly covered: `48 h/2` vs `48 h / 2` (no parser: one expression; value checked);
   `6 person * year` (number checked, dimension is the compiler's).

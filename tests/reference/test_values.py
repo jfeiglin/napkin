@@ -123,7 +123,7 @@ def test_a_formula_without_a_value_at_the_finish_keeps_its_reason():
     assert r.read(finished.done, 3) is True
     for at in (1, 3):
         with pytest.raises(
-            RunFailed, match=r'since_repair was not available when plant\.job#1 finished at t = 1 h'
+            RunFailed, match=r'since_repair was not available when plant\.job#0 finished at t = 1 h'
         ):
             r.read(finished.since_repair, at)
     shown = r.report(finished.since_repair, [3])[0]
@@ -154,7 +154,7 @@ def test_a_readonly_local_cannot_be_assigned():
 
 
 def test_a_finished_occurrence_is_frozen():
-    with pytest.raises(RunFailed, match=r'site\.repair#1\.crew_size belongs to the finished occurrence'):
+    with pytest.raises(RunFailed, match=r'site\.repair#0\.crew_size belongs to the finished occurrence'):
         crews(write_at=3).run()
 
 

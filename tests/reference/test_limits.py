@@ -44,7 +44,7 @@ def test_max_active_names_the_oldest_waiting_occurrence():
         Run(m, Config(horizon=10, max_active=3)).run()
     assert str(e.value) == (
         '3 occurrences of desk.ticket are active at once (max_active = 3) and one more starts at t = 3 h. '
-        'The oldest, desk.ticket#1, started at 0 h and waits at `until this.open` (step 1).'
+        'The oldest, desk.ticket#0, started at 0 h and waits at `until this.open` (step 1).'
     )
     r = Run(m, Config(horizon=10, max_active=20)).run()
     assert r.read(count(N.desk.ticket.occurrences)) == 11

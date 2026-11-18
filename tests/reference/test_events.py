@@ -90,22 +90,22 @@ def inspect(safe_at_five):
 def test_inspect_stages_at_three_and_five():
     """inspect.start(3 h): its stages run at hours 3 and 5, then the gate releases at 6."""
     r = inspect(True)
-    assert [(e[1], e[3]) for e in r.trace if e[0] == 'stage' and e[2] == 'site.inspect#1'] == [
+    assert [(e[1], e[3]) for e in r.trace if e[0] == 'stage' and e[2] == 'site.inspect#0'] == [
         (3, 0),
         (5, 1),
         (6, 3),
     ]
-    assert r.times('start', 'site.inspect_equipment#1') == [5]
-    assert r.times('start', 'site.record_clearance#1') == [6]
-    assert r.times('done', 'site.inspect#1') == [6]
+    assert r.times('start', 'site.inspect_equipment#0') == [5]
+    assert r.times('start', 'site.record_clearance#0') == [6]
+    assert r.times('done', 'site.inspect#0') == [6]
 
 
 def test_inspect_guard_is_read_once():
     """The guard is false at 5 h: the body is skipped though safety returns at 5.5 h, and the
     occurrence still completes."""
     r = inspect(False)
-    assert r.times('start', 'site.inspect_equipment#1') == []
-    assert r.times('done', 'site.inspect#1') == [6]
+    assert r.times('start', 'site.inspect_equipment#0') == []
+    assert r.times('done', 'site.inspect#0') == [6]
     assert r.read(N.site.inspect.occurrences.at(t).done, 8) is True
 
 
@@ -135,7 +135,7 @@ def batch(dispose):
 def test_retirement_names_what_is_left():
     """An occurrence with 20 L in its batch and 12 L delivered tries to finish: the run fails and
     names the 8 L."""
-    with pytest.raises(RunFailed, match=r'plant\.batch#1\.stock still holds 8') as e:
+    with pytest.raises(RunFailed, match=r'plant\.batch#0\.stock still holds 8') as e:
         batch(dispose=False).run()
     assert 't = 2 h' in str(e.value)
 
@@ -430,4 +430,4 @@ def test_a_child_is_counted_after_the_stage_commits():
     m.setup = [start(N.unit.parent)]
     r = Run(m, horizon=10).run()
     assert r.read(N.unit.seen, 1) == 0
-    assert r.times('done', 'unit.parent#1') == [3]
+    assert r.times('done', 'unit.parent#0') == [3]

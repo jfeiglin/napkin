@@ -12,6 +12,11 @@ divided by one canonical unit of its dimension, whatever unit the model was writ
 checks no dimension: that is the compiler's work.
 
 There is no `none`: a field declared without a value fails when it is read (decision D4).
+
+A model that `from_program.py` makes from a program of `napkin.program` also keeps the origin of
+each event, step, trigger, solver and move, the declared unit of each field, the program's table of
+units and the site of each draw and choice, so that the trace and the messages of a run name the
+parts of the program.
 """
 
 from dataclasses import dataclass, field
@@ -323,6 +328,7 @@ class Field:
     scale: object = None  # a declared scale of a solver unknown
     outflow: Endpoint = None
     inflow: Endpoint = None
+    unit: str = ''  # the spelling of its declared unit, for messages
 
 
 def _opt(x):
@@ -420,6 +426,7 @@ class Move:
     amount: E
     source: E
     destination: E
+    origin: str = ''
 
 
 @dataclass
@@ -499,6 +506,7 @@ class After:
     delay: E
     body: list = field(default_factory=list)
     guard: E = None
+    origin: str = ''
 
 
 @dataclass
@@ -506,6 +514,7 @@ class Until:
     """`until condition`: a gate between stages."""
 
     condition: E
+    origin: str = ''
 
 
 def after(delay, body=(), when=None):
@@ -527,6 +536,7 @@ class Trigger:
     starts: list = field(default_factory=list)
     captures: list = field(default_factory=list)  # (name, expression) pairs
     reset: tuple = None
+    origin: str = ''
 
 
 def trigger(when, starts=(), captures=(), reset=None):
@@ -546,6 +556,7 @@ class Event:
     locals: list = field(default_factory=list)
     triggers: list = field(default_factory=list)
     steps: list = field(default_factory=list)
+    origin: str = ''
 
 
 def event(name, params=(), locals=(), triggers=(), steps=()):
@@ -581,6 +592,7 @@ class Solver:
     solve_for: list = field(default_factory=list)  # paths, or Unknown records
     constraints: list = field(default_factory=list)
     objective: list = field(default_factory=list)  # ('min' | 'max', expression), in written order
+    origin: str = ''
 
 
 def solver(name, inputs=None, solve_for=(), constraints=(), objective=()):
@@ -635,6 +647,8 @@ class Model:
     instances: list = field(default_factory=list)
     setup: list = field(default_factory=list)  # statements of the setup scope: writes and starts
     asserts: list = field(default_factory=list)
+    units: dict = field(default_factory=dict)  # spelling -> scale, when the model came from a program
+    sites: dict = field(default_factory=dict)  # id of a draw or choice node -> its site in a program
 
     def template(self, name, fields=(), flows=(), events=(), solvers=(), sees=()):
         """Declare a template."""
