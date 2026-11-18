@@ -10,15 +10,15 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
 - [x] A3 solver numerics (`a3/FINDINGS.md`, 9 rulings; fair sharing and the last distance step are a no-go at 30,000 places)
 - [x] A4 engine at scale, as two prototypes: A4a (`a4a/FINDINGS.md`, 8 rulings; its `measure.py` is not yet run end to end) and A4b (`a4b/FINDINGS.md`, 8 rulings; `a4b/LAYOUT.md`)
 - [x] A5 catalogue fit (`a5/FINDINGS.md`, 15 rulings)
-- [ ] B0 keel, beside Phase A
+- [x] B0 keel, beside Phase A
   - [x] 1 imports that survive
   - [x] 2 `tests/units.py`
   - [x] 3 the dormant list
   - [x] 4 the test triage: `tests-triage.csv` (the parts are in `triage/`)
   - [x] 5 the derivative code deleted (`cf5c8d3`; proved bit for bit on 370 cases, `b0/bitwise.py`)
   - [x] 6 `timeline/run.py` split by moves into ten modules (`a4b/split_run.py`, `a4b/LAYOUT.md`)
-  - [ ] the last run of the old suite, with durations
-- [ ] Gate G0: `rulings.md`, the owner's answers, the spec edited. `open-items.md` lists every open item of the spec; each needs a ruling
+  - [x] the last run of the old suite, with durations: 5,485 passed, 3 skipped, 5 min 52 s (`b0/last-old-suite.txt`)
+- [ ] Gate G0: `rulings.md` is complete and waits for the owner's answers (2026-11-18). Then the spec is edited to hold the rulings. `open-items.md` lists every open item of the spec
 - [ ] B1 contract, oracle and solve library
 - [ ] S0 skeleton
 - [ ] S1 templates, tables and collections
