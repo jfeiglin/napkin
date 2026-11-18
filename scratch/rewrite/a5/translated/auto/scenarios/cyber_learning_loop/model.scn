@@ -487,12 +487,17 @@ surveillance_program:  @surveillance_basis
     accesses_underway: accesses = this.builds_now * effects_program.initial_time_now in [0 accesses,
         1000000000 accesses] scale 10000 accesses  @surveillance_loop
         "Accesses where surveillance is gaining initial access"
+        outflow.capacity = formula(this.access_rate)  @surveillance_loop
     accesses_held: accesses = this.held_now in [0 accesses,
         1000000000 accesses] scale 10000 accesses  @surveillance_loop
         "Accesses that surveillance has gained, while it moves inside the network to deploy their implants"
+        outflow.capacity = formula(this.deploy_rate + (this.loss_rate + access_pool.burn_loss)
+            * this.accesses_held)  @surveillance_loop
     implants: accesses = this.implants_now in [0 accesses,
         1000000000 accesses] scale 10000 accesses  @surveillance_loop
         "Implants that surveillance has deployed and collects from"
+        outflow.capacity = formula((this.loss_rate + access_pool.burn_loss + movement_pool.burn_loss)
+            * this.implants)  @surveillance_loop
     collected: access-years = this.processed_now * this.process_time in [0 access-years,
         1000000000 access-years] scale 10000 access-years  @collection_queue
         "Take that waits for the collection specialists, in access-years"
@@ -504,71 +509,99 @@ surveillance_program:  @surveillance_basis
     flow access_free: this.accesses_underway -> this.accesses_held  @surveillance_loop @one_day_chance
         "Surveillance gains initial access through known flaws or capabilities that it already uses."
         request = formula(this.access_rate * access_pool.spy_part_free)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow access_kept at access_rate * access_pool.spy_part_kept:  @surveillance_loop @capability_use
     # |     "Surveillance gains initial access with kept capabilities of earlier attacks."
     # |     accesses_underway -> accesses_held
     # |     access_pool.kept_attack -> access_pool.kept_shared at access_rate * access_pool.spy_part_kept * (1 capabilities/access)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow access_kept:  @surveillance_loop @capability_use
+    # draft:     flow leg_1: this.accesses_underway -> this.accesses_held
+    # draft:         request = formula(this.access_rate * access_pool.spy_part_kept)
+    # draft:     flow leg_2: access_pool.kept_attack -> access_pool.kept_shared
+    # draft:         request = formula(this.access_rate * access_pool.spy_part_kept * (1 capabilities/access))
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow access_new at access_rate * access_pool.spy_part_new:  @surveillance_loop @capability_use
     # |     "Surveillance gains initial access with capabilities that no one has used."
     # |     accesses_underway -> accesses_held
     # |     access_pool.fresh -> access_pool.spy_used at access_rate * access_pool.spy_part_new * (1 capabilities/access)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share accesses_underway limit access_rate  @surveillance_loop
-    # draft: under the store accesses_underway: outflow.capacity = formula(this.access_rate)
+    # draft: flow access_new:  @surveillance_loop @capability_use
+    # draft:     flow leg_1: this.accesses_underway -> this.accesses_held
+    # draft:         request = formula(this.access_rate * access_pool.spy_part_new)
+    # draft:     flow leg_2: access_pool.fresh -> access_pool.spy_used
+    # draft:         request = formula(this.access_rate * access_pool.spy_part_new * (1 capabilities/access))
     # Deployment needs one capability to move inside the network and one to collect, each from its own source.
     flow deploy_free_free: this.accesses_held -> this.implants  @surveillance_loop @one_day_chance
         "Surveillance deploys implants through known flaws or capabilities that it already uses."
         request = formula(this.deploy_rate * movement_pool.spy_part_free * collection_pool.spy_part_free)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow deploy_free_new at deploy_rate * movement_pool.spy_part_free * collection_pool.spy_part_new:  @surveillance_loop @capability_use
     # |     "Surveillance deploys implants with a collection capability that no one has used."
     # |     accesses_held -> implants
     # |     collection_pool.fresh -> collection_pool.spy_used at deploy_rate * movement_pool.spy_part_free * collection_pool.spy_part_new * (1 capabilities/access)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow deploy_free_new:  @surveillance_loop @capability_use
+    # draft:     flow leg_1: this.accesses_held -> this.implants
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_free * collection_pool.spy_part_new)
+    # draft:     flow leg_2: collection_pool.fresh -> collection_pool.spy_used
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_free * collection_pool.spy_part_new * (1 capabilities/access))
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow deploy_kept_free at deploy_rate * movement_pool.spy_part_kept * collection_pool.spy_part_free:  @surveillance_loop @capability_use
     # |     "Surveillance deploys implants with kept capabilities of earlier attacks to move inside the network."
     # |     accesses_held -> implants
     # |     movement_pool.kept_attack -> movement_pool.kept_shared at deploy_rate * movement_pool.spy_part_kept * collection_pool.spy_part_free * (1 capabilities/access)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow deploy_kept_free:  @surveillance_loop @capability_use
+    # draft:     flow leg_1: this.accesses_held -> this.implants
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_kept * collection_pool.spy_part_free)
+    # draft:     flow leg_2: movement_pool.kept_attack -> movement_pool.kept_shared
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_kept * collection_pool.spy_part_free * (1 capabilities/access))
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow deploy_kept_new at deploy_rate * movement_pool.spy_part_kept * collection_pool.spy_part_new:  @surveillance_loop @capability_use
     # |     "Surveillance deploys implants with kept capabilities of earlier attacks to move, and a new collection
     # |         capability."
     # |     accesses_held -> implants
     # |     movement_pool.kept_attack -> movement_pool.kept_shared at deploy_rate * movement_pool.spy_part_kept * collection_pool.spy_part_new * (1 capabilities/access)
     # |     collection_pool.fresh -> collection_pool.spy_used at deploy_rate * movement_pool.spy_part_kept * collection_pool.spy_part_new * (1 capabilities/access)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow deploy_kept_new:  @surveillance_loop @capability_use
+    # draft:     flow leg_1: this.accesses_held -> this.implants
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_kept * collection_pool.spy_part_new)
+    # draft:     flow leg_2: movement_pool.kept_attack -> movement_pool.kept_shared
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_kept * collection_pool.spy_part_new * (1 capabilities/access))
+    # draft:     flow leg_3: collection_pool.fresh -> collection_pool.spy_used
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_kept * collection_pool.spy_part_new * (1 capabilities/access))
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow deploy_new_free at deploy_rate * movement_pool.spy_part_new * collection_pool.spy_part_free:  @surveillance_loop @capability_use
     # |     "Surveillance deploys implants with a capability to move inside the network that no one has used."
     # |     accesses_held -> implants
     # |     movement_pool.fresh -> movement_pool.spy_used at deploy_rate * movement_pool.spy_part_new * collection_pool.spy_part_free * (1 capabilities/access)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow deploy_new_free:  @surveillance_loop @capability_use
+    # draft:     flow leg_1: this.accesses_held -> this.implants
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_new * collection_pool.spy_part_free)
+    # draft:     flow leg_2: movement_pool.fresh -> movement_pool.spy_used
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_new * collection_pool.spy_part_free * (1 capabilities/access))
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow deploy_new_new at deploy_rate * movement_pool.spy_part_new * collection_pool.spy_part_new:  @surveillance_loop @capability_use
     # |     "Surveillance deploys implants with new capabilities to move and to collect."
     # |     accesses_held -> implants
     # |     movement_pool.fresh -> movement_pool.spy_used at deploy_rate * movement_pool.spy_part_new * collection_pool.spy_part_new * (1 capabilities/access)
     # |     collection_pool.fresh -> collection_pool.spy_used at deploy_rate * movement_pool.spy_part_new * collection_pool.spy_part_new * (1 capabilities/access)
+    # draft: flow deploy_new_new:  @surveillance_loop @capability_use
+    # draft:     flow leg_1: this.accesses_held -> this.implants
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_new * collection_pool.spy_part_new)
+    # draft:     flow leg_2: movement_pool.fresh -> movement_pool.spy_used
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_new * collection_pool.spy_part_new * (1 capabilities/access))
+    # draft:     flow leg_3: collection_pool.fresh -> collection_pool.spy_used
+    # draft:         request = formula(this.deploy_rate * movement_pool.spy_part_new * collection_pool.spy_part_new * (1 capabilities/access))
     flow access_lost: this.accesses_held -> SINK  @surveillance_loss
         "Surveillance loses accesses to the defenders, to patches and to changes."
         request = formula(this.loss_rate * this.accesses_held)
     flow access_burned: this.accesses_held -> SINK  @capability_burn
         "The defenders find accesses through the capabilities that exposed attacks burn."
         request = formula(access_pool.burn_loss * this.accesses_held)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share accesses_held limit deploy_rate + (loss_rate
-    # |     + access_pool.burn_loss) * accesses_held  @surveillance_loop
-    # draft: under the store accesses_held: outflow.capacity = formula(this.deploy_rate + (this.loss_rate + access_pool.burn_loss) * this.accesses_held)
     flow implant_lost: this.implants -> SINK  @surveillance_loss
         "Surveillance loses implants to the defenders, to patches and to changes."
         request = formula(this.loss_rate * this.implants)
     flow implant_burned: this.implants -> SINK  @capability_burn
         "The defenders find implants through the capabilities that exposed attacks burn."
         request = formula((access_pool.burn_loss + movement_pool.burn_loss) * this.implants)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share implants limit (loss_rate + access_pool.burn_loss
-    # |     + movement_pool.burn_loss) * implants  @surveillance_loop
-    # draft: under the store implants: outflow.capacity = formula((this.loss_rate + access_pool.burn_loss + movement_pool.burn_loss) * this.implants)
     flow collect: SOURCE -> this.collected  @collection_queue
         "The collection specialists collect the take of the implants that they run: one access-year of take
             for each implant-year."
@@ -737,7 +770,7 @@ military_planners:  @planning_basis
         after 0 h:
             this.tempo = WAR
             this.next_review = t + this.war_review_interval
-    # TODO(hand): an event with several outcomes: a `switch` in a stage, with the producer of its value
+    # TODO(hand): an event with several outcomes: a `switch` in a stage
     # | event review when t >= next_review:  @doctrine_time
     # |     met best_chance >= acceptance:
     # |         "The planners find that a plan of cyber attacks meets its plan often enough."
@@ -1393,12 +1426,15 @@ effects_program:  @program_basis
     in_access: targets = this.attacks_now * this.targets_now * this.initial_time_now in [0 targets,
         100000000 targets] scale 100 targets  @attack_pipeline
         "Targets where the force is gaining initial access"
+        outflow.capacity = formula(this.access_rate)  @attack_pipeline
     accesses: targets = this.attacks_now * this.targets_now * this.movement_time_now in [0 targets,
         100000000 targets] scale 100 targets  @attack_pipeline
         "Targets where the force has access and moves inside the network"
+        outflow.capacity = formula(this.movement_rate)  @attack_pipeline
     positioned: targets = this.attacks_now * this.targets_now * payload_stage.time_now in [0 targets,
         100000000 targets] scale 100 targets  @attack_pipeline
         "Targets where the force sits on the systems that the effect needs, while it builds the effect"
+        outflow.capacity = formula((this.hold_rate + this.now_rate) * this.positioned_size)  @attack_pipeline
     held_ready: operations = this.built_ahead_now * this.attacks_now / this.use_rate in [0 operations,
         10000000 operations] scale 1000 operations  @held_capabilities
         "Attacks built in advance that the force holds ready for their moment"
@@ -1408,12 +1444,15 @@ effects_program:  @program_basis
     in_access_attacks: operations = this.attacks_now * this.initial_time_now in [0 operations,
         100000000 operations] scale 100 operations  @attack_pipeline
         "Attacks whose targets the force is gaining initial access to"
+        outflow.capacity = formula(this.access_rate / this.in_access_size)  @attack_pipeline
     access_attacks: operations = this.attacks_now * this.movement_time_now in [0 operations,
         100000000 operations] scale 100 operations  @attack_pipeline
         "Attacks whose targets the force has access to and moves inside"
+        outflow.capacity = formula(this.movement_rate / this.access_size)  @attack_pipeline
     positioned_attacks: operations = this.attacks_now * payload_stage.time_now in [0 operations,
         100000000 operations] scale 100 operations  @attack_pipeline
         "Attacks whose effect the force builds"
+        outflow.capacity = formula(this.hold_rate + this.now_rate)  @attack_pipeline
     held_spread: targets = this.built_ahead_now * this.attacks_now * this.targets_now * (1 + (this.targets_now
         / (1 targets/operation) - 1) * defenders.within_now) / this.use_rate in [0 targets,
         1000000000 targets] scale 1000 targets  @held_capabilities @outcome_correlation
@@ -1433,89 +1472,148 @@ effects_program:  @program_basis
     assessing_targets: targets = this.attacks_now * this.targets_now * assessment_stage.time_now in [0 targets,
         1000000000 targets] scale 100 targets  @assessment_time
         "Targets of the attacks whose damage the force is assessing"
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow start_build at starts * attack_targets:  @attack_count
     # |     "The force starts attacks: their targets enter initial access."
     # |     -> in_access
     # |     -> in_access_attacks at starts
+    # draft: flow start_build:  @attack_count
+    # draft:     flow leg_1: SOURCE -> this.in_access
+    # draft:         request = formula(this.starts * this.attack_targets)
+    # draft:     flow leg_2: SOURCE -> this.in_access_attacks
+    # draft:         request = formula(this.starts)
     # Each step moves in parts, one for each source of the capabilities that its targets need. A part moves
     # together with the stock that it draws on, so an empty source holds back only its own part.
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow access_known at access_rate * access_pool.one_day:  @attack_pipeline @one_day_chance
     # |     "The force gains initial access to targets through known flaws."
     # |     in_access -> accesses
     # |     in_access_attacks -> access_attacks at access_rate * access_pool.one_day / in_access_size
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow access_known:  @attack_pipeline @one_day_chance
+    # draft:     flow leg_1: this.in_access -> this.accesses
+    # draft:         request = formula(this.access_rate * access_pool.one_day)
+    # draft:     flow leg_2: this.in_access_attacks -> this.access_attacks
+    # draft:         request = formula(this.access_rate * access_pool.one_day / this.in_access_size)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow access_spy at access_rate * access_pool.attack_part_spy:  @attack_pipeline @capability_use
     # |     "The force gains initial access to targets with capabilities that surveillance uses."
     # |     in_access -> accesses
     # |     in_access_attacks -> access_attacks at access_rate * access_pool.attack_part_spy / in_access_size
     # |     access_pool.spy_used -> access_pool.held_shared at access_rate * access_pool.attack_part_spy * access_target_need
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow access_spy:  @attack_pipeline @capability_use
+    # draft:     flow leg_1: this.in_access -> this.accesses
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_spy)
+    # draft:     flow leg_2: this.in_access_attacks -> this.access_attacks
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_spy / this.in_access_size)
+    # draft:     flow leg_3: access_pool.spy_used -> access_pool.held_shared
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_spy * this.access_target_need)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow access_kept_shared at access_rate * access_pool.attack_part_kept_shared:  @attack_pipeline @capability_use
     # |     "The force gains initial access to targets with kept capabilities of earlier attacks that surveillance
     # |         also uses."
     # |     in_access -> accesses
     # |     in_access_attacks -> access_attacks at access_rate * access_pool.attack_part_kept_shared / in_access_size
     # |     access_pool.kept_shared -> access_pool.held_shared at access_rate * access_pool.attack_part_kept_shared * access_target_need
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow access_kept_shared:  @attack_pipeline @capability_use
+    # draft:     flow leg_1: this.in_access -> this.accesses
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_kept_shared)
+    # draft:     flow leg_2: this.in_access_attacks -> this.access_attacks
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_kept_shared / this.in_access_size)
+    # draft:     flow leg_3: access_pool.kept_shared -> access_pool.held_shared
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_kept_shared * this.access_target_need)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow access_kept_attack at access_rate * access_pool.attack_part_kept_attack:  @attack_pipeline @capability_use
     # |     "The force gains initial access to targets with kept capabilities of earlier attacks."
     # |     in_access -> accesses
     # |     in_access_attacks -> access_attacks at access_rate * access_pool.attack_part_kept_attack / in_access_size
     # |     access_pool.kept_attack -> access_pool.held_attack at access_rate * access_pool.attack_part_kept_attack * access_target_need
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow access_kept_attack:  @attack_pipeline @capability_use
+    # draft:     flow leg_1: this.in_access -> this.accesses
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_kept_attack)
+    # draft:     flow leg_2: this.in_access_attacks -> this.access_attacks
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_kept_attack / this.in_access_size)
+    # draft:     flow leg_3: access_pool.kept_attack -> access_pool.held_attack
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_kept_attack * this.access_target_need)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow access_new at access_rate * access_pool.attack_part_new:  @attack_pipeline @capability_use
     # |     "The force gains initial access to targets with capabilities that no one has used."
     # |     in_access -> accesses
     # |     in_access_attacks -> access_attacks at access_rate * access_pool.attack_part_new / in_access_size
     # |     access_pool.fresh -> access_pool.held_attack at access_rate * access_pool.attack_part_new * access_target_need
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share in_access limit access_rate  @attack_pipeline
-    # draft: under the store in_access: outflow.capacity = formula(this.access_rate)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share in_access_attacks limit access_rate / in_access_size  @attack_pipeline
-    # draft: under the store in_access_attacks: outflow.capacity = formula(this.access_rate / this.in_access_size)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow access_new:  @attack_pipeline @capability_use
+    # draft:     flow leg_1: this.in_access -> this.accesses
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_new)
+    # draft:     flow leg_2: this.in_access_attacks -> this.access_attacks
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_new / this.in_access_size)
+    # draft:     flow leg_3: access_pool.fresh -> access_pool.held_attack
+    # draft:         request = formula(this.access_rate * access_pool.attack_part_new * this.access_target_need)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow move_known at movement_rate * movement_pool.one_day:  @attack_pipeline @one_day_chance
     # |     "The force moves inside targets' networks through known flaws."
     # |     accesses -> positioned
     # |     access_attacks -> positioned_attacks at movement_rate * movement_pool.one_day / access_size
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow move_known:  @attack_pipeline @one_day_chance
+    # draft:     flow leg_1: this.accesses -> this.positioned
+    # draft:         request = formula(this.movement_rate * movement_pool.one_day)
+    # draft:     flow leg_2: this.access_attacks -> this.positioned_attacks
+    # draft:         request = formula(this.movement_rate * movement_pool.one_day / this.access_size)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow move_spy at movement_rate * movement_pool.attack_part_spy:  @attack_pipeline @capability_use
     # |     "The force moves inside targets' networks with capabilities that surveillance uses."
     # |     accesses -> positioned
     # |     access_attacks -> positioned_attacks at movement_rate * movement_pool.attack_part_spy / access_size
     # |     movement_pool.spy_used -> movement_pool.held_shared at movement_rate * movement_pool.attack_part_spy * movement_target_need
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow move_spy:  @attack_pipeline @capability_use
+    # draft:     flow leg_1: this.accesses -> this.positioned
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_spy)
+    # draft:     flow leg_2: this.access_attacks -> this.positioned_attacks
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_spy / this.access_size)
+    # draft:     flow leg_3: movement_pool.spy_used -> movement_pool.held_shared
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_spy * this.movement_target_need)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow move_kept_shared at movement_rate * movement_pool.attack_part_kept_shared:  @attack_pipeline @capability_use
     # |     "The force moves inside targets' networks with kept capabilities of earlier attacks that surveillance
     # |         also uses."
     # |     accesses -> positioned
     # |     access_attacks -> positioned_attacks at movement_rate * movement_pool.attack_part_kept_shared / access_size
     # |     movement_pool.kept_shared -> movement_pool.held_shared at movement_rate * movement_pool.attack_part_kept_shared * movement_target_need
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow move_kept_shared:  @attack_pipeline @capability_use
+    # draft:     flow leg_1: this.accesses -> this.positioned
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_kept_shared)
+    # draft:     flow leg_2: this.access_attacks -> this.positioned_attacks
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_kept_shared / this.access_size)
+    # draft:     flow leg_3: movement_pool.kept_shared -> movement_pool.held_shared
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_kept_shared * this.movement_target_need)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow move_kept_attack at movement_rate * movement_pool.attack_part_kept_attack:  @attack_pipeline @capability_use
     # |     "The force moves inside targets' networks with kept capabilities of earlier attacks."
     # |     accesses -> positioned
     # |     access_attacks -> positioned_attacks at movement_rate * movement_pool.attack_part_kept_attack / access_size
     # |     movement_pool.kept_attack -> movement_pool.held_attack at movement_rate * movement_pool.attack_part_kept_attack * movement_target_need
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow move_kept_attack:  @attack_pipeline @capability_use
+    # draft:     flow leg_1: this.accesses -> this.positioned
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_kept_attack)
+    # draft:     flow leg_2: this.access_attacks -> this.positioned_attacks
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_kept_attack / this.access_size)
+    # draft:     flow leg_3: movement_pool.kept_attack -> movement_pool.held_attack
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_kept_attack * this.movement_target_need)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow move_new at movement_rate * movement_pool.attack_part_new:  @attack_pipeline @capability_use
     # |     "The force moves inside targets' networks with capabilities that no one has used."
     # |     accesses -> positioned
     # |     access_attacks -> positioned_attacks at movement_rate * movement_pool.attack_part_new / access_size
     # |     movement_pool.fresh -> movement_pool.held_attack at movement_rate * movement_pool.attack_part_new * movement_target_need
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share accesses limit movement_rate  @attack_pipeline
-    # draft: under the store accesses: outflow.capacity = formula(this.movement_rate)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share access_attacks limit movement_rate / access_size  @attack_pipeline
-    # draft: under the store access_attacks: outflow.capacity = formula(this.movement_rate / this.access_size)
+    # draft: flow move_new:  @attack_pipeline @capability_use
+    # draft:     flow leg_1: this.accesses -> this.positioned
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_new)
+    # draft:     flow leg_2: this.access_attacks -> this.positioned_attacks
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_new / this.access_size)
+    # draft:     flow leg_3: movement_pool.fresh -> movement_pool.held_attack
+    # draft:         request = formula(this.movement_rate * movement_pool.attack_part_new * this.movement_target_need)
     # The effect turns the targets of one attack into an attack, with one capability of the effect for each kind
     # of system. An attack built in advance holds its capabilities while it waits; an attack built on demand is
     # made at once, so an exposed one burns them and a hidden one keeps them.
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow prepare_known at hold_rate * effect_pool.one_day:  @held_capabilities @one_day_chance
     # |     "The force builds an effect in advance through known flaws."
     # |     positioned -> at hold_rate * effect_pool.one_day * positioned_size
@@ -1524,7 +1622,20 @@ effects_program:  @program_basis
     # |     -> held_targets at hold_rate * effect_pool.one_day * positioned_size
     # |     -> held_spread at hold_rate * effect_pool.one_day * positioned_size * made_spread
     # |     -> held_outcomes at hold_rate * effect_pool.one_day * positioned_size / made_spread
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow prepare_known:  @held_capabilities @one_day_chance
+    # draft:     flow leg_1: this.positioned -> SINK
+    # draft:         request = formula(this.hold_rate * effect_pool.one_day * this.positioned_size)
+    # draft:     flow leg_2: this.positioned_attacks -> SINK
+    # draft:         request = formula(this.hold_rate * effect_pool.one_day)
+    # draft:     flow leg_3: SOURCE -> this.held_ready
+    # draft:         request = formula(this.hold_rate * effect_pool.one_day)
+    # draft:     flow leg_4: SOURCE -> this.held_targets
+    # draft:         request = formula(this.hold_rate * effect_pool.one_day * this.positioned_size)
+    # draft:     flow leg_5: SOURCE -> this.held_spread
+    # draft:         request = formula(this.hold_rate * effect_pool.one_day * this.positioned_size * this.made_spread)
+    # draft:     flow leg_6: SOURCE -> this.held_outcomes
+    # draft:         request = formula(this.hold_rate * effect_pool.one_day * this.positioned_size / this.made_spread)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow prepare_kept at hold_rate * effect_pool.attack_part_kept_attack:  @held_capabilities @capability_use
     # |     "The force builds an effect in advance with kept capabilities of earlier attacks."
     # |     positioned -> at hold_rate * effect_pool.attack_part_kept_attack * positioned_size
@@ -1534,7 +1645,22 @@ effects_program:  @program_basis
     # |     -> held_spread at hold_rate * effect_pool.attack_part_kept_attack * positioned_size * made_spread
     # |     -> held_outcomes at hold_rate * effect_pool.attack_part_kept_attack * positioned_size / made_spread
     # |     effect_pool.kept_attack -> effect_pool.held_attack at hold_rate * effect_pool.attack_part_kept_attack * positioned_types
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow prepare_kept:  @held_capabilities @capability_use
+    # draft:     flow leg_1: this.positioned -> SINK
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_kept_attack * this.positioned_size)
+    # draft:     flow leg_2: this.positioned_attacks -> SINK
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_kept_attack)
+    # draft:     flow leg_3: SOURCE -> this.held_ready
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_kept_attack)
+    # draft:     flow leg_4: SOURCE -> this.held_targets
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_kept_attack * this.positioned_size)
+    # draft:     flow leg_5: SOURCE -> this.held_spread
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_kept_attack * this.positioned_size * this.made_spread)
+    # draft:     flow leg_6: SOURCE -> this.held_outcomes
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_kept_attack * this.positioned_size / this.made_spread)
+    # draft:     flow leg_7: effect_pool.kept_attack -> effect_pool.held_attack
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_kept_attack * this.positioned_types)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow prepare_new at hold_rate * effect_pool.attack_part_new:  @held_capabilities @capability_use
     # |     "The force builds an effect in advance with capabilities that no one has used."
     # |     positioned -> at hold_rate * effect_pool.attack_part_new * positioned_size
@@ -1544,7 +1670,22 @@ effects_program:  @program_basis
     # |     -> held_spread at hold_rate * effect_pool.attack_part_new * positioned_size * made_spread
     # |     -> held_outcomes at hold_rate * effect_pool.attack_part_new * positioned_size / made_spread
     # |     effect_pool.fresh -> effect_pool.held_attack at hold_rate * effect_pool.attack_part_new * positioned_types
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow prepare_new:  @held_capabilities @capability_use
+    # draft:     flow leg_1: this.positioned -> SINK
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_new * this.positioned_size)
+    # draft:     flow leg_2: this.positioned_attacks -> SINK
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_new)
+    # draft:     flow leg_3: SOURCE -> this.held_ready
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_new)
+    # draft:     flow leg_4: SOURCE -> this.held_targets
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_new * this.positioned_size)
+    # draft:     flow leg_5: SOURCE -> this.held_spread
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_new * this.positioned_size * this.made_spread)
+    # draft:     flow leg_6: SOURCE -> this.held_outcomes
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_new * this.positioned_size / this.made_spread)
+    # draft:     flow leg_7: effect_pool.fresh -> effect_pool.held_attack
+    # draft:         request = formula(this.hold_rate * effect_pool.attack_part_new * this.positioned_types)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow now_known at now_rate * effect_pool.one_day:  @attack_pipeline @operator_priority @one_day_chance
     # |     "The force makes an attack built on demand through known flaws as soon as it is ready."
     # |     positioned -> at now_rate * effect_pool.one_day * positioned_size
@@ -1552,7 +1693,18 @@ effects_program:  @program_basis
     # |     -> assessing
     # |     -> assessing_targets at now_rate * effect_pool.one_day * positioned_size
     # |     -> assessing_outcomes at now_rate * effect_pool.one_day * positioned_size / made_spread
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow now_known:  @attack_pipeline @operator_priority @one_day_chance
+    # draft:     flow leg_1: this.positioned -> SINK
+    # draft:         request = formula(this.now_rate * effect_pool.one_day * this.positioned_size)
+    # draft:     flow leg_2: this.positioned_attacks -> SINK
+    # draft:         request = formula(this.now_rate * effect_pool.one_day)
+    # draft:     flow leg_3: SOURCE -> this.assessing
+    # draft:         request = formula(this.now_rate * effect_pool.one_day)
+    # draft:     flow leg_4: SOURCE -> this.assessing_targets
+    # draft:         request = formula(this.now_rate * effect_pool.one_day * this.positioned_size)
+    # draft:     flow leg_5: SOURCE -> this.assessing_outcomes
+    # draft:         request = formula(this.now_rate * effect_pool.one_day * this.positioned_size / this.made_spread)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow now_kept at now_rate * effect_pool.attack_part_kept_attack:  @attack_pipeline @capability_burn
     # |     "The force makes an attack built on demand with kept capabilities as soon as it is ready."
     # |     positioned -> at now_rate * effect_pool.attack_part_kept_attack * positioned_size
@@ -1561,7 +1713,20 @@ effects_program:  @program_basis
     # |     -> assessing_targets at now_rate * effect_pool.attack_part_kept_attack * positioned_size
     # |     -> assessing_outcomes at now_rate * effect_pool.attack_part_kept_attack * positioned_size / made_spread
     # |     effect_pool.kept_attack -> effect_pool.burned at now_rate * effect_pool.attack_part_kept_attack * positioned_types * exposure
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow now_kept:  @attack_pipeline @capability_burn
+    # draft:     flow leg_1: this.positioned -> SINK
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_kept_attack * this.positioned_size)
+    # draft:     flow leg_2: this.positioned_attacks -> SINK
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_kept_attack)
+    # draft:     flow leg_3: SOURCE -> this.assessing
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_kept_attack)
+    # draft:     flow leg_4: SOURCE -> this.assessing_targets
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_kept_attack * this.positioned_size)
+    # draft:     flow leg_5: SOURCE -> this.assessing_outcomes
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_kept_attack * this.positioned_size / this.made_spread)
+    # draft:     flow leg_6: effect_pool.kept_attack -> effect_pool.burned
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_kept_attack * this.positioned_types * this.exposure)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow now_new at now_rate * effect_pool.attack_part_new:  @attack_pipeline @capability_burn
     # |     "The force makes an attack built on demand with capabilities that no one has used as soon as it is
     # |         ready."
@@ -1573,25 +1738,50 @@ effects_program:  @program_basis
     # |     effect_pool.fresh -> effect_pool.burned at now_rate * effect_pool.attack_part_new * positioned_types * exposure
     # |     effect_pool.fresh -> effect_pool.kept_attack at now_rate * effect_pool.attack_part_new * positioned_types * (1
     # |         - exposure)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share positioned limit (hold_rate + now_rate) * positioned_size  @attack_pipeline
-    # draft: under the store positioned: outflow.capacity = formula((this.hold_rate + this.now_rate) * this.positioned_size)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share positioned_attacks limit hold_rate + now_rate  @attack_pipeline
-    # draft: under the store positioned_attacks: outflow.capacity = formula(this.hold_rate + this.now_rate)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow now_new:  @attack_pipeline @capability_burn
+    # draft:     flow leg_1: this.positioned -> SINK
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_new * this.positioned_size)
+    # draft:     flow leg_2: this.positioned_attacks -> SINK
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_new)
+    # draft:     flow leg_3: SOURCE -> this.assessing
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_new)
+    # draft:     flow leg_4: SOURCE -> this.assessing_targets
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_new * this.positioned_size)
+    # draft:     flow leg_5: SOURCE -> this.assessing_outcomes
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_new * this.positioned_size / this.made_spread)
+    # draft:     flow leg_6: effect_pool.fresh -> effect_pool.burned
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_new * this.positioned_types * this.exposure)
+    # draft:     flow leg_7: effect_pool.fresh -> effect_pool.kept_attack
+    # draft:         request = formula(this.now_rate * effect_pool.attack_part_new * this.positioned_types * (1 - this.exposure))
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow use_held at moment_rate * held_ready * execution_served:  @held_capabilities @operator_priority
     # |     "The moment of an attack held ready comes, and the force makes it."
     # |     held_ready -> assessing
     # |     held_targets -> assessing_targets at moment_rate * held_targets * execution_served
     # |     held_spread -> at moment_rate * held_spread * execution_served
     # |     held_outcomes -> assessing_outcomes at moment_rate * held_outcomes * execution_served
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow use_held:  @held_capabilities @operator_priority
+    # draft:     flow leg_1: this.held_ready -> this.assessing
+    # draft:         request = formula(this.moment_rate * this.held_ready * this.execution_served)
+    # draft:     flow leg_2: this.held_targets -> this.assessing_targets
+    # draft:         request = formula(this.moment_rate * this.held_targets * this.execution_served)
+    # draft:     flow leg_3: this.held_spread -> SINK
+    # draft:         request = formula(this.moment_rate * this.held_spread * this.execution_served)
+    # draft:     flow leg_4: this.held_outcomes -> this.assessing_outcomes
+    # draft:         request = formula(this.moment_rate * this.held_outcomes * this.execution_served)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow assessment_ends at assessed_rate:  @assessment_time
     # |     "The damage assessment of an attack ends, and its lessons count."
     # |     assessing ->
     # |     assessing_targets -> at assessed_rate * assessed_size
     # |     assessing_outcomes -> at assessed_rate * assessing_outcomes / max(assessing, 0.001 operations)
+    # draft: flow assessment_ends:  @assessment_time
+    # draft:     flow leg_1: this.assessing -> SINK
+    # draft:         request = formula(this.assessed_rate)
+    # draft:     flow leg_2: this.assessing_targets -> SINK
+    # draft:         request = formula(this.assessed_rate * this.assessed_size)
+    # draft:     flow leg_3: this.assessing_outcomes -> SINK
+    # draft:         request = formula(this.assessed_rate * this.assessing_outcomes / max(this.assessing, 0.001 operations))
     readonly access_learn_rate: formula(accesses/year) = formula(this.access_rate * access_pool.attack_served
         * (1 accesses) / (1 targets) + this.task_overlap * surveillance_program.access_rate
         * access_pool.spy_served)  @access_lessons
@@ -2041,21 +2231,34 @@ Pool:  @capability_pool
     fresh: capabilities = this.fresh_now in [0 capabilities,
         10000000 capabilities] scale 100 capabilities  @capability_pool
         "Capabilities never used"
+        outflow.capacity = formula(this.fresh_draws * this.available + defenders.rediscovery
+            * this.fresh)  @capability_pool
     spy_used: capabilities = this.spy_used_now in [0 capabilities,
         10000000 capabilities] scale 100 capabilities  @capability_pool
         "Capabilities that surveillance uses and that no attack has used"
+        outflow.capacity = formula(this.attack_need * this.attack_from_spy + defenders.use_rediscovery
+            * this.spy_used)  @capability_pool
     held_shared: capabilities = this.held_shared_now in [0 capabilities,
         10000000 capabilities] scale 100 capabilities  @capability_pool
         "Capabilities held by attacks underway that surveillance also uses"
+        outflow.capacity = formula((this.made_rate + defenders.use_rediscovery)
+            * this.held_shared)  @capability_pool
     held_attack: capabilities = this.held_attack_now in [0 capabilities,
         10000000 capabilities] scale 100 capabilities  @capability_pool
         "Capabilities held by attacks underway that only attacks use"
+        outflow.capacity = formula((this.made_rate + defenders.use_rediscovery)
+            * this.held_attack)  @capability_pool
     kept_shared: capabilities = this.kept_shared_now in [0 capabilities,
         10000000 capabilities] scale 100 capabilities  @capability_pool
         "Capabilities kept from earlier attacks that were not exposed, which surveillance also uses"
+        outflow.capacity = formula(this.attack_need * this.attack_from_kept * this.kept_shared_share
+            + defenders.use_rediscovery * this.kept_shared)  @capability_pool
     kept_attack: capabilities = this.kept_attack_now in [0 capabilities,
         10000000 capabilities] scale 100 capabilities  @capability_pool
         "Capabilities kept from earlier attacks that were not exposed, which only attacks use"
+        outflow.capacity = formula(this.attack_need * this.attack_from_kept * (1 - this.kept_shared_share)
+            + this.at_once_need * this.attack_from_kept * effects_program.exposure + this.spy_need
+            * this.spy_from_kept + defenders.rediscovery * this.kept_attack)  @capability_pool
     burned: capabilities = 0 capabilities scale 10000 capabilities  @capability_burn
         "Capabilities that exposed attacks burned since the start"
     flow research: SOURCE -> this.fresh  @research_split
@@ -2093,27 +2296,6 @@ Pool:  @capability_pool
         "Others find and disclose flaws that attacks kept."
         request = formula(defenders.rediscovery * this.kept_attack)
     # Each limit is all that the flows ask, so it caps none of them; at an empty stock they share what is left.
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share fresh limit fresh_draws * available + defenders.rediscovery * fresh  @capability_pool
-    # draft: under the store fresh: outflow.capacity = formula(this.fresh_draws * this.available + defenders.rediscovery * this.fresh)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share spy_used limit attack_need * attack_from_spy + defenders.use_rediscovery * spy_used  @capability_pool
-    # draft: under the store spy_used: outflow.capacity = formula(this.attack_need * this.attack_from_spy + defenders.use_rediscovery * this.spy_used)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share held_shared limit (made_rate + defenders.use_rediscovery) * held_shared  @capability_pool
-    # draft: under the store held_shared: outflow.capacity = formula((this.made_rate + defenders.use_rediscovery) * this.held_shared)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share held_attack limit (made_rate + defenders.use_rediscovery) * held_attack  @capability_pool
-    # draft: under the store held_attack: outflow.capacity = formula((this.made_rate + defenders.use_rediscovery) * this.held_attack)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share kept_shared limit (attack_need * attack_from_kept * kept_shared_share + defenders.use_rediscovery
-    # |     * kept_shared)  @capability_pool
-    # draft: under the store kept_shared: outflow.capacity = formula(this.attack_need * this.attack_from_kept * this.kept_shared_share + defenders.use_rediscovery * this.kept_shared)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share kept_attack limit (attack_need * attack_from_kept * (1 - kept_shared_share) + at_once_need
-    # |     * attack_from_kept * effects_program.exposure + spy_need * spy_from_kept + defenders.rediscovery
-    # |     * kept_attack)  @capability_pool
-    # draft: under the store kept_attack: outflow.capacity = formula(this.attack_need * this.attack_from_kept * (1 - this.kept_shared_share) + this.at_once_need * this.attack_from_kept * effects_program.exposure + this.spy_need * this.spy_from_kept + defenders.rediscovery * this.kept_attack)
 
 access_pool: Pool
     "Capabilities that get access to a target network. Surveillance and attacks share them."

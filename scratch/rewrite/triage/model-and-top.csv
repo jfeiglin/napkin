@@ -1,0 +1,73 @@
+path,lines,tests,needs,class,slice,delete_share,oracle,note
+tests/model/__init__.py,0,0,none,HELPER,-,,,Empty package file.
+tests/model/modeltest.py,205,0,source,HELPER,S0,,,MODELTEST fixture in the old language (events with outcomes); eleven test files build it; rewritten with them.
+tests/model/test_admission_scope.py,141,10,source,PORT-FRONT,S6,20,property+message-text,"Compile for named runs only (admission_runs): hashes equal, checks stay global. Unsure whether named admission survives; start-structure parts go."
+tests/model/test_analysis.py,275,8,source,PORT-ENGINE,S4,25,structure+independent-code,"Facts of analysis: formula order, trigger classes, bounds, never-falls proof. Structure/Resolved plumbing goes; proofs move to napkin/program."
+tests/model/test_bases.py,61,4,source,PORT-FRONT,S0,25,structure+message-text,Records that a status cites; a fixed value has no range (rule likely dropped). Reads the basis in structures.
+tests/model/test_build.py,1720,61,source,PORT-FRONT,S0,25,message-text+structure,"MODELTEST: reader diagnostics, evidence, options, elapsed, closed-form runs. Outcomes, start structures and Acting analysis go. Spans S0, S4, S6."
+tests/model/test_categories.py,65,2,source,PORT-CONSUMER,C,,closed-form,"Category tag of an output reaches the report unread. Unsure: `output` settings go, but the catalogue's pages use the tag."
+tests/model/test_compile.py,170,2,source,PORT-FRONT,S0,25,message-text+closed-form,"One rejected file per diagnostic class, by code, place and line; numbered copies. Old event rules (memory, written twice) go."
+tests/model/test_compiled_views.py,133,5,source,PORT-FRONT,S6,20,property+structure,"One run table, built once, shared by study and pages; consumers import no front-end internals. Lowering and outcome parts go."
+tests/model/test_continuation.py,35,3,source,PORT-FRONT,S0,,message-text,"Lexer: an expression continues only inside brackets. The new notation allows wrapped clauses, so the rule may change (A1)."
+tests/model/test_contracts.py,1218,57,source,PORT-FRONT,S0,20,message-text+closed-form,Faulty models refused by code and place; edits; never-falls proofs. 15 expression/prover tests need no language. Output-setting cases go.
+tests/model/test_copies_and_start.py,288,11,source,PORT-FRONT,S1,45,closed-form+message-text,"Copies of a template, an idle start, timescales, `{item}` units, texts per occurrence. Outcomes and likely `{item}` go; copies unsure."
+tests/model/test_desugar.py,97,5,source,DELETE,S0,80,independent-code+message-text,"Lowering of count/since/elapsed to `__count` names (lower/, deleted at S0); since() rules change. One test of expr constants is core."
+tests/model/test_diagnostic_places.py,112,7,source,PORT-FRONT,S0,,property+message-text,"file:line:column of each diagnostic and did-you-mean names. One case reads a module (`use`, S6)."
+tests/model/test_distribution_contracts.py,477,25,source,PORT-FRONT,S4,15,closed-form+message-text,"Distributions as input values and in edits: units, medians, faults by code and place. Becomes `.draw()`; ast-size cases go."
+tests/model/test_expression_programs.py,386,10,none,KEEP,B0,,independent-code+property,Programs of compile_program against evaluate. No language; imports tests.build for UNITS only: point it at tests.units.
+tests/model/test_hybrid.py,698,27,source,DELETE,S1,80,structure+independent-code,"Hybrid core against the flat lowering; both go. Five row checks (range, bounds, domain, negative cell) deserve S1 table tests."
+tests/model/test_identity.py,125,6,source,PORT-FRONT,S6,,property,"Model and library hashes: cover used evidence, units and language version, ignore order and labels. Also compares structures."
+tests/model/test_kept_parts.py,436,8,catalogue,DELETE,S0,,structure+closed-form,Parts that cannot act are left out of each start structure: G0 candidate to retire. One test reads the catalogue.
+tests/model/test_library.py,157,10,source,PORT-FRONT,S0,,message-text+property,A package folder owns its units and evidence files; fake catalogue in tmp_path. Loader errors S0; hash assertions S6.
+tests/model/test_list_reductions.py,65,4,source,PORT-ENGINE,S1,,closed-form,"sum, count, any, all, min, max over a template's instances, read from a run. `Zone.x` becomes `Zone.instances.x`; one type error."
+tests/model/test_local_bases.py,90,4,source,PORT-FRONT,S0,,message-text+property,"Named records: a plain name, a complete definition, own records per line, a digest without name or place."
+tests/model/test_long_expressions.py,252,9,source,PORT-FRONT,S0,25,closed-form+message-text,"Depth limit of an expression: its value, or a diagnostic at its line. Member-by-member sums of the flat structure go."
+tests/model/test_material.py,256,13,source,PORT-ENGINE,S2,30,closed-form+message-text,"Flows of several pairs, outside ends, shares by priority or proportion, sum checks. Mandatory-policy rule and structure reads go."
+tests/model/test_meaning.py,128,8,source,PORT-FRONT,S6,25,message-text,"Rules of options and runs, on semantic records built by hand (rewritten in place). `versus` and flat name clashes go."
+tests/model/test_modules.py,324,7,source,PORT-FRONT,S6,,structure+message-text,"`use`, `change`, `variant`: split files give the one-file model (structures compared); each problem at its file. Fake packages in tmp_path."
+tests/model/test_named_arguments.py,149,3,source,PORT-FRONT,S4,35,property,"Distribution arguments by name: draws stay inside named bounds, medians by symmetry. Patches the Python-ast grammar, which goes."
+tests/model/test_notes.py,169,6,source,PORT-FRONT,S0,15,structure+message-text,Notes carry no meaning: any key builds and changes no part (whole structures compared); pages check them. Output scope goes.
+tests/model/test_orders_and_options.py,127,4,source,PORT-FRONT,S6,50,closed-form+structure,Options set a stock's start value or an input. File order at one moment and named outcomes go.
+tests/model/test_packages.py,321,15,source,PORT-FRONT,S6,,property+message-text,"File roles, variant overlay, `use` inside the package, library path, hashes that ignore names and siblings. Fake packages in tmp_path."
+tests/model/test_pages.py,247,10,catalogue,PORT-CONSUMER,C,30,message-text+property,"Pages read names in words, cards, run names, featured runs. Outcome cards and `versus` go; one test reads the catalogue."
+tests/model/test_parts.py,678,33,source,PORT-FRONT,S0,20,closed-form+message-text,"Units, bool inputs, lags, statuses, template instances, list links, moves. Output settings go. Spans S0, S1, S4, C."
+tests/model/test_resolved.py,273,9,source,DELETE,S0,70,independent-code+property,"Typed nodes made from Python ast trees, checked against ast.walk; the ast route goes. Unsure: Named-call identity tests may port."
+tests/model/test_runs.py,662,25,catalogue,PORT-FRONT,S6,,independent-code+message-text,"Run table: precedence of edits over options over defaults, checks of an edit document. Three tests read the catalogue."
+tests/model/test_shared_formulas.py,181,5,source,KEEP,S1,,independent-code+structure,Zero-face proof on formula graphs needs no language (3 tests); two tests on assert placement read structures: port in S1.
+tests/model/test_sight.py,254,11,source,PORT-FRONT,S4,45,message-text+structure,`sees` and choices of an actor. The refusal of a choice that reads the unseen goes: `sees` only governs display.
+tests/model/test_start_states.py,283,10,source,DELETE,S0,,structure+closed-form,"Per-option start structures: parts left out, checks specialised to start values. The forms go; start-value checks change."
+tests/model/test_state_assignment.py,72,5,source,PORT-FRONT,S4,,closed-form+message-text,"Named state set from another state, an input or a conditional; a bool from a condition. Enum typing is open."
+tests/model/test_structure.py,1005,28,source,DELETE,S0,95,structure,"Typed parts of the old model: Structure and Resolved round trips, deleted at S0. Status first-match test deserves a port."
+tests/model/test_structure_checks.py,725,8,source,PORT-ENGINE,S4,45,structure+message-text,"Checks and trigger classes on a mutated Structure. Classes and units survive in napkin/program; group, window and output cases go."
+tests/model/test_tables.py,472,14,source,PORT-FRONT,S1,10,message-text+structure,"Tables (`from ""file.csv""`): model equals its rows written by hand; faults at file and line. Old-hash compatibility test goes."
+tests/model/test_template_lists.py,159,4,source,PORT-FRONT,S1,,structure+message-text,"A template's name as the list of its instances, empty lists and their type. Becomes `T.instances` and `<>` literals."
+tests/model/test_units.py,239,10,source,KEEP,S0,,independent-code+message-text,"Composed-unit registry and prelude: six tests, no model text; A1 may change the `-` and `^` rules. Four need source."
+tests/model/test_views.py,56,3,source,PORT-FRONT,S4,,structure,"Views for tooling: actors with their sights and choices, instances with their links. Choice outcomes take a new form."
+tests/test_api.py,175,8,none,RULES,C,,property,"Lazy imports and exports of the package; pins the store's CLOSURE list, which changes with each module from B0 on."
+tests/test_bench.py,1015,34,source,PORT-CONSUMER,C,10,structure+property,"Benchmark harness: families read from compiled structures, profile attribution, the document. Hybrid slots go; two tests only list catalogue paths."
+tests/test_check.py,416,30,source,KEEP,S0,3,property+message-text,"tools/check scope, stages and wheel, on stubs. One test compiles old text for the output-scope rule: delete it at S0."
+tests/test_cli.py,3066,130,catalogue,PORT-CONSUMER,C,5,closed-form+message-text,"Every `napkin` command on fake packages: run, play, sample, draw, new, fmt. `versus` cases go; one test compiles the catalogue."
+tests/test_cli_derivatives.py,107,4,source,DELETE,B0,,closed-form+message-text,"`napkin derivatives`: whole-run derivatives, deleted now with their code."
+tests/test_cli_tables.py,158,6,source,PORT-CONSUMER,C,50,independent-code+message-text,"`napkin run` reports table rows by group; oracle is the flat model's study, which goes. Unsure whether group reports survive."
+tests/test_compare.py,1026,45,source,PORT-CONSUMER,C,10,property,"tools/compare: 36 tests on made-up records, 9 compile old text. G0 may retire or shrink the tool."
+tests/test_examples.py,311,13,catalogue,PORT-CONSUMER,M,,closed-form+property,"Both examples compile, format, run and play; outcomes by the test's own arithmetic. piano_tuners migrates at S0, reservoir in M."
+tests/test_locator.py,416,17,none,KEEP,-,,independent-code+property,"tools/catalogue locator on made-up layouts; files hold only `scenario`, `variant` and `use` first lines. Compiles nothing."
+tests/test_nested_packages.py,195,5,source,PORT-CONSUMER,C,,property,"Evidence tools (packs, adopt) on a fake package with variants; other folders stay byte-identical. Fixture text is old language."
+tests/test_package.py,302,14,source,PORT-CONSUMER,C,,independent-code+closed-form,"load_package gives what load_scenario gives per entry file; `combined` runs an option combination under edits (run configuration, S6)."
+tests/test_paths.py,93,3,none,KEEP,-,,property,"napkin.paths: entry file, variants and package of a path, from file names alone."
+tests/test_result_cache.py,154,6,none,KEEP,-,,property,tests/result_cache.py and the conftest protocol that releases results after a test.
+tests/test_scenario_ownership.py,37,2,none,KEEP,-,,property,"Catalogue discovery and publish pruning on touched files. Imports tools.publish, which may not import between S0 and C."
+tests/test_scenario_scope.py,72,3,none,KEEP,-,,property,Selects source files in a made-up catalogue by `use` lines. Imports scenarios/tests and tests.helpers: may break between S0 and C.
+tests/test_selection.py,238,15,none,KEEP,-,,property,tests/selection.py and the root conftest on made-up catalogues and pytester runs. Two dormant-list tests go at G3.
+tests/test_session.py,649,21,catalogue,PORT-CONSUMER,C,,property+message-text,"Played runs: live, stepwise and logged picks give one run, bit for bit. Four tests use the reservoir example (M)."
+tests/test_spread.py,555,14,source,PORT-CONSUMER,C,15,closed-form+independent-code,Spreads in a pool equal the one-process study; samples hold closed forms. Sampling a run with its `versus` run goes.
+tests/test_store.py,379,19,source,PORT-CONSUMER,C,5,property,"Run store: stored run equals fresh run, key covers each input, locks, size limit. Key changes (G0); Resolved-key test goes."
+tests/test_strict_yaml.py,33,2,none,KEEP,-,,property,Strict YAML loader of the acceptance expectations. Keep while those expectation files live.
+tests/test_tools_new.py,145,7,catalogue,PORT-CONSUMER,C,,property+message-text,"tools/new starts a package: files, refused names, a starter that compiles. Reads only the real shared library and file lists."
+tests/build.py,843,0,source,HELPER,S0,,,Writes old-language model text and compiles it; 125 files import it. Rewritten as the new tests/build.py.
+tests/helpers.py,74,0,catalogue,HELPER,M,,,"Catalogue models and studies, cached; lists the catalogue at import. 61 files import it."
+tests/owned.py,146,0,source,HELPER,S0,,,Writes a fake scenario folder or family in tmp_path with units and evidence files; write_scenario compiles the text.
+tests/processes.py,17,0,none,HELPER,-,,,Stand-in simulation for the process tests of the run store.
+tests/result_cache.py,29,0,none,HELPER,-,,,Registry of result caches that the conftest clears after a test.
+tests/selection.py,102,0,none,HELPER,-,,,"Scenario selection of a session, and the dormant list, whose part goes at G3."
+tests/units.py,46,0,none,HELPER,-,,,"Units and library of the tests, read from JSON files; no compiler."

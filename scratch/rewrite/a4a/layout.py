@@ -42,9 +42,9 @@ def read_table(path):
         rows = [[cell.strip() for cell in row] for row in csv.reader(handle)]
     names, units = [], []
     for cell in rows[0]:
-        name, _, unit = cell.partition(':')
+        name, _, unit = cell.split('@')[0].partition(':')  # after `@`: the records of the column
         names.append(name.strip())
-        units.append(unit.split('@')[0].strip() or None)
+        units.append(unit.strip() or None)
     return names, units, rows[1:]
 
 

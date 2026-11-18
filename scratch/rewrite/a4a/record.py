@@ -176,10 +176,11 @@ class CountOfStores(Reduction):
         self.version = [0] * len(at)
         self.heap = []
         self.write(0.0)
-        falling = np.flatnonzero((run.rate[at] < 0) & (run.y0[at] > self.level))
-        for k in falling.tolist():
+        inside = np.array(self.inside)
+        crossing = np.flatnonzero(((run.rate[at] < 0) & ~inside) | ((run.rate[at] > 0) & inside))
+        for k in crossing.tolist():
             s = at[k]
-            heapq.heappush(self.heap, (run.t0[s] + (run.y0[s] - self.level) / -run.rate[s], k, 0))
+            heapq.heappush(self.heap, (float(run.t0[s] + (self.level - run.y0[s]) / run.rate[s]), k, 0))
 
     def write(self, t):
         self.history.add(t, float(self.count > 0) if self.any else float(self.count))
@@ -212,11 +213,13 @@ class Extreme(Reduction):
     """max(c.field) or min(c.field) over stores that are lines. It keeps the member that wins, and
     the next time at which another member passes it. A change of a member that is not the winner
     costs one comparison; a change of the winner, and each time at which the winner changes, cost one
-    pass over the members."""
+    pass over the members. `bound`: a bound that no member can pass (the lower bound of the stocks,
+    for the least of them): while the winner is on it, no member passes the winner."""
 
-    def __init__(self, name, places, least=False):
+    def __init__(self, name, places, least=False, bound=None):
         super().__init__(name, places)
         self.sign = -1.0 if least else 1.0
+        self.bound = None if bound is None else self.sign * float(bound)
         self.passes = 0
 
     def start(self, run):
@@ -236,9 +239,11 @@ class Extreme(Reduction):
         near = np.flatnonzero(value >= top - 1e-12 * max(1.0, abs(top)))
         k = int(near[np.argmax(rate[near])])  # of the members at the top, the one that rises fastest
         faster = np.flatnonzero(rate > rate[k])
-        if len(faster):
+        if self.bound is not None and value[k] >= self.bound:
+            self.next = np.inf
+        elif len(faster):
             ahead = (value[k] - value[faster]) / (rate[faster] - rate[k])
-            self.next = t + max(float(ahead.min()), 0.0)
+            self.next = t + max(float(ahead.min()), 1e-12)
         else:
             self.next = np.inf
         if k != self.winner or not self.history.t or self.stale is not None:
@@ -263,9 +268,8 @@ class Extreme(Reduction):
 
     def advance(self, t):
         if self.stale is not None:
-            at, self.stale = self.stale, None
-            self.stale = at  # `rebuild` writes the piece of a winner whose own line changed
-            self.rebuild(at)
+            # The moment of the time `stale` is over: the winner from then on, with its new line.
+            self.rebuild(self.stale)
             self.stale = None
         while self.next < t:
             self.rebuild(self.next)

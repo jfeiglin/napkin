@@ -76,7 +76,7 @@ responders:  @response_basis
             this.recognized.start()
             reset when false
     remove_access = event():  @removal_basis
-            "Responders remove the attacker's credential from the platform and rebuild its access controls."
+        "Responders remove the attacker's credential from the platform and rebuild its access controls."
         when count(this.recognized.occurrences) > 0:
             this.remove_access.start()
             reset when false
@@ -161,6 +161,10 @@ Utility:  @reach
         "Attacker's watch on the controls"
     finished: Mgal = this.usable_share * this.storage in [0, none]  @storage_hours
         "Usable stored water"
+        outflow.capacity = formula(3 * (this.demand + this.sold + this.tie_asks) + 1 Mgal/day)
+            @stored_water_bridges
+            "Stored water serves the system's own customers first, then its buyers, and leakage last."
+        outflow.allocation = priority(this.deliver, this.export, this.sell, this.leak)
     room: Mgal = 0 in [0, none]  @room_identity
         "Usable storage not filled"
     delivered: Mgal = 0  @counts_stocks_flows
@@ -319,7 +323,7 @@ Utility:  @reach
         after 0 h:
             this.mode = DISRUPTED
             this.go_disrupted.start()
-    # TODO(hand): an event with several outcomes: a `switch` in a stage, with the producer of its value
+    # TODO(hand): an event with several outcomes: a `switch` in a stage
     # | event start_manual once after activation_delay when mode is "disrupted":  @manual
     # |     done mode is "disrupted" and manual_ready:  @manual
     # |         "{name}'s operators switch to manual controls and run the plants by hand."
@@ -367,7 +371,8 @@ Utility:  @reach
             this.parts_fixed = DONE
     controls_back = event():  @work_completion
         "{this.name} gets its controls back from the crews."
-        when this.controls == WIPED and this.controls_fixed == DONE and this.field_fixed == DONE and this.parts_fixed == DONE:
+        when (this.controls == WIPED and this.controls_fixed == DONE and this.field_fixed == DONE
+            and this.parts_fixed == DONE):
             this.controls_back.start()
         after 0 h:
             this.controls = RESTORED
@@ -381,7 +386,8 @@ Utility:  @reach
             this.clearance = NONE
     sampling_starts = event():  @clearance
         "{this.name} samples its water for clearance, with its controls and its supply back."
-        when this.clearance == NONE and this.use_status == BOIL_WATER and this.controls != WIPED and this.supply_back:
+        when (this.clearance == NONE and this.use_status == BOIL_WATER and this.controls != WIPED
+            and this.supply_back):
             this.sampling_starts.start()
         after 0 h:
             this.clearance = SAMPLING
@@ -395,14 +401,17 @@ Utility:  @reach
     sees_restoration = event():  @watches_restorations
         "{this.name}'s controls come back. {attacker.actor} sees it through its hidden credential."
         role adversary
-        when this.watch == WATCHING and platform.access == KEPT and count(this.controls_back.occurrences) > this.strikes:
+        when (this.watch == WATCHING and platform.access == KEPT
+            and count(this.controls_back.occurrences) > this.strikes):
             this.sees_restoration.start()
         after 0 h:
             this.watch = PREPARING
     strike_again = event():  @ai_tempo @restrike_effect @prepared_makes
         "{attacker.actor} wipes the restored controls again. {this.name} needs the crews to redo the work."
         role adversary
-        when this.watch == PREPARING and platform.access == KEPT and count(this.controls_back.occurrences) > 0 and since(this.controls_back) >= attacker.reaction_time:
+        when (this.watch == PREPARING and platform.access == KEPT
+            and count(this.controls_back.occurrences) > 0 and since(this.controls_back)
+            >= attacker.reaction_time):
             this.strike_again.start()
         after 0 h:
             this.watch = WATCHING
@@ -434,31 +443,43 @@ Utility:  @reach
     flow leak: this.finished -> this.room  @losses
         "Water leaks from the pipes."
         request = formula(this.leak_rate)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share finished limit 3 * (demand + sold + tie_asks) + 1 Mgal/day order deliver, export, sell, leak
-    # |     @stored_water_bridges
-    # |     "Stored water serves the system's own customers first, then its buyers, and leakage last."
-    # draft: under the store finished: outflow.capacity = formula(3 * (this.demand + this.sold + this.tie_asks) + 1 Mgal/day); outflow.allocation = priority(this.deliver, this.export, this.sell, this.leak)
     flow count_unserved: SOURCE -> this.unserved  @counts_stocks_flows
         request = formula(this.unserved_rate)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow restore at controls_crew.pace_now while controls_work > 0 work_h:
     # |     @work_completion @one_crew_hour_moves_both
     # |     "Controls crews rebuild and verify the system's controls."
     # |     controls_crew.hours -> controls_crew.used
     # |     controls_work -> controls_done
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow restore:
+    # draft:     flow leg_1: controls_crew.hours -> controls_crew.used
+    # draft:         request = formula(controls_crew.pace_now if this.controls_work > 0 work_h else 0)
+    # draft:     flow leg_2: this.controls_work -> this.controls_done
+    # draft:         request = formula(controls_crew.pace_now if this.controls_work > 0 work_h else 0)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow repair at field_crew.pace_now while field_work > 0 work_h:
     # |     @work_completion @one_crew_hour_moves_both
     # |     "Field crews reconfigure the system's equipment."
     # |     field_crew.hours -> field_crew.used
     # |     field_work -> field_done
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # draft: flow repair:
+    # draft:     flow leg_1: field_crew.hours -> field_crew.used
+    # draft:         request = formula(field_crew.pace_now if this.field_work > 0 work_h else 0)
+    # draft:     flow leg_2: this.field_work -> this.field_done
+    # draft:         request = formula(field_crew.pace_now if this.field_work > 0 work_h else 0)
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow replace at field_crew.pace_now while replace_work > 0 work_h:  @work_completion @parts_and_labour
     # |     "Field crews install replacement controllers as the parts arrive."
     # |     field_crew.hours -> field_crew.used
     # |     replace_work -> replace_done
     # |     parts.spares -> parts.used at field_crew.pace_now * parts_per_hour  @parts_and_labour
+    # draft: flow replace:  @work_completion @parts_and_labour
+    # draft:     flow leg_1: field_crew.hours -> field_crew.used
+    # draft:         request = formula(field_crew.pace_now if this.replace_work > 0 work_h else 0)
+    # draft:     flow leg_2: this.replace_work -> this.replace_done
+    # draft:         request = formula(field_crew.pace_now if this.replace_work > 0 work_h else 0)
+    # draft:     flow leg_3: parts.spares -> parts.used  @parts_and_labour
+    # draft:         request = formula(field_crew.pace_now * this.parts_per_hour if this.replace_work > 0 work_h else 0)
     flow count_loss: SOURCE -> this.direct_loss  @activity_transfer
         "Businesses that need water lose output for good while it is short."
         request = formula((1 - this.catch_up_share) * this.loss_rate)
@@ -502,7 +523,8 @@ Utility:  @reach
     assert this.replace_work + this.replace_done in [this.replace_added - 0.001 work_h,
         this.replace_added + 0.001 work_h]  @keeps_count_limited
         "Replacement work is counted once, still to do or done."
-    assert this.manual_share <= 1 and this.treat_disabled <= 1 and this.pump_disabled <= 1  @counts_quantity_value
+    assert (this.manual_share <= 1 and this.treat_disabled <= 1 and this.pump_disabled
+        <= 1)  @counts_quantity_value
         "Shares of production and delivery are shares."
 
 Tie:  @bulk_dependence
@@ -552,6 +574,8 @@ CrewPool:  @shared_pool
         "Time until arrived crews work on their own"
     hours: work_h = this.capacity * (100 days) in [0, none]  @keeps_count_limited
         "Crew hours still available in the study"
+        outflow.capacity = formula(this.pace_now)  @shared_pool
+            "The pool shares its hours among the systems that have work waiting."
     used: work_h = 0  @keeps_count_limited
         "Crew hours used"
     readonly duty_now: formula(work_h/h) = formula(sum(this.utilities.manual_duty_now))  @operator_competition
@@ -567,7 +591,8 @@ CrewPool:  @shared_pool
         "Crews on their way"
     requested = event():  @stages
         "{this.skill} are requested from the utilities' own staff, the integrator and mutual aid."
-        when this.stage == HOME and count(responders.recognized.occurrences) > 0 and since(responders.recognized) >= this.request_time:
+        when (this.stage == HOME and count(responders.recognized.occurrences) > 0
+            and since(responders.recognized) >= this.request_time):
             this.requested.start()
         after 0 h:
             this.stage = REQUESTED
@@ -589,10 +614,6 @@ CrewPool:  @shared_pool
             this.at_work.start()
         after 0 h:
             this.stage = PRODUCTIVE
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share hours limit pace_now  @shared_pool
-    # |     "The pool shares its hours among the systems that have work waiting."
-    # draft: under the store hours: outflow.capacity = formula(this.pace_now)
     assert this.hours + this.used in [this.capacity * (100 days) - 0.001 work_h,
         this.capacity * (100 days) + 0.001 work_h]  @keeps_count_limited
         "Each crew hour is still available or used."
@@ -629,6 +650,8 @@ parts:  @spares_basis
         "Batch"
     spares: parts = this.spares_on_hand in [0, none] scale 100 parts  @counts_stocks_flows
         "Replacement controllers in stock"
+        outflow.capacity = formula(this.issue_limit)  @spares_basis
+            "The suppliers issue spares to the systems that install them."
     used: parts = 0 scale 100 parts  @counts_stocks_flows
         "Replacement controllers installed"
     received: parts = 0 scale 100 parts  @counts_stocks_flows
@@ -639,16 +662,13 @@ parts:  @spares_basis
         "No replacement controllers in stock"
     batch_arrives = event():  @lead_basis
         "The batch of replacement controllers arrives."
-        when this.status == WAITING and count(responders.recognized.occurrences) > 0 and since(responders.recognized) >= this.lead_time:
+        when (this.status == WAITING and count(responders.recognized.occurrences) > 0
+            and since(responders.recognized) >= this.lead_time):
             this.batch_arrives.start()
         after 0 h:
             this.status = DELIVERED
             this.spares += this.batch
             this.received += this.batch
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share spares limit issue_limit  @spares_basis
-    # |     "The suppliers issue spares to the systems that install them."
-    # draft: under the store spares: outflow.capacity = formula(this.issue_limit)
     assert this.spares + this.used in [this.spares_on_hand + this.received - 0.001 parts,
         this.spares_on_hand + this.received + 0.001 parts]  @counts_stocks_flows
         "Every replacement controller is in stock or installed."
@@ -674,6 +694,8 @@ relief:  @min_of_capacities
         "Emergency deliveries"
     supply: Mgal = this.approved_supply * (100 days) in [0, none] scale 100 Mgal  @counts_stocks_flows
         "Approved emergency water not yet delivered"
+        outflow.capacity = formula(this.throughput)  @priority_basis
+            "Hospitals get emergency water first, then the households, each in proportion to their need."
     readonly throughput: formula(Mgal/h) = formula(min(this.approved_supply, this.transport, this.receiving,
         this.staffing) if this.status == ACTIVE else 0 Mgal/h)  @min_of_capacities
         "Emergency water that can be delivered an hour"
@@ -684,7 +706,8 @@ relief:  @min_of_capacities
     deliveries_start = event():
         @start_basis
         "Emergency drinking water deliveries start."
-        when this.status == NOT_STARTED and count(responders.recognized.occurrences) > 0 and since(responders.recognized) >= this.start_delay:
+        when (this.status == NOT_STARTED and count(responders.recognized.occurrences) > 0
+            and since(responders.recognized) >= this.start_delay):
             this.deliveries_start.start()
         after 0 h:
             this.status = ACTIVE
@@ -699,10 +722,6 @@ relief:  @min_of_capacities
     readonly homes_share: formula(fraction) = formula(clip((this.throughput - this.hospital_request
         * this.truck_share) / this.homes_need, 0, 1) if this.homes_need > 0 Mgal/h else 1)  @priority_basis
         "Share of the households' need that emergency water meets"
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share supply limit throughput  @priority_basis
-    # |     "Hospitals get emergency water first, then the households, each in proportion to their need."
-    # draft: under the store supply: outflow.capacity = formula(this.throughput)
 
 Households:  @counts_people_once
     "The people who live in the homes that one water system serves."

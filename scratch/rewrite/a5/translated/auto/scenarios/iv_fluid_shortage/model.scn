@@ -100,7 +100,8 @@ manufacturer:  @a_pilot_assumed_brief
                 V-PA-IR01
         @identity "At the time chosen for the defender response, the attacker's access really ends. Qualified
             release cannot happen before this."
-        when count(this.stops_shipping.occurrences) > 0 and since(this.stops_shipping) >= this.foothold_removal_time:
+        when (count(this.stops_shipping.occurrences) > 0 and since(this.stops_shipping)
+            >= this.foothold_removal_time):
             this.foothold_removed.start()
             reset when false
         after 0 h:
@@ -110,7 +111,8 @@ manufacturer:  @a_pilot_assumed_brief
     # holds one.
     credentials_reset = event():
         @a_retamper_release_restarts_through
-        when count(release_team.restart_release.occurrences) > 0 and since(release_team.restart_release) >= this.reset_delay:
+        when (count(release_team.restart_release.occurrences) > 0 and since(release_team.restart_release)
+            >= this.reset_delay):
             this.credentials_reset.start()
             reset when false
         after 0 h:
@@ -159,7 +161,8 @@ release_systems:
         "Attacker's foothold in the manufacturer's network"
     credentials: enum[UNCHANGED, RESET] = UNCHANGED
         "Service-account credentials of the record systems"
-    status failed when this.status == ENCRYPTED  @counts_quantity_value @a_causal_interference_defender_response_sam
+    status failed when (this.status
+        == ENCRYPTED)  @counts_quantity_value @a_causal_interference_defender_response_sam
         "Encrypted; release and shipment records unavailable"
     status ok
         "Operational"
@@ -243,7 +246,8 @@ hospitals:  @a_pilot_assumed_brief
             assumption A-SC10-pilot
             claims:
                 SC10-SUPPLY-CONSERVATION
-        when this.procurement == NORMAL and count(manufacturer.stops_shipping.occurrences) > 0 and since(manufacturer.stops_shipping) >= this.start_delay:
+        when (this.procurement == NORMAL and count(manufacturer.stops_shipping.occurrences) > 0
+            and since(manufacturer.stops_shipping) >= this.start_delay):
             this.emergency_procurement.start()
         after 0 h:
             this.procurement = EMERGENCY
@@ -274,7 +278,7 @@ attacker:
         "The attacker can still change release and shipment records"
     status ok
         "Access removed"
-    # TODO(hand): an event with several outcomes: a `switch` in a stage, with the producer of its value
+    # TODO(hand): an event with several outcomes: a `switch` in a stage
     # | event alter_on_procurement once when (count(hospitals.emergency_procurement) > 0 and access is "kept"):
     # |     @a_retamper_attacker_watches_emergency
     # |     done release_systems.foothold is "present":  @a_retamper_attacker_watches_emergency
@@ -288,7 +292,7 @@ attacker:
     # |         "The manufacturer removes the attacker's foothold before procurement starts, so the shipment
     # |             records stay clean."
     # |         role operator
-    # TODO(hand): an event with several outcomes: a `switch` in a stage, with the producer of its value
+    # TODO(hand): an event with several outcomes: a `switch` in a stage
     # | event alter_on_restart once after reaction_time when (
     # |     count(release_team.restart_release) > 0 and access is "kept"
     # | ):  @a_retamper_release_restarts_checks
@@ -432,7 +436,8 @@ release_team:
             claims:
                 E-IV-CGMP-DATA-INTEGRITY
                 SC10-PROCESS-QUALIFICATION
-        when this.status == READY and hospitals.procurement == EMERGENCY and manufacturer.release_allowed and release_systems.foothold == REMOVED:
+        when (this.status == READY and hospitals.procurement == EMERGENCY and manufacturer.release_allowed
+            and release_systems.foothold == REMOVED):
             this.restart_release.start()
         after 0 h:
             this.status = RELEASED
@@ -590,6 +595,8 @@ other_makers:  @a_pilot_assumed_brief
         else 0 L/h)
         @balances_fluid_stocks
     buffer: L = 0 in [0, none] scale 480 L  @balances_fluid_stocks
+        outflow.capacity = formula(this.supply_rate)  @balances_fluid_stocks
+        outflow.allocation = priority(this.to_hospitals, this.elsewhere)
     supply_left: L = this.daily_supply * manufacturer.study_length in [0,
         none] scale 28800 L  @balances_stocks_work
     sent_elsewhere: L = 0 scale 28800 L
@@ -606,9 +613,6 @@ other_makers:  @a_pilot_assumed_brief
     flow elsewhere: this.buffer -> this.sent_elsewhere  @balances_fluid_stocks
         "Other makers' fluid goes to hospitals elsewhere once released fluid arrives."
         request = formula(this.elsewhere_rate)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share buffer limit supply_rate order to_hospitals, elsewhere  @balances_fluid_stocks
-    # draft: under the store buffer: outflow.capacity = formula(this.supply_rate); outflow.allocation = priority(this.to_hospitals, this.elsewhere)
 
 deliveries:  @a_pilot_assumed_brief
     "The fluid that the manufacturer releases. It reaches the hospitals a day after release, and each of the
@@ -651,6 +655,7 @@ deliveries:  @a_pilot_assumed_brief
     supply_left: L = this.daily_supply * max(0 h, manufacturer.study_length - this.earliest_receipt) in [0,
         none] scale 72000 L
         @balances_stocks_work
+        outflow.capacity = formula(2 * this.delivery_rate)  @balances_fluid_stocks
     readonly half_supply: formula(L/h) = formula(this.daily_supply / 2)  @balances_fluid_stocks
     readonly delivery_rate: formula(L/h) = formula(this.half_supply if this.status == ARRIVING
         and release_systems.status != RESTORED else 0 L/h)  @balances_fluid_stocks
@@ -678,9 +683,6 @@ deliveries:  @a_pilot_assumed_brief
     flow to_other_care: this.supply_left -> other_care_reserve.stock  @balances_fluid_stocks
         "Released fluid goes to the reserve for other essential care."
         request = formula(this.delivery_rate)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share supply_left limit 2 * delivery_rate  @balances_fluid_stocks
-    # draft: under the store supply_left: outflow.capacity = formula(2 * this.delivery_rate)
     first_arrival = event():
         @a_pilot_assumed_brief
         "Released fluid begins to reach the hospitals and meets demand; other makers' fluid goes back to
@@ -689,7 +691,8 @@ deliveries:  @a_pilot_assumed_brief
             assumption A-SC10-pilot
             claims:
                 E-BAXTER24DEC-LAG
-        when count(release_team.restart_release.occurrences) > 0 and since(release_team.restart_release) >= this.lead_time:
+        when (count(release_team.restart_release.occurrences) > 0 and since(release_team.restart_release)
+            >= this.lead_time):
             this.first_arrival.start()
             reset when false
         after 0 h:
@@ -700,7 +703,8 @@ deliveries:  @a_pilot_assumed_brief
         @source_transfer "As before, released fluid reaches the hospitals one day after release."
             claims:
                 SC10-PROCESS-QUALIFICATION
-        when count(release_team.reconciled_against_product.occurrences) > 0 and since(release_team.reconciled_against_product) >= this.lead_time:
+        when (count(release_team.reconciled_against_product.occurrences) > 0
+            and since(release_team.reconciled_against_product) >= this.lead_time):
             this.arrival_after_reconciliation.start()
             reset when false
         after 0 h:
@@ -732,6 +736,7 @@ resuscitation_patients:  @a_pilot_assumed_brief
     readonly miss_rate: formula(people/h) = formula(resuscitation_reserve.unmet_rate
         / this.course_volume)  @balances_fluid_stocks
     eligible: people = this.total in [0, none] scale 18000 people  @balances_fluid_stocks
+        outflow.capacity = formula(this.course_rate)  @a_pilot_assumed_brief
     timely: people = 0 scale 18000 people  @balances_fluid_stocks
     unserved: people = 0 scale 18000 people  @keeps_count_limited
         scope "Each eligible person counts once, with one complete course. This count estimates how many
@@ -741,18 +746,20 @@ resuscitation_patients:  @a_pilot_assumed_brief
         "Not enough fluid for complete courses"
     status ok
         "Complete courses supplied"
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow complete_course at resuscitation_reserve.use_rate:
     # |     @balances_fluid_stocks @a_pilot_assumed_brief
     # |     "Resuscitation patients get a complete course of fluid from the reserve."
     # |     resuscitation_reserve.stock -> resuscitation_reserve.used
     # |     eligible -> timely at resuscitation_reserve.use_rate / course_volume
+    # draft: flow complete_course:
+    # draft:     flow leg_1: resuscitation_reserve.stock -> resuscitation_reserve.used
+    # draft:         request = formula(resuscitation_reserve.use_rate)
+    # draft:     flow leg_2: this.eligible -> this.timely
+    # draft:         request = formula(resuscitation_reserve.use_rate / this.course_volume)
     flow miss_course: this.eligible -> this.unserved  @keeps_count_limited
         "Resuscitation patients miss a complete course when the reserve cannot supply one."
         request = formula(this.miss_rate)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share eligible limit course_rate  @a_pilot_assumed_brief
-    # draft: under the store eligible: outflow.capacity = formula(this.course_rate)
     assert this.eligible + this.timely + this.unserved in [this.total - 1e-05 people,
         this.total + 1e-05 people]  @balances_fluid_stocks
         "Each patient in the model is in exactly one group, alive or dead, and the groups do not overlap."
@@ -799,6 +806,8 @@ high_risk_patients:
     eligible: people = this.share * resuscitation_patients.total in [0, none] scale 1800 people
         @identity "The fixed group of high-risk patients splits into patients who are rescued and patients who
             are not."
+        outflow.capacity = formula(this.unmet_rate)  @high_risk_patient
+        outflow.allocation = priority(this.rescue, this.not_rescued)
     rescued: people = 0 scale 1800 people  @counts_fixed_group
         scope "High-risk patients, each counted once, who get effective outside rehydration or a transfer in
             time for urgent treatment."
@@ -809,29 +818,23 @@ high_risk_patients:
         "Most fluid-dependent patients who miss a course and are not rescued"
     readonly deaths: formula(people) = formula(this.unresolved * (this.untreated_risk
         - this.treated_risk)) in [0, none]
-    # TODO(hand): the name harm_delay reads nothing that this script resolves
-    # | output deaths: people = (unresolved * (untreated_risk - treated_risk))
-    # |     @a_consequences_2026_three_inputs_turn
-    # |     "Deaths"
-    # |     about "Deaths among the most fluid-dependent resuscitation patients, those with severe dehydration.
-    # |         Only patients who miss a complete course of IV fluid and are not saved by outside supply or
-    # |         transfer count. For each of them, the model adds the death risk without effective rehydration
-    # |         minus the risk with it. It counts these deaths over the 60-day study period. It leaves out deaths
-    # |         among other patients, any harm from postponed procedures and any harm from fluid released on
-    # |         altered records. These are expected numbers and can fall below one."
-    # |     category deaths
-    # |     scope "Patients who need an urgent course in the 100 hospitals, each counted once, as chosen for this
-    # |         scenario. The death risk is the risk for severe dehydration. The outcome follows six hours after
-    # |         the missed course."
-    # |     lag harm_delay
+        @a_consequences_2026_three_inputs_turn
+        "Deaths"
+        about "Deaths among the most fluid-dependent resuscitation patients, those with severe dehydration.
+            Only patients who miss a complete course of IV fluid and are not saved by outside supply or
+            transfer count. For each of them, the model adds the death risk without effective rehydration
+            minus the risk with it. It counts these deaths over the 60-day study period. It leaves out deaths
+            among other patients, any harm from postponed procedures and any harm from fluid released on
+            altered records. These are expected numbers and can fall below one."
+        category deaths
+        scope "Patients who need an urgent course in the 100 hospitals, each counted once, as chosen for this
+            scenario. The death risk is the risk for severe dehydration. The outcome follows six hours after
+            the missed course."
     readonly serious_survivors: formula(people) = formula(this.unresolved * this.serious_share) in [0,
         none]  @a_consequences_2026_three_inputs_turn
-    # TODO(hand): the name harm_delay reads nothing that this script resolves
-    # | output serious_survivors: people = unresolved * serious_share  @a_consequences_2026_three_inputs_turn
-    # |     "Survivors left with serious harm"
-    # |     scope "Survivors left with serious kidney failure or shock, in addition to the deaths, each counted
-    # |         once. The rate is chosen for this scenario."
-    # |     lag harm_delay
+        "Survivors left with serious harm"
+        scope "Survivors left with serious kidney failure or shock, in addition to the deaths, each counted
+            once. The rate is chosen for this scenario."
     readonly casualties: formula(people) = formula(this.deaths + this.serious_survivors) in [0, none]
         @a_consequences_2026_three_inputs_turn @distinct_people @hazus_severity
         "Serious casualties, including deaths"
@@ -848,9 +851,6 @@ high_risk_patients:
     flow not_rescued: this.eligible -> this.unresolved  @high_risk_patient
         "A high-risk patient who misses a course is not rescued."
         request = formula(this.unmet_rate)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share eligible limit unmet_rate order rescue, not_rescued  @high_risk_patient
-    # draft: under the store eligible: outflow.capacity = formula(this.unmet_rate); outflow.allocation = priority(this.rescue, this.not_rescued)
     assert this.eligible + this.rescued + this.unresolved in [this.share * resuscitation_patients.total
         - 1e-05 people, this.share * resuscitation_patients.total + 1e-05 people]
         @counts_fixed_group
@@ -861,7 +861,8 @@ assert other_makers.daily_supply >= 0 and other_makers.daily_supply <= resuscita
     @a_pilot_assumed_brief
     "Daily supply from other makers is not more than the daily fluid need for resuscitation."
 
-assert deliveries.daily_supply / 2 == resuscitation_reserve.daily_need and deliveries.daily_supply / 2 == other_care_reserve.daily_need  @a_pilot_assumed_brief
+assert (deliveries.daily_supply / 2 == resuscitation_reserve.daily_need and deliveries.daily_supply / 2
+    == other_care_reserve.daily_need)  @a_pilot_assumed_brief
     "The scenario splits released fluid equally between resuscitation and other essential care, and each half
         meets its daily need."
 
@@ -872,29 +873,30 @@ assert manufacturer.study_length == 1440 h  @a_pilot_assumed_brief
 assert deliveries.earliest_receipt <= manufacturer.study_length  @keeps_count_limited
     "The work, procurement and delivery times chosen for this scenario fit within the study period."
 
-assert high_risk_patients.untreated_risk >= high_risk_patients.treated_risk and high_risk_patients.untreated_risk + high_risk_patients.serious_share <= 1  @counts_fixed_group
+assert (high_risk_patients.untreated_risk >= high_risk_patients.treated_risk
+    and high_risk_patients.untreated_risk + high_risk_patients.serious_share <= 1)  @counts_fixed_group
     "Among patients who are not rescued, deaths and survivors with serious harm are separate groups that
         together are not more than all of these patients. The model counts only deaths above the death risk
         with treatment."
 
 # Without hidden access the deliveries' planned supply covers only the time from the first receipt to the end
 # of the study period; with it, the whole study period, because deliveries can stop and start again.
-assert abs(hospitals.days_on_hand * (resuscitation_reserve.daily_need + other_care_reserve.daily_need)
+assert (abs(hospitals.days_on_hand * (resuscitation_reserve.daily_need + other_care_reserve.daily_need)
     + other_makers.daily_supply * manufacturer.study_length + deliveries.daily_supply
     * (manufacturer.study_length if attacker.access == KEPT else manufacturer.study_length
     - deliveries.earliest_receipt) - resuscitation_reserve.stock - other_care_reserve.stock
     - resuscitation_reserve.held - other_care_reserve.held - other_makers.buffer - other_makers.supply_left
     - deliveries.supply_left - resuscitation_reserve.used - other_care_reserve.used
-    - other_makers.sent_elsewhere) <= 1e-05 L  @balances_fluid_stocks
+    - other_makers.sent_elsewhere) <= 1e-05 L)  @balances_fluid_stocks
     "The total litres stay constant. They are in the planned supplies, the hospital reserves, the held lots,
         the fluid given to patients and the fluid sent to hospitals elsewhere."
     @identity "The model balances the fluid stocks, including fluid set aside from held lots."
 
 # With hidden access the reserve also holds the work to reconcile the records against the product.
-assert abs(release_team.ordinary_left + release_team.reserve + release_team.to_reconcile
+assert (abs(release_team.ordinary_left + release_team.reserve + release_team.to_reconcile
     + release_team.work_done - release_team.ordinary_work - release_team.records_work
-    - (release_team.product_work if attacker.access == KEPT
-    else 0 work_h)) <= 1e-05 work_h  @balances_stocks_work
+    - (release_team.product_work if attacker.access == KEPT else 0 work_h))
+    <= 1e-05 work_h)  @balances_stocks_work
     "The ordinary work at the start, plus the reconciliation reserve, equals the sum of ordinary work left,
         unused reserve, reconciliation to do and work done."
     @identity "The model balances the work, with the reserve of reconciliation work set for this scenario."
@@ -952,6 +954,8 @@ report:
     resuscitation_patients.unserved cumulative
     high_risk_patients.rescued cumulative
     high_risk_patients.unresolved cumulative
+    high_risk_patients.deaths cumulative lag high_risk_patients.harm_delay
+    high_risk_patients.serious_survivors cumulative lag high_risk_patients.harm_delay
     high_risk_patients.casualties cumulative
     fluid_sent_elsewhere cumulative
     procedure_loss cumulative

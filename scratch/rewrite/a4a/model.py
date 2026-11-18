@@ -7,6 +7,7 @@ In the new language (the spec's forms; nothing parses this text here):
         readonly stock: L = 0 in [0 L, 1000000 L]
             outflow.capacity = this.out_limit
         input need: L/h = 0
+        input critical: bool = false
         used: L = 0 in [0 L, 1000000 L]
         flow use: this.stock -> this.used
             request = this.need
@@ -58,6 +59,7 @@ OLD = '''Place:  @shape
     "A place."
     var stock: L = 10 L in 0 L to 1000000 L size 1000 L  @shape
     input need: L/h = 0 L/h in 0 L/h to 1000000 L/h  @shape
+    input critical: bool = false  @shape
     input out_limit: L/h = 1 L/h in 0 L/h to 1000000 L/h  @shape
     var used: L = 0 L in 0 L to 1000000 L size 1000 L  @shape
     flow use: stock -> used at need  @shape
@@ -116,16 +118,20 @@ UNITS = {
 
 
 def write(folder, places, routes, horizon=3.0, old=True, kind='constant'):
-    """Write the two tables, and the old model beside them. `places`: (id, stock, need) for each;
-    `routes`: (id, origin id, destination id, rate, lot, ship_at) for each."""
+    """Write the two tables, and the old model beside them. `places`: (id, stock, need) for each, or
+    (id, stock, need, critical); `routes`: (id, origin id, destination id, rate, lot, ship_at) for each."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
-    asked = {i: need for i, _, need in places}
+    places = [(*row, False)[:4] for row in places]
+    asked = {i: need for i, _, need, _ in places}
     for _, a, _, rate, _, _ in routes:
         asked[a] += rate
     with open(folder / 'places.csv', 'w') as handle:
-        handle.write('id,stock: L @shape,need: L/h @shape,out_limit: L/h @shape\n')
-        handle.writelines(f'{i},{stock!r},{need!r},{2 * asked[i] + 1!r}\n' for i, stock, need in places)
+        handle.write('id,stock: L @shape,need: L/h @shape,critical @shape,out_limit: L/h @shape\n')
+        handle.writelines(
+            f'{i},{stock!r},{need!r},{"true" if critical else "false"},{2 * asked[i] + 1!r}\n'
+            for i, stock, need, critical in places
+        )
     with open(folder / 'routes.csv', 'w') as handle:
         handle.write('id,origin,destination,rate: L/h @shape,lot: L @shape,ship_at: h @shape\n')
         handle.writelines(
@@ -159,7 +165,8 @@ def synthetic(places, routes, seed=0, moves=True, need_share=0.5, drain=1.0, rin
     rate, need, lot = rate * scale[origin], need * scale, lot * scale[origin]
     width = len(str(places))
     pid = [f'p{k:0{width}d}' for k in range(places)]
-    place_rows = [(pid[k], float(stock[k]), float(need[k])) for k in range(places)]
+    critical = np.random.default_rng(seed + 1000).uniform(size=places) < 0.1
+    place_rows = [(pid[k], float(stock[k]), float(need[k]), bool(critical[k])) for k in range(places)]
     route_rows = [
         (f'r{k:0{len(str(routes))}d}', pid[origin[k]], pid[destination[k]], float(rate[k]), float(lot[k]), 1.0)
         for k in range(routes)
@@ -176,6 +183,7 @@ class Built:
         self.routes = R = layout.Pool.from_csv('routes', folder / 'routes.csv', canonical)
         for field in ('stock', 'need', 'out_limit'):
             P.number(field)
+        P.flag('critical')
         for field in ('rate', 'lot', 'ship_at'):
             R.number(field)
         R.link('origin', P)

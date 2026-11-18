@@ -120,6 +120,7 @@ class Translator:
         self.proposed = collections.Counter()  # proposed spelling -> lines that use it
         self.out = []  # (old line, sequence, text)
         self.sequence = 0
+        self.anchor = None  # where the next lines go, when they move under another declaration
         self.events = events
         self.report = []  # (old line, text of the entry)
         self.comparisons = []
@@ -130,23 +131,34 @@ class Translator:
 
     def emit(self, line, depth, text, raw=False):
         rows = [INDENT * depth + text] if raw else wrap(depth, text)
+        where = self.anchor if self.anchor is not None else line
         for row in rows:
             self.sequence += 1
-            self.out.append((line, self.sequence, row))
+            self.out.append((where, self.sequence, row))
+
+    def end_of(self, number):
+        """The last line of the old file that the declaration at `number` holds."""
+        return self.logical[self.block(number)[-1]].end
 
     def emit_after(self, number, depth, text):
         """A line that comes after every line under the declaration at `number`."""
-        where = self.logical[self.block(number)[-1]].end + 0.25
+        where = self.anchor if self.anchor is not None else self.end_of(number) + 0.25
         for row in wrap(depth, text):
             self.sequence += 1
             self.out.append((where, self.sequence, row))
 
     def verbatim(self, number, depth=None):
-        """Copy one logical line of the old file as it is written (its syntax does not change)."""
+        """Copy one logical line of the old file as it is written (its syntax does not change). With
+        `depth`, the line moves to that depth: a line that goes under another declaration."""
         line = self.logical[number]
+        where = self.anchor if self.anchor is not None else line.number
+        shift = None if depth is None else (depth - line.depth) * len(INDENT)
         for k in range(line.number, line.end + 1):
+            row = self.rows[k - 1].rstrip()
+            if shift and row.strip():
+                row = (' ' * shift + row) if shift > 0 else row[-shift:]
             self.sequence += 1
-            self.out.append((line.number, self.sequence, self.rows[k - 1].rstrip()))
+            self.out.append((where, self.sequence, row))
         self.state[number] = 'done'
 
     def block(self, number):
@@ -213,7 +225,7 @@ class Translator:
                 if records:
                     self.record_in_place(child.number, depth, records[0])
                 else:
-                    self.verbatim(child.number)
+                    self.verbatim(child.number, depth if depth != child.depth else None)
             elif extra is not None and extra(child):
                 continue
             else:
@@ -239,21 +251,22 @@ class Translator:
             self.proposed['braces in a text name a path'] += 1
             self.done(number)
             return
-        self.verbatim(number)
+        self.verbatim(number, depth if depth != line.depth else None)
 
     def record_in_place(self, number, depth, record):
         """`@kind [ID] "explanation"` with its claims. The ID moves to a line of its own, which says what
         it names (the candidate of the specification)."""
+        moved = depth - self.logical[number].depth
         if record.id is None:
             for k in self.block(number):
-                self.verbatim(k)
+                self.verbatim(k, self.logical[k].depth + moved if moved else None)
             return
         self.emit(number, depth, f'@{record.kind} "{record.text}"')
         self.done(number)
         self.emit(number, depth + 1, f'{id_label(record.kind)} {record.id}')
         for child in self.children(number):
             for k in self.block(child.number):
-                self.verbatim(k)
+                self.verbatim(k, self.logical[k].depth + moved if moved else None)
 
     def expr(self, expr, thing, draws=True, own='this.'):
         scope = Scope(self.symbols, thing, self.output_names, own=own)
@@ -475,7 +488,7 @@ class Translator:
         lines = value.output
         if lines is None or child.number != lines.line:
             return False
-        self.report_entry(lines, self.report_path(thing, value.name), child.number)
+        self.report_entry(lines, self.report_path(thing, value.name), child.number, thing)
         self.done(child.number)
         for sub in child.under:
             key = sub.first.value if sub.first.kind == 'name' else None
@@ -496,13 +509,15 @@ class Translator:
             return f'{thing}.instances.{name}'
         return f'{thing}.{name}'
 
-    def report_entry(self, lines, path, number):
+    def report_entry(self, lines, path, number, thing=None):
         flags = []
         if lines.measure != 'level' and lines.unestimated is None:
             flags.append('cumulative')
         if lines.lag is not None:
-            owner = path.rpartition('.')[0] or None
-            delays = [self.expr(d, None, draws=False, own='') for d in lines.lag.delays]
+            if thing is not None and thing in self.symbols.templates:
+                raise Hand('lag: the delay of an output of a template is read in each instance')
+            own = f'{thing}.' if thing is not None else ''
+            delays = [self.expr(d, thing, draws=False, own=own) for d in lines.lag.delays]
             if lines.lag.kind == 'fixed':
                 flags.append(f'lag {delays[0]}')
             elif lines.lag.kind == 'uniform':
@@ -560,10 +575,12 @@ class Translator:
     def flow(self, flow, thing):
         number = flow.line
         if flow.together is not None:
-            raise Hand(
-                'a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), '
-                'with its own `request`'
-            )
+            try:
+                draft = self.legs_draft(flow, thing)
+            except Hand:
+                draft = None
+            self.hand(number, 1, 'a flow with several pairs: name each leg', draft)
+            return
         pair = flow.pair
         source = 'SOURCE' if pair.source == 'outside' else self.end(pair.source, thing)
         target = 'SINK' if pair.target == 'outside' else self.end(pair.target, thing)
@@ -580,19 +597,55 @@ class Translator:
         self.emit_after(number, 2, f'request = {request}')
 
     def share(self, share, thing):
-        order = ''
-        if share.serve is not None:
-            order = f'; outflow.allocation = priority({", ".join(self.end(name, thing) for name, _ in share.serve)})'
-        draft = [
-            f'under the store {share.stock}: outflow.capacity = formula({self.expr(share.limit.expr, thing)})' + order
-        ]
-        self.hand(
-            share.line,
-            1,
-            'a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; '
-            'a limit that only adds up what the flows ask is left out',
-            draft,
-        )
+        """`share VAR limit RATE [order f, g]`: the limit is the `outflow.capacity` of the store, and the
+        order its `outflow.allocation`. The lines go under the declaration of the store."""
+        found = self.symbols.read(share.stock, thing)
+        info = self.symbols.things[thing]
+        store = None
+        if found is not None and found[0] == 'value' and found[2] == thing and '.' not in share.stock:
+            node = self.symbols.nodes[thing]
+            store = next(
+                (m for m in node.members if isinstance(m, nodes.Value) and m.name == share.stock), None
+            )
+        if store is None or store.line not in self.state:
+            raise Hand('share: the store is declared in another thing or after its share')
+        declared = self.symbols.nodes[self.symbols.declarer(thing)]
+        flows = {m.name: m for m in declared.members if isinstance(m, nodes.Flow)}
+        for name, _ in share.serve or ():
+            if name not in flows:
+                raise Hand('share: its order names something that is no flow of the thing')
+            if flows[name].together is not None:
+                raise Hand('share: its order names a flow with several pairs, so it names the leg at this store')
+        limit = self.expr(share.limit.expr, thing, draws=False)
+        literal = oldmodel_literal(share.limit.expr.tokens)
+        self.anchor = self.end_of(store.line) + 0.3
+        try:
+            capacity = limit if literal else f'formula({limit})'
+            self.emit(share.line, 2, f'outflow.capacity = {capacity}{self.cites(share.support)}')
+            self.done(share.line)
+            self.under(share.line, 3, share.support, share.text)
+            if share.serve is not None:
+                names = ', '.join(self.end(name, thing) for name, _ in share.serve)
+                self.emit(share.line, 2, f'outflow.allocation = priority({names})')
+        finally:
+            self.anchor = None
+        self.proposed['the text and the records of a share go under `outflow.capacity`'] += 1
+
+    def legs_draft(self, flow, thing):
+        """A draft of a flow with several pairs: its legs need names, which a person gives."""
+        scope = Scope(self.symbols, thing, self.output_names)
+        rate = exprs.rewrite_old(flow.rate.expr, scope)
+        keep = exprs.rewrite_old(flow.keep.expr, scope) if flow.keep is not None else None
+        rows = [f'flow {flow.name}:{self.cites(flow.support)}']
+        for k, pair in enumerate(flow.together, 1):
+            source = 'SOURCE' if pair.source == 'outside' else self.end(pair.source, thing)
+            target = 'SINK' if pair.target == 'outside' else self.end(pair.target, thing)
+            own = exprs.rewrite_old(pair.rate.expr, scope) if pair.rate is not None else rate
+            if keep is not None:
+                own = ('if', keep, own, ('num', '0', None))
+            rows.append(f'    flow leg_{k}: {source} -> {target}{self.cites(pair.support)}')
+            rows.append(f'        request = formula({show(own)})')
+        return rows
 
     # ---- events -----------------------------------------------------------------------------------------
 
@@ -601,7 +654,7 @@ class Translator:
         if not self.events:
             raise Hand('an event')
         if len(event.outcomes) > 1:
-            raise Hand('an event with several outcomes: a `switch` in a stage, with the producer of its value')
+            raise Hand('an event with several outcomes: a `switch` in a stage')
         if event.each or event.keep is not None:
             raise Hand('an event with a window or a `while`')
         only = event.outcomes[0] if event.outcomes else None
@@ -670,7 +723,7 @@ class Translator:
 
         self.under(number, 2, event.support, event.text, braces_thing=thing, extra=inner)
         if when is not None:
-            self.emit_after(number, 2, f'when {when}:')
+            self.emit_after(number, 2, fit(2, 'when ', when, ':'))
             self.emit_after(number, 3, f'this.{event.name}.start()')
             if event.once:
                 self.emit_after(number, 3, 'reset when false')
@@ -708,10 +761,12 @@ class Translator:
         for case in status.lines:
             number = case.line
             head = f'status {case.status}'
-            if case.condition is not None:
-                head += f' when {self.expr(case.condition, thing)}'
             on_line = [s for s in status.support if s.line == number and self.on_line(s)]
-            self.emit(number, 1, head + self.cites(on_line))
+            if case.condition is not None:
+                head = fit(1, head + ' when ', self.expr(case.condition, thing), self.cites(on_line))
+            else:
+                head += self.cites(on_line)
+            self.emit(number, 1, head)
             self.done(number)
             under = [s for s in status.support if oldmodel_evidence_place(s.place) is not None]
             self.under(number, 2, under, case.text, braces_thing=thing)
@@ -735,7 +790,8 @@ class Translator:
         else:
             if check.within is not None:
                 raise Hand('`assert C within TOL` that is no sum: write the interval by hand')
-            head = f'assert {self.expr(check.expr, thing)}'
+            head = fit(depth, 'assert ', self.expr(check.expr, thing), self.cites(check.support))
+            head = head.removesuffix(self.cites(check.support)) if self.cites(check.support) else head
         self.emit(number, depth, head + self.cites(check.support))
         self.done(number)
         self.under(number, depth + 1, check.support, check.text)
@@ -758,9 +814,9 @@ class Translator:
                 self.proposed['`in [0, none]` on a reported formula: it is never negative'] += 1
             readonly = 'readonly ' if thing is not None else ''
             head = f'{readonly}{name}: formula({output.type}) = formula({self.expr(output.expr, thing)}){bounds}'
+        self.report_entry(lines, self.report_path(thing, name), number, thing)
         self.emit(number, depth, head + cites)
         self.done(number)
-        self.report_entry(lines, self.report_path(thing, name), number)
 
         def line_of(child):
             key = child.first.value if child.first.kind == 'name' else None
@@ -980,6 +1036,15 @@ def oldmodel_evidence_place(place):
         if part == '@' and k + 1 < len(place) and isinstance(place[k + 1], int):
             return place[k + 1]
     return None
+
+
+def fit(depth, before, expression, after):
+    """`before expression after` on one line. An expression that makes the line too long, and has no
+    bracket around it, takes one: an expression continues on the next row only inside a bracket."""
+    line = f'{before}{expression}{after}'
+    if len(INDENT) * depth + len(line) <= WIDTH or expression.startswith('('):
+        return line
+    return f'{before}({expression}){after}'
 
 
 def oldmodel_literal(tokens):

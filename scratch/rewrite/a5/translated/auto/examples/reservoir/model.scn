@@ -42,7 +42,7 @@ operator:
     input level: fraction = 0.7 in [0.5, 1]
         "Water level at which the operator opens the spillway"
         @assumption "The example assumes that the operator opens the spillway at 70% of the capacity."
-    # TODO(hand): an event with several outcomes: a `switch` in a stage, with the producer of its value
+    # TODO(hand): an event with several outcomes: a `switch` in a stage
     # | event decide once when reservoir.water >= level:  @rule
     # |     "The water reaches the level at which the operator opens the spillway."
     # |     choice

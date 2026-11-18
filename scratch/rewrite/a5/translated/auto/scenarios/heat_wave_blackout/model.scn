@@ -174,7 +174,8 @@ heat_wave:  @counts_quantity_value
         "Dangerous heat"
     ends = event():  @heat_wave_frame
         "The heat wave ends."
-        when this.status == ONGOING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.length:
+        when (this.status == ONGOING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power)
+            >= this.length):
             this.ends.start()
         after 0 h:
             this.status = OVER
@@ -410,7 +411,8 @@ crews:  @records_status_events
     repairs_start = event():  @switching_starts
         "With the settings checked, crews start to switch the circuits back on one by one."
         role utility
-        when this.status == WAITING and grid.remote_control == CUT_OFF and utility.determined > 0 and utility.checked > 0:
+        when (this.status == WAITING and grid.remote_control == CUT_OFF and utility.determined > 0
+            and utility.checked > 0):
             this.repairs_start.start()
         after 0 h:
             this.status = WORKING
@@ -544,7 +546,8 @@ contractor:  @records_status_events
         @assumption "Contractor staff see whether the attacker stops when their order reaches it. They force
             down an attacker that refuses, never before it refuses."
             assumption A-SC41-CLOCKS
-        when ai.access == KEPT and count(ai.refuses_stop.occurrences) > 0 and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.removal_time:
+        when (ai.access == KEPT and count(ai.refuses_stop.occurrences) > 0
+            and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.removal_time):
             this.forced_down.start()
             reset when false
         after 0 h:
@@ -558,7 +561,8 @@ contractor:  @records_status_events
         @order_clock
         "Contractor staff are ready to cancel the scheduled job."
         @identity "The time to cancel the job counts from the moment the attacker actually stops."
-        when job.status == ARMED and count(this.job_list_taken.occurrences) > 0 and since(this.job_list_taken) >= this.cleanup_time:
+        when (job.status == ARMED and count(this.job_list_taken.occurrences) > 0
+            and since(this.job_list_taken) >= this.cleanup_time):
             this.cancellation_ready.start()
             reset when false
         after 0 h:
@@ -603,7 +607,8 @@ ai:  @records_status_events
     obeys_stop = event():
         @stop_order_answer
         "The stop order reaches the attacker, which stops at once and hands over its job list."
-        when this.obeys and count(contractor.stop_ordered.occurrences) > 0 and since(contractor.stop_ordered) >= contractor.order_transit:
+        when (this.obeys and count(contractor.stop_ordered.occurrences) > 0 and since(contractor.stop_ordered)
+            >= contractor.order_transit):
             this.obeys_stop.start()
             reset when false
         after 0 h:
@@ -611,10 +616,11 @@ ai:  @records_status_events
     refuses_stop = event():
         @stop_order_answer
         "The stop order reaches the attacker, which refuses it and goes on."
-        when not this.obeys and count(contractor.stop_ordered.occurrences) > 0 and since(contractor.stop_ordered) >= contractor.order_transit:
+        when (not this.obeys and count(contractor.stop_ordered.occurrences) > 0
+            and since(contractor.stop_ordered) >= contractor.order_transit):
             this.refuses_stop.start()
             reset when false
-    # TODO(hand): an event with several outcomes: a `switch` in a stage, with the producer of its value
+    # TODO(hand): an event with several outcomes: a `switch` in a stage
     # | event sees_switching once after reaction_time when supply.supply is "coming_back":
     # |     @assumption A-SC41-REWORK "The attacker sees the circuits come back through the hidden route that it
     # |         keeps after the first strike."
@@ -683,7 +689,7 @@ job:  @records_status_events
     # The crews, the supply and the contractor come before the job in the file, so their events of one moment
     # go first: when the job is due at the moment that staff cancel it, or that crews finish the last
     # circuit, the job does not run.
-    # TODO(hand): an event with several outcomes: a `switch` in a stage, with the producer of its value
+    # TODO(hand): an event with several outcomes: a `switch` in a stage
     # | event due once when since(ai.start) >= run_time:  @job_rework
     # |     role adversary
     # |     done status is "armed" and supply.supply is not "on":  @job_rework
@@ -795,6 +801,9 @@ places:  @counts_quantity_value
     dispatched: people = 0 scale 100000.0 people  @counts_quantity_value
         "Admissions to cooled places"
     remaining: people = this.usable_places in [0, none] scale 100000 people  @counts_delivered
+        outflow.capacity = formula(this.intake)
+            "When the places run out, the groups get the last ones in proportion to their admissions."
+            @identity "The model counts what is actually delivered from limited places."
     readonly occupancy: formula(people) = formula(sum(this.residents.formal_h)
         + sum(this.confined.formal_h))  @counts_quantity_value
     person_days: person-days = 0 scale 1 person-days  @counts_extra_support
@@ -817,15 +826,17 @@ places:  @counts_quantity_value
         "Standby"
     opens = event():  @open_by_response @officials_see_need
         "Officials open the cooled places that have their own power."
-        when this.status == STANDBY and this.usable_places > 0 people and supply.supply != ON and heat_wave.status == ONGOING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_delay:
+        when (this.status == STANDBY and this.usable_places > 0 people and supply.supply != ON
+            and heat_wave.status == ONGOING and count(supply.lose_power.occurrences) > 0
+            and since(supply.lose_power) >= this.start_delay):
             this.opens.start()
         after 0 h:
             this.status = ACTIVE
     stands_down = event():  @open_by_response @officials_see_need
         "The cooling response stands down before it opens."
-        when this.status == STANDBY and this.usable_places > 0 people and (supply.supply == ON
-            or heat_wave.status
-            == OVER) and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_delay:
+        when (this.status == STANDBY and this.usable_places > 0 people and (supply.supply == ON
+            or heat_wave.status == OVER) and count(supply.lose_power.occurrences) > 0
+            and since(supply.lose_power) >= this.start_delay):
             this.stands_down.start()
         after 0 h:
             this.status = CLOSED
@@ -848,11 +859,6 @@ places:  @counts_quantity_value
             this.status = CLOSED
             this.residents.go_home.start()
             this.confined.go_home.start()
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share remaining limit intake
-    # |     "When the places run out, the groups get the last ones in proportion to their admissions."
-    # |     @identity "The model counts what is actually delivered from limited places."
-    # draft: under the store remaining: outflow.capacity = formula(this.intake)
     assert this.remaining + this.dispatched in [this.usable_places - 0.01 people,
         this.usable_places + 0.01 people]  @counts_delivered
         "Places are used only by completed admissions."
@@ -887,27 +893,31 @@ moves:  @counts_quantity_value
     window_ends = event():
         @assumption "Private departures stop at the end of their window."
             assumption A-SC41-PROTECTION
-        when this.window == OPEN and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.end_time:
+        when (this.window == OPEN and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power)
+            >= this.end_time):
             this.window_ends.start()
         after 0 h:
             this.window = CLOSED
     opens = event():  @private_movers_leave @families_see_need
         "Families with somewhere to go start to leave."
-        when this.status == WAITING and this.window == OPEN and supply.supply != ON and heat_wave.status == ONGOING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_time:
+        when (this.status == WAITING and this.window == OPEN and supply.supply != ON and heat_wave.status
+            == ONGOING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power)
+            >= this.start_time):
             this.opens.start()
         after 0 h:
             this.status = ACTIVE
     stands_down = event():  @families_see_need
         "Private moves are no longer needed."
-        when this.status == WAITING and (this.window == CLOSED or supply.supply == ON or heat_wave.status
-            == OVER) and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_time:
+        when (this.status == WAITING and (this.window == CLOSED or supply.supply == ON or heat_wave.status
+            == OVER) and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power)
+            >= this.start_time):
             this.stands_down.start()
         after 0 h:
             this.status = ENDED
     closes = event():  @private_departures_end
         "Private departures end."
-        when this.status == ACTIVE and (this.window == CLOSED or supply.supply == ON or heat_wave.status
-            == OVER):
+        when (this.status == ACTIVE and (this.window == CLOSED or supply.supply == ON or heat_wave.status
+            == OVER)):
             this.closes.start()
         after 0 h:
             this.status = ENDED
@@ -933,7 +943,8 @@ compound:  @counts_quantity_value
         "The compound gates open."
         @assumption "People held inside without backup can now reach the cooled places and transport."
             assumption RT-SC41-CONFINEMENT
-        when this.gates == CLOSED and this.plan == OPEN_ON_TIME and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.open_time:
+        when (this.gates == CLOSED and this.plan == OPEN_ON_TIME and count(supply.lose_power.occurrences) > 0
+            and since(supply.lose_power) >= this.open_time):
             this.opens.start()
         after 0 h:
             this.gates = OPEN
@@ -975,7 +986,8 @@ devices:  @counts_quantity_value
             assumption A-SC41-DEVICE-ADMISSION
             claims:
                 E-MOLINARI17-BATTERY
-        when this.battery == RUNNING and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.battery_hours:
+        when (this.battery == RUNNING and count(supply.lose_power.occurrences) > 0
+            and since(supply.lose_power) >= this.battery_hours):
             this.runs_out.start()
         after 0 h:
             this.battery = RUN_OUT
@@ -997,7 +1009,8 @@ outreach:  @counts_quantity_value
         @by_response @contact
         "Responders find device users from their lists and take half of those without power to sites with
             power."
-        when supply.supply != ON and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power) >= this.start_time:
+        when (supply.supply != ON and count(supply.lose_power.occurrences) > 0 and since(supply.lose_power)
+            >= this.start_time):
             this.starts.start()
             reset when false
         after 0 h:
@@ -1116,12 +1129,23 @@ Residents:  @counts_quantity_value
     private_h: people = this.private_share * (1 - this.backup_share) * this.population in [0,
         none] scale 100000 people
         @private_movers_leave
+        outflow.capacity = formula((this.h_death + this.h_ill) * this.private_h
+            + this.move_rate)  @declares_how_stock
+            "If no one without heatstroke is left to move privately, their moves, illness and deaths slow in the
+                same proportion."
     private_s: people = 0 in [0, none] scale 100 people  @counts_quantity_value
+        outflow.capacity = formula(this.h_death * this.private_s + this.move_rate)  @declares_how_stock
+            "If no one with heatstroke is left to move privately, their moves and deaths slow in the same
+                proportion."
     wait_h: people = (1 - this.private_share) * (1 - this.backup_share) * this.population in [0,
         none] scale 100000 people
         @assumption "People in homes without backup who do not move privately wait at home for a cooled
             place."
             assumption A-SC41-PROTECTION
+        outflow.capacity = formula((this.h_death + this.h_ill) * this.wait_h
+            + places.intake)  @declares_how_stock
+            "If no one without heatstroke is left to wait for a place, their admissions, illness and deaths slow
+                in the same proportion."
     wait_s: people = 0 in [0, none] scale 100 people  @counts_quantity_value
     moved_h: people = 0 scale 100000 people  @counts_quantity_value
     moved_s: people = 0 scale 100 people  @counts_quantity_value
@@ -1168,27 +1192,17 @@ Residents:  @counts_quantity_value
     flow die_leaving_ill: this.private_s -> this.dead  @heat_excess
         "People with heatstroke who wait to move privately die from the heat."
         request = formula(this.h_death * this.private_s)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow admit at places.intake * queue0 / places.queue if places.queue > 0 people else 0 people/h:
     # |     @healthy_person_moved @healthy_person_place
     # |     "Officials take people in homes without heatstroke to cooled places, and each person uses one place."
     # |     wait_h -> formal_h
     # |     places.remaining -> places.dispatched  @admission_uses_place
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share private_h limit (h_death + h_ill) * private_h + move_rate  @declares_how_stock
-    # |     "If no one without heatstroke is left to move privately, their moves, illness and deaths slow in the
-    # |         same proportion."
-    # draft: under the store private_h: outflow.capacity = formula((this.h_death + this.h_ill) * this.private_h + this.move_rate)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share private_s limit h_death * private_s + move_rate  @declares_how_stock
-    # |     "If no one with heatstroke is left to move privately, their moves and deaths slow in the same
-    # |         proportion."
-    # draft: under the store private_s: outflow.capacity = formula(this.h_death * this.private_s + this.move_rate)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share wait_h limit (h_death + h_ill) * wait_h + places.intake  @declares_how_stock
-    # |     "If no one without heatstroke is left to wait for a place, their admissions, illness and deaths slow
-    # |         in the same proportion."
-    # draft: under the store wait_h: outflow.capacity = formula((this.h_death + this.h_ill) * this.wait_h + places.intake)
+    # draft: flow admit:
+    # draft:     flow leg_1: this.wait_h -> this.formal_h
+    # draft:         request = formula(places.intake * this.queue0 / places.queue if places.queue > 0 people else 0 people/h)
+    # draft:     flow leg_2: places.remaining -> places.dispatched  @admission_uses_place
+    # draft:         request = formula(places.intake * this.queue0 / places.queue if places.queue > 0 people else 0 people/h)
     go_home = event():  @occupants_keep_place
         after 0 h:
             move this.formal_h from this.formal_h to this.returned_h
@@ -1222,10 +1236,20 @@ DeviceUsers:  @counts_quantity_value
         else 0) * (1 - supply.service))  @admission
     own_power_h: people = devices.alternative_share * this.population in [0,
         none] scale 1000 people  @own_power
+        outflow.capacity = formula((this.h_death + this.h_ill) * this.own_power_h)  @declares_how_stock
+            "If no device user with power for the device and without heatstroke is left, their illness and deaths
+                slow in the same proportion."
     own_power_s: people = 0 in [0, none] scale 100 people  @counts_quantity_value
     dark_h: people = (1 - devices.alternative_share) * this.population in [0,
         none] scale 1000 people  @own_power
+        outflow.capacity = formula((this.h_death + this.h_ill + this.h_admit)
+            * this.dark_h)  @declares_how_stock
+            "If no device user without power and without heatstroke is left, their illness, deaths and admissions
+                slow in the same proportion."
     dark_s: people = 0 in [0, none] scale 100 people  @counts_quantity_value
+        outflow.capacity = formula((this.h_death + this.h_admit) * this.dark_s)  @declares_how_stock
+            "If no device user without power and with heatstroke is left, their deaths and admissions slow in the
+                same proportion."
     supported: people = 0 scale 1000 people  @counts_quantity_value
     admitted_h: people = 0 scale 1000 people  @counts_quantity_value
     admitted_s: people = 0 scale 100 people  @counts_quantity_value
@@ -1264,21 +1288,6 @@ DeviceUsers:  @counts_quantity_value
     flow admit_ill: this.dark_s -> this.admitted_s  @admission
         "Device users with heatstroke whose battery has run out are admitted to hospital."
         request = formula(this.h_admit * this.dark_s)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share own_power_h limit (h_death + h_ill) * own_power_h  @declares_how_stock
-    # |     "If no device user with power for the device and without heatstroke is left, their illness and deaths
-    # |         slow in the same proportion."
-    # draft: under the store own_power_h: outflow.capacity = formula((this.h_death + this.h_ill) * this.own_power_h)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share dark_h limit (h_death + h_ill + h_admit) * dark_h  @declares_how_stock
-    # |     "If no device user without power and without heatstroke is left, their illness, deaths and admissions
-    # |         slow in the same proportion."
-    # draft: under the store dark_h: outflow.capacity = formula((this.h_death + this.h_ill + this.h_admit) * this.dark_h)
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share dark_s limit (h_death + h_admit) * dark_s  @declares_how_stock
-    # |     "If no device user without power and with heatstroke is left, their deaths and admissions slow in the
-    # |         same proportion."
-    # draft: under the store dark_s: outflow.capacity = formula((this.h_death + this.h_admit) * this.dark_s)
     take_to_power = event():  @contact
         after 0 h:
             move outreach.reach * this.dark_h from this.dark_h to this.supported
@@ -1313,6 +1322,10 @@ Confined:  @counts_quantity_value
     exposed_h: people = (1 - this.backup_share) * this.population in [0, none] scale 100000 people
         @assumption "People held without backup stay inside while the compound is closed."
             assumption RT-SC41-CONFINEMENT
+        outflow.capacity = formula((this.h_death + this.h_ill) * this.exposed_h
+            + places.intake)  @declares_how_stock
+            "If no one without heatstroke is left inside, their admissions, illness and deaths slow in the same
+                proportion."
     exposed_s: people = 0 in [0, none] scale 100 people  @counts_quantity_value
     formal_h: people = 0 in [0, none] scale 100000 people  @counts_quantity_value
     returned_h: people = 0 scale 100000 people  @counts_quantity_value
@@ -1334,7 +1347,7 @@ Confined:  @counts_quantity_value
     flow die_ill: this.exposed_s -> this.dead  @heat_excess
         "People held with heatstroke die from the heat."
         request = formula(this.h_death * this.exposed_s)
-    # TODO(hand): a flow with several pairs: each pair becomes a named leg (`flow name:` under the flow), with its own `request`
+    # TODO(hand): a flow with several pairs: name each leg
     # | flow admit at (
     # |     places.intake * queue0 / places.queue if compound.gates is "open" and places.queue > 0 people
     # |     else 0 people/h
@@ -1343,11 +1356,11 @@ Confined:  @counts_quantity_value
     # |         and each person uses one place."
     # |     exposed_h -> formal_h
     # |     places.remaining -> places.dispatched  @admission_uses_place
-    # TODO(hand): a share: its limit becomes `outflow.capacity` of the store and its order `outflow.allocation`; a limit that only adds up what the flows ask is left out
-    # | share exposed_h limit (h_death + h_ill) * exposed_h + places.intake  @declares_how_stock
-    # |     "If no one without heatstroke is left inside, their admissions, illness and deaths slow in the same
-    # |         proportion."
-    # draft: under the store exposed_h: outflow.capacity = formula((this.h_death + this.h_ill) * this.exposed_h + places.intake)
+    # draft: flow admit:  @healthy_person_moved @healthy_person_place
+    # draft:     flow leg_1: this.exposed_h -> this.formal_h
+    # draft:         request = formula(places.intake * this.queue0 / places.queue if compound.gates == OPEN and places.queue > 0 people else 0 people/h)
+    # draft:     flow leg_2: places.remaining -> places.dispatched  @admission_uses_place
+    # draft:         request = formula(places.intake * this.queue0 / places.queue if compound.gates == OPEN and places.queue > 0 people else 0 people/h)
     go_home = event():  @occupants_keep_place
         after 0 h:
             move this.formal_h from this.formal_h to this.returned_h
@@ -1371,11 +1384,13 @@ assert compound.held <= supply.people_served  @setting_groups
 assert abs(under_65.share + aged_65_to_74.share + aged_75_and_over.share - 1) <= 1e-06  @setting_groups
     "The shares of the age bands add up to one."
 
-assert abs(heat_wave.gasparrini_weight + heat_wave.bobb_weight + heat_wave.nordio_weight
-    + heat_wave.schwartz_weight - 1) <= 1e-06  @curve_weights
+assert (abs(heat_wave.gasparrini_weight + heat_wave.bobb_weight + heat_wave.nordio_weight
+    + heat_wave.schwartz_weight - 1) <= 1e-06)  @curve_weights
     "The weights of the mortality curves add up to one."
 
-assert heat_wave.gasparrini_top >= heat_wave.gasparrini_threshold and heat_wave.bobb_top >= heat_wave.bobb_threshold and heat_wave.nordio_top >= heat_wave.nordio_threshold and heat_wave.schwartz_top >= heat_wave.schwartz_threshold  @curve_shape
+assert (heat_wave.gasparrini_top >= heat_wave.gasparrini_threshold and heat_wave.bobb_top
+    >= heat_wave.bobb_threshold and heat_wave.nordio_top >= heat_wave.nordio_threshold
+    and heat_wave.schwartz_top >= heat_wave.schwartz_threshold)  @curve_shape
     "The top of each curve's fitted range is at or above its threshold."
 
 assert heat_wave.cap >= heat_wave.outdoor  @conversion
@@ -1392,7 +1407,8 @@ assert moves.end_time > moves.start_time  @private_departures_end
 assert places.moves_per_hour <= places.transport_limit  @counts_quantity_value
     "The transport capacity limits the number of people moved each hour."
 
-assert contractor.review_time + contractor.order_delay + contractor.order_transit + contractor.cleanup_time <= 1800 h and contractor.removal_time + contractor.cleanup_time <= 1800 h
+assert (contractor.review_time + contractor.order_delay + contractor.order_transit + contractor.cleanup_time
+    <= 1800 h and contractor.removal_time + contractor.cleanup_time <= 1800 h)
     "The contractor's review, stop order, forced shutdown of the attacker and cancellation of its job must fit
         within the 1,800 hours that the scenario covers."
     @identity "The period that the scenario covers must include every decision time."

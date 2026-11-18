@@ -671,67 +671,90 @@ def text_text(value):
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
 
-def write(node, level=TEST):
+def write(node, level=TEST, bare_in=True):
     """An expression as the notation writes it, with the brackets that the levels of binding need and
-    no others. `parse_expression(write(node))` is the node again (`check.py` tests it)."""
-    own, written = _write(node)
-    return f'({written})' if level > own else written
+    no others. `parse_expression(write(node))` is the node again (`check.py` tests it). With `bare_in`
+    false the text is the value of a declaration or of an assignment, where a membership test stands
+    in brackets: `parse_expression(write(node, bare_in=False), bare_in=False)` is the node again."""
+    own = level_of(node)
+    if level > own:
+        return f'({_write(node, True)})'
+    return _write(node, bare_in)
 
 
-def _write(node):
+def level_of(node):
+    """The level of binding of a node."""
+    if isinstance(node, expr.Unary):
+        return LEVELS[node.op]
+    if isinstance(node, expr.Binary):
+        return LEVELS[node.op]
+    if isinstance(node, (expr.Compare, Within)):
+        return CMP
+    if isinstance(node, expr.BoolOp):
+        return OR if node.op == 'or' else AND
+    if isinstance(node, expr.IfElse):
+        return TEST
+    return ATOM
+
+
+def _write(node, bare_in):
     if isinstance(node, expr.Ref):
-        return ATOM, node.name
+        return node.name
     if isinstance(node, Case):
-        return ATOM, node.name
+        return node.name
     if isinstance(node, Absent):
-        return ATOM, 'none'
+        return 'none'
     if isinstance(node, expr.Const):
         value = node.value
         if value is True or value is False:
-            return ATOM, 'true' if value else 'false'
-        return ATOM, text_text(value) if isinstance(value, str) else number_text(value)
+            return 'true' if value else 'false'
+        return text_text(value) if isinstance(value, str) else number_text(value)
     if isinstance(node, Quantity):
-        return ATOM, f'{number_text(node.number.value)} {node.unit}'
+        return f'{number_text(node.number.value)} {node.unit}'
     if isinstance(node, expr.Unary):
         own = LEVELS[node.op]
         if node.op == 'not':
-            return own, f'not {write(node.operand, own)}'
-        return own, expr.SYMBOLS[node.op] + write(node.operand, own)
+            return f'not {write(node.operand, own, bare_in)}'
+        return expr.SYMBOLS[node.op] + write(node.operand, own)
     if isinstance(node, expr.Binary):
         own = LEVELS[node.op]
         if node.op == 'pow':  # the base is a value with no operator; the exponent can have a sign
             base = f'({write(node.left)})' if isinstance(node.left, Quantity) else write(node.left, ATOM)
-            return own, f'{base} ** {write(node.right, FACTOR)}'
+            return f'{base} ** {write(node.right, FACTOR)}'
         right = write(node.right, own + 1)
         if node.op in ('mul', 'div') and isinstance(node.right, Quantity):
             # `x / 2 h` reads as `x / (2 h)`; the brackets say so to a reader, as the spec writes them.
             right = f'({right})'
-        return own, f'{write(node.left, own)} {expr.SYMBOLS[node.op]} {right}'
+        return f'{write(node.left, own)} {expr.SYMBOLS[node.op]} {right}'
     if isinstance(node, expr.Compare):
         written = write(node.operands[0], ARITH)
         for op, operand in zip(node.ops, node.operands[1:]):
             written += f' {expr.SYMBOLS[op]} {write(operand, ARITH)}'
-        return CMP, written
+        return written
     if isinstance(node, Within):
-        return CMP, f'{write(node.value, ARITH)} in [{write(node.low)}, {write(node.high)}]'
+        written = f'{write(node.value, ARITH)} in [{write(node.low)}, {write(node.high)}]'
+        return written if bare_in else f'({written})'
     if isinstance(node, expr.BoolOp):
         own = OR if node.op == 'or' else AND
-        return own, f' {node.op} '.join(write(value, own + 1) for value in node.values)
+        return f' {node.op} '.join(write(value, own + 1, bare_in) for value in node.values)
     if isinstance(node, expr.IfElse):
-        return TEST, f'{write(node.body, OR)} if {write(node.test, OR)} else {write(node.orelse, TEST)}'
+        return (
+            f'{write(node.body, OR, bare_in)} if {write(node.test, OR, bare_in)} '
+            f'else {write(node.orelse, TEST, bare_in)}'
+        )
     if isinstance(node, expr.Call):
-        return ATOM, f'{node.function}({", ".join(write(arg) for arg in node.args)})'
+        return f'{node.function}({", ".join(write(arg) for arg in node.args)})'
     if isinstance(node, Formula):
-        return ATOM, f'formula({write(node.body)})'
+        return f'formula({write(node.body)})'
     if isinstance(node, Collection):
-        return ATOM, '<' + ', '.join(write(item, ATOM) for item in node.items) + '>'
+        return '<' + ', '.join(write(item, ATOM) for item in node.items) + '>'
     if isinstance(node, (Member, Method)):
         base = write(node.base, ATOM)
         if isinstance(node.base, (Quantity, expr.Const)):
             base = f'({base})'  # `2 h.x` and `2.x` do not read as a member of a number
         if isinstance(node, Member):
-            return ATOM, f'{base}.{node.name}'
-        return ATOM, f'{base}.{node.name}({", ".join(write(arg) for arg in node.args)})'
+            return f'{base}.{node.name}'
+        return f'{base}.{node.name}({", ".join(write(arg) for arg in node.args)})'
     raise TypeError(f'no text for {type(node).__name__}')
 
 
@@ -2595,6 +2618,10 @@ def show(value):
     return repr(value)
 
 
+# The nodes whose value stands after `=`, where a membership test is written in brackets.
+AFTER_EQUALS = (Declare, Assign, Capture, Property, Unknown)
+
+
 def dump(node, depth=0):
     """The tree as indented lines: each node with its fields, then the nodes under it."""
     pad = '  ' * depth
@@ -2620,6 +2647,8 @@ def dump(node, depth=0):
                 under.append((item.name, value))
         elif item.name == 'text':
             head.append(f'text={text_text(value)}')
+        elif item.name == 'value' and isinstance(value, expr.Node) and isinstance(node, AFTER_EQUALS):
+            head.append(f'value={write(value, bare_in=False)}')
         else:
             head.append(f'{item.name}={show(value)}')
     out = [pad + ' '.join(head)]
