@@ -3,30 +3,18 @@ given"): the firings that go by chance take the outcomes that a caller gives, an
 each such firing with its chances.
 
 The oracles are the rule in words (a sample takes the first outcome whose running total of the
-chances is above its uniform number), written again here with exact fractions, and closed forms
-of small models: a clock that ticks each hour and adds to a total with one outcome, and a tank
-that fills at a constant pace and doubles its level at one time or not.
+chances is above its uniform number), written again here with exact fractions, and the closed form
+of a small model: a clock that ticks each hour and adds to a total with one outcome.
 """
 
 from fractions import Fraction
 from itertools import pairwise
 
-import numpy as np
 import pytest
 
-from napkin.engine import timeline
 from napkin.engine.timeline.run import shares
 from napkin.engine.uncertainty import run_sample
-from napkin.model import hybrid
 from tests.build import block, compiled, document, entity, output, parameter, stock
-
-HEAD = """scenario "A synthetic model"
-    summary "A model of a test, with no source."
-    horizon 10 days
-    scope "Nothing: the model is synthetic."
-
-"""
-RECORD = '\nrecord shape: assumption "A synthetic model, with no source."\n'
 
 
 def taken_by_a_sample(chances, u):
@@ -106,11 +94,10 @@ def test_a_run_takes_the_given_outcomes_and_then_the_likeliest(places):
     firings: its event, the chances 0.3 and 0.7, and the place that it took."""
     total, firings = total_of(compiled(ticks()), places)
     assert total == 2 * places.count(0)
-    assert [name for name, _, _, _ in firings] == ['shop.tick'] * 6
-    assert [place for _, _, place, _ in firings] == [*places, *[1] * (6 - len(places))]
-    for _, chances, _, slopes in firings:
+    assert [name for name, _, _ in firings] == ['shop.tick'] * 6
+    assert [place for _, _, place in firings] == [*places, *[1] * (6 - len(places))]
+    for _, chances, _ in firings:
         assert chances == pytest.approx((0.3, 0.7), abs=1e-15)
-        assert slopes is None  # the run carries no derivative
 
 
 def test_more_given_outcomes_than_firings_change_nothing():
@@ -135,55 +122,3 @@ def test_a_run_with_no_given_outcomes_keeps_no_firing_and_is_the_central_run():
     assert 'firings' not in plain and len(given['firings']) == 6
     assert plain['rows'] == given['rows']
     assert plain['events'] == given['events'] == {'shop.tick': {'hit': 0, 'miss': 6}}
-
-
-CHANCE = """tank:  @shape
-    "A tank that fills, with an event that doubles its level or not."
-    input first_at: h = 30 h in 0 h to 200 h  @shape
-    input odds: fraction = 0.7 in 0 to 1  @shape
-    input pace: fraction/h = 0.01 fraction/h in 0 fraction/h to 1 fraction/h  @shape
-    var level: fraction = 0 size 100  @shape
-    flow fill: -> level at pace
-    event attempt once when t >= first_at:  @shape
-        "The level doubles, or nothing happens."
-        doubled odds * (1 - level):
-            level = 2 * level
-        nothing else:
-
-output level: fraction = tank.level  @shape
-    "Level"
-    level
-"""
-INPUTS = ('tank.first_at', 'tank.odds', 'tank.pace')
-
-
-def test_a_run_with_directions_keeps_the_derivative_of_each_chance_and_of_each_path(tmp_path):
-    """The tank has the level `r a` at the time a of its event (pace r). The chance of the
-    doubling is `p (1 - r a)`, and that of nothing is the rest, so the derivatives of the first
-    chance by (a, p, r) are `(-p r, 1 - r a, -p a)` and those of the second the same with the
-    other sign. At the horizon T the level is `r a + r T` with the doubling and `r T` without:
-    the derivatives by (a, p, r) are `(r, 0, a + T)` and `(0, 0, T)`."""
-    path = tmp_path / 'model.scn'
-    path.write_text(HEAD + CHANCE + RECORD, encoding='utf-8')
-    plan = timeline.Plan.of(hybrid.compile(path))
-    a, p, r, hours = 30.0, 0.7, 0.01, 240.0
-    values = {'tank.first_at': a, 'tank.odds': p, 'tank.pace': r}
-    chance = p * (1 - r * a)
-    for place, level, exact in (
-        (0, r * a + r * hours, (r, 0.0, a + hours)),
-        (1, r * hours, (0.0, 0.0, hours)),
-    ):
-        made = timeline.run(plan, values, directions=INPUTS, outcomes=(place,))
-        ((name, chances, took, slopes),) = made.firings
-        assert (name, took) == ('tank.attempt', place)
-        assert chances == pytest.approx((chance, 1 - chance), rel=1e-12)
-        assert slopes[0] == pytest.approx((-p * r, 1 - r * a, -p * a), rel=1e-12)
-        assert slopes[1] == pytest.approx((p * r, -(1 - r * a), p * a), rel=1e-12)
-        assert made.outputs['level'] == pytest.approx(level, rel=1e-12)
-        found = [made.tangents[name]['level'] for name in INPUTS]
-        assert found == pytest.approx(exact, rel=1e-12, abs=1e-15)
-        # The outcome is given: the run does not note that two outcomes are as likely.
-        assert not [note for note in made.notes if note[0] == 'outcome']
-    # The central run takes the likelier outcome: the doubling, with the chance 0.49, is not it.
-    assert timeline.run(plan, values).outputs['level'] == pytest.approx(r * hours, rel=1e-12)
-    assert np.isclose(chance, 0.49)

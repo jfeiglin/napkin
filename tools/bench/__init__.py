@@ -74,12 +74,9 @@ Three fresh processes measure each workload and run (`measure.py`), and the docu
   processes of the pool, each of which compiles the model (`first_seconds`), and `processes` is the
   size of the pool after it. The peak memory is that of the third process, without the processes of
   the pool. A run that the study does not sample (no uncertain input, and no event by chance) is
-  skipped, and says so;
-- `derivative`: `{"available": false}`. The benchmark does not measure the derivatives of a run yet
-  (`napkin/engine/timeline/derivatives.py`): this slot is for them.
+  skipped, and says so.
 
-One run and a batch are apart, cold and warm are apart, and values and derivatives are apart, so no
-number adds two of them.
+One run and a batch are apart, and cold and warm are apart, so no number adds two of them.
 
 A measurement that fails is a record, `{"failed": "<ExceptionType>: <message>"}`, and the harness
 goes on: a model that does not compile, a run that stops, a process that ends before its result, and

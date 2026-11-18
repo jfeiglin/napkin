@@ -100,8 +100,6 @@ LINEAR = ('SuperLU', '_superlu', '_umath_linalg', 'lapack', 'blas')
 LONGEST = 300
 SHOWN = 120
 STUDY_SEED = 0
-# The slot of the derivatives of a workload: the benchmark does not measure them yet.
-NO_DERIVATIVE = {'available': False}
 # The slot of the shape classes of a compile, for a workload with no table: the rows of a table are
 # what the compiler groups in classes (`napkin/model/hybrid.py`), so such a workload has none to build.
 NO_SHAPE_CLASSES = {'available': False}
@@ -715,8 +713,8 @@ def _shown(workload, root):
 
 def record(workload, run, compiled, first, warmed, root=ROOT, classes=None):
     """The record of one workload and run in the document. One run and a batch are apart (`one_run`,
-    `batch`), cold and warm are apart, and values and derivatives are apart. `classes` is what the
-    hybrid core of a workload with a table took (`classes_task`)."""
+    `batch`), and cold and warm are apart. `classes` is what the hybrid core of a workload with a
+    table took (`classes_task`)."""
     return {
         'kind': workload.kind,
         'name': workload.name,
@@ -737,7 +735,6 @@ def record(workload, run, compiled, first, warmed, root=ROOT, classes=None):
             'every_run': warmed['every_run'],
             'batch': warmed['batch'],
         },
-        'derivative': dict(NO_DERIVATIVE),
     }
 
 

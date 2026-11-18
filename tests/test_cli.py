@@ -988,10 +988,6 @@ FLAGS = {
             'target': 'pkg',
         },
     ),
-    'derivatives': (
-        '--variant v --run a --input x.y --input z --json pkg',
-        {'variant': 'v', 'run': 'a', 'input': ['x.y', 'z'], 'json': True, 'target': 'pkg'},
-    ),
     'draw': (
         '--variant v --run a --style s.toml -o j.svg --latex j.tex pkg',
         {
@@ -1023,7 +1019,6 @@ DEFAULTS = {
         {'run': None, 'option': [], 'set': [], 'picks': None, 'save': None, 'json': False},
     ),
     'sample': ('--run a', {'samples': 200, 'seed': 0, 'jobs': None, 'at': None, 'exceed': [], 'json': False}),
-    'derivatives': ('', {'variant': None, 'run': None, 'input': [], 'json': False, 'target': '.'}),
     'draw': ('', {'run': None, 'style': None, 'output': None, 'latex': None, 'target': '.'}),
     'new': ('demo', {'title': None, 'variants': None}),
     'fmt': ('', {'check': False, 'paths': []}),

@@ -1166,9 +1166,7 @@ The engine makes a plan of the resolved run and runs it
    writes one of them: the step of `close` at 6 h.
 
 The things of a model with no table are one space of the plan. By default that space is in the
-general tier, where the allocation in full gives the rates of the flows. The same plan with the
-space in the fast tier (`Plan.fast`) holds each of the three stocks as a line between two moments,
-and it gives the same outcomes.
+general tier, where the allocation in full gives the rates of the flows.
 
 ```python
 from napkin.engine import timeline
@@ -1184,9 +1182,6 @@ print([str(node) for node in rules['clinic.review'].each])
 result = timeline.run(plan)
 print([(time, rule) for time, rule, _ in result.trace])
 print(result.outputs)
-fast = plan.fast()
-print({name: quantity.form for name, quantity in fast.quantities.items()})
-print(timeline.run(fast).outputs == result.outputs)
 ```
 
 ```
@@ -1195,8 +1190,6 @@ priority ('clinic.admit_a', 'clinic.admit_b') q(5, 'people/h')
 ['clinic.door']
 [(1.0, 'clinic.review'), (6.0, 'clinic.close'), (6.0, 'clinic.review'), (18.0, 'clinic.report')]
 {'clinic.ward_a.output': 48.0, 'clinic.ward_b.output': 12.0}
-{'clinic.waiting': 'line', 'clinic.ward_a': 'line', 'clinic.ward_b': 'line'}
-True
 ```
 
 ## What is not here yet

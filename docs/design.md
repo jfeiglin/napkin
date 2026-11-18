@@ -56,7 +56,8 @@ solver takes the steps that its error allows.
 
 **A derivative says of which kind it is.** A run with directions carries the derivative of each
 value on the path of its events. The report gives each derivative a class (smooth, one-sided,
-undefined, unsupported, structurally zero) and an estimate of its numerical error.
+undefined, unsupported, structurally zero) and an estimate of its numerical error. Whole-run
+derivatives are out for the rewrite of the language, and are rebuilt later.
 
 **An estimator is a claim of its own.** A study gives the mean with the error of independent
 samples. Each other estimator (Sobol' points, weighted outcomes, a control, the derivative of an

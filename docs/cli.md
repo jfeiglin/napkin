@@ -1,6 +1,6 @@
 # The napkin command
 
-`napkin COMMAND [ARGS] [TARGET]` compiles, runs, plays, samples, differentiates, draws, starts and
+`napkin COMMAND [ARGS] [TARGET]` compiles, runs, plays, samples, draws, starts and
 formats models in `.scn` files. `python -m napkin` is the same command. `napkin --help` lists the commands,
 `napkin COMMAND --help` gives the flags and an example of each command, and `napkin --version`
 gives the version:
@@ -16,7 +16,6 @@ $ napkin --version
 | [`run`](#napkin-run) | Runs the runs of a scenario and prints their outcomes |
 | [`play`](#napkin-play) | Runs one run step by step; you, or a program with `--json`, pick the decisions |
 | [`sample`](#napkin-sample) | Runs one run many times with drawn inputs, and prints the spread of each outcome |
-| [`derivatives`](#napkin-derivatives) | Gives the derivative of each outcome of one run by each input, with its class |
 | [`draw`](#napkin-draw) | Draws a static picture of the model as SVG |
 | [`new`](#napkin-new) | Starts a scenario that compiles and runs as written |
 | [`fmt`](#napkin-fmt) | Formats `.scn` files |
@@ -429,48 +428,6 @@ The spread is the spread of the inputs that the model or the edit document assum
 the model. It is not a measured interval. A spread takes about the time of one run, times the
 samples and the runs that the command samples, shared among the processes.
 
-## napkin derivatives
-
-```
-usage: napkin derivatives [-h] [--variant NAME] [--run NAME] [--input NAME]
-                          [--json]
-                          [TARGET]
-```
-
-`derivatives` runs one run and prints, for each outcome, its value at the end of the run and its
-derivative by each input: how much the outcome changes for one unit of the input, as the file
-writes the two. `--run` names the run; a model with one run needs no `--run`. `--input` names an
-input by its name in the model (`reservoir.inflow`), and can be given more than once; with none,
-the command takes every input.
-
-```
-$ napkin derivatives examples/reservoir
-run base: the derivative of each outcome at the end of the run, by each input
-
-Water let out over the spillway: 0.5 fraction
-  by reservoir.inflow         4.16667  fraction per fraction/day  [smooth]
-  by reservoir.spillway       3.33333  fraction per fraction/day  [smooth]
-  by reservoir.risk                 0  fraction per fraction  [structurally zero]
-  by operator.level              -2.5  fraction per fraction  [smooth]
-```
-
-Each derivative has a class, which says what the number is worth:
-
-| Class | What it means |
-| --- | --- |
-| `smooth` | The number is the derivative. A small change of the input changes the outcome by the number times the change. |
-| `one-sided` | The number is the derivative for changes of the input to one side only. On the other side another piece of an expression gives a value (`min`, `max`, a choice), a condition changes, two events at one time change their order, or the run takes another outcome. The line under the derivative says which. |
-| `undefined` | No number. The time of an event is not decided by the value that it waits for: the value comes to its mark with no rate, or stays within its tolerance of the mark for longer than one step. |
-| `unsupported` | No number. The engine carries no derivative through a part of this run, and names the part: a value that the run draws, a value of the past, a flow at the limit of its group, a stock that comes to rest on its bound, a decision that an actor makes, or a rate that jumps at a time that the input moves (a comparison in the rate whose two sides change their order). |
-| `structurally zero` | The number is 0 for every value of every input: nothing in the model leads from the input to the outcome. |
-
-The derivative is that of the run as it happened: the events of the run, in their order. It is
-not the derivative of a mean over samples (`napkin sample`), and a small change of an input can
-change which events happen. The class `one-sided` marks the places where the run sits on such a
-change.
-
-`--json` prints the report as one JSON document ([napkin derivatives --json](#napkin-derivatives---json)).
-
 ## napkin draw
 
 ```
@@ -757,24 +714,6 @@ One document: the envelope of the engine's report, `admitted_runs`, the `options
   there are enough samples, and `exceed`, one `{value, count, samples, chance}` for each `--exceed`.
 
 An outcome that is not estimated in every sample has the engine's statuses only, and no value.
-
-### napkin derivatives --json
-
-One document, the report of `napkin.engine.timeline.derivatives.report` with the name of the run:
-
-- `run`, and `inputs`, the inputs of the report in their order;
-- `outputs`: for each outcome its `value` at the end of the run, its `unit` and its `label`;
-  `unestimated` names the outcomes that the model does not estimate;
-- `derivatives`: for each outcome and each input, `value` (a number, or `null` for the classes
-  `undefined` and `unsupported`), `unit`, `class`, `why` (the reasons of the class, as texts) and
-  `error` (the distance of the value from that of a second run with tolerances a hundred times
-  tighter: an estimate of its numerical error, and no bound; `null` where there is no value);
-- `margins`: how near the run came to a change of class. `crossing_time_h` is the longest time in
-  which a crossing of the run is decided only within the tolerance of its value;
-  `moments_apart_h` is the least time between two moments with a step; `outcome` is the least
-  distance between the two likeliest outcomes of a firing. Each is `null` when the run has no
-  such case;
-- `unsupported`: the part through which the engine carries no derivative, or `null`.
 
 ### The play protocol
 

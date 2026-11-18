@@ -17,8 +17,8 @@ The things outside the tables are in this tier unless a plan says otherwise (`Pl
 - a **linear block** (`plan.Block.linear`) of one instance has a closed form between two moments:
   with `y' = A y + c`, the state at t is the first rows of `expm(M (t - t0)) [y0, 1]`, where M has A
   and c in its first rows and a last row of zeros. It is used when no state of it can leave its
-  bounds between two moments without the timeline knowing (`Run.decide`); else, and with tangents,
-  the solver integrates the segment.
+  bounds between two moments without the timeline knowing (`Run.decide`); else the solver
+  integrates the segment.
 
 One timeline holds the times at which a rule can become due: the time of a clock, the end of a delay,
 and the time at which a crossing reaches its value. A moment takes the times within 1e-8 h of the
@@ -27,13 +27,6 @@ parts that read what the step wrote are brought up to date: the rules are read a
 the blocks start again from the moment (D-65). `reading='every'` reads every rule at every moment
 and after every step, with the crossing due inside its tolerance band at any moment, as the engine
 before D-65 did: the checking mode runs both (`check`).
-
-With `directions` (names of inputs), the run carries the derivative of every value by each
-direction: the tangent, for one unit of the input as the file writes it. The direction of an input of
-a family moves the input of every instance together. The time of each event has a tangent too. A value at a moment is read with
-its total derivative along the event (`s + rate * dτ`), and a part that starts again at the moment
-gets `s⁺ = D - rate⁺ * dτ`, where `D` is the total derivative of its state at the event. That is the
-jump of a sensitivity at an event whose time moves with the input.
 """
 
 from __future__ import annotations
@@ -64,9 +57,7 @@ from ..continuous.integrate import STALLED_STEPS, Limit, apart
 from ..continuous.system import solver_step, step_cap
 from ..errors import SimulationError
 from ..sampling import draws
-from . import smooth
 from .component import Component
-from .places import output_place, rule_place
 from .plan import ALL, SAME, SCALARS, Outside
 from .trees import Pairwise
 
@@ -141,11 +132,10 @@ def _pairwise(values):
 
 @dataclass
 class Trial:
-    """The state of a numeric block that a solver tries: {name: values}, and for each direction the
-    tangents. `whole`: the values are of every instance of the space of each name."""
+    """The state of a numeric block that a solver tries: {name: values}. `whole`: the values are of
+    every instance of the space of each name."""
 
     values: dict
-    tangents: tuple
     whole: bool
 
 
@@ -251,17 +241,14 @@ class Past(Env):
 
 
 class RuleState:
-    def __init__(self, count, directions):
+    def __init__(self, count):
         self.armed = np.ones(count, dtype=bool)
         self.triggered = np.zeros(count, dtype=np.int64)
         self.pending = np.full(count, np.nan)
         self.version = np.zeros(count, dtype=np.int64)
         self.ready = np.zeros(count, dtype=np.int8)
-        self.own = np.zeros(count, dtype=np.int64)  # the moment at which its own time came
         self.reached = np.zeros(count, dtype=np.int64)  # the moment at which its crossing came
         self.window = np.empty(count, dtype=object)  # the values of its window when it triggered
-        self.cause = np.zeros((directions, count))
-        self.pending_dt = np.zeros((directions, count))
 
 
 class Solution:
@@ -299,10 +286,9 @@ class Solution:
 
     def tolerances(self):
         run = self.run
-        atol = np.concatenate(
+        return np.concatenate(
             [run.atol[name] if self.J is None else run.atol[name][self.J] for name in self.block.names]
         )
-        return np.tile(atol, 1 + len(run.directions))
 
     def advance(self):
         """One more step of the solver that the block uses. The step cap of the run is the interval
@@ -430,11 +416,9 @@ class Solution:
                     raise run.negative_flow(negative)
                 run.flowing |= positive
             self.settled = at
-            if run.noting:
-                run.block_ties(self, at, state)
 
     def at(self, t):
-        """The state of the block, with its tangents, at a time from its restart on."""
+        """The state of the block at a time from its restart on."""
         if t <= self.t0:
             return self.y0
         if self.mode is None:
@@ -519,13 +503,12 @@ class Solution:
 @dataclass
 class Result:
     """What a run gives: the events in their order, as (time, rule, outcome), where the outcome is
-    None for a rule that starts to wait; the value of each output at the horizon; for each direction
-    the derivative of each output; and the counts of the work."""
+    None for a rule that starts to wait; the value of each output at the horizon; and the counts of
+    the work."""
 
     horizon: float
     trace: list
     outputs: dict
-    tangents: dict
     counts: dict
     reading: str
     run: object = field(repr=False, default=None)
@@ -536,11 +519,6 @@ class Result:
     decision: dict | None = None
     paused: bool = False
     end_time: float | None = None
-    # A run with directions: what it met that says of which kind a derivative is, as (kind, the
-    # place of the direction, the places that the fact is of, a text), and its least margins
-    # (`Run.note`, `reports.derivatives`).
-    notes: tuple = ()
-    margins: dict = field(default_factory=dict)
     # A run with given outcomes (`Run.taken`): each firing that went by chance, in its order.
     firings: tuple = ()
 
@@ -624,7 +602,6 @@ class Run:
         *,
         settings=None,
         reading='scoped',
-        directions=(),
         adapter=None,
         luck=None,
         outcomes=None,
@@ -697,24 +674,10 @@ class Run:
             # The record has the segments of a component; the fast tier keeps no such segments.
             raise Outside('the whole record of a run with the things outside the tables in the fast tier')
         self.snapshots, self.after_steps, self.pieces = [], [], []
-        if self.control and directions:
-            raise Outside('the derivative of a played run')
-        if directions and plan.general:
-            # The part that only the general tier runs: the one that the plan met, or the one
-            # kind of part that puts a space there with no error (`Plan._couplings`).
-            parts = [why for space, why in getattr(plan, 'only_general', {}).items() if space in plan.general]
-            part = (
-                parts[0] if parts else 'flows that move by one fraction, with a flow of an allocation group'
-            )
-            raise Outside(f'the derivative of a run with a part that only the general tier runs: {part}')
-        if directions and any(rule.extras for rule in plan.rules):
-            raise Outside('the derivative of a run with a draw or a value of the past')
         self.cfg = NumericalSettings.parse(settings)
         self.adapter = adapter or solvers.DEFAULT
         self.registry = plan.units
         self.horizon, self.tolerance = plan.horizon, EVENT_TIME_TOLERANCE_H
-        self.directions = tuple(directions)
-        K = len(self.directions)
         self.v = {name: column.copy() for name, column in plan.values.items()}
         # A plan serves each run of its structure: `inputs` has the value of each input of this
         # run, in execution units.
@@ -745,21 +708,6 @@ class Run:
         # The cap is the interval at which the engine reads a numeric block; the solver's own
         # limit is that of the timescales that the run declares.
         self.solver_step = solver_step(self.timescales)
-        self.dv = [{} for _ in range(K)]
-        for k, name in enumerate(self.directions):
-            if name not in plan.parameter_scale:
-                raise KeyError(f'{name} is no input of the model')
-            # One unit of the input as the file writes it.
-            self.dv[k][name] = np.full(len(self.v[name]), plan.parameter_scale[name])
-        self.dnow = np.zeros(K)
-        # What the run meets that says of which kind a derivative is (`note`), what the parts in
-        # work are about (`about`), and the least margins of the run.
-        self.notes, self.subjects, self.noting = [], [], bool(K)
-        # The order of the two sides of each comparison of a rate of a numeric block, at the last
-        # state at which the engine read the block (`jumps`): {key: (the signs, the time)}.
-        self.jump_signs = {}
-        self.margins = {'crossing_time_h': 0.0, 'moments_apart_h': math.inf, 'outcome': math.inf}
-        self.stepped = None  # (the moment, its time, [(rule, the tangent of its time)]) of the last steps
         # The crossings of a value that is proved to move one way: each is watched inside its band.
         self.monotone_crossings = frozenset(
             plan.rule_index[name]
@@ -767,11 +715,8 @@ class Run:
             if name in plan.rule_index
         )
         self.y0, self.t0, self.rate, self.lversion = {}, {}, {}, {}
-        self.D = [{} for _ in range(K)]
-        self.dt0 = [{} for _ in range(K)]
-        self.drate = [{} for _ in range(K)]
         self.atol, self.slack = {}, {}
-        self.rules = [RuleState(plan.spaces[rule.space].count, K) for rule in plan.rules]
+        self.rules = [RuleState(plan.spaces[rule.space].count) for rule in plan.rules]
         self.order = []
         for rule in plan.rules:
             space = plan.spaces[rule.space]
@@ -954,20 +899,19 @@ class Run:
                 self.streams[key] = draws(self.luck['seed'], f'{name}/draw/{self.luck["sample"]}')
             env.memo[item.name] = float(quantile(item.family, args, self.streams[key]()))
 
-    def numeric(self, name, at, t, part=0):
-        """The values (part 0) or the tangents by direction `part - 1` of a numeric quantity at the
-        places `at` of its space."""
+    def numeric(self, name, at, t):
+        """The values of a numeric quantity at the places `at` of its space."""
         plan = self.plan
         block = plan.blocks[plan.quantities[name].block]
         if block.whole:
             solution = self.whole[block.index]
             cut = solution.slices[name]
-            column = solution.at(t)[part * solution.size :][cut]
+            column = solution.at(t)[cut]
             return column if at is None or at is ONE else column[at]
         solutions = self.single[block.index]
         places = range(len(solutions)) if at is None or at is ONE else at
         offset = solutions[0].slices[name].start
-        return np.array([solutions[j].at(t)[part * solutions[j].size + offset] for j in places])
+        return np.array([solutions[j].at(t)[offset] for j in places])
 
     def column(self, name, t):
         """The value of a name for each instance of its space, at a time."""
@@ -982,151 +926,6 @@ class Run:
 
     def value(self, node, env):
         return arrays.values(node, env, self.registry, env.count)
-
-    # ---- the tangents ---------------------------------------------------------------------------
-
-    def tangent(self, node, env, k, total=False):
-        """The derivative of a node by direction k, for the instances of `env`: at a fixed time, or
-        (`total`) along the event of the moment, whose time has the tangent `dnow[k]`. At a state
-        of the run, a tie of two pieces of the node that the direction can break is noted
-        (`ties`): the derivative is then that of one side."""
-        result = 0.0
-        for name in expr.names(node):
-            inner = self.name_tangent(name, env, k, total)
-            if inner is None:
-                continue
-            result = result + self.value(derivative(node, name), env) * inner
-        if self.noting and env.trial is None and smooth.pairs(node):
-            self.ties(node, env, (k,), total)
-        return result
-
-    # ---- of which kind a derivative is -----------------------------------------------------------
-
-    def note(self, kind, k, detail, places=None):
-        """Keep a fact of the run that says of which kind the derivatives by direction k are, for
-        the outputs that `places` can reach (default: what the part in work is about, `about`).
-        The kinds: `tie` (two pieces of an expression meet, and the direction can break the tie),
-        `condition` (the same in a condition of a rule or of an outcome), `order` (two events of
-        one moment whose times move apart with the direction), `clocks` (two clocks of a rule at
-        one time), `bound` (a step set a value on its bound), `outcome` (two outcomes with one
-        chance) and `grazing` (a crossing whose time the value does not decide). `grazing` makes a
-        derivative undefined; `jump` (the rate of a numeric block jumps at a place that the direction
-        moves, `jumps`) makes it unsupported; each other kind makes it the derivative of one
-        side."""
-        if places is None:
-            places = self.subjects[-1] if self.subjects else ()
-        entry = (kind, int(k), tuple(places), detail)
-        if entry not in self.notes:
-            self.notes.append(entry)
-
-    def about(self, *places):
-        """The places that the tangents in work are about, until `done`: a note with no place of
-        its own is of them."""
-        self.subjects.append(places)
-
-    def done(self):
-        self.subjects.pop()
-
-    def ties(self, node, env, directions, total, kind='tie', places=None):
-        """Note each tie of two pieces of a node at the state of `env` that a direction can break:
-        the two parts of a pair (`smooth.pairs`) have one value there, and the derivative of their
-        difference by the direction is not zero. A tie of two values that no direction moves (a
-        stock that a step emptied, a limit that is the value itself) is no note."""
-        sites = env.memo.get(('ties', node))
-        if sites is None:
-            sites = []
-            for a, b in smooth.pairs(node):
-                try:
-                    left = np.asarray(self.value(a, env))
-                    right = np.asarray(self.value(b, env))
-                except (ExpressionError, Unknown, ZeroDivisionError, ValueError, TypeError):
-                    continue  # a part of a branch that the state does not take
-                if left.dtype.kind not in 'fiu' or right.dtype.kind not in 'fiu':
-                    continue
-                left, right = left.astype(float), right.astype(float)
-                near = self.cfg.rtol * np.maximum(np.abs(left), np.abs(right))
-                met = np.abs(left - right) <= near
-                if np.any(met):
-                    sites.append((smooth.difference(a, b), met, expr.text(a), expr.text(b)))
-            env.memo[('ties', node)] = sites
-        if not sites:
-            return
-        if places is None and not self.subjects:
-            places = tuple(self.plan.reads(node))
-        self.noting = False
-        try:
-            for margin, met, left, right in sites:
-                for k in directions:
-                    slope = np.asarray(self.tangent(margin, env, k, total), dtype=float)
-                    if np.any((slope != 0) & met):
-                        self.note(kind, k, f'{left} and {right} are equal (t = {env.t:g} h)', places)
-        finally:
-            self.noting = True
-
-    def name_tangent(self, name, env, k, total):
-        plan, t = self.plan, env.t
-        if name == 't':
-            return float(self.dnow[k]) if total and self.dnow[k] else None
-        kind = plan.kind[name]
-        if kind == 'aggregate':
-            found = plan.aggregates[name]
-            if found.function != 'sum':
-                if found.function in ('any', 'all'):
-                    return None
-                raise Outside(f'the derivative of {found.function} over a list')
-            result, trial = 0.0, env.trial if env.trial is not None and env.trial.whole else None
-            for term in found.terms:
-                inner = Env(self, term.space, None, t, trial)
-                part = self.tangent(term.node, inner, k, total)
-                result += (
-                    _pairwise(_spread(part, inner.count))
-                    if isinstance(part, np.ndarray)
-                    else (part * (inner.count if term.space != SCALARS else 1))
-                )
-            return result
-        at = self.index(env.space, plan.space_of(name), env.J)
-
-        def cut(column):
-            if at is ONE:
-                return float(column[0])
-            return column if at is None else column[at]
-
-        if kind == 'value' or self.starting:
-            column = self.dv[k].get(name)
-            return None if column is None else cut(column)
-        if kind == 'line':
-            fixed = (
-                self.D[k][name]
-                + self.drate[k][name] * (t - self.t0[name])
-                - self.rate[name] * self.dt0[k][name]
-            )
-            if total and self.dnow[k]:
-                fixed = fixed + self.rate[name] * self.dnow[k]
-            return cut(fixed)
-        trial = env.trial
-        if trial is not None and name in trial.values:
-            column = trial.tangents[k][name]
-            return (float(column[0]) if at is ONE else column) if not trial.whole else cut(column)
-        column = self.numeric(name, at, t, part=1 + k)
-        if total and self.dnow[k]:
-            column = column + self.slope(name, at, t) * self.dnow[k]
-        return float(column[0]) if at is ONE else column
-
-    def slope(self, name, at, t):
-        """The rate of a quantity that moves, at the places `at` of its space."""
-        plan = self.plan
-        if plan.kind[name] == 'line':
-            rate = self.rate[name]
-            return rate if at is None else rate[:1] if at is ONE else rate[at]
-        block = plan.blocks[plan.quantities[name].block]
-        if block.whole:
-            solution = self.whole[block.index]
-            column = self.field(solution, t, solution.at(t))[solution.slices[name]]
-            return column if at is None or at is ONE else column[at]
-        solutions = self.single[block.index]
-        places = range(len(solutions)) if at is None or at is ONE else at
-        offset = solutions[0].slices[name].start
-        return np.array([self.field(solutions[j], t, solutions[j].at(t))[offset] for j in places])
 
     # ---- the lists ------------------------------------------------------------------------------
 
@@ -1341,8 +1140,6 @@ class Run:
         over = total > capacity
         if not over.any():
             return asked
-        if self.directions:
-            raise Outside(f'the derivative of a flow of the allocation group {group.name} at its limit')
         if group.policy == 'proportional':
             with np.errstate(divide='ignore', invalid='ignore'):
                 fraction = capacity / total
@@ -1354,99 +1151,11 @@ class Run:
             found[key] = np.where(over, cut, asked[key])
         return found
 
-    def rate_tangent(self, name, env, k):
-        total = 0.0
-        for sign, node, _ in self.plan.parts[name]:
-            total = total + sign * self.tangent(node, env, k)
-        return _spread(total, env.count).astype(float)
-
-    def block_ties(self, solution, t, y):
-        """Note the ties of the rates of a numeric block at a state of the run (`ties`). The
-        tangents of a block are made at the states that its solver tries, which are no states of
-        the run; so the pieces of its rates are looked at here, at each state at which the engine
-        reads the solution (`Solution.settle`). A tie that holds for a time is seen there: two
-        inputs with one value in a choice, or a value that comes to the edge of a piece and stays
-        within the tolerance of it. One that the value passes through between two such states
-        changes no derivative."""
-        plan, n, K = self.plan, solution.size, len(self.directions)
-        names = [
-            name for name in solution.slices if any(smooth.pairs(node) for _, node, _ in plan.parts[name])
-        ]
-        if not names:
-            return
-        state = Trial(
-            {name: y[cut] for name, cut in solution.slices.items()},
-            tuple({name: y[n * (k + 1) :][cut] for name, cut in solution.slices.items()} for k in range(K)),
-            solution.block.whole,
-        )
-        envs, places = {}, tuple(solution.block.names)
-        for name in names:
-            space = plan.quantities[name].space
-            env = envs.get(space)
-            if env is None:
-                env = envs[space] = Env(self, space, solution.J, t, state)
-            for _, node, _ in plan.parts[name]:
-                if smooth.pairs(node):
-                    self.ties(node, env, range(K), False, places=places)
-                    self.jumps(node, env, range(K), t, (solution.block.index, name), places)
-
-    def jumps(self, node, env, directions, t, key, places):
-        """Note each comparison of a rate whose two sides change their order between the last state
-        at which the engine read the block and this one, where a direction moves the place of the
-        change (the derivative of the difference of the two sides is not zero). The rate jumps
-        there, and the tangents of the block do not carry the jump (`jump`). A comparison whose
-        place no direction moves changes no derivative: its time is the same for every value of the
-        inputs. A side that has no number here (a branch that the state does not take) is left."""
-        for a, b in smooth.jumps(node):
-            try:
-                left = np.asarray(self.value(a, env))
-                right = np.asarray(self.value(b, env))
-            except (ExpressionError, Unknown, ZeroDivisionError, ValueError, TypeError):
-                continue
-            if left.dtype.kind not in 'fiu' or right.dtype.kind not in 'fiu':
-                continue
-            sign = np.sign(left.astype(float) - right.astype(float))
-            entry = (key, node, a, b)
-            before = self.jump_signs.get(entry)
-            if before is None or np.shape(before[0]) != np.shape(sign):
-                self.jump_signs[entry] = (sign, t)
-                continue
-            # The last order that is not a tie: a tie itself is a note of `ties`.
-            last, since = before
-            crossed = (last != 0) & (sign != 0) & (last != sign)
-            self.jump_signs[entry] = (np.where(sign != 0, sign, last), t)
-            if not np.any(crossed):
-                continue
-            self.noting = False
-            try:
-                margin = smooth.difference(a, b)
-                for k in directions:
-                    slope = np.asarray(self.tangent(margin, env, k, False), dtype=float)
-                    if np.any((slope != 0) & crossed):
-                        self.note(
-                            'jump',
-                            k,
-                            f'{expr.text(a)} and {expr.text(b)} change their order '
-                            + (
-                                f'at t = {t:g} h'
-                                if since == t
-                                else f'between t = {since:g} h and t = {t:g} h'
-                            )
-                            + ', at a time that the input moves: the rate jumps there',
-                            places,
-                        )
-            finally:
-                self.noting = True
-
     def field(self, solution, t, y, trial=True):
-        """The rates of a numeric block at a state, with the rates of its tangents: at a state that
-        its solver tries, or (`trial=False`) at a state of the run, where the rates are checked."""
-        plan, n, K = self.plan, solution.size, len(self.directions)
-        state = Trial(
-            {name: y[cut] for name, cut in solution.slices.items()},
-            tuple({name: y[n * (k + 1) :][cut] for name, cut in solution.slices.items()} for k in range(K)),
-            solution.block.whole,
-        )
+        """The rates of a numeric block at a state: at a state that its solver tries, or
+        (`trial=False`) at a state of the run, where the rates are checked."""
+        plan = self.plan
+        state = Trial({name: y[cut] for name, cut in solution.slices.items()}, solution.block.whole)
         out = np.empty_like(y)
         envs = {}
         for name, cut in solution.slices.items():
@@ -1455,8 +1164,6 @@ class Run:
             if env is None:
                 env = envs[space] = Env(self, space, solution.J, t, state)
             out[cut] = self.rate_of(name, env, trial)
-            for k in range(K):
-                out[n * (k + 1) :][cut] = self.rate_tangent(name, env, k)
         if trial:
             negative = next((env.memo[NEGATIVE] for env in envs.values() if NEGATIVE in env.memo), None)
             positive = set().union(*(env.memo.get(POSITIVE, ()) for env in envs.values()))
@@ -1484,7 +1191,7 @@ class Run:
         plan, names = self.plan, block.names
         count = plan.spaces[block.space].count if J is None else len(J)
         size = len(names)
-        zero = Trial({name: np.zeros(count) for name in names}, (), False)
+        zero = Trial({name: np.zeros(count) for name in names}, False)
         env = Env(self, block.space, J, 0.0, zero)
         floors = [plan.quantities[name].lower >= 0 for name in names]
         values = self.block_values(block, env) if count == 1 else None
@@ -1631,7 +1338,7 @@ class Run:
         (None: all): (alpha, beta, the limit), with one row for each instance."""
         plan, names = self.plan, block.names
         count = plan.spaces[block.space].count if J is None else len(J)
-        zero = Trial({name: np.zeros(count) for name in names}, (), False)
+        zero = Trial({name: np.zeros(count) for name in names}, False)
         env = Env(self, block.space, J, 0.0, zero)
         found = []
         values = self.block_values(block, env) if count == 1 else None
@@ -1656,9 +1363,8 @@ class Run:
     def decide(self, solution):
         """How a segment of a block is solved: by its closed form, or by the solver.
 
-        The closed form is used for a linear block of one instance, with no tangents, when each
-        quantity of it is one of these, so that no state leaves its bounds without the timeline
-        knowing:
+        The closed form is used for a linear block of one instance when each quantity of it is one
+        of these, so that no state leaves its bounds without the timeline knowing:
 
         - it has no bound;
         - its rate reads no other quantity of the block. Then it moves to one side only (the
@@ -1677,7 +1383,7 @@ class Run:
         solution.mode = 'numeric'
         if solution.numeric_only:
             return
-        if not block.linear or block.whole or self.directions or solution.t0 >= self.horizon:
+        if not block.linear or block.whole or solution.t0 >= self.horizon:
             return
         if solution.given is not None:
             matrix, safe = solution.given
@@ -1746,7 +1452,7 @@ class Run:
     # ---- the start ------------------------------------------------------------------------------
 
     def start(self):
-        plan, K = self.plan, len(self.directions)
+        plan = self.plan
         pending = dict(plan.quantities)
         literal = {}
         while pending:
@@ -1769,24 +1475,9 @@ class Run:
                             literal[node] = found
                         found = literal[node]
                         column[j] = found[j] if isinstance(found, np.ndarray) else found
-                    tangents = [np.zeros(count) for _ in range(K)]
-                    if K and any(plan.reads(node) for node in set(nodes)):
-                        raise Outside(
-                            f'the derivative of the start of {quantity.name}, which each row writes'
-                        )
                 else:
                     column = _spread(self.value(quantity.start, env), count).astype(float)
-                    self.about(quantity.name)
-                    try:
-                        tangents = [
-                            _spread(self.tangent(quantity.start, env, k), count).astype(float)
-                            for k in range(K)
-                        ]
-                    finally:
-                        self.done()
                 self.v[quantity.name] = column
-                for k in range(K):
-                    self.dv[k][quantity.name] = tangents[k]
                 del pending[quantity.name]
         sizes = self.sizes()
         outside = []
@@ -1811,24 +1502,20 @@ class Run:
             count = len(self.v[name])
             self.y0[name], self.t0[name], self.rate[name] = self.v.pop(name), np.zeros(count), np.zeros(count)
             self.lversion[name] = np.zeros(count, dtype=np.int64)
-            for k in range(K):
-                self.D[k][name] = self.dv[k].pop(name)
-                self.dt0[k][name], self.drate[k][name] = np.zeros(count), np.zeros(count)
         for block in plan.blocks:
             for name in block.names:
                 self.lversion[name] = np.zeros(len(self.v[name]), dtype=np.int64)
             first = [self.v.pop(name) for name in block.names]
-            dfirst = [[self.dv[k].pop(name) for name in block.names] for k in range(K)]
             if block.whole:
                 solution = self.whole[block.index] = Solution(self, block, None)
-                solution.start(0.0, np.concatenate([*first, *(c for d in dfirst for c in d)]))
+                solution.start(0.0, np.concatenate(first))
             else:
                 count = plan.spaces[block.space].count
                 kind = Component if block.net else Solution
                 made = self.single[block.index] = [kind(self, block, j) for j in range(count)]
                 if block.net:
                     self.components.extend(made)
-                stacked = np.array([*first, *(c for d in dfirst for c in d)])
+                stacked = np.array(first)
                 for j, solution in enumerate(made):
                     solution.start(0.0, stacked[:, j].copy())
         self.starting = False
@@ -1841,7 +1528,7 @@ class Run:
             flags, self.flag_changes = self.flag_changes, []
             self.apply([], 0.0, changed=flags)
         for block in plan.blocks:
-            if block.linear and not block.whole and not K and self.horizon > 0:
+            if block.linear and not block.whole and self.horizon > 0:
                 # The matrices of all instances in one pass; each segment that starts later makes its own.
                 terms = self.group_terms(block, None)
                 found, sure, asks = self.matrices(block, None)
@@ -1859,32 +1546,13 @@ class Run:
 
     # ---- the restarts ---------------------------------------------------------------------------
 
-    def restart_line(self, name, J, t, value=None, tangents=None):
-        """A line starts again (`_restart_line`). What its rate notes of its tangents is of it."""
-        self.about(name)
-        try:
-            return self._restart_line(name, J, t, value, tangents)
-        finally:
-            self.done()
-
-    def _restart_line(self, name, J, t, value=None, tangents=None):
+    def restart_line(self, name, J, t, value=None):
         """The line of a quantity starts again at t for the instances J (None: all): from `value`, or
         from where it is."""
-        plan, K = self.plan, len(self.directions)
+        plan = self.plan
         quantity = plan.quantities[name]
         at = slice(None) if J is None else J
         y0, t0, rate = self.y0[name], self.t0[name], self.rate[name]
-        totals = []
-        for k in range(K):
-            if tangents is not None:
-                totals.append(tangents[k])
-            else:
-                fixed = (
-                    self.D[k][name][at]
-                    + self.drate[k][name][at] * (t - t0[at])
-                    - rate[at] * self.dt0[k][name][at]
-                )
-                totals.append(fixed + rate[at] * self.dnow[k])
         y = y0[at] + rate[at] * (t - t0[at]) if value is None else value
         if self.record and not self.starting_lines:
             self.line_log.setdefault(name, []).append(
@@ -1903,10 +1571,6 @@ class Run:
         if floor is not None:
             new = self.rest(floor, J, t, env, new)
         rate[at] = new
-        for k in range(K):
-            self.D[k][name][at] = totals[k]
-            self.dt0[k][name][at] = self.dnow[k]
-            self.drate[k][name][at] = self.rate_tangent(name, env, k)
         self.lversion[name][at] += 1
         self.counts['line restarts'] += env.count
         # A line that falls to its lower bound, or rises to its upper bound, before the horizon:
@@ -1956,8 +1620,6 @@ class Run:
         now[~rests & (self.y0[floor.name][at] <= quantity.lower) & (asked > supply)] = True
         changed = now != rests
         if changed.any():
-            if self.directions:
-                raise Outside(f'the derivative of a run in which {floor.name} comes to rest on its bound')
             places = np.arange(len(flag))[at][changed]
             if self.record:
                 for place in places.tolist():
@@ -1977,7 +1639,7 @@ class Run:
         """The solution of one instance of a block starts again at t from where it is."""
         solution = self.single[block.index][j]
         prior = {(block.index, j): np.array(solution.at(t), dtype=float)}
-        self.restart_block(block, {j}, t, {}, prior, {})
+        self.restart_block(block, {j}, t, {}, prior)
 
     def check_readers(self, block, j, t):
         """The checks of the state and the partitions that read a quantity of a component hold at
@@ -2116,26 +1778,19 @@ class Run:
         family = self.plan.spaces[space].family
         return name if family is None else family.hosts[j] + name[len(family.host) :]
 
-    def restart_block(self, block, J, t, forced, prior, before):
+    def restart_block(self, block, J, t, forced, prior):
         """The solutions of a block start again at t: for the whole block, or for the instances J.
-        `prior` has the state of each just before the step, and `before` its rates there."""
-        K = len(self.directions)
+        `prior` has the state of each just before the step."""
         if block.whole:
             solutions = [(None, self.whole[block.index])]
         else:
             made = self.single[block.index]
             solutions = [(j, made[j]) for j in (range(len(made)) if J is None else sorted(J))]
         for j, solution in solutions:
-            n = solution.size
             y = prior[(block.index, j)]
-            if K and (block.index, j) in before:
-                for k in range(K):
-                    y[n * (k + 1) : n * (k + 2)] += before[(block.index, j)] * self.dnow[k]
-            for name, place, value, tangents in forced.get((block.index, j), ()):
+            for name, place, value in forced.get((block.index, j), ()):
                 at = solution.slices[name].start + place
                 y[at] = value
-                for k in range(K):
-                    y[n * (k + 1) + at] = tangents[k]
             if self.record:
                 # The segment that ends here, as it is: a reader of the past asks it.
                 self.block_log.setdefault((block.index, j), []).append((t, copy.copy(solution)))
@@ -2145,11 +1800,7 @@ class Run:
             if block.net:
                 self.counts['block restarts'] += 1
                 continue  # a component finds its bounds and the form of its segments itself
-            self.within_bounds(solution, y[:n], t)
-            if K and self.dnow.any() and t < self.horizon:
-                after = self.field(solution, t, y)[:n]
-                for k in range(K):
-                    y[n * (k + 1) : n * (k + 2)] -= after * self.dnow[k]
+            self.within_bounds(solution, y, t)
             # How the segment is solved is decided now, and not when a reader first asks: the
             # decision puts on the timeline the time at which a bound or a limit would be reached.
             if (block.index, j) not in self.restart_numeric:
@@ -2221,13 +1872,13 @@ class Run:
 
     def apply(self, writes, t, restart=(), changed=()):
         """Make the writes of one step, and bring up to date the parts that read them. A write is
-        (name, place in the space of the name, value, tangents or None). `restart` names blocks of
-        one instance, as (block, instance), that start again at t with the solver: a group of theirs
-        reached its limit."""
-        plan, K = self.plan, len(self.directions)
-        written = [(name, {place}) for name, place, _, _ in writes]
+        (name, place in the space of the name, value). `restart` names blocks of one instance, as
+        (block, instance), that start again at t with the solver: a group of theirs reached its
+        limit."""
+        plan = self.plan
+        written = [(name, {place}) for name, place, _ in writes]
         written.extend(changed)
-        for name, place, _, _ in writes:
+        for name, place, _ in writes:
             # A step wrote the quantity of a crossing: the time at which the crossing was reached
             # says nothing of the new value, so the rule holds only by that value.
             for index in plan.crossings.get(name, ()):
@@ -2239,11 +1890,11 @@ class Run:
         for index, j in restart:
             written.extend((member, {j}) for member in plan.blocks[index].names)
         forced = {}
-        for name, place, value, tangents in writes:
+        for name, place, value in writes:
             if plan.kind[name] == 'numeric':
                 block = plan.blocks[plan.quantities[name].block]
                 key = (block.index, None if block.whole else place)
-                forced.setdefault(key, []).append((name, place if block.whole else 0, value, tangents))
+                forced.setdefault(key, []).append((name, place if block.whole else 0, value))
                 # The block starts again from the written state, so each quantity of it takes a new
                 # path: what reads any of them is read again, not only what reads the written one.
                 target = None if block.whole else {place}
@@ -2253,9 +1904,8 @@ class Run:
             self.merge(blocks, index, None if j is None else {j})
         # The state of each block that starts again, just before the step: a block is integrated only
         # when a reader asks, and the values that it read up to this moment are those before the
-        # step. With tangents, its rates just before the step too: the jump of the tangents needs them.
-        prior, before = {}, {}
-        jump = K and self.dnow.any()
+        # step.
+        prior = {}
         for index, J in blocks.items():
             block = plan.blocks[index]
             if block.whole:
@@ -2265,32 +1915,22 @@ class Run:
                 found = [(j, made[j]) for j in (range(len(made)) if J is None else J)]
             for j, solution in found:
                 prior[(index, j)] = np.array(solution.at(t), dtype=float)
-                if jump:
-                    before[(index, j)] = self.field(solution, t, prior[(index, j)])[: solution.size]
-        for name, place, value, tangents in writes:
+        for name, place, value in writes:
             kind = plan.kind[name]
             if kind == 'value':
                 if self.record:
                     self.undo.setdefault(name, []).append((t, place, self.v[name][place]))
                 self.v[name][place] = value
                 self.wrote += 1
-                if tangents is not None:
-                    for k in range(K):
-                        column = self.dv[k].get(name)
-                        if column is None:
-                            if not tangents[k]:
-                                continue
-                            column = self.dv[k][name] = np.zeros(len(self.v[name]))
-                        column[place] = tangents[k]
             elif kind == 'line':
-                self.restart_line(name, np.array([place]), t, value, tangents)
+                self.restart_line(name, np.array([place]), t, value)
         for (name, place), J in sorted(terms.items(), key=lambda item: (int(item[0][0][6:]), item[0][1])):
             self.update_term(name, place, J, t)
         for name, J in lines.items():
             self.restart_line(name, None if J is None else np.fromiter(sorted(J), dtype=int, count=len(J)), t)
         self.restart_numeric = set(restart)
         for index, J in blocks.items():
-            self.restart_block(plan.blocks[index], J, t, forced, prior, before)
+            self.restart_block(plan.blocks[index], J, t, forced, prior)
         for index, j in restart:
             self.single[index][j].numeric_only = True
             self.single[index][j].mode = 'numeric'
@@ -2443,7 +2083,6 @@ class Run:
         self.counts['readings'] += count
         state.version[J] += 1
         env = Env(self, rule.space, J, t)
-        own = state.own[J] == self.moment
         holds = self.holds(rule, env, J, t, state.reached[J] == self.moment)
         ends = state.pending[J]
         pending = ~np.isnan(ends)
@@ -2482,17 +2121,6 @@ class Run:
                 heapq.heappush(
                     self.ready, ((rule.line, int(positions[j]), int(copies[j]), rule.index), rule.index, j)
                 )
-        if len(self.directions) and (due != 0).any():
-            for at, j in enumerate(J.tolist()):
-                if due[at] == TRIGGER:
-                    state.cause[:, j] = self.own_tangent(rule, j, t) if own[at] else self.dnow
-        if self.noting:
-            # A comparison of the condition at a tie that a direction can break: on the other side
-            # of the tie the rule does not trigger here, or triggers where it did not.
-            condition = rule.when if rule.kind in ('discrete', 'face') else rule.gate
-            if condition is not None and smooth.pairs(condition):
-                everything = range(len(self.directions))
-                self.ties(condition, env, everything, True, 'condition', (rule_place(rule.index),))
 
     def watch(self, rule, J, t):
         """Instances of a rule whose condition does not hold: the time at which their clocks, or
@@ -2554,59 +2182,6 @@ class Run:
             if root is not None:
                 self.later(root, rule.index, int(J[k]), ROOT)
 
-    def own_tangent(self, rule, j, t):
-        """The tangent of the time of a rule whose own time came: of its latest clock when that is
-        now, else of the time at which its crossing reaches its value."""
-        K = len(self.directions)
-        env = Env(self, rule.space, np.array([j]), t)
-        place = (rule_place(rule.index),)
-        if rule.times:
-            clocks = [float(_one(self.value(node, env))) for node in rule.times]
-            latest = max(range(len(clocks)), key=clocks.__getitem__)
-            if clocks[latest] >= t - self.tolerance or rule.kind != 'crossing':
-                found = [
-                    np.array([float(_one(self.tangent(node, env, k))) for k in range(K)])
-                    for node in rule.times
-                ]
-                # Two clocks at one time: the latest is the one of the two that the file has first.
-                for other, at in enumerate(clocks):
-                    if other != latest and at >= clocks[latest] - self.tolerance:
-                        for k in np.flatnonzero(found[other] != found[latest]):
-                            self.note('clocks', k, f'two clocks of {rule.name} at t = {t:g} h', place)
-                return found[latest]
-        if rule.kind != 'crossing':
-            return self.dnow
-        places = self.index(rule.space, self.plan.space_of(rule.var), np.array([j]))
-        slope = float(np.asarray(self.slope(rule.var, places, t)).item(0))
-        # How the mark and the value move with each direction at this time: the time of the
-        # crossing moves by their difference over the rate of the value.
-        kept, self.dnow = self.dnow, np.zeros(K)
-        try:
-            moves = np.array(
-                [
-                    float(_one(self.tangent(rule.value, env, k)))
-                    - float(_one(self.name_tangent(rule.var, env, k, False) or 0.0))
-                    for k in range(K)
-                ]
-            )
-        finally:
-            self.dnow = kept
-        # How well the value decides the time of its crossing: a value within its tolerance is at
-        # its mark within this time. A crossing whose value does not move there, or moves so
-        # slowly that the time is not decided within one step cap, has no derivative of its time
-        # by a direction that moves the mark or the value.
-        tolerance = float(np.asarray(self.atol[rule.var])[0 if places is ONE else places].item(0))
-        unsure = math.inf if slope == 0 else tolerance / abs(slope)
-        # The margin is a time of the run: a crossing with no rate is not decided in all of it.
-        self.margins['crossing_time_h'] = max(self.margins['crossing_time_h'], min(unsure, self.horizon))
-        if unsure >= self.max_step:
-            for k in np.flatnonzero(moves != 0):
-                self.note('grazing', k, f'{rule.name}: {rule.var} at its mark (t = {t:g} h)', place)
-        if slope == 0:
-            return self.dnow
-        found = moves / slope
-        return found
-
     # ---- the steps ------------------------------------------------------------------------------
 
     def rule_name(self, rule, j):
@@ -2646,19 +2221,11 @@ class Run:
             if event in self.plan.events:
                 place = self.place(space, j, event)
                 count = int(self.v[event + COUNT][place]) + 1
-                writes.append((event + COUNT, place, count, None))
-                writes.append((event + TIME, place, t, list(self.dnow)))
+                writes.append((event + COUNT, place, count))
+                writes.append((event + TIME, place, t))
 
     def trigger(self, rule, j, t):
-        """A rule triggers for the instance j at the time t (`_trigger`). What the trigger notes of
-        its tangents is of the rule."""
-        self.about(rule_place(rule.index))
-        try:
-            return self._trigger(rule, j, t)
-        finally:
-            self.done()
-
-    def _trigger(self, rule, j, t):
+        """A rule triggers for the instance j at the time t."""
         state = self.rules[rule.index]
         self.count_step(t, rule, j)
         state.armed[j] = False
@@ -2683,8 +2250,6 @@ class Run:
                 [{'code': 'delay', 'severity': 'error', 'rule': name, 'path': path}],
             )
         state.pending[j] = t + delay
-        for k in range(len(self.directions)):
-            state.pending_dt[k, j] = self.dnow[k] + float(_one(self.tangent(rule.delay, env, k, total=True)))
         writes = []
         self.emitted(rule.emits, rule.space, j, t, writes)
         self.trace.append((float(t), rule.index, j, None))
@@ -2738,12 +2303,9 @@ class Run:
             # condition under which an outcome can happen is not.
             return self.pick(rule, j, chances, possible, t, env, controller)
         if self.outcomes is not None:
-            return self.taken(rule, env, name, chances, rest)
+            return self.taken(name, chances)
         if not self.luck:
-            best = max(range(len(chances)), key=lambda place: (chances[place], -place))
-            if self.noting:
-                self.outcome_noted(rule, env, chances, rest, best, t)
-            return best
+            return max(range(len(chances)), key=lambda place: (chances[place], -place))
         # A sample of a study: one uniform number for each firing, from the stream of the event.
         if name not in self.streams:
             self.streams[name] = draws(self.luck['seed'], f'{name}/{self.luck["sample"]}')
@@ -2756,12 +2318,11 @@ class Run:
                 return place
         return last
 
-    def taken(self, rule, env, name, chances, rest):
+    def taken(self, name, chances):
         """The outcome of a firing of a run with given outcomes (`outcomes`): the given place, or
         the likeliest outcome after the last given place (the first in the file on a tie). The run
         keeps the firing as (the name of the rule, the chance with which a sample takes each
-        outcome, the place taken, and with directions the derivative of each of those chances by
-        each direction). A given place is one that a sample can take."""
+        outcome, the place taken). A given place is one that a sample can take."""
         found, at = shares(chances), len(self.firings)
         if at < len(self.outcomes):
             place = self.outcomes[at]
@@ -2769,65 +2330,12 @@ class Run:
                 raise ValueError(f'{name}: no sample takes the outcome {place} of its firing number {at}')
         else:
             place = max(range(len(found)), key=lambda other: (found[other], -other))
-        slopes = None
-        if self.directions:
-            # A chance that the running total cuts, or that takes what is missing to 1, has not
-            # the derivative of its expression: the chances add up to 1 within a tolerance, and the
-            # difference is roundoff. The derivative is that of the expression.
-            slopes = tuple(tuple(row) for row in self.chance_slopes(rule, env, len(chances), rest))
-        self.firings.append((name, tuple(found), place, slopes))
+        self.firings.append((name, tuple(found), place))
         return place
 
-    def chance_slopes(self, rule, env, count, rest):
-        """The derivative of the chance of each outcome of a firing by each direction: [place][k].
-        The chance of `else` is what the others leave."""
-        K = len(self.directions)
-        found = []
-        for place in range(count):
-            chance = rule.outcomes[place].chance
-            if chance is None or chance == 'else':
-                found.append(np.zeros(K))
-            else:
-                found.append(
-                    np.array([float(_one(self.tangent(chance, env, k, total=True))) for k in range(K)])
-                )
-        if rest is not None:
-            found[rest] = -sum((found[other] for other in range(count) if other != rest), np.zeros(K))
-        return found
-
-    def outcome_noted(self, rule, env, chances, rest, best, t):
-        """The central run takes the likeliest outcome. Where another outcome has the same chance
-        and a direction moves the two chances apart, a small change of that input changes the
-        outcome. The least distance between the two largest chances of a firing is kept too."""
-        others = [place for place in range(len(chances)) if place != best]
-        if not others:
-            return
-        second = max(chances[place] for place in others)
-        self.margins['outcome'] = min(self.margins['outcome'], chances[best] - second)
-        slopes = None
-        for place in others:
-            if chances[best] - chances[place] <= CHANCE_TOLERANCE:
-                if slopes is None:
-                    slopes = self.chance_slopes(rule, env, len(chances), rest)
-                for k in np.flatnonzero(slopes[place] != slopes[best]):
-                    self.note(
-                        'outcome',
-                        k,
-                        f'{rule.name}: two outcomes with one chance (t = {t:g} h)',
-                        (rule_place(rule.index),),
-                    )
-
     def fire(self, rule, j, t, counted=False, own=False):
-        """One step of a rule: the firing of the instance j at the time t (`_fire`). What the
-        step notes of its tangents is of the rule."""
-        self.about(rule_place(rule.index))
-        try:
-            return self._fire(rule, j, t, counted, own)
-        finally:
-            self.done()
-
-    def _fire(self, rule, j, t, counted=False, own=False):
-        plan, K = self.plan, len(self.directions)
+        """One step of a rule: the firing of the instance j at the time t."""
+        plan = self.plan
         if not counted:
             self.count_step(t, rule, j)
         self.mark(rule.index, {j})
@@ -2838,16 +2346,12 @@ class Run:
         # Every value of the step is read before the step.
         writes = []
 
-        def tangents_of(node):
-            return [float(_one(self.tangent(node, env, k, total=True))) for k in range(K)]
-
         def now(name, place):
-            """The value of a quantity for one instance at the moment, with its total tangents."""
+            """The value of a quantity for one instance at the moment."""
             inner = Env(self, plan.space_of(name), np.array([place]), t)
-            value = float(_one(inner[name]))
-            return value, [float(_one(self.name_tangent(name, inner, k, True) or 0.0)) for k in range(K)]
+            return float(_one(inner[name]))
 
-        held = {}  # (quantity, place) -> its value in the step so far, with its tangents
+        held = {}  # (quantity, place) -> its value in the step so far
         sets, modes, before, moved = {}, {}, {}, []  # what the entry of the trace says of the step
 
         def bounds(name, place):
@@ -2869,31 +2373,27 @@ class Run:
                     )
                 modes[(target, place)], before[(target, place)] = value, self.v[target][place]
                 if value != self.v[target][place]:
-                    writes.append((target + ENTERED, place, t, list(self.dnow)))
-                writes.append((target, place, value, None))
+                    writes.append((target + ENTERED, place, t))
+                writes.append((target, place, value))
                 continue
-            value, tangents = float(_one(self.value(node, env))), tangents_of(node)
+            value = float(_one(self.value(node, env)))
             if not math.isfinite(value):
                 raise SimulationError(f'{self.rule_name(rule, j)}: nonfinite value for {target}')
             if target in plan.quantities:
                 # A value that misses a bound by less than the solver can resolve is on the bound, so
-                # the next segment starts inside the domain. On the bound the value does not move
-                # with an input.
+                # the next segment starts inside the domain.
                 lower, upper, slack, atol = bounds(target, place)
-                if lower - slack <= value < lower or upper < value <= upper + atol:
-                    for k in np.flatnonzero(np.asarray(tangents) != 0):
-                        self.note('bound', k, f'{target} is set on its bound (t = {t:g} h)', (target,))
                 if lower - slack <= value < lower:
-                    value, tangents = float(lower), [0.0] * K
+                    value = float(lower)
                 elif upper < value <= upper + atol:
-                    value, tangents = float(upper), [0.0] * K
-                held[(target, place)] = (value, tangents)
+                    value = float(upper)
+                held[(target, place)] = value
             else:
-                writes.append((target, place, value, tangents))
+                writes.append((target, place, value))
             sets[(target, place)] = value
         moves = []
         for source, target, node in outcome.moves:
-            amount, tangents = float(_one(self.value(node, env))), tangents_of(node)
+            amount = float(_one(self.value(node, env)))
             if not math.isfinite(amount) or amount < 0:
                 raise SimulationError(
                     f'{self.rule_name(rule, j)}: a move takes a finite amount from 0, not {amount}'
@@ -2903,17 +2403,16 @@ class Run:
                     (source, self.place(rule.space, j, source)),
                     (target, self.place(rule.space, j, target)),
                     amount,
-                    tangents,
                 )
             )
         if moves:
             # Every move must fit together with the values that the step sets: each quantity of a
             # move, and each that the step sets, stays inside its bounds.
-            trial = {key: value for key, (value, _) in held.items()}
-            for source, target, amount, _ in moves:
+            trial = dict(held)
+            for source, target, amount in moves:
                 for key, sign in ((source, -1.0), (target, 1.0)):
                     if key not in trial:
-                        trial[key] = now(*key)[0]
+                        trial[key] = now(*key)
                     trial[key] += sign * amount
             for (name, place), value in trial.items():
                 lower, upper, slack, atol = bounds(name, place)
@@ -2929,31 +2428,31 @@ class Run:
                             }
                         ],
                     )
-        for source, target, asked, asked_tangents in moves:
+        for source, target, asked in moves:
             for key in (source, target):
                 if key not in held:
                     held[key] = now(*key)
-            (value, kept), lower = held[source], bounds(*source)[0]
-            amount, tangents = asked, asked_tangents
-            left, left_tangents = value - amount, [a - b for a, b in zip(kept, tangents)]
+            value, lower = held[source], bounds(*source)[0]
+            amount = asked
+            left = value - amount
             # A move that would leave less than the solver can resolve behind moves everything. A
             # stock that already sits below its bound by such an amount has nothing to move.
             if left != lower and abs(left - lower) <= bounds(*source)[3]:
-                amount, tangents = amount + (left - lower), list(kept)
+                amount = amount + (left - lower)
                 if amount >= 0:
-                    left, left_tangents = lower, [0.0] * K
+                    left = lower
                 else:
-                    amount, tangents, left, left_tangents = 0.0, [0.0] * K, value, list(kept)
-            held[source] = (left, left_tangents)
-            value, kept = held[target]
-            held[target] = (value + amount, [a + b for a, b in zip(kept, tangents)])
+                    amount, left = 0.0, value
+            held[source] = left
+            value = held[target]
+            held[target] = value + amount
             moved.append((source, target, amount))
-        for (name, place), (value, _) in held.items():
+        for (name, place), value in held.items():
             # The structure lets no step lower a tally; the run checks it all the same.
-            if plan.quantities[name].monotone and value < now(name, place)[0]:
+            if plan.quantities[name].monotone and value < now(name, place):
                 raise SimulationError(f'A step decreases the nondecreasing quantity {name}')
-        writes += [(name, place, value, tangents) for (name, place), (value, tangents) in held.items()]
-        for name, place, value, _ in writes:
+        writes += [(name, place, value) for (name, place), value in held.items()]
+        for name, place, value in writes:
             quantity = plan.quantities.get(name)
             if quantity is not None and not (
                 quantity.lower - self.slack[name][place] <= value <= quantity.upper + self.atol[name][place]
@@ -2988,7 +2487,6 @@ class Run:
                 )
                 break
             waiting = len(self.continuations)
-            self.rules[index].cause[:, place] = self.dnow
             self.trigger(other, place, t)
             if self.settled and len(self.continuations) > waiting:
                 self.continuations[-1].extend(
@@ -3214,7 +2712,6 @@ class Run:
         self.moment += 1
         self.steps = 0
         self.counts['moments'] += 1
-        self.dnow = np.zeros(len(self.directions))
         while self.times and self.times[0][0] <= t + self.tolerance:
             _, _, kind, what, j, version = heapq.heappop(self.times)
             if kind == BOUND:
@@ -3240,7 +2737,6 @@ class Run:
                 if self.lversion[plan.blocks[what].names[0]][j] == version:
                     self.ends(what, j, t)
             elif self.rules[what].version[j] == version:
-                self.rules[what].own[j] = self.moment
                 if kind == ROOT:
                     self.rules[what].reached[j] = self.moment
                 self.mark(what, {j})
@@ -3283,9 +2779,6 @@ class Run:
                 continue
             kind = int(state.ready[j])
             state.ready[j] = 0
-            if len(self.directions):
-                self.dnow = state.pending_dt[:, j].copy() if kind == FIRE else state.cause[:, j].copy()
-                self.step_noted(index, t)
             if kind == FIRE:
                 state.pending[j] = np.nan
                 self.fire(rule, j, t)
@@ -3294,28 +2787,6 @@ class Run:
             limit = self.cfg.max_events * max(space.count for space in plan.spaces)
             if len(self.trace) > limit:
                 raise SimulationError(f'The run has more than {limit} events')
-
-    def step_noted(self, index, t):
-        """What the order of the steps says of the derivatives. Two steps of one moment have one
-        time; when their times move apart with a direction (their tangents differ), a small change
-        of that input puts one before the other, and the file decides the order here. The least
-        time between two moments with a step is kept too."""
-        if self.stepped is None or self.stepped[0] != self.moment:
-            if self.stepped is not None and t > self.stepped[1]:
-                self.margins['moments_apart_h'] = min(self.margins['moments_apart_h'], t - self.stepped[1])
-            self.stepped = (self.moment, t, [])
-        earlier = self.stepped[2]
-        for other, tangent in earlier:
-            apart = ~np.isclose(tangent, self.dnow, rtol=1e-9, atol=0.0)
-            for k in np.flatnonzero(apart):
-                names = (self.plan.rules[other].name, self.plan.rules[index].name)
-                self.note(
-                    'order',
-                    k,
-                    f'{names[0]} and {names[1]} at one time (t = {t:g} h)',
-                    (rule_place(other), rule_place(index)),
-                )
-        earlier.append((index, self.dnow.copy()))
 
     def next_settled(self):
         """The next step of a moment of a played run that settles the independent work first
@@ -3450,9 +2921,8 @@ class Run:
         """What the run gives. A run that stopped at a decision (`paused`) has its trace and its
         state up to that time, and no value of an output: an output is a value at the horizon."""
         plan, t = self.plan, self.horizon
-        self.dnow = np.zeros(len(self.directions))
         trace = [(at, self.rule_name(plan.rules[index], j), outcome) for at, index, j, outcome in self.trace]
-        outputs, tangents, unestimated = {}, {}, list(plan.unestimated)
+        outputs, unestimated = {}, list(plan.unestimated)
         if not paused:
             self.check_all(t)
             env = Env(self, SCALARS, None, t)
@@ -3463,20 +2933,11 @@ class Run:
                     outputs[name] = _one(self.value(node, env))
                 except Unknown:
                     unestimated.append(name)
-            tangents = {direction: {} for direction in self.directions}
-            for name in outputs:
-                self.about(output_place(name))
-                try:
-                    for k, direction in enumerate(self.directions):
-                        tangents[direction][name] = float(_one(self.tangent(plan.outputs[name], env, k)))
-                finally:
-                    self.done()
             self.ended = True  # nothing of the run changes now: a report can keep what it reads
         return Result(
             t,
             trace,
             outputs,
-            tangents,
             dict(self.counts),
             self.reading,
             self,
@@ -3484,7 +2945,5 @@ class Run:
             self.decision,
             paused,
             self.now if paused else t,
-            tuple(self.notes),
-            dict(self.margins),
             tuple(self.firings),
         )

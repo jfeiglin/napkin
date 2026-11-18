@@ -756,9 +756,8 @@ A run takes `outcomes`: the place of the outcome of each firing that goes by cha
 of the run (`timeline.Run(outcomes=…)`, `run_sample(…, outcomes=…)`). Such a firing takes the
 given outcome and draws nothing; a firing after the last given place takes its likeliest outcome.
 The run keeps each such firing (`Result.firings`): the event, the chance with which a sample takes
-each outcome, the place that it took, and, in a run with directions, the derivative of each chance.
-A given outcome that no sample takes (its chance is 0) is an error. A value that an event draws
-still comes from the stream of the sample.
+each outcome, and the place that it took. A given outcome that no sample takes (its chance is 0) is
+an error. A value that an event draws still comes from the stream of the sample.
 
 `estimators.every_path(run)` runs every path of the outcomes in this way. A run with the places `p`
 has one child for each later firing and each other outcome with a chance. Each path is run once,
@@ -782,89 +781,6 @@ is the mean of those sums, with the interval of the sampling method.
   given: the sums of the samples are means, and their spread is not that of the outcome.
 - An outcome that one path does not estimate has no value. A path whose run fails refuses the
   estimate, as a failed sample refuses a study.
-
-### A control
-
-`expectations.controlled(result, run)` gives the mean of each outcome of a finished Monte Carlo
-study with a control. The control of a sample is the linear form of the uncertain inputs at the
-central run, `c = sum g (x - x0)`: `g` is the derivative of the outcome by each input there
-([Tables and tiers](#tables-and-tiers), "Derivatives"), and `x0` the central values. The mean of
-`c` is known from the distributions (`expectations.mean_of`: the integral of the quantile
-function). The estimate is the mean of `y - (c - E[c])`.
-
-- It has no bias, whatever `g` is and however far the outcome is from a line. Its error is that of
-  what the line does not explain: small for an outcome that is near a line over the range of its
-  inputs, and larger than that of the plain mean for an outcome that is far from one. The result
-  has the plain mean and its interval beside it.
-- An input has no part in the control when its values are no numbers, when its distribution reads
-  other values, or when the engine gives no derivative by it. `left_out` names each with its
-  reason. The engine gives no derivative through the general tier, so there the caller gives the
-  coefficients (`coefficients`): any numbers that do not come from the samples keep the estimate
-  without bias, such as the differences of two runs.
-- With `sobol` sampling each interval is that of the blocks.
-
-### The derivative of an expectation
-
-`expectations.derivatives(model, run, inputs, edits, settings)` gives the derivative of the mean of
-each outcome at the horizon by each input.
-
-The mean of the derivatives of the samples is the derivative of the mean only where the outcome of
-a sample is continuous in the input. Take a uniform number U from 0 to 1 and the outcome
-`1 if U < x else 0`. Its mean is x, so the derivative of the mean is 1. But each sample has the
-derivative 0, because no sample has U = x. What the mean of the derivatives misses is the part of
-the samples that crosses the edge when x moves. Such an edge needs no chance event: a condition on
-a drawn value, an event that comes into the horizon, and a chance that reads the input all make
-one.
-
-So each pair of an outcome and an input has a **label**, which follows from the structure of the
-model (`expectations.labels`, on the graph of influence):
-
-| Label | What it says | The estimate |
-| --- | --- | --- |
-| `zero by the structure` | No read leads from the input to the outcome, and no distribution of an uncertain value that reaches the outcome reads the input. | 0. |
-| `sample mean` | With the outcomes of the events given, the outcome is continuous in the input: on each way from the input to the outcome there is no event that the input can move or stop, no comparison that it can change, and no store that can rest on its bound. `min`, `max`, `clip` and `abs` have a bend and no jump, and they are allowed. No chance that reaches the outcome reads the input. | The mean of the derivatives of the samples. |
-| `branch weighting` | As above, but the input changes the chance of an outcome of an event that reaches the outcome. | Every path of the outcomes is run. A path gives the derivative of its value times its weight, and the derivative of its weight times its value. |
-| `unsupported` | One of the conditions fails. `why` has each reason. | None. |
-
-- A sample mean is never given without its label, and a pair that is `unsupported` has no value:
-  above all not the mean of the derivatives of the samples.
-- The outcomes of the events are weighted in every case (`every_path`), so the estimate has the
-  error of the uncertain values only. With no uncertain value it has no sampling error.
-- For this question the graph of influence is finer than for a single run
-  (`Influence(plan, paths=True)`): the value of a `set` or of a move changes what a step writes
-  and not when the step happens, and the chance of an outcome decides nothing when the outcomes
-  are given.
-- These are also `unsupported`: an input that is uncertain itself; an input that the draw of an
-  uncertain value follows, because its distribution reads the input or reads a value that does
-  (a sample holds its draw, so its derivative misses that way); a
-  chance that the input changes and that is 0 or 1 (a change of the input opens a path that has no
-  weight now); a run through which the engine carries no derivative (the general tier, a drawn
-  value, a value of the past); and a run that meets a change of kind that the structure did not
-  show.
-- `one_sided` says that a sample sat on a bend: there the value is the derivative of one side.
-
-Not built: an estimator for a distribution whose arguments read the input (a score function, or
-the derivative of the quantile function), and an estimator for an edge that an event or a
-comparison makes. Such a pair is `unsupported`.
-
-### The derivative of a tail
-
-With `exceed={outcome: value}` and `quantiles={outcome: p}`, `expectations.derivatives` also gives
-the derivative of the chance that the outcome is above a value, and of a quantile of the outcome
-(`estimators.tail_slopes`), for each pair that has an estimate.
-
-- The distribution of the outcome changes in two ways. The paths whose weight changes give a mean
-  like any other. The paths whose value moves pass a given value at the rate of the density of the
-  outcome there, and the density is not known: a normal kernel estimates it, with the width
-  `1.06 sd n^(-1/5)`.
-- So where a value moves, and for every quantile, the estimate is **slower** (`slower` is true):
-  its bias falls with the square of the width, and its error falls as `n^(-2/5)` and not as
-  `n^(-1/2)`. The interval is that of the samples at this width; for a quantile it has the error
-  of the quantile of the samples too. It does not hold the bias.
-- Where only weights change, the derivative of the chance to pass a value has no bias and the
-  error of a mean (`slower` is false).
-- They need independent samples (`random` sampling), and a density: an outcome with one sample, or
-  whose values are all the same, has none.
 
 ## The edit document
 
@@ -1057,8 +973,7 @@ each row of a table is written out as an instance: the whole model is then one p
 sections above say what the engine does with it. The engine also reads the hybrid core of a model
 ([compiler.md](compiler.md)), which does not write the rows out: `timeline.run(Plan.of(core))`.
 `napkin run` reads the hybrid core of a model with a table
-([cli.md](cli.md#a-model-with-a-table)), and `napkin derivatives` reads the hybrid core of every
-model. `evaluate_study` and the other functions of the public API
+([cli.md](cli.md#a-model-with-a-table)). `evaluate_study` and the other functions of the public API
 ([python-api.md](python-api.md#studies)) use the flat structure. This section says how the engine
 runs the rows of a table from the hybrid core.
 
@@ -1078,9 +993,7 @@ table is a space with one instance for each row. A space is in one of two tiers.
   on a bound) is in the general tier. When a run in the fast tier meets a state that the tier does
   not run (a quantity at a bound that is no stock resting on zero; a flow that would ask a rate
   below zero), the run is made again with that family in the general tier: the tier of a run
-  follows from its own values alone. A run that carries derivatives has the things outside the
-  tables in the fast tier, because the general tier carries none; such a run is not made again, and
-  the state that the fast tier does not run stops it by name.
+  follows from its own values alone.
 
 In both tiers the size of a quantity, which sets its tolerance, and the longest step of a numerical
 segment are those of [Between moments: the solver](#between-moments-the-solver).
@@ -1133,64 +1046,6 @@ when the run is made again in the general tier.
 A change of one member costs log2(n) additions, and the total depends on the present values only.
 The order of the additions is not the order of the list; the language promises no order of a sum over
 a list.
-
-**Derivatives.** With `directions` (names of inputs), a run carries the derivative of every value by
-each input, for one unit of the input as the file writes it. The time of an event has a derivative
-too, and a part that starts again at an event takes the jump that the moving time gives. The result
-has the derivative of each output at the horizon. It is the derivative on the path of the events of
-the run.
-
-**The class of a derivative.** `derivatives.report(plan, values, inputs)` gives each derivative
-with its class (`napkin/engine/timeline/derivatives.py`). Each derivative is that of one run, and
-the other inputs keep their values: also an uncertain input whose distribution reads this input,
-which has its central value in the run. The derivative of a mean over samples is another question
-([The derivative of an expectation](#the-derivative-of-an-expectation)).
-
-- **structurally zero.** No read of the plan leads from the input to the output: the graph of
-  influence (`timeline/influence.py`) has each read of the engine as an edge: from what a rate, a
-  start, a rule or an output reads (also through the members of a list) to what it gives, from a
-  rule to what its steps write, and from a stock to what its flows deliver when it rests on its
-  bound. The derivative is 0 for every value. A derivative that the run finds to be
-  other than 0 for such a pair stops the report: the graph would lack a read.
-- **smooth.** The run met nothing of the kinds below for this input and this output.
-- **one-sided.** The run met a place where a small change of the input changes the path, and the
-  value is the derivative on the side of the path of the run. The run notes (`Run.note`):
-  - two pieces of an expression that meet (`timeline/smooth.py`: the two sides of a comparison,
-    two arguments of `min` or `max`, the value of `clip` and a limit, the argument of `abs` and
-    zero), where the derivative of their difference by the input is not zero. The engine looks at
-    each state of the run at which it makes a tangent: a start, a step, the rate of a line that
-    starts again, an output at the horizon, and, for a block that a solver integrates, each
-    state at which it reads the solution (so a state that comes to the edge of a piece and stays
-    within the tolerance of it is seen);
-  - the same in the condition of a rule that is read at a moment;
-  - two steps of one moment whose times move apart with the input: the file decides their order
-    here, and a small change puts one before the other;
-  - two clocks of one rule at one time, with different derivatives;
-  - a value that a step sets within the tolerance of its bound, which is taken as the bound;
-  - two outcomes of a firing with one chance, where the input moves the two chances apart (the
-    central run takes the first of the file).
-
-  A tie that no input can break is no note: a stock that a step emptied compared with zero, two
-  values that the input does not move. The class is the safe one: a tie that holds at one time
-  only, through which the value passes, leaves the derivative of both sides the same.
-- **undefined.** The time of a crossing is not decided by its value, and the input moves the
-  value or the mark there: the value has no rate at its mark, or it is within its tolerance of
-  the mark for a step cap or longer (the tolerance over the rate). That is the crossing of a
-  value that comes near its mark and never passes it. A derivative that is no finite number is
-  undefined too. No value is given.
-- **unsupported.** The engine carries no derivative through a part of the run, and names it
-  (below, "What the engine names as outside"). No value is given; the pairs that are zero by the
-  structure keep their zeros. A rate of a numeric block that jumps at a time that the input moves
-  is such a part (`Run.jumps`): a comparison in the rate (`x if a < b else y`, a flow with
-  `while`) whose two sides change their order between two readings of the block, where the
-  derivative of their difference by the input is not zero. The tangents of the block are those of
-  each side of the jump, and carry no term for the jump itself: `1 if t < x h else 0` an hour
-  fills `x` until `t = x h`, whose derivative by `x` is 1, and the tangents give 0. A jump at a
-  time that no input moves, and a kink of `min`, `max`, `clip` or `abs`, change no derivative.
-
-The result of a run with directions has the notes and three margins: the longest time in which a
-crossing is decided only within the tolerance of its value, the least time between two moments
-with a step, and the least distance between the two likeliest outcomes of a firing.
 
 **The budgets.** `max_steps` counts the steps of one moment. `max_events` counts the events of a run
 for each instance of the largest table: the limit is `max_events` times that number of instances.
@@ -1295,10 +1150,7 @@ one had, `simulate` would stop the run with that name. From the hybrid core, the
   another space, or a list over a family that moves); flows that move by one fraction and share a
   limit, in a thing whose rates read another instance or another family.
 - Of what a run is asked: the whole record of a run (`Result.trajectory`) of a model with a table,
-  or with the things outside the tables in the fast tier; the derivative of a played run, of a run
-  with a part that only the general tier runs, of a run with a draw or a value of the past, of a `min` or a `max`
-  over a list, of the start of a quantity that each row writes, of a flow of an allocation group at
-  its limit, and of a run in which a stock comes to rest on its bound.
+  or with the things outside the tables in the fast tier.
 
 ## The same result again
 

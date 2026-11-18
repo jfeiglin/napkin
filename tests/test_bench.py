@@ -719,8 +719,7 @@ def test_the_document_has_its_slots_and_goes_through_json(records):
     assert document['commit'] is None or re.fullmatch(r'[0-9a-f]{40}', document['commit'])
     assert isinstance(document['processors'], int) and len(document['workloads']) == len(records)
     for item in document['workloads']:
-        assert {'kind', 'name', 'path', 'run', 'compile', 'values', 'derivative'} <= set(item)
-        assert item['derivative'] == {'available': False}
+        assert {'kind', 'name', 'path', 'run', 'compile', 'values'} <= set(item)
         assert item['compile']['shape_classes'] == {'available': False}
         assert set(item['compile']) == {'cold', 'shape_classes'} and set(item['values']) == {
             'one_run',
@@ -925,7 +924,6 @@ def test_the_command_measures_a_family_and_writes_the_document(tmp_path, capsys)
     assert item['name'] == 'events_1' and item['kind'] == 'family' and item['run'] == 'base'
     assert not any('failed' in found for found in measurements(item))
     assert item['values']['batch'] == {'skipped': 'no samples asked'}
-    assert item['derivative'] == {'available': False}
     assert all(isinstance(found.get('peak_mb'), float) for found in measurements(item)[:3])
     assert document['settings']['families'] == ['events'] and document['settings']['sizes'] == [1]
     assert document['settings']['scenarios'] == [] and document['settings']['repeats'] == 1

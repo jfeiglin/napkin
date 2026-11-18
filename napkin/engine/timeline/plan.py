@@ -312,13 +312,11 @@ class Plan:
             raise ValueError(f'scalars: {scalars!r} is not general or fast')
         parts = (core, core.listed[key], resolved, thaw(model.library))
         try:
-            return cls.made(
-                parts, frozenset() if scalars == 'fast' else frozenset({SCALARS}), scalars is None
-            )
+            return cls.made(parts, frozenset() if scalars == 'fast' else frozenset({SCALARS}))
         except Outside as problem:
             if not (problem.tier and scalars is None):
                 raise
-        return cls.made(parts, frozenset(), False)
+        return cls.made(parts, frozenset())
 
     @classmethod
     def flat(cls, resolved, library, scalars=None):
@@ -328,20 +326,17 @@ class Plan:
         core = SimpleNamespace(families=(), positions=dict)
         parts = (core, resolved, resolved, thaw(library))
         try:
-            return cls.made(
-                parts, frozenset() if scalars == 'fast' else frozenset({SCALARS}), scalars is None
-            )
+            return cls.made(parts, frozenset() if scalars == 'fast' else frozenset({SCALARS}))
         except Outside as problem:
             if not (problem.tier and scalars is None):
                 raise
-        return cls.made(parts, frozenset(), False)
+        return cls.made(parts, frozenset())
 
     @classmethod
-    def made(cls, parts, general, optional):
+    def made(cls, parts, general):
         """The plan with the spaces `general` in the general tier, and with each space that has a
         part that the fast tier does not run."""
         general = set(general)
-        why = {}  # the part of each space that only the general tier runs
         while True:
             try:
                 plan = cls(*parts, general=frozenset(general))
@@ -349,10 +344,8 @@ class Plan:
                 if problem.space is None or problem.space in general:
                     raise
                 general.add(problem.space)
-                why[problem.space] = str(problem)
                 continue
-            plan.source, plan.optional, plan.others = parts, optional and SCALARS in plan.general, {}
-            plan.only_general = why
+            plan.source, plan.others = parts, {}
             return plan
 
     def wider(self, space):
@@ -360,17 +353,8 @@ class Plan:
         if space is None or space in self.general:
             return None
         if space not in self.others:
-            self.others[space] = Plan.made(self.source, self.forced | {space}, self.optional)
+            self.others[space] = Plan.made(self.source, self.forced | {space})
         return self.others[space]
-
-    def fast(self):
-        """This plan with the things outside the tables in the fast tier, when it has them in the
-        general tier only because that is the tier of a space of one instance; else None."""
-        if not self.optional:
-            return None
-        if 'fast' not in self.others:
-            self.others['fast'] = Plan.made(self.source, self.forced - {SCALARS}, False)
-        return self.others['fast']
 
     def __init__(self, core, structure, resolved, library, general=frozenset()):
         # `structure` is the typed parts of the structure (`model.structure.Structure`): the plan

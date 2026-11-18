@@ -23,8 +23,7 @@ between tables; a played run, with its picks, its pause at a decision and the de
 What it names as outside (`Outside`): a model with start-state options.
 
 A space is in one of two tiers (`run.py`). When a run meets a state that the fast tier of a space
-does not run, `run` makes the run again with that space in the general tier; a run that carries
-derivatives has the things outside the tables in the fast tier.
+does not run, `run` makes the run again with that space in the general tier.
 """
 
 from __future__ import annotations
@@ -61,14 +60,10 @@ __all__ = [
 def run(plan, values=None, **options):
     """One run of a plan to its horizon. `values`: {input: a number in its unit, or one for each
     instance}. `options`: `settings` (the numerical settings), `reading` ('scoped' or 'every'),
-    `directions` (the inputs by which the run carries derivatives), `adapter` (the solver), `luck`
-    (the luck of a sample: {seed, sample}), `outcomes` (the given outcomes of the firings that go
-    by chance, `Run`), and those of a played run: `play` ({control, picks}),
-    `pause_at_decision`, `decision_events`, `settled_decisions`, `decision_resolver`, with the
-    meaning that `engine/runtime.simulate` gives them."""
-    if options.get('directions') and plan.fast() is not None:
-        # The general tier carries no derivative: the things outside the tables go to the fast tier.
-        plan = plan.fast()
+    `adapter` (the solver), `luck` (the luck of a sample: {seed, sample}), `outcomes` (the given
+    outcomes of the firings that go by chance, `Run`), and those of a played run: `play`
+    ({control, picks}), `pause_at_decision`, `decision_events`, `settled_decisions`,
+    `decision_resolver`, with the meaning that `engine/runtime.simulate` gives them."""
     if options.get('decision_resolver') is not None:
         # A run that is made again asks each decision again: the resolver is asked once for each,
         # and the run that is made again gets the answer that the first one got.
@@ -79,8 +74,7 @@ def run(plan, values=None, **options):
         except Outside as problem:
             # The run met a state that the fast tier of a space does not run: the run is made again
             # with that space in the general tier. The tier of a run follows from its own values alone.
-            # A run that carries derivatives has no general tier: the state is named as it is.
-            wider = None if options.get('directions') else plan.wider(problem.space)
+            wider = plan.wider(problem.space)
             if wider is None:
                 raise
             plan = wider

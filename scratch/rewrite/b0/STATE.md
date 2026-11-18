@@ -33,7 +33,8 @@ main session copied this newest version here.
   cases). The three engine test files pass (171 tests), and their 472 runs have the same digests
   with the old engine (`$S/start_tree`, old package and these tests) and the new one
   (`$S/rec_old`, `$S/rec_new`).
-- Not started: the docs and `CHANGELOG.md` (step 5); the end checks, the commit (step 6).
+- Done by a second agent: the docs and `CHANGELOG.md` (step 5); the end checks and the commit
+  (step 6). `bitwise.py` with the final package equals `$S/base.txt` (sha 8d0f9ce8…).
 
 ## Order of work, and what remains
 
@@ -48,7 +49,7 @@ main session copied this newest version here.
 5. Docs (`engine.md`, `cli.md`, `python-api.md`, one sentence in `design.md`), `CHANGELOG.md`.
 6. The end checks of the brief, once; commit; report.
 
-Steps 1 to 4 are done. Steps 5 and 6 remain.
+All six steps are done.
 
 ## Found, and not in the brief
 

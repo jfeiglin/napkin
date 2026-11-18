@@ -14,7 +14,7 @@ A command module imports only the standard library and `common` when it is impor
 import importlib
 
 # The command modules, in order.
-NAMES = ('compile', 'run', 'play', 'sample', 'derivatives', 'draw', 'new', 'fmt')
+NAMES = ('compile', 'run', 'play', 'sample', 'draw', 'new', 'fmt')
 
 
 def modules():

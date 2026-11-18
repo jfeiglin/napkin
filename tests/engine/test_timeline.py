@@ -3,10 +3,8 @@
 The oracles are independent of the engine:
 
 - closed forms of the models, from the numbers that each test writes into its table and gives to its
-  inputs: the times of clocks and crossings, the sums of lines, the solution of a linear and of a
-  logistic equation, and the derivatives that calculus gives of those;
-- for a derivative through an event of a numeric block, the same closed forms at 40 digits with the
-  time of the event from a root search and the derivative from differences at that precision (mpmath);
+  inputs: the times of clocks and crossings, the sums of lines, and the solution of a linear and of a
+  logistic equation;
 - the run of the same file from its flat structure (`simulate`), where each row of a table is
   written out and the whole model is one component of the general tier: the order and the names of
   the events, and the values, within the tolerances of the solvers. It is a second path through the
@@ -302,33 +300,6 @@ def test_a_numeric_block_of_each_instance_gives_the_closed_form_of_its_linear_eq
     assert timeline.check(timeline.Plan.of(hybrid.compile(path)), values) == []
 
 
-def test_the_closed_form_of_a_linear_block_and_the_solver_give_the_same_run(tmp_path):
-    """The block of a cell is linear, so a run with no tangents takes its closed form and no step of
-    a solver. A run with tangents integrates the same block with the solver. The closed form of the
-    test above judges both; here the two are compared with each other, and the solver's run has the
-    derivative that the closed form of the test gives: what seeps from a cell that never opens its
-    gate is `a T - (w(T) - w0)`, whose derivative by the inflow `a` is `T - (1 - e^(-k T)) / k`."""
-    levels = [0.05, 0.31, 9.0]
-    inflow, leak = 0.07, 0.04
-    path = package(tmp_path, GATES, cells=('level: fraction @shape', levels))
-    plan = timeline.Plan.of(hybrid.compile(path))
-    assert [block.linear for block in plan.blocks] == [True]
-    values = {'cells_1.inflow': inflow, 'cells_1.leak': leak}
-    closed = timeline.run(plan, values)
-    solved = timeline.run(plan, values, directions=('cells_1.inflow',))
-    assert closed.counts['solver steps'] == 0 and solved.counts['solver steps'] > 100
-    assert closed.trace == solved.trace
-    for name, value in closed.outputs.items():
-        assert solved.outputs[name] == pytest.approx(value, rel=1e-8)
-    assert solved.final('cells_1.water') == pytest.approx(closed.final('cells_1.water'), rel=1e-8)
-    # The third cell never opens (its level is above what arrives in the run): its seepage has the
-    # closed form of the docstring, and the events of the two others move with the inflow too.
-    k, days = leak, 10.0
-    never = days - (1 - math.exp(-k * days)) / k
-    seeped = solved.run.numeric('cells_1.seeped', None, HORIZON, part=1)
-    assert seeped[2] == pytest.approx(never, rel=1e-6)
-
-
 def test_an_event_of_one_instance_starts_only_its_own_block_again(tmp_path):
     """Three events for each cell: the block of a cell starts again at the two that change its gate,
     and at no event of another cell."""
@@ -361,145 +332,22 @@ output level_total: fraction = sum(Cell.level)  @shape
 
 def test_a_list_in_the_rate_of_every_instance_is_one_block_with_the_logistic_closed_form(tmp_path):
     """Each level grows at `gain * level * (1 - mean)`, so the sum S of the levels has
-    `S' = gain * S * (1 - S / n)`: the logistic curve. The derivative by the gain is that of the curve."""
+    `S' = gain * S * (1 - S / n)`: the logistic curve."""
     starts = [0.05, 0.4, 0.11, 0.27, 0.33, 0.02, 0.19]
     count, gain = len(starts), 0.63
     path = package(tmp_path, GROWTH.replace('{n}', str(count)), cells=('start: fraction @shape', starts))
     plan = timeline.Plan.of(hybrid.compile(path))
     assert [(block.names, block.whole) for block in plan.blocks] == [(('cells_1.level',), True)]
-    result = timeline.run(plan, {'cells_1.gain': gain}, directions=('cells_1.gain',))
+    result = timeline.run(plan, {'cells_1.gain': gain})
     ratio, days = count / sum(starts) - 1, 10.0
     decay = math.exp(-gain * days)
     assert result.outputs['level_total'] == pytest.approx(count / (1 + ratio * decay), rel=1e-7)
-    slope = count * ratio * days * decay / (1 + ratio * decay) ** 2
-    assert result.tangents['cells_1.gain']['level_total'] == pytest.approx(slope, rel=1e-6)
     # Each level keeps its share of the sum: the levels grow by one factor.
     levels = result.final('cells_1.level')
     assert levels / levels.sum() == pytest.approx(np.array(starts) / sum(starts), rel=1e-7)
     trace, outputs = flat_run(path, {f'cells.{row}.gain': gain for row in range(1, count + 1)})
     assert trace == [] and result.trace == []
     assert result.outputs['level_total'] == pytest.approx(outputs['level_total'], rel=1e-8)
-
-
-# ---- derivatives through an event with a reset -----------------------------------------------------------
-
-RESET = """Cell:  @shape
-    "One cell."
-    input pace: fraction/day = 0.3 fraction/day in 0 fraction/day to 2 fraction/day  @shape
-    input fast: fraction/day = 0.5 fraction/day in 0 fraction/day to 2 fraction/day  @shape
-    input keep: fraction = 0.25 in 0 to 1  @shape
-    input cap: fraction = 0.6 in 0 to 5  @shape
-    let shift: fraction = 0  @shape
-    var level: fraction = 0 size 1  @shape
-    var gone: fraction = 0 size 1  @shape
-    var quick = false  @shape
-    flow fill: -> level at fast if quick else pace
-    flow leave: level -> gone at 0 fraction/day
-    event turn once when level >= cap + shift:  @shape
-        "The level is set back, and the cell fills faster."
-        level = keep * level
-        quick = true
-
-cells: Cell from "cells.csv"
-
-output level_total: fraction = sum(Cell.level)  @shape
-    "Level of all cells"
-    level
-"""
-
-
-def test_the_derivative_of_a_line_through_its_reset_is_the_closed_form(tmp_path):
-    """A level rises at `pace` to its mark `c = cap + shift`, is set back to `keep * c`, and then rises
-    at `fast`: at the horizon T it is `keep * c + fast * (T - c / pace)`. The time of the event moves
-    with the pace and the mark, so the derivative by each needs the jump of the tangent at the event."""
-    shifts = [0.0, 0.3, 0.55]
-    pace, fast, keep, cap = 0.3, 0.5, 0.25, 0.6
-    path = package(tmp_path, RESET, cells=('shift: fraction @shape', shifts))
-    names = ('cells_1.pace', 'cells_1.fast', 'cells_1.keep', 'cells_1.cap')
-    result = timeline.run(
-        timeline.Plan.of(hybrid.compile(path)), dict(zip(names, (pace, fast, keep, cap))), directions=names
-    )
-    marks, days = [cap + shift for shift in shifts], 10.0
-    assert result.outputs['level_total'] == pytest.approx(
-        sum(keep * c + fast * (days - c / pace) for c in marks), rel=1e-13
-    )
-    exact = {
-        'cells_1.pace': sum(fast * c / pace**2 for c in marks),
-        'cells_1.fast': sum(days - c / pace for c in marks),
-        'cells_1.keep': sum(marks),
-        'cells_1.cap': len(marks) * (keep - fast / pace),
-    }
-    for name, slope in exact.items():
-        assert result.tangents[name]['level_total'] == pytest.approx(slope, rel=1e-12), name
-    assert [at for at, _, _ in result.trace] == pytest.approx(sorted(c / pace * DAY for c in marks))
-
-
-SEEP = """Cell:  @shape
-    "One cell."
-    input inflow: fraction/day = 0.3 fraction/day in 0 fraction/day to 2 fraction/day  @shape
-    input leak: ratio/day = 0.4 ratio/day in 0 ratio/day to 2 ratio/day  @shape
-    input keep: fraction = 0.25 in 0 to 1  @shape
-    input mark: fraction = 0.3 in 0 to 5  @shape
-    let shift: fraction = 0  @shape
-    var water: fraction = 0.5 size 1  @shape
-    var seeped: fraction = 0 size 1  @shape
-    flow storm: -> water at inflow
-    flow seep: water -> seeped at leak * water
-    event drain once when seeped >= mark + shift:  @shape
-        "A part of the water is let out."
-        water = keep * water
-
-cells: Cell from "cells.csv"
-
-output water_total: fraction = sum(Cell.water)  @shape
-    "Water of all cells"
-    level
-"""
-
-
-def seep_total(inflow, leak, keep, mark, shifts, days=10):
-    """The water of all cells at the horizon, at the precision of mpmath: before its event, the
-    water of a cell is `u/k + (w0 - u/k) e^(-k t)` and what seeped is `u t - (water - w0)`; the event
-    is at the root of `seeped = mark + shift`; then the water goes on from `keep` times its value."""
-    start = mpmath.mpf('0.5')
-    rest = inflow / leak
-    total = mpmath.mpf(0)
-    for shift in shifts:
-
-        def water(t):
-            return rest + (start - rest) * mpmath.exp(-leak * t)
-
-        at = mpmath.findroot(lambda t: inflow * t - (water(t) - start) - (mark + shift), 1)
-        total += rest + (keep * water(at) - rest) * mpmath.exp(-leak * (days - at))
-    return total
-
-
-def test_the_derivative_of_a_numeric_block_through_its_reset_is_that_of_the_closed_form(tmp_path):
-    """The crossing is of a value that a solver integrates, its time has no closed form, and the step
-    sets a state of the block: the tangent of the time of the event comes from the tangents and the
-    rate of the block at the event, and the block starts again with the jump."""
-    shifts = [0.0, 0.25, 0.6]
-    point = {'inflow': 0.3, 'leak': 0.4, 'keep': 0.25, 'mark': 0.3}
-    path = package(tmp_path, SEEP, cells=('shift: fraction @shape', shifts))
-    names = tuple(f'cells_1.{name}' for name in point)
-    result = timeline.run(
-        timeline.Plan.of(hybrid.compile(path)),
-        {f'cells_1.{name}': value for name, value in point.items()},
-        directions=names,
-    )
-    assert len(result.trace) == len(shifts)
-    with mpmath.workdps(40):
-        exact = {name: mpmath.mpf(repr(value)) for name, value in point.items()}
-        assert result.outputs['water_total'] == pytest.approx(
-            float(seep_total(shifts=shifts, **exact)), rel=1e-8
-        )
-        for name in point:
-            slope = mpmath.diff(
-                lambda x, name=name: seep_total(shifts=shifts, **{**exact, name: x}), exact[name]
-            )
-            assert result.tangents[f'cells_1.{name}']['water_total'] == pytest.approx(
-                float(slope), rel=2e-6
-            ), name
 
 
 # ---- D-65: the two readings of the rules ---------------------------------------------------------------
@@ -664,32 +512,20 @@ def test_a_step_that_writes_one_member_of_a_block_reads_again_the_rules_of_the_o
     """The cut of one cell sets its level. Every level and every `grown` are in one block, because the
     mean of the levels feeds each rate. So the cut changes when the `grown` of each other cell reaches
     its mark: those crossings are read again, though the step wrote none of the values that they read.
-    The oracles: the flat structure, the reading of every rule at every moment,
-    and, for the derivatives, the slope of the run's own output between two near values of the input
-    (a derivative that missed the moved events would not be that slope)."""
+    The oracles: the flat structure, and the reading of every rule at every moment."""
     starts = [0.05, 0.1, 0.2, 0.15]
     point = {'gain': 0.63, 'keep': 0.5, 'mark': 0.1}
     path = package(tmp_path, CUTS.replace('{n}', '4'), cells=('start: fraction @shape', starts))
     plan = timeline.Plan.of(hybrid.compile(path))
     assert [(len(block.names), block.whole) for block in plan.blocks] == [(2, True)]
     values = {f'cells_1.{name}': value for name, value in point.items()}
-    result = timeline.run(plan, values, directions=('cells_1.keep', 'cells_1.mark'))
+    result = timeline.run(plan, values)
     assert len(result.trace) == 4
     flat = {f'cells.{row}.{name}': value for row in range(1, 5) for name, value in point.items()}
     trace, outputs = flat_run(path, flat)
     assert same_trace(result.trace, trace, 1e-5)
     assert result.outputs['level_total'] == pytest.approx(outputs['level_total'], rel=1e-7)
     assert timeline.check(plan, values, time_tolerance=1e-6) == []
-    for name in ('keep', 'mark'):
-        step = 1e-4
-        up, down = (
-            timeline.run(plan, {**values, f'cells_1.{name}': point[name] + sign * step}).outputs[
-                'level_total'
-            ]
-            for sign in (1, -1)
-        )
-        slope = (up - down) / (2 * step)
-        assert result.tangents[f'cells_1.{name}']['level_total'] == pytest.approx(slope, rel=2e-4), name
 
 
 # ---- one moment ----------------------------------------------------------------------------------------
@@ -2212,10 +2048,6 @@ def test_a_flow_that_would_ask_a_rate_below_zero_inside_a_segment_stops_the_run(
     with pytest.raises(SimulationError) as stopped:
         timeline.run(plan)
     assert 'level_out' in str(stopped.value)
-    # A run that carries derivatives has no general tier to give the error of the run: the part
-    # is named as outside the engine.
-    with pytest.raises(timeline.Outside, match='rate below zero'):
-        timeline.run(plan, directions=('cells_1.pace',))
     still = timeline.run(plan, {'cells_1.inflow': 0.0, 'cells_1.pace': [0.5, 0.5]})
     assert list(still.final('cells_1.a')) == pytest.approx([0.3 + 0.3 * math.exp(-10.0)] * 2, rel=1e-7)
 

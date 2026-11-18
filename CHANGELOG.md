@@ -34,6 +34,13 @@ fresh start: it has no reader or schema of an earlier version, and saved edits a
 - **The tag** `v0.0.1` sorts below `v2.2.0`, `v5.0.0` and `v5.0.1`, the tags of `cyber_scenarios`,
   which stay as its history.
 
+**Removed: the derivatives of a whole run.** The language is being rewritten, and the derivatives
+that a run carried by its inputs are out of its first version; they are rebuilt later. `napkin
+derivatives`, `timeline.derivatives.report`, the option `directions` of `timeline.run`,
+`expectations.controlled`, `expectations.derivatives` and `estimators.tail_slopes` are gone. A run
+gives the same numbers as before, bit for bit. The derivative of an expression by a name
+(`napkin/core/derivatives.py`) and the derivatives of the field (`napkin.dynamics`) stay.
+
 **A notebook to explore `heat_wave_blackout`** (`scenarios/heat_wave_blackout/explore.ipynb`). A
 reader runs two pathways side by side with values of their own, and sees the outcomes, the charts of
 the supply, the deaths and the status of each part, and the edit document that gives the same

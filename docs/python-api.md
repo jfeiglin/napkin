@@ -515,35 +515,6 @@ report = reports.study_of(core, runs=None, times=[30.0], rows=['cells_4'], setti
   and `runs` is empty.
 - `study_of` takes no edit document and plays no run.
 
-### Derivatives
-
-```python
-from napkin.engine import timeline
-from napkin.engine.timeline import derivatives
-from napkin.model import hybrid
-
-core = hybrid.compile('examples/reservoir/model.scn')
-plan = timeline.Plan.of(core, 'base')
-report = derivatives.report(plan, values=None, inputs=['reservoir.inflow'])
-item = report['derivatives']['reservoir.spilled.output']['reservoir.inflow']
-```
-
-- `derivatives.report(plan, values, inputs, settings=None, error=True)` gives the report of the
-  derivatives of one run of a plan, as plain data: the document of `napkin derivatives --json`
-  ([cli.md](cli.md#napkin-derivatives---json)) without the name of the run. A model with no table
-  is its own hybrid core, so `hybrid.compile` and `Plan.of` take every model. `values` are values
-  of inputs for this run, `inputs` names the inputs (default: every input), and `settings` is the
-  numerical settings.
-- Each derivative has its `value`, `unit`, `class`, `why` and `error`. The classes are `smooth`,
-  `one-sided`, `undefined`, `unsupported` and `structurally zero`
-  ([engine.md](engine.md#tables-and-tiers), "Derivatives"). A value is the derivative of the
-  outcome in its own unit for one unit of the input, as the file writes the two.
-- `error` is the distance of the value from that of a second run with tolerances a hundred times
-  tighter. With `error=False` that run is not made, and each error is `None`.
-- `timeline.run(plan, values, directions=inputs)` is the run itself: its `tangents` have the
-  derivative of each output in execution units, its `notes` what it met that decides a class, and
-  its `margins` the least margins of the run.
-
 ## Uncertainty
 
 `evaluate_uncertainty(model, edits=None, settings=None, numerical_settings=None, *, runs=None,
@@ -617,9 +588,7 @@ from napkin.engine import SamplingSettings, evaluate_uncertainty, estimators, ex
 model = napkin.load_scenario('examples/piano_tuners/model.scn')
 settings = SamplingSettings(samples=64, seed=0, method='sobol')  # 8 blocks of 8 points
 result = evaluate_uncertainty(model, None, settings)
-controlled = expectations.controlled(result, 'base')
 weighted = expectations.weighted(model, 'base', None, settings)
-slopes = expectations.derivatives(model, 'base', ['tuners.staff'], None, settings)
 ```
 
 - `SamplingSettings(samples, seed, 'sobol', replicates=8)`: scrambled Sobol' points in independent
@@ -636,18 +605,6 @@ slopes = expectations.derivatives(model, 'base', ['tuners.staff'], None, setting
   events}`. `outcomes[name]` is `{estimated, mean, se, low, high, sd, unit}`; `se`, `low` and
   `high` are `None` when nothing but the outcomes is drawn. A study that is refused has
   `admissible` false and its `diagnostics`.
-- `expectations.controlled(result, run, *, coefficients=None, numerical_settings=None,
-  confidence=0.95)` gives the mean of each outcome of a finished Monte Carlo study with the linear
-  control: `{run, samples, confidence, outcomes, left_out}`. `outcomes[name]` is `{estimated,
-  mean, se, low, high, n, plain, coefficients}`, `plain` being the mean with no control.
-- `expectations.derivatives(model, run, inputs=None, edits=None, settings=None,
-  numerical_settings=None, *, exceed=None, quantiles=None, limit=4096, confidence=0.95)` gives the
-  derivative of the mean of each outcome by each input: `{admissible, run, samples, paths,
-  settings, confidence, inputs, outcomes, derivatives}`. `derivatives[outcome][input]` is `{label,
-  why, value, se, low, high, unit, one_sided}`; the labels are `zero by the structure`, `sample
-  mean`, `branch weighting` and `unsupported`. With `exceed` and `quantiles` a pair that has an
-  estimate also has `exceedance` and `quantile`: `{value, se, low, high, n, at, density,
-  bandwidth, slower}`.
 - `timeline.run(plan, values, outcomes=places)` and `run_sample(model, run, values, None, times,
   luck, outcomes=places)` are a run with given outcomes; `estimators.every_path(run)` runs every
   path.
