@@ -22,6 +22,7 @@ from scipy.optimize import linprog
 
 from .lp import INF, AT_UPPER, SolveError
 from .form import _row_max
+from . import ranked
 from scipy.optimize._highspy import _core as h
 
 TAU = 1e-9
@@ -29,7 +30,7 @@ FIX = 1e-7      # the feasibility tolerance of HiGHS: how well a level is known
 ONE = 1e-9
 
 
-def sequential(kept, face, F, primal=True, log=None, limit=None):
+def sequential(kept, face, F, primal=True, log=None, limit=None, pin=False):
     """Max-min of the claims F (K x n, working units) on the kept instance. Narrows `face` with the
     fixes, and removes its own column and rows from the instance at the end.
     Returns (levels, stats)."""
@@ -64,6 +65,11 @@ def sequential(kept, face, F, primal=True, log=None, limit=None):
                 kept.s.setOptionValue('simplex_strategy', 4)   # primal simplex: only bounds change now
             level = x[t]
             lam = y[first]
+            if pin:
+                # every max-min answer is optimal here: narrow to the optimal face, as for an objective,
+                # so that the face has no implicit equality left for the distance step
+                m0 = len(face.row_lower)
+                ranked.pin(kept, face, x[:n0], d[:n0], y[:m0])
             if level >= 1.0 - ONE:
                 fixed = pending.copy()
                 level = 1.0

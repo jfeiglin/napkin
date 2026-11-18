@@ -1,7 +1,7 @@
 # Rulings for gate G0
 
-Sources: `a1/`, `a2/`, `a4a/`, `a4b/`, `a5/` FINDINGS.md, `g0-notes.md`, `open-items.md`. A3 is not
-finished: its rows say "pending A3". Ruling ids are R-<prototype>-<nn>.
+Sources: `a1/`, `a2/`, `a4a/`, `a4b/`, `a5/` FINDINGS.md, `g0-notes.md`, `open-items.md`. A3's rulings are in; its
+measurements at 30,000 places are pending. Ruling ids are R-<prototype>-<nn>.
 
 ## Part 0. How to read this
 
@@ -19,6 +19,34 @@ What was not verified:
   A2: `switch`, `sees` and chance have no case in its interpreter.
 
 ## Part 1. Decisions that need your word (most weight first)
+
+### D0. What the solver does at a size that it cannot solve in time
+Question: two ranks of the spec's selection order are costly on a large network that is short of
+supply: inherited fair sharing, and the last distance step after it. What does the first version do
+there?
+Measured (A3; its numbers at 30,000 places are still pending):
+- Fair sharing, exact method: 50 to 172 programs and 1.1 to 4.4 s at 3,000 places, by the degree of
+  shortage. At 30,000 places A3 calls it a no-go. An earlier run there took 383 programs and 75.8 s
+  and then failed; the failure is mended, the cost is not.
+- The distance step after a fair rank: A3's own method does not converge at 3,000 places. The QP of
+  HiGHS is exact there and takes 38 s. With no fair rank before it, the step takes 0.5 s.
+- With no shortage, neither rank costs anything.
+- Members that join and leave: a go. Inequality rows in the distance step: right on 200 random
+  problems against an exact calculation.
+Rule (R-A3-04, R-A3-05): keep the selection order as the spec has it. Each of the two ranks has a
+budget. A solve that passes it stops the run by name (`fair-sharing budget exceeded (N levels)`,
+`distance step: no answer within budget`). The engine never gives another answer.
+Alternative A: change the language for a large solver: it must write objectives that leave nothing
+to inherited fair sharing, and the compiler refuses one that does not.
+Alternative B: hold the solver slice until a faster exact method exists.
+Example: the worked network with 30,000 places. Supply meets every request: it runs under the rule.
+Supply is short: under the rule it runs up to about 3,000 places, at seconds to about 40 s for each
+solve, and stops by name above that.
+Cost if changed later: none for model text under the rule; a faster method later only moves the
+limit. Alternative A changes what an author must write. Ids: R-A3-04, R-A3-05.
+Note (main session): this is the network use that started the rewrite. The rule keeps every answer
+right, and it is honest about the limit. A faster exact method is a research task for the solver
+slice; A3 left a method of groups with a proof sketch and two counterexamples (`a3/STATE.md`).
 
 ### D1. The spelling of chance and choice
 Question: how does an author write an outcome picked by chance, or by an actor?
@@ -187,13 +215,16 @@ left: L = amount
 ```
 Cost if changed later: low. Loosening is additive. Ids: R-A1-23, R-A2-20. See Part 5, C8.
 
-### D15. A flow may take more than its request (pending A3)
+### D15. A flow may take more than its request
 Question: may a flow be given more than it asked when that helps an earlier objective?
-Rule (the spec allows it): yes. An author forbids it with a capacity equal to the request.
-Alternative: a flow never takes more than its request.
-Example (g0-notes, from A3's work, not a findings file): under the route law at need x1.45, the
-total unmet is 5808.66 when a place may take more than it asked, against 5812.58.
-Cost if changed later: every allocation can change. Ids: none yet; pending A3.
+Rule (R-A3-07, the spec's wording): yes. An author forbids it with `capacity = this.request`.
+Alternative: a request is also a cap on every flow, in the language.
+Example (`a3/explore/bridge.py`): places J (supply 10), X (asks 0.1), Y (asks 0), B (asks 10), five
+routes, and `minimize(sum(unmet))`. Under the rule X takes 4.65, which lowers its level, and B gets
+5.35: unmet 4.65. With a cap at each request X takes 0.1 and B gets 0.8: unmet 9.20.
+Cost if changed later: every allocation under a route law can change. Ids: R-A3-07.
+Note (main session): the rule can surprise: a place "uses" 46 times what it asked. The example
+belongs in the docs, with the one line that forbids it.
 
 ### D16. What to retire and not port
 Question: which parts of today's code are not carried into the new engine? (Sizes and users: `g0-notes.md`.)
@@ -246,6 +277,7 @@ Cost if changed later: none for the engine; the docs follow the spec. Ids: row 7
 - R-A5-07: an instance replaces a template formula with `m = formula(E)`; a scalar is refused.
 - R-A5-12: the author names each leg; a migration tool may default to the target store's name.
 - R-A4a-07: the record is the trace plus one history of pieces for each recorded value; everything is recorded under 10,000,000 pieces, else what the request names (the plan's proposal).
+- R-A3-08: a solver-local unknown with no initializer has the reference zero in its unit, with its declared scale, else its width, else one canonical unit (the spec's proposal).
 - R-A4a-08: the key of a stored run covers program (no labels), configuration, mode, seed, choices, numerical settings and code; a manifest says what it serves (the plan's proposal).
 
 ### 2b. New rules where only one answer is sensible (tagged `owner` by their prototype)
@@ -286,6 +318,11 @@ Cost if changed later: none for the engine; the docs follow the spec. Ids: row 7
 
 - R-A2-17: the key of each draw is the seed, the site of the draw, and its owner.
 - R-A2-23: the distance step divides each flow by one canonical unit of its dimension. The spec should say so.
+- R-A3-01: an attained optimum is kept by pinning from the duals, not by a row; the final answer is checked against each optimum, and a failed check is a failure by name.
+- R-A3-02: all numerics in working units; duals are zero below 1e-9; optima are kept to 1e-7 relative; a fair level is known to 1e-7; a formula that reads an enforced equality compares to 1e-7 relative.
+- R-A3-03: dual simplex cold and then warm on one kept instance; fair sharing tier by tier with the exact sequential method; the two distance steps, flows first.
+- R-A3-06: one kept instance for each run; a flow that joins is a new column, a flow that leaves deletes one, and the basis is carried.
+- R-A3-09: two closed forms of today's allocation stay as fast paths (a proportional group alone; a priority order with no ties); a flow in two binding groups, ties in a priority order, and flows with legs go to the solve library.
 - R-A4a-01: each template is a pool of rows; links are int32 columns of row numbers; one store vector; a sparse incidence.
 - R-A4a-02: rows are kept in the order of their ids; reports still list them in file order.
 - R-A4a-03: connected sets are cut over stores and flows by the refined rule (a store that cannot hold a flow back joins nothing).
@@ -432,9 +469,9 @@ D17; Part 4; Part 9). The rows of A3 are pending.
 | 14 | Distribution constructors | A1 | R-A1-18 (C1) |
 | 15 | Unbounded draws, overrides, correlations | A1 | R-A1-19 (D2) |
 | 16 | A leg in `priority(...)` | A1 | R-A1-20 |
-| 17 | Rounding of an enforced equality | A3 | pending A3 |
-| 18 | Distance step convention | A3 | R-A2-23 (two dimensions); rest pending A3 |
-| 19 | Affine inequalities in the distance step | A3 | pending A3 |
+| 17 | Rounding of an enforced equality | A3 | R-A3-02 |
+| 18 | Distance step convention | A3 | R-A3-02, R-A3-05, R-A2-23 |
+| 19 | Affine inequalities in the distance step | A3 | R-A3-05 (D0) |
 | 20 | Object parameters | A1 | R-A1-21 |
 | 21 | `switch`; Boolean shorthand | A1 | R-A1-22, R-A5-08 |
 | 22 | Order of a start on a collection | A2 | R-A2-02 |
@@ -469,15 +506,15 @@ D17; Part 4; Part 9). The rows of A3 are pending.
 | 51 | Order of simultaneous starts | A2 | R-A2-01 |
 | 52 | Readable fields of a finished occurrence | A2, A4b | R-A2-10, R-A4b-02 (D7, C5) |
 | 53 | A stable handle | A1 | R-A1-10: not in the first version |
-| 54 | Tolerances for ranked optima | A3 | pending A3 |
+| 54 | Tolerances for ranked optima | A3 | R-A3-01, R-A3-02 |
 | 55 | Nonlinear route laws; two substances | scope | not in the first version (Part 4) |
 | 56 | Conflicting writes | A2 | R-A2-03, R-A2-22 (D5) |
 | 57 | Reset cycles | A2 | R-A2-04 |
 | 58 | Setup order | A2 | R-A2-05 |
 | 59 | Precedence, model identity, evidence | A5 | R-A5-03, R-A4a-08, R-A5-05 |
-| 60 | Another spelling of units | A3 | pending A3 |
-| 61 | Zero reference of a solver unknown | A3 | pending A3 |
-| 62 | Scale of moving coefficients; thresholds on solver results | A4a, A3 | R-A4a-05, R-A4a-06; thresholds: pending A3 |
+| 60 | Another spelling of units | A3 | R-A3-02, R-A3-08, R-A2-23 (the worked network in kW agrees to 4.4e-16 W; not checked at scale) |
+| 61 | Zero reference of a solver unknown | A3 | R-A3-08 |
+| 62 | Scale of moving coefficients; thresholds on solver results | A4a, A3 | R-A4a-05, R-A4a-06; thresholds: main session: a solver result changes only at moments, so a condition on it is read at moments, as for a discrete value |
 | 63 | Status display references; unavailable history in a report | A5, A2 | R-A2-16; status displays: main session (Part 4) |
 | 64 | Distinct links | A1 | R-A1-32 |
 | 65 | Where a human choice pauses | A2 | R-A2-14 |
@@ -485,11 +522,11 @@ D17; Part 4; Part 9). The rows of A3 are pending.
 | 67 | `none` | A2 | R-A2-06 (D4) |
 | 68 | Legs ranked differently | A2 | R-A2-12 |
 | 69 | Budget for unfinished occurrences | A2, A4b | R-A2-13, R-A4b-03 (D6, C4) |
-| 70 | Cost of fair sharing | A3 | pending A3 |
+| 70 | Cost of fair sharing | A3 | R-A3-04 (D0) |
 | 71 | `unserved_volume` error | owner | D17 |
 | P1 | What a run records; when a stored run serves | A4a | R-A4a-07, R-A4a-08 |
 | P2 | Connected sets; limit of each way | A4a | R-A4a-03, R-A4a-04 |
-| P3 | Fallback of each numerical no-go | A3 | pending A3 (R-A4a-05 for moving rates) |
+| P3 | Fallback of each numerical no-go | A3 | R-A3-04, R-A3-05 (D0); R-A4a-05 for moving rates |
 | P4 | Links and flows across tables | A4a | R-A4a-01, R-A4a-02 |
 | P5 | Pool of occurrences; proofs over templates | A4b | R-A4b-01, R-A4b-07 |
 | P6 | Module layout; staging | A4b, main | R-A4b-08; staging: Part 9 |
@@ -501,7 +538,7 @@ D17; Part 4; Part 9). The rows of A3 are pending.
 From `g0-notes.md`:
 1. A flow with legs where one leg asks nothing: today an error; now that leg moves nothing (S3; also `timeline/run.py:1289`).
 2. Two outflows of one stock with no share: today a compile error; now `proportional()` (S2).
-3. Two legged flows sharing an empty stock: today "upstream first", 0.5, 0.25, 0.25; max-min would give 1/3 each. Not confirmed: A2 has no such case; pending A3.
+3. Two legged flows sharing an empty stock: today "upstream first", 0.5, 0.25, 0.25; max-min would give 1/3 each. Not run. R-A3-09 sends flows with legs to the solve library, so the test of S3 decides the number.
 4. Events due at one moment: today in file order; now the order of R-A2-01 (S4).
 5. `event start`: today an initiating event with its own rules; now an ordinary event named `start` with `when t >= 0 h` (R-A5-13; `a5/migration-table.md:79`). Its special rules at build go.
 6. Outcome rules and `sight`: eligibility stays; the chances become `switch chance(...)` (R-A5-08; D1).
@@ -528,7 +565,7 @@ From the findings:
 - Record (R-A4a-07, -08): pieces for every value under the budget; at 30,000 rows that is 324,857 pieces, 6 MB, +0.1 to 0.3 s. S0 builds the record and the manifest, not readings.
 - Pool (R-A4b-01): one row per occurrence for good, 341 bytes each, 34 MB per 100,000; spill finished rows in blocks if needed. A start costs about 80 µs, a finish about 18 µs (Python spike).
 - Migration (A5): 96.1% of lines by machine (6,691 of 6,960); by hand: 172 flows with several pairs, 75 events with several outcomes, 11 `versus`, 11 `since(e.outcome)`. Nothing ran; M needs the new compiler.
-- Go or no-go: membership that changes is supported by A4b's spike (every case matches the spec). Fair sharing at scale and inequalities in the distance step: pending A3. g0-notes calls fair sharing the largest numerical risk (one program per level failed at 30,000 places).
+- Go or no-go (A3): membership that changes: go. Inequality rows in the distance step: go for correctness. Fair sharing at 30,000 places: no-go for the exact method; go at 3,000. The distance step after a fair rank: no-go for cost, 38 s at 3,000 places with the QP of HiGHS. See D0.
 - Order: the component limit of 150 must be measured again once A3's solve replaces the allocation (R-A4a-04), so S2 and S5 should not fix it before A3 ends.
 - Content: a type checker should come early (S0 or S1): 16 A1 refusals depend on it. A writer-site proof checker belongs in S4 (R-A4b-07). Run A5's migration check at G0 and add a comparison of switch conditions (R-A5-15).
 - Content: `a4a/measure.py` should run end to end, alone, with `OPENBLAS_NUM_THREADS=1`, before its numbers are cited as limits.
@@ -559,5 +596,5 @@ The findings change the content of some stages, not their order:
 8. **Still open in the keel.** The one last run of the old test suite.
 9. **Agents** run on the `opus` model from now on, to save usage.
 
-The parts of this document that wait for A3 (solver numerics): rows 17 to 19, 54, 60 to 62, 70 and
-P3 of Part 6, decision D15, and line 3 of Part 7.
+A3 (solver numerics) has given its rulings; they are in this document. Its measurements at 30,000
+places are still running: the numbers of D0 for that size are filled in when it ends.

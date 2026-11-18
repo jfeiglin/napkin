@@ -4,6 +4,10 @@
 - Written and passing: `solve/ranked.py` (pin and row), `solve/fair.py` (sequential exact with lower-bound fixes, `brute` reference), `solve/distance.py` (slacks + proximal point + dual semismooth Newton; `exact` enumeration), `solve/select.py` (whole order, restores the kept instance after each solve, `replace` for join/leave), `cases.py` (16 cases pass: all expected answers, kW, membership).
 - Mended in `lp.py`: `getRowEntries` returns 3 values; an empty program (`kModelEmpty`) is an empty answer.
 - Explore scripts are in `a3/explore/` (not the tmp folder). No FINDINGS.md draft existed.
+- `checks.py`: distance 200 random problems vs enumeration (7e-9); fair 40 random networks vs brute force (8.8e-8).
+- Distance at 3,000 (0.1): objective face 0.5 s (5 outer, 17 Newton, Armijo, delta 1e-14). AFTER the fair rank it does not converge (1,200 Newton, residual 1e-4..1e-3) for FIX 1e-7..1e-5; converges at FIX 1e-4 in 9 s (342 Newton). Tried and rejected: exact line search (slower), LM delta from residual (much slower; kept as a retry only), equality fix of claims below 100%, warm dual start, pinning each fair program by duals (no help, and 3.9e-5 off brute force on 2 of 40). HiGHS QP on the after-fair face: optimal, 38 s, 20,561 iterations (exact fallback).
+- Over-request example: `explore/bridge.py` (Wheatstone bridge, unmet 4.65 with use unbounded vs 9.20 with use <= need).
+- Row method loses an optimum by 3.1e-7 in the provider case; pin loses 0 (cases.py).
 
 
 ## Done, and where

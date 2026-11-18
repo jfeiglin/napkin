@@ -54,7 +54,7 @@ class Selector:
         self.problem, self.work = problem, w
 
     # -- one solve ----------------------------------------------------------------------------
-    def solve(self, fair_limit=None):
+    def solve(self, fair_limit=None, check_tol=1e-7):
         w, k = self.work, self.kept
         st = {}
         t0 = time.perf_counter()
@@ -77,7 +77,8 @@ class Selector:
         finally:
             self._restore(m0, n0)
         st['seconds'] = time.perf_counter() - t0
-        bad = ranked.check(w.costs, optima, x, tol=1e-7)
+        bad = ranked.check(w.costs, optima, x, tol=check_tol)
+        st['lost'] = max([0.0] + [v - b for _, v, b in ranked.check(w.costs, optima, x, tol=0.0)])
         if bad:
             raise RuntimeError(f'an earlier optimum was lost: {bad}')
         return Answer(w.x(x), [v * s for v, s in zip(optima, w.cost_norms)], levels, st)

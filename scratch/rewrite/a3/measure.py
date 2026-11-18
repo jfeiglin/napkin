@@ -83,19 +83,59 @@ def sec_ranked(share, repeat):
 
 
 def sec_fair(share, repeat, names=('normal', 'shortage', 'damaged', 'global')):
+    """Objective 1 then the fair rank (one tier), on one kept instance; the distance step is apart."""
     for name in names:
         net, need, up = scenario(share, name)
         p, at = network_problem(net, need, up)
-        sel = Selector(p)
+        w = Work(p)
         reps = repeat if share <= 0.1 else 1
-        t, ans = best(lambda: sel_fresh(p).solve(fair_limit=LIMIT), reps)
-        s = ans.stats['fair0']
+
+        def run():
+            k = Kept(w.A, w.row_lower, w.row_upper, w.lower, w.upper)
+            face = ranked.Face(w.lower, w.upper, w.row_lower, w.row_upper)
+            t = time.perf_counter()
+            ranked.optimize(k, face, w.costs)
+            t_obj = time.perf_counter() - t
+            levels, st = fair.sequential(k, face, w.F, limit=LIMIT)
+            return t_obj, levels, st
+        t, (t_obj, lv, s) = best(run, reps)
         stopped = ' STOPPED at the limit' if s.get('stopped') else ''
-        lv = ans.levels[0][1]
-        print(f'fair {share:g} {name:9s}: whole solve {t:6.2f} s (ranked {ans.stats["t_ranked"]:.2f}, fair '
-              f'{ans.stats["t_fair"]:.2f}, distance {ans.stats["t_distance"]:.2f}); {s["programs"]} programs, '
-              f'{s["iterations"]} iterations, {s["distinct"]} distinct levels, {int((lv < 1 - 1e-7).sum())} claims below 100%'
-              f'{stopped} [load {load():.1f}]', flush=True)
+        print(f'fair {share:g} {name:9s}: objective {t_obj:.2f} s + fair {s["seconds"]:.2f} s; {s["programs"]} programs, '
+              f'{s["iterations"]} iterations, {s["distinct"]} distinct levels, {int((lv < 1 - 1e-7).sum())} claims below 100%, '
+              f'{int(np.isnan(lv).sum())} pending{stopped} [load {load():.1f}]', flush=True)
+
+
+def sec_after(share, repeat):
+    """The distance step on the face after the fair rank (3,000 places): the semismooth Newton method with
+    a Newton budget, and HiGHS's own QP as the exact reference."""
+    from solve.lp import h
+    net, need, up = scenario(share, 'normal')
+    p, at = network_problem(net, need, up)
+    w = Work(p)
+    k = Kept(w.A, w.row_lower, w.row_upper, w.lower, w.upper)
+    face = ranked.Face(w.lower, w.upper, w.row_lower, w.row_upper)
+    ranked.optimize(k, face, w.costs)
+    fair.sequential(k, face, w.F)
+    weight = (w.kind == FLOW).astype(float)
+    t = time.perf_counter()
+    x, s = distance.nearest(w.A, face.row_lower, face.row_upper, face.lower, face.upper, w.target, weight,
+                            max_outer=20, max_newton=60)
+    t_ssn = time.perf_counter() - t
+    k.set_bounds(np.arange(w.n), face.lower, face.upper)
+    k.set_row_bounds(np.arange(w.m), face.row_lower, face.row_upper)
+    k.set_cost(-weight * w.target)
+    H = h.HighsHessian(); H.dim_ = w.n; H.format_ = h.HessianFormat.kTriangular
+    D = sp.csc_array(sp.diags_array(weight))
+    H.start_ = np.ascontiguousarray(D.indptr, dtype=np.int32)
+    H.index_ = np.ascontiguousarray(D.indices, dtype=np.int32)
+    H.value_ = D.data
+    k.s.passHessian(H)
+    k.s.setOptionValue('time_limit', LIMIT)
+    t = time.perf_counter(); status, xq, *_ = k.run(); t_qp = time.perf_counter() - t
+    fl = w.kind == FLOW
+    print(f'after-fair distance {share:g}: semismooth Newton {t_ssn:.1f} s, {s.outer} outer / {s.newton} Newton, residual '
+          f'{s.residual:.1e}; HiGHS QP {str(status).split(".")[-1]} {t_qp:.1f} s, {k.s.getInfo().qp_iteration_count} '
+          f'iterations; flows differ by {np.abs(x - xq)[fl].max():.1e} [load {load():.1f}]', flush=True)
 
 
 def sel_fresh(p):
@@ -172,22 +212,34 @@ def sec_small(share, repeat, count=2000):
 
 
 def sec_again(share, repeat):
-    """The same problem cold, warm after another problem on the same instance, and inside a batch."""
+    """The same problem (shortage) cold; warm on an instance that first solved another problem (normal);
+    and as the second block of a batch (a block-diagonal program with the normal problem). Compared: the
+    fair levels and the optimum of objective 1 (the distance step apart: see `after`)."""
     net, need, up = scenario(share, 'shortage')
-    p, at = network_problem(net, need, up)
-    cold = Selector(p).solve(fair_limit=LIMIT).x
-    other, _ = network_problem(*scenario(share, 'normal'))
-    sel = Selector(other)
-    sel.solve(fair_limit=LIMIT)
-    w = Work(p)
-    sel.kept.set_bounds(np.arange(w.n), w.lower, w.upper)
-    sel.kept.set_row_bounds(np.arange(w.m), w.row_lower, w.row_upper)
-    sel.problem, sel.work = p, w
-    warm = sel.solve(fair_limit=LIMIT).x
-    # batch: the problem as the second block of a block-diagonal program with another one
-    print(f'again {share:g}: cold against warm, largest difference {np.abs(cold - warm).max():.2e} '
-          f'(flows {np.abs(cold - warm)[w.kind == FLOW].max():.2e}, levels {np.abs(cold - warm)[w.kind == OTHER].max():.2e})',
-          flush=True)
+    w = Work(network_problem(net, need, up)[0])
+    wn = Work(network_problem(*scenario(share, 'normal'))[0])
+
+    def run(k, lower, upper, rl, ru, costs, F):
+        face = ranked.Face(lower, upper, rl, ru)
+        x, optima, _ = ranked.optimize(k, face, costs)
+        levels, _ = fair.sequential(k, face, F)
+        return optima, levels
+    k = Kept(w.A, w.row_lower, w.row_upper, w.lower, w.upper)
+    o_cold, l_cold = run(k, w.lower, w.upper, w.row_lower, w.row_upper, w.costs, w.F)
+    k = Kept(wn.A, wn.row_lower, wn.row_upper, wn.lower, wn.upper)
+    run(k, wn.lower, wn.upper, wn.row_lower, wn.row_upper, wn.costs, wn.F)
+    k.set_bounds(np.arange(w.n), w.lower, w.upper)          # the same matrix: only bounds differ
+    k.set_row_bounds(np.arange(w.m), w.row_lower, w.row_upper)
+    o_warm, l_warm = run(k, w.lower, w.upper, w.row_lower, w.row_upper, w.costs, w.F)
+    A = sp.block_diag([wn.A, w.A]).tocsr()
+    k = Kept(A, np.r_[wn.row_lower, w.row_lower], np.r_[wn.row_upper, w.row_upper], np.r_[wn.lower, w.lower], np.r_[wn.upper, w.upper])
+    c = np.r_[np.zeros(wn.n), w.costs[0]]
+    F = sp.hstack([sp.csr_array((w.F.shape[0], wn.n)), w.F]).tocsr()
+    o_batch, l_batch = run(k, np.r_[wn.lower, w.lower], np.r_[wn.upper, w.upper], np.r_[wn.row_lower, w.row_lower],
+                           np.r_[wn.row_upper, w.row_upper], [c], F)
+    print(f'again {share:g}: objective cold {o_cold[0]:.9f}, warm {o_warm[0]:.9f}, batch {o_batch[0]:.9f}; fair levels: '
+          f'warm differs from cold by {np.abs(l_warm - l_cold).max():.1e}, batch by {np.abs(l_batch - l_cold).max():.1e} '
+          f'[load {load():.1f}]', flush=True)
 
 
 def sec_units(share, repeat):
@@ -198,7 +250,7 @@ def sec_units(share, repeat):
     print(f'units: worked network W against kW, largest difference in W {d:.1e}; kW use {b["use_clinic"]:.9f}', flush=True)
 
 
-SECTIONS = dict(ranked=sec_ranked, fair=sec_fair, distance=sec_distance, join=sec_join, small=sec_small,
+SECTIONS = dict(after=sec_after, ranked=sec_ranked, fair=sec_fair, distance=sec_distance, join=sec_join, small=sec_small,
                 again=sec_again, units=sec_units)
 
 if __name__ == '__main__':
@@ -208,12 +260,14 @@ if __name__ == '__main__':
         i = args.index('--share'); share = float(args[i + 1]); del args[i:i + 2]
     if '--repeat' in args:
         i = args.index('--repeat'); repeat = int(args[i + 1]); del args[i:i + 2]
-    names = args or ['units', 'small', 'ranked', 'distance', 'join', 'fair']
+    names = args or ['units', 'small', 'ranked', 'distance', 'join', 'after', 'fair']
     print(f'measure.py {names} share {share} repeat {repeat}; load {load():.1f}; 4 cores', flush=True)
     for name in names:
         if name == 'fair' and not args:
             sec_fair(0.1, repeat)
             sec_fair(1.0 / 3, 1)
             sec_fair(1.0, 1)
+        elif name == 'after' and not args:
+            sec_after(0.1, 1)
         else:
             SECTIONS[name](share, repeat)

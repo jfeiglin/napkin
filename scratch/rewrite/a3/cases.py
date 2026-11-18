@@ -51,8 +51,9 @@ class Model:
             p.claim(at[name], q, tier)
         return p
 
-    def solve(self, **kw):
-        answer = Selector(self.problem(), **kw).solve()
+    def solve(self, check_tol=1e-7, **kw):
+        answer = Selector(self.problem(), **kw).solve(check_tol=check_tol)
+        self.lost = answer.stats['lost']
         return {k: answer.x[i] for i, k in enumerate(self.names)}
 
 
@@ -179,10 +180,12 @@ def main():
     x = bottlenecks(False).solve(); close(x, dict(a=2, b=2, c=3)); ok('two bottlenecks, fair', x)
     x = bottlenecks(True).solve(); close(x, dict(a=4, b=0, c=5)); ok('two bottlenecks, objective first', x)
     for method in ('pin', 'row'):
-        x = bottlenecks(True).solve(method=method); close(x, dict(a=4, b=0, c=5))
-        x = provider(6.0, 6.0).solve(method=method); close(x, dict(east=6, west=2))
-        x = pump().solve(method=method); close(x, dict(fill=2, clinic=2, town=0))
-    rows.append('row method: the same three answers'); print('ok  row method gives the same answers')
+        lost = []
+        for m, want in ((bottlenecks(True), dict(a=4, b=0, c=5)), (provider(6.0, 6.0), dict(east=6, west=2)),
+                        (pump(), dict(fill=2, clinic=2, town=0))):
+            close(m.solve(method=method, check_tol=1e-6), want); lost.append(m.lost)
+        rows.append(f'{method} method')
+        print(f'ok  {method} method: the same three answers; largest loss of an optimum {max(lost):.1e}')
     # the worked network
     x = worked().solve()
     close(x, dict(use_clinic=4, use_garden=4, supply_junction=8, carried_junction_clinic=4, carried_garden_junction=-4,

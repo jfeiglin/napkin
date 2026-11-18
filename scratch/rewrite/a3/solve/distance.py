@@ -24,8 +24,8 @@ from scipy.sparse.linalg import splu
 EPS = 1e-3
 TOL = 1e-9
 RHO = 1e8
-LM = True          # Levenberg-Marquardt delta from the residual (else 1e-14)
-SEARCH = 'exact'   # or 'armijo'
+LM = False         # Levenberg-Marquardt delta from the residual (else 1e-14); used as a retry
+SEARCH = 'armijo'  # or 'exact' (measured slower: measure.py, FINDINGS.md)
 
 
 class Stats:
@@ -82,7 +82,12 @@ def nearest(A, row_lower, row_upper, lower, upper, target, weight, tol=TOL, eps=
     solver = _Newton(E, ET, e, zl, zu, w, N, mk)
     z = None
     for outer in range(max_outer):
-        z, y, res = solver.solve(c, y, tol * row_size, max_newton, stats)
+        z, y1, res = solver.solve(c, y, tol * row_size, max_newton, stats)
+        if res > tol * float(row_size.max(initial=1.0)) and not solver.lm:
+            solver.lm = True            # the retry: a singular Newton system, as in a set of no width
+            z, y1, res = solver.solve(c, y, tol * row_size, max_newton, stats)
+            solver.lm = LM
+        y = y1
         stats.outer += 1
         move = float(np.abs(z[prox] - c[prox]).max(initial=0.0))
         stats.move, stats.residual = move, res
@@ -107,6 +112,7 @@ class _Newton:
                 diag[j] = lo + np.searchsorted(K.indices[lo:hi], j)
             self.K, self.diag = K, diag
         self.kept = None
+        self.lm = LM
 
     def point(self, c, y):
         z = np.clip(c - (self.ET @ y) / self.w, self.zl, self.zu)
@@ -158,7 +164,7 @@ class _Newton:
             # Levenberg-Marquardt: delta follows the residual (a power of ten, so that a factorization
             # serves while the free set and delta stay)
             size = float(np.abs(r).max())
-            delta = 10.0 ** np.clip(np.ceil(np.log10(size)) - 2, -14, -4) if LM else 1e-14
+            delta = 10.0 ** np.clip(np.ceil(np.log10(size)) - 2, -14, -4) if self.lm else 1e-14
             key = (free.tobytes(), delta)
             if self.kept is None or self.kept[0] != key:
                 self.K.data[self.diag] = np.r_[np.where(free, self.w, self.w * (1.0 + RHO)), np.full(self.m, -delta)]
