@@ -24,7 +24,7 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] the oracle, phase 1: the semantics of G0 (`tests/reference/`, 127 tests)
   - [ ] the solve library (`napkin/engine/solve/`, `tests/engine/solve/`)
   - [ ] the oracle, phase 2: it reads the programs of `tests/program/examples.py`
-- [ ] S0 skeleton
+- [ ] S0 skeleton: two tracks at work (`briefs/s0-front.md`, `briefs/s0-engine.md`); the dormant list is filled (6 folders, 108 files)
 - [ ] S1 templates, tables and collections
 - [ ] S2 the flow network and sharing
 - [ ] S3 reversible flows and flows with legs
