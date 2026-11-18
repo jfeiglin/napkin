@@ -7,6 +7,9 @@
 - `checks.py`: distance 200 random problems vs enumeration (7e-9); fair 40 random networks vs brute force (8.8e-8).
 - Distance at 3,000 (0.1): objective face 0.5 s (5 outer, 17 Newton, Armijo, delta 1e-14). AFTER the fair rank it does not converge (1,200 Newton, residual 1e-4..1e-3) for FIX 1e-7..1e-5; converges at FIX 1e-4 in 9 s (342 Newton). Tried and rejected: exact line search (slower), LM delta from residual (much slower; kept as a retry only), equality fix of claims below 100%, warm dual start, pinning each fair program by duals (no help, and 3.9e-5 off brute force on 2 of 40). HiGHS QP on the after-fair face: optimal, 38 s, 20,561 iterations (exact fallback).
 - Over-request example: `explore/bridge.py` (Wheatstone bridge, unmet 4.65 with use unbounded vs 9.20 with use <= need).
+- 30,000 (1.0), measure.py: fair normal: objective 4.32 s + fair 128.1 s, 467 programs, 460 distinct levels, 4,315 claims below 100%, completes [load 1.0]. Fair shortage (x1.45) with FIX 1e-7: infeasible part way (SolveError). Join 300 flows: warm 0.90 s vs fresh 6.12 s, optima equal; leave warm 0.89 s. Distance on the objective face at 30k: 3 scenarios did not finish in 590 s (output lost).
+- 3,000: again cold/warm/batch: objective equal to 1e-9, fair levels within 6.4e-10. Small: whole order 6.8 ms (147/s), kept 5.9 ms; one LP rerun 19 us.
+- FINDINGS.md: the harness refused the Write ("subagents return findings as text"); its full text went into the final report for the main session to save.
 - Row method loses an optimum by 3.1e-7 in the provider case; pin loses 0 (cases.py).
 
 
