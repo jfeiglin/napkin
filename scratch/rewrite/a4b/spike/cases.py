@@ -87,6 +87,62 @@ def shared_limit():
     return found, engine
 
 
+def fresh_formation(seed=0, starts=300, samples=60, limit=7.3):
+    """Many occurrences with random requests join and leave one endpoint with a shared limit. At
+    random times, the rates of the flows present must equal, bit for bit, those of an endpoint
+    formed fresh from its present members, in a shuffled order. The count of times compared and
+    the count that differ."""
+    from engine import share
+    from exact import ExactSum
+
+    rng = np.random.default_rng(seed)
+    deliver = Event(
+        'deliver',
+        params=(('hours', 0.0, 100.0), ('pace', 0.0, 100.0)),
+        flows=(Flow('pipe', 'this.water', SINK, request=ref('pace')),),
+        steps=(After(ref('hours')),),
+    )
+    tank = Template('Tank', stores=(Store('water', 1e9, out_capacity=limit),), events=(deliver,))
+    engine = Engine([tank])
+    for at in np.sort(rng.uniform(0.0, 50.0, starts)).tolist():
+        engine.start_at(at, 'Tank', 'deliver', args=(float(rng.uniform(0.1, 5.0)), float(rng.uniform(0.01, 3.0))))
+    compared = differ = 0
+    sid = int(engine.sids['Tank']['water'][0])
+    for at in np.sort(rng.uniform(0.0, 55.0, samples)).tolist():
+        engine.run(at)
+        members = engine.outs[sid]
+        ids = members.now().copy() if members is not None else np.empty(0, dtype=np.int64)
+        if not len(ids):
+            continue
+        rng.shuffle(ids)
+        edges = engine.edges
+        requests = edges.request[ids]
+        fresh = share(requests, edges.capacity[ids], limit, edges.rank[ids], ExactSum(requests.tolist()))
+        compared += 1
+        differ += int(not np.array_equal(fresh, edges.rate[ids]))
+    return compared, differ
+
+
+def running_total_drift(seed=0, steps=10_000, alive=50):
+    """The alternative to the exact sum: a running float total (`+= x` at a join, `-= x` at a
+    leave). The count of times, among `steps` joins and leaves, at which it differs from the
+    correctly rounded sum of the present members, and the largest difference."""
+    rng = np.random.default_rng(seed)
+    present, running, differ, worst = [], 0.0, 0, 0.0
+    for _ in range(steps):
+        if len(present) < alive or rng.random() < 0.5:
+            x = float(rng.uniform(0.01, 3.0))
+            present.append(x)
+            running += x
+        else:
+            running -= present.pop(int(rng.integers(len(present))))
+        exact = math.fsum(present)
+        if running != exact:
+            differ += 1
+            worst = max(worst, abs(running - exact))
+    return differ, worst
+
+
 # ---- a flow that joins must move the time of a crossing ----------------------------------------------
 
 
@@ -284,6 +340,10 @@ def main():
     print('A shared limit of 3 L/h, 2 L/h asked by each: (t, the rates of the flows present, the total)')
     for row in shared_limit()[0]:
         print(f'  {row}')
+    compared, differ = fresh_formation()
+    print(f'  formed fresh from the present members at {compared} random times: {differ} differ bit for bit')
+    differ, worst = running_total_drift()
+    print(f'  a running float total instead, 10,000 joins and leaves: differs {differ} times, by up to {worst:.3g}')
     for forget in (False, True):
         engine = crossing(forget)
         at, level = engine.read(ref('this.alarm_at'), 'Tank'), engine.read(ref('this.level_at_alarm'), 'Tank')

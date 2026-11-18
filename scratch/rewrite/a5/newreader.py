@@ -592,6 +592,9 @@ class Reader:
 
     def endpoint(self, thing, name, key, tree_):
         if key == 'outflow.capacity':
+            # A live limit is written `formula(E)`; the check compares E.
+            if tree_[0] == 'call' and tree_[1] == 'formula' and len(tree_[2]) == 1:
+                tree_ = tree_[2][0]
             self.facts.capacities[(thing, name)] = tree_
         elif key == 'outflow.allocation':
             self.facts.allocations[(thing, name)] = tree_
@@ -655,7 +658,7 @@ class Reader:
             return
         if is_formula or formula_type is not None:
             value.kind = 'let.formula'
-            value.unit = formula_type
+            value.unit = formula_type if formula_type != 'bool' else None
             return
         if readonly:
             value.kind = 'let.fixed'

@@ -1210,7 +1210,14 @@ class Engine:
                         np.isfinite(stores.out_cap[far]) | (stores.rest[far] < 0)
                     )
                     held = np.zeros(len(far), dtype=bool)
-                if tight.any() and math.isfinite(limit):
+                if tight.any() and math.isfinite(limit) and side == 'in' and stores.rest[sid] > 0 and not math.isfinite(
+                    stores.in_cap[sid]
+                ):
+                    # It rests on its upper bound and has no limit of its own: the sources that
+                    # decide its inflows hold them to what it lets out (`held` at their side).
+                    for s_far in np.unique(far[tight]).tolist():
+                        self.dirty.add((s_far, 'out'))
+                elif tight.any() and math.isfinite(limit):
                     raise RunStopped(
                         f'{self.store_name(sid)}: a flow that is limited at both of its ends is outside '
                         'the spike (the solve library of S2)'
@@ -1334,7 +1341,10 @@ class Engine:
     def set_level(self, sid, level, t):
         """A step wrote the level of a store (a move): its line starts again from the new level."""
         stores = self.stores
-        if stores.rest[sid] and stores.lower[sid] < level < stores.upper[sid]:
+        # It leaves the bound that it rests on when the new level is off that bound. (A level that
+        # lands on the other bound leaves it too: the next restart puts it there.)
+        off = level > stores.lower[sid] + stores.atol[sid] if stores.rest[sid] < 0 else level < stores.upper[sid] - stores.atol[sid]
+        if stores.rest[sid] and off:
             stores.rest[sid] = 0
             self.dirty.add((sid, 'out'))
             self.dirty.add((sid, 'in'))

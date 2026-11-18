@@ -31,7 +31,7 @@ FINDINGS.md: started, with TODO marks.
 - Not in the first version: copies `* k`, `while K` on an event header, `count(e.outcome)`. `each W` = a trigger capture with `reset when W != captured`.
 
 ## In the middle of
-(checkpoint 2) Crash fixed (`exprs.canonical` treats ('old', x) as a leaf). Both examples hand-translated in `translated/examples/`, check PASSES on each. Next: water.scn.
+(checkpoint 3) Examples, water.scn and jamestown hand-translated, check PASSES on each. Bad case `translated/bad/water.scn` FAILS on kind, flow and cumulative (as it must). newreader: `outflow.capacity = formula(E)` compares E; `formula(bool)` has no unit. Next: heat wave and cyber slices.
 
 ## Steps that remain, in order
 1. Fix the crash above; make `check.py` pass on `translated/auto/examples/piano_tuners/model.scn`.
