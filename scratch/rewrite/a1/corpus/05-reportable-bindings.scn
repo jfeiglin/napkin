@@ -1,0 +1,2 @@
+initial_unserved = sum(Utility.instances.unserved)
+unserved_volume = formula(sum(Utility.instances.unserved))

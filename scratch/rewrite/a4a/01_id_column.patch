@@ -1,0 +1,94 @@
+diff -ruN a/napkin/model/language/resolve.py b/napkin/model/language/resolve.py
+--- a/napkin/model/language/resolve.py	2026-11-17 15:45:06.000000000 +0000
++++ b/napkin/model/language/resolve.py	2026-11-18 17:41:05.010616094 +0000
+@@ -93,6 +93,9 @@
+ MEASURES = {'cumulative': 'cumulative', 'level': 'stock'}
+ # An entity as a cell of a table names it: a name, or a copy of a set (`sites.3`).
+ ENTITY_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(?:\.[0-9]+)?')
++# A4a: a row of a table as a cell names it by its id: `sites.clinic` (the table, then the id of the row).
++ROW_ID = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
++ROW_NAME = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)')
+ # The tokens of a cell that gives a number, with the unit of its column or without one.
+ NUMBER_CELLS = (('number',), ('number', 'unit'), ('op', 'number'), ('op', 'number', 'unit'))
+ BRACES = re.compile(r'\{([A-Za-z_][A-Za-z0-9_.]*)\}')
+@@ -156,6 +159,8 @@
+         # (`columns`), and the problems of tables that are reported already.
+         self.table_reads = {}
+         self.table_problems = set()
++        # A4a: {set: {id of a row: the number of the row}} of each table with a column `id` (`ids`).
++        self.row_ids = {}
+ 
+     def fail(self, place, message):
+         item = diagnostic('structure', '/'.join(map(str, place)), message)
+@@ -207,6 +212,10 @@
+         # The entities, in the order of the file; copy k of a set is `name.k`.
+         self.copy_sets = {}
+         names = []
++        # A4a: the ids of the rows of every table are known before a cell of any table names one.
++        for thing in declared:
++            if thing.table is not None:
++                self.ids(thing)
+         for thing in declared:
+             if thing.copies is not None:
+                 self.copy_sets[thing.name] = [f'{thing.name}.{k}' for k in range(1, thing.copies + 1)]
+@@ -406,6 +415,27 @@
+         tokens = member.value.tokens if member.value is not None else []
+         return len(tokens) == 1 and tokens[0].kind == 'text'
+ 
++    def ids(self, thing):
++        """A4a: the ids of the rows of a table with a column `id`, whose template has no member of that
++        name: {id: the number of its row}. An id is a name, and no two rows have one id: a link cell
++        `set.id` then names one row, wherever the row is in the file."""
++        template = self.templates.get(thing.template)
++        columns = thing.table.columns or ()
++        at = next((k for k, column in enumerate(columns) if column.name == 'id'), None)
++        if at is None or template is None or any(getattr(m, 'name', None) == 'id' for m in template.members):
++            return
++        found = {}
++        for k, row in enumerate(thing.table.rows or (), 1):
++            cell = row.cells[at] if at < len(row.cells) else ''
++            place = (*row.place, 'id')
++            if not ROW_ID.fullmatch(cell):
++                self.fail(place, f'the id {cell!r} of row {k} is no name: an id is a word of letters, digits and _')
++            elif cell in found:
++                self.fail(place, f'rows {found[cell]} and {k} of {thing.name} both have the id {cell}')
++            else:
++                found[cell] = k
++        self.row_ids[thing.name] = found
++
+     def columns(self, thing):
+         """Check the columns of the table of a set against its template, once for the table: a column
+         gives a value of the template, one entity for a link of the template, or the title of each
+@@ -441,6 +471,12 @@
+                     self.fail(at, f'{name} is a link: its column names entities, with no unit and no record')
+                 else:
+                     reads[name] = 'link'
++            elif name == 'id' and thing.name in self.row_ids:
++                # A4a: the column of the ids of the rows gives no member.
++                if column.type or column.support:
++                    self.fail(at, 'the column id is a name, with no unit and no record')
++                else:
++                    reads[name] = 'id'
+             elif name == 'title':
+                 if thing.title is not None:
+                     self.fail(at, both)
+@@ -484,10 +520,18 @@
+         reads = self.table_reads.get(thing.name, {})
+         for column, cell in zip(table.columns, row.cells):
+             what = reads.get(column.name)
+-            if what in (None, 'title') or not cell:
++            if what in (None, 'title', 'id') or not cell:
+                 continue
+             place = (*row.place, column.name)
+             if what == 'link':
++                # A4a: a cell `set.id` names the row of that id: the instance `set.k` of its number.
++                named = ROW_NAME.fullmatch(cell)
++                if named and named.group(1) in self.row_ids:
++                    number = self.row_ids[named.group(1)].get(named.group(2))
++                    if number is None:
++                        self.fail(place, f'the cell {cell!r} names no row of {named.group(1)}: no row has that id')
++                        continue
++                    cell = f'{named.group(1)}.{number}'
+                 if ENTITY_NAME.fullmatch(cell):
+                     # In a model of representatives, a link names the instance that stands for its
+                     # target.

@@ -1,0 +1,2 @@
+readonly pumps: <Pump> = <this.primary, this.backup>
+readonly idle_pumps: <Pump> = <>

@@ -1,0 +1,1 @@
+input repair_time = uniform(1 h, 3 h).draw() in [1 h, 12 h]

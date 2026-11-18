@@ -1,0 +1,7 @@
+after 0 h:
+    switch this.action:
+        REPAIR:
+            this.repair.start()
+        RESUME:
+            this.resume.start()
+    this.inspections += 1

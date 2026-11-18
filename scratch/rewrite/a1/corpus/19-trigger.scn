@@ -1,0 +1,10 @@
+refill = event(amount: g):
+    status: enum[WEIGHING, ADDED] = WEIGHING
+
+    when this.low_on_beans:
+        this.refill.start(50 g)
+        reset when this.beans >= 30 g
+
+    after 0.5 h:
+        this.beans += amount
+        status = ADDED

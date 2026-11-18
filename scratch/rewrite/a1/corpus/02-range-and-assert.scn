@@ -1,0 +1,5 @@
+input delay: h = 3
+    in [0.5, 12]
+    @timing
+
+assert total in [initial - tolerance, initial + tolerance]

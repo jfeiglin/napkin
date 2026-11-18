@@ -1,0 +1,9 @@
+deliver = event(amount: L, setup: h):
+    batch: L = 0 L in [0 L, amount]
+    flow delivery: batch -> this.customer.water
+        request = formula(this.delivery_request)
+
+    after setup:
+        move amount from this.supply to batch
+
+    until batch <= 0 L
