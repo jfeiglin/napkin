@@ -75,10 +75,7 @@ class Problem:
         if not np.isin(kind, KINDS).all():
             raise ValueError('the kind of an unknown is FLOW, OTHER or INTERNAL')
         first = len(self._keys)
-        for offset, key in enumerate(keys):
-            if key in self._index:
-                raise ValueError(f'two unknowns have the key {key!r}')
-            self._index[key] = first + offset
+        _register(self._index, keys, first, 'unknowns')
         self._keys += keys
         for store, values in (
             (self._lower, lower),
@@ -142,11 +139,7 @@ class Problem:
         lower, upper = np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)
         if np.isnan(lower).any() or np.isnan(upper).any():
             raise ValueError('a bound of a row is not a number')
-        first = len(self._row_keys)
-        for offset, key in enumerate(keys):
-            if key in self._row_index:
-                raise ValueError(f'two rows have the key {key!r}')
-            self._row_index[key] = first + offset
+        _register(self._row_index, keys, len(self._row_keys), 'rows')
         self._row_keys += keys
         self._row_lower.append(lower)
         self._row_upper.append(upper)
@@ -293,6 +286,7 @@ class Arrays:
             shape=(len(claims), n),
         )
         self.F.sum_duplicates()
+        self.F.eliminate_zeros()  # so that a claim of one column has one entry
         self.positive = [
             (
                 parts,
@@ -308,6 +302,16 @@ class Arrays:
         for parts, matrix, constants in self.positive:
             x[parts] = np.maximum(0.0, matrix @ x + constants)
         return x
+
+
+def _register(index, keys, first, what):
+    """Give each new key its position, refusing a key that is taken before any is added."""
+    seen = set()
+    for key in keys:
+        if key in index or key in seen:
+            raise ValueError(f'two {what} have the key {key!r}')
+        seen.add(key)
+    index.update(zip(keys, range(first, first + len(keys))))
 
 
 def _terms(terms):

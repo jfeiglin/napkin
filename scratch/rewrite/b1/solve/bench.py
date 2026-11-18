@@ -168,7 +168,7 @@ def sec_objective(share, repeat):
         )
 
 
-def sec_after(share, repeat, names=('normal',)):
+def sec_after(share, repeat, names=('normal', 'shortage', 'damaged', 'global')):
     """The whole order: the distance steps on the face that fair sharing leaves."""
     for name in names:
         net, need, up = scenario(share, name)

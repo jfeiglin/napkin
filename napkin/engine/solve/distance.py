@@ -18,8 +18,8 @@ Prototype A3 adds two parts, where they are needed:
 - a row with lower < upper gets a slack s in [lower, upper] and becomes A x - s == 0;
 - a coordinate with no weight (a slack, an INTERNAL unknown, an unknown of the other stage) gets a
   proximal weight around a centre that moves to its last value (the proximal point method), until
-  the centres stop moving, where the conditions of the true problem hold up to the weight times the
-  last move.
+  the weight times the last move, which is what the proximal term leaves in the conditions of the
+  true problem, is within the tolerance of the rows.
 
 Two changes to A3's method make it converge on the face that fair sharing leaves, where A3's did not
 (1,200 Newton steps at 3,000 places):
@@ -35,11 +35,20 @@ Two changes to A3's method make it converge on the face that fair sharing leaves
   changes at every step, and the first problem does not converge in 400 steps; with the weight one
   throughout, 176 proximal problems are needed. The schedule took 9 (101 Newton steps, 3.1 s).
 
+The rows are met to TOL of their size where the method gets there. The earlier ranks met them only
+to HiGHS's tolerance, so where the method stalls (STALL steps that do not halve the largest
+residual) with every row met to FEASIBLE, they count as met to that precision, and so does the stop
+rule of the proximal method. (At 1,000 places with shortage, the first proximal problem cycled at a
+residual of 1.9e-7 for 900 steps before it reached 4e-12.)
+
 Budget: the Newton steps of one stage. A stage whose method does not converge within them, or whose
 line search finds no maximum of the dual, goes to the QP of HiGHS, the exact fallback, with a budget
 of QP iterations; a QP that does not finish within them stops the solve with 'distance budget
 exceeded'. (A3: on the face that fair sharing leaves at 3,000 places the method did not converge in
-1,200 Newton steps; the QP took 38 s and 20,561 iterations.)
+1,200 Newton steps; the QP took 38 s and 20,561 iterations.) The fallback is not a sure answer: on
+that face at 3,000 places it now ends with an error of HiGHS (a numerical failure), and on the fair
+face of the spec's worked network, three places, it cycles to its iteration limit. At 300 and 1,000
+places it finishes and agrees with the method to 6.4e-7 (`scratch/rewrite/b1/solve/bench.py verify`).
 """
 
 from __future__ import annotations
@@ -56,6 +65,8 @@ EPS_START = 1.0  # the first proximal weight of a coordinate with no weight
 EPS = 1e-3  # its last proximal weight
 SETTLED = 3  # a proximal problem solved in this many Newton steps lowers the weight tenfold
 TOL = 1e-9  # a row is met when its residual is below this times (1 + the size of its terms)
+FEASIBLE = 1e-7  # or below this, HiGHS's tolerance, to which the ranks met the rows, once it stalls
+STALL = 10  # Newton steps that do not halve the largest residual make a stall
 LOOSE = 1e-6  # a row of fixed columns alone holds to this times (1 + its size): the ranks met it
 RHO = 1e8  # a coordinate at a bound weighs (1 + RHO) times more in the Newton system
 DELTA = 1e-14  # the regularization of the Newton system
@@ -99,7 +110,8 @@ def stage(A, row_lower, row_upper, lower, upper, target, weight, budget, work, w
     work.methods.append('qp')
     reached = {'newton steps': newton, 'residual': residual, 'qp iterations': taken}
     if status == OPTIMAL:
-        return x
+        # the QP holds a bound to its tolerance; the answer of the method is always within it
+        return np.clip(x, lower, upper)
     if status == Status.kIterationLimit:
         raise SolveFailure(
             DISTANCE_BUDGET,
@@ -159,20 +171,22 @@ def nearest(A, row_lower, row_upper, lower, upper, target, weight, steps, work):
             outer += 1
             z, y1, residual, used, met = _attempt(dual, c, y, tolerance, steps - taken)
             taken += used
-            if not met and taken < steps:
+            if met is None and taken < steps:
                 # the retry of A3: a Levenberg-Marquardt term, as in a face of no width
                 dual.lm = True
                 z, y1, residual, used, met = _attempt(dual, c, y, tolerance, steps - taken)
                 taken += used
                 dual.lm = False
-            if not met:
+            if met is None:
                 raise Unconverged(taken, residual)
             y = y1
             if not prox.any():
                 break
             move = float(np.abs(z[prox] - c[prox]).max())
             c[prox] = z[prox]
-            if move <= TOL * (1.0 + float(np.abs(z[prox]).max())):
+            # the proximal term leaves eps * move in the conditions of the true problem: stop when
+            # that is within the precision to which the rows were met (a tighter rule cycles there)
+            if eps * move <= met * (1.0 + float(np.abs(z[prox]).max())):
                 break
             if taken >= steps or outer >= steps:
                 raise Unconverged(taken, residual)
@@ -190,7 +204,7 @@ def _attempt(dual, c, y, tolerance, steps):
     try:
         return dual.solve(c, y, tolerance, steps)
     except RuntimeError:
-        return None, y, np.inf, 1, False
+        return None, y, np.inf, 1, None
 
 
 class _Dual:
@@ -224,16 +238,21 @@ class _Dual:
 
     def solve(self, c, y, tolerance, steps):
         """Newton steps on the dual from y until every row is met; gives (z, y, the largest residual,
-        the steps taken, whether the rows are met)."""
+        the steps taken, the precision to which the rows are met: TOL, FEASIBLE after a stall, or
+        None)."""
         z, r = self.point(c, y)
         if not self.m:
-            return z, y, 0.0, 0, True
+            return z, y, 0.0, 0, TOL
+        best, since = np.inf, 0
         for used in range(max(steps, 0)):
             if np.all(np.abs(r) <= tolerance):
-                return z, y, float(np.abs(r).max()), used, True
+                return z, y, float(np.abs(r).max()), used, TOL
+            size = float(np.abs(r).max())
+            best, since = (size, 0) if size <= 0.5 * best else (best, since + 1)
+            if since >= STALL and np.all(np.abs(r) <= tolerance * (FEASIBLE / TOL)):
+                return z, y, size, used, FEASIBLE
             u = c - (self.ET @ y) / self.w
             free = (u > self.zl) & (u < self.zu)
-            size = float(np.abs(r).max())
             # Levenberg-Marquardt: delta follows the residual, a power of ten, so that one
             # factorization serves while the free set and delta stay
             delta = 10.0 ** np.clip(np.ceil(np.log10(size)) - 2, -14, -4) if self.lm else DELTA
@@ -251,10 +270,10 @@ class _Dual:
                 step, slope = r.copy(), float(r @ r)
             alpha = self.search(c, y, step, slope)
             if alpha is None:
-                return z, y, size, used + 1, False  # the dual has no maximum: the rows cannot hold
+                return z, y, size, used + 1, None  # the dual has no maximum: the rows cannot hold
             y = y + alpha * step
             z, r = self.point(c, y)
-        met = bool(np.all(np.abs(r) <= tolerance))
+        met = TOL if np.all(np.abs(r) <= tolerance) else None
         return z, y, float(np.abs(r).max()), max(steps, 0), met
 
     def search(self, c, y, step, slope):

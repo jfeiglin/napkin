@@ -171,10 +171,12 @@ def optimize(kept, face, w, work):
 
 def lost(w, optima, xi):
     """The objectives whose optimum the answer `xi` (working units) does not keep, each with its
-    value and its optimum."""
+    value and its optimum. Each term is held to KEPT of its size: a sum of 300 shortfalls that the
+    QP of HiGHS holds each to its tolerance loses 6.7e-6 of an optimum of 0.38, which a tolerance of
+    the whole sum (A3's 1e-7 * max(1, |c|.|x|)) refuses."""
     out = []
     for k, (cost, best) in enumerate(zip(w.costs, optima)):
         value = float(cost @ xi)
-        if value > best + KEPT * max(1.0, float(np.abs(cost) @ np.abs(xi))):
+        if value > best + KEPT * float(np.abs(cost) @ (1.0 + np.abs(xi))):
             out.append((k + 1, value, best))
     return out
