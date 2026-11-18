@@ -1,0 +1,115 @@
+# Water systems' controls wiped through a shared remote-support platform: Austin, Texas
+variant "Austin, Texas"
+    summary "An AI agent wipes the controls of the water system of Austin, Texas through the remote-support
+        platform of the OT integrator that it uses."
+    scope "The people that the water system of Austin, Texas serves, the hospitals that it supplies and the
+        businesses that need public water there."
+
+austin_water: Utility
+    "Austin Water, Texas. Its ID in the federal inventory is TX2270001."
+    title "Austin Water"
+    buys = <>
+    sells = <>
+    name = "Austin Water"
+    demand = 210.157 Mgal/day  @austin_water_demand
+    nameplate = 335 Mgal/day  @austin_water_nameplate
+    storage = 176 Mgal  @austin_water_storage
+    bought = 0 gal/yr  @austin_water_bought
+    sold = 11.3354 Mgal/day  @austin_water_sold
+    va_rate = 19417580.22 USD2025/h  @austin_water_va_rate
+
+austin_water_homes: Households
+    "The people that Austin Water serves."
+    title "Austin Water: homes"
+    utility = austin_water
+    population = 1115323 people  @austin_water_homes_population
+
+austin_water_hospitals: Hospitals
+    "The 11 hospitals that Austin Water supplies: Ascension Seton Southwest; Ascension Seton Medical Center
+        Austin; Ascension Seton Northwest; Baylor Scott & White Medical Center- Austin; Dell Children's
+        Medical Center; Dell Seton Med Center at the University of Tx; North Austin Medical Center; Northwest
+        Hills Surgical Hospital; St David's Medical Center; St David's South Austin Medical Center; Texas
+        Childrens Hospital North Austin Campus."
+    title "Austin Water: hospitals"
+    utility = austin_water
+    name = "Austin Water"
+    facilities = 11 facilities  @austin_water_hospitals_facilities
+
+notes:
+    limitations:
+        clearwells: "The storage of 176 Mgal leaves out the 45 Mgal of clearwells at Austin's three plants. So
+            Austin's stored water runs out sooner here than in fact."  @austin_water_storage
+        wholesale: "Austin sells water to 16 wholesale customers outside the place. The model keeps these
+            sales in full while stored water lasts, with no contract limits and no early cut. So Austin's
+            stored water can run out sooner here than in fact, and the results do not count the people that
+            these customers serve."  @austin_water_sold
+    verification:
+        research: "variants/austin/evidence/research.md"
+
+record austin_water_demand: assumption "The highest maximum day pumpage of fiscal 2016 to 2025 is 232 Mgal/day
+    in fiscal 2023, when the average day was 54,850 Mgal / 365 = 150.274 Mgal/day (ratio 1.54385). Less the
+    sales to other utilities at that ratio (7.34234 x 1.54385 = 11.3354) it is 220.665, and 220.665 / 1.05 =
+    210.157."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-AUSTIN-AUSTIN-WATER-PEAK-DAY
+        E-SC43-AUSTIN-AUSTIN-WATER-SALES
+
+record austin_water_nameplate: source "The rated capacities of Austin Water's three treatment plants: Davis
+    118, Ullrich 167 and Handcox 50 Mgal/day, 335 Mgal/day in all. The 2026 bond statement gives the same
+    combined rated capacity."
+    claims:
+        E-SC43-AUSTIN-AUSTIN-WATER-CAPACITY
+            datum: total_treatment_capacity
+        E-SC43-AUSTIN-AUSTIN-WATER-FACILITIES
+            datum: combined_rated_capacity
+
+record austin_water_storage: source "The conservation plan gives 176 million gallons of storage capacity in 38
+    city-maintained reservoirs. The same plan's form gives 172.1 MG, and the 2026 bond statement gives over
+    170 MG in 35 major facilities; the 45 MG of clearwells at the plants is not included."
+    claims:
+        E-SC43-AUSTIN-AUSTIN-WATER-STORAGE
+            datum: effective_storage_capacity
+        E-SC43-AUSTIN-AUSTIN-WATER-FACILITIES
+
+record austin_water_bought: assumption "Austin Water bought or imported no treated water in 2021, 2022 or
+    2023; all its water comes from its own three plants."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-AUSTIN-AUSTIN-WATER-SUPPLY
+            datum: purchased_imported_2023
+
+record austin_water_sold: assumption "Sales to other water utilities, all wholesale customers, were 2,679,954
+    thousand gallons in fiscal 2023, or 7.34234 Mgal/day. At the fiscal 2023 peak ratio of 1.54385 this is
+    11.3354 Mgal/day. The calendar 2023 exports in the conservation plan (7.4836 Mgal/day) agree within 2
+    percent."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-AUSTIN-AUSTIN-WATER-SALES
+        E-SC43-AUSTIN-AUSTIN-WATER-PEAK-DAY
+        E-SC43-AUSTIN-AUSTIN-WATER-SUPPLY
+
+record austin_water_homes_population: assumption "SDWIS federal data list 1,115,323 people served by Austin
+    Water (TX2270001), the system's own report through its state."
+    assumption A-SC43-REACH
+    claims:
+        E-SC43-SDWIS-TX2270001
+            datum: population_served
+
+record austin_water_va_rate: assumption "1,115,323 people served times the 2024 GDP per resident of its county
+    (Travis County, Texas (48453): 202,653,490 thousand dollars and 1,363,767 people: 148,598.32 dollars a
+    resident) times the price factor 1.026324, over 8,760 h: 19,417,580.22 USD2025/h."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-TX2270001
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-48453
+        E-SC43-BEA-POP-48453
+        E-SC43-GDP-DEFLATOR
+
+record austin_water_hospitals_facilities: assumption "The CMS hospital list gives 11 hospitals of the counted
+    types whose geocoded address lies in the EPA service area of Austin Water."
+    assumption A-SC43-HOSPITAL-JOIN
+    claims:
+        E-SC43-HOSPITALS-AUSTIN-WATER
+            datum: hospitals_supplied

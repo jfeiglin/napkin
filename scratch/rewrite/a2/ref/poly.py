@@ -7,9 +7,7 @@ tau = 0, and its first root after tau = 0."""
 from fractions import Fraction
 from math import isqrt
 
-
-class NotCovered(Exception):
-    """The reference interpreter does not cover this model. The text says what it met."""
+from .errors import NotCovered
 
 
 class Poly:

@@ -1,0 +1,61 @@
+# examples/reservoir: an operator who sees the water level and decides when to open the spillway.
+scenario "A reservoir in a storm"
+    summary "A storm fills a reservoir. The operator of the dam sees the water level and decides when to open
+        the spillway."
+    horizon 5 days
+    scope "The reservoir and the valley below its dam."
+
+reservoir:
+    "The reservoir. Its water is a share of its capacity: 1 is full."
+    input inflow: fraction/day = 0.06 fraction/day in [0 fraction/day, 0.08 fraction/day]
+        "Water that the storm brings in a day"
+        @assumption "The example assumes that the storm brings 6% of the capacity in each day."
+    input spillway: fraction/day = 0.15 fraction/day in [0.05 fraction/day, 0.3 fraction/day]
+        "Water that the open spillway lets out in a day"
+        @assumption "The example assumes that the open spillway lets out 15% of the capacity in each day."
+    input risk: fraction = 0.8 in [0.5, 1]
+        "Water level above which the valley is at risk"
+        @assumption "The example assumes that the valley is at risk above 80% of the capacity."
+    water: fraction = 0.6 in [0, none] scale 1
+        "Water in the reservoir"
+        @assumption "The example assumes that the reservoir is 60% full when the storm starts."
+    gate: enum[CLOSED, OPEN] = CLOSED
+        "Spillway"
+        @assumption "The example assumes that the spillway is closed when the storm starts."
+    spilled: fraction = 0 scale 1
+        "Water let out over the spillway"
+        @identity "The water that goes over the spillway, as a share of the capacity, counted once."
+    risk_time: h = 0 h scale 120 h
+        "Time with the water above the risk level"
+        @identity "The hours in which the water is above the risk level."
+    flow storm: SOURCE -> this.water  @counts
+        request = formula(this.inflow)
+    flow spill: this.water -> this.spilled  @counts
+        request = formula(this.spillway if this.gate == OPEN else 0)
+    flow at_risk: SOURCE -> this.risk_time  @counts
+        request = formula(1 if this.water >= this.risk else 0)
+
+operator:
+    "The operator of the dam."
+    role operator
+    sees reservoir.water
+    input level: fraction = 0.7 in [0.5, 1]
+        "Water level at which the operator opens the spillway"
+        @assumption "The example assumes that the operator opens the spillway at 70% of the capacity."
+    # TODO(hand): an event with several outcomes: a `switch` in a stage, with the producer of its value
+    # | event decide once when reservoir.water >= level:  @rule
+    # |     "The water reaches the level at which the operator opens the spillway."
+    # |     choice
+    # |     open 1:
+    # |         "The operator opens the spillway."
+    # |         reservoir.gate = "open"
+    # |     wait else:
+    # |         "The operator waits, and the spillway stays closed."
+
+# PROPOSED: the default selection of the package.
+report:
+    reservoir.spilled cumulative
+    reservoir.risk_time cumulative
+
+record counts: identity "The model counts the water that comes in and goes out, each share once."
+record rule: assumption "The operator opens the spillway at that level; a reader who plays it can wait."

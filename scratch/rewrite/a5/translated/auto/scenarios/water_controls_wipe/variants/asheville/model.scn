@@ -1,0 +1,104 @@
+# Water systems' controls wiped through a shared remote-support platform: Asheville, North Carolina
+variant "Asheville, North Carolina"
+    summary "An AI agent wipes the controls of the water system of Asheville, North Carolina through the
+        remote-support platform of the OT integrator that it uses."
+    scope "The people that the water system of Asheville, North Carolina serves, the hospitals that it
+        supplies and the businesses that need public water there."
+
+asheville: Utility
+    "City of Asheville, North Carolina. Its ID in the federal inventory is NC0111010."
+    title "Asheville"
+    buys = <>
+    sells = <>
+    name = "Asheville"
+    demand = 23.9242 Mgal/day  @asheville_demand
+    nameplate = 44 Mgal/day  @asheville_nameplate
+    storage = 27.356 Mgal  @asheville_storage
+    bought = 0 Mgal/day  @asheville_bought
+    sold = 1.3596 Mgal/day  @asheville_sold
+    va_rate = 1404575.35 USD2025/h  @asheville_va_rate
+
+asheville_homes: Households
+    "The people that Asheville serves."
+    title "Asheville: homes"
+    utility = asheville
+    population = 157431 people  @asheville_homes_population
+
+asheville_hospitals: Hospitals
+    "The 2 hospitals that Asheville supplies: Asheville-Oteen VA Medical Center; Memorial Mission Hospital and
+        Asheville Surgery Ce."
+    title "Asheville: hospitals"
+    utility = asheville
+    name = "Asheville"
+    facilities = 2 facilities  @asheville_hospitals_facilities
+
+notes:
+    limitations:
+        emergency-connections: "Asheville has four emergency connections through which it can buy water, among
+            them a 24-inch connection with Hendersonville. The model gives it no water from outside the place
+            during the event, so its interruption can be longer here than in fact."  @asheville_bought
+        one-year-peak: "The peak day comes from the 2025 plan alone, and older plans show higher days. So the
+            stored water can last longer here than on a higher peak day."  @asheville_demand
+    verification:
+        research: "variants/asheville/evidence/research.md"
+
+record asheville_demand: assumption "Highest maximum day of 2025, 26.48 Mgal/day (January), is 1.1689 times
+    the 2025 total demand of 22.6544. Less the 2025 sales of 1.1632 at the same ratio (1.3596) and divided by
+    1.05: (26.48 - 1.3596) / 1.05 = 23.9242 Mgal/day. The higher 2022 day (29.01 Mgal/day) is left out because
+    the 2022 plan attributes it to 27 main breaks during a freeze."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-ASHEVILLE-CITY-USE
+        E-SC43-ASHEVILLE-CITY-SALES
+        E-SC43-ASHEVILLE-CITY-FREEZE-2022
+
+record asheville_nameplate: source "Sum of the permitted capacities of the three plants in the 2025 plan:
+    North Fork WTP 31.5, Mills River WTP 7.5 and William DeBruhl WTP 5.0 Mgal/day."
+    claims:
+        E-SC43-ASHEVILLE-CITY-CAPACITY
+            datum: total_capacity
+
+record asheville_storage: source "Finished water storage capacity reported in the 2025 plan, 27.3560 Mgal (the
+    15 Mgal of off-stream raw water storage is not counted)."
+    claims:
+        E-SC43-ASHEVILLE-CITY-STORAGE
+            datum: finished_storage
+
+record asheville_bought: source "Asheville bought no water in 2025: its four purchase connections
+    (Hendersonville, Black Mountain, Weaverville, Woodfin) are for emergencies and carried nothing."
+    claims:
+        E-SC43-ASHEVILLE-CITY-SALES
+            datum: purchases_average_2025
+
+record asheville_sold: assumption "Regular sales in 2025 to Black Mountain (0.7057), Woodfin (0.3136) and
+    Biltmore Forest (0.1439), 1.1632 Mgal/day in all, none of them in the scenario; at the peak ratio 1.1689:
+    1.3596 Mgal/day. The contracts total 2.15 Mgal/day."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-ASHEVILLE-CITY-SALES
+        E-SC43-ASHEVILLE-CITY-USE
+
+record asheville_homes_population: assumption "SDWIS federal data list 157,431 people served by Asheville
+    (NC0111010), the system's own report through its state."
+    assumption A-SC43-REACH
+    claims:
+        E-SC43-SDWIS-NC0111010
+            datum: population_served
+
+record asheville_va_rate: assumption "157,431 people served times the 2024 GDP per resident of its county
+    (Buncombe County, North Carolina (37021): 21,262,054 thousand dollars and 279,210 people: 76,150.76
+    dollars a resident) times the price factor 1.026324, over 8,760 h: 1,404,575.35 USD2025/h."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-NC0111010
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-37021
+        E-SC43-BEA-POP-37021
+        E-SC43-GDP-DEFLATOR
+
+record asheville_hospitals_facilities: assumption "The CMS hospital list gives 2 hospitals of the counted
+    types whose geocoded address lies in the EPA service area of Asheville."
+    assumption A-SC43-HOSPITAL-JOIN
+    claims:
+        E-SC43-HOSPITALS-ASHEVILLE
+            datum: hospitals_supplied

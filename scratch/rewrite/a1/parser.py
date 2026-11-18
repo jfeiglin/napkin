@@ -315,10 +315,12 @@ class Lexer:
             tokens, i, comments = self.logical(i, spaces)
             # No line of the language starts with an operator that joins two values, a sign included.
             # CHANGED: `else:` starts the last case of a `switch`.
+            # CHANGED: a line that starts with `if` gets the message of the place where it stands.
             if (
                 tokens
                 and joins(tokens[0])
                 and not self.alone
+                and not tokens[0].is_name('if')
                 and not (tokens[0].is_name('else') and len(tokens) > 1 and tokens[1].is_op(':'))
             ):
                 first = tokens[0]
@@ -425,14 +427,8 @@ class Lexer:
                             )
                         tokens.append(Token('unit', word.group(), number, position + 2, True, word.group()))
                         position = word.end()
-                elif following and (following.isalpha() or following == '_'):
-                    # CHANGED: today `48h` is a number and then a name, which fails later.
-                    raise SyntaxProblem(
-                        f'{written}{NAME.match(row, position).group()}: a unit follows its number after one '
-                        f'space, as in 48 h',
-                        number,
-                        column,
-                    )
+                # A number with a name directly after it (`48h`) stays two tokens, as today: an ID of
+                # the evidence can hold one (`E-SITE-90MIN`). An expression refuses it (`primary`).
                 continue
             found = NAME.match(row, position)
             if found:
@@ -1155,6 +1151,8 @@ class Cursor:
             token = self.peek()
             if token.is_op('='):
                 self.fail('one = on a line: equality inside an expression is ==')
+            if token.kind == 'text':
+                self.fail('a text stands on a line of its own, under the line that it describes')
             self.fail(message)
 
 
@@ -1409,7 +1407,9 @@ class Expressions:
             if following is not None and following.kind == 'unit':
                 self.c.i += 1
                 return quantity(value, following.value)
-            if following is not None and following.kind in ('name', 'number', 'text') and following.value not in RESERVED:
+            if following is not None and following.kind == 'name' and not following.space:
+                self.c.fail(f'{written}{following.source}: a unit follows its number after one space, as in 48 h', token)
+            if following is not None and following.kind in ('name', 'number') and following.value not in RESERVED:
                 self.c.fail(
                     f'{written} {following.source}: a unit follows its number after exactly one space, and '
                     f'two values need an operator between them',

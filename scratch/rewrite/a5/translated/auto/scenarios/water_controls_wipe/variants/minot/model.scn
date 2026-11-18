@@ -1,0 +1,189 @@
+# Water systems' controls wiped through a shared remote-support platform: Minot, North Dakota
+variant "Minot, North Dakota"
+    summary "An AI agent wipes the controls of the water systems of Minot, North Dakota at once, through the
+        remote-support platform of the OT integrator that they share: Minot and NAWS."
+    scope "The people that the water systems of Minot, North Dakota serve, the hospitals that those systems
+        supply and the businesses that need public water there."
+
+minot: Utility
+    "City of Minot. Its ID in the federal inventory is ND5100660."
+    title "Minot"
+    buys = <>
+    sells = <minot_to_naws>
+    name = "Minot"
+    demand = 10.2021 Mgal/day  @minot_demand
+    nameplate = 18 Mgal/day  @minot_nameplate
+    storage = 14 Mgal  @minot_storage
+    bought = 0 Mgal/day  @minot_bought
+    sold = 717000 gal/day  @minot_sold
+    va_rate = 425105.14 USD2025/h  @minot_va_rate
+    pump_disabled = 0.7  @depth
+    manual_share = 0.8  @manual
+    activation_delay = 1 h  @manual
+    controls_load = 400 work_h  @work
+    field_load = 80 work_h  @work
+
+naws: Utility
+    "Northwest Area Water Supply (NAWS), North Dakota. Its ID in the federal inventory is ND5101687."
+    title "NAWS"
+    buys = <minot_to_naws>
+    sells = <>
+    name = "NAWS"
+    demand = 0 Mgal/day  @naws_demand
+    nameplate = 0 Mgal/day  @naws_nameplate
+    storage = 8.5 Mgal  @naws_storage
+    bought = 0 Mgal/day  @naws_bought
+    sold = 1.24789 Mgal/day  @naws_sold
+    va_rate = 0 USD2025/h  @naws_va_rate
+
+minot_to_naws: Tie
+    "Minot sells water to NAWS."
+    seller = minot
+    buyer = naws
+    capacity = 1439300 gal/day  @minot_to_naws_capacity
+
+minot_homes: Households
+    "The people that Minot serves."
+    title "Minot: homes"
+    utility = minot
+    population = 48743 people  @minot_homes_population
+
+minot_hospitals: Hospitals
+    "The hospital that Minot supplies: Trinity Hospitals."
+    title "Minot: hospitals"
+    utility = minot
+    name = "Minot"
+    facilities = 1 facilities  @minot_hospitals_facilities
+
+notes:
+    limitations:
+        naws-pipeline: "About half of Minot's own water runs through the NAWS pumps and pipeline, but the
+            model counts it as Minot's own delivery. A stop of the NAWS pumps or pipeline would also cut those
+            city connections, so the model can show a smaller loss for the city than in
+            fact."  @minot_to_naws_capacity
+        peak-statement: "Minot's peak of 13 Mgal a day rests on a general statement of 2020, and later reports
+            are lower. So the peak here can be high, and Minot's stored water can run out sooner here than in
+            fact."  @minot_demand
+    verification:
+        research: "variants/minot/evidence/research.md"
+
+record minot_demand: assumption "The highest day that a source reports is 13 million gallons, the lower end of
+    the 13 to 14 million gallons a day that peak summer use often reaches (2020). The 2024 pumped average is
+    6.6896 million gallons a day, so the peak ratio is 1.9433. Less the sales to NAWS at that ratio (0.8083 x
+    1.9433 = 1.5708) and about 0.717 million gallons a day to North Prairie Rural Water, over 1.05: (13 -
+    1.5708 - 0.717) / 1.05 = 10.2021."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-MINOT-MINOT-PEAK
+        E-SC43-MINOT-MINOT-PRODUCTION
+        E-SC43-MINOT-NAWS-CONTRACT
+        E-SC43-MINOT-MINOT-PRODUCTION-2012
+        E-SC43-MINOT-MINOT-USE-2021
+
+record minot_nameplate: source "The rated capacity of the one Minot water treatment plant, 18 million gallons
+    a day, as the Department of Water Resources reported in 2023 and again in January 2025. The plant has only
+    ground water until lake water arrives, and the wells give about 17 million gallons a day."
+    claims:
+        E-SC43-MINOT-MINOT-CAPACITY-2025
+            datum: wtp_capacity
+        E-SC43-MINOT-MINOT-CAPACITY
+            datum: wtp_capacity
+
+record minot_storage: source "The 2014 master plan gives 12.5 million gallons in the city reservoirs and
+    towers; the 1.5 million-gallon southwest tower went online in 2022, so 12.5 + 1.5 = 14.0. The current city
+    page lists three 3-million-gallon ground reservoirs and five elevated tanks, which with the tank volumes
+    of the 2014 plan and the 2018 and 2021 reports also gives 14.0 million gallons."
+    claims:
+        E-SC43-MINOT-MINOT-STORAGE-2014
+        E-SC43-MINOT-MINOT-SW-TOWER
+        E-SC43-MINOT-MINOT-TANKS
+        E-SC43-MINOT-MINOT-NORTH-TOWER
+
+record minot_bought: source "Minot produces all its water from its own wells and plant. Lake water through
+    NAWS had not begun in the period: the Biota plant was not complete in May 2026."
+    claims:
+        E-SC43-MINOT-NAWS-BIOTA
+        E-SC43-MINOT-MINOT-CAPACITY
+
+record minot_sold: assumption "About 717,000 gallons a day to North Prairie Rural Water, which the NAWS flow
+    table counts inside the Minot estimated peak usage; it is taken as the peak-day sale. North Prairie is
+    outside the scenario, and the rate memo of November 2025 bills its NAWS connections under the city rate."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-MINOT-NAWS-CONTRACT
+            datum: nprw_daily_use
+        E-SC43-MINOT-NAWS-BUYERS
+
+record minot_homes_population: assumption "SDWIS federal data list 48,743 people served by Minot (ND5100660),
+    the system's own report through its state."
+    assumption A-SC43-REACH
+    claims:
+        E-SC43-SDWIS-ND5100660
+            datum: population_served
+
+record minot_va_rate: assumption "48,743 people served times the 2024 GDP per resident of its county (Ward
+    County, North Dakota (38101): 5,093,673 thousand dollars and 68,427 people: 74,439.52 dollars a resident)
+    times the price factor 1.026324, over 8,760 h: 425,105.14 USD2025/h."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-ND5100660
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-38101
+        E-SC43-BEA-POP-38101
+        E-SC43-GDP-DEFLATOR
+
+record minot_hospitals_facilities: assumption "The CMS hospital list gives 1 hospital of the counted types
+    whose geocoded address lies in the EPA service area of Minot."
+    assumption A-SC43-HOSPITAL-JOIN
+    claims:
+        E-SC43-HOSPITALS-MINOT
+            datum: hospitals_supplied
+
+record naws_demand: source "NAWS has no retail customers of its own: it delivers to nine contract customers
+    and to connections that the City of Minot bills."
+    claims:
+        E-SC43-MINOT-NAWS-BUYERS
+
+record naws_nameplate: source "NAWS had no treatment plant in service in the period. Phase I of the Biota
+    plant was still under construction in May 2026, with substantial completion expected at the end of August
+    2026, and it only pretreats lake water before final treatment at the Minot plant."
+    claims:
+        E-SC43-MINOT-NAWS-BIOTA
+        E-SC43-MINOT-NAWS-DESIGN
+        E-SC43-MINOT-MINOT-OUTSIDE-USE-2021
+
+record naws_storage: source "Sum of the NAWS tanks with a reported volume: Lansford 4.5, Bottineau 3 and the
+    Kenmare tower 1 million gallons, 8.5 in all. It is a lower bound: the tanks on Speedway Hill at Minot and
+    near Berthold have no reported volume."
+    claims:
+        E-SC43-MINOT-NAWS-RESERVOIRS
+        E-SC43-MINOT-NAWS-BOTTINEAU
+        E-SC43-MINOT-NAWS-KENMARE-TOWER
+
+record naws_bought: source "NAWS buys all its water from Minot, which is in the scenario (the tie). No lake
+    water flowed in the period."
+    claims:
+        E-SC43-MINOT-NAWS-BIOTA
+        E-SC43-MINOT-MINOT-PRODUCTION
+
+record naws_sold: assumption "The nine NAWS contract customers used 295,837,470 gallons in 2024, 0.8083
+    million gallons a day. No source reports a NAWS highest day, so the family median ratio 1.54385 applies:
+    0.8083 x 1.54385 = 1.2479."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-MINOT-MINOT-PRODUCTION
+
+record naws_va_rate: assumption "NAWS (ND5101687) is a wholesale system with no retail customers: SDWIS lists
+    0 people, so its own homes and businesses add no value added; its buyers carry theirs."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-ND5101687
+
+record minot_to_naws_capacity: source "The daily amounts of Amendment 2 to the interim water supply agreement,
+    for all NAWS customers, total 1,439,300 gallons a day. The NAWS pumps at the High Service Pump Station can
+    move 4,000 gallons a minute (5.76 million gallons a day), but they also carry the city's own water through
+    the NAWS meter, so the contract total is the capacity for the NAWS customers."
+    claims:
+        E-SC43-MINOT-NAWS-CONTRACT
+            datum: interim_flows_amendment_2
+        E-SC43-MINOT-NAWS-PUMPS

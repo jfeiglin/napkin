@@ -1,0 +1,93 @@
+# Water systems' controls wiped through a shared remote-support platform: Jackson, Mississippi
+variant "Jackson, Mississippi"
+    summary "An AI agent wipes the controls of the water system of Jackson, Mississippi through the
+        remote-support platform of the OT integrator that it uses."
+    scope "The people that the water system of Jackson, Mississippi serves, the hospitals that it supplies and
+        the businesses that need public water there."
+
+jxn_water: Utility
+    "City of Jackson, Mississippi (O.B. Curtis and J.H. Fewell plants; operated by JXN Water). Its ID in the
+        federal inventory is MS0250008."
+    title "JXN Water"
+    buys = <>
+    sells = <>
+    name = "JXN Water"
+    demand = 54.558068 Mgal/day  @jxn_water_demand
+    nameplate = 70 Mgal/day  @jxn_water_nameplate
+    storage = 31.55 Mgal  @jxn_water_storage
+    va_rate = 1619073.64 USD2025/h  @jxn_water_va_rate
+
+jxn_water_homes: Households
+    "The people that JXN Water serves."
+    title "JXN Water: homes"
+    utility = jxn_water
+    population = 189673 people  @jxn_water_homes_population
+
+jxn_water_hospitals: Hospitals
+    "The 4 hospitals that JXN Water supplies: Merit Health Central; Mississippi Baptist Medical Center;
+        Mississippi Methodist Rehab Ctr; University of Mississippi Med Center."
+    title "JXN Water: hospitals"
+    utility = jxn_water
+    name = "JXN Water"
+    facilities = 4 facilities  @jxn_water_hospitals_facilities
+
+notes:
+    limitations:
+        capacity-2021: "The rated plant capacity of 70 Mgal a day is from 2021, before the plant failures of
+            2022, and the conventional side of O.B. Curtis gave little water in 2026. So JXN Water can produce
+            more water by hand and refill faster here than in fact."  @jxn_water_nameplate
+        hospital-floor: "The Census geocoder does not match the CMS addresses of two Jackson hospitals: the VA
+            medical center and St Dominic-Jackson Memorial Hospital. The model leaves them out, so the
+            hospital hours short of water are lower here than in fact."  @jxn_water_hospitals_facilities
+    verification:
+        research: "variants/jackson/evidence/research.md"
+
+record jxn_water_demand: assumption "No source reports a highest day. The average production into the
+    distribution system from July 2025 to June 2026 is 37.106 MGD (four quarterly means weighted by their
+    days). Times the family median ratio 1.54385 that is a peak of 57.2860 MGD; there are no sales, so demand
+    is 57.2860 / 1.05 = 54.5581 MGD."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-JACKSON-JXN-PRODUCTION
+        E-SC43-JACKSON-JXN-METERED
+
+record jxn_water_nameplate: source "Rated capacities in the 2021 state survey: O.B. Curtis 25 MGD for each of
+    its conventional and membrane sides, and J.H. Fewell 20 MGD, the maximum that the state set. In 2021 the
+    state credited only 53.6 MGD for the filters and trains then in service."
+    claims:
+        E-SC43-JACKSON-JXN-PLANTS
+            datum: rated_capacity_total
+
+record jxn_water_storage: source "Storage that the 2021 state survey counts: 13.8 MG at J.H. Fewell, the 10 MG
+    clearwell at O.B. Curtis and 7.75 MG of elevated tanks. It leaves out 2.2 MG of tanks that were offline or
+    empty."
+    claims:
+        E-SC43-JACKSON-JXN-STORAGE
+            datum: storage_total_counted
+
+record jxn_water_homes_population: assumption "SDWIS federal data list 189,673 people served by JXN Water
+    (MS0250008), the system's own report through its state."
+    assumption A-SC43-REACH
+    claims:
+        E-SC43-SDWIS-MS0250008
+            datum: population_served
+
+record jxn_water_va_rate: assumption "189,673 people served times the 2024 GDP per resident of its county
+    (Hinds County, Mississippi (28049): 15,444,192 thousand dollars and 211,975 people: 72,858.55 dollars a
+    resident) times the price factor 1.026324, over 8,760 h: 1,619,073.64 USD2025/h."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-MS0250008
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-28049
+        E-SC43-BEA-POP-28049
+        E-SC43-GDP-DEFLATOR
+
+record jxn_water_hospitals_facilities: assumption "The CMS hospital list gives 4 hospitals of the counted
+    types whose geocoded address lies in the EPA service area of JXN Water. The count is a floor: the Census
+    geocoder does not match the CMS addresses of G. V. (Sonny) Montgomery VA Medical Center (Jackson), St
+    Dominic-Jackson Memorial Hospital, so the join does not place them."
+    assumption A-SC43-HOSPITAL-JOIN
+    claims:
+        E-SC43-HOSPITALS-JXN-WATER
+            datum: hospitals_supplied
