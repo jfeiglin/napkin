@@ -1,8 +1,9 @@
-"""A sum over the members of a list that one member at a time can change.
+"""A sum, a least or a greatest value over the members of a list that one member at a time can change.
 
 `Pairwise(values)` holds the sum of n numbers in a binary tree of a fixed shape: the leaves are the
 numbers in their order, filled with zeros to a power of two, and each inner place holds the sum of the
-two places below it. `total` is the root.
+two places below it. `total` is the root. `Pairwise(values, 'min')` and `Pairwise(values, 'max')` hold
+the least and the greatest value in the same shape, filled with the infinity that changes nothing.
 
 What holds:
 
@@ -15,7 +16,7 @@ What holds:
   one pass over the tree (`set_many`).
 - **The error is that of a pairwise sum.** With u the unit roundoff, the total differs from the true
   sum by at most about `u * ceil(log2 n) * sum(abs(values))`, where a sum in the order of the list can
-  differ by about `u * n * sum(abs(values))`.
+  differ by about `u * n * sum(abs(values))`. A least or a greatest value is exact.
 
 The order of the additions is not the order of the list, so the total can differ from a sum in the
 order of the list by that roundoff. The language promises no order of a sum over a list.
@@ -23,18 +24,28 @@ order of the list by that roundoff. The language promises no order of a sum over
 
 from __future__ import annotations
 
+import operator
+
 import numpy as np
 
 # Above this share of the members, a change of many is one pass over the whole tree.
 REBUILD_SHARE = 0.05
+# How each kind of tree joins two levels of places, and two places, and what fills its unused
+# leaves.
+OPERATIONS = {
+    'sum': (np.add, operator.add, 0.0),
+    'min': (np.minimum, min, np.inf),
+    'max': (np.maximum, max, -np.inf),
+}
 
 
 class Pairwise:
-    def __init__(self, values):
+    def __init__(self, values, kind='sum'):
         values = np.asarray(values, dtype=float)
+        self.join, self.pair, fill = OPERATIONS[kind]
         self.count = n = len(values)
         self.size = size = 1 if n <= 1 else 1 << (n - 1).bit_length()
-        self.tree = np.zeros(2 * size)
+        self.tree = np.full(2 * size, fill)
         self.tree[size : size + n] = values
         self._fill()
 
@@ -42,12 +53,12 @@ class Pairwise:
         tree, level = self.tree, self.size
         while level > 1:
             half = level // 2
-            tree[half:level] = tree[level : 2 * level : 2] + tree[level + 1 : 2 * level : 2]
+            tree[half:level] = self.join(tree[level : 2 * level : 2], tree[level + 1 : 2 * level : 2])
             level = half
 
     @property
     def total(self):
-        """The sum of the members."""
+        """The sum of the members (the least or the greatest of a tree of that kind)."""
         return float(self.tree[1])
 
     def values(self):
@@ -58,11 +69,11 @@ class Pairwise:
         """Member `index` takes `value`."""
         if not 0 <= index < self.count:
             raise IndexError(index)
-        tree, k = self.tree, self.size + index
+        tree, k, pair = self.tree, self.size + index, self.pair
         tree[k] = value
         k >>= 1
         while k:
-            tree[k] = tree[2 * k] + tree[2 * k + 1]
+            tree[k] = pair(tree[2 * k], tree[2 * k + 1])
             k >>= 1
 
     def set_many(self, index, values):

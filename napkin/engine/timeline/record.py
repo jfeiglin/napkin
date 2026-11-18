@@ -15,17 +15,28 @@ pieces of each value of a run:
   it does. A solver's segment is fitted step by step: its dense output is a cubic in each step,
   which the series holds exactly. The state that a segment starts from opens its pieces, so a
   settled bound is a jump.
+- **The family** (`family.py`) gives exact lines: a piece of each store and of each actual rate at
+  each change of its line, and a piece of a request or a capacity that is a formula at each change
+  of its value.
+- **A keyed read by the time** has a piece at the start and at each of its key times; below its
+  first key it holds `Unavailable`. A keyed read with a fixed key has one piece. A reduction has its
+  pieces from the histories of its kept entries (`collections.history_of`): a sum of lines, a count,
+  an any, an all, a least or a greatest value of values that hold between moments are exact; any
+  other is fitted as a formula is. Neither has a key in the record: the formulas that read them read
+  their histories.
 - **A formula, and a request or a capacity written as one,** is made after the run from the
-  histories of what it reads: between two times at which one of them has a piece, it is fitted as
-  a curve is, and a yes/no takes a piece at each change, located to within the crossing tolerance
-  of the run (`Numerics.crossing`). A formula that cannot be evaluated holds `Unavailable` with the
-  reason. A record that keeps only some values keeps what their formulas read too.
+  histories of what it reads: between two times at which one of them has a piece, it is one piece
+  where each of them holds its value, else it is fitted as a curve is, and a yes/no takes a piece at
+  each change, located to within the crossing tolerance of the run (`Numerics.crossing`). A formula
+  that only names another value has that value's history. A formula that cannot be evaluated holds
+  `Unavailable` with the reason. A record that keeps only some values keeps what their formulas read
+  too.
 
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of
-each path. It evaluates a formula at each time that it is asked from the recorded values of what
-the formula reads, and never reads the formula's fitted pieces: a fit is checked at a few points of
-each piece only, so it could lose a kink between two of them, or a yes/no that changes and changes
-back.
+each path. It evaluates a formula, a reduction and a keyed read at each time that it is asked from
+the recorded values of what it reads, and never reads a formula's fitted pieces: a fit is checked at
+a few points of each piece only, so it could lose a kink between two of them, or a yes/no that
+changes and changes back.
 """
 
 from __future__ import annotations
@@ -37,15 +48,18 @@ from itertools import pairwise
 import numpy as np
 from numpy.polynomial import chebyshev
 
+from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import evaluate
 from ...program.config import Configuration, Request
 from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Record, Unavailable
 from ..continuous.kernels import Affine, MatrixExponential
-from .plan import FORMULA, RATE, Plan, name_of
+from ..errors import SimulationError
+from .collections import history_of, index_of, kept, looked_up, reduced
+from .plan import FORMULA, LOOKUP, RATE, REDUCE, Plan, name_of
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
-FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError)
+FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError)
 
 DEGREE = 8
 # The points of a fit on [-1, 1], and the points between them at which a fit is checked, with the
@@ -126,6 +140,8 @@ class Recorder:
         self.plan, self.constants, self.tolerance = plan, constants, tolerance
         self.pieces = {}  # engine name -> [(t, value, rate)]
         self.trace = []
+        self.formulas = set()  # the formulas whose pieces the run gives (the family's settings)
+        self.run = None  # the run, which knows the entries that each collection keeps
 
     def entry(self, t, kind, part, owner='', **details):
         """One entry of the trace. Its round is 0 at the setup, and 1 at a later time: this slice
@@ -187,6 +203,10 @@ class Recorder:
     def _add(self, name, pieces):
         self.pieces.setdefault(name, []).extend(pieces)
 
+    def add(self, name, t, value, rate):
+        """One piece of a value, which a run gives as it goes."""
+        self.pieces.setdefault(name, []).append((t, value, rate))
+
     # ---- after the run ----------------------------------------------------------------------------
 
     def record(self, end, failure=None):
@@ -200,13 +220,27 @@ class Recorder:
                 if not pieces and name in self.constants:
                     # A store whose first segment failed holds its start value.
                     pieces = [(0.0, self.constants[name], 0.0)]
-            elif value.kind == FORMULA:
+            elif value.kind in (FORMULA, REDUCE, LOOKUP):
                 continue
             else:
                 pieces = [(0.0, self.constants[name], 0.0)] if name in self.constants else []
             histories[name] = self._history(value.key, pieces)
-        for name in plan.ordered({name for name, value in plan.values.items() if value.kind == FORMULA}):
-            histories[name] = self._history(plan.values[name].key, self.formula(name, histories, end))
+        for name in plan.keyed:
+            histories[name] = self._history(None, self._keyed(name, end))
+        calculated = {name for name, value in plan.values.items() if value.kind in (FORMULA, REDUCE)}
+        for name in plan.ordered(calculated):
+            value = plan.values[name]
+            if name in self.formulas:
+                pieces = [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
+            elif value.kind == REDUCE:
+                pieces = self._reduction(name, histories, end)
+            elif isinstance(value.node, nodes.Ref) and value.node.name in histories:
+                # A formula that names another value has its history.
+                histories[name] = History(value.key, histories[value.node.name].pieces)
+                continue
+            else:
+                pieces = self.formula(name, histories, end)
+            histories[name] = self._history(value.key, pieces)
         request = plan.configuration.request
         # What a kept formula reads is kept too, so that `read` can evaluate it.
         keys = set(request.keys)
@@ -216,7 +250,7 @@ class Recorder:
         kept = [
             history
             for history in histories.values()
-            if history.pieces and (request.everything or history.key in keys)
+            if history.key is not None and history.pieces and (request.everything or history.key in keys)
         ]
         manifest = Manifest(request.horizon, request.everything, request.keys)
         trace = tuple(self.trace) + ((failure,) if failure is not None else ())
@@ -234,16 +268,77 @@ class Recorder:
             ),
         )
 
-    def formula(self, name, histories, end):
-        """The pieces of a formula from the histories of what it reads."""
+    def _keyed(self, name, end):
+        """The pieces of a keyed read: at the start and at each key time of a read by the time."""
+        run = self.run
+        try:
+            if not self.plan.keyed[name].by_time:
+                return [(0.0, run.value_of(name), 0.0)]
+            stepped = run.stepped_of(name)
+        except FAILURES as problem:
+            return [(0.0, Unavailable(str(problem)), 0.0)]
+        try:
+            pieces = [(0.0, stepped.at(0.0), 0.0)]
+        except ExpressionError as problem:
+            pieces = [(0.0, Unavailable(str(problem)), 0.0)]
+        times = stepped.times.tolist()
+        return pieces + [(t, stepped.values[k], 0.0) for k, t in enumerate(times) if 0 < t <= end]
+
+    def _reduction(self, name, histories, end):
+        """The pieces of a reduction from the histories of its kept entries."""
+        plan, run = self.plan, self.run
+        reduction = plan.reductions[name]
+        try:
+            entries = run.kept_of(name)
+        except FAILURES as problem:
+            return [(0.0, Unavailable(str(problem)), 0.0)]
+        if reduction.names is None:
+            return [(0.0, len(entries), 0.0)]
+        reads = [reduction.names[k] for k in entries]
+        own = [
+            [
+                (piece.t, piece.value, piece.rate if piece.curve is None else piece.curve)
+                for piece in histories[read].pieces
+            ]
+            for read in reads
+        ]
+        exact = history_of(reduction, entries, own, end)
+        if exact is not None:
+            return exact
+        if not reads:
+            try:
+                return [(0.0, reduced(reduction, histories.__getitem__, plan.units, entries), 0.0)]
+            except FAILURES as problem:
+                return [(0.0, Unavailable(str(problem)), 0.0)]
+        boolean = plan.values[name].boolean
+        return self.formula(
+            name,
+            histories,
+            end,
+            reads,
+            lambda env: reduced(reduction, env.__getitem__, plan.units, entries),
+            boolean,
+        )
+
+    def formula(self, name, histories, end, reads=None, compute=None, boolean=None):
+        """The pieces of a formula from the histories of what it reads (of a reduction, when `reads`
+        and `compute` are given: the names of its kept entries, and its value from theirs)."""
         plan = self.plan
         value = plan.values[name]
-        reads = sorted(plan.reads(name))
+        timed = compute is None and 't' in nodes.names(value.node)
+        reads = sorted(plan.reads(name)) if reads is None else reads
+        if compute is None:
+
+            def compute(env):
+                return evaluate(value.node, env, plan.units)
+
+        boolean = value.boolean if boolean is None else boolean
         times = sorted(
             {0.0, *(piece.t for read in reads for piece in histories[read].pieces if piece.t <= end)}
         )
         bounds = [*times, max(end, times[-1])]
         readers = {read: _reader(histories[read]) for read in reads}
+        holders = {read: _holder(histories[read]) for read in reads}
 
         def at(t):
             env = {read: readers[read](t) for read in reads}
@@ -251,28 +346,31 @@ class Recorder:
             for found in env.values():
                 if isinstance(found, Unavailable):
                     raise ExpressionError(found.reason)
-            return evaluate(value.node, env, plan.units)
+            return compute(env)
 
+        firsts = []
+        for time in times:
+            try:
+                firsts.append(at(time))
+            except FAILURES as problem:
+                firsts.append(Unavailable(str(problem)))
         # The size of the formula, as a store's: the largest magnitude that it takes at a time at
         # which what it reads has a piece.
         size = 1.0
-        if not value.boolean:
-            for time in times:
-                try:
-                    size = max(size, abs(float(at(time))))
-                except FAILURES:
-                    continue
+        if not boolean:
+            for found in firsts:
+                if not isinstance(found, Unavailable):
+                    size = max(size, abs(float(found)))
         tolerance = np.array([plan.numerics.atol_factor * size])
         pieces = []
-        for a, b in pairwise(bounds):
-            try:
-                first = at(a)
-            except FAILURES as problem:
-                pieces.append((a, Unavailable(str(problem)), 0.0))
+        for (a, b), first in zip(pairwise(bounds), firsts):
+            if isinstance(first, Unavailable):
+                pieces.append((a, first, 0.0))
                 continue
-            if b <= a:
-                pieces.append((a, bool(first) if value.boolean else float(first), 0.0))
-            elif value.boolean:
+            if b <= a or (not timed and all(holders[read](a) for read in reads)):
+                # What the formula reads holds its value from a to b: so does the formula.
+                pieces.append((a, bool(first) if boolean else float(first), 0.0))
+            elif boolean:
                 pieces += _switches(at, a, b, bool(first), plan.numerics.crossing)
             else:
                 try:
@@ -314,6 +412,17 @@ def _reader(history):
         return history.pieces[k].at(time)
 
     return at
+
+
+def _holder(history):
+    """Whether the piece of a history at a time holds its value: no rate and no curve."""
+    times = [piece.t for piece in history.pieces]
+
+    def holds(time):
+        k = bisect_right(times, time) - 1
+        return k >= 0 and history.pieces[k].curve is None and history.pieces[k].rate == 0
+
+    return holds
 
 
 # ---- the reader ------------------------------------------------------------------------------------
@@ -362,16 +471,31 @@ def unit_of(program, key):
     return getattr(part.type, 'unit', '')
 
 
+# The plan that the reader made last, with its program: a program is read again and again.
+_PLANS = {}
+
+
+def _plan_of(program):
+    """The plan of a bare request on a program, which names each formula with its node: what a
+    configuration sets changes no formula, so this plan serves every run of the program."""
+    found = _PLANS.get(id(program))
+    if found is None or found[0] is not program:
+        _PLANS.clear()
+        found = _PLANS[id(program)] = (program, Plan.of(program, Configuration(Request(0))))
+    return found[1]
+
+
 class _Values:
-    """The values of a record at a time, with each formula evaluated from the recorded values of what
-    it reads, in canonical units. The plan of the program names each formula with its node: what a
-    configuration sets changes no formula, so the plan of a request to the record's horizon serves
-    every run of the program."""
+    """The values of a record at a time, with each formula, reduction and keyed read evaluated
+    from the recorded values of what it reads, in canonical units. Which entries a collection keeps
+    is read from the recorded values of the fixed fields that its tests read."""
 
     def __init__(self, record, program):
         self.record = record
-        self.plan = Plan.of(program, Configuration(Request(record.manifest.horizon)))
+        self.histories = {history.key: history for history in record.histories}
+        self.plan = _plan_of(program)
         self.done = {}
+        self.kept = {}
 
     def at(self, name, t):
         """The value of an engine name at a time: from its history, or for a formula from what it
@@ -380,11 +504,12 @@ class _Values:
         if (name, t) in self.done:
             return self.done[name, t]
         value = self.plan.values[name]
-        if value.kind != FORMULA:
-            try:
-                history = self.record.history(value.key)
-            except KeyError:
-                raise LookupError(f'the record holds no value of {name}') from None
+        if value.kind in (REDUCE, LOOKUP):
+            found = self._derived(name, t)
+        elif value.kind != FORMULA:
+            history = self.histories.get(value.key)
+            if history is None:
+                raise LookupError(f'the record holds no value of {name}')
             found = history.at(t)
         else:
             env = {read: self.at(read, t) for read in sorted(self.plan.reads(name))}
@@ -399,6 +524,24 @@ class _Values:
                 found = Unavailable(str(problem))
         self.done[name, t] = found
         return found
+
+    def _derived(self, name, t):
+        """A reduction or a keyed read at a time, from the recorded values of what it reads."""
+        plan = self.plan
+
+        def value(read):
+            return self.at(read, t)
+
+        try:
+            if name not in self.kept:
+                derived = plan.reductions.get(name) or plan.keyed[name]
+                self.kept[name] = kept(derived.tests, value, plan.units)
+            if name in plan.reductions:
+                return reduced(plan.reductions[name], value, plan.units, self.kept[name])
+            index = index_of(plan.keyed[name], value, plan.units, self.kept[name])
+            return looked_up(plan.keyed[name], value, plan.units, t, index)
+        except FAILURES as problem:
+            return Unavailable(str(problem))
 
 
 def read(record, program, paths, times):

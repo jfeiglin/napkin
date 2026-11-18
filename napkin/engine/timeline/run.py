@@ -1,19 +1,29 @@
 """One run of a plan: the values at the start, then each connected set to the horizon, and the record.
 
-This slice has no events, so a run has one setup and the segments of its components:
+This slice has no events, so a run has one setup and the segments of its connected sets:
 
-1. **The start** evaluates each input, draw, stored value and captured request or capacity once, in
-   the order of what it reads (a formula that one of them reads is evaluated there and then). A
-   draw is the median of its distribution in a median run, and in a sampled run the quantile of a
-   uniform number from the stream of its site and its member under the seed; each draw is an entry
-   of the trace. An input that the configuration sets must lie in its admitted range.
+1. **The start** evaluates each input, draw, link, stored value and captured request or capacity once,
+   in the order of what it reads, across members (a formula, a reduction or a keyed read that one of
+   them reads is evaluated there and then, at time 0). The order is found as the values are asked,
+   with no recursion, so a chain through the rows of a large table is no limit. A draw is the median
+   of its distribution in a median run, and in a sampled run the quantile of a uniform number from
+   the stream of its site and its member under the seed; each draw is an entry of the trace. An
+   input that the configuration sets must lie in its admitted range. The entries that each `where`
+   keeps are found from fixed values, once (`kept_of`), and so is the sorted index of the keys of
+   each keyed read (`stepped_of`). Then each assertion over inputs is checked once; one that does not
+   hold fails the run at the start, as an error of the setup that the plan found does.
 2. **The sizes.** A store's size sets its absolute tolerance (`atol_factor` times it, D8): its
    `scale` when it declares one, else the largest of one of its unit, its start value, its finite
    bounds and the largest start value of the stores that flows connect it to. A store must start
    within its bounds.
-3. **The components.** Each connected set of the plan is a component (`component.py`). The run
-   takes the next segment of the component that stands earliest, until each stands at the horizon,
-   and the recorder (`record.py`) takes the pieces of each segment as it is made.
+3. **The sets.** The sets of one flow whose rate reads nothing that moves run together as the family
+   (`family.py`). Each other connected set is a component (`component.py`): a reduction that its
+   rates read is a formula node over the kept entries, and a keyed read by the time is an entry of
+   the component's store, which the run sets at each key time. The key times of the keyed reads by
+   the time that the sets read cut the run into windows: in each, the family takes the rows that
+   reach a bound, then each component takes its next segment, the earliest first, until it stands at
+   the window's end; at that end the keyed reads change, and the sets that read them evaluate their
+   rates again. The recorder (`record.py`) takes the pieces of each segment as it is made.
 
 A run that fails stops there: its record holds the failure, as the last entry of its trace, and the
 histories to the time at which it stopped.
@@ -23,6 +33,7 @@ from __future__ import annotations
 
 import heapq
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -34,8 +45,10 @@ from ...program.config import MEDIAN, ConfigurationError
 from .. import sampling
 from ..continuous.system import Context, run_settings, solver_step, step_cap
 from ..errors import SimulationError
+from .collections import index_of, kept, looked_up, node_of, reduced
 from .component import Component, NetFlow, Network
-from .plan import RATE, STARTS, STATE, Outside
+from .family import Family
+from .plan import LOOKUP, RATE, REDUCE, STARTS, STATE, Outside
 from .record import Recorder
 
 
@@ -56,6 +69,23 @@ def drawn(distribution, units, mode, seed, key):
         return float(quantile(family.name, args, u))
 
 
+@dataclass(frozen=True)
+class Stepped:
+    """A keyed read by the time: its value from each distinct key of its kept entries (`times`) to
+    the next; below the first key it fails."""
+
+    spelled: str
+    times: np.ndarray
+    values: tuple
+
+    def at(self, t):
+        """The value at time t, or an ExpressionError below the first key."""
+        place = int(np.searchsorted(self.times, t, side='right')) - 1
+        if place < 0:
+            raise ExpressionError(f'{self.spelled}: no member has a key at or below {t:g}')
+        return self.values[place]
+
+
 class Run:
     """See the module."""
 
@@ -64,56 +94,168 @@ class Run:
         self.cap = step_cap(plan.numerics)
         self.settings = run_settings(plan.numerics, self.cap)
         self.recorder = Recorder(plan, {}, {})
-        self.now = 0.0  # the time of the component that the run advances, for a failure
+        self.recorder.run = self
+        self.now = 0.0  # the time that the run has reached, for a failure
+        self.env = {'t': 0.0}  # the values at the start, by engine name
+        self._kept, self._stepped, self._indexes = {}, {}, {}
+        self.family = None
 
     # ---- the start --------------------------------------------------------------------------------
 
-    def start(self):
-        """{engine name: value at the start} of each input, draw, stored value and captured request
-        or capacity, with an entry of the trace for each draw."""
-        plan, configuration = self.plan, self.plan.configuration
-        env, visiting = {'t': 0.0}, []
+    def _missing(self, name):
+        """The names that `name` reads and that are not known yet: the tests of a collection before
+        its members' values, and of a keyed read the keys of its kept entries and its key, then the
+        value of the entry that it finds."""
+        plan, env = self.plan, self.env
+        if name in plan.draws:
+            return []
+        value = plan.values[name]
+        if value.kind == RATE:
+            raise Outside(f'{name}: a starting value that reads an actual rate (S2)')
+        if value.kind in (REDUCE, LOOKUP):
+            derived = plan.reductions.get(name) or plan.keyed[name]
+            tests = {read for test in derived.tests if test is not None for read in nodes.names(test)} - {'t'}
+            missing = sorted(read for read in tests if read not in env)
+            if missing:
+                return missing
+            entries = self.kept_of(name)
+            if value.kind == REDUCE:
+                return (
+                    [derived.names[k] for k in entries if derived.names[k] not in env]
+                    if derived.names
+                    else []
+                )
+            reads = {derived.keys[k] for k in entries if isinstance(derived.keys[k], str)}
+            reads |= set(nodes.names(derived.key)) - {'t'}
+            missing = sorted(read for read in reads if read not in env)
+            if missing:
+                return missing
+            found = self._found(name)
+            return [] if found is None or found in env else [found]
+        return sorted(read for read in set(nodes.names(value.node)) - {'t'} if read not in env)
 
-        def value_of(name):
-            if name in env:
-                return env[name]
-            if name in visiting:
-                raise SimulationError(f'{name}: a starting value that reads itself')
-            if name in plan.draws:
-                found = plan.draws[name]
-                key = f'{found.site}|{found.member}'
-                env[name] = drawn(found.distribution, plan.units, configuration.mode, configuration.seed, key)
-                self.recorder.entry(0.0, 'draw', found.site, found.member, value=env[name])
-                return env[name]
-            value = plan.values[name]
-            if value.kind == RATE:
-                raise Outside(f'{name}: a starting value that reads an actual rate (S2)')
-            visiting.append(name)
-            for read in sorted(set(nodes.names(value.node)) - {'t'}):
-                value_of(read)
-            visiting.pop()
-            env[name] = evaluate(value.node, env, plan.units)
+    def _found(self, name):
+        """The engine name of the value that a keyed read finds at the start, or None."""
+        keyed, entries = self.plan.keyed[name], self.kept_of(name)
+        index = self._index(name)
+        x = 0.0 if keyed.by_time else float(evaluate(keyed.key, self.env, self.plan.units))
+        place = index.find(x)
+        return None if place is None else keyed.names[entries[place]]
+
+    def _compute(self, name):
+        """The value of a name whose reads are known."""
+        plan, configuration, env = self.plan, self.plan.configuration, self.env
+        if name in plan.draws:
+            found = plan.draws[name]
+            key = f'{found.site}|{found.member}'
+            value = drawn(found.distribution, plan.units, configuration.mode, configuration.seed, key)
+            self.recorder.entry(0.0, 'draw', found.site, found.member, value=value)
+            return value
+        kind = plan.values[name].kind
+        node = plan.values[name].node
+        if isinstance(node, nodes.Const) and isinstance(node.value, (bool, int, float)):
+            return node.value  # a table's cell, or what a configuration gives
+        if (
+            isinstance(node, nodes.Call)
+            and node.function == 'q'
+            and all(isinstance(arg, nodes.Const) for arg in node.args)
+            and isinstance(node.args[0].value, (int, float))
+            and not isinstance(node.args[0].value, bool)
+        ):
+            return plan.units.normalize(node.args[0].value, node.args[1].value)
+        if kind == REDUCE:
+            return reduced(plan.reductions[name], env.__getitem__, plan.units, self.kept_of(name))
+        if kind == LOOKUP:
+            index = (self._index(name), self.kept_of(name))
+            return looked_up(plan.keyed[name], env.__getitem__, plan.units, 0.0, index)
+        return evaluate(plan.values[name].node, env, plan.units)
+
+    def value_of(self, name):
+        """The value of an engine name at the start, evaluated once, after what it reads."""
+        env = self.env
+        if name in env:
             return env[name]
+        stack, expanded = [name], set()
+        while stack:
+            top = stack[-1]
+            if top in env:
+                stack.pop()
+                continue
+            missing = self._missing(top)
+            if not missing:
+                env[top] = self._compute(top)
+                stack.pop()
+                continue
+            if top in expanded:
+                raise SimulationError(f'{top}: a starting value that reads itself')
+            expanded.add(top)
+            for read in missing:
+                if read in expanded:
+                    raise SimulationError(f'{read}: a starting value that reads itself')
+                stack.append(read)
+        return env[name]
+
+    def kept_of(self, name):
+        """The places of the entries that the where tests of a reduction or a keyed read keep."""
+        if name not in self._kept:
+            derived = self.plan.reductions.get(name) or self.plan.keyed[name]
+            self._kept[name] = kept(derived.tests, self.value_of, self.plan.units)
+        return self._kept[name]
+
+    def _index(self, name):
+        if name not in self._indexes:
+            self._indexes[name] = index_of(
+                self.plan.keyed[name], self.value_of, self.plan.units, self.kept_of(name)
+            )[0]
+        return self._indexes[name]
+
+    def stepped_of(self, name):
+        """The keyed read by the time `name` (`Stepped`), from the keys of its kept entries."""
+        if name not in self._stepped:
+            keyed, entries, index = self.plan.keyed[name], self.kept_of(name), self._index(name)
+            times = index.times()
+            values = tuple(self.value_of(keyed.names[entries[index.find(key)]]) for key in times.tolist())
+            self._stepped[name] = Stepped(keyed.spelled, times, values)
+        return self._stepped[name]
+
+    def start(self):
+        """{engine name: value at the start} of each input, draw, link, stored value and captured
+        request or capacity, with an entry of the trace for each draw."""
+        plan = self.plan
 
         def number(node):
             if node is None:
                 return None
             for read in sorted(set(nodes.names(node)) - {'t'}):
-                value_of(read)
-            return float(evaluate(node, env, plan.units))
+                self.value_of(read)
+            return float(evaluate(node, self.env, plan.units))
 
         self.bounds, self.scales = {}, {}
         for name, value in plan.values.items():
             if value.kind not in STARTS:
                 continue
-            found = value_of(name)
+            found = self.value_of(name)
             lower, upper = number(value.lower), number(value.upper)
             outside = (lower is not None and found < lower) or (upper is not None and found > upper)
             if value.given and not value.boolean and outside:
                 raise ConfigurationError(f'{name}: {found:g} is outside its admitted range')
             self.bounds[name] = (-math.inf if lower is None else lower, math.inf if upper is None else upper)
             self.scales[name] = number(value.scale)
-        return {name: found for name, found in env.items() if name != 't'}
+        return {name: found for name, found in self.env.items() if name != 't'}
+
+    def check(self):
+        """The errors of the setup that the plan found, and the assertions over inputs: each fails
+        the run at its start."""
+        plan = self.plan
+        if plan.failures:
+            raise SimulationError(plan.failures[0])
+        for origin, member, node in plan.asserts:
+            for read in sorted(set(nodes.names(node)) - {'t'}):
+                self.value_of(read)
+            if not evaluate(node, self.env, plan.units):
+                raise SimulationError(
+                    f'{origin}: the assertion does not hold{f" for {member}" if member else ""}'
+                )
 
     def sizes(self, values):
         """The size of each store (see the module)."""
@@ -172,11 +314,22 @@ class Run:
         for name in connected.flows:
             flow = plan.flows[name]
             flows[name] = NetFlow(flow.rate, flow.source, flow.sink, None)
-        computed = {name: {'expr': plan.values[name].node} for name in connected.formulas}
+        computed = {}
+        for name in connected.formulas:
+            if name in plan.reductions:
+                try:
+                    node = node_of(plan.reductions[name], self.kept_of(name))
+                except ExpressionError as problem:
+                    raise SimulationError(str(problem)) from None
+            else:
+                node = plan.values[name].node
+            computed[name] = {'expr': node}
         leaves = set()
         for flow in flows.values():
-            leaves |= plan.formula_reads(flow.rate)[0]
-        parameters = sorted(name for name in leaves if name in values and name not in stores)
+            leaves |= plan.expansion(flow.rate).leaves
+        stepped = set(connected.stepped)
+        parameters = sorted(name for name in leaves if name not in stores and name not in stepped)
+        known = {**values, **{name: self.value_of(name) for name in parameters}}
         network = Network(
             stores[0],
             stores,
@@ -190,7 +343,7 @@ class Run:
             computed,
             set(stores),
             parameters,
-            (),
+            stepped,
             (),
             (),
         )
@@ -200,24 +353,38 @@ class Run:
             for a, name in zip(atol, stores)
         ]
         system = network.of(
-            numerics, plan.units, plan.horizon, self.cap, solver_step(numerics), atol, slack, values
+            numerics, plan.units, plan.horizon, self.cap, solver_step(numerics), atol, slack, known
         )
         context = Context(
             stores,
-            {name: values[name] for name in parameters},
+            {name: known[name] for name in parameters},
             [(name, computed[name]['expr']) for name in connected.formulas],
             plan.units,
             system.bounds,
             self.settings,
         )
-        return Component(system, context, [values[name] for name in stores])
+        component = Component(system, context, [values[name] for name in stores])
+        self._set_stepped(component, connected, 0.0)
+        return component
+
+    def _set_stepped(self, component, connected, t):
+        """The keyed reads by the time of a component at time t, in its store. One that has no value
+        there is left out: a rate that reads it fails."""
+        store = component.state.store
+        for name in connected.stepped:
+            try:
+                store[name] = self.stepped_of(name).at(t)
+            except ExpressionError:
+                store.pop(name, None)
 
     def prepare(self):
         """The run at its start: the values at the start, the size of each store, and each
-        connected set as a component at its start, as (component, set)."""
+        connected set that is not in the family as a component at its start, as (component, set).
+        The family is `self.family`."""
         plan = self.plan
         values = self.start()
         self.recorder.constants = values
+        self.check()
         sizes = self.sizes(values)
         factor = plan.numerics.atol_factor
         outside = [
@@ -232,7 +399,12 @@ class Run:
         if outside:
             raise SimulationError(f'State bounds violated: {outside}')
         kinds = self.kinds()
-        components = [(self.component(connected, values, sizes, kinds), connected) for connected in plan.sets]
+        components = [
+            (self.component(connected, values, sizes, kinds), connected)
+            for connected in plan.sets
+            if not connected.arrays
+        ]
+        self.family = Family(self, [connected for connected in plan.sets if connected.arrays], values)
         for name in plan.moving:
             self.recorder.tolerance[name] = factor * sizes[name]
         for flow in plan.flows.values():
@@ -249,27 +421,47 @@ class Run:
             return self.recorder.record(self.now, self.recorder.failure(self.now, str(problem)))
         return self.recorder.record(self.plan.horizon)
 
+    def key_times(self, components):
+        """The key times inside the run of the keyed reads by the time that the sets read."""
+        names = set(self.family.stepped if self.family is not None else ())
+        for _, connected in components:
+            names |= set(connected.stepped)
+        found = set()
+        for name in names:
+            found |= {float(t) for t in self.stepped_of(name).times if 0 < t < self.plan.horizon}
+        return sorted(found)
+
     def advance(self, components):
-        """The segments of the components, the earliest first, to the horizon."""
+        """The family and the components, window by window, to the horizon (see the module)."""
         horizon, limit = self.plan.horizon, self.plan.configuration.limits.max_rounds
+        family = self.family
+        family.begin(0.0)
         standing = [(0.0, k) for k in range(len(components))]
         heapq.heapify(standing)
         still = [0] * len(components)  # the segments of no length in a row, of each component
-        while standing:
-            t, k = heapq.heappop(standing)
-            if t >= horizon:
-                continue
-            self.now = t
-            component, connected = components[k]
-            segment = component.next(horizon)
-            self.recorder.segment(
-                component,
-                segment,
-                component.system.state_ids,
-                [f'{flow}.actual_rate' for flow in component.system.flow_ids],
-            )
-            component.proceed(segment)
-            still[k] = still[k] + 1 if segment.end <= segment.start else 0
-            if still[k] > limit:
-                raise SimulationError(f'{connected.flows[0]}: {limit} segments of no length at {t:g} h')
-            heapq.heappush(standing, (segment.end, k))
+        for end in [*self.key_times(components), horizon]:
+            family.advance(end)
+            while standing and standing[0][0] < end:
+                t, k = heapq.heappop(standing)
+                self.now = t
+                component, connected = components[k]
+                segment = component.next(end)
+                self.recorder.segment(
+                    component,
+                    segment,
+                    component.system.state_ids,
+                    [f'{flow}.actual_rate' for flow in component.system.flow_ids],
+                )
+                component.proceed(segment)
+                still[k] = still[k] + 1 if segment.end <= segment.start else 0
+                if still[k] > limit:
+                    raise SimulationError(f'{connected.flows[0]}: {limit} segments of no length at {t:g} h')
+                heapq.heappush(standing, (segment.end, k))
+            if end >= horizon:
+                break
+            self.now = end
+            for component, connected in components:
+                if any(end in self.stepped_of(name).times for name in connected.stepped):
+                    self._set_stepped(component, connected, end)
+            if any(end in self.stepped_of(name).times for name in family.stepped):
+                family.refresh(end)

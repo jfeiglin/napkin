@@ -15,12 +15,15 @@ import pytest
 
 from napkin.engine import read, run
 from napkin.engine.timeline import Outside
+from napkin.program.record import Unavailable
 from tests.program.examples import EXAMPLES, At, Fails, Traced
+from tests.reference.errors import RunFailed
 from tests.reference.from_program import run_of, value_at
 
-# The examples of this slice's subset: inputs, stored values with bounds, formulas and directed
-# flows with a request and a capacity.
-SUBSET = {'tank_delivery', 'unit_division', 'unit_product'}
+# The examples of the subsets of the slices so far: inputs, stored values with bounds, formulas and
+# directed flows with a request and a capacity (S0); templates, tables, collections and keyed reads
+# (S1). The other examples with collections also need a later slice: events, sharing, legs, solvers.
+SUBSET = {'tank_delivery', 'unit_division', 'unit_product', 'keyed_lookup'}
 SLICE = re.compile(r'\((S[0-6]|C)(, S[0-6])*\)$')
 
 
@@ -76,7 +79,8 @@ def test_an_example_gives_its_results_or_is_refused_by_its_slice(name):
 
 @pytest.mark.parametrize('name', sorted(SUBSET))
 def test_an_example_of_the_subset_agrees_with_the_oracle(name):
-    """Each value that the example states, at its own times and at the quarters of the horizon."""
+    """Each value that the example states, at its own times and at the quarters of the horizon. A
+    value that the oracle cannot read (a keyed read below its first key) is unavailable."""
     example, record = outcome(name)
     oracle, failed = run_of(example.program, example.configuration)
     assert failed is None
@@ -86,7 +90,10 @@ def test_an_example_of_the_subset_agrees_with_the_oracle(name):
     times |= {horizon * k / 4 for k in range(5)}
     for key in sorted(keys, key=str):
         for t in sorted(times):
-            assert same(value(record, example.program, key, t), value_at(oracle, example.program, key, t)), (
-                key,
-                t,
-            )
+            found = value(record, example.program, key, t)
+            try:
+                expected = value_at(oracle, example.program, key, t)
+            except RunFailed:
+                assert isinstance(found, Unavailable), (key, t)
+                continue
+            assert same(found, expected), (key, t)

@@ -1,86 +1,82 @@
-"""A bound that the file writes as an expression, in a model with a table (`timeline/plan.py`,
-`Plan._bound`): the plan has the number that the values of its inputs give.
+"""A bound written as an expression of inputs, in a model with a table: a run takes the bounds that
+the values of its inputs give (`timeline/run.py`, "The start").
 
-The model is a cell that fills at a constant pace over a divisor that a table gives, up to a cap
-that is an input. Its level at the horizon is a product, written beside each test.
+The model is a table of cells, each filling at a constant pace over a divisor that the table gives,
+up to a cap that is an input, beside a second stored value in days whose bounds are half a day and
+twice an input limit. Each level at the horizon is a product, written beside each test.
 """
 
-import numpy as np
 import pytest
 
-from napkin.engine import timeline
-from napkin.model import hybrid
+from napkin.engine import read, run
+from napkin.engine.timeline import Plan, Run
+from napkin.program.build import SOURCE, Builder, flow, formula, fsum, input_, q, this, value
+from napkin.program.config import Configuration, InputValue, Quantity, Request
 
-HEAD = """scenario "A synthetic model"
-    summary "A model of a test, with no source."
-    horizon 10 days
-    scope "Nothing: the model is synthetic."
-
-"""
-RECORD = '\nrecord shape: assumption "A synthetic model, with no source."\n'
-CAPPED = """Cell:  @shape
-    "A cell that fills up to its cap."
-    input cap: fraction = 1 fraction in 0.5 fraction to 2 fraction  @shape
-    input pace: fraction/day = 0.01 fraction/day in 0 fraction/day to 1 fraction/day  @shape
-    let divisor: fraction = 2  @shape
-    input limit: days = 3 days in 1 days to 9 days  @shape
-    var held: fraction = 0 fraction in 0 fraction to cap size 1 fraction  @shape
-    var waited: days = 1 days in 0.5 days to 2 * limit size 1 days  @shape
-    flow fill: -> held at pace / divisor
-
-cells: Cell from "cells.csv"
-
-output held: fraction = sum(Cell.held)  @shape
-    "What the cells hold"
-
-output waited: days = sum(Cell.waited)  @shape
-    "The days of all cells"
-    level
-"""
-DIVISORS = (2.0, 4.0, 5.0)
+UNITS = {'h': {'time': 1}, 'day': ({'time': 1}, 24)}
+DIVISORS = (2, 4, 5)
+HORIZON = 10 * 24.0  # 10 days
 
 
-def core_of(tmp_path):
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    (tmp_path / 'model.scn').write_text(HEAD + CAPPED + RECORD, encoding='utf-8')
-    rows = '\n'.join(repr(divisor) for divisor in DIVISORS)
-    (tmp_path / 'cells.csv').write_text('divisor: fraction @shape\n' + rows + '\n', encoding='utf-8')
-    return hybrid.compile(tmp_path / 'model.scn')
+def cells(pace):
+    """Cells that fill at `pace` a day over their divisor, up to their cap."""
+    b = Builder(UNITS)
+    cell = b.template(
+        'Cell',
+        input_('cap', '', 1, lower=0.5, upper=2),
+        input_('pace', '1/day', pace, lower=0, upper=1),
+        input_('divisor', '', 2),
+        input_('limit', 'day', 3, lower=1, upper=9),
+        value('held', '', 0, lower=0, upper=this.cap),
+        value('waited', 'day', 1, lower=q(0.5, 'day'), upper=2 * this.limit),
+        flow('fill', SOURCE, this.held, request=formula(this.pace / this.divisor)),
+    )
+    b.table('cells', cell, [{'divisor': divisor} for divisor in DIVISORS])
+    b.root(value('held', '', formula(fsum(cell.instances.held))))
+    return b.finish()
 
 
-def test_a_bound_that_reads_an_input_has_the_number_of_the_values_of_the_plan(tmp_path):
-    """The cap is 1 by the file, and each cell holds `0.01 * 10 / divisor` after 10 days: the sum
-    is 0.1 (1/2 + 1/4 + 1/5). The plan has the cap as the upper bound of the level. A second
-    quantity, in days, has the bounds 0.5 days and twice a limit of 3 days: the plan holds them in
-    hours, the unit in which the engine keeps a time. A plan that is made with the cap 1.5 has
-    that bound, and the bounds of the other quantity as before."""
-    core = core_of(tmp_path)
-    plan = timeline.Plan.of(core)
-    assert (plan.quantities['cells_1.held'].lower, plan.quantities['cells_1.held'].upper) == (0.0, 1.0)
-    assert (plan.quantities['cells_1.waited'].lower, plan.quantities['cells_1.waited'].upper) == (12.0, 144.0)
-    assert plan.bound_reads == {'cells_1.cap', 'cells_1.limit'}
+def every(name, number, unit=''):
+    """The same value of an input for each cell."""
+    return tuple(InputValue(f'cells[{row}]', name, Quantity(number, unit)) for row in range(len(DIVISORS)))
+
+
+def held(program, *inputs):
+    record = run(program, Configuration(Request(HORIZON), inputs=inputs))
+    assert record.failure is None
+    (reading,) = read(record, program, ['held'], [HORIZON])
+    return reading.values[0]
+
+
+def test_a_bound_that_reads_an_input_has_the_number_of_the_values_of_the_run():
+    """The cap is 1, and each cell holds `0.01 * 10 / divisor` after 10 days: the sum is
+    0.1 (1/2 + 1/4 + 1/5) = 0.095. The waited value has the bounds half a day and twice a limit of
+    3 days: the run holds them in hours, the unit in which the engine keeps a time. A run with the
+    cap 1.5 has that bound, and the bounds of the other value as before."""
+    program = cells(0.01)
+    made = Run(Plan.of(program, Configuration(Request(HORIZON))))
+    made.start()
+    assert made.bounds['cells[0].held'] == (0.0, 1.0)
+    assert made.bounds['cells[0].waited'] == (12.0, 144.0)
     exact = 0.1 * sum(1 / divisor for divisor in DIVISORS)
-    assert timeline.run(plan).outputs['held'] == pytest.approx(exact, rel=1e-12)
-    wider = timeline.Plan.of(core, None, {'cells_1.cap': 1.5})
-    assert wider.quantities['cells_1.held'].upper == 1.5
-    assert wider.quantities['cells_1.waited'].upper == 144.0
-    assert timeline.run(wider).outputs['held'] == pytest.approx(exact, rel=1e-12)
+    assert held(program) == pytest.approx(exact, rel=1e-12)
+    wider = Run(Plan.of(program, Configuration(Request(HORIZON), inputs=every('cap', 1.5))))
+    wider.start()
+    assert wider.bounds['cells[1].held'] == (0.0, 1.5)
+    assert wider.bounds['cells[1].waited'] == (12.0, 144.0)
+    assert held(program, *every('cap', 1.5)) == pytest.approx(exact, rel=1e-12)
 
 
-def test_a_run_that_gives_the_input_of_a_bound_another_value_needs_its_own_plan(tmp_path):
-    """The plan holds one bound. A run that gave the cap another value would run with the bound
-    of the plan: the run is refused, and the message names the input. Another input is free."""
-    plan = timeline.Plan.of(core_of(tmp_path))
-    with pytest.raises(ValueError, match=r'A bound of a quantity reads cells_1\.cap'):
-        timeline.run(plan, {'cells_1.cap': 1.5})
-    faster = timeline.run(plan, {'cells_1.pace': 0.02})
-    assert faster.outputs['held'] == pytest.approx(0.2 * sum(1 / divisor for divisor in DIVISORS), rel=1e-12)
-    assert np.all(faster.final('cells_1.held') <= 1.0)
-
-
-def test_a_plan_of_a_run_with_no_table_reads_no_input_for_a_bound(tmp_path):
-    """A resolved run has each bound as a number: its plan keeps no input of a bound, and a run
-    of it can take any value of the cap that the checks of the model admit."""
-    core = core_of(tmp_path)
-    flat = timeline.Plan.flat(core.model.resolve(next(iter(core.model.runs))), dict(core.model.library))
-    assert flat.bound_reads == set()
+def test_a_cap_that_the_configuration_sets_holds_each_cell_at_its_bound():
+    """At 0.4 a day the cells would hold 4 / divisor after 10 days, 2, 1 and 0.8: with the cap 1 they
+    hold 1, 1 and 0.8 (2.8), and with the cap 1.5 they hold 1.5, 1 and 0.8 (3.3). The first cell
+    reaches the cap 1 at 5 days. Another input is free: at 0.02 a day the cells hold 0.19 in all."""
+    program = cells(0.4)
+    assert held(program) == pytest.approx(2.8, rel=1e-12)
+    assert held(program, *every('cap', 1.5)) == pytest.approx(3.3, rel=1e-12)
+    record = run(program, Configuration(Request(HORIZON)))
+    (first,) = read(record, program, ['cells[0].held'], [4 * 24.0, 5 * 24.0, 8 * 24.0])
+    assert first.values == pytest.approx((0.8, 1.0, 1.0))
+    assert held(cells(0.01), *every('pace', 0.02, '1/day')) == pytest.approx(
+        0.2 * sum(1 / divisor for divisor in DIVISORS), rel=1e-12
+    )
