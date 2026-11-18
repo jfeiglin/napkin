@@ -61,8 +61,8 @@ def fair_checks(count, rng):
         F = sp.csr_array((1.0 / need, (np.arange(len(claims)), claims)), shape=(len(claims), n))
         got, _ = fair.sequential(k, face, F)
         # the reference on the face that the objective left (the same face, given as plain arrays)
-        want = fair.brute(A, face.row_lower, face.row_upper, face.lower, face.upper, F) if not objective else \
-            fair.brute(A, *_face_after(A, rl, ru, lo, hi, costs[0]), F)
+        want = fair.brute(A, rl, ru, lo, hi, F) if not objective else \
+            fair.brute(*_face_after(A, rl, ru, lo, hi, costs[0]), F)
         err = float(np.abs(got - want).max())
         worst = max(worst, err)
         bad += err > 1e-6
