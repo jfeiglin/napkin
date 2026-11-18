@@ -8,17 +8,17 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
 - [ ] A1 notation and types
 - [ ] A2 reference semantics
 - [ ] A3 solver numerics
-- [ ] A4 engine at scale
+- [ ] A4 engine at scale, as two prototypes: A4a (links and flows across tables, connected sets, the record) and A4b (members that come and go, the map of the engine code)
 - [ ] A5 catalogue fit
 - [ ] B0 keel, beside Phase A
-  - [ ] 1 imports that survive
-  - [ ] 2 `tests/units.py`
-  - [ ] 3 the dormant list
-  - [ ] 4 the test triage
-  - [ ] 5 the derivative code deleted
+  - [x] 1 imports that survive
+  - [x] 2 `tests/units.py`
+  - [x] 3 the dormant list
+  - [ ] 4 the test triage (three agents at work; the parts are in `triage/`)
+  - [ ] 5 the derivative code deleted (an agent at work in its own worktree; brief `briefs/b0-derivatives.md`)
   - [ ] 6 `timeline/run.py` split by moves (after A4's layout note)
   - [ ] the last run of the old suite, with durations
-- [ ] Gate G0: `rulings.md`, the owner's answers, the spec edited
+- [ ] Gate G0: `rulings.md`, the owner's answers, the spec edited. `open-items.md` lists every open item of the spec; each needs a ruling
 - [ ] B1 contract, oracle and solve library
 - [ ] S0 skeleton
 - [ ] S1 templates, tables and collections
