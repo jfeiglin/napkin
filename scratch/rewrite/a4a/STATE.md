@@ -28,8 +28,12 @@
 - `t3_record.py scale OUT 30000 35000`: run 1.38 s with no record; +2.7 s with 8 reductions + 5 rows; +3.5 s with 10 reductions (87,569 pieces, 1.65 MB, 1.21 MB packed); +0.29 s with every store and flow (324,857 pieces, 6.05 MB, 2.70 MB packed). Reductions made after the run from the record of everything: ten at three times 27 ms; two whole sum histories 23 ms; agree to 2.5e-14. Recording changes no bit of the run.
 - `t3_record.py today OUT` (PYTHONPATH=pkg): Trajectory pickle+zlib 58 KB / 573 KB / 8.0 MB at 30/100/300 places; table path `record=True` at 35,000 routes: run 5.37 -> 5.48 s, 175,000 + 35,000 log entries, 39 MB; report with a uniform lag at one time: 0.026 s (350 routes), 1.66 s (3,500), 35,000 still running.
 
-## In the middle of
-Background jobs in the temp folder: `batch1.sh` (components, writes `out1/`), `t3_record.py today` (lag at 35,000), a profile of the sparse Radau run. Then: fix or explain the sparse timing, run `t2_sets.py sparse OUT 30000 35000`.
+## Taken over at 18:15 (second agent)
+- `batch1.sh` stopped by hand at 18:15: the component of 300 places with rings had run 13 min with no result (the finding). The moving kinds at 300 and constant at 1000 were not run (not needed for a ruling).
+- `today` finished: lag report at one time on the table path, 35,000 routes: 202 s (350: 0.026 s, 3,500: 1.66 s): grows about as the square.
+- `t2_sets.py sparse OUT 30000 35000` (PYTHONPATH=base, load 1.5-3.5): integration 36.0 s (best of 3), 302 steps, 2,784 evaluations at 0.52 ms (1.4 s of it), 35 Jacobians, 72 factorizations, 368 MB; at its rest state 15,311 resting stores, stand-in sharing 40 ms, one LP 0.23 s; estimates with a sharing at each evaluation 111 s, with an LP 0.18 h. JSON in out/sparse_30000_35000.json.
+- Cause of 12.9 s at 3,000: threaded BLAS on the small n-by-3 products of Radau's collocation step, slowed by other load (profile: `ndarray.dot` 2.0 s of 4.0 s). With OPENBLAS_NUM_THREADS=1: 1.65 s total. A one-thread run at 30,000 writes out3/.
+- measure.py: NOT run end to end (main session runs it). Step 2 = check that it starts.
 
 ## Remaining, in order
 1. Finish task 2 numbers (components at 300 places for the three moving kinds, constant 1000, sparse at 30,000).

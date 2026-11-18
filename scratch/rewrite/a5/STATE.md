@@ -31,7 +31,7 @@ FINDINGS.md: started, with TODO marks.
 - Not in the first version: copies `* k`, `while K` on an event header, `count(e.outcome)`. `each W` = a trigger capture with `reset when W != captured`.
 
 ## In the middle of
-(checkpoint 3) Examples, water.scn and jamestown hand-translated, check PASSES on each. Bad case `translated/bad/water.scn` FAILS on kind, flow and cumulative (as it must). newreader: `outflow.capacity = formula(E)` compares E; `formula(bool)` has no unit. Next: heat wave and cyber slices.
+(checkpoint 4) All hand translations done in `translated/` (examples, water.scn + jamestown, heat wave and cyber IN FULL: their multi-leg flows were finished from the drafts by scratch helper legs.py, legs named after the target store); check PASSES on all 7; bad case FAILS. Next: migration-table.md.
 
 ## Steps that remain, in order
 1. Fix the crash above; make `check.py` pass on `translated/auto/examples/piano_tuners/model.scn`.

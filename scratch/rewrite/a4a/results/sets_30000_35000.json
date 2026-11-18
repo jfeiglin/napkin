@@ -1,0 +1,129 @@
+{
+ "places": 30000,
+ "routes": 35000,
+ "stores": 60000,
+ "flows": 65000,
+ "component_limit": 150,
+ "rows": [
+  {
+   "case": "the requests read no value that moves",
+   "sets_with_a_store": 33384,
+   "largest_set_stores": 26019,
+   "cut_s": 0.04811133699968195,
+   "ways": {
+    "arrays: a store alone, or with one flow": [
+     32948,
+     32948
+    ],
+    "one component of the continuous engine": [
+     435,
+     1033
+    ],
+    "lines, with rates from the sparse solver at each moment": [
+     1,
+     26019
+    ],
+    "refused: a large set with a rate that reads a value that moves": [
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "case": "the same, with the plain rule: a tally joins the flow into it",
+   "sets_with_a_store": 3384,
+   "largest_set_stores": 52038,
+   "cut_s": 0.010252518000015698,
+   "ways": {
+    "arrays: a store alone, or with one flow": [
+     0,
+     0
+    ],
+    "one component of the continuous engine": [
+     3383,
+     7962
+    ],
+    "lines, with rates from the sparse solver at each moment": [
+     1,
+     52038
+    ],
+    "refused: a large set with a rate that reads a value that moves": [
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "case": "the request of each route reads the stock of its origin",
+   "sets_with_a_store": 33384,
+   "largest_set_stores": 26019,
+   "cut_s": 0.008220019999953365,
+   "ways": {
+    "arrays: a store alone, or with one flow": [
+     32948,
+     32948
+    ],
+    "one component of the continuous engine": [
+     435,
+     1033
+    ],
+    "lines, with rates from the sparse solver at each moment": [
+     0,
+     0
+    ],
+    "refused: a large set with a rate that reads a value that moves": [
+     1,
+     26019
+    ]
+   }
+  },
+  {
+   "case": "the request of each route reads the stock of a third place",
+   "sets_with_a_store": 30948,
+   "largest_set_stores": 29045,
+   "cut_s": 0.009851661000084277,
+   "ways": {
+    "arrays: a store alone, or with one flow": [
+     30943,
+     30943
+    ],
+    "one component of the continuous engine": [
+     4,
+     12
+    ],
+    "lines, with rates from the sparse solver at each moment": [
+     0,
+     0
+    ],
+    "refused: a large set with a rate that reads a value that moves": [
+     1,
+     29045
+    ]
+   }
+  },
+  {
+   "case": "one solver sets the rate of every route",
+   "sets_with_a_store": 32949,
+   "largest_set_stores": 27052,
+   "cut_s": 0.0066686800000752555,
+   "ways": {
+    "arrays: a store alone, or with one flow": [
+     32948,
+     32948
+    ],
+    "one component of the continuous engine": [
+     0,
+     0
+    ],
+    "lines, with rates from the sparse solver at each moment": [
+     1,
+     27052
+    ],
+    "refused: a large set with a rate that reads a value that moves": [
+     0,
+     0
+    ]
+   }
+  }
+ ]
+}

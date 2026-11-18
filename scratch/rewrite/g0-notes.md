@@ -65,3 +65,13 @@ Facts that came up beside the prototypes and that `rulings.md` must not lose. Ea
   `since(e.outcome)`.
 - A5: the catalogue never uses tables, copies, `change`, `each`, `while` on an event, `delayed`,
   `any` or `all`. Every crossing that the old compiler classified uses `<=` or `>=`.
+- A3: fair sharing with one program for each level is not a way at scale. At 30,000 places it took
+  383 programs and 75.8 s, found 376 distinct levels, and then failed. The earlier agent chose a
+  method of groups, with a proof sketch and two counterexamples (`a3/STATE.md`); it is not built
+  yet. This is the largest numerical risk of the rewrite.
+- A3: a flow can take more than its request when an earlier objective gains from it. Under the
+  route law, a place that takes more than it asked can raise the total served elsewhere (5808.66
+  against 5812.58 unmet). The spec allows it. An author forbids it with a capacity equal to the
+  request. The owner should see this with an example.
+- A2: the spec's scale for flows is not defined when flows of two dimensions trade off in the
+  distance step. Two declared solvers in one connected set get a diagnostic.

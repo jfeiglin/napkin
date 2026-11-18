@@ -3,7 +3,7 @@
 `make_report.py` makes this file again. Nothing here is written by hand.
 
 - Python 3.13.18; `napkin` from `/home/user/napkin-base` (the base commit).
-- Load of the machine when this ran (1, 5, 15 min): 7.89, 4.28, 2.39.
+- Load of the machine when this ran (1, 5, 15 min): 3.01, 3.42, 2.65.
 - Corpus: 30 corpus files are the blocks of the spec, byte for byte.
 - Time to parse the 27 files of the corpus (276 lines), best of three runs: 4.9 ms.
 
