@@ -8,9 +8,9 @@ import operator
 
 from napkin import expressions
 from napkin.core import expr
-from tests import build as b
+from tests.units import library
 
-DEFINITIONS = b.library()['units']
+DEFINITIONS = library()['units']
 UNITS = expressions.UnitSystem(DEFINITIONS)
 # The scale of a unit is a float, so a quantity is a float whatever its number is.
 SCALES = {name: float(DEFINITIONS[name]['scale']) for name in ('h', 'days')}

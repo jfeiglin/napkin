@@ -17,9 +17,9 @@ from napkin import expressions
 from napkin.core import expr
 from napkin.core.derivatives import derivative
 from napkin.core.errors import ExpressionError
-from tests import build as b
+from tests.units import library
 
-UNITS = expressions.UnitSystem(b.library()['units'])
+UNITS = expressions.UnitSystem(library()['units'])
 
 
 def value(node, env):

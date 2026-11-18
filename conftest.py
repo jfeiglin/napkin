@@ -118,6 +118,9 @@ def pytest_report_header(config):
 
 
 def pytest_ignore_collect(collection_path, config):
+    # A dormant test is not collected (`tests/dormant.txt`).
+    if selection.dormant(collection_path, ROOT):
+        return True
     # The folder of a scenario that the session does not check is not collected.
     names = selection.chosen()
     if names is None:

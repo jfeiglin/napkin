@@ -219,3 +219,20 @@ def test_the_root_conftest_rewrites_the_assertions_of_each_module_of_a_scenarios
     plain = collection_repo.runpytest_subprocess('scenarios/SC98/tests/test_part.py')
     plain.assert_outcomes(failed=1)
     assert 'assert 2 == 1' not in plain.stdout.str()
+
+
+def test_a_dormant_list_names_files_and_folders(tmp_path):
+    """A dormant list names a file, or a folder for each file in it. A comment and an empty line
+    name nothing, and neither does a path outside the checkout."""
+    (tmp_path / 'tests').mkdir()
+    (tmp_path / selection.DORMANT).write_text('# a comment\n\ntests/engine/test_old.py\ntests/draw/\n')
+    assert selection.dormant(tmp_path / 'tests/engine/test_old.py', tmp_path)
+    assert selection.dormant(tmp_path / 'tests/draw/test_any.py', tmp_path)
+    assert selection.dormant(tmp_path / 'tests/draw', tmp_path)
+    assert not selection.dormant(tmp_path / 'tests/engine/test_new.py', tmp_path)
+    assert not selection.dormant(tmp_path / 'tests/engine', tmp_path)
+    assert not selection.dormant(tmp_path.parent / 'tests/engine/test_old.py', tmp_path)
+
+
+def test_a_checkout_without_a_dormant_list_has_no_dormant_test(tmp_path):
+    assert not selection.dormant(tmp_path / 'tests/engine/test_old.py', tmp_path)

@@ -15,9 +15,9 @@ import pytest
 from napkin import expressions
 from napkin.core import evaluation, expr, ops
 from napkin.core.errors import ExpressionError
-from tests import build as b
+from tests.units import library
 
-UNITS = expressions.UnitSystem(b.library()['units'])
+UNITS = expressions.UnitSystem(library()['units'])
 NAMES = ('x', 'y', 'z')
 ONE = ('exp', 'expm1', 'ln', 'log1p', 'sqrt', 'erf', 'abs')
 

@@ -12,7 +12,6 @@ test gives it others.
 
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import re
@@ -23,47 +22,14 @@ from napkin.engine.runtime import simulate
 from napkin.model import ModelError
 from napkin.model.ir import thaw
 from napkin.model.language import front
-from napkin.model.library import prelude_units
 from napkin.model.semantic import path_text
-from napkin.schema import FOLDER as SCHEMAS
 
-# The library's own format version, as its schema states it.
-LIBRARY_VERSION = json.loads((SCHEMAS / 'library.schema.json').read_text(encoding='utf-8'))['properties'][
-    'schema_version'
-]['const']
+# The units of the test library and the library itself, which also the tests of `napkin/core/` read.
+from tests.units import LIBRARY_VERSION, PRELUDE, UNITS, library  # noqa: F401
 
 # The record that every line of a fixture cites, and its line at the end of the file.
 BASIS = '@fixture'
 FIXTURE_RECORD = 'record fixture: identity "Analytic contract fixture."'
-
-# The units of the test library. The prelude's units are its own, as every model's library has them
-# (`napkin/std/units.json`).
-PRELUDE = prelude_units()
-UNITS = {
-    'fraction': PRELUDE['fraction'],
-    'h': PRELUDE['h'],
-    'days': PRELUDE['days'],
-    'per_h': {'dimensions': {'time': -1}, 'scale': 1},
-    'people': PRELUDE['people'],
-    'episodes': {'dimensions': {'episodes': 1}, 'scale': 1},
-    'people/h': {'dimensions': {'people': 1, 'time': -1}, 'scale': 1},
-    'people/day': {'dimensions': {'people': 1, 'time': -1}, 'scale': 1 / 24},
-    'USD2025': {'dimensions': {'USD2025': 1}, 'scale': 1},
-    'USD2024': {'dimensions': {'USD2024': 1}, 'scale': 1},
-    'USD2025/h': {'dimensions': {'USD2025': 1, 'time': -1}, 'scale': 1},
-}
-
-
-def library():
-    return {
-        'schema_version': LIBRARY_VERSION,
-        'id': 'test',
-        'title': 'Test library',
-        'sources': [],
-        'claims': [],
-        'assumptions': [],
-        'units': copy.deepcopy(UNITS),
-    }
 
 
 def toml(settings):

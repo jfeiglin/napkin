@@ -11,9 +11,9 @@ import pytest
 
 from napkin.core import expr, ops, units
 from napkin.core.errors import ExpressionError
-from tests import build as b
+from tests.units import library
 
-REGISTRY = units.UnitSystem(b.library()['units'])
+REGISTRY = units.UnitSystem(library()['units'])
 UNIT = REGISTRY.parse_unit
 SYMBOLS = {
     't': UNIT('h'),
