@@ -15,15 +15,9 @@ def build():
     return m
 
 
-def rates(r, at):
-    occ = N.tank.deliver.occurrences
-    return [r.read(x, at) for x in (N.tank.water.outflow.flows.actual_rate,)][0]
-
-
 def test_membership():
     r = Run(build(), horizon=4).run()
     flows = N.tank.water.outflow.flows.actual_rate
-    from ref.evaluate import Coll
     got = {}
     for at in (F(1, 2), F(3, 2), F(5, 2), F(7, 2)):
         c = r.read(flows, at)

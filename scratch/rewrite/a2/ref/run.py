@@ -832,7 +832,10 @@ class Run:
             frame.t, frame.levels, frame.rates = at, {}, {}
         if scope is None:
             scope = Scope(self.ents[owner]) if owner else Scope()
-        v = Ev(self, frame, scope).val(lit(expr))
+        ev = Ev(self, frame, scope)
+        v = ev.val(lit(expr))
+        if isinstance(v, Coll):  # a projection: each member's value, read on the same frame
+            return Coll((k, m, x if isinstance(x, (Ent, Occ, FlowRT, LegRT)) else plain(ev.deref(x))) for k, m, x in v.items)
         return v if isinstance(v, (Coll, Ent, Occ, FlowRT, LegRT, Alloc)) else plain(v)
 
     def report(self, expr, times, owner=None):

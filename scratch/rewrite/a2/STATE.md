@@ -49,7 +49,8 @@
 
 ## In the middle of
 (2nd agent) Group 1 done: cases 1, 2, 3, 5, 6, 7, 8 pass with no change to ref/ (`cases/test_0N_*.py`;
-`conftest.py` puts a2/ on sys.path). Next: group 2 (events and time).
+`conftest.py` puts a2/ on sys.path). Group 2 done: 14, 17, 18, 19, 4, 25, 30, 31, 27, 28, 29, 23, 15, 21 pass.
+Only change to ref/: `Run.read` resolves the values of a projected collection on the frame. Next: group 3.
 
 ## Remaining, in order
 1. Debug `ref/` on case 2 (tank empties at 8/3 h) and case 1 (grinder). 2. Write `cases/test_NN_*.py` for the
