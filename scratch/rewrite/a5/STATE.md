@@ -31,7 +31,7 @@ FINDINGS.md: started, with TODO marks.
 - Not in the first version: copies `* k`, `while K` on an event header, `count(e.outcome)`. `each W` = a trigger capture with `reset when W != captured`.
 
 ## In the middle of
-(checkpoint 4) All hand translations done in `translated/` (examples, water.scn + jamestown, heat wave and cyber IN FULL: their multi-leg flows were finished from the drafts by scratch helper legs.py, legs named after the target store); check PASSES on all 7; bad case FAILS. Next: migration-table.md.
+(checkpoint 6) Everything but FINDINGS.md done; `run_all.sh` OK (24 s). check.py has a new `order` group: an old outcome line that reads an earlier write of the same outcome (no hit in the catalogue, toy case caught). Next: FINDINGS.md (R-A5-01..15), then the report.
 
 ## Steps that remain, in order
 1. Fix the crash above; make `check.py` pass on `translated/auto/examples/piano_tuners/model.scn`.

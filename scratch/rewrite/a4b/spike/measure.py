@@ -70,14 +70,17 @@ def one_run(lanes, per_lane, binding, seed=1):
 
         setattr(engine, name, timed)
     rng = np.random.default_rng(seed)
+    amounts = rng.uniform(0.5, 1.5, lanes)
     for member in range(lanes):
-        engine.start_at(float(rng.uniform(0.0, 1.0)), 'Lane', 'deliver', member, (float(rng.uniform(0.5, 1.5)), 1.0, per_lane - 1.0))
+        engine.start_at(float(rng.uniform(0.0, 1.0)), 'Lane', 'deliver', member, (float(amounts[member]), 1.0, per_lane - 1.0))
     tick = time.perf_counter()
     engine.run(1e9)
     wall = time.perf_counter() - tick
     frames = engine.frames[('Lane', 'deliver')]
     starts, finishes = engine.count['starts'], engine.count['finishes']
     assert starts == finishes == lanes * per_lane, (starts, finishes)
+    delivered = engine.stores.y0[engine.sids['Lane']['delivered']]
+    assert np.allclose(delivered, per_lane * amounts, rtol=1e-9), 'a lane did not get what it was sent'
     made_again = sum(value for key, value in engine.count.items() if key.startswith('predictions: '))
     return {
         'wall': wall,

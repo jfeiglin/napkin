@@ -1,4 +1,10 @@
-# A1 state (updated at each milestone; last: checkpoint 1, before the type checker)
+# A1 state (updated at each milestone; last: checkpoint 2, types.md written by the second agent)
+
+## Second agent (took over after the stop)
+- Found: no FINDINGS.md, types.md or typecheck.py on disk (the "draft" below was lost). make_report.py re-run: 0 failures.
+- Done: `types.md` (types, read/write table, inference, literal units, the 13 models by hand).
+- Next: `FINDINGS.md` with rulings R-A1-01..32 (numbers 01-04, 07-10, 14 fixed by citations in parser.py, hunt.py, refused.txt, census). Decision: typecheck.py skipped; FINDINGS says no checker ran.
+- Scratch helper: /tmp/claude-0/-home-user-napkin/e09158c7-7039-5d6d-be85-61b3a193adaf/scratchpad/try.sh CONTEXT NAME < snippet (parses a snippet in a context).
 
 ## Done, and where
 - `corpus/`: 27 `text` blocks and 3 `csv` blocks of the spec, byte for byte (`extract_corpus.py --check`). `MANIFEST.tsv` gives the place of each block (file, members, event). `inline.txt`: 154 inline pieces, by hand. `refused.txt`: 72 pieces that must be refused, each with a part of its message.

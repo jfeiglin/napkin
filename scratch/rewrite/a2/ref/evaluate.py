@@ -235,6 +235,8 @@ class Ev:
 
     def ref(self, e):
         """What an expression names: a cell, a flow, a collection, or a plain value."""
+        if e._k in ('call', 'choose', 'chance'):  # these need their node: it is the site of a draw or a choice
+            return getattr(self, '_' + e._k)(e, *e._a)
         return getattr(self, '_' + e._k)(*e._a)
 
     def val(self, e):
@@ -588,21 +590,21 @@ class Ev:
     def _proportional(self):
         return Alloc(())
 
-    def _choose(self, name, options):
+    def _choose(self, node, name, options):
         available = [v for v, guard in options if guard is None or self.truth(guard)]
-        return self.run.decide(name, available, self)
+        return self.run.decide(node, name, available, self)
 
-    def _chance(self, name, outcomes):
+    def _chance(self, node, name, outcomes):
         eligible = [(v, self.num(p)) for v, p, guard in outcomes if guard is None or self.truth(guard)]
-        return self.run.chance(name, eligible, self)
+        return self.run.chance(node, name, eligible, self)
 
     # --- methods of a path ---------------------------------------------------------------------------
 
-    def _call(self, base, method, args):
+    def _call(self, node, base, method, args):
         if method == 'draw':
             if self.shared.in_formula or not self.shared.may_draw:
                 raise Diagnostic(f'{show(base)}.draw(): a formula, a condition or a report cannot draw')
-            return self.run.draw(self.val(base), E('call', base, method, args), self)
+            return self.run.draw(self.val(base), node, self)
         c = self.val(base)
         if not isinstance(c, Coll):
             raise RunFailed(f'{show(base)}.{method}(...) needs a collection')

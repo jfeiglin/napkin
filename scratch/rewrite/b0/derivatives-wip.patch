@@ -2608,13 +2608,13 @@ index 058bc5d..0000000
 -    return a if b is ZERO or b == ZERO else expr.binary('sub', a, b)
 diff --git a/scratch/rewrite/b0/STATE.md b/scratch/rewrite/b0/STATE.md
 new file mode 100644
-index 0000000..7dcf1e2
+index 0000000..3165c7e
 --- /dev/null
 +++ b/scratch/rewrite/b0/STATE.md
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,57 @@
 +# B0-5 state (take out the whole-run derivative code)
 +
-+Updated 2026-11-18 18:25. Nothing is committed. This file is in the worktree: the harness refused
++Updated 2026-11-18 18:40. Nothing is committed. This file is in the worktree: the harness refused
 +a write to the main checkout.
 +
 +- Worktree `/home/user/napkin/.claude/worktrees/agent-a18118f79e9bec712`, branch
@@ -2629,21 +2629,19 @@ index 0000000..7dcf1e2
 +- `record_runs.py`: pytest plugin, a digest of every run that a test makes: `NAPKIN_RECORD=DIR
 +  PYTHONPATH=$PWD:$PWD/scratch/rewrite/b0 pytest -p record_runs ...`; `record_runs.py D1 D2` compares.
 +- `S=/tmp/claude-0/-home-user-napkin/e09158c7-7039-5d6d-be85-61b3a193adaf/scratchpad/b0`:
-+  `S/start_pkg/` is the package at 1a5f8e8; `S/rec_start/` is the record of the three engine test
-+  files at the start (157 tests, 478 runs).
-+- Base output: NOT saved for the last version of the script. Make it again:
-+  `PYTHONPATH=/home/user/napkin-base NAPKIN_STORE=off .venv/bin/python scratch/rewrite/b0/bitwise.py $S/base.txt`,
-+  and with `PYTHONPATH=$S/start_pkg` into `$S/start.txt`. An earlier version of the script gave
-+  equal files for base and start (sha 5580e8fb…).
++  `S/base.txt` is the base output (sha 8d0f9ce8…, in `S/base.sha256`); `S/start_pkg/` is the
++  package at 1a5f8e8; `S/start_tree/` is that package with the tests of the worktree.
 +
-+## Files (18:25)
++## Files (18:40)
 +
-+- Done, ruff clean, the package imports: `napkin/engine/timeline/run.py` (3490 to 2949 lines),
-+  `plan.py`, `timeline/__init__.py`, `expectations.py`, `estimators.py`, `commands/__init__.py`,
-+  `tools/bench/{__init__,measure}.py`. Deleted with `git rm`: `timeline/{derivatives,influence,
-+  smooth,places}.py`, `commands/derivatives.py`.
-+- Not started: every test, every doc, `CHANGELOG.md`. Steps 3 to 6 below remain.
-+- Running: `bitwise.py` for base, start and the worktree, into `$S/{base,start,mine}.txt`.
++- Done, ruff clean: all of `napkin/` and `tools/bench` (steps 1 and 2), and the tests (step 4):
++  two test files deleted, `test_timeline.py`, `test_timeline_outcomes.py`, `test_expectations.py`,
++  `test_estimators.py`, `tests/test_cli.py`, `test_bench.py`, `test_api.py` trimmed. The heat wave
++  tests use none of the removed functions: untouched.
++- Proved (step 3): `S/base.txt`, `S/start.txt` and `S/mine.txt` are equal (370 cases). The three
++  engine test files pass (171 tests), and their 472 runs have the same digests with the old engine
++  (`S/start_tree`, into `S/rec_old`) and the new one (`S/rec_new`).
++- Not started: the docs and `CHANGELOG.md` (step 5); the end checks and the commit (step 6).
 +
 +## Order of work, and what remains
 +
@@ -2651,12 +2649,9 @@ index 0000000..7dcf1e2
 +2. `plan.py`, `timeline/__init__.py`; delete `derivatives.py`, `influence.py`, `smooth.py`,
 +   `places.py`; `expectations.py`, `estimators.py`; `commands/derivatives.py` and `NAMES`; bench.
 +3. ruff; `bitwise.py` against base; the three engine test files with `record_runs`.
-+4. Tests: delete `tests/engine/test_timeline_derivatives.py` and `tests/test_cli_derivatives.py`;
-+   trim `test_timeline.py` (near 305-330, 362-381, 384-502, 668-692, 2215-2218),
-+   `test_timeline_outcomes.py`, `test_expectations.py`, `test_estimators.py`, `tests/test_cli.py`,
-+   `tests/test_bench.py`, `tests/test_api.py` (`CLOSURE`), `scenarios/heat_wave_blackout/tests/`.
++4. Tests: delete two files, trim the others, `CLOSURE` in `tests/test_api.py`.
 +5. Docs (`engine.md`, `cli.md`, `python-api.md`, one sentence in `design.md`), `CHANGELOG.md`.
-+6. The end checks of the brief, once; commit; report.
++6. The end checks of the brief, once; `bitwise.py` again; commit; report.
 +
 +## Found, and not in the brief
 +
@@ -3376,10 +3371,10 @@ index 0000000..9dc55e1
 +    main()
 diff --git a/scratch/rewrite/b0/record_runs.py b/scratch/rewrite/b0/record_runs.py
 new file mode 100644
-index 0000000..ab14680
+index 0000000..87153c7
 --- /dev/null
 +++ b/scratch/rewrite/b0/record_runs.py
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,129 @@
 +"""A pytest plugin: a digest of every run of the timeline engine that a test makes.
 +
 +    NAPKIN_RECORD=/tmp/base PYTHONPATH=$PWD:scratch/rewrite/b0 python -m pytest -p record_runs tests/engine/test_timeline.py
@@ -3496,7 +3491,10 @@ index 0000000..ab14680
 +    print(f'{len(both)} tests in both, with {runs} runs; {len(differ)} tests differ')
 +    for test in differ:
 +        places = [k for k, (x, y) in enumerate(zip(a[test], b[test])) if x != y]
-+        print(f'  differs: {test}: {len(a[test])} and {len(b[test])} runs, first at run {places[:1]}')
++        # A test that lost a run of its own (one with directions) has the other runs at other
++        # places: then each run of the second is still a run of the first.
++        among = 'each run of the second is one of the first' if set(b[test]) <= set(a[test]) else 'NEW RUNS'
++        print(f'  differs: {test}: {len(a[test])} and {len(b[test])} runs, first at {places[:1]}; {among}')
 +    for name, only in (('first', sorted(a.keys() - b.keys())), ('second', sorted(b.keys() - a.keys()))):
 +        print(f'{len(only)} tests only in the {name}, with {sum(len((a | b)[test]) for test in only)} runs')
 +        for test in only:
@@ -3506,6 +3504,1010 @@ index 0000000..ab14680
 +
 +if __name__ == '__main__':
 +    sys.exit(compare(*sys.argv[1:3]))
+diff --git a/tests/engine/test_estimators.py b/tests/engine/test_estimators.py
+index 6b375d0..6c73a86 100644
+--- a/tests/engine/test_estimators.py
++++ b/tests/engine/test_estimators.py
+@@ -260,135 +260,3 @@ def test_a_control_over_replicates_has_the_interval_of_the_means_of_its_blocks()
+     assert found['se'] == pytest.approx(statistics.stdev([2.0, 4.0, 6.0, 8.0]) / 2)
+     assert (found['n'], found['replicates']) == (12, 4)
+     assert found['plain']['mean'] == pytest.approx(statistics.fmean(values))
+-
+-
+-# ---- the derivatives of the tails ----------------------------------------------------------------------
+-
+-
+-def normal_density(x, mean=0.0, sd=1.0):
+-    return math.exp(-0.5 * ((x - mean) / sd) ** 2) / (sd * math.sqrt(2 * math.pi))
+-
+-
+-def normal_below(x, mean=0.0, sd=1.0):
+-    return 0.5 * (1 + math.erf((x - mean) / (sd * math.sqrt(2))))
+-
+-
+-def moved_samples(n, x, seed):
+-    """n samples of one path each: the value `x U`, U normal (2, 0.5), which moves with x at the
+-    rate U; the weight 1 does not change."""
+-    draws = np.random.default_rng(seed).normal(2.0, 0.5, n)
+-    return [([1.0], [x * u], [u], [0.0]) for u in draws]
+-
+-
+-def test_the_chance_to_pass_a_value_that_moves_has_the_rate_of_the_density_there():
+-    """The value is `x U` with U normal (2, 0.5), so it is normal (2 x, 0.5 x). The chance to be
+-    above c is `1 - Phi((c / x - 2) / 0.5)`, whose derivative by x is
+-    `phi((c / x - 2) / 0.5) c / (0.5 x^2)`. The estimate uses a kernel of the width h: its mean is
+-    not that derivative but `E[k_h(c - x U) U]`, which is a closed form for a normal kernel: with
+-    `s^2 = (0.5 x)^2 + h^2`, the density of a normal (2 x, s) at c times the mean of U given
+-    that the smoothed value is c. The estimate is within four of its standard errors of that,
+-    and the kernel moves it from the true derivative by less than a tenth here."""
+-    x, c, n = 1.5, 3.6, 4000
+-    found = estimators.tail_slopes(moved_samples(n, x, 21), threshold=c)
+-    h = found['bandwidth']
+-    assert found['slower'] and h == pytest.approx(1.06 * 0.75 * n**-0.2, rel=0.05)
+-    spread = (0.5 * x) ** 2
+-    mean_of_value = (2 * x * h**2 + c * spread) / (spread + h**2)
+-    smoothed = normal_density(c, 2 * x, math.sqrt(spread + h**2)) * mean_of_value / x
+-    exact = normal_density((c / x - 2) / 0.5) * c / (0.5 * x**2)
+-    assert abs(found['value'] - smoothed) < 4 * found['se']
+-    assert abs(smoothed - exact) < 0.1 * exact
+-    assert found['se'] < 0.1 * exact and found['at'] == c and found['density'] is None
+-
+-
+-def test_the_quantile_of_a_value_that_moves_has_the_mean_rate_of_the_values_there():
+-    """The quantile p of `x U` is x times that of U: its derivative by x is the quantile of U,
+-    `2 + 0.5 z`. The estimate is the mean of U among the samples near the quantile (a ratio of
+-    two kernel sums): for the upper quartile, `2 + 0.5 * 0.6745`. The kernel pulls it toward the
+-    mean of U by the part `h^2 / (spread + h^2)` of the distance, which the test allows for, and
+-    the rest is within four standard errors."""
+-    x, p, n = 1.5, 0.75, 4000
+-    found = estimators.tail_slopes(moved_samples(n, x, 22), p=p)
+-    exact = 2 + 0.5 * 0.6744897501960817
+-    assert found['at'] == pytest.approx(x * exact, abs=0.05)
+-    h, spread = found['bandwidth'], (0.5 * x) ** 2
+-    pulled = (2 * x * h**2 + found['at'] * spread) / (spread + h**2) / x
+-    assert found['slower'] and abs(found['value'] - pulled) < 4 * found['se']
+-    assert abs(pulled - exact) < 0.03 * exact
+-    assert found['density'] == pytest.approx(
+-        normal_density(found['at'], 2 * x, math.sqrt(spread + h**2)), rel=0.1
+-    )
+-    assert found['low'] < found['value'] < found['high']
+-    assert found['high'] - found['low'] == pytest.approx(2 * 1.96 * found['se'], rel=0.01)
+-
+-
+-def weighted_samples(n, x, d, seed):
+-    """n samples of two paths each: the value U with the weight 1 - x and U + d with the weight
+-    x, U a standard normal number. No value moves with x; the weights change at -1 and 1."""
+-    draws = np.random.default_rng(seed).normal(0.0, 1.0, n)
+-    return [([1 - x, x], [u, u + d], [0.0, 0.0], [-1.0, 1.0]) for u in draws], draws
+-
+-
+-def test_the_tails_of_paths_whose_weights_change_are_means_with_no_kernel():
+-    """The distribution is `(1 - x) Phi(y) + x Phi(y - d)`. The chance to be above c has the
+-    derivative `Phi(c) - Phi(c - d)` by x: the estimate is the mean of `1(U + d > c) - 1(U > c)`
+-    over the draws, with the standard error of that mean, and it needs no density."""
+-    x, d, c, n = 0.3, 0.5, 0.8, 2000
+-    samples, draws = weighted_samples(n, x, d, 23)
+-    found = estimators.tail_slopes(samples, threshold=c)
+-    each = (draws + d > c).astype(float) - (draws > c)
+-    assert found['value'] == pytest.approx(each.mean(), abs=1e-12)
+-    assert found['se'] == pytest.approx(each.std(ddof=1) / math.sqrt(n), rel=1e-9)
+-    assert abs(found['value'] - (normal_below(c) - normal_below(c - d))) < 4 * found['se']
+-    assert (found['slower'], found['bandwidth'], found['density'], found['n']) == (False, None, None, n)
+-
+-
+-def test_a_result_with_no_density_has_no_derivative_of_a_quantile():
+-    """Every value the same, or one sample: no density. The chance to pass a value still has its
+-    derivative where only the weights change (one sample: with no interval)."""
+-    flat = [([0.5, 0.5], [1.0, 1.0], [0.0, 0.0], [-1.0, 1.0])] * 8
+-    assert estimators.tail_slopes(flat, p=0.5) is None
+-    one = [([0.7, 0.3], [0.0, 1.0], [0.0, 0.0], [-1.0, 1.0])]
+-    assert estimators.tail_slopes(one, p=0.5) is None
+-    assert estimators.tail_slopes(one, threshold=0.5) == {
+-        'value': 1.0,
+-        'se': None,
+-        'low': None,
+-        'high': None,
+-        'n': 1,
+-        'at': 0.5,
+-        'density': None,
+-        'bandwidth': None,
+-        'slower': False,
+-    }
+-    moving = [([1.0], [1.0], [1.0], [0.0])] * 8
+-    assert estimators.tail_slopes(moving, threshold=1.0) is None
+-
+-
+-def test_the_tails_take_a_value_or_a_quantile_and_not_both():
+-    one = [([1.0], [1.0], [0.0], [0.0])] * 4
+-    for options in ({}, {'threshold': 1.0, 'p': 0.5}):
+-        with pytest.raises(ValueError, match='one of'):
+-            estimators.tail_slopes(one, **options)
+-
+-
+-def test_the_interval_of_the_derivative_of_a_quantile_has_the_spread_of_the_estimate():
+-    """Sixty made-up studies of 500 samples each. The standard deviation of their sixty
+-    estimates is what the standard error of one study says, to the margin of sixty studies (a
+-    standard deviation from sixty numbers is right to about a tenth). Three cases: the quantile
+-    of a value that moves (`x U`), the quantile of paths whose weights change, and the chance
+-    that a value that moves is above a mark. For a quantile the error has two parts, that of the
+-    ratio and that of the quantile of the samples at which the ratio is taken: an interval with
+-    the first part alone is a quarter of the spread for the value that moves."""
+-    cases = {
+-        'moved': lambda study: estimators.tail_slopes(moved_samples(500, 1.5, 100 + study), p=0.75),
+-        'weighted': lambda study: estimators.tail_slopes(
+-            weighted_samples(500, 0.3, 0.5, 300 + study)[0], p=0.5
+-        ),
+-        'above': lambda study: estimators.tail_slopes(moved_samples(500, 1.5, 500 + study), threshold=3.6),
+-    }
+-    for name, make in cases.items():
+-        found = [make(study) for study in range(60)]
+-        spread = statistics.stdev(item['value'] for item in found)
+-        said = statistics.fmean(item['se'] for item in found)
+-        assert 0.7 < spread / said < 1.4, name
+diff --git a/tests/engine/test_expectations.py b/tests/engine/test_expectations.py
+index 5de7189..a5ff7d2 100644
+--- a/tests/engine/test_expectations.py
++++ b/tests/engine/test_expectations.py
+@@ -1,16 +1,13 @@
+ """Other estimators of the expectation of an outcome (`napkin/engine/expectations.py`,
+-docs/engine.md, "Estimators"): the outcomes of chance events weighted, a control from the linear
+-form at the central run, and the derivative of an expectation with its label.
++docs/engine.md, "Estimators"): the outcomes of chance events weighted, and the mean of a
++distribution.
+ 
+ The oracles are closed forms of small models, and exact sums that each test makes again by itself:
+ 
+ - a clock that ticks n times, each tick a hit with the chance p that adds g to a total: the
+   total is g times a binomial number, with the mean `g n p` and the variance `g^2 n p (1 - p)`;
+ - the same with a chance that follows the last outcome (a chain of two states), whose mean and
+-  variance the test adds up over every sequence of outcomes with exact fractions;
+-- a tally at an uncertain rate until an uncertain time, `rate * end`, whose mean is the product
+-  of the two means;
+-- the threshold example: a uniform number U and the outcome `1 if U < x else 0`, whose mean is x.
++  variance the test adds up over every sequence of outcomes with exact fractions.
+ """
+ 
+ from fractions import Fraction
+@@ -19,7 +16,6 @@ from itertools import product
+ import mpmath
+ import numpy as np
+ import pytest
+-from scipy import special
+ 
+ from napkin.engine import SamplingSettings, evaluate_uncertainty, expectations
+ from napkin.engine import uncertainty as study_module
+@@ -29,16 +25,9 @@ from tests.build import (
+     compiled,
+     document,
+     entity,
+-    flow,
+-    formula,
+-    move,
+-    once_at,
+     output,
+     parameter,
+     stock,
+-    system,
+-    template,
+-    timer,
+     uncertain,
+ )
+ 
+@@ -187,7 +176,7 @@ def test_an_outcome_that_a_path_does_not_estimate_has_no_value():
+     assert found['outcomes']['total']['mean'] == pytest.approx(G * N * P, rel=1e-12)
+ 
+ 
+-# ---- the control --------------------------------------------------------------------------------------
++# ---- the mean of a distribution -----------------------------------------------------------------------
+ 
+ 
+ def mean_by_density(density, low, high):
+@@ -228,559 +217,6 @@ def test_a_bool_has_no_mean_as_a_number():
+         expectations.mean_of('bernoulli', {'p': 0.5})
+ 
+ 
+-def tally(rate, *members, at='rate'):
+-    """A tally that rises at `at` for 24 hours: served = 24 * at."""
+-    return system(
+-        uncertain('rate', 'people/h', 0.5, 4, rate),
+-        *members,
+-        stock('served', 0, kind='tally', size=100, rate=at),
+-        horizon=24,
+-        outputs=(output('served', 's.served', 'people'),),
+-    )
+-
+-
+-def test_an_outcome_that_is_linear_in_its_inputs_has_its_exact_mean_and_no_error():
+-    """served = 24 * rate, with a triangular rate from 1 to 4 and the mode 2: the mean is
+-    24 * 7/3 = 56. The control is the outcome but for a constant, so each sample gives 56. The
+-    plain mean of the same samples has the error of 32 draws."""
+-    model = compiled(tally('triangular(1 people/h, 2 people/h, 4 people/h)'))
+-    found = expectations.controlled(evaluate_uncertainty(model, settings=SamplingSettings(32, 4)), 'a')
+-    served = found['outcomes']['served']
+-    assert served['coefficients'] == pytest.approx({'s.rate': 24.0}, rel=1e-9)
+-    assert served['mean'] == pytest.approx(56.0, rel=1e-9)
+-    assert served['se'] < 1e-9 < 0.5 < served['plain']['se']
+-    assert (found['samples'], found['left_out']) == (32, {})
+-
+-
+-def test_the_control_of_a_product_has_no_bias_and_a_smaller_error_than_the_plain_mean():
+-    """served = rate * end, the rate uniform from 1 to 3 and the end a PERT (2, 6, 20) h: the mean
+-    is 2 * 46/6. The estimate is the mean of `y - g (x - E[x])`, which the test makes again from
+-    the draws, the outcomes and the two derivatives at the central run (the median end, and the
+-    median rate 2). It is within four of its standard errors of the true mean, and its error is
+-    less than a third of that of the plain mean."""
+-    model = compiled(timer())
+-    result = evaluate_uncertainty(model, settings=SamplingSettings(128, 3))
+-    found = expectations.controlled(result, 'a')
+-    served = found['outcomes']['served']
+-    points = result.samples['a']['values']
+-    rate, end = (np.array([point[name] for point in points]) for name in ('s.rate', 's.end'))
+-    median = float(special.betaincinv(1 + 4 * 4 / 18, 1 + 4 * 14 / 18, 0.5)) * 18 + 2
+-    assert served['coefficients'] == pytest.approx({'s.rate': median, 's.end': 2.0}, rel=1e-6)
+-    each = rate * end - median * (rate - 2.0) - 2.0 * (end - 46 / 6)
+-    assert served['mean'] == pytest.approx(each.mean(), rel=1e-6)
+-    assert served['se'] == pytest.approx(each.std(ddof=1) / 128**0.5, rel=1e-6)
+-    assert served['plain']['mean'] == pytest.approx((rate * end).mean(), rel=1e-9)
+-    assert abs(served['mean'] - 2 * 46 / 6) < 4 * served['se']
+-    assert served['se'] < served['plain']['se'] / 3
+-
+-
+-def test_given_coefficients_take_the_place_of_the_derivatives_and_keep_the_estimate_without_bias():
+-    """Any numbers that do not come from the samples make a control with no bias: here 5 and -1,
+-    which are far from the derivatives. The estimate is the mean of `y - 5 (rate - 2) + (end -
+-    46/6)` over the draws, and the true mean is within four of its standard errors."""
+-    result = evaluate_uncertainty(compiled(timer()), settings=SamplingSettings(128, 3))
+-    given = {'served': {'s.rate': 5.0, 's.end': -1.0}}
+-    served = expectations.controlled(result, 'a', coefficients=given)['outcomes']['served']
+-    points = result.samples['a']['values']
+-    rate, end = (np.array([point[name] for point in points]) for name in ('s.rate', 's.end'))
+-    each = rate * end - 5.0 * (rate - 2.0) + (end - 46 / 6)
+-    assert served['coefficients'] == given['served']
+-    assert served['mean'] == pytest.approx(each.mean(), rel=1e-9)
+-    assert abs(served['mean'] - 2 * 46 / 6) < 4 * served['se']
+-
+-
+-def test_an_input_that_is_no_number_or_whose_distribution_reads_another_has_no_part_in_the_control():
+-    """The rate of the tally is `rate + more` when `open` is true. `more` is uniform from 0 to
+-    the rate: its mean is not that of one distribution. The control has the rate alone, with the
+-    derivative 24 at the central run (`open` is more likely true, so it is true there)."""
+-    source = tally(
+-        'uniform(1 people/h, 3 people/h)',
+-        uncertain('more', 'people/h', 0, 4, 'uniform(0 people/h, rate)'),
+-        uncertain('open', 'bool', None, None, 'bernoulli(0.8)'),
+-        at='rate + (more if open else 0 people/h)',
+-    )
+-    result = evaluate_uncertainty(compiled(source), settings=SamplingSettings(64, 2))
+-    found = expectations.controlled(result, 'a')
+-    assert found['left_out'] == {
+-        's.more': 'its distribution reads other values',
+-        's.open': 'its values are no numbers',
+-    }
+-    served = found['outcomes']['served']
+-    assert served['coefficients'] == pytest.approx({'s.rate': 24.0}, rel=1e-9)
+-    points = result.samples['a']['values']
+-    rate, more, opened = (
+-        np.array([point[name] for point in points]) for name in ('s.rate', 's.more', 's.open')
+-    )
+-    each = 24 * (rate + np.where(opened, more, 0.0)) - 24 * (rate - 2.0)
+-    assert served['mean'] == pytest.approx(each.mean(), rel=1e-9)
+-    # The true mean: 24 * (2 + 0.8 * 1).
+-    assert abs(served['mean'] - 24 * 2.8) < 4 * served['se']
+-
+-
+-def test_with_sobol_sampling_the_interval_of_a_control_is_that_of_its_blocks():
+-    """Eight blocks of 16 points: the estimate is the mean of the eight means of `y - (c - E[c])`,
+-    and its standard error is their standard deviation over the root of 8."""
+-    result = evaluate_uncertainty(compiled(timer()), settings=SamplingSettings(128, 3, 'sobol'))
+-    served = expectations.controlled(result, 'a')['outcomes']['served']
+-    points = result.samples['a']['values']
+-    rate, end = (np.array([point[name] for point in points]) for name in ('s.rate', 's.end'))
+-    slope = served['coefficients']
+-    each = rate * end - slope['s.rate'] * (rate - 2.0) - slope['s.end'] * (end - 46 / 6)
+-    blocks = each.reshape(8, 16).mean(axis=1)
+-    assert (served['n'], served['replicates']) == (128, 8)
+-    assert served['mean'] == pytest.approx(blocks.mean(), rel=1e-9)
+-    assert served['se'] == pytest.approx(blocks.std(ddof=1) / 8**0.5, rel=1e-9)
+-    assert abs(served['mean'] - 2 * 46 / 6) < 4 * served['se']
+-
+-
+-def test_a_rejected_study_has_no_control():
+-    source = system(
+-        uncertain('amount', 'people', 0, 20, 'uniform(5 people, 15 people)'),
+-        stock('source', 10),
+-        stock('out'),
+-        once_at('takes', '1 h', 'move amount from source to out'),
+-        horizon=3,
+-    )
+-    # A sample that moves more than the stock holds stops its run: the study keeps no sample.
+-    result = evaluate_uncertainty(compiled(source), settings=SamplingSettings(8, 6))
+-    assert not result.admissible
+-    with pytest.raises(ValueError, match='rejected'):
+-        expectations.controlled(result, 'a')
+-
+-
+-# ---- the derivative of an expectation -------------------------------------------------------------------
+-
+-
+-def one(found, output, name):
+-    return found['derivatives'][output][name]
+-
+-
+-def threshold(outcome='1 if gate.u < gate.x else 0', u='uniform(0, 1)'):
+-    return document(
+-        'Threshold',
+-        entity('gate', uncertain('u', 'fraction', 0, 1, u), parameter('x', 0.3, 'fraction', 0, 1)),
+-        output('hit', outcome, 'fraction'),
+-        horizon=6,
+-    )
+-
+-
+-def test_the_threshold_example_has_no_sample_mean():
+-    """U is uniform from 0 to 1 and the outcome is 1 where U < x: its mean is x, so the
+-    derivative of the mean by x is 1. Each sample has the derivative 0 (no sample has U = x). The
+-    pair is unsupported, with the comparison as the reason, and has no value: above all not 0."""
+-    found = expectations.derivatives(compiled(threshold()), 'a', ['gate.x'], settings=SamplingSettings(32, 1))
+-    pair = one(found, 'hit', 'gate.x')
+-    assert pair['label'] == 'unsupported'
+-    assert pair['why'] == ['a comparison that the input can change, in hit']
+-    assert (pair['value'], pair['se'], pair['low'], pair['high']) == (None, None, None, None)
+-
+-
+-def test_the_same_chance_as_an_outcome_of_an_event_has_the_derivative_of_its_weight():
+-    """An event sets the outcome to 1 with the chance x: the mean is x again. Here the two paths
+-    are run with their weights x and 1 - x, whose derivatives are 1 and -1: the derivative of the
+-    mean is 1 * 1 + (-1) * 0 = 1, with no sampling error."""
+-    source = document(
+-        'Chance',
+-        entity(
+-            'gate',
+-            parameter('x', 0.3, 'fraction', 0, 1),
+-            stock('hit', 0, 'fraction', size=1),
+-            block(
+-                'event attempt once when t >= 1 h:  @fixture',
+-                '"One trial."',
+-                block('yes x:', 'hit = 1'),
+-                'no else:',
+-            ),
+-        ),
+-        output('hit', 'gate.hit', 'fraction'),
+-        horizon=6,
+-    )
+-    found = expectations.derivatives(compiled(source), 'a', ['gate.x'])
+-    pair = one(found, 'hit', 'gate.x')
+-    assert (pair['label'], pair['value'], pair['se']) == ('branch weighting', 1.0, None)
+-    assert found['outcomes']['hit']['mean'] == pytest.approx(0.3, rel=1e-12)
+-    assert (found['samples'], found['paths']) == (1, 2)
+-
+-
+-def test_the_two_labels_of_a_binomial_total_and_their_exact_derivatives():
+-    """The mean of the total is `g n p`. By the gain g a path is continuous (a hit adds g) and
+-    no chance reads it: the sample mean, `n p`. By the odds p the weights of the paths change:
+-    branch weighting, `g n`. The time of the horizon does not reach the total through an input
+-    that the test names, and an input that reaches nothing is zero by the structure."""
+-    source = ticks(parameter('gain', G, 'people', 0, 10), parameter('spare', 1, 'people', 0, 10))
+-    found = expectations.derivatives(compiled(source), 'a')
+-    assert found['inputs'] == ['shop.odds', 'shop.gain', 'shop.spare']
+-    gain, odds, spare = (one(found, 'total', name) for name in ('shop.gain', 'shop.odds', 'shop.spare'))
+-    assert (gain['label'], odds['label'], spare['label']) == (
+-        'sample mean',
+-        'branch weighting',
+-        'zero by the structure',
+-    )
+-    assert gain['value'] == pytest.approx(N * P, rel=1e-12)
+-    assert odds['value'] == pytest.approx(G * N, rel=1e-12)
+-    assert (spare['value'], spare['why']) == (0.0, [])
+-    assert gain['unit'] == 'people per people' and odds['unit'] == 'people per fraction'
+-    assert found['outcomes']['total']['mean'] == pytest.approx(G * N * P, rel=1e-12)
+-
+-
+-def test_with_an_uncertain_gain_the_derivative_by_the_odds_is_the_mean_over_the_samples():
+-    """The gain is uniform from 1 to 3 people: the derivative of the mean by the odds is
+-    `n E[g]`, and that of a sample is `n g` exactly, so the estimate is n times the mean of the
+-    gains that the study draws, with n times their standard error. The gain is uncertain itself:
+-    the derivative by it has no meaning as that of one value, and is unsupported."""
+-    model = compiled(ticks(uncertain('gain', 'people', 0, 10, 'uniform(1 people, 3 people)')))
+-    settings = SamplingSettings(32, 5)
+-    gains = np.array(
+-        [p['shop.gain'] for p in evaluate_uncertainty(model, settings=settings).samples['a']['values']]
+-    )
+-    found = expectations.derivatives(model, 'a', ['shop.odds', 'shop.gain'], settings=settings)
+-    odds, gain = one(found, 'total', 'shop.odds'), one(found, 'total', 'shop.gain')
+-    assert odds['label'] == 'branch weighting'
+-    assert odds['value'] == pytest.approx(N * gains.mean(), rel=1e-12)
+-    assert odds['se'] == pytest.approx(N * gains.std(ddof=1) / 32**0.5, rel=1e-12)
+-    assert odds['low'] < 2 * N < odds['high']
+-    assert (gain['label'], gain['value']) == ('unsupported', None)
+-    assert gain['why'] == ['the input is uncertain: a study draws its values']
+-    # By default the inputs are those with one value.
+-    assert expectations.derivatives(model, 'a', settings=settings)['inputs'] == ['shop.odds']
+-
+-
+-def test_a_bend_keeps_the_sample_mean_and_the_estimate_is_the_part_of_the_samples_on_one_side():
+-    """The outcome is `max(U, x)`, U uniform from 0 to 1 and x = 0.3: it has a bend at U = x and
+-    no jump. Its mean is `(1 + x^2) / 2`, with the derivative x. The derivative of a sample is 1
+-    where U < x and 0 else: the estimate is the part of the draws below x."""
+-    model = compiled(threshold('max(gate.u, gate.x)'))
+-    settings = SamplingSettings(256, 7)
+-    draws = np.array(
+-        [p['gate.u'] for p in evaluate_uncertainty(model, settings=settings).samples['a']['values']]
+-    )
+-    pair = one(expectations.derivatives(model, 'a', ['gate.x'], settings=settings), 'hit', 'gate.x')
+-    assert pair['label'] == 'sample mean'
+-    assert pair['value'] == pytest.approx((draws < 0.3).mean(), abs=1e-12)
+-    assert abs(pair['value'] - 0.3) < 4 * pair['se']
+-    assert pair['se'] == pytest.approx((0.3 * 0.7 / 256) ** 0.5, rel=0.2)
+-
+-
+-def test_an_event_that_the_input_moves_into_the_horizon_has_no_sample_mean():
+-    """An event at the time `x + U` sets the outcome to 1, and the horizon is 6 h: the mean is the
+-    chance that `x + U <= 6`, which changes with x, and each sample has the derivative 0."""
+-    source = document(
+-        'Late',
+-        entity(
+-            'gate',
+-            uncertain('u', 'h', 0, 10, 'uniform(0 h, 10 h)'),
+-            parameter('x', 1, 'h', 0, 10),
+-            stock('hit', 0, 'fraction', size=1),
+-            block('event late once when t >= x + u:  @fixture', '"It comes."', 'hit = 1'),
+-        ),
+-        output('hit', 'gate.hit', 'fraction'),
+-        horizon=6,
+-    )
+-    pair = one(
+-        expectations.derivatives(compiled(source), 'a', ['gate.x'], settings=SamplingSettings(8, 1)),
+-        'hit',
+-        'gate.x',
+-    )
+-    assert (pair['label'], pair['value']) == ('unsupported', None)
+-    assert pair['why'] == ['an event that the input can move or stop: gate.late']
+-
+-
+-def test_a_distribution_that_reads_the_input_has_no_estimate():
+-    """U is uniform from 0 to x and the outcome is U: the mean is x / 2. A sample holds its draw
+-    of U, so its derivative by x is 0."""
+-    source = threshold('gate.u', 'uniform(0, x)')
+-    pair = one(
+-        expectations.derivatives(compiled(source), 'a', ['gate.x'], settings=SamplingSettings(8, 1)),
+-        'hit',
+-        'gate.x',
+-    )
+-    assert (pair['label'], pair['value']) == ('unsupported', None)
+-    assert pair['why'] == ['the draw of gate.u follows the input']
+-
+-
+-def test_a_draw_that_follows_the_input_through_another_draw_has_no_estimate():
+-    """U is uniform from 0 to x, V is uniform from U to U + 1, and the outcome is V: its mean is
+-    `x / 2 + 1 / 2`. No read of a run leads from x to V, and the distribution of V does not name
+-    x: the draw of V follows x through the draw of U."""
+-    source = document(
+-        'Chain',
+-        entity(
+-            'gate',
+-            parameter('x', 0.3, 'fraction', 0, 1),
+-            uncertain('u', 'fraction', 0, 1, 'uniform(0, x)'),
+-            uncertain('v', 'fraction', 0, 2, 'uniform(u, u + 1)'),
+-        ),
+-        output('hit', 'gate.v', 'fraction'),
+-        horizon=6,
+-    )
+-    pair = one(
+-        expectations.derivatives(compiled(source), 'a', ['gate.x'], settings=SamplingSettings(8, 1)),
+-        'hit',
+-        'gate.x',
+-    )
+-    assert (pair['label'], pair['value']) == ('unsupported', None)
+-    assert pair['why'] == ['the draw of gate.v follows the input']
+-
+-
+-def test_a_chance_with_a_comparison_that_the_input_can_change_has_no_estimate():
+-    source = ticks(
+-        parameter('gain', G, 'people', 0, 10),
+-        parameter('mark', 3, 'people', 0, 10),
+-        odds='(0.9 if total > mark else 0.1)',
+-    )
+-    found = expectations.derivatives(compiled(source), 'a', ['shop.mark', 'shop.gain'])
+-    mark = one(found, 'total', 'shop.mark')
+-    assert (mark['label'], mark['value']) == ('unsupported', None)
+-    assert mark['why'] == ['a chance with a comparison that the input can change: shop.tick']
+-    # The gain moves the total, which the comparison of the chance reads: the same.
+-    assert one(found, 'total', 'shop.gain')['label'] == 'unsupported'
+-
+-
+-def test_a_chance_at_the_end_of_its_range_has_no_estimate():
+-    """With the odds 0 no sample has a hit, and the one path that is run has the weight 1. A
+-    change of the odds opens the paths with a hit, which are not run."""
+-    source = ticks().replace('input odds: fraction = 0.3', 'input odds: fraction = 0')
+-    pair = one(expectations.derivatives(compiled(source), 'a', ['shop.odds']), 'total', 'shop.odds')
+-    assert (pair['label'], pair['value']) == ('unsupported', None)
+-    assert pair['why'] == ['a chance that the input changes is at the end of its range']
+-
+-
+-def test_an_input_that_is_no_input_of_the_model_is_an_error():
+-    with pytest.raises(KeyError, match='no input'):
+-        expectations.derivatives(compiled(ticks()), 'a', ['shop.none'])
+-
+-
+-def test_too_many_paths_refuse_the_derivatives():
+-    found = expectations.derivatives(compiled(ticks()), 'a', limit=10)
+-    assert not found['admissible'] and [item['code'] for item in found['diagnostics']] == ['paths']
+-
+-
+-def jump(u='normal(5, 1, 0, 10)'):
+-    """The outcome is `U + d B`: U a normal number of the mean 5 (cut five standard deviations
+-    out), d = 0.5, and B is 1 with the chance x, by an event."""
+-    return document(
+-        'Jump',
+-        entity(
+-            'gate',
+-            uncertain('u', 'fraction', 0, 10, u),
+-            parameter('x', 0.3, 'fraction', 0, 1),
+-            stock('more', 0, 'fraction', size=1),
+-            block(
+-                'event attempt once when t >= 1 h:  @fixture',
+-                '"One trial."',
+-                block('yes x:', 'more = 0.5'),
+-                'no else:',
+-            ),
+-        ),
+-        output('hit', 'gate.u + gate.more', 'fraction'),
+-        horizon=6,
+-    )
+-
+-
+-def test_the_tails_of_a_jump_by_chance_have_the_derivatives_of_the_mixture():
+-    """The distribution of the outcome is `(1 - x) Phi(y) + x Phi(y - d)`. By x:
+-
+-    (y is the outcome less the mean 5 of U.)
+-
+-    - the chance to be above c has the derivative `Phi(c) - Phi(c - d)`. No value moves with x, so
+-      the estimate is a mean, `1(U + d > c) - 1(U > c)` over the draws, with no bias;
+-    - the quantile q of p has the derivative `(Phi(q) - Phi(q - d)) / f(q)`, f the density. The
+-      density is estimated with a kernel: the estimate is slower, and it is compared here with
+-      the same ratio for the density that a normal kernel of the given width makes of the
+-      mixture (a normal density of the variance `1 + h^2`), at four standard errors."""
+-    model = compiled(jump())
+-    settings = SamplingSettings(1500, 11)
+-    draws = np.array(
+-        [p['gate.u'] for p in evaluate_uncertainty(model, settings=settings).samples['a']['values']]
+-    )
+-    c, d, x, p, mid = 5.8, 0.5, 0.3, 0.5, 5.0
+-    found = expectations.derivatives(
+-        model, 'a', ['gate.x'], settings=settings, exceed={'hit': c}, quantiles={'hit': p}
+-    )
+-    pair = one(found, 'hit', 'gate.x')
+-    assert pair['label'] == 'branch weighting' and pair['value'] == pytest.approx(d, rel=1e-9)
+-    above = pair['exceedance']
+-    assert above['value'] == pytest.approx(((draws + d > c).astype(float) - (draws > c)).mean(), abs=1e-12)
+-    assert abs(above['value'] - (special.ndtr(c - mid) - special.ndtr(c - mid - d))) < 4 * above['se']
+-    assert (above['slower'], above['bandwidth'], above['at']) == (False, None, c)
+-    quantile = pair['quantile']
+-    from scipy.optimize import brentq
+-
+-    q = brentq(lambda y: (1 - x) * special.ndtr(y) + x * special.ndtr(y - d) - p, -5, 5)  # less the mean
+-    assert quantile['at'] == pytest.approx(mid + q, abs=0.1)
+-    wide = (1 + quantile['bandwidth'] ** 2) ** 0.5
+-    smoothed = ((1 - x) * np.exp(-0.5 * (q / wide) ** 2) + x * np.exp(-0.5 * ((q - d) / wide) ** 2)) / (
+-        wide * (2 * np.pi) ** 0.5
+-    )
+-    assert quantile['slower'] and quantile['density'] == pytest.approx(smoothed, rel=0.1)
+-    assert abs(quantile['value'] - (special.ndtr(q) - special.ndtr(q - d)) / smoothed) < 4 * quantile['se']
+-    assert quantile['se'] < 0.1 * quantile['value']
+-
+-
+-def test_the_tails_need_independent_samples():
+-    found = expectations.derivatives(
+-        compiled(jump()), 'a', ['gate.x'], settings=SamplingSettings(64, 1, 'sobol'), exceed={'hit': 5.8}
+-    )
+-    pair = one(found, 'hit', 'gate.x')
+-    assert pair['exceedance'] is None
+-    # The mean has the interval of the blocks: the derivative of each sample is 0.5 exactly.
+-    assert pair['value'] == pytest.approx(0.5, rel=1e-9) and pair['se'] == pytest.approx(0.0, abs=1e-12)
+-
+-
+-# ---- more of the structure behind a label --------------------------------------------------------------
+-
+-
+-def test_a_comparison_in_the_value_that_a_step_sets_has_no_sample_mean():
+-    """The threshold example again, with the comparison in the value that an event sets at 1 h:
+-    the mean is x and each sample has the derivative 0. The event does not move with x; the value
+-    that it writes jumps."""
+-    source = document(
+-        'Set',
+-        entity(
+-            'gate',
+-            uncertain('u', 'fraction', 0, 1, 'uniform(0, 1)'),
+-            parameter('x', 0.3, 'fraction', 0, 1),
+-            stock('hit', 0, 'fraction', size=1),
+-            block('event look once when t >= 1 h:  @fixture', '"It looks."', 'hit = (1 if u < x else 0)'),
+-        ),
+-        output('hit', 'gate.hit', 'fraction'),
+-        horizon=6,
+-    )
+-    pair = one(
+-        expectations.derivatives(compiled(source), 'a', ['gate.x'], settings=SamplingSettings(8, 1)),
+-        'hit',
+-        'gate.x',
+-    )
+-    assert (pair['label'], pair['value']) == ('unsupported', None)
+-    assert pair['why'] == ['a comparison that the input can change, in gate.hit']
+-
+-
+-def test_a_comparison_in_a_member_of_a_list_has_no_sample_mean():
+-    """Two copies of a cell, each with the threshold example as a formula, and the outcome is
+-    their sum: the comparison is in the members of the list that the outcome reads."""
+-    source = document(
+-        'List',
+-        entity('gate', parameter('x', 0.3, 'fraction', 0, 1)),
+-        template(
+-            'Cell',
+-            uncertain('u', 'fraction', 0, 1, 'uniform(0, 1)'),
+-            formula('hit', '1 if u < gate.x else 0', 'fraction'),
+-        ),
+-        entity('cells', template='Cell', copies=2),
+-        output('hits', 'sum(Cell.hit)', 'fraction'),
+-        horizon=6,
+-    )
+-    pair = one(
+-        expectations.derivatives(compiled(source), 'a', ['gate.x'], settings=SamplingSettings(8, 1)),
+-        'hits',
+-        'gate.x',
+-    )
+-    assert (pair['label'], pair['value']) == ('unsupported', None)
+-    assert pair['why'] == ['a comparison that the input can change, in hits']
+-
+-
+-def test_a_comparison_that_the_input_cannot_change_keeps_the_sample_mean():
+-    """The outcome is `x (2 if U < 0.5 else 1)`: the comparison reads U alone, so the outcome of
+-    a sample is a line in x. The derivative of the mean is 1.5, and the estimate is the mean of
+-    2 or 1 over the draws."""
+-    model = compiled(threshold('gate.x * (2 if gate.u < 0.5 else 1)'))
+-    settings = SamplingSettings(64, 3)
+-    draws = np.array(
+-        [p['gate.u'] for p in evaluate_uncertainty(model, settings=settings).samples['a']['values']]
+-    )
+-    pair = one(expectations.derivatives(model, 'a', ['gate.x'], settings=settings), 'hit', 'gate.x')
+-    assert pair['label'] == 'sample mean'
+-    assert pair['value'] == pytest.approx(np.where(draws < 0.5, 2.0, 1.0).mean(), rel=1e-12)
+-    assert abs(pair['value'] - 1.5) < 4 * pair['se']
+-
+-
+-def test_a_store_that_can_rest_on_its_bound_has_no_sample_mean():
+-    """A pool of 5 people drains at the rate x until it is empty: what has left at 10 h is
+-    `min(5, 10 x)`. The pool can rest on its bound, and the label is the safe one."""
+-    source = system(
+-        parameter('x', 1, 'people/h', 0, 4),
+-        stock('pool', 5),
+-        stock('gone', 0, kind='tally', size=100),
+-        flow('drain', move('pool', 'gone'), 'x'),
+-        horizon=10,
+-        outputs=(output('gone', 's.gone', 'people'),),
+-    )
+-    pair = one(expectations.derivatives(compiled(source), 'a', ['s.x']), 'gone', 's.x')
+-    assert (pair['label'], pair['value']) == ('unsupported', None)
+-    assert pair['why'] == ['a store that can rest on its bound: s.pool']
+-
+-
+-def test_an_event_that_the_input_moves_stops_only_the_outcomes_that_it_reaches():
+-    """The gain moves an event (it comes when the gain is above 1 person) that sets a flag. The
+-    flag has no sample mean by the gain. The total does not read the flag: by the gain it keeps
+-    its sample mean, `n p`."""
+-    source = ticks(
+-        extra=(
+-            stock('flag', 0, 'fraction', size=1),
+-            block('event lift once when gain > 1 people:  @fixture', '"The flag goes up."', 'flag = 1'),
+-        )
+-    ).replace('\noutput total', '\n' + output('flag', 'shop.flag', 'fraction') + '\n\noutput total')
+-    found = expectations.derivatives(compiled(source), 'a', ['shop.gain'])
+-    flag, total = one(found, 'flag', 'shop.gain'), one(found, 'total', 'shop.gain')
+-    assert (flag['label'], flag['value']) == ('unsupported', None)
+-    assert flag['why'] == ['an event that the input can move or stop: shop.lift']
+-    assert (total['label'], total['value']) == ('sample mean', pytest.approx(N * P, rel=1e-12))
+-
+-
+-def test_a_run_that_sets_a_value_on_its_bound_has_no_estimate():
+-    """The total holds 12 people at most, and a hit adds a little more than 2 people (by one
+-    part in 10^13). Six hits pass the bound by less than the engine can resolve: the step of the
+-    sixth hit sets the total on its bound, where the total does not move with the gain. The
+-    structure shows a sample mean; the run with six hits is no smooth path, and the pair has no
+-    estimate. With a gain of 1 person no path comes near the bound."""
+-    bounded = ticks().replace(
+-        'var total: people = 0 size 1000 people', 'var total: people = 0 in 0 to 12 people'
+-    )
+-    near = bounded.replace('input gain: people = 2.0 people', 'input gain: people = 2.0000000000002 people')
+-    assert bounded != ticks() and near != bounded
+-    pair = one(expectations.derivatives(compiled(near), 'a', ['shop.gain']), 'total', 'shop.gain')
+-    assert (pair['label'], pair['value']) == ('unsupported', None)
+-    assert pair['why'] == ['a run met: shop.total is set on its bound (t = 6 h)']
+-    far = bounded.replace('input gain: people = 2.0 people', 'input gain: people = 1.0 people')
+-    pair = one(expectations.derivatives(compiled(far), 'a', ['shop.gain']), 'total', 'shop.gain')
+-    assert (pair['label'], pair['value']) == ('sample mean', pytest.approx(N * P, rel=1e-12))
+-
+-
+-def test_a_sample_on_a_bend_has_the_derivative_of_one_side_and_says_so():
+-    """The outcome is `max(x, y)` with x = y: no value is uncertain, and the one sample sits on
+-    the bend. The derivative by each input is that of one side: 1 for the piece that gives the
+-    value and 0 for the other, so the two add up to 1. Away from the bend nothing is one-sided."""
+-    source = document(
+-        'Bend',
+-        entity('gate', parameter('x', 0.3, 'fraction', 0, 1), parameter('y', 0.3, 'fraction', 0, 1)),
+-        output('top', 'max(gate.x, gate.y)', 'fraction'),
+-        horizon=6,
+-    )
+-    found = expectations.derivatives(compiled(source), 'a')
+-    x, y = one(found, 'top', 'gate.x'), one(found, 'top', 'gate.y')
+-    assert (x['label'], y['label']) == ('sample mean', 'sample mean')
+-    assert x['one_sided'] and y['one_sided']
+-    assert sorted([x['value'], y['value']]) == [0.0, 1.0]
+-    apart = expectations.derivatives(compiled(source.replace('y: fraction = 0.3', 'y: fraction = 0.2')), 'a')
+-    assert [one(apart, 'top', name)['one_sided'] for name in ('gate.x', 'gate.y')] == [False, False]
+-    assert [one(apart, 'top', name)['value'] for name in ('gate.x', 'gate.y')] == [1.0, 0.0]
+-
+-
+-def test_a_derivative_is_in_the_unit_of_the_outcome_as_the_file_writes_it():
+-    """A hit adds 12 h to a time that the outcome gives in days: the mean is `n p / 2` days, the
+-    derivative by the odds `n / 2` days, and that by the gain `n p / 24` days for an hour."""
+-    source = (
+-        ticks(parameter('gain', 12, 'h', 0, 100))
+-        .replace('var total: people = 0 size 1000 people', 'var total: h = 0 size 1000 h')
+-        .replace('output total: people', 'output total: days')
+-    )
+-    found = expectations.derivatives(compiled(source), 'a')
+-    odds, gain = one(found, 'total', 'shop.odds'), one(found, 'total', 'shop.gain')
+-    assert found['outcomes']['total']['mean'] == pytest.approx(N * P / 2, rel=1e-12)
+-    assert (odds['value'], odds['unit']) == (pytest.approx(N / 2, rel=1e-12), 'days per fraction')
+-    assert (gain['value'], gain['unit']) == (pytest.approx(N * P / 24, rel=1e-12), 'days per h')
+-
+-
+ def test_with_sobol_sampling_the_weighted_mean_has_the_interval_of_its_blocks():
+     """The gain is uniform from 1 to 3 people, drawn from 8 blocks of 4 scrambled Sobol' points.
+     The mean of a sample over the outcomes is `g n p`: the estimate is the mean of the 8 block
+diff --git a/tests/engine/test_timeline.py b/tests/engine/test_timeline.py
+index 5448b5e..1f3f190 100644
+--- a/tests/engine/test_timeline.py
++++ b/tests/engine/test_timeline.py
+@@ -3,10 +3,8 @@
+ The oracles are independent of the engine:
+ 
+ - closed forms of the models, from the numbers that each test writes into its table and gives to its
+-  inputs: the times of clocks and crossings, the sums of lines, the solution of a linear and of a
+-  logistic equation, and the derivatives that calculus gives of those;
+-- for a derivative through an event of a numeric block, the same closed forms at 40 digits with the
+-  time of the event from a root search and the derivative from differences at that precision (mpmath);
++  inputs: the times of clocks and crossings, the sums of lines, and the solution of a linear and of a
++  logistic equation;
+ - the run of the same file from its flat structure (`simulate`), where each row of a table is
+   written out and the whole model is one component of the general tier: the order and the names of
+   the events, and the values, within the tolerances of the solvers. It is a second path through the
+@@ -302,33 +300,6 @@ def test_a_numeric_block_of_each_instance_gives_the_closed_form_of_its_linear_eq
+     assert timeline.check(timeline.Plan.of(hybrid.compile(path)), values) == []
+ 
+ 
+-def test_the_closed_form_of_a_linear_block_and_the_solver_give_the_same_run(tmp_path):
+-    """The block of a cell is linear, so a run with no tangents takes its closed form and no step of
+-    a solver. A run with tangents integrates the same block with the solver. The closed form of the
+-    test above judges both; here the two are compared with each other, and the solver's run has the
+-    derivative that the closed form of the test gives: what seeps from a cell that never opens its
+-    gate is `a T - (w(T) - w0)`, whose derivative by the inflow `a` is `T - (1 - e^(-k T)) / k`."""
+-    levels = [0.05, 0.31, 9.0]
+-    inflow, leak = 0.07, 0.04
+-    path = package(tmp_path, GATES, cells=('level: fraction @shape', levels))
+-    plan = timeline.Plan.of(hybrid.compile(path))
+-    assert [block.linear for block in plan.blocks] == [True]
+-    values = {'cells_1.inflow': inflow, 'cells_1.leak': leak}
+-    closed = timeline.run(plan, values)
+-    solved = timeline.run(plan, values, directions=('cells_1.inflow',))
+-    assert closed.counts['solver steps'] == 0 and solved.counts['solver steps'] > 100
+-    assert closed.trace == solved.trace
+-    for name, value in closed.outputs.items():
+-        assert solved.outputs[name] == pytest.approx(value, rel=1e-8)
+-    assert solved.final('cells_1.water') == pytest.approx(closed.final('cells_1.water'), rel=1e-8)
+-    # The third cell never opens (its level is above what arrives in the run): its seepage has the
+-    # closed form of the docstring, and the events of the two others move with the inflow too.
+-    k, days = leak, 10.0
+-    never = days - (1 - math.exp(-k * days)) / k
+-    seeped = solved.run.numeric('cells_1.seeped', None, HORIZON, part=1)
+-    assert seeped[2] == pytest.approx(never, rel=1e-6)
+-
+-
+ def test_an_event_of_one_instance_starts_only_its_own_block_again(tmp_path):
+     """Three events for each cell: the block of a cell starts again at the two that change its gate,
+     and at no event of another cell."""
+@@ -361,18 +332,16 @@ output level_total: fraction = sum(Cell.level)  @shape
+ 
+ def test_a_list_in_the_rate_of_every_instance_is_one_block_with_the_logistic_closed_form(tmp_path):
+     """Each level grows at `gain * level * (1 - mean)`, so the sum S of the levels has
+-    `S' = gain * S * (1 - S / n)`: the logistic curve. The derivative by the gain is that of the curve."""
++    `S' = gain * S * (1 - S / n)`: the logistic curve."""
+     starts = [0.05, 0.4, 0.11, 0.27, 0.33, 0.02, 0.19]
+     count, gain = len(starts), 0.63
+     path = package(tmp_path, GROWTH.replace('{n}', str(count)), cells=('start: fraction @shape', starts))
+     plan = timeline.Plan.of(hybrid.compile(path))
+     assert [(block.names, block.whole) for block in plan.blocks] == [(('cells_1.level',), True)]
+-    result = timeline.run(plan, {'cells_1.gain': gain}, directions=('cells_1.gain',))
++    result = timeline.run(plan, {'cells_1.gain': gain})
+     ratio, days = count / sum(starts) - 1, 10.0
+     decay = math.exp(-gain * days)
+     assert result.outputs['level_total'] == pytest.approx(count / (1 + ratio * decay), rel=1e-7)
+-    slope = count * ratio * days * decay / (1 + ratio * decay) ** 2
+-    assert result.tangents['cells_1.gain']['level_total'] == pytest.approx(slope, rel=1e-6)
+     # Each level keeps its share of the sum: the levels grow by one factor.
+     levels = result.final('cells_1.level')
+     assert levels / levels.sum() == pytest.approx(np.array(starts) / sum(starts), rel=1e-7)
+@@ -381,127 +350,6 @@ def test_a_list_in_the_rate_of_every_instance_is_one_block_with_the_logistic_clo
+     assert result.outputs['level_total'] == pytest.approx(outputs['level_total'], rel=1e-8)
+ 
+ 
+-# ---- derivatives through an event with a reset -----------------------------------------------------------
+-
+-RESET = """Cell:  @shape
+-    "One cell."
+-    input pace: fraction/day = 0.3 fraction/day in 0 fraction/day to 2 fraction/day  @shape
+-    input fast: fraction/day = 0.5 fraction/day in 0 fraction/day to 2 fraction/day  @shape
+-    input keep: fraction = 0.25 in 0 to 1  @shape
+-    input cap: fraction = 0.6 in 0 to 5  @shape
+-    let shift: fraction = 0  @shape
+-    var level: fraction = 0 size 1  @shape
+-    var gone: fraction = 0 size 1  @shape
+-    var quick = false  @shape
+-    flow fill: -> level at fast if quick else pace
+-    flow leave: level -> gone at 0 fraction/day
+-    event turn once when level >= cap + shift:  @shape
+-        "The level is set back, and the cell fills faster."
+-        level = keep * level
+-        quick = true
+-
+-cells: Cell from "cells.csv"
+-
+-output level_total: fraction = sum(Cell.level)  @shape
+-    "Level of all cells"
+-    level
+-"""
+-
+-
+-def test_the_derivative_of_a_line_through_its_reset_is_the_closed_form(tmp_path):
+-    """A level rises at `pace` to its mark `c = cap + shift`, is set back to `keep * c`, and then rises
+-    at `fast`: at the horizon T it is `keep * c + fast * (T - c / pace)`. The time of the event moves
+-    with the pace and the mark, so the derivative by each needs the jump of the tangent at the event."""
+-    shifts = [0.0, 0.3, 0.55]
+-    pace, fast, keep, cap = 0.3, 0.5, 0.25, 0.6
+-    path = package(tmp_path, RESET, cells=('shift: fraction @shape', shifts))
+-    names = ('cells_1.pace', 'cells_1.fast', 'cells_1.keep', 'cells_1.cap')
+-    result = timeline.run(
+-        timeline.Plan.of(hybrid.compile(path)), dict(zip(names, (pace, fast, keep, cap))), directions=names
+-    )
+-    marks, days = [cap + shift for shift in shifts], 10.0
+-    assert result.outputs['level_total'] == pytest.approx(
+-        sum(keep * c + fast * (days - c / pace) for c in marks), rel=1e-13
+-    )
+-    exact = {
+-        'cells_1.pace': sum(fast * c / pace**2 for c in marks),
+-        'cells_1.fast': sum(days - c / pace for c in marks),
+-        'cells_1.keep': sum(marks),
+-        'cells_1.cap': len(marks) * (keep - fast / pace),
+-    }
+-    for name, slope in exact.items():
+-        assert result.tangents[name]['level_total'] == pytest.approx(slope, rel=1e-12), name
+-    assert [at for at, _, _ in result.trace] == pytest.approx(sorted(c / pace * DAY for c in marks))
+-
+-
+-SEEP = """Cell:  @shape
+-    "One cell."
+-    input inflow: fraction/day = 0.3 fraction/day in 0 fraction/day to 2 fraction/day  @shape
+-    input leak: ratio/day = 0.4 ratio/day in 0 ratio/day to 2 ratio/day  @shape
+-    input keep: fraction = 0.25 in 0 to 1  @shape
+-    input mark: fraction = 0.3 in 0 to 5  @shape
+-    let shift: fraction = 0  @shape
+-    var water: fraction = 0.5 size 1  @shape
+-    var seeped: fraction = 0 size 1  @shape
+-    flow storm: -> water at inflow
+-    flow seep: water -> seeped at leak * water
+-    event drain once when seeped >= mark + shift:  @shape
+-        "A part of the water is let out."
+-        water = keep * water
+-
+-cells: Cell from "cells.csv"
+-
+-output water_total: fraction = sum(Cell.water)  @shape
+-    "Water of all cells"
+-    level
+-"""
+-
+-
+-def seep_total(inflow, leak, keep, mark, shifts, days=10):
+-    """The water of all cells at the horizon, at the precision of mpmath: before its event, the
+-    water of a cell is `u/k + (w0 - u/k) e^(-k t)` and what seeped is `u t - (water - w0)`; the event
+-    is at the root of `seeped = mark + shift`; then the water goes on from `keep` times its value."""
+-    start = mpmath.mpf('0.5')
+-    rest = inflow / leak
+-    total = mpmath.mpf(0)
+-    for shift in shifts:
+-
+-        def water(t):
+-            return rest + (start - rest) * mpmath.exp(-leak * t)
+-
+-        at = mpmath.findroot(lambda t: inflow * t - (water(t) - start) - (mark + shift), 1)
+-        total += rest + (keep * water(at) - rest) * mpmath.exp(-leak * (days - at))
+-    return total
+-
+-
+-def test_the_derivative_of_a_numeric_block_through_its_reset_is_that_of_the_closed_form(tmp_path):
+-    """The crossing is of a value that a solver integrates, its time has no closed form, and the step
+-    sets a state of the block: the tangent of the time of the event comes from the tangents and the
+-    rate of the block at the event, and the block starts again with the jump."""
+-    shifts = [0.0, 0.25, 0.6]
+-    point = {'inflow': 0.3, 'leak': 0.4, 'keep': 0.25, 'mark': 0.3}
+-    path = package(tmp_path, SEEP, cells=('shift: fraction @shape', shifts))
+-    names = tuple(f'cells_1.{name}' for name in point)
+-    result = timeline.run(
+-        timeline.Plan.of(hybrid.compile(path)),
+-        {f'cells_1.{name}': value for name, value in point.items()},
+-        directions=names,
+-    )
+-    assert len(result.trace) == len(shifts)
+-    with mpmath.workdps(40):
+-        exact = {name: mpmath.mpf(repr(value)) for name, value in point.items()}
+-        assert result.outputs['water_total'] == pytest.approx(
+-            float(seep_total(shifts=shifts, **exact)), rel=1e-8
+-        )
+-        for name in point:
+-            slope = mpmath.diff(
+-                lambda x, name=name: seep_total(shifts=shifts, **{**exact, name: x}), exact[name]
+-            )
+-            assert result.tangents[f'cells_1.{name}']['water_total'] == pytest.approx(
+-                float(slope), rel=2e-6
+-            ), name
+-
+-
+ # ---- D-65: the two readings of the rules ---------------------------------------------------------------
+ 
+ TWO_PARTS = """first:  @shape
+@@ -664,32 +512,20 @@ def test_a_step_that_writes_one_member_of_a_block_reads_again_the_rules_of_the_o
+     """The cut of one cell sets its level. Every level and every `grown` are in one block, because the
+     mean of the levels feeds each rate. So the cut changes when the `grown` of each other cell reaches
+     its mark: those crossings are read again, though the step wrote none of the values that they read.
+-    The oracles: the flat structure, the reading of every rule at every moment,
+-    and, for the derivatives, the slope of the run's own output between two near values of the input
+-    (a derivative that missed the moved events would not be that slope)."""
++    The oracles: the flat structure, and the reading of every rule at every moment."""
+     starts = [0.05, 0.1, 0.2, 0.15]
+     point = {'gain': 0.63, 'keep': 0.5, 'mark': 0.1}
+     path = package(tmp_path, CUTS.replace('{n}', '4'), cells=('start: fraction @shape', starts))
+     plan = timeline.Plan.of(hybrid.compile(path))
+     assert [(len(block.names), block.whole) for block in plan.blocks] == [(2, True)]
+     values = {f'cells_1.{name}': value for name, value in point.items()}
+-    result = timeline.run(plan, values, directions=('cells_1.keep', 'cells_1.mark'))
++    result = timeline.run(plan, values)
+     assert len(result.trace) == 4
+     flat = {f'cells.{row}.{name}': value for row in range(1, 5) for name, value in point.items()}
+     trace, outputs = flat_run(path, flat)
+     assert same_trace(result.trace, trace, 1e-5)
+     assert result.outputs['level_total'] == pytest.approx(outputs['level_total'], rel=1e-7)
+     assert timeline.check(plan, values, time_tolerance=1e-6) == []
+-    for name in ('keep', 'mark'):
+-        step = 1e-4
+-        up, down = (
+-            timeline.run(plan, {**values, f'cells_1.{name}': point[name] + sign * step}).outputs[
+-                'level_total'
+-            ]
+-            for sign in (1, -1)
+-        )
+-        slope = (up - down) / (2 * step)
+-        assert result.tangents[f'cells_1.{name}']['level_total'] == pytest.approx(slope, rel=2e-4), name
+ 
+ 
+ # ---- one moment ----------------------------------------------------------------------------------------
+@@ -2212,10 +2048,6 @@ def test_a_flow_that_would_ask_a_rate_below_zero_inside_a_segment_stops_the_run(
+     with pytest.raises(SimulationError) as stopped:
+         timeline.run(plan)
+     assert 'level_out' in str(stopped.value)
+-    # A run that carries derivatives has no general tier to give the error of the run: the part
+-    # is named as outside the engine.
+-    with pytest.raises(timeline.Outside, match='rate below zero'):
+-        timeline.run(plan, directions=('cells_1.pace',))
+     still = timeline.run(plan, {'cells_1.inflow': 0.0, 'cells_1.pace': [0.5, 0.5]})
+     assert list(still.final('cells_1.a')) == pytest.approx([0.3 + 0.3 * math.exp(-10.0)] * 2, rel=1e-7)
+ 
 diff --git a/tests/engine/test_timeline_derivatives.py b/tests/engine/test_timeline_derivatives.py
 deleted file mode 100644
 index c5db786..0000000
@@ -4428,6 +5430,115 @@ index c5db786..0000000
 -    assert len(smooth.jumps(node)) == 2
 -    assert set(smooth.jumps(node)) < set(smooth.pairs(node))
 -    assert smooth.jumps(read('max(a, b) + clip(c, d, e)')) == ()
+diff --git a/tests/engine/test_timeline_outcomes.py b/tests/engine/test_timeline_outcomes.py
+index d5ca7df..ed61a2a 100644
+--- a/tests/engine/test_timeline_outcomes.py
++++ b/tests/engine/test_timeline_outcomes.py
+@@ -3,31 +3,19 @@ given"): the firings that go by chance take the outcomes that a caller gives, an
+ each such firing with its chances.
+ 
+ The oracles are the rule in words (a sample takes the first outcome whose running total of the
+-chances is above its uniform number), written again here with exact fractions, and closed forms
+-of small models: a clock that ticks each hour and adds to a total with one outcome, and a tank
+-that fills at a constant pace and doubles its level at one time or not.
++chances is above its uniform number), written again here with exact fractions, and the closed form
++of a small model: a clock that ticks each hour and adds to a total with one outcome.
+ """
+ 
+ from fractions import Fraction
+ from itertools import pairwise
+ 
+-import numpy as np
+ import pytest
+ 
+-from napkin.engine import timeline
+ from napkin.engine.timeline.run import shares
+ from napkin.engine.uncertainty import run_sample
+-from napkin.model import hybrid
+ from tests.build import block, compiled, document, entity, output, parameter, stock
+ 
+-HEAD = """scenario "A synthetic model"
+-    summary "A model of a test, with no source."
+-    horizon 10 days
+-    scope "Nothing: the model is synthetic."
+-
+-"""
+-RECORD = '\nrecord shape: assumption "A synthetic model, with no source."\n'
+-
+ 
+ def taken_by_a_sample(chances, u):
+     """The place that a sample with the uniform number u takes: the first outcome with a chance
+@@ -106,11 +94,10 @@ def test_a_run_takes_the_given_outcomes_and_then_the_likeliest(places):
+     firings: its event, the chances 0.3 and 0.7, and the place that it took."""
+     total, firings = total_of(compiled(ticks()), places)
+     assert total == 2 * places.count(0)
+-    assert [name for name, _, _, _ in firings] == ['shop.tick'] * 6
+-    assert [place for _, _, place, _ in firings] == [*places, *[1] * (6 - len(places))]
+-    for _, chances, _, slopes in firings:
++    assert [name for name, _, _ in firings] == ['shop.tick'] * 6
++    assert [place for _, _, place in firings] == [*places, *[1] * (6 - len(places))]
++    for _, chances, _ in firings:
+         assert chances == pytest.approx((0.3, 0.7), abs=1e-15)
+-        assert slopes is None  # the run carries no derivative
+ 
+ 
+ def test_more_given_outcomes_than_firings_change_nothing():
+@@ -135,55 +122,3 @@ def test_a_run_with_no_given_outcomes_keeps_no_firing_and_is_the_central_run():
+     assert 'firings' not in plain and len(given['firings']) == 6
+     assert plain['rows'] == given['rows']
+     assert plain['events'] == given['events'] == {'shop.tick': {'hit': 0, 'miss': 6}}
+-
+-
+-CHANCE = """tank:  @shape
+-    "A tank that fills, with an event that doubles its level or not."
+-    input first_at: h = 30 h in 0 h to 200 h  @shape
+-    input odds: fraction = 0.7 in 0 to 1  @shape
+-    input pace: fraction/h = 0.01 fraction/h in 0 fraction/h to 1 fraction/h  @shape
+-    var level: fraction = 0 size 100  @shape
+-    flow fill: -> level at pace
+-    event attempt once when t >= first_at:  @shape
+-        "The level doubles, or nothing happens."
+-        doubled odds * (1 - level):
+-            level = 2 * level
+-        nothing else:
+-
+-output level: fraction = tank.level  @shape
+-    "Level"
+-    level
+-"""
+-INPUTS = ('tank.first_at', 'tank.odds', 'tank.pace')
+-
+-
+-def test_a_run_with_directions_keeps_the_derivative_of_each_chance_and_of_each_path(tmp_path):
+-    """The tank has the level `r a` at the time a of its event (pace r). The chance of the
+-    doubling is `p (1 - r a)`, and that of nothing is the rest, so the derivatives of the first
+-    chance by (a, p, r) are `(-p r, 1 - r a, -p a)` and those of the second the same with the
+-    other sign. At the horizon T the level is `r a + r T` with the doubling and `r T` without:
+-    the derivatives by (a, p, r) are `(r, 0, a + T)` and `(0, 0, T)`."""
+-    path = tmp_path / 'model.scn'
+-    path.write_text(HEAD + CHANCE + RECORD, encoding='utf-8')
+-    plan = timeline.Plan.of(hybrid.compile(path))
+-    a, p, r, hours = 30.0, 0.7, 0.01, 240.0
+-    values = {'tank.first_at': a, 'tank.odds': p, 'tank.pace': r}
+-    chance = p * (1 - r * a)
+-    for place, level, exact in (
+-        (0, r * a + r * hours, (r, 0.0, a + hours)),
+-        (1, r * hours, (0.0, 0.0, hours)),
+-    ):
+-        made = timeline.run(plan, values, directions=INPUTS, outcomes=(place,))
+-        ((name, chances, took, slopes),) = made.firings
+-        assert (name, took) == ('tank.attempt', place)
+-        assert chances == pytest.approx((chance, 1 - chance), rel=1e-12)
+-        assert slopes[0] == pytest.approx((-p * r, 1 - r * a, -p * a), rel=1e-12)
+-        assert slopes[1] == pytest.approx((p * r, -(1 - r * a), p * a), rel=1e-12)
+-        assert made.outputs['level'] == pytest.approx(level, rel=1e-12)
+-        found = [made.tangents[name]['level'] for name in INPUTS]
+-        assert found == pytest.approx(exact, rel=1e-12, abs=1e-15)
+-        # The outcome is given: the run does not note that two outcomes are as likely.
+-        assert not [note for note in made.notes if note[0] == 'outcome']
+-    # The central run takes the likelier outcome: the doubling, with the chance 0.49, is not it.
+-    assert timeline.run(plan, values).outputs['level'] == pytest.approx(r * hours, rel=1e-12)
+-    assert np.isclose(chance, 0.49)
 diff --git a/tests/test_api.py b/tests/test_api.py
 index 8567898..dea8235 100644
 --- a/tests/test_api.py

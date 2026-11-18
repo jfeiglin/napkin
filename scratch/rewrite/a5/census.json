@@ -12673,5 +12673,4432 @@
   "options.setting.sets.let.fixed": "an option that sets a `let`",
   "note.value.list": "a note whose value is a list",
   "status.block.no_fallback": "a status whose last line has a condition"
+ },
+ "models": {
+  "examples/piano_tuners/model.scn": {
+   "seconds_to_build": 0.05,
+   "runs": {
+    "base": {
+     "options": [],
+     "versus": null
+    }
+   },
+   "start_options": [],
+   "structures": 1,
+   "proven_cumulative_outcomes": [
+    "tunings_done"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "check.input": 0,
+    "check.state": 0,
+    "computed": 0,
+    "coupling": 0,
+    "coupling.flows": 0,
+    "entity": 1,
+    "entity.actor": 0,
+    "flow": 1,
+    "flow.in_allocation": 0,
+    "flow.store_to_store": 1,
+    "label": 0,
+    "mode": 0,
+    "outcome.cumulative": 1,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 1,
+    "outcome.proven_cumulative": 1,
+    "outcome.status.estimated": 1,
+    "parameter": 3,
+    "partition": 0,
+    "quantity.cumulative": 1,
+    "quantity.stock": 1,
+    "quantity.with_size": 2
+   },
+   "outcomes": {
+    "tunings_done": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "examples/reservoir/model.scn": {
+   "seconds_to_build": 0.01,
+   "runs": {
+    "base": {
+     "options": [],
+     "versus": null
+    }
+   },
+   "start_options": [],
+   "structures": 1,
+   "proven_cumulative_outcomes": [
+    "reservoir.risk_time.output",
+    "reservoir.spilled.output"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "check.input": 0,
+    "check.state": 0,
+    "computed": 0,
+    "coupling": 0,
+    "coupling.flows": 0,
+    "entity": 2,
+    "entity.actor": 1,
+    "flow": 2,
+    "flow.in_allocation": 0,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 1,
+    "label": 0,
+    "mode": 1,
+    "outcome.cumulative": 2,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 2,
+    "outcome.proven_cumulative": 2,
+    "outcome.status.estimated": 2,
+    "parameter": 4,
+    "partition": 0,
+    "quantity.cumulative": 2,
+    "quantity.stock": 1,
+    "quantity.with_size": 3,
+    "rule": 1,
+    "rule.choice": 1,
+    "rule.delay": 0,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 0,
+    "rule.once": 1,
+    "rule.outcomes2": 1,
+    "rule.trigger.crossing": 1,
+    "rule.trigger.crossing.op.>=": 1
+   },
+   "outcomes": {
+    "reservoir.spilled.output": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "reservoir.risk_time.output": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/cyber_learning_loop/model.scn": {
+   "seconds_to_build": 2.65,
+   "runs": {
+    "ai_fast": {
+     "options": [
+      "Slow patching",
+      "Fast AI progress",
+      "Current results",
+      "No surge",
+      "One objective",
+      "No hardening",
+      "Peacetime"
+     ],
+     "versus": null
+    },
+    "no_ai": {
+     "options": [
+      "Slow patching",
+      "No AI progress",
+      "Current results",
+      "No surge",
+      "One objective",
+      "No hardening",
+      "Peacetime"
+     ],
+     "versus": "ai_fast"
+    },
+    "ai_slow": {
+     "options": [
+      "Slow patching",
+      "Slow AI progress",
+      "Current results",
+      "No surge",
+      "One objective",
+      "No hardening",
+      "Peacetime"
+     ],
+     "versus": null
+    },
+    "ai_fast_lessons": {
+     "options": [
+      "Slow patching",
+      "Fast AI progress",
+      "Results and lessons",
+      "No surge",
+      "One objective",
+      "No hardening",
+      "Peacetime"
+     ],
+     "versus": null
+    },
+    "surge_today": {
+     "options": [
+      "Slow patching",
+      "No AI progress",
+      "Current results",
+      "The 2025 surge",
+      "One objective",
+      "No hardening",
+      "Peacetime"
+     ],
+     "versus": null
+    },
+    "ai_reversal": {
+     "options": [
+      "Slow patching",
+      "AI progress, then costs rise",
+      "Current results",
+      "No surge",
+      "One objective",
+      "No hardening",
+      "Peacetime"
+     ],
+     "versus": null
+    },
+    "dispersed": {
+     "options": [
+      "Slow patching",
+      "Fast AI progress",
+      "Current results",
+      "No surge",
+      "Dispersed targets",
+      "No hardening",
+      "Peacetime"
+     ],
+     "versus": "dispersed_no_ai"
+    },
+    "dispersed_no_ai": {
+     "options": [
+      "Slow patching",
+      "No AI progress",
+      "Current results",
+      "No surge",
+      "Dispersed targets",
+      "No hardening",
+      "Peacetime"
+     ],
+     "versus": null
+    },
+    "defenders_ai": {
+     "options": [
+      "Slow patching",
+      "Fast AI progress",
+      "Current results",
+      "No surge",
+      "One objective",
+      "Defenders' AI",
+      "Peacetime"
+     ],
+     "versus": "ai_fast"
+    },
+    "wartime": {
+     "options": [
+      "Slow patching",
+      "No AI progress",
+      "Current results",
+      "No surge",
+      "One objective",
+      "No hardening",
+      "Wartime"
+     ],
+     "versus": null
+    },
+    "analysts_one_share": {
+     "options": [
+      "Slow patching",
+      "Fast AI progress",
+      "One AI share",
+      "Current results",
+      "No surge",
+      "One objective",
+      "No hardening",
+      "Peacetime"
+     ],
+     "versus": "ai_fast"
+    },
+    "slow_spy_planning": {
+     "options": [
+      "Slow patching",
+      "Fast AI progress",
+      "Slow planning of surveillance",
+      "Current results",
+      "No surge",
+      "One objective",
+      "No hardening",
+      "Peacetime"
+     ],
+     "versus": "ai_fast"
+    }
+   },
+   "start_options": [],
+   "structures": 1,
+   "proven_cumulative_outcomes": [
+    "capabilities_burned",
+    "total_attacks"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.proportional": 33,
+    "check.input": 12,
+    "check.state": 0,
+    "computed": 756,
+    "coupling": 26,
+    "coupling.flows": 91,
+    "entity": 28,
+    "entity.actor": 0,
+    "flow": 154,
+    "flow.in_allocation": 107,
+    "flow.outside_to_store": 34,
+    "flow.store_to_outside": 50,
+    "flow.store_to_store": 70,
+    "label": 1,
+    "mode": 3,
+    "outcome.cumulative": 5,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 63,
+    "outcome.proven_cumulative": 2,
+    "outcome.status.estimated": 61,
+    "outcome.status.unestimated": 3,
+    "outcome.stock": 59,
+    "parameter": 237,
+    "partition": 0,
+    "quantity.cumulative": 6,
+    "quantity.stock": 46,
+    "quantity.variable": 6,
+    "quantity.with_maximum": 51,
+    "quantity.with_size": 58,
+    "rule": 8,
+    "rule.choice": 0,
+    "rule.delay": 0,
+    "rule.each": 0,
+    "rule.extras": 1,
+    "rule.keep": 0,
+    "rule.named": 0,
+    "rule.once": 3,
+    "rule.outcomes1": 7,
+    "rule.outcomes2": 1,
+    "rule.trigger.discrete": 2,
+    "rule.trigger.timer": 6
+   },
+   "outcomes": {
+    "attacks_per_year": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "attacks_started": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "capabilities_held": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "targets_in_build": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "attacks_in_assessment": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "share_on_attacks": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "expert_ratio": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "value_to_cost": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "lesson_weight": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "plan_chance": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "best_plan_length": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "passes": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "misses": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "doctrine_length": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "doctrine_counts": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "plan_margin": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "attacks_rise": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "new_access": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "lessons_gained": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "lessons_lost": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "assessment_signal": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "spending": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "targets_hit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "targets_per_attack": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "cost_per_attack": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "cost_per_target": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "build_time": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "ai_share_of_work": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "compute_spending": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "within_attack_correlation": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "attribution_chance": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "planning_work": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "access_work": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "payload_work": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "execution_work": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "assessment_work": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "access_time": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "payload_time": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "assessment_duration": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "access_lessons": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "success_per_target": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "defender_attention": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "defender_hardening": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "shared_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "target_kinds": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "surveillance_accesses": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "accesses_used_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "accesses_burned": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "surveillance_implants": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "collected_take": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "surveillance_return": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "analysis_served": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "idle_operators": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "analysts_on_attacks": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "surveillance_planned": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "research_output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "capabilities_unused": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "capabilities_spying": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "capabilities_attacks": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "capabilities_burned": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "total_attacks": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/heat_wave_blackout/model.scn": {
+   "seconds_to_build": 0.65,
+   "runs": {
+    "early_refuses": {
+     "options": [
+      "Early response",
+      "AI refuses the stop order"
+     ],
+     "versus": null
+    },
+    "standard_refuses": {
+     "options": [
+      "Standard response",
+      "AI refuses the stop order"
+     ],
+     "versus": null
+    },
+    "delayed_refuses": {
+     "options": [
+      "Delayed response",
+      "AI refuses the stop order"
+     ],
+     "versus": null
+    },
+    "early_obeys": {
+     "options": [
+      "Early response",
+      "AI obeys the stop order"
+     ],
+     "versus": "early_refuses"
+    },
+    "standard_obeys": {
+     "options": [
+      "Standard response",
+      "AI obeys the stop order"
+     ],
+     "versus": "standard_refuses"
+    },
+    "delayed_obeys": {
+     "options": [
+      "Delayed response",
+      "AI obeys the stop order"
+     ],
+     "versus": "delayed_refuses"
+    },
+    "delayed_human": {
+     "options": [
+      "Delayed response",
+      "Human team"
+     ],
+     "versus": "delayed_refuses"
+    },
+    "delayed_powered_places": {
+     "options": [
+      "Delayed response",
+      "Cooled places with their own power"
+     ],
+     "versus": null
+    },
+    "delayed_open_gates": {
+     "options": [
+      "Delayed response",
+      "Cooled places with their own power and the gates opened"
+     ],
+     "versus": null
+    },
+    "delayed_more_protection": {
+     "options": [
+      "Delayed response",
+      "More backup cooling and private moves"
+     ],
+     "versus": null
+    },
+    "early_powered_places": {
+     "options": [
+      "Early response",
+      "Cooled places with their own power"
+     ],
+     "versus": null
+    }
+   },
+   "start_options": [
+    "Cooled places with their own power and the gates opened"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "casualties",
+    "confined_65_to_74.deaths",
+    "confined_75_and_over.deaths",
+    "confined_under_65.deaths",
+    "deaths",
+    "device_admissions",
+    "device_users_65_to_74.admissions",
+    "device_users_65_to_74.deaths",
+    "device_users_75_and_over.admissions",
+    "device_users_75_and_over.deaths",
+    "device_users_under_65.admissions",
+    "device_users_under_65.deaths",
+    "places.admissions",
+    "residents_65_to_74.deaths",
+    "residents_75_and_over.deaths",
+    "residents_under_65.deaths",
+    "supply.resident_hours",
+    "thermal_exposure"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.proportional": 22,
+    "check.input": 9,
+    "check.state": 0,
+    "computed": 96,
+    "coupling": 6,
+    "coupling.flows": 12,
+    "entity": 30,
+    "entity.actor": 0,
+    "flow": 72,
+    "flow.in_allocation": 60,
+    "flow.store_to_store": 72,
+    "label": 13,
+    "mode": 13,
+    "outcome.cumulative": 21,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 36,
+    "outcome.proven_cumulative": 18,
+    "outcome.status.estimated": 33,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 16,
+    "parameter": 112,
+    "partition": 13,
+    "quantity.cumulative": 50,
+    "quantity.stock": 41,
+    "quantity.variable": 12,
+    "quantity.with_maximum": 3,
+    "quantity.with_size": 103,
+    "rule": 40,
+    "rule.choice": 0,
+    "rule.delay": 1,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 9,
+    "rule.once": 16,
+    "rule.outcomes1": 38,
+    "rule.outcomes2": 1,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 4,
+    "rule.trigger.crossing.op.<=": 4,
+    "rule.trigger.discrete": 16,
+    "rule.trigger.timer": 20
+   },
+   "outcomes": {
+    "crews.work_left": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "crews.restoration_cost": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "supply.share_restored": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "supply.resident_hours": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "supply.people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "job.remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "places.admissions": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "residential.cost": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "non_residential.cost": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "residents_under_65.deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "residents_65_to_74.deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "residents_75_and_over.deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "device_users_under_65.deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "device_users_under_65.admissions": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "device_users_65_to_74.deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "device_users_65_to_74.admissions": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "device_users_75_and_over.deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "device_users_75_and_over.admissions": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "confined_under_65.deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "confined_65_to_74.deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "confined_75_and_over.deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "heatstroke_survivors": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "late_deaths": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "device_admissions": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "interruption_cost": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "support_cost": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "clinical_cost": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "clinical_demand": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "thermal_exposure": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "outstanding_work": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "device_failure_deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "care_harm": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unsheltered_harm": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "stock",
+     "status": "unestimated",
+     "nonnegative": false,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/iv_fluid_shortage/model.scn": {
+   "seconds_to_build": 0.31,
+   "runs": {
+    "near_ideal": {
+     "options": [
+      "Early response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "subpar": {
+     "options": [
+      "Standard response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "minimal": {
+     "options": [
+      "Limited response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "subpar_persistent": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "subpar_persistent_human": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "subpar_persistent"
+    },
+    "near_ideal_persistent": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "minimal_persistent": {
+     "options": [
+      "Limited response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "fluid_sent_elsewhere",
+    "high_risk_patients.casualties",
+    "high_risk_patients.deaths",
+    "high_risk_patients.rescued.output",
+    "high_risk_patients.serious_survivors",
+    "high_risk_patients.unresolved.output",
+    "manufacturer.hours_out.output",
+    "manufacturer.output_loss",
+    "other_care_reserve.deficit.output",
+    "other_care_reserve.shortage_days",
+    "people_needing_courses",
+    "procedure_loss",
+    "release_work_done",
+    "resuscitation_patients.unserved.output",
+    "resuscitation_reserve.deficit.output",
+    "timely_courses"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 2,
+    "allocation.proportional": 2,
+    "check.input": 5,
+    "check.state": 2,
+    "computed": 18,
+    "coupling": 1,
+    "coupling.flows": 2,
+    "entity": 12,
+    "entity.actor": 0,
+    "flow": 13,
+    "flow.in_allocation": 8,
+    "flow.store_to_store": 13,
+    "label": 11,
+    "mode": 10,
+    "outcome.cumulative": 16,
+    "outcome.lag": 2,
+    "outcome.nonnegative": 19,
+    "outcome.proven_cumulative": 16,
+    "outcome.status.estimated": 19,
+    "outcome.stock": 3,
+    "parameter": 29,
+    "partition": 2,
+    "quantity.cumulative": 13,
+    "quantity.stock": 10,
+    "quantity.with_size": 23,
+    "rule": 27,
+    "rule.choice": 0,
+    "rule.delay": 1,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 6,
+    "rule.once": 11,
+    "rule.outcomes1": 25,
+    "rule.outcomes2": 2,
+    "rule.trigger.crossing": 6,
+    "rule.trigger.crossing.op.<=": 6,
+    "rule.trigger.discrete": 13,
+    "rule.trigger.timer": 8
+   },
+   "outcomes": {
+    "manufacturer.hours_out.output": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "manufacturer.output_loss": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "manufacturer.recovery_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "resuscitation_reserve.deficit.output": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "other_care_reserve.deficit.output": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "other_care_reserve.shortage_days": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deliveries.shipping_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "resuscitation_patients.unserved.output": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "high_risk_patients.rescued.output": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "high_risk_patients.unresolved.output": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "high_risk_patients.deaths": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": true
+    },
+    "high_risk_patients.serious_survivors": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": true
+    },
+    "high_risk_patients.casualties": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "fluid_sent_elsewhere": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "procedure_loss": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "loss_bn": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_needing_courses": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "timely_courses": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "release_work_done": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/model.scn": {
+   "error": "ModelError: evidence/sources/sc43_bea2026_cagdp2_ak: Local record is not used by this scenario; evidence/sources/sc43_bea2026_cagdp2_ca: Local record is not used by this scenario; evidence/sources/sc43_bea2026_ca"
+  },
+  "scenarios/water_controls_wipe/variants/asheville/model.scn": {
+   "seconds_to_build": 0.53,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 1,
+    "allocation.proportional": 4,
+    "check.input": 2,
+    "check.state": 0,
+    "computed": 45,
+    "coupling": 3,
+    "coupling.flows": 7,
+    "entity": 10,
+    "entity.actor": 0,
+    "flow": 17,
+    "flow.in_allocation": 10,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 16,
+    "label": 10,
+    "mode": 14,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 54,
+    "partition": 9,
+    "quantity.cumulative": 22,
+    "quantity.stock": 11,
+    "quantity.variable": 6,
+    "quantity.with_size": 23,
+    "rule": 34,
+    "rule.choice": 0,
+    "rule.delay": 2,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 3,
+    "rule.once": 6,
+    "rule.outcomes1": 33,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 5,
+    "rule.trigger.crossing.op.<=": 5,
+    "rule.trigger.discrete": 15,
+    "rule.trigger.timer": 14
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/auburn/model.scn": {
+   "seconds_to_build": 0.52,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 1,
+    "allocation.proportional": 4,
+    "check.input": 2,
+    "check.state": 0,
+    "computed": 45,
+    "coupling": 3,
+    "coupling.flows": 7,
+    "entity": 10,
+    "entity.actor": 0,
+    "flow": 17,
+    "flow.in_allocation": 10,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 16,
+    "label": 10,
+    "mode": 14,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 54,
+    "partition": 9,
+    "quantity.cumulative": 22,
+    "quantity.stock": 11,
+    "quantity.variable": 6,
+    "quantity.with_size": 23,
+    "rule": 34,
+    "rule.choice": 0,
+    "rule.delay": 2,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 3,
+    "rule.once": 6,
+    "rule.outcomes1": 33,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 5,
+    "rule.trigger.crossing.op.<=": 5,
+    "rule.trigger.discrete": 15,
+    "rule.trigger.timer": 14
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/austin/model.scn": {
+   "seconds_to_build": 0.62,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 1,
+    "allocation.proportional": 4,
+    "check.input": 2,
+    "check.state": 0,
+    "computed": 45,
+    "coupling": 3,
+    "coupling.flows": 7,
+    "entity": 10,
+    "entity.actor": 0,
+    "flow": 17,
+    "flow.in_allocation": 10,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 16,
+    "label": 10,
+    "mode": 14,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 54,
+    "partition": 9,
+    "quantity.cumulative": 22,
+    "quantity.stock": 11,
+    "quantity.variable": 6,
+    "quantity.with_size": 23,
+    "rule": 34,
+    "rule.choice": 0,
+    "rule.delay": 2,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 3,
+    "rule.once": 6,
+    "rule.outcomes1": 33,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 5,
+    "rule.trigger.crossing.op.<=": 5,
+    "rule.trigger.discrete": 15,
+    "rule.trigger.timer": 14
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/camden/model.scn": {
+   "seconds_to_build": 0.56,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 1,
+    "allocation.proportional": 4,
+    "check.input": 2,
+    "check.state": 0,
+    "computed": 45,
+    "coupling": 3,
+    "coupling.flows": 7,
+    "entity": 10,
+    "entity.actor": 0,
+    "flow": 17,
+    "flow.in_allocation": 10,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 16,
+    "label": 10,
+    "mode": 14,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 54,
+    "partition": 9,
+    "quantity.cumulative": 22,
+    "quantity.stock": 11,
+    "quantity.variable": 6,
+    "quantity.with_size": 23,
+    "rule": 34,
+    "rule.choice": 0,
+    "rule.delay": 2,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 3,
+    "rule.once": 6,
+    "rule.outcomes1": 33,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 5,
+    "rule.trigger.crossing.op.<=": 5,
+    "rule.trigger.discrete": 15,
+    "rule.trigger.timer": 14
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/cape_may/model.scn": {
+   "seconds_to_build": 0.61,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 2,
+    "allocation.proportional": 4,
+    "check.input": 3,
+    "check.state": 0,
+    "computed": 73,
+    "coupling": 6,
+    "coupling.flows": 14,
+    "entity": 11,
+    "entity.actor": 0,
+    "flow": 30,
+    "flow.in_allocation": 18,
+    "flow.outside_to_store": 2,
+    "flow.store_to_store": 28,
+    "label": 11,
+    "mode": 22,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 78,
+    "partition": 12,
+    "quantity.cumulative": 35,
+    "quantity.stock": 16,
+    "quantity.variable": 11,
+    "quantity.with_size": 40,
+    "rule": 52,
+    "rule.choice": 0,
+    "rule.delay": 3,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 6,
+    "rule.once": 7,
+    "rule.outcomes1": 50,
+    "rule.outcomes3": 2,
+    "rule.trigger.crossing": 8,
+    "rule.trigger.crossing.op.<=": 8,
+    "rule.trigger.discrete": 28,
+    "rule.trigger.timer": 16
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/clayton/model.scn": {
+   "seconds_to_build": 0.46,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 1,
+    "allocation.proportional": 4,
+    "check.input": 2,
+    "check.state": 0,
+    "computed": 45,
+    "coupling": 3,
+    "coupling.flows": 7,
+    "entity": 10,
+    "entity.actor": 0,
+    "flow": 17,
+    "flow.in_allocation": 10,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 16,
+    "label": 10,
+    "mode": 14,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 54,
+    "partition": 9,
+    "quantity.cumulative": 22,
+    "quantity.stock": 11,
+    "quantity.variable": 6,
+    "quantity.with_size": 23,
+    "rule": 34,
+    "rule.choice": 0,
+    "rule.delay": 2,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 3,
+    "rule.once": 6,
+    "rule.outcomes1": 33,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 5,
+    "rule.trigger.crossing.op.<=": 5,
+    "rule.trigger.discrete": 15,
+    "rule.trigger.timer": 14
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/el_dorado/model.scn": {
+   "seconds_to_build": 0.59,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 2,
+    "allocation.proportional": 4,
+    "check.input": 3,
+    "check.state": 0,
+    "computed": 77,
+    "coupling": 6,
+    "coupling.flows": 14,
+    "entity": 12,
+    "entity.actor": 0,
+    "flow": 32,
+    "flow.in_allocation": 19,
+    "flow.outside_to_store": 2,
+    "flow.store_to_store": 30,
+    "label": 12,
+    "mode": 22,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 81,
+    "partition": 13,
+    "quantity.cumulative": 38,
+    "quantity.stock": 17,
+    "quantity.variable": 11,
+    "quantity.with_size": 41,
+    "rule": 53,
+    "rule.choice": 0,
+    "rule.delay": 3,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 6,
+    "rule.once": 8,
+    "rule.outcomes1": 51,
+    "rule.outcomes3": 2,
+    "rule.trigger.crossing": 9,
+    "rule.trigger.crossing.op.<=": 9,
+    "rule.trigger.discrete": 28,
+    "rule.trigger.timer": 16
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/jackson/model.scn": {
+   "seconds_to_build": 0.52,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 1,
+    "allocation.proportional": 4,
+    "check.input": 2,
+    "check.state": 0,
+    "computed": 45,
+    "coupling": 3,
+    "coupling.flows": 7,
+    "entity": 10,
+    "entity.actor": 0,
+    "flow": 17,
+    "flow.in_allocation": 10,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 16,
+    "label": 10,
+    "mode": 14,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 54,
+    "partition": 9,
+    "quantity.cumulative": 22,
+    "quantity.stock": 11,
+    "quantity.variable": 6,
+    "quantity.with_size": 23,
+    "rule": 34,
+    "rule.choice": 0,
+    "rule.delay": 2,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 3,
+    "rule.once": 6,
+    "rule.outcomes1": 33,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 5,
+    "rule.trigger.crossing.op.<=": 5,
+    "rule.trigger.discrete": 15,
+    "rule.trigger.timer": 14
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/jamestown/model.scn": {
+   "seconds_to_build": 0.87,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 3,
+    "allocation.proportional": 4,
+    "check.input": 4,
+    "check.state": 0,
+    "computed": 125,
+    "coupling": 9,
+    "coupling.flows": 21,
+    "entity": 17,
+    "entity.actor": 0,
+    "flow": 49,
+    "flow.in_allocation": 29,
+    "flow.outside_to_store": 3,
+    "flow.store_to_store": 46,
+    "label": 15,
+    "mode": 30,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 113,
+    "partition": 18,
+    "quantity.cumulative": 57,
+    "quantity.stock": 24,
+    "quantity.variable": 16,
+    "quantity.with_size": 60,
+    "rule": 73,
+    "rule.choice": 0,
+    "rule.delay": 4,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 9,
+    "rule.once": 11,
+    "rule.outcomes1": 70,
+    "rule.outcomes3": 3,
+    "rule.trigger.crossing": 14,
+    "rule.trigger.crossing.op.<=": 14,
+    "rule.trigger.discrete": 41,
+    "rule.trigger.timer": 18
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/juneau/model.scn": {
+   "seconds_to_build": 0.55,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 1,
+    "allocation.proportional": 4,
+    "check.input": 2,
+    "check.state": 0,
+    "computed": 45,
+    "coupling": 3,
+    "coupling.flows": 7,
+    "entity": 10,
+    "entity.actor": 0,
+    "flow": 17,
+    "flow.in_allocation": 10,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 16,
+    "label": 10,
+    "mode": 14,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 54,
+    "partition": 9,
+    "quantity.cumulative": 22,
+    "quantity.stock": 11,
+    "quantity.variable": 6,
+    "quantity.with_size": 23,
+    "rule": 34,
+    "rule.choice": 0,
+    "rule.delay": 2,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 3,
+    "rule.once": 6,
+    "rule.outcomes1": 33,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 5,
+    "rule.trigger.crossing.op.<=": 5,
+    "rule.trigger.discrete": 15,
+    "rule.trigger.timer": 14
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/lehigh/model.scn": {
+   "seconds_to_build": 0.58,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 2,
+    "allocation.proportional": 4,
+    "check.input": 3,
+    "check.state": 0,
+    "computed": 77,
+    "coupling": 6,
+    "coupling.flows": 14,
+    "entity": 12,
+    "entity.actor": 0,
+    "flow": 32,
+    "flow.in_allocation": 19,
+    "flow.outside_to_store": 2,
+    "flow.store_to_store": 30,
+    "label": 12,
+    "mode": 22,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 81,
+    "partition": 13,
+    "quantity.cumulative": 38,
+    "quantity.stock": 17,
+    "quantity.variable": 11,
+    "quantity.with_size": 41,
+    "rule": 53,
+    "rule.choice": 0,
+    "rule.delay": 3,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 6,
+    "rule.once": 8,
+    "rule.outcomes1": 51,
+    "rule.outcomes3": 2,
+    "rule.trigger.crossing": 9,
+    "rule.trigger.crossing.op.<=": 9,
+    "rule.trigger.discrete": 28,
+    "rule.trigger.timer": 16
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/los_angeles/model.scn": {
+   "seconds_to_build": 0.51,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 1,
+    "allocation.proportional": 4,
+    "check.input": 2,
+    "check.state": 0,
+    "computed": 45,
+    "coupling": 3,
+    "coupling.flows": 7,
+    "entity": 10,
+    "entity.actor": 0,
+    "flow": 17,
+    "flow.in_allocation": 10,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 16,
+    "label": 10,
+    "mode": 14,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 54,
+    "partition": 9,
+    "quantity.cumulative": 22,
+    "quantity.stock": 11,
+    "quantity.variable": 6,
+    "quantity.with_size": 23,
+    "rule": 34,
+    "rule.choice": 0,
+    "rule.delay": 2,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 3,
+    "rule.once": 6,
+    "rule.outcomes1": 33,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 5,
+    "rule.trigger.crossing.op.<=": 5,
+    "rule.trigger.discrete": 15,
+    "rule.trigger.timer": 14
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/lumberton/model.scn": {
+   "seconds_to_build": 0.54,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 1,
+    "allocation.proportional": 4,
+    "check.input": 2,
+    "check.state": 0,
+    "computed": 45,
+    "coupling": 3,
+    "coupling.flows": 7,
+    "entity": 10,
+    "entity.actor": 0,
+    "flow": 17,
+    "flow.in_allocation": 10,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 16,
+    "label": 10,
+    "mode": 14,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 54,
+    "partition": 9,
+    "quantity.cumulative": 22,
+    "quantity.stock": 11,
+    "quantity.variable": 6,
+    "quantity.with_size": 23,
+    "rule": 34,
+    "rule.choice": 0,
+    "rule.delay": 2,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 3,
+    "rule.once": 6,
+    "rule.outcomes1": 33,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 5,
+    "rule.trigger.crossing.op.<=": 5,
+    "rule.trigger.discrete": 15,
+    "rule.trigger.timer": 14
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/minot/model.scn": {
+   "seconds_to_build": 0.63,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 2,
+    "allocation.proportional": 4,
+    "check.input": 3,
+    "check.state": 0,
+    "computed": 77,
+    "coupling": 6,
+    "coupling.flows": 14,
+    "entity": 12,
+    "entity.actor": 0,
+    "flow": 31,
+    "flow.in_allocation": 18,
+    "flow.outside_to_store": 2,
+    "flow.store_to_store": 29,
+    "label": 11,
+    "mode": 22,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 81,
+    "partition": 13,
+    "quantity.cumulative": 35,
+    "quantity.stock": 17,
+    "quantity.variable": 11,
+    "quantity.with_size": 38,
+    "rule": 53,
+    "rule.choice": 0,
+    "rule.delay": 3,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 6,
+    "rule.once": 8,
+    "rule.outcomes1": 51,
+    "rule.outcomes3": 2,
+    "rule.trigger.crossing": 9,
+    "rule.trigger.crossing.op.<=": 9,
+    "rule.trigger.discrete": 28,
+    "rule.trigger.timer": 16
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/richmond/model.scn": {
+   "seconds_to_build": 0.57,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 1,
+    "allocation.proportional": 4,
+    "check.input": 2,
+    "check.state": 0,
+    "computed": 45,
+    "coupling": 3,
+    "coupling.flows": 7,
+    "entity": 10,
+    "entity.actor": 0,
+    "flow": 17,
+    "flow.in_allocation": 10,
+    "flow.outside_to_store": 1,
+    "flow.store_to_store": 16,
+    "label": 10,
+    "mode": 14,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 54,
+    "partition": 9,
+    "quantity.cumulative": 22,
+    "quantity.stock": 11,
+    "quantity.variable": 6,
+    "quantity.with_size": 23,
+    "rule": 34,
+    "rule.choice": 0,
+    "rule.delay": 2,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 3,
+    "rule.once": 6,
+    "rule.outcomes1": 33,
+    "rule.outcomes3": 1,
+    "rule.trigger.crossing": 5,
+    "rule.trigger.crossing.op.<=": 5,
+    "rule.trigger.discrete": 15,
+    "rule.trigger.timer": 14
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  },
+  "scenarios/water_controls_wipe/variants/washington_dc/model.scn": {
+   "seconds_to_build": 1.0,
+   "runs": {
+    "early_kept": {
+     "options": [
+      "Early response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "standard_kept": {
+     "options": [
+      "Standard response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_none": {
+     "options": [
+      "Delayed response",
+      "No hidden access"
+     ],
+     "versus": null
+    },
+    "delayed_kept_human": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "Human team"
+     ],
+     "versus": "delayed_kept"
+    },
+    "delayed_kept_aqueduct": {
+     "options": [
+      "Delayed response",
+      "Keeps hidden access",
+      "The Aqueduct only"
+     ],
+     "versus": null
+    }
+   },
+   "start_options": [
+    "Keeps hidden access"
+   ],
+   "structures": 2,
+   "proven_cumulative_outcomes": [
+    "hospital_hours_constrained",
+    "person_days_lost",
+    "rework_caused",
+    "unserved_volume"
+   ],
+   "proven_cumulative_same_in_every_run": true,
+   "counts": {
+    "allocation.priority": 5,
+    "allocation.proportional": 4,
+    "check.input": 6,
+    "check.state": 0,
+    "computed": 197,
+    "coupling": 15,
+    "coupling.flows": 35,
+    "entity": 23,
+    "entity.actor": 0,
+    "flow": 82,
+    "flow.in_allocation": 48,
+    "flow.outside_to_store": 5,
+    "flow.store_to_store": 77,
+    "label": 20,
+    "mode": 46,
+    "outcome.cumulative": 8,
+    "outcome.lag": 0,
+    "outcome.nonnegative": 15,
+    "outcome.proven_cumulative": 4,
+    "outcome.status.estimated": 12,
+    "outcome.status.unestimated": 4,
+    "outcome.stock": 8,
+    "parameter": 173,
+    "partition": 28,
+    "quantity.cumulative": 92,
+    "quantity.stock": 38,
+    "quantity.variable": 26,
+    "quantity.with_size": 95,
+    "rule": 113,
+    "rule.choice": 0,
+    "rule.delay": 6,
+    "rule.each": 0,
+    "rule.extras": 0,
+    "rule.keep": 0,
+    "rule.named": 15,
+    "rule.once": 17,
+    "rule.outcomes1": 108,
+    "rule.outcomes3": 5,
+    "rule.trigger.crossing": 24,
+    "rule.trigger.crossing.op.<=": 24,
+    "rule.trigger.discrete": 67,
+    "rule.trigger.timer": 22
+   },
+   "outcomes": {
+    "parts.spares.output": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "person_days_lost": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "unserved_volume": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "rework_caused": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_interrupted_now": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_under_advisory": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "restored_share": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "emergency_water_deficit": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": false,
+     "lag": false
+    },
+    "hospital_hours_constrained": {
+     "kind": "cumulative",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "work_remaining": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "economic_loss": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "deaths": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "casualties": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "wider_loss": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_beyond_week": {
+     "kind": "cumulative",
+     "status": "unestimated",
+     "nonnegative": true,
+     "lag": false
+    },
+    "people_followed": {
+     "kind": "stock",
+     "status": "estimated",
+     "nonnegative": true,
+     "lag": false
+    }
+   }
+  }
  }
 }

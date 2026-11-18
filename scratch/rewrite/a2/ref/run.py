@@ -31,7 +31,7 @@ from . import network
 from .errors import Diagnostic, NotCovered, Paused, RunFailed
 from .evaluate import Alloc, Bound, Cell, Coll, End, Ent, Ev, FlowRT, FormulaV, LegRT, NeedsSettle, Occ, Pending, Res, Scope, View, label
 from .model import After, Assign, Config, E, Field, Flow, Move, Start, Switch, Until, lit, number, show
-from .poly import plain
+from .poly import Irrational, plain
 
 _MISSING = object()
 BUILTIN = ('started', 'done', 'active')
@@ -280,7 +280,12 @@ class Run:
             times += [number(x) for _, _, at in self.config.report for x in at if number(x) > t]
         if horizon is not None:
             times.append(horizon)
-        return min(times) if times else None
+        if not times:
+            return None
+        first = min(times, key=float)
+        if isinstance(first, Irrational):
+            raise NotCovered(f'the next moment after t = {t} h is a contact at an irrational time (about {float(first):.6g} h)')
+        return first
 
     def _advance(self, nxt):
         """Move every store exactly to the time `nxt`, and account for what each flow carried."""
@@ -305,6 +310,12 @@ class Run:
             tx = Tx()
             self._execute(self.model.setup, tx, Scope())
             self._commit(tx)
+            if self.rules.setup == 'round_zero':  # round zero: settle, then the first trigger check
+                network.settle(self)
+                self._finish_delays()
+                self.phase = 'conditions'
+                self._conditions()
+                self._asserts(first=True)
         while True:
             self.rounds += 1
             if self.rounds > self.config.max_rounds:

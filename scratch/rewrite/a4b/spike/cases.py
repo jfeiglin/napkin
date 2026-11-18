@@ -68,6 +68,28 @@ def frozen_request():
     return found
 
 
+def frozen_formula():
+    """The request of `pipe` is a formula, `2 * this.factor`. A runs from 1 h to 2 h; `factor`
+    goes from 1 to 3 at 2.5 h. At 2.75 h A's request reads its last evaluated value, 2 L/h, and not
+    the 6 L/h that the formula gives now. B, started at 3 h, asks 6 L/h."""
+    deliver = Event(
+        'deliver',
+        params=(('hours', 0.0, 100.0),),
+        flows=(Flow('pipe', 'this.water', SINK, request=ref('this.factor') * 2.0),),
+        steps=(After(ref('hours')),),
+    )
+    tank = Template('Tank', fields={'factor': 1.0}, stores=(Store('water', 100.0),), events=(deliver,))
+    engine = Engine([tank])
+    engine.start_at(1.0, 'Tank', 'deliver', args=(1.0,))
+    engine.write_at(2.5, 'Tank', 'factor', 3.0)
+    engine.start_at(3.0, 'Tank', 'deliver', args=(1.0,))
+    found = {}
+    for at in (2.75, 3.5):
+        engine.run(at)
+        found[at] = float(engine.read(newest('this.deliver', 'pipe.request'), 'Tank'))
+    return found
+
+
 # ---- members that enter and leave a shared limit -----------------------------------------------------
 
 
@@ -178,6 +200,26 @@ def crossing_by_small_steps(step=1e-4):
         level += rate * step
         t += step
     return t
+
+
+def contact(start, strict=False):
+    """A tank that holds `start` L and stays there, with an alarm on `>= 16 L` (or `> 16 L` with
+    `strict`). The time of the alarm, nan if it never fires, or the message of the diagnostic.
+    The tolerance of the store is 1e-10 times its size (1.6e-9 L here): a level within it is at the
+    mark."""
+    alarm = Event(
+        'alarm',
+        steps=(After(0.0, (Assign('this.alarm_at', '=', T),)),),
+        triggers=(Trigger(ref('this.water') > 16.0 if strict else ref('this.water') >= 16.0, reset=('never',)),),
+    )
+    # A drain that asks nothing: the water can move between moments, so the alarm watches a crossing.
+    drain = Flow('drain', 'this.water', SINK, request=0.0)
+    tank = Template('Tank', fields={'alarm_at': math.nan}, stores=(Store('water', start),), flows=(drain,), events=(alarm,))
+    try:
+        engine = Engine([tank]).run(5.0)
+    except RunStopped as problem:
+        return str(problem)
+    return float(engine.read(ref('this.alarm_at'), 'Tank'))
 
 
 # ---- triggers and their resets ---------------------------------------------------------------------
@@ -329,6 +371,22 @@ def two_starts():
     return engine
 
 
+def budgets(max_occurrences=1_000_000, max_active=100_000, horizon=100.0):
+    """A clock that starts an inspection every hour; each inspection waits for a clearance that
+    never comes. The message of the budget that stops the run."""
+    inspect = Event(
+        'inspect',
+        steps=(Until(ref('this.cleared') >= 1.0),),
+        triggers=(Trigger(T >= 1.0, reset=('after', 1.0)),),
+    )
+    plant = Template('Plant', fields={'cleared': 0.0}, events=(inspect,))
+    try:
+        Engine([plant], max_occurrences=max_occurrences, max_active=max_active).run(horizon)
+    except RunStopped as problem:
+        return str(problem)
+    return 'no budget stopped the run'
+
+
 def main():
     rows, _ = flows_table_rows()
     print('Flows created during a run: count(occurrences), count(flows), sum(request), outflow.actual_rate')
@@ -337,6 +395,7 @@ def main():
     print('The newest occurrence: (pipe.request, pipe.actual_rate, started, any active)')
     for at, row in frozen_request().items():
         print(f'  t = {at} h: {row}')
+    print('A request that is a formula, frozen at the finish: newest pipe.request', frozen_formula())
     print('A shared limit of 3 L/h, 2 L/h asked by each: (t, the rates of the flows present, the total)')
     for row in shared_limit()[0]:
         print(f'  {row}')
@@ -349,6 +408,9 @@ def main():
         at, level = engine.read(ref('this.alarm_at'), 'Tank'), engine.read(ref('this.level_at_alarm'), 'Tank')
         print(f'The tank and its alarm at 16 L, forget_membership={forget}: fires at {at:g} h with {level:g} L')
     print(f'  by small steps, with no engine: {crossing_by_small_steps():.3f} h')
+    for start in (16.0 - 1e-12, 16.0 - 1e-6):
+        print(f'Contact: a tank still at {start!r} L, alarm on >= 16 L: fires at {contact(start)} h (nan: never)')
+    print('Contact: the same alarm on > 16 L:', contact(16.0, strict=True))
     engine = grinder().run(1.0)
     print('The grinder:', float(engine.read(ref('this.beans'), 'Grinder')), 'g after', int(engine.read(count_occ('this.refill'), 'Grinder')), 'refills')
     engine = clock().run(10.0)
@@ -372,6 +434,8 @@ def main():
     for at in (1.0, 1.75, 3.0):
         engine.run(at)
         print(f'Starved flow at {at} h: water {float(engine.read(ref("this.water"), "Tank")):g} L, flows {int(engine.read(n_flows("this.water"), "Tank"))}, rate {float(engine.read(actual("this.water"), "Tank")):g} L/h')
+    print('Budget max_active = 5:', budgets(max_active=5))
+    print('Budget max_occurrences = 5:', budgets(max_occurrences=5))
     engine = two_starts()
     print('Two starts at 1 h:', int(engine.read(count_occ('this.record'), 'Tank')), 'occurrences,', int(engine.read(count_done('this.record'), 'Tank')), 'done; newest amount', float(engine.read(newest('this.record', 'amount'), 'Tank')), '; delivered', float(engine.read(ref('this.delivered'), 'Tank')), '; since', float(engine.read(since('this.record'), 'Tank')))
 

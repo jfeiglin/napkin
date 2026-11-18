@@ -233,7 +233,9 @@ class Cond:
             found = np.logical_and(found, ev(at, env) <= env.t + TOL)
         if self.kind == 'crossing':
             level, mark = env.get(self.var), ev(self.value, env)
-            past = (level >= mark) if self.rising else (level <= mark)
+            # Contact: the level within the tolerance of its store counts as at the mark.
+            band = env.engine.stores.atol[env.store_ids(self.var)]
+            past = (level >= mark - band) if self.rising else (level <= mark + band)
             found = np.logical_and(found, np.logical_or(reached, past))
         return np.broadcast_to(found, env.shape).copy() if env.shape else bool(found)
 
@@ -1250,9 +1252,13 @@ class Engine:
             ends = other[moved]
             ends = ends[ends >= 0]
             if len(ends) >= BULK:
+                # The stores that this endpoint alone feeds (or drains), off their bounds, start
+                # again together; the others one by one.
                 simple = (stores.n_in[ends] + stores.n_out[ends] == 1) & (stores.rest[ends] == 0)
-                if simple.all():
-                    changed_many.append((ends, new[moved][other[moved] >= 0] * (1.0 if side == 'out' else -1.0)))
+                if np.count_nonzero(simple) >= BULK:
+                    rates = new[moved][other[moved] >= 0] * (1.0 if side == 'out' else -1.0)
+                    changed_many.append((ends[simple], rates[simple]))
+                    self.unrated.update(ends[~simple].tolist())
                     continue
             self.unrated.update(ends.tolist())
         for ends, rates in changed_many:

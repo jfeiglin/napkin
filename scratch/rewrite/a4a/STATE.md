@@ -33,7 +33,10 @@
 - `today` finished: lag report at one time on the table path, 35,000 routes: 202 s (350: 0.026 s, 3,500: 1.66 s): grows about as the square.
 - `t2_sets.py sparse OUT 30000 35000` (PYTHONPATH=base, load 1.5-3.5): integration 36.0 s (best of 3), 302 steps, 2,784 evaluations at 0.52 ms (1.4 s of it), 35 Jacobians, 72 factorizations, 368 MB; at its rest state 15,311 resting stores, stand-in sharing 40 ms, one LP 0.23 s; estimates with a sharing at each evaluation 111 s, with an LP 0.18 h. JSON in out/sparse_30000_35000.json.
 - Cause of 12.9 s at 3,000: threaded BLAS on the small n-by-3 products of Radau's collocation step, slowed by other load (profile: `ndarray.dot` 2.0 s of 4.0 s). With OPENBLAS_NUM_THREADS=1: 1.65 s total. A one-thread run at 30,000 writes out3/.
-- measure.py: NOT run end to end (main session runs it). Step 2 = check that it starts.
+- One BLAS thread at 30,000 (out3/, load 2.4): integration 30.7 s, sharing 33 ms, LP 0.20 s. Copied to results/sparse_30000_35000_one_blas_thread.json.
+- measure.py checked: `measure.py OUT --only t1-tiny --only t1-probe` makes the 3 copies and runs in 4 s, all right. NOT run end to end.
+- All measured JSON collected in results/ (20 files + one-thread sparse); `measure.py <folder> --tables` made results.md from them. Moving-kind components have no JSON (work/try11.py runs; numbers above only).
+- DONE 18:3x: FINDINGS.md complete (results T1.1-T3.3, layout note §3.4, rulings R-A4a-01..08, not covered). Only remaining: the main session runs `measure.py OUT` alone (1 to 2.5 h; set OPENBLAS_NUM_THREADS=1), then `measure.py OUT --tables`, and may copy OUT/results.md and the JSON here.
 
 ## Remaining, in order
 1. Finish task 2 numbers (components at 300 places for the three moving kinds, constant 1000, sparse at 30,000).

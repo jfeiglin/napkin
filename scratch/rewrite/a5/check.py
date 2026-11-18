@@ -899,6 +899,24 @@ def compare(old, new, old_structure, new_structure, report):
             if event.stages and other.stages and not same(event.stages[0][0], other.stages[0][0]):
                 report.error('event', f'{where}: expected the delay {text(event.stages[0][0])}; the new file has {text(other.stages[0][0])}')
             report.note('event', f'{where}: an event with outcomes; the check compares the lines of each outcome and the names that its conditions read, not the conditions')
+    # 5b. Order inside an outcome. The old compiler evaluates every line of an outcome from the state
+    # before the outcome; a new stage reads its own earlier writes (spec, "Reference behavior"). A line
+    # that reads a value that an earlier line of the same outcome writes changes its meaning.
+    for key, event in old.events.items():
+        bodies = [body for _, _, body in event.stages] + [body for _, body in event.cases]
+        for body in bodies:
+            written = set()
+            for statement in body:
+                if statement[0] == 'set':
+                    read = set(exprs.names_of(statement[3]))
+                    if statement[1] in ('+=', '-='):
+                        read.discard(statement[2])
+                    hit = read & written
+                    if hit:
+                        report.error('order', f'{key[0]}.{key[1]}: a line reads {sorted(hit)} after an earlier line of the same outcome writes it; the old file reads the value from before the outcome, a new stage reads the new one')
+                    written.add(statement[2])
+                elif statement[0] == 'move':
+                    written.update((statement[2], statement[3]))
     for key in new.events:
         if key not in old.events:
             report.note('event', f'the event {key[0]}.{key[1]} is new (an event that keeps the history of an outcome is new)')

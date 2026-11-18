@@ -98,8 +98,10 @@ class Poly:
             if disc < 0:
                 return None
             root = _sqrt(disc)
-            if root is None:
-                raise NotCovered('a contact at a time that is not a rational number')
+            if root is None:  # kept as a float: only an error if it turns out to be the next moment
+                d = float(disc) ** 0.5
+                later = [r for r in ((-float(c[1]) - d) / (2 * float(c[2])), (-float(c[1]) + d) / (2 * float(c[2]))) if r > 0]
+                return Irrational(min(later)) if later else None
             roots = [(-c[1] - root) / (2 * c[2]), (-c[1] + root) / (2 * c[2])]
             later = [r for r in roots if r > 0]
             return min(later) if later else None
@@ -119,3 +121,34 @@ def _sqrt(q):
     """The exact square root of a nonnegative fraction, or None when it is not rational."""
     n, d = isqrt(q.numerator), isqrt(q.denominator)
     return Fraction(n, d) if n * n == q.numerator and d * d == q.denominator else None
+
+
+class Irrational:
+    """A contact time that is not a rational number. It may stand among the stops; if it is the
+    earliest, the run cannot go on exactly (`Run._next_time` says so)."""
+
+    def __init__(self, x):
+        self.x = x
+
+    def __repr__(self):
+        return f'irrational({self.x})'
+
+    def __float__(self):
+        return self.x
+
+    def __lt__(self, o):
+        return self.x < float(o)
+
+    def __gt__(self, o):
+        return self.x > float(o)
+
+    def __le__(self, o):
+        return self.x <= float(o)
+
+    def __ge__(self, o):
+        return self.x >= float(o)
+
+    def __add__(self, o):
+        return Irrational(self.x + float(o))
+
+    __radd__ = __add__

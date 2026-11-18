@@ -477,3 +477,94 @@ Columns: the two `examples/` models; `cyber_learning_loop`; `heat_wave_blackout`
 | `name.read.thing_by_name.in_event` | A member of another thing, read by that thing's name (`relief.status`), in a trigger or a line of an event | 92 | 1 | 1 | 54 | 23 | 13 |  |  | examples/reservoir:44, cyber_learning_loop:139 |
 | `name.read.via_link` | A name read through a link of the thing (`utility.service`, `buys.rate`) | 35 |  |  | 14 |  | 21 |  |  | heat_wave_blackout:728, heat_wave_blackout:728 |
 
+## What the old compiler makes of each model
+
+One row for each entry file, from `build_model`. The counts are of the compiled model, with each instance of a template written out. "Stock", "tally" and "number state" are what the compiler found for each number var (`Quantity.kind`: `stock`, `cumulative`, `variable`). The trigger kinds are those of `Trigger.kind`.
+
+| Model | Things | Inputs | Stocks | Tallies | Number states | Named states | Formulas | Flows | in a share | Shares (order / proportional) | Flows with legs | Rules | discrete / timer / crossing / face | Outputs | cumulative / level | Proved cumulative | Unestimated | Sum checks | Runs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `examples/piano_tuners` | 1 | 3 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 0 / 0 | 0 | 0 | 0 / 0 / 0 / 0 | 1 | 1 / 0 | 1 | 0 | 0 | 1 |
+| `examples/reservoir` | 2 | 4 | 1 | 2 | 0 | 1 | 0 | 2 | 0 | 0 / 0 | 0 | 1 | 0 / 0 / 1 / 0 | 2 | 2 / 0 | 2 | 0 | 0 | 1 |
+| `cyber_learning_loop` | 28 | 237 | 46 | 6 | 6 | 3 | 756 | 154 | 107 | 0 / 33 | 26 | 8 | 2 / 6 / 0 / 0 | 64 | 5 / 59 | 2 | 3 | 0 | 12 |
+| `heat_wave_blackout` | 30 | 112 | 41 | 50 | 12 | 13 | 96 | 72 | 60 | 0 / 22 | 6 | 40 | 16 / 20 / 4 / 0 | 37 | 21 / 16 | 18 | 4 | 13 | 11 |
+| `iv_fluid_shortage` | 12 | 29 | 10 | 13 | 0 | 10 | 18 | 13 | 8 | 2 / 2 | 1 | 27 | 13 / 8 / 6 / 0 | 19 | 16 / 3 | 16 | 0 | 2 | 7 |
+| `water` | does not build alone: ModelError: evidence/sources/sc43_bea2026_cagdp2_ak: Local record is not used by this scenario; evidence/sources/sc43_bea2026_cagdp2_ca: Local record is not used by this scenario; evidence/sources/sc43_bea2026_ca | | | | | | | | | | | | | | | | | | |
+| `water/variants/asheville` | 10 | 54 | 11 | 22 | 6 | 14 | 45 | 17 | 10 | 1 / 4 | 3 | 34 | 15 / 14 / 5 / 0 | 16 | 8 / 8 | 4 | 4 | 9 | 5 |
+| `water/variants/auburn` | 10 | 54 | 11 | 22 | 6 | 14 | 45 | 17 | 10 | 1 / 4 | 3 | 34 | 15 / 14 / 5 / 0 | 16 | 8 / 8 | 4 | 4 | 9 | 5 |
+| `water/variants/austin` | 10 | 54 | 11 | 22 | 6 | 14 | 45 | 17 | 10 | 1 / 4 | 3 | 34 | 15 / 14 / 5 / 0 | 16 | 8 / 8 | 4 | 4 | 9 | 5 |
+| `water/variants/camden` | 10 | 54 | 11 | 22 | 6 | 14 | 45 | 17 | 10 | 1 / 4 | 3 | 34 | 15 / 14 / 5 / 0 | 16 | 8 / 8 | 4 | 4 | 9 | 5 |
+| `water/variants/cape_may` | 11 | 78 | 16 | 35 | 11 | 22 | 73 | 30 | 18 | 2 / 4 | 6 | 52 | 28 / 16 / 8 / 0 | 16 | 8 / 8 | 4 | 4 | 12 | 5 |
+| `water/variants/clayton` | 10 | 54 | 11 | 22 | 6 | 14 | 45 | 17 | 10 | 1 / 4 | 3 | 34 | 15 / 14 / 5 / 0 | 16 | 8 / 8 | 4 | 4 | 9 | 5 |
+| `water/variants/el_dorado` | 12 | 81 | 17 | 38 | 11 | 22 | 77 | 32 | 19 | 2 / 4 | 6 | 53 | 28 / 16 / 9 / 0 | 16 | 8 / 8 | 4 | 4 | 13 | 5 |
+| `water/variants/jackson` | 10 | 54 | 11 | 22 | 6 | 14 | 45 | 17 | 10 | 1 / 4 | 3 | 34 | 15 / 14 / 5 / 0 | 16 | 8 / 8 | 4 | 4 | 9 | 5 |
+| `water/variants/jamestown` | 17 | 113 | 24 | 57 | 16 | 30 | 125 | 49 | 29 | 3 / 4 | 9 | 73 | 41 / 18 / 14 / 0 | 16 | 8 / 8 | 4 | 4 | 18 | 5 |
+| `water/variants/juneau` | 10 | 54 | 11 | 22 | 6 | 14 | 45 | 17 | 10 | 1 / 4 | 3 | 34 | 15 / 14 / 5 / 0 | 16 | 8 / 8 | 4 | 4 | 9 | 5 |
+| `water/variants/lehigh` | 12 | 81 | 17 | 38 | 11 | 22 | 77 | 32 | 19 | 2 / 4 | 6 | 53 | 28 / 16 / 9 / 0 | 16 | 8 / 8 | 4 | 4 | 13 | 5 |
+| `water/variants/los_angeles` | 10 | 54 | 11 | 22 | 6 | 14 | 45 | 17 | 10 | 1 / 4 | 3 | 34 | 15 / 14 / 5 / 0 | 16 | 8 / 8 | 4 | 4 | 9 | 5 |
+| `water/variants/lumberton` | 10 | 54 | 11 | 22 | 6 | 14 | 45 | 17 | 10 | 1 / 4 | 3 | 34 | 15 / 14 / 5 / 0 | 16 | 8 / 8 | 4 | 4 | 9 | 5 |
+| `water/variants/minot` | 12 | 81 | 17 | 35 | 11 | 22 | 77 | 31 | 18 | 2 / 4 | 6 | 53 | 28 / 16 / 9 / 0 | 16 | 8 / 8 | 4 | 4 | 13 | 5 |
+| `water/variants/richmond` | 10 | 54 | 11 | 22 | 6 | 14 | 45 | 17 | 10 | 1 / 4 | 3 | 34 | 15 / 14 / 5 / 0 | 16 | 8 / 8 | 4 | 4 | 9 | 5 |
+| `water/variants/washington_dc` | 23 | 173 | 38 | 92 | 26 | 46 | 197 | 82 | 48 | 5 / 4 | 15 | 113 | 67 / 22 / 24 / 0 | 16 | 8 / 8 | 4 | 4 | 28 | 6 |
+
+### The outputs that the old compiler proved cumulative
+
+`check.py` lists these for a translation. The new compiler must prove that each of them never falls.
+
+- examples/piano_tuners: `tunings_done`
+- examples/reservoir: `reservoir.risk_time.output`, `reservoir.spilled.output`
+- cyber_learning_loop: `capabilities_burned`, `total_attacks`
+- heat_wave_blackout: `casualties`, `confined_65_to_74.deaths`, `confined_75_and_over.deaths`, `confined_under_65.deaths`, `deaths`, `device_admissions`, `device_users_65_to_74.admissions`, `device_users_65_to_74.deaths`, `device_users_75_and_over.admissions`, `device_users_75_and_over.deaths`, `device_users_under_65.admissions`, `device_users_under_65.deaths`, `places.admissions`, `residents_65_to_74.deaths`, `residents_75_and_over.deaths`, `residents_under_65.deaths`, `supply.resident_hours`, `thermal_exposure`
+- iv_fluid_shortage: `fluid_sent_elsewhere`, `high_risk_patients.casualties`, `high_risk_patients.deaths`, `high_risk_patients.rescued.output`, `high_risk_patients.serious_survivors`, `high_risk_patients.unresolved.output`, `manufacturer.hours_out.output`, `manufacturer.output_loss`, `other_care_reserve.deficit.output`, `other_care_reserve.shortage_days`, `people_needing_courses`, `procedure_loss`, `release_work_done`, `resuscitation_patients.unserved.output`, `resuscitation_reserve.deficit.output`, `timely_courses`
+- water/variants/asheville and 15 more: `hospital_hours_constrained`, `person_days_lost`, `rework_caused`, `unserved_volume`
+
+### Other keys of the compiled models, summed over the entry files
+
+| Key | Sum |
+| --- | ---: |
+| `allocation.priority` | 28 |
+| `allocation.proportional` | 121 |
+| `check.input` | 68 |
+| `check.state` | 2 |
+| `computed` | 1946 |
+| `coupling` | 111 |
+| `coupling.flows` | 287 |
+| `entity` | 260 |
+| `entity.actor` | 1 |
+| `flow` | 668 |
+| `flow.in_allocation` | 426 |
+| `flow.outside_to_store` | 61 |
+| `flow.store_to_outside` | 50 |
+| `flow.store_to_store` | 557 |
+| `label` | 206 |
+| `mode` | 331 |
+| `outcome.cumulative` | 173 |
+| `outcome.lag` | 2 |
+| `outcome.nonnegative` | 361 |
+| `outcome.proven_cumulative` | 103 |
+| `outcome.status.estimated` | 308 |
+| `outcome.status.unestimated` | 71 |
+| `outcome.stock` | 206 |
+| `parameter` | 1532 |
+| `partition` | 202 |
+| `quantity.cumulative` | 587 |
+| `quantity.stock` | 338 |
+| `quantity.variable` | 164 |
+| `quantity.with_maximum` | 54 |
+| `quantity.with_size` | 734 |
+| `rule` | 813 |
+| `rule.choice` | 1 |
+| `rule.delay` | 44 |
+| `rule.each` | 0 |
+| `rule.extras` | 1 |
+| `rule.keep` | 0 |
+| `rule.named` | 93 |
+| `rule.once` | 150 |
+| `rule.outcomes1` | 781 |
+| `rule.outcomes2` | 5 |
+| `rule.outcomes3` | 27 |
+| `rule.trigger.crossing` | 134 |
+| `rule.trigger.crossing.op.<=` | 133 |
+| `rule.trigger.crossing.op.>=` | 1 |
+| `rule.trigger.discrete` | 401 |
+| `rule.trigger.timer` | 278 |
+

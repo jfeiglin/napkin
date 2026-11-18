@@ -19,7 +19,8 @@ What it translates: the scenario line, `use`, things and instances, links, input
 formulas, named states and number vars with their ranges and sizes, flows of one pair, status lines,
 asserts (a sum check becomes an interval), outputs (a named formula and an entry of `report:`),
 options, runs, notes, records and their claims, and the events that have one trigger and one set of
-lines. What it leaves: flows with several pairs, shares, events with outcomes or a delay, `versus`,
+lines (a share becomes `outflow.capacity` and `outflow.allocation`). What it leaves: flows with several
+pairs, events with outcomes, `versus`,
 and whatever needs a decision (`exprs.Hand`).
 """
 

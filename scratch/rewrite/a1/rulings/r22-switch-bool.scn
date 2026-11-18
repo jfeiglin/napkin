@@ -1,0 +1,5 @@
+switch this.safe:
+    true:
+        this.repair.start()
+    else:
+        this.resume.start()
