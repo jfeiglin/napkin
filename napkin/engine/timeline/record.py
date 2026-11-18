@@ -40,15 +40,17 @@ from ..continuous.system import EVENT_TIME_TOLERANCE_H
 from .plan import FORMULA, RATE, name_of
 
 DEGREE = 8
-# The points of a fit on [-1, 1], and the points between them at which a fit is checked, with both
-# ends of the piece.
+# The points of a fit on [-1, 1], and the points between them at which a fit is checked, with the
+# start of the piece. The end of a piece is the start of the next, whose value can jump there.
 _NODES = np.cos(np.pi * (np.arange(DEGREE + 1) + 0.5) / (DEGREE + 1))[::-1]
-_CHECKS = np.cos(np.pi * np.arange(DEGREE + 2) / (DEGREE + 1))[::-1]
+_CHECKS = np.cos(np.pi * np.arange(1, DEGREE + 2) / (DEGREE + 1))[::-1]
 # A piece shorter than this, in hours, is not cut again: it holds what the fit gives.
 SHORTEST = 1e-9
 # A fit holds a value to its tolerance, or to this part of its largest size in the piece, which
 # the roundoff of a value far from zero allows.
 RELATIVE = 1e-12
+# The most cuts of one fit: after them, each piece holds what its fit gives.
+MOST = 4096
 
 
 @dataclass(frozen=True)
@@ -77,13 +79,13 @@ def fitted(values, start, end, tolerance):
     number for each value, which a fit may widen to `RELATIVE` of the value's largest size in the
     piece. A value that the series holds as a line has a number for its rate."""
     found = [[] for _ in tolerance]
-    pending = [(start, end)]
+    pending, cuts = [(start, end)], 0
     while pending:
         a, b = pending.pop()
         nodes = values(_times(a, b, _NODES))
         coefficients = chebyshev.chebfit(_NODES, nodes, DEGREE)
         allowed = np.maximum(tolerance, RELATIVE * np.max(np.abs(nodes), axis=0))
-        if b - a > SHORTEST:
+        if b - a > SHORTEST and cuts < MOST:
             checks = values(_times(a, b, _CHECKS))
             first = checks[0]
             allowed = np.maximum(allowed, RELATIVE * np.max(np.abs(checks), axis=0))
@@ -92,6 +94,7 @@ def fitted(values, start, end, tolerance):
             if np.any(np.abs(made - checks) > allowed):
                 middle = 0.5 * (a + b)
                 pending += [(middle, b), (a, middle)]
+                cuts += 1
                 continue
         else:
             first = values(np.array([a]))[0]
@@ -201,6 +204,9 @@ class Recorder:
         for name, value in plan.values.items():
             if value.kind == RATE or name in plan.moving:
                 pieces = [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
+                if not pieces and name in self.constants:
+                    # A store whose first segment failed holds its start value.
+                    pieces = [(0.0, self.constants[name], 0.0)]
             elif value.kind == FORMULA:
                 continue
             else:
@@ -241,11 +247,21 @@ class Recorder:
                     raise ExpressionError(found.reason)
             return evaluate(value.node, env, plan.units)
 
+        # The size of the formula, as a store's: the largest magnitude that it takes at a time at
+        # which what it reads has a piece.
+        size = 1.0
+        if not value.boolean:
+            for time in times:
+                try:
+                    size = max(size, abs(float(at(time))))
+                except (ExpressionError, ArithmeticError, ValueError, LookupError):
+                    continue
+        tolerance = np.array([plan.numerics.atol_factor * size])
         pieces = []
         for a, b in pairwise(bounds):
             try:
                 first = at(a)
-            except (ExpressionError, ArithmeticError, ValueError) as problem:
+            except (ExpressionError, ArithmeticError, ValueError, LookupError) as problem:
                 pieces.append((a, Unavailable(str(problem)), 0.0))
                 continue
             if b <= a:
@@ -253,11 +269,9 @@ class Recorder:
             elif value.boolean:
                 pieces += self._switches(at, a, b, bool(first))
             else:
-                scale = max(1.0, abs(float(first)))
-                tolerance = np.array([plan.numerics.atol_factor * scale])
                 try:
                     found = fitted(lambda ts: np.array([[float(at(t))] for t in ts]), a, b, tolerance)[0]
-                except (ExpressionError, ArithmeticError, ValueError) as problem:
+                except (ExpressionError, ArithmeticError, ValueError, LookupError) as problem:
                     found = [(a, Unavailable(str(problem)), 0.0)]
                 pieces += found
         return pieces

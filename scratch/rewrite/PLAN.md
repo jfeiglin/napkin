@@ -26,7 +26,7 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] the oracle, phase 2: it runs all 65 programs of `tests/program/examples.py`, and each gives its expected results
 - [ ] S0 skeleton (`briefs/s0-front.md`, `briefs/s0-engine.md`); the dormant list is filled (6 folders, 110 files)
   - [x] the front end: the whole notation parses and formats; the subset of S0 lowers (`tests/language/`, 197 tests); `examples/piano_tuners` in the new language
-  - [ ] the engine
+  - [x] the engine: it reads programs only; `napkin.engine.run` and `read`; the key of a stored run; five engine test files ported (`b1/s0-engine/STATE.md`)
   - [ ] the switch: `napkin run`, `fmt` and `compile` on the new path; delete the old compiler; the closure list and the key of a stored run; the contract changes that the two tracks asked for (`b1/s0-front/STATE.md`)
 - [ ] S1 templates, tables and collections
 - [ ] S2 the flow network and sharing
