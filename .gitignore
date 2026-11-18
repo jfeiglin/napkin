@@ -21,3 +21,6 @@ venv/
 dist/
 *.egg-info/
 /build/
+
+# The worktrees of the agents of a Claude Code session:
+/.claude/worktrees/
