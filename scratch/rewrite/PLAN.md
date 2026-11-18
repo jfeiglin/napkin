@@ -28,7 +28,7 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] the front end: the whole notation parses and formats; the subset of S0 lowers (`tests/language/`, 197 tests); `examples/piano_tuners` in the new language
   - [x] the engine: it reads programs only; `napkin.engine.run` and `read`; the key of a stored run; five engine test files ported (`b1/s0-engine/STATE.md`)
   - [x] the switch: `napkin run`, `fmt` and `compile` on the new path; the old compiler deleted (6,097 lines); the contract changes of both tracks (`b1/s0-switch/STATE.md`). 2,044 live tests pass
-- [ ] S1 templates, tables and collections
+- [ ] S1 templates, tables and collections: two tracks at work (`briefs/s1.md`)
 - [ ] S2 the flow network and sharing
 - [ ] S3 reversible flows and flows with legs
 - [ ] S4 occurrences and time
