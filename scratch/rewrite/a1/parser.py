@@ -78,6 +78,7 @@ RESERVED = frozenset(
         'event',
         'solver',
         'enum',
+        'bool',
     }
 )
 # Words with a meaning in one position only. Each stays a valid name: the next token decides.
@@ -112,8 +113,8 @@ RETIRED = {
     'output': 'any named value can be reported: name the calculation with an ordinary binding',
     'share': 'sharing belongs to the endpoint: `outflow.allocation = priority(a, b)` under the stock',
 }
-# The types that are words. `enum` and `formula` are reserved; these three name a type after a colon
-# and can still name a value.
+# The types that are words. `bool`, `enum` and `formula` are reserved. `text` and `number` name a type
+# after a colon and can still name a value (a present model has a field `number`).
 TYPE_WORDS = frozenset({'bool', 'text', 'number'})
 # The functions: a name before `(` is a call of one of these, and nothing else is a call.
 FUNCTIONS = frozenset(
@@ -282,7 +283,9 @@ def joins(token, last=False):
 
 
 class Lexer:
-    def __init__(self, text):
+    def __init__(self, text, alone=False):
+        # `alone`: the text is one expression on its own, which can start with a sign or with `<`.
+        self.alone = alone
         if '\t' in text:
             number = text[: text.index('\t')].count('\n') + 1
             raise SyntaxProblem('a tab is not allowed: each level of nesting is four spaces', number)
@@ -312,8 +315,11 @@ class Lexer:
             tokens, i, comments = self.logical(i, spaces)
             # No line of the language starts with an operator that joins two values, a sign included.
             # CHANGED: `else:` starts the last case of a `switch`.
-            if tokens and joins(tokens[0]) and not (
-                tokens[0].is_name('else') and len(tokens) > 1 and tokens[1].is_op(':')
+            if (
+                tokens
+                and joins(tokens[0])
+                and not self.alone
+                and not (tokens[0].is_name('else') and len(tokens) > 1 and tokens[1].is_op(':'))
             ):
                 first = tokens[0]
                 raise SyntaxProblem(
@@ -515,9 +521,9 @@ class Lexer:
             return token, i, row, close + 1
 
 
-def lines(text):
+def lines(text, alone=False):
     """The lines of a file, in order: logical lines, comments and empty lines."""
-    return Lexer(text).lines()
+    return Lexer(text, alone).lines()
 
 
 # ---- the kinds of expression node that `napkin.core.expr` does not have ------------------------------
@@ -698,8 +704,13 @@ def _write(node):
     if isinstance(node, expr.Binary):
         own = LEVELS[node.op]
         if node.op == 'pow':  # the base is a value with no operator; the exponent can have a sign
-            return own, f'{write(node.left, ATOM)} ** {write(node.right, FACTOR)}'
-        return own, f'{write(node.left, own)} {expr.SYMBOLS[node.op]} {write(node.right, own + 1)}'
+            base = f'({write(node.left)})' if isinstance(node.left, Quantity) else write(node.left, ATOM)
+            return own, f'{base} ** {write(node.right, FACTOR)}'
+        right = write(node.right, own + 1)
+        if node.op in ('mul', 'div') and isinstance(node.right, Quantity):
+            # `x / 2 h` reads as `x / (2 h)`; the brackets say so to a reader, as the spec writes them.
+            right = f'({right})'
+        return own, f'{write(node.left, own)} {expr.SYMBOLS[node.op]} {right}'
     if isinstance(node, expr.Compare):
         written = write(node.operands[0], ARITH)
         for op, operand in zip(node.ops, node.operands[1:]):
@@ -1223,6 +1234,13 @@ class Expressions:
                 continue
             if token.is_name('is'):
                 self.c.fail('equality is == and inequality is !=: `is` is no longer a word of the language')
+            if token.is_op('->', '<->'):
+                self.c.fail(
+                    f'{token.value} joins the two ends of a flow (`flow name: source {token.value} sink`): it is '
+                    f'no part of an expression'
+                )
+            if token.is_op('='):
+                self.c.fail('one = on a line: equality inside an expression is ==')
             if token.is_name('not') and self.c.peek(1) is not None and self.c.peek(1).is_name('in'):
                 self.c.fail('there is no `not in`: write not (x in [lo, hi])')
             if token.is_name('in') and bare_in:
@@ -1287,6 +1305,8 @@ class Expressions:
 
     def postfix(self):
         node = self.primary()
+        if self.c.at_op('['):
+            self.c.fail('a value has no index: a member of a collection is read by its key, c.at(key)')
         while self.c.at_op('.'):
             if self.started is not None:
                 self.c.fail('nothing follows .start(...): it starts an occurrence and gives no value')
@@ -1838,6 +1858,8 @@ class Parser:
                 cursor.fail(f'{word} belongs to the body of an event: name = event(...):')
             elif word == 'record':
                 cursor.fail('a record is declared at the top level, and a line cites it with @name')
+            elif word == 'event':
+                cursor.fail('an event is a value now: name = event(parameters): with its steps under it')
             elif word in RETIRED and second is not None and second.kind == 'name':
                 cursor.fail(f'{word} is no longer a word of the language: {RETIRED[word]}')
             elif word in ('readonly', 'input'):
@@ -1974,7 +1996,10 @@ class Parser:
                 cursor.fail('SOURCE stands on the left of -> and SINK on the right', arrow)
         kind = 'reversible' if arrow.value == '<->' else 'directed'
         node = FlowDecl(name, kind, source, sink, evidence=self.cites(cursor), line=line.number)
-        cursor.end()
+        cursor.end(
+            'the line of a flow holds its two ends: its rate and its limit are `request = ...` and '
+            '`capacity = ...` on lines under it'
+        )
 
         def under(child):
             if child.first.is_name('flow'):
@@ -2067,6 +2092,8 @@ class Parser:
                 node.locals.append(self.declaration(line, 'event'))
             elif word == 'input':
                 cursor.fail('an event has no input: its parameters are in event(...), and an input belongs to an entity')
+            elif word == 'at' and second is not None and second.kind in ('name', 'number'):
+                cursor.fail('there is no `at T:` step in this version: a step waits a duration, `after D:`')
             else:
                 cursor.fail(EVENT)
 
@@ -2399,7 +2426,13 @@ class Parser:
     def check(self, line):
         cursor = Cursor(line)
         cursor.take()
+        if cursor.at_name('initially'):
+            following = cursor.peek(1)
+            if following is not None and not following.is_op('.', '(') and following.kind != 'op':
+                cursor.fail('there is no `assert initially` in this version: assert over the inputs that give the start')
         node = Check(self.expression(cursor), line=line.number)
+        if cursor.at_name('within'):
+            cursor.fail('there is no `within`: a tolerance is a closed interval, assert x in [lo, hi]')
         node.evidence = self.cites(cursor)
         cursor.end()
         self.described(line, node)
@@ -2454,7 +2487,7 @@ def parse(text, context='file', loose=False):
 
 
 def one_line(text, what):
-    found = [line for line in lines(text) if line.kind == 'line']
+    found = [line for line in lines(text, alone=True) if line.kind == 'line']
     if len(found) != 1:
         raise SyntaxProblem(f'{what} is one line', 1)
     return found[0]
@@ -2499,6 +2532,18 @@ def parse_inline(kind, text):
         return parse_type(text)
     if kind == 'range':
         return parse_range(text)
+    if kind == 'objective':
+        reader = Parser(text, loose=True)
+        node = SolverDecl('(fragment)')
+        for line in reader.top:
+            reader.solver_objective(line, node)
+        return node.objective
+    if kind == 'trigger':
+        # A line of the body of a trigger: it is read under `when true:`.
+        body = '\n'.join('    ' + row for row in text.split('\n'))
+        event = parse(f'when true:\n{body}', 'event', loose=True).items[0]
+        trigger = event.triggers[0]
+        return [*trigger.captures, *trigger.starts, *([trigger.reset] if trigger.reset else [])]
     if kind not in KINDS:
         raise ValueError(f'no kind {kind!r}')
     found = parse(text, KINDS[kind], loose=True)
@@ -2564,7 +2609,9 @@ def dump(node, depth=0):
         value = getattr(node, item.name)
         if item.name == 'line' or value is None or value == [] or value == ():
             continue
-        if isinstance(value, list):
+        if is_dataclass(value) and isinstance(value, (Reset,)):
+            under.append((item.name, [value]))
+        elif isinstance(value, list):
             if all(isinstance(entry, (Cite, InPlace, Param, str)) for entry in value):
                 head.append(f'{item.name}=[{", ".join(show(entry) for entry in value)}]')
             elif all(isinstance(entry, tuple) for entry in value):
