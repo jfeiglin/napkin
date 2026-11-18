@@ -15,7 +15,9 @@
    the same node. The random trees come from `hypothesis`.
 7. `test_core`: an expression of the parser, lowered, goes through the unit rules and the evaluator of
    `napkin.core` at the base commit.
-8. `test_python_keywords`: what `napkin.core` does with a name that Python keeps.
+8. `test_catalogue_expressions`: each expression of the present models, read by today's route (Python
+   text and `ast`) and by the new parser, is the same node of `napkin.core.expr`.
+9. `test_python_keywords`: what `napkin.core` does with a name that Python keeps.
 """
 
 from __future__ import annotations
@@ -395,7 +397,96 @@ def test_core():
     )
 
 
-# ---- 8. names that Python keeps ---------------------------------------------------------------------------
+# ---- 8. the expressions of the present models, by both routes -----------------------------------------------
+
+
+def catalogue_expressions():
+    """(expressions of the present models, those that both routes read to one node, {why not: count}).
+
+    Today's route writes the tokens of an expression as Python text and reads it with `ast`
+    (`expressions.tree`), then `expr.of_tree` gives the node. The new route reads the same tokens,
+    written as one line with `is` as `==` and `is not` as `!=`, with the precedence parser, and
+    `lower` gives the node. Today's route keeps `true` and `false` as names; they are compared as the
+    constants that the new parser gives."""
+    from napkin.model.language import expressions as reader
+    from napkin.model.language import nodes, parse
+
+    def found_in(node, seen):
+        if isinstance(node, nodes.Expr):
+            yield node
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                yield from found_in(item, seen)
+        elif is_dataclass(node) and id(node) not in seen:
+            seen.add(id(node))
+            for item in fields(node):
+                yield from found_in(getattr(node, item.name), seen)
+
+    def named(node, names):
+        if isinstance(node, expr.Ref):
+            name = names.get(node.name, node.name)
+            return expr.const(name == 'true') if name in ('true', 'false') else expr.ref(name)
+        if isinstance(node, expr.Unary):
+            return expr.unary(node.op, named(node.operand, names))
+        if isinstance(node, expr.Binary):
+            return expr.binary(node.op, named(node.left, names), named(node.right, names))
+        if isinstance(node, expr.Compare):
+            return expr.compare(node.ops, [named(part, names) for part in node.operands])
+        if isinstance(node, expr.BoolOp):
+            return expr.boolean(node.op, [named(part, names) for part in node.values])
+        if isinstance(node, expr.IfElse):
+            return expr.if_else(named(node.test, names), named(node.body, names), named(node.orelse, names))
+        if isinstance(node, expr.Call):
+            return expr.call(node.function, [named(part, names) for part in node.args])
+        return node
+
+    def one_line(tokens):
+        out, i = [], 0
+        while i < len(tokens):
+            token = tokens[i]
+            if token.is_name('is'):
+                if i + 1 < len(tokens) and tokens[i + 1].is_name('not'):
+                    out.append(' != ')
+                    i += 1
+                else:
+                    out.append(' == ')
+            elif token.kind == 'text':
+                out.append((' ' if token.space else '') + P.text_text(token.value))
+            else:
+                out.append((' ' if token.space else '') + token.source)
+            i += 1
+        return ''.join(out).strip()
+
+    files = sorted([*(BASE / 'examples').rglob('*.scn'), *(BASE / 'scenarios').rglob('*.scn')])
+    total = same = 0
+    why = Counter()
+    for path in files:
+        parsed = parse.parse(path.read_text(encoding='utf-8'))
+        for found in found_in(parsed, set()):
+            if not found.tokens:
+                continue
+            tree, names = reader.tree(found.tokens)
+            total += 1
+            old = named(expr.of_tree(tree, reader.FUNCTIONS), names)
+            try:
+                new = lower(P.parse_expression(one_line(found.tokens)))
+            except (P.SyntaxProblem, TypeError) as problem:
+                why[f'{type(problem).__name__}: {problem}'] += 1
+                continue
+            if new is old:
+                same += 1
+            else:
+                why[f'{path.relative_to(BASE)}:{found.line}: another node'] += 1
+    return total, same, why
+
+
+def test_catalogue_expressions():
+    total, same, why = catalogue_expressions()
+    assert total == same and total > 2000, why
+    return f'{total} expressions of the present models are the same node by today\'s route and by the new parser'
+
+
+# ---- 9. names that Python keeps ---------------------------------------------------------------------------
 
 
 def python_keywords():
@@ -437,6 +528,7 @@ TESTS = [
     test_round_trip_corpus,
     test_round_trip_random,
     test_core,
+    test_catalogue_expressions,
     test_python_keywords,
 ]
 
