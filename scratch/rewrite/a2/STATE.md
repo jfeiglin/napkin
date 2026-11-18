@@ -48,19 +48,14 @@
 - Retirement: fail and name the amount. `move` may touch readonly. Flows of an event join after all locals.
 
 ## In the middle of
-(2nd agent) Group 1 done: cases 1, 2, 3, 5, 6, 7, 8 pass with no change to ref/ (`cases/test_0N_*.py`;
-`conftest.py` puts a2/ on sys.path). Group 2 done: 14, 17, 18, 19, 4, 25, 30, 31, 27, 28, 29, 23, 15, 21 pass.
-Only change to ref/: `Run.read` resolves the values of a projected collection on the frame. Groups 3 and 4
-done: all 31 cases pass (73 tests, ~4.5 s). Fixes: poly.first_root returns `Irrational` (error only if it is the
-next moment: case 16 has an irrational bound contact far away); setup round zero now really settles and
-checks triggers before the first stages (it did not); `ref()` passes the node to draw/choose/chance (decide and
-chance had wrong arity). Next: cases/test_rulings.py, then FINDINGS.md.
+Nothing. (2nd agent) DONE: all 31 cases pass (`cases/test_NN_*.py`, 73 tests); `cases/test_rulings.py` has 23
+rulings (R-A2-01..23), rule vs alternative differ; FINDINGS.md is complete (coverage, mended work, rulings,
+not covered). Suite: 96 tests, best of 3 = 4.63 s at load 1.53 (`run_all.sh`).
+Fixes made to ref/: setup round zero (run.py:313), node passed to draw/choose/chance (evaluate.py:236),
+`Irrational` contact stops (poly.py, run.py:273), `Run.read` resolves projected collections.
 
 ## Remaining, in order
-1. Debug `ref/` on case 2 (tank empties at 8/3 h) and case 1 (grinder). 2. Write `cases/test_NN_*.py` for the
-31 cases of the brief (assert the spec's numbers). 3. `cases/test_rulings.py`: one test per ruling, running
-rule and alternative, asserting they differ. 4. Fill FINDINGS.md: coverage table, results, rulings with the
-numbers from the tests, not covered. 5. A script that reruns everything (`run_all.sh`), timing with `uptime`.
+Optional only: cases for `switch`, `sees`, chance producers; resume of a pause in place.
 Run tests with: `cd /home/user/napkin && .venv/bin/python -m pytest scratch/rewrite/a2 -q -p no:cacheprovider
 --rootdir scratch/rewrite/a2 -c /dev/null` (the repo conftest imports napkin; keep it out).
 
