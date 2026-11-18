@@ -1,41 +1,34 @@
-"""A component: one instance of a space whose flows need the allocation in full.
+"""A component: one connected set of stores and flows, which the continuous engine runs.
 
-The continuous engine (`engine/continuous/`) runs it: the field and the allocation, the bounds
-and the stock faces, the closed forms of a segment and the numerical segment
-(`continuous/segment.advance`). This module gives that engine what it reads of a system, for the
-quantities of the one instance, and gives the timeline what it reads of a block.
+The continuous engine (`engine/continuous/`) runs it: the field and the allocation, the bounds and
+the stock faces, the closed forms of a segment and the numerical segment
+(`continuous/segment.advance`). This module gives that engine what it reads of a system, and makes
+the segments of the set one after the other.
 
-- `Network`: what the continuous engine reads of a system (`continuous/system.System`), for the
-  quantities, flows, groups and formulas of one space. A plan makes one for each such space
-  (`Plan._nets`), with the expressions as that engine reads them: the texts of the file, where a
-  list over a family is the name of its aggregate and a formula of another space is in the place of
-  its name. `Network.of` gives the system of one instance: its tolerances and its inputs.
-- `Component`: the block of one instance in a run. The timeline starts it again at each moment that
-  writes something that it reads (`start`), and reads its state at a time (`at`). Between two such
-  moments the component makes its segments one after the other, each from where the one before it
-  ended: a segment ends where a quantity reaches or leaves a bound, where a rate changes its branch,
-  or where a watched crossing reaches its value. The end of a segment is a moment of the timeline
-  for the rules and the checks that read the component (`Run.ends`), and the time of a watched
-  crossing is the time of its rule (D-65). The component goes no further until the timeline has
-  been at that end.
-
-What does not move in a segment comes from the run when the component starts again: the values
-that only steps change, as the store and the pinned quantities of that engine.
+- `Network`: what the continuous engine reads of a system, for the stores, flows and formulas of
+  one connected set. A plan's set gives it (`run.py`), with its expressions over engine names: the
+  stores are its state, the inputs and the other values that do not move between moments are
+  literals, and each formula that a rate reads is in `computed`. `Network.of` gives the system of
+  one run: its tolerances, its inputs and its numerical settings.
+- `Component`: the set in a run. From its start, it makes its segments one after the other, each
+  from where the one before it ended: a segment ends at the horizon, where a store reaches or leaves
+  a bound, or where a rate changes its branch. Each segment (`Segment`) has the function of the time
+  that gives the state through it and the states at its two ends, the last with the bounds that it
+  reaches settled. While the segment is the present one, `delivered` gives the rates that its flows
+  deliver at times inside it: the bounds and faces of the segment hold then.
 """
 
 from __future__ import annotations
 
 import copy
-from bisect import bisect_left
 from dataclasses import dataclass
 
 import numpy as np
 
-from ..continuous.bounds import check_bounds, check_conditions, correct_boundary_roundoff, refresh_bounds
+from ..continuous.bounds import check_bounds, correct_boundary_roundoff, refresh_bounds
 from ..continuous.fields import Field
 from ..continuous.segment import advance
 from ..continuous.system import Run as State
-from ..continuous.system import System, run_settings
 from ..errors import SimulationError
 
 
@@ -86,11 +79,10 @@ class NetSum:
 
 @dataclass(frozen=True)
 class NetParts:
-    """The parts that the continuous engine reads of a resolved run. The checks of the state and the
-    partitions are the timeline's own: it reads them where a step or a segment changes what they
-    read. A space of one instance also has here the ones that read nothing outside it
-    (`Network.local`): the component reads them at each state that a solver accepts, with one
-    generated program on that state (`continuous/bounds.check_conditions`)."""
+    """The parts that the continuous engine reads of a system beside its quantities and flows: the
+    explicit rates of quantities, the inputs, and the checks of the state and the sums that it
+    reads at each state that a solver accepts (`continuous/bounds.check_conditions`). A program has
+    no explicit rate, and this slice no check of the state, so a plan gives none of them."""
 
     rates: dict
     parameters: tuple
@@ -109,19 +101,13 @@ class Crossings:
 
 
 class Network:
-    """See the module. The names are those of the representative of the space: each instance reads
-    its own values under them."""
-
-    # The names that an expression reads through formulas, and the code that reads a name in a
-    # generated program, are those of a system.
-    expanded_frozen = System.expanded_frozen
-    expanded_names = System.expanded_names
-    _expand = System._expand
-    read = System.read
+    """See the module. `kinds` gives each store the kind that the continuous engine reads: `stock`
+    (a store with a lower bound of zero that flows draw on), `cumulative` (a store that flows only
+    fill: it never falls) or `state`."""
 
     def __init__(
         self,
-        space,
+        name,
         names,
         kinds,
         lower,
@@ -138,12 +124,8 @@ class Network:
         monotone_crossings,
         checks=None,
         sums=None,
-        local=(),
     ):
-        self.space = space
-        # The checks and partitions of the plan that this network reads itself: ('check' or
-        # 'partition', index).
-        self.local = frozenset(local)
+        self.name = name
         self.state_ids = tuple(names)
         self.index = index = {name: i for i, name in enumerate(self.state_ids)}
         self.quantities = {name: NetQuantity(kinds[name]) for name in names}
@@ -195,23 +177,20 @@ class Network:
             [self.lower[i] == 0 and kinds[name] == 'stock' for i, name in enumerate(names)], dtype=bool
         )
         self.store_names = frozenset(store_names)
-        # Every instance reads the same expressions: the names that each reads are found once.
+        # The names that each expression reads are found once.
         self._expanded, self._reads = {}, {}
 
-    def of(self, run, j):
-        """The system of the instance j of the space in a run: with its tolerances and its inputs."""
+    def of(self, numerics, units, horizon, cap, solver_step, atol, slack, values):
+        """The system of one run: its numerical settings, its step cap and the longest step of its
+        solver, the absolute tolerance and the lower slack of each store, and the values of the
+        inputs that it reads, which its generated programs hold as literals."""
         own = copy.copy(self)
-        own.cfg, own.units, own.horizon = run.cfg, run.registry, run.horizon
-        own.max_step, own.solver_step = run.max_step, run.solver_step
-        own.settings = run_settings(run.plan.resolved.time, run.cfg, run.max_step, list(run.timescales))
-        own.atol = np.array([run.atol[name][j] for name in self.state_ids])
-        own.ledger_slack = np.array([run.slack[name][j] for name in self.state_ids])
-        own.values = {name: run.static(name, self.space, j, 0.0) for name in self.resolved.parameters}
-        # One instance alone has its inputs as literals in its programs.
-        # The instances of a family share the text of their programs, so they read their inputs.
+        own.cfg, own.units, own.horizon = numerics, units, horizon
+        own.max_step, own.solver_step = cap, solver_step
+        own.atol, own.ledger_slack = np.array(atol, dtype=float), np.array(slack, dtype=float)
+        own.values = {name: values[name] for name in self.resolved.parameters}
         hidden = set(self.state_ids) | self.store_names | set(self.computed) | {'t'}
-        alone = run.plan.spaces[self.space].count == 1
-        own.known = {name: value for name, value in own.values.items() if alone and name not in hidden}
+        own.known = {name: value for name, value in own.values.items() if name not in hidden}
         own.analysis, own.face_proofs = {}, {}
         return own
 
@@ -219,272 +198,128 @@ class Network:
     def bounds(self):
         return self.lower, self.upper, self.ledger_slack, self.atol
 
+    # The names that an expression reads through formulas, as the continuous engine reads them.
+    def read(self, name):
+        """The code of a generated program of the run, `program(Y, T, S, V, R)`, that reads a name that
+        is not a literal: the time T, an entry of the store S, a store of the state Y or an input of V."""
+        if name == 't':
+            return 'T', False
+        if name in self.store_names:
+            return f'S[{name!r}]', False
+        if name in self.index:
+            return f'Y[{self.index[name]}]', False
+        if name in self.values:
+            return f'V[{name!r}]', False
+        return f'_missing({name!r})', True
+
+    def expanded_frozen(self, expr):
+        """The names that an expression reads, through formulas, as one shared frozen set."""
+        found = self._expanded.get(expr)
+        if found is None:
+            found = self._expanded[expr] = frozenset(self.expanded_names(expr, ()))
+        return found
+
+    def expanded_names(self, expr, seen=None):
+        """The names that an expression reads, through formulas."""
+        if seen is None:
+            if expr not in self._expanded:
+                self._expanded[expr] = frozenset(self._expand(expr, frozenset())[0])
+            return set(self._expanded[expr])
+        return self._expand(expr, frozenset(seen))[0]
+
+    def _expand(self, expr, seen):
+        """The names that `expr` reads through formulas, and whether a formula on the path reached
+        itself (a plan refuses such a formula, so this is a guard)."""
+        from ...expressions import names_in
+
+        names = set(names_in(expr))
+        cyclic = False
+        for name in list(names):
+            if name not in self.computed:
+                continue
+            if name in seen:
+                cyclic = True
+                continue
+            kept = self._reads.get(name)
+            if kept is None:
+                found, hit = self._expand(self.computed[name]['expr'], seen | {name})
+                names |= found
+                cyclic |= hit
+                if hit:
+                    continue
+                kept = self._reads[name] = frozenset(found)
+            names |= kept
+        return names, cyclic
+
 
 @dataclass
-class Piece:
+class Segment:
     """One segment of a component: from `start` to `end`, the function of the time that gives the
-    state of the system, and the states at its two ends, the last with the bounds that it reaches
-    settled."""
+    state (`solution`), the states at its two ends, the last with the bounds that it reaches settled,
+    and the solver's result for a numerical segment (`numerical`: its accepted times are `t`)."""
 
     start: float
     end: float
     solution: object
     first: np.ndarray
     last: np.ndarray
-    waits: bool = False  # a watched crossing is at its end: the timeline goes there first
-    store: dict | None = None  # with the whole record of a run: the store through the segment
-    made: int = 0  # the moment of the timeline in or after which the segment was made
+    numerical: object = None
 
 
 class Component:
-    """See the module. It has the attributes that the timeline reads of the solution of a block."""
+    """See the module."""
 
-    def __init__(self, run, block, instance):
-        self.run, self.block, self.instance = run, block, instance
-        self.J = np.array([instance])
-        self.slices = {name: slice(k, k + 1) for k, name in enumerate(block.names)}
-        self.size = len(block.names)
-        self.net = run.plan.nets[block.space]
-        self.rows = np.array([self.net.index[name] for name in block.names], dtype=int)
-        self.system = None  # made at the first start, when the tolerances of the instance are known
-        self.t0, self.y0 = 0.0, None
-        self.current, self.done = None, []
-        self.watching = {}  # (rule, instance) -> (quantity, rising, value, version of the rule)
-        self.fresh, self.counted, self.evaluations = True, 0, 0
-        self.numeric_only, self.mode = False, 'component'
-
-    def make(self):
-        from ..runtime import Trajectory
-
-        run, j = self.run, self.instance
-        s = self.system = self.net.of(run, j)
-        state = np.array([float(run.v[name][j]) if name in run.v else np.nan for name in s.state_ids])
-        self.trajectory = Trajectory(
-            s.horizon, [], [], s.settings, s.state_ids, s.values, s.computed, s.units, s.bounds
-        )
-        self.state = State(0.0, state, {})
-        self.field = Field(s, self.state, self.trajectory)
-
-    # ---- what the timeline asks -------------------------------------------------------------------
-
-    def start(self, t, y):
-        """The component starts again at t from the state y of its block: a step wrote one of its
-        quantities, or something that it reads."""
-        if self.system is None:
-            self.make()
-        self.t0, self.y0 = t, np.array(y[: self.size], dtype=float)
-        if self.current is not None and self.current.end > t >= self.current.start:
-            # The segment was made further than this moment: its record ends here.
-            self.current.end = t
-            if t == self.current.start and self.run.pieces and self.run.pieces[-1] is self.current:
-                self.run.pieces.pop()
-        # New lists: a copy of the component, which the record of the run keeps, has the old ones.
-        self.current, self.done = None, []
-        self.fresh = True
-        self.count()
-        self.state.time = t
-        # A new array: the solution of the segment that ends here keeps the array that it started
-        # from (the first dense step of a solver is from that array), and the record reads it.
-        state = self.state.y.copy()
-        state[self.rows] = self.y0
-        self.state.y = state
-
-    def at(self, t):
-        """The state of the block at a time from its last start on."""
-        if self.y0 is None or t <= self.t0:
-            return self.y0
-        horizon = self.run.horizon
-        while True:
-            piece = self.current
-            if piece is None:
-                piece = self.segment(t)
-            if t < piece.start:
-                return self.before(t)
-            if t == piece.start:
-                return piece.first[self.rows]
-            if piece.waits and abs(t - piece.end) <= self.run.tolerance:
-                # A moment of the timeline takes the times within its tolerance: it reads the end.
-                return piece.last[self.rows]
-            if t < piece.end:
-                return self.trajectory._project(piece.solution(t))[self.rows]
-            if t == piece.end or piece.end >= horizon or self.frozen:
-                return piece.last[self.rows]
-            run = self.run
-            if piece.waits and not (run.moment > piece.made and run.now + run.tolerance >= piece.end):
-                # The timeline has not had its moment at the end of the segment yet: the component
-                # waits there. An end within the tolerance of the moment before it is no part of
-                # that moment: it came after it.
-                return piece.last[self.rows]
-            self.proceed()
-
-    def before(self, t):
-        """The state at a time before the present segment, from the segments that are done."""
-        ends = [piece.end for piece in self.done]
-        k = bisect_left(ends, t)
-        if k >= len(self.done) or t < self.done[k].start:
-            raise SimulationError(f'{self.block.names[0]}: no stored segment has the time {t:g} h')
-        piece = self.done[k]
-        if t == piece.end:
-            return piece.last[self.rows]
-        return self.trajectory._project(piece.solution(t))[self.rows]
-
-    @property
-    def frozen(self):
-        """A copy that the record of the run keeps makes no new segment."""
-        return self.run.single[self.block.index][self.instance] is not self
-
-    def watch(self, rule, j, place, threshold, rising, after):
-        """A rule watches a crossing of a quantity of the block. The watched crossings are part of a
-        segment, so a segment that began before this moment ends here."""
-        run = self.run
-        self.watching[(rule, j)] = (
-            self.block.names[place],
-            bool(rising),
-            float(threshold),
-            int(run.rules[rule].version[j]),
-        )
-        if self.current is not None:
-            run.cut(self.block, self.instance, after)
+    def __init__(self, system, context, start):
+        self.system, self.context = system, context
+        self.state = State(0.0, np.array(start, dtype=float), {})
+        self.field = Field(system, self.state, context)
 
     def guards(self, env):
-        """The crossings that the segment watches, as the continuous engine reads them: in the
-        order of the rules."""
-        rules = self.run.rules
-        found = []
-        for key in sorted(self.watching):
-            var, rising, value, version = self.watching[key]
-            if rules[key[0]].version[key[1]] != version:
-                del self.watching[key]  # the rule was read again, or it triggered
-                continue
-            found.append((key, {'var': var, 'op': '>=' if rising else '<=', 'value': value}))
-        return found
+        """The level rules that a segment watches: none, in this slice."""
+        return []
 
-    # ---- the segments -----------------------------------------------------------------------------
-
-    def count(self):
-        if self.system is not None:
-            self.run.counts['evaluations'] += self.state.evaluations - self.counted
-            self.counted = self.state.evaluations
-
-    def static(self):
-        """What the component reads that does not move in a segment, from the run: its store."""
-        run, s, j, state = self.run, self.system, self.instance, self.state
-        state.store = {name: run.static(name, s.space, j, state.time) for name in sorted(s.store_names)}
-
-    def pinned(self):
-        """The quantities of the space that only steps change, as they are now. A step can write one
-        that the component does not read: the component does not start again then, and the state
-        of its next segment still has the value that the step wrote."""
-        run, s, j, state = self.run, self.system, self.instance, self.state
-        for i in s.discrete:
-            state.y[i] = float(run.v[s.state_ids[i]][j])
-
-    def segment(self, to):
-        """Make the segment from the present time and state of the component as far as `to`."""
-        run, s, state, field = self.run, self.system, self.state, self.field
-        diagnostics = self.trajectory.diagnostics
-        if self.fresh:
-            self.static()
-            self.fresh = False
-        self.pinned()
-        # The bounds that hold the state after the steps of a moment are found with the faces of
-        # the segment that ended there; then those faces are cleared.
+    def next(self, horizon):
+        """The next segment, from the present time and state as far as the horizon at most. A store
+        that reaches its face within the roundoff of the time is settled there first: that gives a
+        segment of no length, whose last state has the face settled."""
+        s, state, field, diagnostics = self.system, self.state, self.field, self.context.diagnostics
         refresh_bounds(s, state, field)
         start = state.time
-        end = min(run.horizon, to)
         state.right_faces.clear()
         state.zero_faces.clear()
-        found = advance(s, state, field, self, self.trajectory, end)
-        if found.rounded:
-            # A stock reaches its face within the roundoff of the time: it is settled on the face,
-            # with its balancing leg, and that is a moment for the rules and the checks that read
-            # the component, as the end of a segment is. The segment itself comes after that moment.
-            correct_boundary_roundoff(s, diagnostics, state.time, state.y, found.rounded)
-            check_bounds(s, state.y)
-            self.count()
-            settled = state.y.copy()
-            if start == self.t0:
-                self.y0 = settled[self.rows]
-            piece = self.current = Piece(start, start, None, settled, settled, True, None, run.moment)
-            run.segment_end(start, self.block.index, self.instance)
-            return piece
+        found = advance(s, state, field, self, self.context, horizon)
         first = state.y.copy()
-        if start == self.t0:
-            self.y0 = first[self.rows]
-        solution = found.solution
-        numerical = found.numerical
+        if found.rounded:
+            correct_boundary_roundoff(s, diagnostics, start, state.y, found.rounded)
+            check_bounds(s, state.y)
+            return Segment(start, start, None, first, state.y.copy())
+        solution, numerical = found.solution, found.numerical
         last = np.array(solution(found.end) if numerical is None else numerical.y[:, -1], dtype=float)
-        if s.flows:
-            # The flows that deliver material in the segment: their rates at its middle.
-            middle = (start + found.end) / 2
-            field.rates(middle, solution(middle))
-            delivered = [key for key, rate in zip(s.flow_ids, field.delivered) if rate > 0]
-            run.moved.update(run.rule_free_name(key, s.space, self.instance) for key in delivered)
-            run.flowing.update(delivered)
         correct_boundary_roundoff(s, diagnostics, found.end, last, found.targets)
         if numerical is not None:
             if found.end <= start:
                 raise SimulationError('Integration made no progress at a boundary')
-            run.counts['solver steps'] += len(numerical.t) - 1
             # The accepted points of the solver are checked too: a fine output cannot hide a state
             # outside its bounds.
             for k in range(len(numerical.t) - 1):
                 check_bounds(s, numerical.y[:, k])
         check_bounds(s, last)
-        self.count()
-        piece = self.current = Piece(start, found.end, solution, first, last, made=run.moment)
-        if numerical is not None:
-            # The checks of the state that read the component hold at each accepted point too: the
-            # ones of the component itself on the accepted state, the others through the timeline.
-            own = bool(s.resolved.state_checks or s.resolved.partitions)
-            for k in range(1, len(numerical.t) - 1):
-                at = float(numerical.t[k])
-                if own:
-                    check_conditions(s, field.environment(at, numerical.y[:, k]), at)
-                run.check_readers(self.block.index, self.instance, at)
-        if run.keep:
-            piece.store = run.store_now()
-            run.pieces.append(piece)
-        # The crossings at the end of the segment: the kernel or the solver names them, and a
-        # crossing whose quantity is on its value at the end is one too.
-        due = set(found.due)
-        for key, cond in state.guards.items():
-            reached = last[s.index[cond['var']]]
-            if (reached >= cond['value']) if cond['op'] == '>=' else (reached <= cond['value']):
-                due.add(key)
-        for rule, j in sorted(due):
-            run.crossing_due(found.end, rule, j)
-        if numerical is not None and found.end < run.horizon:
-            # A crossing whose own time is within the tolerance of a moment after the end of the
-            # segment is due with the rules of that end (D-65, "One moment"). A closed form names
-            # such a crossing itself; a solver finds only the crossings inside its segment, so the
-            # solution is read that far past its end.
-            ahead = solution(found.end + run.tolerance)
-            for key, cond in state.guards.items():
-                if key in due:
-                    continue
-                i = s.index[cond['var']]
-                gap, move = cond['value'] - last[i], ahead[i] - last[i]
-                if (0 < gap <= move) if cond['op'] == '>=' else (move <= gap < 0):
-                    run.crossing_due(found.end + run.tolerance * gap / move, *key)
-        if found.end < run.horizon:
-            # The end of a segment is a moment for the rules and the checks that read the component.
-            run.segment_end(found.end, self.block.index, self.instance)
-            piece.waits = True
-        return piece
+        return Segment(start, found.end, solution, first, last, numerical)
 
-    def middle(self):
-        """A time inside the segment that has just ended, or None when there is none."""
-        piece = self.current
-        if piece is None or piece.end <= piece.start:
-            return None
-        return (piece.start + piece.end) / 2
+    def delivered(self, segment, times):
+        """The rates that the flows deliver at times inside the present segment: one row for each
+        time. The evaluations of the field that the record asks count for no budget of the run."""
+        state, field = self.state, self.field
+        evaluations = state.evaluations
+        rows = []
+        try:
+            for at in times:
+                field.rates(at, self.context.project(segment.solution(at)))
+                rows.append(np.array(field.delivered, dtype=float))
+        finally:
+            state.evaluations = evaluations
+        return np.array(rows).reshape(len(rows), len(self.system.flow_ids))
 
-    def proceed(self):
-        """The next segment starts where the present one ended: no moment of the timeline came
-        between that wrote something that the component reads."""
-        piece = self.current
-        if self.run.record:
-            self.done.append(piece)
-        self.state.time, self.state.y = piece.end, piece.last.copy()
-        self.current = None
+    def proceed(self, segment):
+        """The next segment starts where this one ended."""
+        self.state.time, self.state.y = segment.end, segment.last.copy()

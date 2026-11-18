@@ -18,10 +18,10 @@ from scipy.integrate import DenseOutput, Radau, solve_ivp
 import napkin.engine.continuous.integrate as integrate
 from napkin.core.expr import read
 from napkin.engine.continuous.integrate import Root, Roots, release_root
-from napkin.engine.continuous.system import System, initial_store
-from napkin.engine.runtime import NumericalSettings, Trajectory
+from napkin.engine.timeline import Plan, Run
 from napkin.expressions import ExpressionError
-from tests.build import event, formula, library, named, parameter, resolved, stock, system
+from napkin.program import build as b
+from napkin.program.config import Configuration, InputValue, Request
 
 
 class Endpoints:
@@ -445,65 +445,69 @@ def test_root_location_takes_the_accepted_states_at_the_ends_of_its_bracket(monk
 # ---- each root together and alone ----------------------------------------------------------------
 
 
-def roots_of_each_kind():
-    """A run's system and environment, and roots of every kind on it."""
-    source = system(
-        named('mode', 'calm', 'busy'),
-        parameter('rate', 2, 'people/h'),
-        stock('a', 5),
-        stock('b', 3, maximum=10),
-        stock('cash', 4),
-        stock('debt', 2),
-        formula('pressure', 'a / 1 h + b / 2 h', 'people/h'),
-        event('rush', 't >= 5 h', once=False, transition='mode "calm" -> "busy"'),
-        horizon=10,
+def roots_of_each_kind(busy=False):
+    """A run's system and environment, and roots of every kind on it. The stores a, b (at most 10
+    people), cash and debt are one connected set: a fills at the pressure, b from a at 1 person/h
+    while the program is busy, debt from cash at the rate; `busy` is an input."""
+    people = b.q(1, 'person/h')
+    p = b.Builder({'person': {'people': 1}, 'h': {'time': 1}})
+    p.entity(
+        's',
+        b.input_('busy', b.BOOL, False),
+        b.input_('rate', 'person/h', 2),
+        b.value('a', 'person', 5, lower=0),
+        b.value('b', 'person', 3, lower=0, upper=10),
+        b.value('cash', 'person', 4, lower=0),
+        b.value('debt', 'person', 2, lower=0),
+        b.value('pressure', 'person/h', b.formula(b.this.a / b.q(1, 'h') + b.this.b / b.q(2, 'h'))),
+        b.flow('feed', b.SOURCE, b.this.a, request=b.formula(b.this.pressure)),
+        b.flow('pass', b.this.a, b.this.b, request=b.formula(b.ifelse(b.this.busy, people, 0 * people))),
+        b.flow('pay', b.this.cash, b.this.debt, request=b.formula(b.this.rate + 0 * b.this.a / b.q(1, 'h'))),
     )
-    rs = resolved(source)
-    s = System(rs, library(), NumericalSettings.parse(None))
-    tr = Trajectory(s.horizon, [], [], s.settings, s.state_ids, s.values, s.computed, s.units, s.bounds)
-    store = initial_store(rs)
+    configuration = Configuration(Request(10), inputs=(InputValue('s', 'busy', busy),))
+    _, _, ((component, _),) = Run(Plan.of(p.finish(), configuration)).prepare()
+    s = component.system
 
     def environment(at, state):
-        return tr._environment(at, state, store)
+        return component.context.environment(at, state, {})
 
     i = s.index
     roots = [
-        Root('guard', 1, (i['s.a'], read("s.b + q(1, 'people')"), 0.0)),
-        Root('guard', -1, (i['s.b'], read("q(2, 'people') if s.mode == 'busy' else s.a / 2"), 0.5)),
+        Root('guard', 1, (i['s.a'], read("s.b + q(1, 'person')"), 0.0)),
+        Root('guard', -1, (i['s.b'], read("q(2, 'person') if s.busy else s.a / 2"), 0.5)),
         release_root(s, i['s.a'], 'min'),
         release_root(s, i['s.b'], 'max'),
         Root('bound', -1, (i['s.a'], s.lower[i['s.a']], 0.0)),
         Root('bound', 1, (i['s.b'], s.upper[i['s.b']], 0.0)),
         Root('repayment', 1, (i['s.cash'], i['s.debt'], 0.5)),
         Root('surface', 0, (read('s.rate'), read('s.pressure'))),
-        Root('surface', 0, (read('s.a'), read("t * q(1, 'people/h')"))),
+        Root('surface', 0, (read('s.a'), read("t * q(1, 'person/h')"))),
     ]
-    return s, environment, store, roots
+    return s, environment, component.state.y.copy(), roots
 
 
-def test_each_root_has_the_same_value_together_as_alone():
-    s, environment, store, roots = roots_of_each_kind()
+@pytest.mark.parametrize('busy', [False, True])
+def test_each_root_has_the_same_value_together_as_alone(busy):
+    s, environment, base, roots = roots_of_each_kind(busy)
     together = Roots(s, environment, roots)
     assert together.program  # the guards and the surfaces come from one generated program
     i, atol = s.index, s.atol
     rng = np.random.default_rng(7)
-    base = s.initial_state(store)
     for _ in range(200):
         at = float(rng.choice([0.0, 0.0, 2.5, 7.0]))
         state = base + rng.normal(0, 3, len(base))
         # Quantities within a tolerance of a bound at the start of the segment, on either side.
         state[i['s.a']] = float(rng.choice([state[i['s.a']], atol[i['s.a']] * rng.uniform(-1, 1)]))
         state[i['s.b']] = float(rng.choice([state[i['s.b']], 10 + atol[i['s.b']] * rng.uniform(-1, 1)]))
-        store['s.mode'] = str(rng.choice(['calm', 'busy']))
         alone = np.array([together.value(k, at, state) for k in range(len(roots))])
         assert together.values(at, state).tobytes() == alone.tobytes()
 
 
 def test_a_root_that_cannot_be_evaluated_fails_as_it_fails_alone():
-    s, environment, store, roots = roots_of_each_kind()
-    failing = Root('guard', 1, (s.index['s.a'], read("ln(s.b - q(4, 'people')) * q(1, 'people')"), 0.0))
+    s, environment, state, roots = roots_of_each_kind()
+    failing = Root('guard', 1, (s.index['s.a'], read("ln(s.b - q(4, 'person')) * q(1, 'person')"), 0.0))
     together = Roots(s, environment, [*roots, failing])
-    state = s.initial_state(store)  # b is 3 people, so the logarithm has no value
+    # b is 3 people at the start, so the logarithm has no value.
     with pytest.raises(ExpressionError) as alone:
         together.value(len(roots), 0.0, state)
     with pytest.raises(ExpressionError) as caught:

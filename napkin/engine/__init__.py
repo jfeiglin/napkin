@@ -1,5 +1,6 @@
-"""Run scenario models: the timeline engine and its solvers, studies of runs under edits, Monte Carlo
-studies of uncertain values, and reports.
+"""Run programs: the timeline engine and its solvers (`run`, and `read` of the record of a run),
+and, until a later stage replaces them, the studies of runs under edits, Monte Carlo studies of
+uncertain values, and reports of the old compiled form.
 
 Each name of the package loads its module on first use, as the names of `napkin` do
 (`napkin/__init__.py`). So the import of one module of the engine loads no report, no study and no
@@ -12,14 +13,15 @@ from importlib import import_module as _import_module
 _EXPORTS = {
     'NumericalSettings': 'runtime',
     'SamplingSettings': 'sampling',
-    'SimulationError': 'runtime',
+    'SimulationError': 'errors',
     'analyze_bounds': 'study',
     'edits_for': 'study',
     'evaluate_study': 'study',
     'evaluate_uncertainty': 'uncertainty',
+    'read': 'timeline',
     'resolve_edits': 'study',
+    'run': 'timeline',
     'sample_result': 'report',
-    'simulate': 'runtime',
     'uncertainty_report': 'uncertainty',
 }
 __all__ = list(_EXPORTS)

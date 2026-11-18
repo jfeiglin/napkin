@@ -1,53 +1,55 @@
-"""The engine sizes each value (docs/engine.md, "Sizes and tolerances").
+"""The engine sizes each store (`timeline/run.py`, "The sizes").
 
-A quantity's absolute tolerance is `atol_factor` times its size: the `size` that the file writes,
-else the largest of one of its unit, its start value, its finite bounds, the largest start value of
-the quantities that flows connect it to, and the capacity of a rationed flow over the horizon. The
-expectations are that rule, applied by hand to small models, and closed forms of their runs.
+A store's absolute tolerance is `atol_factor` times its size: its `scale` when it declares one (D8),
+else the largest of one of its unit, its start value, its finite bounds and the largest start value
+of the stores that flows connect it to. The expectations are that rule, applied by hand to small
+programs, and closed forms of their runs.
 """
 
 import math
 
 import pytest
 
-from napkin.engine.continuous.system import System
-from napkin.engine.runtime import NumericalSettings, SimulationError
-from tests.build import compiled, flow, library, q, run, stock, system
+from napkin.engine import read, run
+from napkin.engine.timeline import Plan, Run
+from napkin.program.build import SOURCE, Builder, flow, formula, q, this, value
+from napkin.program.config import Configuration, Request
 
 START = 1e8  # people
 RATE = 1e6  # people an hour: the stock is empty at 100 h
 HORIZON = 150
+UNITS = {'person': {'people': 1}, 'h': {'time': 1}}
 
 
-def drained(*members):
+def drained(*parts):
     """A stock of 1e8 people that drains into a tally at 1e6 people an hour until it is empty, at
-    100 h, in a run of 150 h. Neither writes a size."""
-    return system(
-        stock('stock', START, size=None),
-        stock('drained', 0, size=None, kind='tally'),
-        *members,
-        flow('drain', 'stock -> drained', q(RATE, 'people/h')),
-        horizon=HORIZON,
+    100 h, in a run of 150 h. Neither declares a scale."""
+    b = Builder(UNITS)
+    b.entity(
+        's',
+        value('stock', 'person', START, lower=0),
+        value('drained', 'person', 0, lower=0),
+        *parts,
+        flow('drain', this.stock, this.drained, request=q(RATE, 'person/h')),
     )
+    return b.finish()
 
 
-def sizes(source):
-    """{quantity: its size} in the whole structure of run `a`, which keeps every part."""
-    model = compiled(source)
-    numbers, errors = model.numbers(model.run_values('a'))
-    assert not errors
-    rs = model.resolve_in(model.whole[model.runs['a']['starts']], numbers, 'whole a')
-    found = System(rs, library(), NumericalSettings.parse(None))
-    return dict(zip(found.state_ids, found.sizes))
+def sizes(program):
+    """{store: its size} at the start of a run of the program."""
+    made = Run(Plan.of(program, Configuration(Request(HORIZON))))
+    return made.prepare()[1]
 
 
-def test_each_value_takes_the_size_of_its_rule():
+def test_each_store_takes_the_size_of_its_rule():
     found = sizes(
         drained(
-            # A tally that only its own rate fills, from outside: nothing but its unit sizes it.
-            stock('clock', 0, 'h', size=None, minimum=None, kind='state', rate='1'),
-            # A var with a size of its own, which the engine takes as written.
-            stock('kept', 0, size=500),
+            # A clock that only its own flow fills, from outside: nothing but its unit sizes it.
+            value('clock', 'h', 0),
+            flow('tick', SOURCE, this.clock, request=q(1, 'h/h')),
+            # A store with a scale of its own, which the engine takes as written.
+            value('kept', 'person', 0, scale=500),
+            flow('keep', SOURCE, this.kept, request=q(0, 'person/h')),
         )
     )
     assert found['s.stock'] == START  # its start value
@@ -56,28 +58,39 @@ def test_each_value_takes_the_size_of_its_rule():
     assert found['s.kept'] == 500
 
 
-def draining(size):
+def draining(scale):
     """A stock of 1e8 people drains into a tally at 2e6 people an hour times t / (t + 1 h), which the
-    solver integrates: S(t) = 1e8 - 2e6 (t - ln(1 + t)) until it is empty, at about 54 h. `size` is
-    the size that both write (None: the engine sizes them)."""
-    return system(
-        stock('stock', START, size=size),
-        stock('drained', 0, size=size, kind='tally'),
-        stock('clock', 0, 'h', size=None, minimum=0, kind='state', rate='1'),
-        flow('drain', 'stock -> drained', f'{q(2 * RATE, "people/h")} * clock / (clock + 1 h)'),
-        horizon=HORIZON,
+    solver integrates: S(t) = 1e8 - 2e6 (t - ln(1 + t)) until it is empty, at about 54 h. `scale` is
+    the scale that both declare (None: the engine sizes them)."""
+    b = Builder(UNITS)
+    b.entity(
+        's',
+        value('stock', 'person', START, lower=0, scale=scale),
+        value('drained', 'person', 0, lower=0, scale=scale),
+        value('clock', 'h', 0, lower=0),
+        flow('tick', SOURCE, this.clock, request=q(1, 'h/h')),
+        flow(
+            'drain',
+            this.stock,
+            this.drained,
+            request=formula(q(2 * RATE, 'person/h') * this.clock / (this.clock + q(1, 'h'))),
+        ),
     )
+    return b.finish()
 
 
 def test_a_large_stock_that_the_solver_drains_takes_its_own_size():
-    """Sized by its start value, the stock follows its closed form to zero. With a size of one person
-    (the size of a value with none before the engine sized values) its roundoff at zero exceeds its
-    tolerance, and the run stops."""
-    _, trajectory = run(draining(None))
-    for t in (10.0, 30.0, 50.0, HORIZON):
+    """Sized by its start value, the stock follows its closed form to zero. With a scale of one
+    person (the size of a value with none before the engine sized values) its roundoff at zero
+    exceeds its tolerance, and the run stops."""
+    program = draining(None)
+    record = run(program, Configuration(Request(HORIZON)))
+    assert record.failure is None
+    times = (10.0, 30.0, 50.0, HORIZON)
+    stock, drained_ = read(record, program, ['s.stock', 's.drained'], times)
+    for t, left_, moved in zip(times, stock.values, drained_.values, strict=True):
         left = max(0.0, START - 2 * RATE * (t - math.log1p(t)))
-        env = trajectory.env_at(t)
-        assert env['s.stock'] == pytest.approx(left, rel=1e-9, abs=1e-9 * START)
-        assert env['s.drained'] == pytest.approx(START - left, rel=1e-9)
-    with pytest.raises(SimulationError, match='Material state-bound violation'):
-        run(draining(1))
+        assert left_ == pytest.approx(left, rel=1e-9, abs=1e-9 * START)
+        assert moved == pytest.approx(START - left, rel=1e-9)
+    stopped = run(draining(1), Configuration(Request(HORIZON)))
+    assert 'Material state-bound violation' in stopped.failure.detail('message')

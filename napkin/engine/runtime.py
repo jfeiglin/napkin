@@ -1,27 +1,23 @@
-"""Deterministic hybrid integration over canonical model definitions (docs/engine.md).
+"""The numerical settings and the trajectory of a run of the old compiled form (docs/engine.md).
 
-`simulate` gives the run of the timeline engine (`engine/timeline`) as a `Trajectory`: the timeline
-takes the steps of every moment, and between moments each part of the model moves by its own
-segments (`engine/continuous` for the parts that one solver moves together). Reporting is a
-read-only view of the stored dense segments: neither report requests nor plotting resolution take
-part in event detection or integration.
+The old path reads them: the studies, the reports, the session and `napkin.dynamics`, until a later
+stage replaces them. A run of a program is `napkin.engine.run`, whose settings are the program's
+run configuration (`napkin/program/config.Numerics`) and whose result is its record.
 """
 
 from __future__ import annotations
 
 import bisect
 import math
-from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 
 import numpy as np
 
 from ..expressions import compile_program, evaluate, names_in
-from ..model import structure as typed
 from ..model.ir import ModelError
 from .errors import SimulationError
 
-__all__ = ['NumericalSettings', 'SimulationError', 'Trajectory', 'simulate']
+__all__ = ['NumericalSettings', 'SimulationError', 'Trajectory']
 
 
 @dataclass(frozen=True)
@@ -203,44 +199,3 @@ class Trajectory:
             segment = self._segments[k]
             return self._environment(t, self._project(segment.solution(t)), segment.store)
         raise SimulationError(f'No stored solution covers time {t}')
-
-
-def simulate(
-    rs: typed.Resolved,
-    library: Mapping,
-    settings: Mapping | NumericalSettings | None = None,
-    *,
-    play: Mapping | None = None,
-    pause_at_decision: bool = False,
-    decision_events=None,
-    settled_decisions: bool = False,
-    decision_resolver=None,
-) -> Trajectory:
-    """Run to the horizon, or stop before the first unanswered controlled decision.
-
-    ``play`` is what a played run asks (docs/engine.md, "Play"): ``{'control': {thing: 'reader' |
-    'agent' | 'chance'}, 'picks': [{'event': …, 'outcome': …}, …]}``. With no ``play`` the model
-    takes every decision.
-    ``decision_events`` optionally limits control to the named rules. Other rules retain their
-    normal seeded policy. A paused trajectory retains the original horizon but only stores history
-    through ``end_time``; continuing a played run replays it with the extended pick log.
-    ``settled_decisions`` resolves independent already-due work at the same timestamp before a
-    controlled outcome. It neither advances time nor previews any unanswered outcome.
-    ``decision_resolver(decision, env, trace)`` may authorize an unanswered choice at its exact
-    boundary. It returns a pick mapping or None to pause. It requires ``pause_at_decision=True``;
-    callers must durably record an authorized pick before returning it.
-    """
-    if decision_resolver is not None and not pause_at_decision:
-        raise ValueError('decision_resolver requires pause_at_decision=True')
-    from . import timeline
-
-    return timeline.trajectory(
-        rs,
-        library,
-        settings,
-        play=play,
-        pause_at_decision=pause_at_decision,
-        decision_events=decision_events,
-        settled_decisions=settled_decisions,
-        decision_resolver=decision_resolver,
-    )

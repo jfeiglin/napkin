@@ -1,160 +1,135 @@
-"""Independent reporting witnesses for admitted cumulative lower roundoff.
+"""Roundoff at bounds in the dense values of a run, bound violations that stop a run, and cash-control
+integrals across a kink, against closed forms.
 
-The nonlinear population has a closed-form solution. Injected interior samples
-exercise the public reporting boundary on an account of size 1e9 USD2025:
-absolute accuracy is 0.1 and cumulative lower accuracy is 1.1.
-
-Independent finite-cash kink and bounded numerical-retry witnesses.
-
-Independent cash-control integrals across the first expenditure shortfall.
+Accounts are in USD2025 with a scale of 1e9, so the absolute tolerance of each is 0.1, and the lower
+slack of an account that flows only fill (a tally: it never falls) is 0.1 + 1e-9 * 1e9 = 1.1.
 """
 
-import copy
 import math
 
 import numpy as np
 import pytest
 
 import napkin.engine.continuous.integrate as integrate
-from napkin.engine.report import evaluate_outputs
-from napkin.engine.runtime import NumericalSettings, SimulationError, simulate
-from tests.build import (
-    edit,
-    flow,
-    formula,
-    library,
-    member,
-    move,
-    output,
-    resolved,
-    stock,
-    system,
-)
+from napkin.engine import read, run
+from napkin.engine.timeline import Plan, Run
+from napkin.program import build
+from napkin.program.build import SINK, SOURCE, Builder, flow, fmax, fmin, formula, q, t, this, value
+from napkin.program.config import Configuration, Request
 
-LIBRARY = library()
-# The spending under 24 h cash control, and the spending that it forgoes, in USD2025 an hour.
-SPENDING = 'min(1000000 USD2025/h, cash / 24 h + 500000 USD2025/h)'
-FOREGONE = 'max(0 USD2025/h, 1000000 USD2025/h - spending)'
+UNITS = {'USD2025': {'money': 1}, 'person': {'people': 1}, 'h': {'time': 1}}
+SCALE = 1e9
+NOTHING = q(0, 'USD2025/h')
 
 
-def usd(name, initial=0, *, kind='stock', **lines):
-    """An account in USD2025 of size 1e9."""
-    return stock(name, initial, 'USD2025', kind=kind, size=1e9, **lines)
+def usd(name, initial=0, **bounds):
+    """An account in USD2025 with a scale of 1e9, never negative unless its bounds say otherwise."""
+    return value(name, 'USD2025', initial, scale=SCALE, **{'lower': 0, **bounds})
 
 
-def outcome(name, expr, *, measure='level', nonnegative=True):
-    return output(
-        name, expr, 'USD2025', measure, doc='Reported account', under=() if nonnegative else ('signed',)
+def exp(x):
+    return build._call('exp', x)  # the builder has no handle of `exp`
+
+
+def recovery(hours):
+    """20 pending that recover at pending / (4 hours) * exp(-t / hours): pending is
+    20 exp(-0.25 (1 - exp(-t / hours))) and pending + recovered stays 20."""
+    rate = this.pending / q(4 * hours, 'h') * exp(-t / q(hours, 'h'))
+    return (
+        value('pending', 'person', 20, lower=0, scale=20),
+        value('recovered', 'person', 0, lower=0, scale=20),
+        flow('recover', this.pending, this.recovered, request=formula(rate)),
     )
 
 
-def with_timescale(text, timescale):
-    """A text whose solver keeps its steps shorter than `timescale`."""
-    return edit(text, member('scenario:', f'timescales {timescale}'))
+def pending(at, hours):
+    return 20 * math.exp(-0.25 * (-math.expm1(-at / hours)))
+
+
+def configured(program, horizon):
+    return program, Configuration(Request(horizon))
 
 
 def dense_fixture():
-    # The accounts start with a balance. A run leaves out a stock, tally or number state that starts
-    # at zero and that nothing changes or reads, and the test injects values into these accounts as
-    # solver states. The expected values do not depend on the balance. A flow of nothing makes the
-    # ledger a tally (it fills it) and the account a stock (it takes from it).
-    return with_timescale(
-        system(
-            stock('pending', 20, size=20),
-            stock('recovered', size=20, kind='tally'),
-            usd('ledger', 0.5, kind='tally', maximum=1, rate='0 USD2025/h'),
-            usd('account', 0.5, maximum=1),
-            usd('signed', 0.5, kind='state', minimum=-2, maximum=2),
-            flow('recover', move('pending', 'recovered'), 'pending / 4 h * exp(-t / 1 h)'),
-            flow('draw', move('account', None), '0 USD2025/h'),
-            horizon=2,
-            outputs=tuple(
-                outcome(f'reported_{name}', f's.{name}', nonnegative=name != 'signed')
-                for name in ('ledger', 'account', 'signed')
-            ),
-        ),
-        '1 h',
+    """The recovery beside three accounts at 0.5 USD2025 that flows of nothing touch: a tally that
+    a flow fills (at most 1), an account that a flow drains (at most 1), and a signed account in
+    [-2, 2] with a flow in and a flow out."""
+    b = Builder(UNITS)
+    b.entity(
+        's',
+        *recovery(1),
+        usd('ledger', 0.5, upper=1),
+        usd('account', 0.5, upper=1),
+        usd('signed', 0.5, lower=-2, upper=2),
+        flow('fill', SOURCE, this.ledger, request=NOTHING),
+        flow('draw', this.account, SINK, request=NOTHING),
+        flow('rise', SOURCE, this.signed, request=NOTHING),
+        flow('fall', this.signed, SINK, request=NOTHING),
     )
+    return configured(b.finish(), 2)
 
 
 @pytest.mark.parametrize(
-    'coordinate,raw,reported,rejected',
+    'coordinate,raw,reported',
     [
-        ('ledger', -0.10985851323228443, 0, False),
-        ('ledger', -0.5, 0, False),
-        ('ledger', -1.2, -1.2, True),
-        ('account', -0.5, -0.5, True),
-        ('account', -0.05, 0, False),
-        ('ledger', 1.5, 1.5, False),
-        ('ledger', 1.05, 1, False),
-        ('ledger', 1e-28, 1e-28, False),
-        ('signed', -0.5, -0.5, False),
+        ('ledger', -0.10985851323228443, 0),
+        ('ledger', -0.5, 0),
+        ('ledger', -1.2, -1.2),
+        ('account', -0.5, -0.5),
+        ('account', -0.05, 0),
+        ('ledger', 1.5, 1.5),
+        ('ledger', 1.05, 1),
+        ('ledger', 1e-28, 1e-28),
+        ('signed', -0.5, -0.5),
     ],
 )
-def test_dense_reporting_respects_each_authored_bound_accuracy(coordinate, raw, reported, rejected):
-    rs = resolved(dense_fixture())
-    trajectory = simulate(rs, LIBRARY, NumericalSettings())
-    assert trajectory.settings['integration_segments']
-    at = 0.5
-    assert not any(snapshot[0] == at for snapshot in trajectory._snapshots)
-    segment = next(item for item in trajectory._segments if item.start <= at <= item.end)
-    original_solution = segment.solution
+def test_a_dense_value_takes_the_roundoff_of_each_authored_bound_onto_it(coordinate, raw, reported):
+    """A dense value within the slack of a bound is put on it: the lower slack of the tally is 1.1,
+    that of the drained account its tolerance 0.1, and an upper bound's is the tolerance. A larger
+    excursion stays, for the checks to see."""
+    _, _, components = Run(Plan.of(*dense_fixture())).prepare()
     name = f's.{coordinate}'
-    position = trajectory._states.index(name)
+    component = next(item for item, _ in components if name in item.system.index)
+    state = component.state.y.copy()
+    state[component.system.index[name]] = raw
+    assert component.context.project(state)[component.system.index[name]] == reported
 
-    def interior_roundoff(time):
-        values = np.array(original_solution(time), copy=True)
-        if time == at:
-            values[position] = raw
-        return values
 
-    segment.solution = interior_roundoff
-    trace_before = copy.deepcopy(trajectory.trace)
-    snapshots_before = [
-        (t, values.copy(), copy.deepcopy(store)) for t, values, store in trajectory._snapshots
-    ]
-    evaluations_before = trajectory.evaluations
-    assert segment.solution(at)[position] == raw
-    assert trajectory.env_at(at)[name] == reported
-    expected_pending = 20 * math.exp(-0.25 * (-math.expm1(-at)))
-    assert trajectory.env_at(at)['s.pending'] == pytest.approx(expected_pending, rel=1e-8)
-    assert trajectory.env_at(at)['s.pending'] + trajectory.env_at(at)['s.recovered'] == pytest.approx(
-        20, abs=1e-10
-    )
-    result = {'resolved': rs, 'trajectory': trajectory}
-    if rejected:
-        with pytest.raises(ValueError, match=f'Negative nonnegative outcome reported_{coordinate}'):
-            evaluate_outputs(result, LIBRARY, [at])
-    else:
-        assert evaluate_outputs(result, LIBRARY, [at])[0]['values'][f'reported_{coordinate}'] == reported
-    assert trajectory.trace == trace_before
-    assert trajectory.evaluations == evaluations_before
-    for actual, prior in zip(trajectory._snapshots, snapshots_before, strict=True):
-        assert actual[0] == prior[0] and actual[2] == prior[2]
-        np.testing.assert_array_equal(actual[1], prior[1])
-    assert segment.solution(at)[position] == raw
+def test_the_recovery_follows_its_closed_form_in_the_dense_values():
+    program, configuration = dense_fixture()
+    record = run(program, configuration)
+    found, recovered = read(record, program, ['s.pending', 's.recovered'], [0.5, 1.3])
+    assert found.values == pytest.approx([pending(0.5, 1), pending(1.3, 1)], rel=1e-8)
+    assert np.add(found.values, recovered.values) == pytest.approx([20, 20], abs=1e-10)
+
+
+def spending(b, cash):
+    """Spending under 24 h cash control: min(1,000,000 USD2025 an hour, cash / 24 h + 500,000)."""
+    return fmin(q(1_000_000, 'USD2025/h'), cash / q(24, 'h') + q(500_000, 'USD2025/h'))
 
 
 def spending_fixture(foregone_max=None):
     """The recovery of the dense fixture, slower, beside a cash account that receives 500,000 USD2025
     an hour and spends under 24 h cash control. `foregone_max` is an upper bound of the foregone
     spending (None: it has none)."""
-    return with_timescale(
-        system(
-            stock('pending', 20, size=20),
-            stock('recovered', size=20, kind='tally'),
-            usd('cash', 100_000_000),
-            usd('burned', kind='tally'),
-            usd('foregone', kind='tally', maximum=foregone_max, rate=FOREGONE),
-            formula('spending', SPENDING, 'USD2025/h'),
-            flow('recover', move('pending', 'recovered'), 'pending / 96 h * exp(-t / 24 h)'),
-            flow('receipts', move(None, 'cash'), '500000 USD2025/h'),
-            flow('spend', move('cash', 'burned'), 'spending'),
-            horizon=200,
-            outputs=(outcome('foregone_output', 's.foregone', measure=None),),
+    b = Builder(UNITS)
+    b.entity(
+        's',
+        *recovery(24),
+        usd('cash', 100_000_000),
+        usd('burned'),
+        usd('foregone', **({} if foregone_max is None else {'upper': foregone_max})),
+        value('spending', 'USD2025/h', formula(spending(b, this.cash))),
+        flow('receipts', SOURCE, this.cash, request=q(500_000, 'USD2025/h')),
+        flow('spend', this.cash, this.burned, request=formula(this.spending)),
+        flow(
+            'forgo',
+            SOURCE,
+            this.foregone,
+            request=formula(fmax(NOTHING, q(1_000_000, 'USD2025/h') - this.spending)),
         ),
-        '24 h',
     )
+    return configured(b.finish(), 200)
 
 
 def independent_spending(at):
@@ -169,80 +144,73 @@ def independent_spending(at):
     }
 
 
-def assert_independent_spending(trajectory):
-    for at in (0, 24, 168, 175, 176, 177, 192, 200):
-        observed = trajectory.env_at(at)
-        for name, value in independent_spending(at).items():
-            assert observed[name] == pytest.approx(value, abs=2.2), (at, name)
-        assert observed['s.cash'] + observed['s.burned'] == pytest.approx(100_000_000 + 500_000 * at, abs=2.2)
-        assert observed['s.pending'] + observed['s.recovered'] == pytest.approx(20, abs=1e-10)
-        expected_pending = 20 * math.exp(-0.25 * (-math.expm1(-at / 24)))
-        assert observed['s.pending'] == pytest.approx(expected_pending, rel=1e-8)
-
-
 def test_piecewise_spending_matches_independent_cash_and_foregone_integral():
-    rs = resolved(spending_fixture())
-    trajectory = simulate(rs, LIBRARY, NumericalSettings())
-    assert_independent_spending(trajectory)
-    assert evaluate_outputs({'resolved': rs, 'trajectory': trajectory}, LIBRARY, [176])[0]['values'][
-        'foregone_output'
-    ] == pytest.approx(0, abs=1.1)
+    program, configuration = spending_fixture()
+    record = run(program, configuration)
+    assert record.failure is None
+    times = (0, 24, 168, 175, 176, 177, 192, 200)
+    names = ['s.cash', 's.foregone', 's.burned', 's.pending', 's.recovered']
+    found = {reading.path: reading.values for reading in read(record, program, names, times)}
+    for k, at in enumerate(times):
+        for name, expected in independent_spending(at).items():
+            assert found[name][k] == pytest.approx(expected, abs=2.2), (at, name)
+        assert found['s.cash'][k] + found['s.burned'][k] == pytest.approx(100_000_000 + 500_000 * at, abs=2.2)
+        assert found['s.pending'][k] + found['s.recovered'][k] == pytest.approx(20, abs=1e-10)
+        assert found['s.pending'][k] == pytest.approx(pending(at, 24), rel=1e-8)
+    assert found['s.foregone'][times.index(176)] == pytest.approx(0, abs=1.1)
 
 
 def injected_solver(
     monkeypatch,
-    rs,
+    plan,
     *,
     coordinate='foregone',
     persistent=False,
     switching=True,
-    value=None,
+    value_=None,
     failed=False,
     kink=176,
 ):
+    """A solver that writes `value_` into the account `coordinate` at the last accepted state of
+    the segment that ends at the kink of the cash control (or, not `switching`, at the horizon)."""
     original = integrate.radau
-    index = list(rs.quantities).index(f's.{coordinate}')
-    calls, injections = [], []
+    stores = next(connected.stores for connected in plan.sets if f's.{coordinate}' in connected.stores)
+    index = stores.index(f's.{coordinate}')
+    injections = []
 
     def inject(fun, interval, initial, **kwargs):
         solution = original(fun, interval, initial, **kwargs)
-        calls.append(
-            {
-                'interval': interval,
-                'initial': initial.copy(),
-                'max_step': kwargs['max_step'],
-                'atol': np.array(kwargs['atol']).copy(),
-                'rtol': kwargs['rtol'],
-            }
-        )
+        if len(initial) != len(stores):
+            return solution  # the solver of the recovery
         is_kink = solution.success and abs(solution.t[-1] - kink) < 1e-3
         is_final = solution.success and solution.t[-1] == 200
         if (is_kink if switching else is_final) and (persistent or not injections):
             solution.y[index, -1] = (
-                value if value is not None else (-1.73 if coordinate == 'foregone' else -0.2)
+                value_ if value_ is not None else (-1.73 if coordinate == 'foregone' else -0.2)
             )
             if failed:
                 solution.success = False
                 solution.message = 'Injected solver failure'
-            injections.append(calls[-1])
+            injections.append(solution)
         return solution
 
     monkeypatch.setattr(integrate, 'radau', inject)
-    return calls, injections
+    return injections
 
 
 @pytest.mark.parametrize(
     'case', ['cumulative', 'noncumulative', 'nonswitching', 'upper', 'nonfinite', 'failed']
 )
-def test_a_material_bound_violation_rejects_the_run_at_once(monkeypatch, case):
-    rs = resolved(spending_fixture(1e9 if case == 'upper' else None))
-    _calls, injections = injected_solver(
+def test_a_material_bound_violation_stops_the_run_at_once(monkeypatch, case):
+    program, configuration = spending_fixture(1e9 if case == 'upper' else None)
+    plan = Plan.of(program, configuration)
+    injections = injected_solver(
         monkeypatch,
-        rs,
+        plan,
         coordinate='cash' if case == 'noncumulative' else 'foregone',
         persistent=True,
         switching=case != 'nonswitching',
-        value=1e9 + 0.2 if case == 'upper' else (math.nan if case == 'nonfinite' else None),
+        value_=1e9 + 0.2 if case == 'upper' else (math.nan if case == 'nonfinite' else None),
         failed=case == 'failed',
     )
     name = 'cash' if case == 'noncumulative' else 'foregone'
@@ -251,49 +219,64 @@ def test_a_material_bound_violation_rejects_the_run_at_once(monkeypatch, case):
         if case == 'nonfinite'
         else 'Integrator failed: Injected solver failure'
         if case == 'failed'
-        else rf'Material state-bound violation for s\.{name}'
+        else f'Material state-bound violation for s.{name}'
     )
-    with pytest.raises(SimulationError, match=message):
-        simulate(rs, LIBRARY, NumericalSettings())
+    record = Run(plan).run()
+    assert message in record.failure.detail('message')
     assert len(injections) == 1
 
 
 def cash_control_model():
-    # Receipts are 500,000 USD/h. Normal expenditure is 1,000,000 USD/h.
-    # With 24 h cash control the first shortfall occurs at 176 h, when cash = 12m.
-    return system(
+    """Receipts are 500,000 USD2025 an hour. Normal expenditure is 1,000,000 an hour. With 24 h cash
+    control the first shortfall occurs at 176 h, when cash = 12m. The patients leave at
+    patients * patients / 20 people an hour, so patients = 20 / (1 + t)."""
+    b = Builder(UNITS)
+    b.entity(
+        's',
         usd('cash', 100_000_000),
-        usd('receipts', kind='tally'),
-        usd('spent', kind='tally'),
-        usd('foregone', kind='tally', rate=FOREGONE),
-        # The patients leave at patients * patients / 20 people an hour, so patients = 20 / (1 + t).
-        stock('patients', 20, size=20, kind='state'),
-        flow('leave', move('patients', None), 'patients * patients / 20 people / 1 h'),
-        formula('spending', SPENDING, 'USD2025/h'),
-        flow('receipt', move(None, 'cash'), '500000 USD2025/h'),
-        flow('receipt_ledger', move(None, 'receipts'), '500000 USD2025/h'),
-        flow('expense', move('cash', 'spent'), 'spending'),
-        horizon=240,
+        usd('receipts'),
+        usd('spent'),
+        usd('foregone'),
+        value('patients', 'person', 20, scale=20),
+        value('spending', 'USD2025/h', formula(spending(b, this.cash))),
+        flow(
+            'leave',
+            this.patients,
+            SINK,
+            request=formula(this.patients * this.patients / q(20, 'person') / q(1, 'h')),
+        ),
+        flow('receipt', SOURCE, this.cash, request=q(500_000, 'USD2025/h')),
+        flow('receipt_ledger', SOURCE, this.receipts, request=q(500_000, 'USD2025/h')),
+        flow('expense', this.cash, this.spent, request=formula(this.spending)),
+        flow(
+            'forgo',
+            SOURCE,
+            this.foregone,
+            request=formula(fmax(NOTHING, q(1_000_000, 'USD2025/h') - this.spending)),
+        ),
     )
+    return configured(b.finish(), 240)
 
 
 def test_positive_piecewise_cumulative_integral_matches_independent_closed_form():
-    trajectory = simulate(resolved(cash_control_model()), LIBRARY, None)
+    program, configuration = cash_control_model()
+    record = run(program, configuration)
+    assert record.failure is None
+    times = (0, 24, 120, 175.9999, 176, 176.0001, 180, 192, 216, 240)
+    names = ['s.cash', 's.foregone', 's.spent', 's.receipts', 's.patients']
+    found = {reading.path: reading.values for reading in read(record, program, names, times)}
     previous = 0
-    for time in (0, 24, 120, 175.9999, 176, 176.0001, 180, 192, 216, 240):
+    for k, time in enumerate(times):
         elapsed = max(0, time - 176)
         cash = 100_000_000 - 500_000 * time if time <= 176 else 12_000_000 * math.exp(-elapsed / 24)
         foregone = 500_000 * (elapsed + 24 * math.expm1(-elapsed / 24))
-        env = trajectory.env_at(time)
-        assert env['s.cash'] == pytest.approx(cash, abs=1.1)
-        assert env['s.foregone'] == pytest.approx(foregone, abs=1.1)
-        assert env['s.foregone'] >= 0
-        assert env['s.foregone'] >= previous - 1.1
-        previous = env['s.foregone']
-        assert env['s.cash'] + env['s.spent'] - env['s.receipts'] == pytest.approx(100_000_000, abs=1.1)
-        assert env['s.spent'] + env['s.foregone'] == pytest.approx(1_000_000 * time, abs=1.1)
-        assert env['s.patients'] == pytest.approx(20 / (1 + time), rel=1e-8)
-    assert trajectory.settings['rtol'] == 1e-9
-    assert trajectory.settings['atol_factor'] == 1e-10
-    assert trajectory.settings['max_step'] == 1
-    assert all(0 < segment['max_step_h'] <= 1 for segment in trajectory.settings['integration_segments'])
+        assert found['s.cash'][k] == pytest.approx(cash, abs=1.1)
+        assert found['s.foregone'][k] == pytest.approx(foregone, abs=1.1)
+        assert found['s.foregone'][k] >= 0
+        assert found['s.foregone'][k] >= previous - 1.1
+        previous = found['s.foregone'][k]
+        assert found['s.cash'][k] + found['s.spent'][k] - found['s.receipts'][k] == pytest.approx(
+            100_000_000, abs=1.1
+        )
+        assert found['s.spent'][k] + found['s.foregone'][k] == pytest.approx(1_000_000 * time, abs=1.1)
+        assert found['s.patients'][k] == pytest.approx(20 / (1 + time), rel=1e-8)

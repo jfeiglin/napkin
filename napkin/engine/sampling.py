@@ -26,13 +26,13 @@ draws at the start of a run only: the outcomes of the events of a run keep their
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.stats import qmc
 
 from ..distributions import quantile
-from ..model.uncertain import is_distribution
 
 METHODS = ('random', 'latin', 'sobol')
 # The independent blocks of a study with `sobol` sampling, when the settings name no number.
@@ -143,6 +143,12 @@ def uniforms(names, settings, dimensions=None):
             # Rounding can carry the top of the last stratum to 1.
             out[name] = np.clip(u, 0.5 / RESOLUTION, 1 - 0.5 / RESOLUTION)
     return out
+
+
+def is_distribution(value):
+    """A distribution as the values of a run of the old compiled form write it: a mapping with its
+    family, not a point value."""
+    return isinstance(value, Mapping) and 'family' in value
 
 
 def uncertain(values):

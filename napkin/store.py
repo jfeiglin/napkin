@@ -1,17 +1,21 @@
 """The run store: each simulated run, kept on disk, so that no command simulates the same run twice.
 
-A simulation (`engine/runtime.py`, `simulate`) reads only its resolved run, the library's units and
-the numerical settings, and its result depends only on those and on the engine code. The store keys
-each simulated run by exactly these:
+A run (`napkin.engine.run(program, configuration)`) reads only its program and its run
+configuration, and its record depends only on those and on the engine code. The key of a stored run
+(`key`, R-A4a-08) is a digest of exactly these:
 
-- the canonical bytes of the resolved run, in its compiled order;
-- the canonical bytes of the units and of the numerical settings;
-- a digest of the engine code: each package file that `engine/runtime.py` imports, directly or
-  through other package files (its static import closure, with every parent package's
-  `__init__.py`), and `expressions.py` and `distributions.py`;
+- the canonical bytes of the program (`napkin/program/canonical.py`), which holds no label, text or
+  evidence, so editing a label keeps the key;
+- the canonical bytes of the configuration without its request: the inputs, the mode, the seed, the
+  controllers and their picks, the limits, the budgets and the numerical settings. What to record,
+  and until when, is no part of the key: a stored run serves a request that its manifest covers;
+- a digest of the engine code: each package file that `engine/timeline/__init__.py`, the entry of a
+  run, imports, directly or through other package files (its static import closure, with every
+  parent package's `__init__.py`), and `expressions.py` and `distributions.py`;
 - the Python, numpy and scipy versions, the machine, the processor and the numpy CPU features.
 
-A change to any of these is a miss, never a stale result. A simulation that the store runs gets
+A change to any of these is a miss, never a stale result. The old compiled form's runs go through
+the same store, unkeyed, until a later stage replaces them (`simulate_all`). A simulation that the store runs gets
 only the units of the library (`_StoredLibrary`), so the engine cannot read an input that the key
 leaves out. Every check of a study still runs: the store keeps only what `simulate` returns.
 
@@ -67,7 +71,7 @@ PACKAGE = Path(__file__).resolve().parent
 FORMAT = 2
 MAGIC = b'napkin run store 1\n'
 # The modules whose code a simulation runs, as files of the package.
-ENGINE_STARTS = ('engine/runtime.py', 'expressions.py', 'distributions.py')
+ENGINE_STARTS = ('engine/timeline/__init__.py', 'expressions.py', 'distributions.py')
 DEFAULT_LIMIT_GB = 4.0
 
 # The store that this process uses: its directory, or None, and the number of helper processes
@@ -388,31 +392,19 @@ def _typed_bytes(rs):
     yield b'}'
 
 
-def key(rs, library, settings=None, play=None):
-    """The key of one simulation: its resolved run, the library's units, the numerical settings,
-    what a played run asks (`play`: who picks, and the picks), the engine code and the environment.
-    Raises when the settings are invalid or an input is not plain data.
+def key(program, configuration):
+    """The key of a stored run of a program under a run configuration (see the module): the
+    canonical bytes of the program and of the configuration without its request, the engine code
+    and the environment. Raises TypeError when a part has no canonical bytes."""
+    from .program.canonical import configuration_bytes, program_bytes
 
-    A resolved run as typed parts (`model/structure.py`) has the key of the plain data that the
-    parts write (`Resolved.plain`), so the key is the same for the two forms of one run."""
-    from .engine.runtime import NumericalSettings
-    from .model.structure import Structure
-
-    parsed = NumericalSettings.parse(settings)
     digest = hashlib.sha256(MAGIC)
     digest.update(ENGINE_DIGEST.encode())
     digest.update(_ENVIRONMENT_BYTES)
-    # The store keys any plain data: typed parts by the plain data that they write, piece by
-    # piece, and a mapping as it is.
-    if isinstance(rs, Structure):
-        for piece in _typed_bytes(rs):
-            digest.update(piece)
-    else:
-        digest.update(canonical(rs))
-    digest.update(canonical(library['units']))
-    digest.update(canonical({item.name: getattr(parsed, item.name) for item in fields(parsed)}))
-    if play is not None:
-        digest.update(canonical({'play': play}))
+    # Each part is length-prefixed, so no two keys share their bytes across a boundary.
+    for part in (program_bytes(program), configuration_bytes(configuration)):
+        digest.update(b'%d:' % len(part))
+        digest.update(part)
     return digest.hexdigest()
 
 
