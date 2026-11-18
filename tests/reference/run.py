@@ -1,0 +1,1100 @@
+"""Running a description: what happens at one time, and between two times.
+
+The run goes from moment to moment. A moment is a time at which something discrete can happen.
+
+At a time, rounds (`Run._moment`). One round is:
+
+1. *Stages.* The stages that are due when the round begins commit one after the other (decision
+   D5), the stage of the occurrence that started first going first. A later stage sees what an
+   earlier one committed: from 20 g, a stage that sets 8 g and then one that adds 4 g leave 12 g.
+   A commit publishes the stage's writes and registers the occurrences that it queued; an
+   occurrence that has no step left finishes, and its record freezes (decision D7).
+2. *Settle.* Rates and each affected solver, once (`network.settle`). Until then a read of a
+   result whose inputs changed in the round fails, also through a formula (`Run.check_stale`).
+3. *Delays.* A next delay that reads a computed result is finished with the settled result.
+4. *Conditions.* Triggers, resets and gates are all read on the settled state; then the firings
+   and the released gates take effect, in a fixed order.
+
+A further round follows when anything is due at the same time or was registered in step 4. Setup
+is round zero: its statements commit as one stage, then the rates settle and the triggers get their
+first check. Three limits protect a run (decision D6): `max_occurrences`, `max_active` and
+`max_rounds`, each a field of `Config`.
+
+A person's choice pauses one atomic stage. The draws and the starts made before the prompt are
+kept, and `Run.resume` gives the answer and commits the stage once: one draw, one child, one
+transfer. (The oracle runs the paused stage again from its start, on the state that the pause left
+unchanged and with its kept draws, which is the same as going on in place.) Replaying the run with
+the answer in `Config.choices` gives the same record.
+
+Between two moments every rate is constant, or a known polynomial in time, and each store is
+integrated exactly (`network.motion`). The next moment is the earliest of: a stage that is due,
+a reset timer, the first contact of a watched condition with its boundary, a store that meets a
+bound, and the horizon.
+"""
+
+import dataclasses
+import hashlib
+import itertools
+from collections import Counter
+from fractions import Fraction
+from statistics import NormalDist
+
+from . import network
+from .errors import Diagnostic, NotCovered, Paused, RunFailed
+from .evaluate import (
+    SINK,
+    SOURCE,
+    UNSET,
+    Bound,
+    Cell,
+    Coll,
+    End,
+    Ent,
+    Ev,
+    Failed,
+    FlowRT,
+    FormulaV,
+    LegRT,
+    NeedsSettle,
+    Occ,
+    Pending,
+    Res,
+    Scope,
+    View,
+    label,
+)
+from .model import Assign, Branch, Config, E, Flow, Move, Start, Switch, Until, lit, number, scale_of, show
+from .poly import Irrational, plain
+
+_MISSING = object()
+BUILTIN = ('started', 'done', 'active')
+
+
+class Tx:
+    """The uncommitted work of one stage: its writes, its moves and the starts that it queued."""
+
+    def __init__(self, occ=None):
+        self.occ = occ
+        self.writes = {}
+        self.moves = []
+        self.starts = []
+
+
+@dataclasses.dataclass(eq=False)
+class Trig:
+    """The state of one trigger on one receiver."""
+
+    ent: Ent
+    event: object
+    decl: object
+    index: int
+    armed: bool = True
+    rearm_at: object = None
+    caps: dict = dataclasses.field(default_factory=dict)
+    blocked_at: object = None
+    firings: int = 0
+
+    @property
+    def label(self):
+        """The name of the trigger, such as `grinder.refill.when[0]`."""
+        return f'{self.ent.id}.{self.event.name}.when[{self.index}]'
+
+
+class Unavailable:
+    """What a report shows for a read that has no value at that time: the reason, and no value."""
+
+    def __init__(self, reason):
+        self.reason = reason
+
+    def __repr__(self):
+        return f'unavailable ({self.reason})'
+
+    def __eq__(self, other):
+        return isinstance(other, Unavailable)
+
+    __hash__ = None
+
+
+class Run:
+    """One run of a model: `Run(model, config).run()`, then read its record with `read`."""
+
+    def __init__(self, model, config=None, **options):
+        self.model = model
+        self.config = config or Config(**options)
+        if self.config.horizon is not None:
+            self.config.horizon = number(self.config.horizon)
+        self.answers = dict(self.config.choices)
+        self.view = View()
+        self.ents, self.tables = {}, set()
+        self.flow_at = {}  # (owner, name) -> FlowRT, for every flow ever made
+        self.fields = {}  # Cell -> its declaration
+        self.stores = set()  # cells that hold stock: an end of a flow or of a move
+        self.triggers, self.scheduled, self.awaiting = [], [], []
+        self.ledger, self.trace, self.frames, self.draws, self.decisions = [], [], [], [], []
+        self.cache = {}
+        self.components, self.component_of, self.solved_cells, self.settling = [], {}, set(), None
+        self.moving, self.stops = [], []
+        self.flow_numbers, self.occ_numbers = itertools.count(1), itertools.count(1)
+        self.sites = _sites(model)
+        self.error = self.paused = None
+        self.held = None  # the rest of a round that a prompt paused, its paused stage first
+        self.kept_draws, self.stage_draws, self.stage_decisions = {}, {}, []
+        self.phase = 'setup'
+        self.rounds, self.again = 0, False
+        self.round_written = set()  # what the commits of this round changed, for `check_stale`
+        self.at_bound = set()  # stores that met a bound by moving since the last settlement
+        self._setup()
+
+    # --- setup -----------------------------------------------------------------------------------
+
+    def _setup(self):
+        m, cells = self.model, self.view.cells
+        for i, inst in enumerate(m.instances, 1):
+            if inst.id in self.ents:
+                raise Diagnostic(f'two instances are named {inst.id}')
+            self.ents[inst.id] = Ent(inst.id, m.templates[inst.template], i)
+            if '.' in inst.id:
+                self.tables.add(inst.id.split('.')[0])
+        for inst in m.instances:  # starting values follow their dependencies, not the written order
+            ent = self.ents[inst.id]
+            for f in ent.template.fields:
+                self.fields[Cell(ent, f.name)] = f
+                cells[Cell(ent, f.name)] = Pending(
+                    lambda ent=ent, inst=inst, f=f: self._start_value(ent, inst, f)
+                )
+        for c in list(cells):
+            self.force(c)
+        for ent in self.ents.values():
+            for decl in ent.template.flows:
+                self._make_flow(decl, ent, Scope(ent))
+        for ent in self.ents.values():
+            for f in ent.template.fields:
+                for side in ('outflow', 'inflow'):
+                    ep = getattr(f, side)
+                    if ep is not None:
+                        end = End(Cell(ent, f.name), side)
+                        cells[Cell(end, 'capacity')] = self._prop(ep.capacity, Scope(ent))
+                        cells[Cell(end, 'request')] = self._prop(ep.request, Scope(ent))
+                        alloc = None if ep.allocation is None else FormulaV(ep.allocation, Scope(ent))
+                        cells[Cell(end, 'allocation')] = alloc
+            for ev in ent.template.events:
+                self.view.occs[ent, ev.name] = []
+                self.triggers += [Trig(ent, ev, tr, i) for i, tr in enumerate(ev.triggers)]
+
+    def _start_value(self, ent, inst, f):
+        scope = Scope(ent)
+        ev = Ev(self, self.view, scope, may_draw=True)
+        given = inst.values.get(f.name, _MISSING)
+        cell = Cell(ent, f.name)
+        if f.kind == 'link':
+            target = f.init if given is _MISSING else given
+            if target is None:
+                return UNSET
+            return self.ents[target] if isinstance(target, str) else ev.val(target)
+        if f.kind == 'formula':
+            return FormulaV(lit(f.init if given is _MISSING else given), scope)
+        key = f'{ent.id}.{f.name}'
+        if f.kind == 'input' and key in self.config.inputs:
+            v = ev.val(
+                lit(self.config.inputs[key])
+            )  # an override: the default is not evaluated, and draws nothing
+        elif given is not _MISSING:
+            v = ev.val(lit(given))
+        else:
+            v = UNSET if f.init is None else ev.val(f.init)
+        self._range(cell, f, ev, v)
+        return v
+
+    def _range(self, cell, f, ev, v):
+        lo = None if f.lo is None else ev.num(f.lo)
+        hi = None if f.hi is None else ev.num(f.hi)
+        if lo is None and hi is None:
+            return
+        if lo is not None and hi is not None and lo > hi:
+            raise Diagnostic(f'{label(cell)}: the range [{lo}, {hi}] is reversed')
+        self.view.bounds[cell] = (lo, hi)
+        self._in_range(cell, v)
+
+    def _in_range(self, cell, v):
+        lo, hi = self.view.bounds.get(cell, (None, None))
+        if isinstance(v, Fraction) and ((lo is not None and v < lo) or (hi is not None and v > hi)):
+            raise RunFailed(f'{label(cell)} = {v} is outside its range [{lo}, {hi}] at t = {self.view.t} h')
+
+    def force(self, cell):
+        """The starting value of a cell, computed on first need. A cycle is an error."""
+        p = self.view.cells[cell]
+        if not isinstance(p, Pending):
+            return p
+        if p.busy:
+            raise Diagnostic(f'a cycle among starting values: {label(cell)} needs itself')
+        p.busy = True
+        self.view.cells[cell] = v = p.compute()
+        self.view.entered[cell] = self.view.t
+        return v
+
+    def _prop(self, expr, scope):
+        """A setting of a flow or of an endpoint: a captured value, or a formula that stays live.
+        None when the model left it out."""
+        return None if expr is None else Ev(self, self.view, scope, may_draw=True).val(expr)
+
+    def _make_flow(self, decl, owner, scope):
+        ev = Ev(self, self.view, scope)
+        cells = self.view.cells
+
+        def end(path):
+            x = ev.ref(path)
+            if isinstance(x, Cell):
+                d = self.fields.get(x)
+                held = ev.raw(x)
+                if (
+                    isinstance(held, FormulaV)
+                    or (d is not None and d.kind != 'value')
+                    or not isinstance(held, Fraction)
+                ):
+                    raise Diagnostic(
+                        f'{label(x)} cannot be an end of the flow {decl.name}: it is not a stored quantity'
+                    )
+                return x
+            if x is SOURCE or x is SINK:
+                return None
+            raise Diagnostic(f'{show(path)} cannot be an end of the flow {decl.name}')
+
+        f = FlowRT(
+            next(self.flow_numbers), decl, owner, scope, 'directed', label=f'{label(owner)}.{decl.name}'
+        )
+        if decl.legs:
+            f.kind = 'legs'
+            for spec in decl.legs:
+                leg = LegRT(next(self.flow_numbers), f, spec.name, end(spec.source), end(spec.sink), spec)
+                f.legs[spec.name] = leg
+                cells[Cell(leg, 'request')] = self._prop(spec.request, scope)
+                cells[Cell(leg, 'capacity')] = self._prop(spec.capacity, scope)
+        else:
+            f.src, f.dst = end(decl.source), end(decl.sink)
+            if decl.reversible:
+                if f.src is None or f.dst is None:
+                    raise Diagnostic(f'{f.label}: SOURCE and SINK cannot be an end of a reversible flow')
+                f.kind = 'reversible'
+                f.legs['forward'] = LegRT(next(self.flow_numbers), f, 'forward', f.src, f.dst)
+                f.legs['backward'] = LegRT(next(self.flow_numbers), f, 'backward', f.dst, f.src)
+            cells[Cell(f, 'capacity')] = self._prop(decl.capacity, scope)
+            cells[Cell(f, 'request')] = self._prop(decl.request, scope)
+        for cell in network.stores_of(f):
+            self._note_store(cell)
+        self.round_written |= network.stores_of(f)  # the flow joins its endpoints' collections
+        self.flow_at[owner, decl.name] = f
+        self.view.live.append(f)
+        return f
+
+    def _note_store(self, cell):
+        """A cell becomes a store. What it holds at that time came from outside the flows: it is
+        recorded as an opening balance."""
+        if cell in self.stores:
+            return
+        amount = self.view.cells[cell]
+        if amount != 0:
+            self.ledger.append(('opening', self.view.t, cell, amount))
+        self.stores.add(cell)
+
+    # --- the run ---------------------------------------------------------------------------------
+
+    def run(self, until=None):
+        """Run to the horizon (or to `until`). A failure raises; `self.error` keeps it. A choice
+        that nobody gave stops the run with `self.paused` set: call `resume(answer)`."""
+        horizon = self.config.horizon if until is None else number(until)
+        if self.paused is not None:
+            raise RunFailed(f'the run waits for the choice {self.paused["key"]}: give it with resume(answer)')
+        try:
+            if self.held is not None:
+                self._moment()  # the paused moment goes on
+            elif not self.frames:
+                self._moment(setup=True)
+            while True:
+                nxt = self._next_time(horizon)
+                if nxt is None:
+                    break
+                self._advance(nxt)
+                self._moment()
+        except Paused as p:
+            self.paused = p.decision
+        except (RunFailed, NotCovered) as e:
+            self.error = e
+            raise
+        return self
+
+    def resume(self, answer):
+        """Answer the choice that the run waits for, and run on: the paused stage commits once."""
+        if self.paused is None:
+            raise RunFailed('the run waits for no choice')
+        self.answers[self.paused['key']] = answer
+        self.paused = None
+        return self.run()
+
+    def _next_time(self, horizon):
+        t = self.view.t
+        if horizon is not None and t >= horizon:
+            return None
+        times = [t + s for s in self.stops if s > 0] + [o.due for o in self.scheduled]
+        times += [
+            tr.rearm_at
+            for tr in self.triggers
+            if not tr.armed and tr.rearm_at is not None and tr.rearm_at > t
+        ]
+        if horizon is not None:
+            times.append(horizon)
+        if not times:
+            return None
+        first = min(times, key=float)
+        if isinstance(first, Irrational):
+            raise NotCovered(
+                f'the next moment after t = {t} h is a contact at an irrational time (about {float(first):.6g} h)'
+            )
+        return first
+
+    def _advance(self, nxt):
+        """Move every store exactly to the time `nxt`, and account for what each flow carried."""
+        view = self.view
+        tau = nxt - view.t
+        for src, dst, p, name in self.moving:
+            self.ledger.append(('flow', view.t, nxt, name, src, dst, p.integral()(tau)))
+        for cell, p in view.levels.items():
+            view.cells[cell] = p(tau)
+            self._in_range(cell, view.cells[cell])
+            if view.cells[cell] in view.bounds.get(cell, ()):
+                self.at_bound.add(cell)  # a rate that this store limits is stale until it settles
+        for var, p in view.rates.items():
+            view.results[var] = p(tau)
+        view.t, view.levels, view.rates = nxt, {}, {}
+
+    def _moment(self, setup=False):
+        t = self.view.t
+        if self.held is None:
+            self.trace.append(('moment', t))
+            self.rounds = 0
+            if setup:  # round zero: the setup statements commit as one stage, then settle and check
+                self.phase, self.round_written = 'stages', set()
+                tx = Tx()
+                self._execute(self.model.setup, tx, Scope())
+                self._commit(tx)
+                self._settle_and_check()
+            queue = None
+        else:
+            queue, self.held = self.held, None  # the rest of the paused round, its paused stage first
+        while True:
+            if queue is None:
+                self.rounds += 1
+                if self.rounds > self.config.max_rounds:
+                    raise RunFailed(self._round_limit())
+                self.again, self.round_written = False, set()
+                queue = sorted((o for o in self.scheduled if o.due == t), key=lambda o: o.number)
+            self.phase = 'stages'
+            while queue:
+                try:
+                    self._stage(queue[0])
+                except Paused:
+                    self.held = queue
+                    raise
+                queue.pop(0)
+            queue = None
+            self._settle_and_check()
+            if not (self.again or self.awaiting or any(o.due == t for o in self.scheduled)):
+                break
+        self.phase = 'between'
+        self.stops = self._stops()
+        self.frames.append(self.view.copy())
+
+    def _settle_and_check(self):
+        self.phase = 'settle'
+        network.settle(self)
+        self.at_bound = set()
+        self._finish_delays()
+        self.phase = 'conditions'
+        self._conditions()
+        self._asserts()
+
+    def _round_limit(self):
+        t, limit = self.view.t, self.config.max_rounds
+        fired = Counter(e[2] for e in self.trace if e[0] == 'fire' and e[1] == t)
+        started = Counter(e[2].split('#')[0] for e in self.trace if e[0] == 'start' and e[1] == t)
+        again = ', '.join(f'{name} ({n} times)' for name, n in fired.items() if n > 1)
+        events = ', '.join(f'{name} ({n} starts)' for name, n in started.items())
+        return (
+            f'more than {limit} rounds at t = {t} h: the limit max_rounds is {limit} rounds at one time. '
+            + (f'Triggers that fired again and again: {again}. ' if again else '')
+            + f'Events started at this time: {events or "none"}.'
+        )
+
+    # --- step 1: stages ----------------------------------------------------------------------------
+
+    def scope_of(self, owner):
+        """The scope in which the cells of an owner are read."""
+        if isinstance(owner, Occ):
+            return Scope(owner.ent, owner)
+        if isinstance(owner, (FlowRT, LegRT)):
+            return (owner.flow if isinstance(owner, LegRT) else owner).scope
+        return Scope(owner)
+
+    def _stage(self, occ):
+        """Run one stage and commit it. A prompt in it raises `Paused` and leaves the state as it was."""
+        step = occ.event.steps[occ.step]
+        scope = self.scope_of(occ)
+        tx = Tx(occ)
+        self.stage_draws, self.stage_decisions = {}, []
+        ran = step.guard is None or Ev(self, self.view, scope, tx=tx).truth(
+            step.guard
+        )  # the guard is read once, now
+        if ran:
+            try:
+                self._execute(step.body, tx, scope)
+            except RunFailed as e:
+                raise type(e)(f'{e} [stage {occ.step + 1} of {occ.label}, t = {self.view.t} h]') from None
+        self.scheduled.remove(occ)
+        occ.due, self.kept_draws = None, {}
+        self.trace.append(('stage', self.view.t, occ.label, occ.step, ran))
+        self._commit(tx)
+        self._reach(occ, occ.step + 1)
+
+    def _execute(self, statements, tx, scope):
+        for s in statements:
+            ev = Ev(self, self.view, scope, tx=tx, may_draw=True)
+            if isinstance(s, Assign):
+                self._assign(s, ev, tx)
+            elif isinstance(s, Start):
+                self._queue(s, ev, tx)
+            elif isinstance(s, Move):
+                self._move(s, ev, tx)
+            elif isinstance(s, Branch):  # decision D11
+                self._execute(s.then if ev.truth(s.condition) else s.other, tx, scope)
+            elif isinstance(s, Switch):
+                self._execute(self._select(s, ev), tx, scope)
+            else:
+                raise RunFailed(f'{s!r} is not a statement')
+
+    def _queue(self, s, ev, tx):
+        """`.start(...)`: the arguments are read once, at the caller, left to right. On a collection
+        the members start in the order of its keys, and equal keys in creation order."""
+        target = ev.val(s.event)
+        args = [ev.val(a) for a in s.args]
+        if isinstance(target, Coll):
+            members = sorted(
+                ((k, self.key_of(m, self.view), ev.deref(v)) for k, m, v in target.items), key=lambda x: x[:2]
+            )
+            target = [b for _, _, b in members]
+        else:
+            target = [target]
+        for b in target:
+            if not isinstance(b, Bound):
+                raise RunFailed(f'{show(s.event)}.start(...): not an event')
+            tx.starts.append((b, args))
+
+    def _select(self, s, ev):
+        """The body that a `switch` runs (decision D1). The guards are read once, before the
+        selector. A draw or a choice as the selector chooses among the eligible outcomes: those
+        whose case has no false guard. With none eligible, the `else` body runs and nothing is drawn."""
+        eligible = [c.guard is None or ev.truth(c.guard) for c in s.cases]
+        node = s.selector
+        if node._k == 'call' and node._a[1] in ('draw', 'choose'):
+            _, dist = ev.producer(node)
+            if dist.kind != 'categorical':
+                raise RunFailed(f'switch {show(node)}: a switch draws from a categorical distribution')
+            barred = {c.value for c, ok in zip(s.cases, eligible) if not ok}
+            allowed = [m for m, _ in dist.params if m not in barred]
+            if not allowed:
+                return s.default or []
+            chosen = ev.produce(node, allowed)
+        else:
+            chosen = ev.val(node)
+        for c, ok in zip(s.cases, eligible):
+            if ok and c.value == chosen:
+                return c.body
+        return s.default or []
+
+    def _assign(self, s, ev, tx):
+        target = ev.ref(s.target)
+        if isinstance(target, Res):
+            raise Diagnostic(f'{show(s.target)} is a computed result and has its own writer')
+        if not isinstance(target, Cell) or not (target in self.view.cells or target in tx.writes):
+            raise RunFailed(f'{show(s.target)} is not a declared, writable value')
+        d = self.fields.get(target)
+        if d is not None and (d.readonly or d.kind == 'input'):
+            raise Diagnostic(
+                f'{label(target)} is {"readonly" if d.readonly else "an input"}: it cannot be assigned'
+            )
+        holder = _holder(target.owner)
+        if isinstance(holder, Occ) and not self.view.cells[Cell(holder, 'active')]:
+            raise RunFailed(
+                f'{label(target)} belongs to the finished occurrence {holder.label}, which is frozen'
+            )
+        if (isinstance(target.owner, Occ) and target.name in BUILTIN) or target in self.solved_cells:
+            raise Diagnostic(f'{label(target)} cannot be assigned')
+        value = ev.val(s.value)
+        if s.op != '=':
+            current = ev.cell(target)
+            value = current + value if s.op == '+=' else current - value
+        self._in_range(target, value)
+        tx.writes[target] = value
+
+    def _move(self, s, ev, tx):
+        amount = ev.val(s.amount)
+        if not isinstance(amount, Fraction) or amount < 0:
+            raise RunFailed(
+                f'move {show(s.amount)}: the amount must be a number that is not negative, and is {amount!r}'
+            )
+        src, dst = ev.ref(s.source), ev.ref(s.destination)
+        for c in (src, dst):
+            d = self.fields.get(c) if isinstance(c, Cell) else None
+            if (
+                not isinstance(c, Cell)
+                or not isinstance(ev.cell(c), Fraction)
+                or (d is not None and d.kind != 'value')
+                or isinstance(self.view.cells.get(c), FormulaV)
+            ):
+                raise Diagnostic(
+                    f'move: {show(s.source if c is src else s.destination)} is not a stored quantity'
+                )
+        after = {src: ev.cell(src) - amount, dst: ev.cell(dst) + amount}
+        for c, v in after.items():  # both inventories are checked before anything changes
+            lo, hi = self.view.bounds.get(c, (None, None))
+            if (lo is not None and v < lo) or (hi is not None and v > hi):
+                raise RunFailed(
+                    f'move of {amount} from {label(src)} to {label(dst)} fails: {label(c)} would hold {v}, '
+                    f'outside its range [{lo}, {hi}]; nothing is moved'
+                )
+        tx.writes.update(after)
+        tx.moves.append((src, dst, amount))
+
+    def _commit(self, tx):
+        """Publish the writes of a stage and register the occurrences that it queued."""
+        view, t = self.view, self.view.t
+        moved = Counter()
+        for src, dst, amount in tx.moves:
+            self._note_store(src)
+            self._note_store(dst)
+            moved[src] -= amount
+            moved[dst] += amount
+            self.ledger.append(('move', t, src, dst, amount))
+        for cell, value in tx.writes.items():
+            old = view.cells.get(cell)
+            if (
+                cell in self.stores
+                and isinstance(old, Fraction)
+                and isinstance(value, Fraction)
+                and value - old != moved[cell]
+            ):
+                self.ledger.append(
+                    ('write', t, cell, value - old - moved[cell])
+                )  # a direct write: from or to outside
+            view.cells[cell] = value
+            if old != value:  # `elapsed` restarts only when the committed value differs
+                view.entered[cell] = t
+        self.round_written |= set(tx.writes)
+        self.decisions += self.stage_decisions
+        self.stage_decisions = []
+        starts, tx.starts, tx.writes, tx.moves = tx.starts, [], {}, []
+        for bound, args in starts:
+            self._register(bound, args)
+
+    def _register(self, bound, args):
+        """A start becomes an occurrence: its copies of the arguments, then its locals and flows in
+        written order (decision D14)."""
+        view, t, ent, event = self.view, self.view.t, bound.ent, bound.event
+        occs = view.occs[ent, event.name]
+        self._limits(ent, event, occs)
+        if len(args) != len(event.params):
+            raise RunFailed(
+                f'{ent.id}.{event.name}.start: {len(event.params)} arguments are declared and {len(args)} are given'
+            )
+        occ = Occ(next(self.occ_numbers), ent, event, len(occs) + 1, tuple(args))
+        for name, v in (('started', t), ('done', False), ('active', True), *zip(event.params, args)):
+            view.cells[Cell(occ, name)] = v
+            view.entered[Cell(occ, name)] = t
+        scope = Scope(ent, occ)
+        decls = event.locals
+        for i, d in enumerate(decls):
+            later = _forward(d, decls[i + 1 :])
+            if later:
+                raise Diagnostic(
+                    f'{occ.label}.{d.name}: its initializer names {", ".join(sorted(later))}, declared below it; '
+                    'only a formula(...) may name a later local'
+                )
+            if isinstance(d, Flow):
+                self._make_flow(d, occ, scope)
+                continue
+            cell = Cell(occ, d.name)
+            self.fields[cell] = d
+            if d.kind == 'formula':
+                view.cells[cell] = FormulaV(d.init, scope)
+            else:
+                ev = Ev(self, view, scope, may_draw=True)
+                view.cells[cell] = UNSET if d.init is None else ev.val(d.init)
+                self._range(cell, d, ev, view.cells[cell])
+            view.entered[cell] = t
+        occs.append(occ)
+        self.trace.append(('start', t, occ.label))
+        if self.phase == 'conditions':
+            self.again = True
+        self._reach(occ, 0)
+        return occ
+
+    def _limits(self, ent, event, occs):
+        """`max_occurrences` and `max_active` (decision D6), checked before one more start."""
+        view, t, cfg = self.view, self.view.t, self.config
+        name = f'{ent.id}.{event.name}'
+        if len(occs) >= cfg.max_occurrences:
+            raise RunFailed(
+                f'{name} would start {len(occs) + 1} times by t = {t} h: the limit max_occurrences is '
+                f'{cfg.max_occurrences} starts of one event'
+            )
+        running = [o for o in occs if view.cells[Cell(o, 'active')]]
+        if len(running) >= cfg.max_active:
+            oldest = running[0]
+            raise RunFailed(
+                f'{len(running)} occurrences of {name} are active at once (max_active = {cfg.max_active}) and one more '
+                f'starts at t = {t} h. The oldest, {oldest.label}, started at {view.cells[Cell(oldest, "started")]} h '
+                f'and waits at {self._where(oldest)}.'
+            )
+
+    def _where(self, occ):
+        """The step at which an occurrence waits, for a message."""
+        step = occ.event.steps[occ.step]
+        if isinstance(step, Until):
+            return f'`until {show(step.condition)}` (step {occ.step + 1})'
+        due = f', due at {occ.due} h' if occ.due is not None else ''
+        return f'`after {show(step.delay)}` (step {occ.step + 1}{due})'
+
+    def _reach(self, occ, i):
+        """The occurrence comes to its step i: a delay is captured, a gate waits, or it finishes."""
+        occ.step, occ.waiting, occ.due = i, False, None
+        if i >= len(occ.event.steps):
+            return self._complete(occ)
+        step = occ.event.steps[i]
+        if self.phase == 'conditions':
+            self.again = True
+        if isinstance(step, Until):
+            occ.waiting = True
+            return None
+        try:  # ordinary inputs of the delay are captured now; a computed result waits for the settlement
+            delay = Ev(self, self.view, self.scope_of(occ), may_draw=True, defer=True).val(step.delay)
+        except NeedsSettle:
+            self.awaiting.append((occ, self.view.copy()))
+        else:
+            self._schedule(occ, delay, step)
+        return None
+
+    def _schedule(self, occ, delay, step):
+        if not isinstance(delay, Fraction) or delay < 0:
+            raise RunFailed(
+                f'the delay {show(step.delay)} of {occ.label} must be a duration that is not negative, and is {delay!r}'
+            )
+        occ.due = self.view.t + delay
+        self.scheduled.append(occ)
+
+    def _finish_delays(self):
+        waiting, self.awaiting = self.awaiting, []
+        for occ, snapshot in waiting:
+            snapshot.results = self.view.results  # the state as captured, the results as just settled
+            step = occ.event.steps[occ.step]
+            self._schedule(occ, Ev(self, snapshot, self.scope_of(occ), may_draw=True).val(step.delay), step)
+
+    def _complete(self, occ):
+        """Normal completion. A store of the occurrence must be empty (the retirement rule). Each
+        formula of the occurrence, its flows' settings included, keeps the result it has now, or
+        the reason why it has none (decision D7); then its flows leave their endpoints."""
+        view, t = self.view, self.view.t
+        for cell in sorted((c for c in self.stores if c.owner is occ), key=lambda c: c.name):
+            left = view.cells[cell]
+            if left != 0:
+                raise RunFailed(
+                    f'{occ.label} cannot finish at t = {t} h: its store {label(cell)} still holds {left}. '
+                    'Wait for it to drain, move the rest to a named stock, or send it to SINK.'
+                )
+        for cell, v in list(view.cells.items()):
+            if isinstance(v, FormulaV) and _holder(cell.owner) is occ:
+                view.cells[cell] = self._frozen(cell, occ)
+        for (owner, _), f in list(self.flow_at.items()):
+            if owner is occ and f in view.live:
+                view.live.remove(f)
+                self.round_written |= network.stores_of(f)  # the flow leaves its endpoints' collections
+        view.cells[Cell(occ, 'done')], view.cells[Cell(occ, 'active')] = True, False
+        self.trace.append(('done', t, occ.label))
+        if self.phase == 'conditions':
+            self.again = True
+
+    def _frozen(self, cell, occ):
+        """The result that a formula of a finishing occurrence keeps, or the recorded reason."""
+        try:
+            return plain(Ev(self, self.view, Scope()).cell(cell))
+        except RunFailed as e:
+            return Failed(
+                f'{label(cell)} was not available when {occ.label} finished at t = {self.view.t} h: {e}'
+            )
+
+    # --- step 4: conditions ------------------------------------------------------------------------
+
+    def _conditions(self):
+        """Read every trigger, reset and gate on the settled state. Then act, in a fixed order:
+        firings by receiver and declaration, then released gates by the age of the occurrence."""
+        view, t = self.view, self.view.t
+        fires = []
+        for trig in self.triggers:
+            ev = Ev(self, view, Scope(trig.ent, None, trig.caps))
+            reset = trig.decl.reset
+            if not trig.armed:
+                if reset is None:  # no reset written: the condition must become false first
+                    if not ev.truth(trig.decl.when):
+                        trig.armed = True
+                    elif not self._after(trig.decl.when, ev.scope):
+                        trig.armed, trig.blocked_at = True, t  # false just after: armed for a later visit
+                elif reset[0] == 'when':
+                    trig.armed = ev.truth(reset[1])
+                elif trig.rearm_at is not None and t >= trig.rearm_at:
+                    trig.armed = True
+            if trig.armed and trig.blocked_at != t and ev.truth(trig.decl.when):
+                fires.append(trig)
+        releases = [
+            o
+            for o in self._gates()
+            if Ev(self, view, self.scope_of(o)).truth(o.event.steps[o.step].condition)
+        ]
+        for trig in fires:
+            self._fire(trig)
+        for occ in releases:
+            self.trace.append(('release', t, occ.label, occ.step))
+            self._reach(occ, occ.step + 1)
+
+    def _gates(self):
+        return sorted(
+            (o for occs in self.view.occs.values() for o in occs if o.waiting), key=lambda o: o.number
+        )
+
+    def _after(self, condition, scope):
+        """The truth of a condition just after this instant."""
+        network.motion(self)
+        return Ev(self, self.view, scope, mode='germ').truth(condition)
+
+    def _fire(self, trig):
+        t = self.view.t
+        caps = {}
+        for name, expr in trig.decl.captures:
+            ev = Ev(self, self.view, Scope(trig.ent, None, dict(caps)), may_draw=True)
+            ev.shared.context = f'{trig.label}!{trig.firings + 1}'
+            caps[name] = ev.val(expr)
+        tx = Tx()
+        self._execute(trig.decl.starts, tx, Scope(trig.ent, None, caps))
+        trig.caps, trig.armed, trig.firings = caps, False, trig.firings + 1
+        if (
+            trig.decl.reset is not None and trig.decl.reset[0] == 'after'
+        ):  # the duration is captured at firing
+            trig.rearm_at = t + Ev(self, self.view, Scope(trig.ent, None, caps), may_draw=True).num(
+                trig.decl.reset[1]
+            )
+        self.trace.append(('fire', t, trig.label))
+        self.again = True
+        self._commit(tx)
+
+    def _asserts(self):
+        for a in self.model.asserts:
+            scope = Scope(self.ents[a.owner]) if a.owner else Scope()
+            if not Ev(self, self.view, scope).truth(a.condition):
+                raise RunFailed(f'assert {a.text or show(a.condition)} fails at t = {self.view.t} h')
+
+    def _stops(self):
+        """The times after this moment at which something can happen without a scheduled stage."""
+        view = self.view
+        stops = network.motion(self)
+
+        def watch(expr, scope, strict):
+            ev = Ev(self, view, scope, mode='germ')
+            ev.shared.strict = strict
+            v = ev.val(expr)
+            stops.extend(ev.shared.stops)
+            return v
+
+        for trig in self.triggers:
+            scope = Scope(trig.ent, None, trig.caps)
+            watch(trig.decl.when, scope, True)
+            if not trig.armed and trig.decl.reset is not None and trig.decl.reset[0] == 'when':
+                watch(trig.decl.reset[1], scope, True)
+        for occ in self._gates():
+            watch(occ.event.steps[occ.step].condition, self.scope_of(occ), True)
+        for a in self.model.asserts:  # an assertion on state is also checked just after each moment
+            if watch(a.condition, Scope(self.ents[a.owner]) if a.owner else Scope(), False) is False:
+                raise RunFailed(f'assert {a.text or show(a.condition)} fails just after t = {view.t} h')
+        return stops
+
+    # --- what the evaluator asks of the run ----------------------------------------------------------
+
+    def pull(self, var):
+        """Solve the calculation of a result that another calculation reads."""
+        network.pull(self, var)
+
+    def incident(self, view, end):
+        """The connections of an endpoint that are present."""
+        return network.incident(view, end)
+
+    def key_of(self, member, view):
+        """The natural key of a member: the start time of an occurrence, else its creation number."""
+        return view.cells[Cell(member, 'started')] if isinstance(member, Occ) else member.number
+
+    def check_stale(self, var, tx):
+        """A result read while the stages of a round run (decision D5). It fails when an input of
+        its calculation changed in the round, or met a bound by moving, before the calculation
+        settles; and when it has never settled. A stale answer is a wrong one."""
+        comp = self.component_of.get(var)
+        if comp is None:
+            raise RunFailed(
+                f'{label(var)} is read before its first solve: it settles after the stages of the round commit'
+            )
+        written = self.round_written | self.at_bound | (set(tx.writes) if tx is not None else set())
+        changed = comp.deps & written
+        if changed:
+            raise RunFailed(
+                f'{label(var)} is read before its solve settles: {", ".join(sorted(label(c) for c in changed))} '
+                'changed in this round. Read it after the stage commits and the solve settles.'
+            )
+
+    def entered(self, cell, tx, view):
+        """The time at which a state took its present value. A write in the stage counts only when
+        it differs from the committed value."""
+        if tx is not None and cell in tx.writes and tx.writes[cell] != view.cells.get(cell):
+            return view.t
+        return view.entered.get(cell, Fraction(0))
+
+    def read_past(self, expr, delay, ev):
+        """`delayed(x, D)`: x as the run recorded it D ago. With D = 0 inside a stage that is the
+        committed value, never a value that the stage itself has written and not yet committed."""
+        if not isinstance(delay, Fraction) or delay < 0:
+            raise RunFailed(f'delayed({show(expr)}, ...): the delay must be a duration that is not negative')
+        if delay == 0:
+            return plain(Ev(self, self.view, ev.scope).val(expr))
+        return self.read(expr, max(self.view.t - delay, Fraction(0)), scope=ev.scope)
+
+    # --- draws and choices ---------------------------------------------------------------------------
+
+    def _key(self, node, ev):
+        """The key of a draw or a choice: its site in the model and its owner (occurrence or firing)."""
+        s = ev.scope
+        who = (
+            s.occ.label
+            if s.occ is not None
+            else ev.shared.context or (s.this.id if s.this is not None else 'model')
+        )
+        return f'{self.sites.get(id(node), show(node))}|{who}'
+
+    def _uniform(self, key):
+        digest = hashlib.sha256(f'{self.config.seed}|{key}'.encode()).digest()
+        return Fraction(int.from_bytes(digest[:8], 'big') * 2 + 1, 2**65)
+
+    def draw(self, dist, node, ev, eligible=None):
+        """An executed `.draw()`: the median in a median run, a keyed sample in a sampled run. A
+        draw that a paused stage made is kept and given again when the stage resumes."""
+        key = self._key(node, ev)
+        if key in self.kept_draws:
+            value = self.kept_draws[key]
+        else:
+            if dist.kind == 'categorical':
+                value = self._outcome(dist, key, eligible)
+            elif self.config.mode == 'median':
+                value = self.describe(dist, 'median')
+            elif dist.kind == 'uniform':
+                lo, hi = dist.params
+                value = lo + (hi - lo) * self._uniform(key)
+            elif dist.kind == 'normal':  # the quantile is a float, made exact to within 1e-9
+                mean, std = dist.params
+                quantile = NormalDist().inv_cdf(float(self._uniform(key)))
+                value = mean + std * Fraction(quantile).limit_denominator(10**9)
+            else:
+                raise NotCovered(f'a sampled draw of the distribution {dist.kind}')
+            self.draws.append((key, value))
+        self.stage_draws[key] = value
+        return value
+
+    def _outcome(self, dist, key, eligible):
+        """A draw of a categorical distribution among the eligible outcomes, their probabilities
+        scaled to sum to one. A median run takes the most likely, the first declared on a tie."""
+        outcomes = [(m, p) for m, p in dist.params if eligible is None or m in eligible]
+        total = sum(p for _, p in outcomes)
+        if total == 0:
+            raise RunFailed(
+                f'no eligible outcome has a probability to draw: {", ".join(m for m, _ in outcomes)}'
+            )
+        if self.config.mode == 'median':
+            return max(outcomes, key=lambda mp: mp[1])[0]
+        u, reached = self._uniform(key), Fraction(0)
+        for m, p in outcomes:
+            reached += p / total
+            if u < reached:
+                return m
+        return outcomes[-1][0]
+
+    def describe(self, dist, name):
+        """A read-only property of a distribution, which consumes no draw."""
+        if dist.kind == 'uniform':
+            lo, hi = dist.params
+            if name in ('mean', 'median'):
+                return (lo + hi) / 2
+        elif dist.kind == 'normal':
+            if name in ('mean', 'median'):
+                return dist.params[0]
+            if name == 'std':
+                return dist.params[1]
+        raise NotCovered(f'{name} of the distribution {dist.kind}')
+
+    def choose(self, actor, dist, node, ev, eligible=None):
+        """An actor's choice (decision D1). A person who controls the actor may pick any eligible
+        outcome, whatever its probability; with no controller the value is the forecast's draw.
+        Eligibility and probability are independent. A missing answer pauses the stage."""
+        if dist.kind != 'categorical':
+            raise RunFailed(f'{show(node)}: an actor chooses from a categorical forecast')
+        options = [m for m, _ in dist.params if eligible is None or m in eligible]
+        key = self._key(node, ev)
+        record = {
+            'time': self.view.t,
+            'key': key,
+            'actor': actor.id,
+            'options': options,
+            'probabilities': dict(dist.params),
+        }
+        if actor.id not in self.config.controllers:
+            value = self.draw(dist, node, ev, eligible)
+            self.stage_decisions.append({**record, 'by': 'forecast', 'value': value})
+            return value
+        if ev.tx is None or ev.tx.occ is None:
+            raise NotCovered(
+                f'{actor.id} chooses outside the stage of an occurrence: a prompt pauses one stage'
+            )
+        record['sees'] = {
+            show(e): plain(Ev(self, self.view, Scope(actor)).val(e)) for e in actor.template.sees
+        }
+        answer = self.answers.get(key, self.answers.get(actor.id, _MISSING))
+        if answer is _MISSING:
+            self.kept_draws = dict(self.stage_draws)  # the draws made before the prompt are kept
+            queued = [f'{b.ent.id}.{b.event.name}' for b, _ in ev.tx.starts]
+            raise Paused({**record, 'kept_draws': dict(self.kept_draws), 'queued_starts': queued})
+        if answer not in options:
+            raise RunFailed(f'the choice {key}: {answer} is not available (available: {", ".join(options)})')
+        self.stage_decisions.append({**record, 'by': 'controller', 'value': answer})
+        return answer
+
+    # --- what a caller reads -------------------------------------------------------------------------
+
+    def read(self, expr, at=None, owner=None, scope=None, unit=None):
+        """The value of an expression at a time of the run, from the record, in `unit` if one is
+        given (the run itself works in canonical units). A read changes nothing."""
+        at = self.view.t if at is None else number(at)
+        frames = [f for f in self.frames if f.t <= at]
+        if not frames or at > self.view.t:
+            raise RunFailed(f'the run has no record at t = {at} h')
+        frame = frames[-1].copy()
+        tau = at - frame.t
+        if tau > 0:
+            for cell, p in frame.levels.items():
+                frame.cells[cell] = p(tau)
+            for var, p in frame.rates.items():
+                frame.results[var] = p(tau)
+            frame.t, frame.levels, frame.rates = at, {}, {}
+        if scope is None:
+            scope = Scope(self.ents[owner]) if owner else Scope()
+        ev = Ev(self, frame, scope)
+        v = ev.val(lit(expr))
+        size = Fraction(1) if unit is None else scale_of(unit)
+        if isinstance(v, Coll):  # a projection: each member's value, read on the same frame
+            return Coll((k, m, _in_unit(plain(ev.deref(x)), size)) for k, m, x in v.items)
+        return _in_unit(plain(v), size)
+
+    def report(self, expr, times, owner=None, unit=None):
+        """What a report shows: the value at each time, or `Unavailable` with the reason. An invalid
+        read is the report's affair: it cannot fail the run, which is over."""
+        out = []
+        for at in times:
+            try:
+                out.append(self.read(expr, at, owner, unit=unit))
+            except RunFailed as e:
+                out.append(Unavailable(str(e)))
+        return out
+
+    def times(self, kind, name=None):
+        """The times of the trace entries of one kind (and one label)."""
+        return [e[1] for e in self.trace if e[0] == kind and (name is None or e[2] == name)]
+
+    def conservation(self):
+        """The account of every store: what is held equals what came in less what went out."""
+        held = sum((self.view.cells[c] for c in self.stores), Fraction(0))
+        tot = Counter()
+        for e in self.ledger:
+            if e[0] == 'flow':
+                tot['from_source'] += e[6] if e[4] is None and e[5] is not None else 0
+                tot['to_sink'] += e[6] if e[5] is None and e[4] is not None else 0
+            elif e[0] in ('opening', 'write'):
+                tot[e[0]] += e[3]
+        expected = tot['opening'] + tot['write'] + tot['from_source'] - tot['to_sink']
+        return {
+            'held': held,
+            **{k: tot[k] for k in ('opening', 'write', 'from_source', 'to_sink')},
+            'balanced': held == expected,
+        }
+
+
+def _in_unit(x, size):
+    """A canonical number in the unit of the given size; anything that is not a number unchanged."""
+    return x / size if isinstance(x, Fraction) else x
+
+
+def _holder(owner):
+    """The entity or occurrence that holds a cell: a flow's settings belong to the flow's owner."""
+    if isinstance(owner, LegRT):
+        return owner.flow.owner
+    if isinstance(owner, FlowRT):
+        return owner.owner
+    return owner
+
+
+def _plain_names(e):
+    """The bare names that an expression reads, outside any `formula(...)`: a formula is read later."""
+    if isinstance(e, E):
+        if e._k == 'formula':
+            return set()
+        return ({e._a[0]} if e._k == 'name' else set()).union(*(_plain_names(a) for a in e._a))
+    if isinstance(e, (tuple, list)):
+        return set().union(*(_plain_names(a) for a in e))
+    return set()
+
+
+def _forward(d, later):
+    """The later declarations of an event that the plain initializers of `d` read (decision D14).
+    A formula local, or a formula setting of a flow, may name them."""
+    if isinstance(d, Flow):
+        parts = [d.source, d.sink, d.request, d.capacity]
+        parts += [p for one in d.legs for p in (one.source, one.sink, one.request, one.capacity)]
+    elif d.kind == 'formula':
+        return set()
+    else:
+        parts = [d.init, d.lo, d.hi]
+    return {x.name for x in later} & _plain_names(parts)
+
+
+def _sites(model):
+    """A stable name for each place of the model where a draw or a choice is written."""
+    sites = {}
+
+    def walk(x, path):
+        if isinstance(x, E):
+            if x._k == 'call' and x._a[1] in ('draw', 'choose'):
+                sites[id(x)] = path
+            for i, a in enumerate(x._a):
+                walk(a, f'{path}/{i}')
+        elif isinstance(x, (list, tuple)):
+            for i, a in enumerate(x):
+                walk(a, f'{path}/{getattr(a, "name", i)}')
+        elif isinstance(x, dict):
+            for k, a in x.items():
+                walk(a, f'{path}/{k}')
+        elif dataclasses.is_dataclass(x):
+            for f in dataclasses.fields(x):
+                walk(getattr(x, f.name), f'{path}.{f.name}')
+
+    walk(model.templates, 'template')
+    walk(model.setup, 'setup')
+    for inst in model.instances:
+        walk(inst.values, f'instance/{inst.id}')
+    return sites

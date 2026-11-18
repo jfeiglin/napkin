@@ -21,7 +21,7 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
 - [x] Gate G0 (2026-11-18): the owner's decisions are `g0-decisions.md`; `spec.md` is the settled proposal. See "Changes after G0" below
 - [ ] B1 contract, oracle and solve library: three tracks (`briefs/b1-*.md`)
   - [ ] the program (`napkin/program/`, `tests/program/`)
-  - [ ] the oracle, phase 1: the semantics of G0 (`tests/reference/`)
+  - [x] the oracle, phase 1: the semantics of G0 (`tests/reference/`, 127 tests)
   - [ ] the solve library (`napkin/engine/solve/`, `tests/engine/solve/`)
   - [ ] the oracle, phase 2: it reads the programs of `tests/program/examples.py`
 - [ ] S0 skeleton
