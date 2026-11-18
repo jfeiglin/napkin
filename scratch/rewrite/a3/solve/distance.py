@@ -24,6 +24,8 @@ from scipy.sparse.linalg import splu
 EPS = 1e-3
 TOL = 1e-9
 RHO = 1e8
+LM = True          # Levenberg-Marquardt delta from the residual (else 1e-14)
+SEARCH = 'exact'   # or 'armijo'
 
 
 class Stats:
@@ -34,7 +36,8 @@ class Stats:
 
 
 def nearest(A, row_lower, row_upper, lower, upper, target, weight, tol=TOL, eps=EPS, max_outer=200,
-            max_newton=200, stats=None):
+            max_newton=200, stats=None, y0=None):
+    """`y0`: duals of the rows to start from (as returned in stats.y)."""
     stats = stats or Stats()
     A = sp.csr_array(A, dtype=float)
     m, n = A.shape
@@ -75,7 +78,7 @@ def nearest(A, row_lower, row_upper, lower, upper, target, weight, tol=TOL, eps=
     row_size = 1.0 + np.abs(e) + np.abs(B) @ np.abs(cx)
     ET = E.T.tocsr()
     N = nf + ns
-    y = np.zeros(mk)
+    y = np.zeros(mk) if y0 is None else np.asarray(y0, float)[keep]
     solver = _Newton(E, ET, e, zl, zu, w, N, mk)
     z = None
     for outer in range(max_outer):
@@ -87,6 +90,8 @@ def nearest(A, row_lower, row_upper, lower, upper, target, weight, tol=TOL, eps=
         if move <= tol * (1.0 + float(np.abs(z[prox]).max(initial=0.0))):
             break
     x[free] = z[:nf]
+    stats.y = np.zeros(m)
+    stats.y[keep] = y
     return x, stats
 
 
@@ -153,7 +158,7 @@ class _Newton:
             # Levenberg-Marquardt: delta follows the residual (a power of ten, so that a factorization
             # serves while the free set and delta stay)
             size = float(np.abs(r).max())
-            delta = 10.0 ** np.clip(np.ceil(np.log10(size)) - 2, -14, -4)
+            delta = 10.0 ** np.clip(np.ceil(np.log10(size)) - 2, -14, -4) if LM else 1e-14
             key = (free.tobytes(), delta)
             if self.kept is None or self.kept[0] != key:
                 self.K.data[self.diag] = np.r_[np.where(free, self.w, self.w * (1.0 + RHO)), np.full(self.m, -delta)]
@@ -164,7 +169,14 @@ class _Newton:
             slope = float(r @ step)
             if slope <= 0:
                 step, slope = r.copy(), float(r @ r)
-            alpha = self.search(c, y, step, slope)
+            if SEARCH == 'armijo':
+                alpha, q0 = 1.0, q
+                for _ in range(60):
+                    if self.point(c, y + alpha * step)[2] >= q0 + 1e-4 * alpha * slope:
+                        break
+                    alpha *= 0.5
+            else:
+                alpha = self.search(c, y, step, slope)
             if alpha is None:
                 raise ValueError('the conditions cannot hold together (the dual has no maximum)')
             z1, r1, q1 = self.point(c, y + alpha * step)
