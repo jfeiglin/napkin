@@ -93,11 +93,11 @@ def nearest(A, row_lower, row_upper, lower, upper, target, weight, tol=TOL, eps=
 class _Newton:
     def __init__(self, E, ET, e, zl, zu, w, N, m):
         self.E, self.ET, self.e, self.zl, self.zu, self.w, self.N, self.m = E, ET, e, zl, zu, w, N, m
-        K = sp.block_array([[sp.diags_array(np.ones(N)), ET], [E, sp.diags_array(-np.ones(m)) * 1e-14 if m else None]]).tocsc() if m else None
-        if K is not None:
+        if m:
+            K = sp.block_array([[sp.diags_array(np.ones(N)), ET], [E, sp.diags_array(-np.ones(m))]]).tocsc()
             K.sort_indices()
-            diag = np.empty(N, dtype=np.int64)
-            for j in range(N):
+            diag = np.empty(N + m, dtype=np.int64)
+            for j in range(N + m):
                 lo, hi = K.indptr[j], K.indptr[j + 1]
                 diag[j] = lo + np.searchsorted(K.indices[lo:hi], j)
             self.K, self.diag = K, diag
@@ -150,9 +150,13 @@ class _Newton:
                 return z, y, float(np.abs(r).max(initial=0.0))
             u = c - (self.ET @ y) / self.w
             free = (u > self.zl) & (u < self.zu)
-            key = free.tobytes()
+            # Levenberg-Marquardt: delta follows the residual (a power of ten, so that a factorization
+            # serves while the free set and delta stay)
+            size = float(np.abs(r).max())
+            delta = 10.0 ** np.clip(np.ceil(np.log10(size)) - 2, -14, -4)
+            key = (free.tobytes(), delta)
             if self.kept is None or self.kept[0] != key:
-                self.K.data[self.diag] = np.where(free, self.w, self.w * (1.0 + RHO))
+                self.K.data[self.diag] = np.r_[np.where(free, self.w, self.w * (1.0 + RHO)), np.full(self.m, -delta)]
                 self.kept = (key, splu(self.K, permc_spec='MMD_AT_PLUS_A'))
                 stats.factorizations += 1
             step = self.kept[1].solve(np.r_[np.zeros(self.N), -r])[self.N:]
