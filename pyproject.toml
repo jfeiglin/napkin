@@ -30,8 +30,8 @@ include-package-data = false
 # `napkin` command. The catalogue (`scenarios/`), the examples and the maintainer tools (`tools/`) stay
 # in the repository. The prelude and the compiler's schemas are files of the package (`napkin/std/`,
 # `napkin/schema/`).
-packages = ["napkin", "napkin.commands", "napkin.core", "napkin.model", "napkin.model.analysis", "napkin.model.language", "napkin.model.lower", "napkin.engine",
-            "napkin.engine.continuous", "napkin.engine.timeline", "napkin.dynamics", "napkin.draw", "napkin.schema"]
+packages = ["napkin", "napkin.commands", "napkin.core", "napkin.model", "napkin.model.analysis", "napkin.model.language", "napkin.model.lower", "napkin.program", "napkin.engine",
+            "napkin.engine.continuous", "napkin.engine.solve", "napkin.engine.timeline", "napkin.dynamics", "napkin.draw", "napkin.schema"]
 
 [tool.setuptools.package-data]
 # The prelude: the units that every model has.

@@ -1,31 +1,36 @@
 # B1-P state: the program (napkin/program/, tests/program/)
 
 ## Done
-- Read the brief, COMMON-B, g0-decisions, spec, PLAN (G0 changes, choice 1, B1), a2/ref/model.py,
-  a4a R-01/02/07/08 + 3.4, a4b R-01/02/04/07 + spike/program.py, a1/types.md, core expr/ops/units.
+- napkin/program/: refs.py (reads: Path with start + steps, Reduce, Draw, Choice, Since, Elapsed,
+  Delayed, EnumValue, TIME; Expr = core node + reads by name; Formula), parts.py (Unit, Enum,
+  types, Value, Endpoint, Priority/Proportional, Flow, Assign/Move/Start/If/Switch/Case,
+  After/Until, Reset, Trigger, Event, Binding/Constraint/Objective/Solver, Status, Assert, Member,
+  Template, Program), config.py, record.py, check.py (Resolver + 30 codes), build.py (handles X,
+  part constructors, Builder.finish), canonical.py.
+- tests/program/: examples.py (65 examples, ROWS maps all 32 acceptance rows), test_examples,
+  test_check (58 malformed cases, one per code or more), test_canonical, test_record, test_config.
+- `NAPKIN_STORE=off .venv/bin/python -m pytest -q -p no:cacheprovider tests/program`: 421 passed.
+  tests/core: 395 passed. ruff check + format clean.
 
-## Design (decided)
-- Modules: refs.py (reads of an expression: Path with a start and steps, Reduce, Draw, Choice,
-  Since, Elapsed, Delayed, EnumValue, TIME; Expr = core node + reads by name; Formula),
-  parts.py (Unit, types, Value, Endpoint, allocations, Flow, statements, steps, Trigger, Event,
-  Solver, Status, Assert, Member, Template, Program), config.py, record.py, check.py (resolver +
-  checker, codes), build.py (handles X, part constructors, Builder.finish), canonical.py.
-- A Path start: THIS, ROOT, ITEM, Named(member id), Local(bare name of the scope), Instances,
-  Literal, Where, By, Lookup. A path through a collection is a projection (as in the language).
-- Units: a table of spellings (L/h, person*year) with dimension and exact scale; `q(n, unit)` core
-  call in expressions; the builder composes spellings with `*` and `/` over declared units.
-- Table rows with ids are sorted by id (R-A4a-02), so a reordered table gives equal bytes.
-- Setup statements of the root are round zero (R-A2-05); later starts use `when t >= T` triggers.
-- Record: Key(owner, steps), pieces (t, value, rate), trace entries with round, manifest.
-- Config canonical bytes leave out the request (R-A4a-08); seed only in sampled mode.
-
-## Done (code)
-- napkin/program/{__init__,refs,parts,config,record,check,build,canonical}.py written, linted;
-  the docstring tank builds, finishes and gives equal bytes for two builds.
-
-## In progress
-- tests/program/examples.py: ~65 examples (each acceptance row; variants; pinned delivery
-  experiments; keyed lookup; D2 overrides), with ROWS mapping each acceptance row to examples.
+## Decisions (and why)
+- A path through a collection is a projection (the language's own rule); collections, `where`,
+  `by`, `.at` are starts of a path, so one Path record covers members, rows, occurrences, flows.
+- Names in a node are spellings of their reads, made canonical at finish (deterministic bytes).
+- Members named by id in paths (`Named`), links of members as row numbers; rows with ids sorted by
+  id (R-A4a-02), so reordered tables give equal bytes.
+- Unit table of spellings with dimension + exact Fraction scale; builder composes `*` `/` (D12).
+- Setup statements = round zero (R-A2-05); later starts use `when t >= T` triggers.
+- Tally: no mark in the program (D10 removed `cumulative`); route_end refuses SOURCE/SINK only.
+- Expected values in the value's declared unit; trace rounds 0 (setup), then 1, 2, ...
+- Budgets default 10,000 LPs (fair sharing) and 100,000 iterations (distance).
+- An ineligible pick fails the run (dispatcher_player_no_spare).
+- two_junctions_solver: solver over the four requested rates, feed left local (spec's "four").
+- network_kw writes every power in kW/kWh (strength 0.001 kW).
+- A status display ends with its one unconditional case; a where tests fixed fields only
+  (where_live); a start passes one argument per parameter (arguments).
+- Trace kind `solve` added (row 20 needs it); draw site = holder origin + `.draw[k]`.
 
 ## Remaining
-- tests/program/{__init__,test_examples,test_check,test_canonical,test_record}.py, lint, message.
+- Not mine: register napkin.program in pyproject `packages` and tests/test_api.py CLOSURE.
+- Not checked: full expression units (front end's type checker); two solvers competing for one
+  binding resource; a receive-only tally at a route end (no mark exists).

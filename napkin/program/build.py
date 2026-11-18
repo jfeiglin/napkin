@@ -1077,7 +1077,7 @@ def _spellings(value, found):
 
 def _flow_units(program, template):
     """A template whose flows without a unit take the unit of an end, or of a literal rate, per hour."""
-    resolver = checking.Resolver(program, checking._silent)
+    resolver = checking.Resolver(program)
 
     def unit_of(flow, scope):
         if flow.kind == p.LEGS:

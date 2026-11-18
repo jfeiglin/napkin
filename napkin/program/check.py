@@ -42,6 +42,7 @@ The codes:
 - `collection`, `duplicate_literal`, `where_live`: one thing where a collection is needed or the
   reverse; a member twice in a literal; a `where` that tests a member's live state.
 - `status_fallback`: a status display whose last case is not its one unconditional case.
+- `arguments`: a start with another number of arguments than its event has parameters.
 """
 
 from __future__ import annotations
@@ -160,11 +161,12 @@ SETTABLE_PROPERTIES = ('request', 'capacity', 'allocation')
 
 
 class Resolver:
-    """Resolves paths of one program. `fail(code, part, message)` takes each refusal."""
+    """Resolves paths of one program. `fail(code, part, message)` takes each refusal; with none, the
+    resolver only looks."""
 
-    def __init__(self, program, fail):
+    def __init__(self, program, fail=None):
         self.program = program
-        self.fail = fail
+        self.fail = fail or _silent
         self._quiet = None
         self.templates = {template.name: template for template in program.templates}
         self.members = {}
@@ -249,8 +251,8 @@ class Resolver:
         templates = set()
         for item in literal.items:
             found = self.resolve(item, scope, where, retained)
-            if found is not None and found.kind == 'value' and entity_template(found.part.type):
-                found = Found('member', self.templates.get(entity_template(found.part.type)))
+            if found is not None and found.kind == 'value' and isinstance(found.part.type, p.EntityType):
+                found = Found('member', self.templates.get(found.part.type.template))
             if found is None or found.kind != 'member' or found.many:
                 if found is not None:
                     self.fail('collection', where, f'`{spelled(item)}` in a literal is no member')
@@ -819,7 +821,8 @@ class _Checker(Resolver):
                 self.fail(
                     'local_order',
                     part.origin,
-                    f'{part.name!r} reads {name!r}, declared below it: a plain initializer runs in written order (D14)',
+                    f'{part.name!r} reads {name!r}, declared below it: a plain initializer runs in '
+                    'written order (D14)',
                 )
 
     def trigger(self, trigger, template, event):
@@ -860,6 +863,13 @@ class _Checker(Resolver):
             found = self.resolve(statement.event, scope, where)
             if found is not None and found.kind != 'event':
                 self.fail('unknown_name', where, f'`{spelled(statement.event)}` names no event')
+            elif found is not None and len(statement.args) != len(found.part.params):
+                wanted = len(found.part.params)
+                self.fail(
+                    'arguments',
+                    where,
+                    f'`{spelled(statement.event)}` takes {wanted} arguments, not {len(statement.args)}',
+                )
             for arg in statement.args:
                 self.check_expr(arg, scope, where)
         elif isinstance(statement, p.If):
@@ -1016,7 +1026,8 @@ class _Checker(Resolver):
             self.fail(
                 'solve_for',
                 solver.origin,
-                f"a solver cannot determine `{spelled(entry)}`: name a stored number, a flow's actual_rate, or a served_fraction",
+                f'a solver cannot determine `{spelled(entry)}`: name a stored number, '
+                "a flow's actual_rate, or a served_fraction",
             )
             return
         self.solved.setdefault(key, []).append(solver.origin)

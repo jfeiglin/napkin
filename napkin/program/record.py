@@ -13,11 +13,13 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   rate of its line. A jump is a new piece at the same time, and a read at a time gives the last
   piece at or before it, so a read at a moment sees what its last round committed. A value that
   could not be read holds `Unavailable` with the reason (D7). Numbers are in the canonical unit of
-  the value's dimension (`refs.q` scales them), times in hours.
+  the value's dimension (a literal `q(n, unit)` is n times the unit's scale), times in hours.
 - **The trace** has one entry for each start, finish, stage commit, firing, draw, choice, move, solve,
   pause and failure, in the order in which they happened, with the round of its time (0 is the
-  setup at time 0, then 1, 2, ... at each time), the origin of the part (an event, a step, a
-  trigger, a draw's site, a solver) and the member or occurrence that executes it.
+  setup at time 0, then 1, 2, ... at each time; a firing is in the round whose settled results it
+  reads), and the member or occurrence that executes it. Its part is the origin of the event for a
+  start and a finish, of the step for a commit, of the trigger for a firing, of the statement for
+  a move and a pause, of the solver for a solve, and the site for a draw and a choice.
 """
 
 from __future__ import annotations

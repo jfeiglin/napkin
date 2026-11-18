@@ -4,10 +4,11 @@ Run from /home/user/napkin:
 
     NAPKIN_STORE=off .venv/bin/python scratch/rewrite/b1/solve/bench.py [SECTION ...] [--share S] [--repeat R]
 
-Sections: fair, objective, after, join, again, small (default: all but `after`, which is long when
-the method falls back to the QP). `--share 0.1` (the default) is 3,000 places of A3's network
-(`scratch/rewrite/a3/network.py`: 3,000 places, 3,500 routes, 1,500 sources). Each timing is the best
-of R runs (default 1) and gives the load of the machine (4 cores, shared).
+Sections: fair, objective, after, join, again, small, verify (default: all but `after` and `verify`,
+which solve the whole order on every scenario). `--share 0.1` (the default) is 3,000 places of A3's
+network (`scratch/rewrite/a3/network.py`: 3,000 places, 3,500 routes, 1,500 sources); `verify` is
+meant for a share where the QP of HiGHS finishes (0.01). Each timing is the best of R runs (default 1)
+and gives the load of the machine (4 cores, shared).
 """
 
 import os
@@ -44,7 +45,7 @@ def network_problem(net, need, up=None, claims=True, extra=0):
     """A3's route-and-level program as a Problem: levels (OTHER, [-30, 30], reference 0), sources,
     uses (target and claim: the need; no cap), signed routes; balance and route-law rows; the
     objective min sum(max(0, need - use)). `extra` flows of capacity 1 and request 0.5 join at
-    random places (the join section)."""
+    random places (the join section), and their unmet requests join the objective."""
     P, S, R = net['places'], net['sources'], net['routes']
     up = np.ones(R) if up is None else up
     p = Problem()
@@ -72,8 +73,14 @@ def network_problem(net, need, up=None, claims=True, extra=0):
     short = p.positive_parts(
         [('short', i) for i in range(P)], sp.coo_array((-np.ones(P), (np.arange(P), use)), shape=(P, n)), need
     )
+    unserved = p.positive_parts(
+        [('unserved', i) for i in range(extra)],
+        sp.coo_array((-np.ones(extra), (np.arange(extra), joined)), shape=(extra, len(p.keys))),
+        0.5,
+    )
     cost = np.zeros(len(p.keys))
     cost[short] = 1.0
+    cost[unserved] = 1.0
     p.minimize(cost)
     if claims:
         p.claims(use, need)
@@ -246,8 +253,40 @@ def sec_small(share, repeat, count=200):
     )
 
 
+def sec_verify(share, repeat, names=('normal', 'shortage')):
+    """The method against the QP of HiGHS (the method given no Newton step) on the whole order, at a
+    size where that QP finishes: the largest difference of the flows and of the levels."""
+    for name in names:
+        net, need, up = scenario(share, name)
+        problem = network_problem(net, need, up)
+        clock = time.perf_counter()
+        newton = Solver().solve(problem)
+        t_newton = time.perf_counter() - clock
+        clock = time.perf_counter()
+        try:
+            qp = Solver(Budget(newton_steps=0)).solve(problem)
+        except Exception as stopped:  # the fallback's own failure is the measurement here
+            print(f'verify {share:g} {name:8s}: the QP failed: {stopped} [load {load():.1f}]', flush=True)
+            continue
+        t_qp = time.perf_counter() - clock
+        kinds = np.array([key[0] for key in problem.keys])
+        flows = np.isin(kinds, ('supply', 'use', 'carried'))
+        print(
+            f'verify {share:g} {name:8s}: Newton {t_newton:.2f} s {newton.work.methods}, QP {t_qp:.2f} s '
+            f'{qp.work.qp}; flows differ by {np.abs(newton.x - qp.x)[flows].max():.1e}, levels by '
+            f'{np.abs(newton.x - qp.x)[kinds == "level"].max():.1e} [load {load():.1f}]',
+            flush=True,
+        )
+
+
 SECTIONS = dict(
-    fair=sec_fair, objective=sec_objective, after=sec_after, join=sec_join, again=sec_again, small=sec_small
+    fair=sec_fair,
+    objective=sec_objective,
+    after=sec_after,
+    join=sec_join,
+    again=sec_again,
+    small=sec_small,
+    verify=sec_verify,
 )
 
 if __name__ == '__main__':
