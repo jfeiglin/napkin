@@ -3,7 +3,8 @@
 ## Second agent (took over after the stop)
 - Found: no FINDINGS.md, types.md or typecheck.py on disk (the "draft" below was lost). make_report.py re-run: 0 failures.
 - Done: `types.md` (types, read/write table, inference, literal units, the 13 models by hand).
-- Next: `FINDINGS.md` with rulings R-A1-01..32 (numbers 01-04, 07-10, 14 fixed by citations in parser.py, hunt.py, refused.txt, census). Decision: typecheck.py skipped; FINDINGS says no checker ran.
+- FINDINGS.md: written in full (rulings R-A1-01..32), but the harness refused the file write for a subagent; its whole text is in the handback message to the main session, to be saved as a1/FINDINGS.md. Parser examples of the rulings are in `rulings/*.scn`.
+- Was next: `FINDINGS.md` with rulings R-A1-01..32 (numbers 01-04, 07-10, 14 fixed by citations in parser.py, hunt.py, refused.txt, census). Decision: typecheck.py skipped; FINDINGS says no checker ran.
 - Scratch helper: /tmp/claude-0/-home-user-napkin/e09158c7-7039-5d6d-be85-61b3a193adaf/scratchpad/try.sh CONTEXT NAME < snippet (parses a snippet in a context).
 
 ## Done, and where

@@ -31,7 +31,7 @@ FINDINGS.md: started, with TODO marks.
 - Not in the first version: copies `* k`, `while K` on an event header, `count(e.outcome)`. `each W` = a trigger capture with `reset when W != captured`.
 
 ## In the middle of
-(checkpoint 6) Everything but FINDINGS.md done; `run_all.sh` OK (24 s). check.py has a new `order` group: an old outcome line that reads an earlier write of the same outcome (no hit in the catalogue, toy case caught). Next: FINDINGS.md (R-A5-01..15), then the report.
+(checkpoint 7) All done but FINDINGS.md: the harness refused to let this agent write it ("subagents return findings as text"). Its full text went to the main session in the hand-back message; the main session saves it as FINDINGS.md. run_all.sh OK.
 
 ## Steps that remain, in order
 1. Fix the crash above; make `check.py` pass on `translated/auto/examples/piano_tuners/model.scn`.

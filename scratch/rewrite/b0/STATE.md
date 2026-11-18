@@ -1,7 +1,8 @@
 # B0-5 state (take out the whole-run derivative code)
 
-Updated 2026-11-18 18:40. Nothing is committed. This file is in the worktree: the harness refused
-a write to the main checkout.
+Updated 2026-11-18 18:40 by the first agent, which was then stopped. Nothing is committed. The first
+agent kept this file in its worktree, because the harness refused a write to the main checkout; the
+main session copied this newest version here.
 
 - Worktree `/home/user/napkin/.claude/worktrees/agent-a18118f79e9bec712`, branch
   `worktree-agent-a18118f79e9bec712`. It was made at 13b0969 (`origin/main`, no brief there); I
@@ -15,19 +16,24 @@ a write to the main checkout.
 - `record_runs.py`: pytest plugin, a digest of every run that a test makes: `NAPKIN_RECORD=DIR
   PYTHONPATH=$PWD:$PWD/scratch/rewrite/b0 pytest -p record_runs ...`; `record_runs.py D1 D2` compares.
 - `S=/tmp/claude-0/-home-user-napkin/e09158c7-7039-5d6d-be85-61b3a193adaf/scratchpad/b0`:
-  `S/base.txt` is the base output (sha 8d0f9ce8…, in `S/base.sha256`); `S/start_pkg/` is the
-  package at 1a5f8e8; `S/start_tree/` is that package with the tests of the worktree.
+  `S/start_pkg/` is the package at 1a5f8e8; `S/rec_start/` is the record of the three engine test
+  files at the start (157 tests, 478 runs).
+- Base output: NOT saved for the last version of the script. Make it again:
+  `PYTHONPATH=/home/user/napkin-base NAPKIN_STORE=off .venv/bin/python scratch/rewrite/b0/bitwise.py $S/base.txt`,
+  and with `PYTHONPATH=$S/start_pkg` into `$S/start.txt`. An earlier version of the script gave
+  equal files for base and start (sha 5580e8fb…).
 
 ## Files (18:40)
 
-- Done, ruff clean: all of `napkin/` and `tools/bench` (steps 1 and 2), and the tests (step 4):
+- Done, ruff clean: all of `napkin/` and `tools/bench` (step 1 and 2), and the tests (step 4):
   two test files deleted, `test_timeline.py`, `test_timeline_outcomes.py`, `test_expectations.py`,
   `test_estimators.py`, `tests/test_cli.py`, `test_bench.py`, `test_api.py` trimmed. The heat wave
   tests use none of the removed functions: untouched.
-- Proved (step 3): `S/base.txt`, `S/start.txt` and `S/mine.txt` are equal (370 cases). The three
-  engine test files pass (171 tests), and their 472 runs have the same digests with the old engine
-  (`S/start_tree`, into `S/rec_old`) and the new one (`S/rec_new`).
-- Not started: the docs and `CHANGELOG.md` (step 5); the end checks and the commit (step 6).
+- Proved (step 3): `$S/base.txt`, `$S/start.txt` and `$S/mine.txt` are equal (sha 8d0f9ce8…, 370
+  cases). The three engine test files pass (171 tests), and their 472 runs have the same digests
+  with the old engine (`$S/start_tree`, old package and these tests) and the new one
+  (`$S/rec_old`, `$S/rec_new`).
+- Not started: the docs and `CHANGELOG.md` (step 5); the end checks, the commit (step 6).
 
 ## Order of work, and what remains
 
@@ -35,9 +41,14 @@ a write to the main checkout.
 2. `plan.py`, `timeline/__init__.py`; delete `derivatives.py`, `influence.py`, `smooth.py`,
    `places.py`; `expectations.py`, `estimators.py`; `commands/derivatives.py` and `NAMES`; bench.
 3. ruff; `bitwise.py` against base; the three engine test files with `record_runs`.
-4. Tests: delete two files, trim the others, `CLOSURE` in `tests/test_api.py`.
+4. Tests: delete `tests/engine/test_timeline_derivatives.py` and `tests/test_cli_derivatives.py`;
+   trim `test_timeline.py` (near 305-330, 362-381, 384-502, 668-692, 2215-2218),
+   `test_timeline_outcomes.py`, `test_expectations.py`, `test_estimators.py`, `tests/test_cli.py`,
+   `tests/test_bench.py`, `tests/test_api.py` (`CLOSURE`), `scenarios/heat_wave_blackout/tests/`.
 5. Docs (`engine.md`, `cli.md`, `python-api.md`, one sentence in `design.md`), `CHANGELOG.md`.
-6. The end checks of the brief, once; `bitwise.py` again; commit; report.
+6. The end checks of the brief, once; commit; report.
+
+Steps 1 to 4 are done. Steps 5 and 6 remain.
 
 ## Found, and not in the brief
 

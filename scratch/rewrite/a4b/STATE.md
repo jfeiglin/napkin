@@ -10,7 +10,15 @@
   lets its limited sources decide (was a false "limited at both ends" in `deliveries`).
 - Added to `cases.py`: `fresh_formation` (59 random times, 0 differ bit for bit) and
   `running_total_drift` (a float running total differs 9,451 of 10,000 times, up to 4e-13).
-- `FINDINGS.md` did NOT exist on disk; the second agent writes it.
+- More mends: (5) `network` bulk restart of the simple subset (was all-or-nothing: 156,789 timeline
+  entries -> 7,306 at 200 alive, binding); (6) `Cond.holds`: a crossing holds within the store's
+  tolerance (contact band, ruling R-A4b-06).
+- More cases in `cases.py`: `frozen_formula` (2.0 at 2.75 h, B 6.0), `contact` (16-1e-12 fires at
+  0 h, 16-1e-6 never, `>` stops with a message), `budgets` (max_active, max_occurrences messages).
+- `spike/measure.py` written and run (best of three, 1,000 x 100). Not binding: 52.8 s, start 75.6 us,
+  finish 17.3 us, 3.5 predictions per change. Binding: see FINDINGS. `--scale` not run.
+- `FINDINGS.md`: the harness REFUSED the write of a findings .md by a subagent; the full text went to
+  the main session in the handback. Not written: `proofs.py`, `test_spike.py`.
 
 ## Done by the first agent
 - `LAYOUT.md`: complete (map of `run.py` and `plan.py`, the split by mixins, order, guards).
