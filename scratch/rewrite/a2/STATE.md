@@ -48,7 +48,8 @@
 - Retirement: fail and name the amount. `move` may touch readonly. Flows of an event join after all locals.
 
 ## In the middle of
-First run of evaluate/network/run together (nothing executed yet). Then cases 1 to 31, then the rulings' tests.
+(2nd agent) Group 1 done: cases 1, 2, 3, 5, 6, 7, 8 pass with no change to ref/ (`cases/test_0N_*.py`;
+`conftest.py` puts a2/ on sys.path). Next: group 2 (events and time).
 
 ## Remaining, in order
 1. Debug `ref/` on case 2 (tank empties at 8/3 h) and case 1 (grinder). 2. Write `cases/test_NN_*.py` for the

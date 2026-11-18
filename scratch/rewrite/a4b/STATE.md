@@ -1,6 +1,18 @@
 # STATE of prototype A4b (updated at each milestone; newest facts first)
 
-## Done, and where
+## Done, and where (second agent, from here)
+- `spike/cases.py` GREEN, every case of `main()` matches the spec (run 2026-11-18). Mends made in
+  `engine.py`: (1) `Columns.capacity` -> `Columns.room`; (2) `reached`/`reset_reached`/`gate_reached`
+  start at -1, not 0 (moment 0 is the setup, so 0 == moment made every crossing "reached" at
+  setup: the alarm fired at 0 h); (3) `set_level`: a move lifts a store off the bound it rests on
+  even when the new level lands on the other bound (the batch of `retirement` stayed "empty" after
+  the move of 20 L); (4) `network`: a sink that rests on its upper bound with no limit of its own
+  lets its limited sources decide (was a false "limited at both ends" in `deliveries`).
+- Added to `cases.py`: `fresh_formation` (59 random times, 0 differ bit for bit) and
+  `running_total_drift` (a float running total differs 9,451 of 10,000 times, up to 4e-13).
+- `FINDINGS.md` did NOT exist on disk; the second agent writes it.
+
+## Done by the first agent
 - `LAYOUT.md`: complete (map of `run.py` and `plan.py`, the split by mixins, order, guards).
 - `split_run.py`: complete and checked (one pass, module by module, and after a mock B0-5).
 - `spike/exact.py`: `ExactSum`, done and tested (2,000 random histories equal `math.fsum`).
