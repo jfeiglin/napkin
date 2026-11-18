@@ -1,0 +1,191 @@
+# Notation that the spec shows only inline, one piece on each line, written by hand.
+#
+#   kind <tab> line of spec.md <tab> notation
+#
+# The kind says where the piece stands, and so which part of the parser reads it:
+#   expression   a value
+#   type         what stands after the colon of a declaration
+#   range        the closed interval of a declaration, read after `in`
+#   declaration  a line of the body of an entity
+#   setup        a line at the top level of a file
+#   step         a line of the body of an event (the block under it can be missing here)
+#   statement    a line of a stage
+#   trigger      a line of the body of a trigger (it is read under `when true:`)
+#   objective    a line of the `objective:` section of a solver
+#
+# A capital letter that stands for "some duration" or "some condition" in the spec (`D`, `C`, `T`)
+# is kept as written: the parser reads it as a member of an enum or as a type name.
+# A line marked `derived` is not written in the spec as it stands: the spec names a member
+# (`.mean`) or half a line (`SOURCE -> SINK`), and the line here gives it a receiver or a name.
+
+# -- What changes for a model author, and the table of scopes (lines 13-35)
+declaration	17	beans: g = 8
+expression	18	Route.instances
+statement	19	grinder.refill.start(50 g)
+expression	29	grinder.beans
+expression	29	grinder.refill
+expression	32	grinder.refill.occurrences.at(t).status
+expression	33	pump.fill.actual_rate
+expression	34	tank.water.outflow.flows
+expression	35	provider.charging
+expression	35	clinic.staffing
+
+# -- How to declare, read and change a value; types; units (lines 37-80)
+declaration	50	beans: g = 8 g
+expression	50	low_on_beans
+type	54	bool
+type	54	enum[OPEN, CLOSED]
+expression	54	1 if ready else 0
+expression	54	OPEN
+declaration	56	water = 20 L
+expression	58	clinic.water
+expression	58	supply.initial_water
+expression	64	2 * this.delay
+range	66	[lo, hi]
+expression	66	x in [lo, hi]
+range	76	[x, x]
+declaration	76	ok = (samples.draw() in [lo, hi])
+statement	76	ok = (samples.draw() in [lo, hi])
+expression	76	lo <= x and x < hi
+expression	78	max(0, need - use_rate)
+expression	80	48 h / 2
+
+# -- Collections, keys and projections (lines 82-97)
+type	84	<T>
+expression	84	grinder.refill.occurrences
+expression	84	water.outflow.flows
+expression	91	routes.limit
+statement	91	machines.repair.start()
+expression	91	count(c)
+expression	91	count(c.done)
+expression	91	count(c.amount)
+expression	91	sum(c.amount)
+expression	93	Route.instances.where(destination == this)
+expression	93	Place.instances.where(critical)
+expression	93	customers.by(rank).delivery
+expression	95	c.at(x)
+expression	95	Reading.instances.by(hour).at(t).factor
+expression	95	tiers.by(threshold).at(volume).price
+expression	97	Machine.instances
+
+# -- Formulas, text, evidence, distributions (lines 99-164)
+type	101	formula(bool)
+expression	101	formula(expression)
+type	109	formula(T)
+expression	118	Utility.instances
+expression	118	reservoir.spilled
+declaration	138	net_change: L = 0 in [-20, 20]
+expression	154	normal(2, 3)
+expression	154	repair_times.mean	derived
+expression	154	repair_times.std	derived
+expression	154	repair_times.draw()	derived
+
+# -- Flows and algebraic solvers (lines 166-256)
+expression	180	clinic.delivery.capacity
+expression	180	clinic.delivery.request
+statement	180	tank.water = 10 L
+declaration	182	flow name: source -> sink
+setup	182	clinic.delivery.request = 3 L/h
+declaration	184	flow link: west.water <-> east.water
+expression	184	link.actual_rate
+expression	188	west.water.outflow.flows
+expression	188	east.water.inflow.flows
+expression	188	link.forward
+expression	188	max(link.actual_rate, 0 L/h)
+expression	189	link.backward
+expression	189	max(-link.actual_rate, 0 L/h)
+expression	191	priority(link.forward, backup)
+expression	191	west.water.outflow
+expression	206	main.sink
+expression	206	sum(water.outflow.flows.actual_rate)
+expression	206	water.outflow.actual_rate
+expression	214	count(deliver.occurrences)
+expression	214	count(tank.water.outflow.flows)
+expression	214	sum(tank.water.outflow.flows.request)
+expression	214	tank.water.outflow.actual_rate
+expression	221	deliver.occurrences.at(t).pipe.request
+declaration	225	capacity = 0 L/h
+declaration	225	request = 0 L/h
+declaration	225	capacity = none
+range	229	[0, 0]
+declaration	229	remaining: L = amount
+declaration	231	flow through: SOURCE -> SINK	derived
+expression	250	priority(a, b)
+expression	252	proportional()
+expression	252	priority(customers.by(rank).delivery)
+setup	254	clinic.water.inflow.request = 6 L/h
+setup	254	clinic.water.inflow.allocation = priority(main, backup)
+setup	254	main.capacity = 4 L/h
+declaration	254	inflow.request = formula(max(0 L, 15 L - this.water) / (2 h))
+
+# -- An entity owns its solver; the worked examples (lines 258-485)
+declaration	260	routes = Route.instances
+expression	260	routes.carried.actual_rate
+range	262	[0 W, 10 W]
+objective	353	minimize(sum(places.where(critical).unmet))
+objective	353	minimize(sum(places.unmet))
+expression	362	links.junction_clinic.carried
+expression	362	links.garden_junction.carried
+expression	368	a + b <= 4 W
+expression	368	b + c <= 5 W
+declaration	368	unmet = formula(max(0 W, this.use.request - this.use.actual_rate))
+objective	373	minimize(sum(consumers.unmet))
+expression	375	a + b + c <= 9 W - b
+expression	397	clinic.staffing.care
+expression	397	clinic.staffing.outreach
+expression	448	pump.power.actual_rate
+expression	448	pump.fill.actual_rate
+expression	485	formula(min(6 W, (10 Wh - this.energy) / (1 h)))
+declaration	493	level = 0 in [-30, 30]
+
+# -- Events, triggers and occurrences (lines 501-648)
+declaration	503	refill = event(amount: g):
+declaration	503	readonly refill = event(amount: g):
+statement	513	tank.record_delivery.start(20 L)
+type	519	enum[REPAIR, RESUME]
+statement	540	this.machines.repair.start()
+expression	546	this.water
+expression	546	this.customer.water
+declaration	548	doubled = amount * 2
+expression	554	this.staffing.care
+step	572	until C
+step	572	after 0 h:
+statement	574	move batch from batch to this.supply
+statement	574	this.repair_succeeded.start()
+step	582	after D when C:
+step	582	after 2 h when this.water < 10 L:
+step	583	when C:
+trigger	583	reset when C
+step	584	when this.water <= 10 L:
+trigger	605	reset when false
+statement	605	grinder.refill.start(20 g)
+trigger	619	shift = this.shift
+trigger	619	reset when this.shift != shift
+trigger	619	ready_at = t + 3 h
+trigger	619	reset when t >= ready_at and this.water >= 12 L
+expression	628	count(grinder.refill.occurrences)
+expression	629	count(grinder.refill.occurrences.done)
+expression	630	any(grinder.refill.occurrences.active)
+expression	632	since(grinder.refill)
+expression	635	count(grinder.refill.occurrences) > 0
+expression	648	count(this.service_restored.occurrences) > 0 and since(this.service_restored) >= 3 h
+
+# -- Shared resources, worked models, differentiation, assertions (lines 650-754)
+expression	652	this.supply.outflow.capacity
+expression	664	formula(this.crew.pace_now)
+expression	664	restore.served_fraction
+expression	664	restore.labor.actual_rate
+expression	664	restore.work.actual_rate
+expression	666	restore.actual_rate
+statement	716	delivery.request = speeds.draw()
+statement	732	tank.receive.start(20 L, 5 L/h, 5 L/h^2)
+expression	736	y.diff(z)
+expression	736	this.pressure
+declaration	744	x = 2 * z
+declaration	748	assert repair_threshold < failure_threshold @policy
+
+# -- Expressions and instantaneous transfers; open questions (lines 787-861)
+statement	791	move amount from source to destination
+expression	795	sites.clinic
+declaration	829	weekly_unserved: people = none @no_cohorts
+expression	859	4 <= x + y <= 6
