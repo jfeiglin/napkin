@@ -14,7 +14,7 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] 1 imports that survive
   - [x] 2 `tests/units.py`
   - [x] 3 the dormant list
-  - [ ] 4 the test triage (three agents at work; the parts are in `triage/`)
+  - [x] 4 the test triage: `tests-triage.csv` (the parts are in `triage/`)
   - [ ] 5 the derivative code deleted (an agent at work in its own worktree; brief `briefs/b0-derivatives.md`)
   - [ ] 6 `timeline/run.py` split by moves (after A4's layout note)
   - [ ] the last run of the old suite, with durations

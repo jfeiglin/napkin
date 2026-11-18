@@ -12,6 +12,7 @@ Facts that came up beside the prototypes and that `rulings.md` must not lose. Ea
 | 4 | Events that are due at one moment go in the order of their lines in the file | The order of simultaneous starts is an open item (A2) | `tests/engine/test_moment.py`; one test each in `test_public_engine.py` and `test_finite_face_kernel.py` | S4 |
 | 5 | `event start`: an initiating event with its own rules at build and at t = 0 | No counterpart is named | `tests/engine/test_initiation.py` | A5 must say |
 | 6 | Outcome rules: `sight`, and the chances of the outcomes of a firing sum to one | Eligibility stays; the rest is the chance producer, which has no spelling yet | `tests/engine/test_availability.py` | S4 |
+| 7 | What an actor does not see is refused in its choices and conditions | `sees` only chooses what a human player is shown | `tests/model/test_sight.py` (triage: 45% of its tests are such refusals) | S4 |
 
 ## Candidates to retire and not port: what uses each today
 
@@ -38,5 +39,12 @@ Facts that came up beside the prototypes and that `rulings.md` must not lose. Ea
 - `tests/engine/test_timeline.py`, `test_timeline_play.py` and `test_timeline_reports.py` use the
   run of the flat structure as their second oracle. It goes at S0; the reference interpreter
   takes its place.
+- Tests of `napkin/core` alone sit in `tests/model/`: 15 in `test_contracts.py`, 6 in `test_units.py`, 3 in
+  `test_shared_formulas.py`. Move them to `tests/core/` when their files are ported.
+- `tests/test_scenario_scope.py` and `tests/test_scenario_ownership.py` are kept, but they import
+  consumer code that may not import between S0 and C.
+- `tests/model/test_hybrid.py` goes with the hybrid core, but five of its checks of rows deserve
+  tests in S1.
+- `tests/test_compare.py`: 36 of its 45 tests use made-up records. G0 decides the tool.
 - `needs.csv` gives `catalogue` too often, as its header says: the two engine parts corrected
   six files to `source` or `none`.

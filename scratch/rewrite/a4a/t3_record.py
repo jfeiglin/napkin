@@ -133,6 +133,37 @@ def flows_at(arrays, t):
     return rate[np.searchsorted(flow * span + times, np.arange(F) * span + t, side='right') - 1]
 
 
+def sum_history(arrays, places):
+    """The history of the sum of some stores, made after the run from the record of everything: the
+    pieces of the members are put in the order of their times, and the sum starts a piece at each
+    of them. One sort; no work in the run."""
+    first = arrays['stores/first']
+    t, y, rate = arrays['stores/t'], arrays['stores/y'], arrays['stores/rate']
+    S = len(first) - 1
+    member = np.zeros(S, dtype=bool)
+    member[places] = True
+    store = np.repeat(np.arange(S), np.diff(first))
+    chosen = member[store]
+    t, y, rate, store = t[chosen], y[chosen], rate[chosen], store[chosen]
+    # Each piece is `c + rate * t`: what a piece adds to the sum is its change from the piece before
+    # it of the same store.
+    c = y - rate * t
+    dc, dr = c.copy(), rate.copy()
+    again = np.flatnonzero(store[1:] == store[:-1]) + 1
+    dc[again] -= c[again - 1]
+    dr[again] -= rate[again - 1]
+    order = np.argsort(t, kind='stable')
+    times = t[order]
+    C, R = np.cumsum(dc[order]), np.cumsum(dr[order])
+    last = np.ones(len(times), dtype=bool)
+    last[:-1] = times[1:] != times[:-1]
+    history = record.History()
+    history.t = times[last].tolist()
+    history.y = (C[last] + R[last] * times[last]).tolist()
+    history.rate = R[last].tolist()
+    return history
+
+
 def scale(out, places, routes, horizon=48.0, runs=3):
     folder = model.write(Path(out) / 'record' / f'{places}_{routes}', *model.synthetic(places, routes, seed=0), horizon=horizon, old=False)
     built = model.Built(folder)
@@ -209,6 +240,26 @@ def scale(out, places, routes, horizon=48.0, runs=3):
         return float(((values[:-1] + values[1:]) / 2).sum() * step / 4.0)
 
     hourly = [from_readings(t, 1.0) for t in (12.0, 24.0, 48.0)]
+    # The other way to a reduction: nothing in the run, and the report makes it from the record of
+    # everything. Each of the ten reductions at three times; and the whole history of two sums.
+    start = time.perf_counter()
+    for t in (12.0, 24.0, 48.0):
+        y, a = table_at(table, t), flows_at(table, t)
+        made = [
+            y[stock].sum(), y[used].sum(), y[stock[critical]].sum(), (y[stock] <= 0.0).sum(), (y[stock] <= 10.0).sum(),
+            (y[stock[critical]] <= 0.0).any(), a[carried].sum(), (want[use] - a[use]).sum(), y[stock].max(), y[stock].min(),
+        ]
+    derive_readings_s = time.perf_counter() - start
+    start = time.perf_counter()
+    made_tally = sum_history(table, used)
+    made_held = sum_history(table, stock)
+    derive_histories_s = time.perf_counter() - start
+    made_lag = [made_tally.mean(t - 6.0, t - 2.0) for t in (12.0, 24.0, 48.0)]
+    held = next(item for item in asked.reductions if item.name.startswith('held')).history
+    made_worst = max(
+        max(abs(made_tally.at(t) - tally.at(t)) / max(1.0, abs(tally.at(t))), abs(made_held.at(t) - held.at(t)) / max(1.0, abs(held.at(t))))
+        for t in np.linspace(0.0, horizon, 97)
+    )
     found = {
         'places': places, 'routes': routes, 'stores': built.stores.count, 'flows': built.net.count,
         'horizon_h': horizon, 'rows': rows, 'load': load(), 'runs': runs,
@@ -219,6 +270,12 @@ def scale(out, places, routes, horizon=48.0, runs=3):
         'passes_over_the_rows': {item.name.split(' = ')[0]: item.passes for item in asked.reductions if isinstance(item, record.Extreme)},
         'report_s': report_s, 'readings': readings,
         'lag_of_used_total_exact': lagged, 'lag_from_hourly_readings': hourly,
+        'made_from_everything': {
+            'ten_reductions_at_three_times_s': derive_readings_s, 'two_sum_histories_s': derive_histories_s,
+            'pieces_of_the_two_histories': [len(made_tally), len(made_held)],
+            'lag_of_used_total': made_lag,
+            'largest_relative_difference_from_the_histories_kept_in_the_run': made_worst,
+        },
         'peak_memory_MB': resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024,
     }
     for key, value in found.items():

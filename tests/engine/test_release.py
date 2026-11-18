@@ -9,8 +9,10 @@ from pathlib import Path
 
 from napkin import SCHEMA_VERSION, __version__
 from napkin.schema import FOLDER as SCHEMAS
-from tests.helpers import ROOT
 from tools import catalogue
+
+# The checkout: this file reads its version strings, and no model.
+ROOT = catalogue.ROOT
 
 
 def test_release_metadata_carries_the_package_version():

@@ -16,7 +16,7 @@ import pytest
 
 from napkin.core import expr
 from napkin.expressions import ExpressionError, UnitSystem, compile_program, evaluate
-from tests.build import UNITS
+from tests.units import UNITS
 
 REGISTRY = UnitSystem(UNITS)
 FAILURES = (ArithmeticError, ValueError, TypeError, KeyError)
