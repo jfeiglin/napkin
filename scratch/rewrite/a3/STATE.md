@@ -10,6 +10,8 @@
 - 30,000 (1.0), measure.py: fair normal: objective 4.32 s + fair 128.1 s, 467 programs, 460 distinct levels, 4,315 claims below 100%, completes [load 1.0]. Fair shortage (x1.45) with FIX 1e-7: infeasible part way (SolveError). Join 300 flows: warm 0.90 s vs fresh 6.12 s, optima equal; leave warm 0.89 s. Distance on the objective face at 30k: 3 scenarios did not finish in 590 s (output lost).
 - 3,000: again cold/warm/batch: objective equal to 1e-9, fair levels within 6.4e-10. Small: whole order 6.8 ms (147/s), kept 5.9 ms; one LP rerun 19 us.
 - FINDINGS.md: the harness refused the Write ("subagents return findings as text"); its full text went into the final report for the main session to save.
+- Final runs stopped on request of the main session: fair shortage at 30k with FIX 1e-6 did not finish (stopped after objective 6.2 s); distance flows stage at 30k normal did not finish (stopped). No further measurement.
+- DONE: findings text sent in the final report (FINDINGS.md write refused by harness); main session to save it.
 - Row method loses an optimum by 3.1e-7 in the provider case; pin loses 0 (cases.py).
 
 
