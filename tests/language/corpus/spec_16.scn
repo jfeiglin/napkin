@@ -1,0 +1,28 @@
+east_site:
+    energy: Wh = 0 in [0, 10]
+    flow charge: SOURCE -> this.energy
+        capacity = 6 W
+        request = 6 W
+
+west_site:
+    energy: Wh = 0 in [0, 10]
+    flow charge: SOURCE -> this.energy
+        capacity = 6 W
+        request = 6 W
+
+provider:
+    contract_limit: W = 8 W
+    charging = solver:
+        inputs:
+            east = east_site.charge
+            west = west_site.charge
+            limit = this.contract_limit
+        solve_for:
+            east.actual_rate
+            west.actual_rate
+        constraints:
+            east.actual_rate + west.actual_rate <= limit
+        objective:
+            minimize(max(0 W, east.request - east.actual_rate))
+            minimize(max(0 W, west.request - west.actual_rate))
+            minimize(east.actual_rate + west.actual_rate)

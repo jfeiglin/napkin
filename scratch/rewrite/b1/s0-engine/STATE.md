@@ -23,10 +23,20 @@
 - Constants of napkin/model/ir move into continuous/system.py (EVENT_TIME_TOLERANCE_H).
 
 ## Done
-- (nothing yet)
+- continuous/: no napkin.model import (System, initial_store, label_expression deleted; Context,
+  step_cap(numerics), EVENT_TIME_TOLERANCE_H in system.py; fields/integrate/segment read a context).
+- timeline/plan.py, run.py, component.py, record.py, __init__.py rebuilt (see the docstrings);
+  napkin.engine.run/read exported; runtime.simulate deleted; sampling.py lost its model import.
+- tank_delivery, unit_division, unit_product run right; every other example is refused by slice.
+  Logistic over 20 y: 1e-10 relative at any time; cap 1 h takes ~20 s (the old test took 26.7 s).
+
+- store.key(program, configuration) (ENGINE_STARTS = engine/timeline/__init__.py); trace.py deleted.
+- New tests: tests/engine/test_programs.py (69), test_record.py (22), test_key.py (3).
+- Ported: test_radau.py (two Roots tests on a program; 23), test_sizes.py (2),
+  test_switching_surfaces.py (2). `Run.prepare()` gives the components at their start for tests.
 
 ## In progress
-- plan.py
+- Ports of test_resolution.py and test_cumulative_integration.py.
 
 ## Remaining
-- run.py, component.py, record.py, __init__ exports, store.key, deletions, tests, ports.
+- Exit run (tests/core, tests/program, highs, rationing, sampling, solver_adapters); last message.

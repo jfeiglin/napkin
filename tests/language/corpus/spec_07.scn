@@ -1,0 +1,3 @@
+unserved_volume = formula(sum(Utility.instances.unserved))
+    "Water that customers could not get"
+    @counts_stocks_flows

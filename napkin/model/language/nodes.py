@@ -38,9 +38,11 @@ class Node:
 
 @dataclass(frozen=True)
 class Number(Node):
-    """A number with no unit: an int, or a float when it is written with a point or an exponent."""
+    """A number with no unit: an int, or a float when it is written with a point or an exponent.
+    `written` is its spelling (`0.30`), which the formatter keeps."""
 
     value: int | float
+    written: str = _layout('')
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,7 @@ class Quantity(Node):
 
     value: int | float
     unit: tuple[tuple[str, str], ...]
+    written: str = _layout('')
 
 
 @dataclass(frozen=True)

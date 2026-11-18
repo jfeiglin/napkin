@@ -1,0 +1,6 @@
+grinder:
+    beans: g = 8
+    readonly low_on_beans: formula(bool) = formula(this.beans <= 10 g)
+    refill = event(amount: g):
+        after 0.5 h:
+            this.beans += amount

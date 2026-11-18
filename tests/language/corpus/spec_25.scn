@@ -1,0 +1,4 @@
+repair = event():
+    after 2 h when this.passes_test:
+        this.operational = true
+        this.service_restored.start()

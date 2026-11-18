@@ -1,0 +1,14 @@
+dispatcher:
+    sees depot.spares
+    forecast = categorical(SEND: 0, WAIT: 1)
+
+depot:
+    spares = 1 in [0,]
+    waits = 0
+    request_pump = event():
+        after 0 h:
+            switch dispatcher.choose(dispatcher.forecast):
+                SEND when this.spares >= 1:
+                    this.send_pump.start()
+                WAIT:
+                    this.waits += 1

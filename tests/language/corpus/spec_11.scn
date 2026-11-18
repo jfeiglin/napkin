@@ -1,0 +1,12 @@
+reservoir:
+    water: L = 20 in [0, 20]
+        outflow.capacity = 10 L/h
+        outflow.allocation = priority(hospital.delivery, garden.delivery)
+
+hospital:
+    flow delivery: reservoir.water -> SINK
+        request = 8 L/h
+
+garden:
+    flow delivery: reservoir.water -> SINK
+        request = 12 L/h

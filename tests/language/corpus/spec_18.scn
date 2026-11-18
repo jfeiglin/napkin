@@ -1,0 +1,7 @@
+after 0 h:
+    if this.passes_test:
+        this.operational = true
+        this.service_restored.start()
+    else:
+        this.failed_tests += 1
+    this.inspections += 1

@@ -1,0 +1,6 @@
+after 2 h:
+    switch categorical(FIXED: 0.7, FAILED: 0.3).draw():
+        FIXED:
+            this.operational = true
+        FAILED:
+            this.repair.start()

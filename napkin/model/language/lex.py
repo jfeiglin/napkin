@@ -29,12 +29,12 @@ NUMBER = re.compile(r'[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?')
 # Longest first, so `<->` is one token and `<-` none (`a<-b` is `a < -b`).
 OPERATORS = ('<->', '**', '->', '<=', '>=', '==', '!=', '+=', '-=')
 OPERATORS += ('(', ')', '[', ']', ',', ':', '=', '+', '-', '*', '/', '<', '>', '.')
-# Characters of the old notation, each with what to write now.
+# Characters of the old notation, each with its code and what to write now.
 GONE = {
-    '^': 'a unit has no power: write L/h/h, or m * m; a value is raised with a ** b (D12)',
-    '|': 'named states are an enum: enum[OPEN, CLOSED]',
-    '{': 'a unit takes no text parameter: each field of a template has one dimension',
-    '}': 'a unit takes no text parameter: each field of a template has one dimension',
+    '^': ('unit', 'a unit has no power: write L/h/h, or m * m; a value is raised with a ** b (D12)'),
+    '|': ('retired', 'named states are an enum: enum[OPEN, CLOSED]'),
+    '{': ('retired', 'a unit takes no text parameter: each field of a template has one dimension'),
+    '}': ('retired', 'a unit takes no text parameter: each field of a template has one dimension'),
 }
 # The operators and words that join two values: no line starts or ends with one outside brackets.
 JOINING = frozenset({'**', '<=', '>=', '==', '!=', '+', '-', '*', '/', '<', '>', '->', '<->'})
@@ -119,7 +119,9 @@ class Lexer:
         self.alone = alone
         if '\t' in text:
             number = text[: text.index('\t')].count('\n') + 1
-            raise SyntaxProblem('a tab is not allowed: each level of nesting is four spaces', number, 0, 'tab')
+            raise SyntaxProblem(
+                'a tab is not allowed: each level of nesting is four spaces', number, 0, 'tab'
+            )
         self.rows = text.split('\n')
 
     @staticmethod
@@ -184,7 +186,9 @@ class Lexer:
                     i += 1
                 bracket, line, column = stack[-1]
                 if i >= len(self.rows):
-                    raise SyntaxProblem(f'the bracket {bracket} has no closing {OPENS[bracket]}', line, column, 'bracket')
+                    raise SyntaxProblem(
+                        f'the bracket {bracket} has no closing {OPENS[bracket]}', line, column, 'bracket'
+                    )
                 row = self.rows[i].rstrip()
                 indent = self.indent(row)
                 if indent <= spaces and not (indent == spaces and row[indent] in CLOSES):
@@ -232,8 +236,13 @@ class Lexer:
             op = next((op for op in OPERATORS if row.startswith(op, position)), None)
             if op is None:
                 if char in GONE:
-                    raise SyntaxProblem(f'{char} is not a part of the language: {GONE[char]}', number, column, 'character')
-                raise SyntaxProblem(f'{char!r} is not a part of the language here', number, column, 'character')
+                    code, message = GONE[char]
+                    raise SyntaxProblem(
+                        f'{char} is not a part of the language: {message}', number, column, code
+                    )
+                raise SyntaxProblem(
+                    f'{char!r} is not a part of the language here', number, column, 'character'
+                )
             if op in OPENS:
                 stack.append((op, number, column))
             elif op in CLOSES:

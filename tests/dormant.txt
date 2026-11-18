@@ -119,3 +119,5 @@ tests/test_spread.py
 tests/test_store.py
 tests/test_tools_new.py
 tests/test_scenario_ownership.py
+tests/test_api.py
+tests/test_scenario_scope.py

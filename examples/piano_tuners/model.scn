@@ -7,23 +7,24 @@ scenario "Piano tuners"
 tuners:
     "The piano tuners of the town."
     role environment
-    input rate = pert(600 tunings/tuner-year, 1000 tunings/tuner-year,
-        1200 tunings/tuner-year) in 500 tunings/tuner-year to 1500 tunings/tuner-year
+    input rate: tunings/(tuner * year) = pert(600, 1000, 1200).draw() in [500, 1500]
         "Tunings that one tuner does in a year"
         @assumption "The example assumes about four tunings in each working day, and a spread around it."
-    input staff = 3 tuner in 1 tuner to 10 tuner
+    input staff = 3 tuner in [1 tuner, 10 tuner]
         "Tuners in the town"
         @assumption "The example assumes three tuners."
-    input need = 5000 tunings in 0 tunings to 20000 tunings
+    input need = 5000 tunings in [0 tunings, 20000 tunings]
         "Tunings that the pianos need in the year"
         @assumption "The example assumes 2500 pianos, each tuned twice in a year."
-    var due: tunings = need size 20000 tunings  @counts
+    due: tunings = this.need in [0,] scale 20000 tunings @counts
         "Tunings that the pianos still need"
-    var done: tunings = 0 tunings size 20000 tunings  @counts
+    done: tunings = 0 scale 20000 tunings @counts
         "Tunings done"
-    flow tune: due -> done at rate * staff  @counts
+    flow tune: this.due -> this.done @counts
+        request = formula(this.rate * this.staff)
+        capacity = formula(this.rate * this.staff)
 
-output tunings_done: tunings = tuners.done
+tunings_done: formula(tunings) = formula(tuners.done) in [0,]
     "Tunings done in the year"
     @identity "The tunings that the tuners do, each counted once."
 

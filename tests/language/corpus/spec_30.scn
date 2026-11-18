@@ -1,0 +1,7 @@
+receive = event(amount: L, starting_rate: L/h, rate_change: L/h/h):
+    remaining: L = amount in [0 L, amount]
+    readonly started_at: h = t
+    flow delivery: remaining -> this.water
+        request = formula(max(0 L/h, starting_rate + rate_change * (t - started_at)))
+
+    until remaining <= 0 L

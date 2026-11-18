@@ -1,0 +1,7 @@
+inspect = event():
+    when t >= 3 h:
+        this.inspect.start()
+        reset after 3 h
+
+    after 0 h:
+        this.inspections += 1

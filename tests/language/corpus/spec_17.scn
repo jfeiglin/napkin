@@ -1,0 +1,5 @@
+tank:
+    delivered: L = 0
+    record_delivery = event(amount: L):
+        after 0 h:
+            this.delivered += amount

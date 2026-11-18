@@ -1,321 +1,469 @@
-"""The formatter (docs/language.md, §2.1): each line of a file with the language's
-spacing, within 110 columns where it can be.
+"""The formatter: a tree (`nodes.py`) written again as text, in the language's own spacing.
 
-The formatter writes each logical line again from its tokens, at four spaces for each level. It
-never moves a line, never changes a text, never puts a space inside a unit and keeps the comments and
-the empty lines where they are. A long line breaks:
-- inside a text, at a single space: a line break inside a text reads as a space;
-- inside a bracket, before a part that a space separates, on a line indented one level deeper than
-  the line's first line.
-A long line whose first bracket opens its expression, right after its `:`, its `=`, `move`, `when`,
-`at`, `while` or `assert`, hangs
-as the language page shows (§2.1): the bracket opens at the end of the first row, its inside fills
-the rows one level deeper, and it closes at the start of the last row, with the rest of the line. A
-line that has neither a text nor a bracket stays as it is. Formatting a formatted file changes
-nothing, because the formatter reads only the tokens and never the layout.
+`format_text(text)` is `write(parse(text))`, and `parse(write(tree)) == tree`: the formatter writes
+each node from its fields, so formatting a formatted text changes nothing. It writes four spaces for
+each level, one logical line on one row, and the brackets that the levels of binding need and no
+others. A unit is written as the spec writes it, `/` close and `*` spaced: `4 L/h`, `6 person * year`,
+`tunings/(tuner * year)` in a type. A quantity that a bare name multiplies or divides keeps its
+brackets, `(2 h) * hour`, because without them the name would continue its unit (D12).
+
+Comments and empty rows stay above the line that they were above, and a comment that ends a row stays
+at the end of its line (the comments of the other rows of a long line go above it). A text longer than
+the row breaks at single spaces onto rows one level deeper, where a row break reads as a space.
 """
 
 from __future__ import annotations
 
-import re
-
-from .lex import INDENT, OPENS
-from .parse import Parser
+from . import nodes as n
+from .parse import HEADER, RESERVED, parse
 
 WIDTH = 110
-# The words before which a bracket keeps its space: `not (…)`, `if (…)`.
-KEYWORDS = frozenset(
-    {
-        'if',
-        'else',
-        'and',
-        'or',
-        'not',
-        'is',
-        'from',
-        'to',
-        'move',
-        'in',
-        'when',
-        'after',
-        'at',
-        'while',
-        'assert',
-    }
-    | {'size', 'limit', 'order', 'within', 'versus'}
-)
-# The words after which a long line's first bracket hangs, as after its `:` or `=`.
-HANG_AFTER = frozenset({'move', 'when', 'at', 'while', 'assert'})
-# What comes before a sign: `-` after these is a sign, not a subtraction.
-SIGN_AFTER_OPS = frozenset(
-    {'(', '[', ',', '=', ':', '**', '*', '/', '+', '-', '<', '<=', '>', '>=', '->', '+=', '-='}
-)
-SINGLE_SPACE = re.compile(r'(?<! ) (?! )')
-# A row never breaks right after these, so that a row that continues an expression starts with its
-# operator: `+ standby_demand`.
-OPERATORS = frozenset({'+', '-', '*', '/', '**', '<', '<=', '>', '>=', '=', '+=', '-=', '->'})
-WORD_OPERATORS = frozenset({'and', 'or', 'not', 'is', 'if', 'else'})
+TEST, OR, AND, NOT, CMP, ARITH, TERM, FACTOR, POWER, ATOM = range(1, 11)
+LEVELS = {'+': ARITH, '-': ARITH, '*': TERM, '/': TERM, '**': POWER}
 
 
 def format_text(text):
-    """The formatted text of a model file. Raises `SyntaxProblem` for a file that does not parse,
-    and ValueError for a text that the language cannot write on several lines."""
-    parser = Parser(text)
-    parser.parse()
-    return layout(parser.flat)
+    """A model text in the language's own layout."""
+    return write(parse(text))
 
 
-def layout(found):
-    """The text of the lines of a file (`lex.lines`), each written again with the language's spacing
-    and breaks. A stylesheet, which has the lines of a model file but not its declarations, is laid
-    out so too."""
-    out = []
-    for line in found:
-        if line.kind == 'blank':
-            out.append('')
-        elif line.kind == 'comment':
-            out.append(' ' * (INDENT * line.depth) + line.comment)
-        else:
-            out.extend(render(line.tokens, INDENT * line.depth))
-    return '\n'.join(out) + '\n'
+def write(tree):
+    """The text of a tree (`nodes.File`)."""
+    rows = []
+    for item in tree.items:
+        rows += line_rows(item, 0)
+    rows += _lead_rows(tree.trailing)
+    while rows and not rows[-1]:
+        rows.pop()
+    return '\n'.join(rows) + '\n' if rows else ''
 
 
-def separator(before, previous, token, depth=0):
-    """The space before `token`, which follows `previous` (and `before` it), `depth` brackets deep. A
-    keyword argument inside a bracket has no spaces: `min=2 h`."""
-    if previous is None or token.joined or previous.kind == 'at':
-        return ''
-    if depth > 0 and (token.is_op('=') or previous.is_op('=')):
-        return ''
-    if token.kind == 'at':
-        return ' ' if before is not None and before.kind == 'at' else '  '
-    if token.kind == 'unit':
-        return ' '
-    if token.is_op(':', ',', ')', ']', '.') or previous.is_op('(', '[', '.'):
-        return ''
-    if token.is_op('('):
-        return '' if previous.kind == 'name' and previous.value not in KEYWORDS else ' '
-    if previous.is_op('-') and sign(before):
-        return ''
-    return ' '
+# ---- expressions -------------------------------------------------------------------------------------
 
 
-def sign(before):
-    """Whether a `-` after `before` is a sign."""
-    return (
-        before is None
-        or (before.kind == 'op' and before.value in SIGN_AFTER_OPS)
-        or (before.kind == 'name' and before.value in KEYWORDS)
-        or before.kind == 'at'
-    )
+def number_text(value):
+    """A number as the language writes it: `repr` writes `1e-05` and `1e+16`, which the lexer reads."""
+    return repr(value)
 
 
-def one_line(tokens):
-    """The text of a line's tokens with the language's spacing, on one line."""
-    out = ''
-    before = previous = None
-    level = 0
-    for token in tokens:
-        out += separator(before, previous, token, level) + written(token)
-        before, previous = previous, token
-        if token.kind == 'op' and token.value in OPENS:
-            level += 1
-        elif token.kind == 'op' and token.value in (')', ']'):
-            level -= 1
+def text_text(value):
+    """A text in quotes, with its two escapes."""
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+
+def unit_run(unit):
+    """The unit run of a quantity: `L/h`, `person * year`."""
+    out = unit[0][1]
+    for op, name in unit[1:]:
+        out += f'/{name}' if op == '/' else f' * {name}'
     return out
 
 
-def written(token):
-    if token.kind == 'text':
-        return f'"{token.value}"'
-    return token.source or str(token.value)
+def level_of(node):
+    if isinstance(node, n.IfElse):
+        return TEST
+    if isinstance(node, n.BoolOp):
+        return OR if node.op == 'or' else AND
+    if isinstance(node, n.Unary):
+        return NOT if node.op == 'not' else FACTOR
+    if isinstance(node, (n.Compare, n.Within)):
+        return CMP
+    if isinstance(node, n.Binary):
+        return LEVELS[node.op]
+    return ATOM
 
 
-def spacing(tokens):
-    """[(the space before each token, the token)] of one logical line."""
-    spaced = []
-    before = previous = None
-    level = 0
-    for token in tokens:
-        spaced.append((separator(before, previous, token, level), token))
-        before, previous = previous, token
-        if token.kind == 'op' and token.value in OPENS:
-            level += 1
-        elif token.kind == 'op' and token.value in (')', ']'):
-            level -= 1
-    return spaced
+def _bare(node):
+    """Whether a node is written as a bare name that would continue the unit run before it."""
+    return isinstance(node, n.Name) and node.name not in RESERVED
 
 
-def render(tokens, indent):
-    """The rows of one logical line."""
-    spaced = spacing(tokens)
-    hang = hanging(spaced, indent)
-    if hang is None:
-        return fill(spaced, indent)
-    i, j = hang
-    inside = [('', spaced[i + 1][1]), *spaced[i + 2 : j]]
-    return [
-        *fill(spaced[: i + 1], indent),
-        *fill(inside, indent + INDENT, depth=1, continued=indent + INDENT),
-        *fill([('', spaced[j][1]), *spaced[j + 1 :]], indent, depth=1),
-    ]
+def expression(node, level=TEST, bare_in=True, tail=False):
+    """An expression with the brackets that its level needs. `bare_in` false: an `in` outside
+    brackets would start a range, so a membership test is bracketed. `tail`: a bare name follows
+    after `*` or `/`, so a quantity that ends the text is bracketed."""
+    if level_of(node) < level:
+        return f'({expression(node)})'
+    if isinstance(node, n.Number):
+        return node.written or number_text(node.value)
+    if isinstance(node, n.Quantity):
+        written = f'{node.written or number_text(node.value)} {unit_run(node.unit)}'
+        return f'({written})' if tail else written
+    if isinstance(node, n.Text):
+        return text_text(node.value)
+    if isinstance(node, n.Bool):
+        return 'true' if node.value else 'false'
+    if isinstance(node, n.Name):
+        return node.name
+    if isinstance(node, (n.Member, n.Method)):
+        base = expression(node.base, ATOM)
+        if isinstance(node.base, (n.Number, n.Quantity)):
+            base = f'({base})'
+        if isinstance(node, n.Member):
+            return f'{base}.{node.name}'
+        return f'{base}.{node.name}({", ".join(expression(arg) for arg in node.args)})'
+    if isinstance(node, n.Call):
+        if node.named:
+            return (
+                f'{node.function}({", ".join(f"{name}: {expression(value)}" for name, value in node.named)})'
+            )
+        return f'{node.function}({", ".join(expression(arg) for arg in node.args)})'
+    if isinstance(node, n.Formula):
+        return f'formula({expression(node.body)})'
+    if isinstance(node, n.Unary):
+        if node.op == 'not':
+            return f'not {expression(node.operand, NOT, bare_in)}'
+        return node.op + expression(node.operand, FACTOR, tail=tail)
+    if isinstance(node, n.Binary):
+        own = LEVELS[node.op]
+        if node.op == '**':
+            return f'{expression(node.left, ATOM)} ** {expression(node.right, FACTOR, tail=tail)}'
+        # A quantity on the right of `*` or `/` is bracketed, as the spec writes `x / (2 h)`, and so is
+        # one on the left of another quantity, `(3 person) * (2 year)`, or of a bare name, which would
+        # continue its unit.
+        product = node.op in ('*', '/')
+        before = product and (_bare(node.right) or isinstance(node.right, n.Quantity))
+        left = expression(node.left, own, tail=before)
+        right = expression(node.right, own + 1, tail=tail or (product and isinstance(node.right, n.Quantity)))
+        return f'{left} {node.op} {right}'
+    if isinstance(node, n.Compare):
+        written = expression(node.operands[0], ARITH)
+        for op, operand in zip(node.ops, node.operands[1:]):
+            written += f' {op} {expression(operand, ARITH)}'
+        return written
+    if isinstance(node, n.Within):
+        written = f'{expression(node.value, ARITH)} in {interval(node.low, node.high)}'
+        return written if bare_in else f'({written})'
+    if isinstance(node, n.BoolOp):
+        own = level_of(node)
+        return f' {node.op} '.join(expression(value, own + 1, bare_in) for value in node.values)
+    if isinstance(node, n.IfElse):
+        return (
+            f'{expression(node.body, OR, bare_in)} if {expression(node.test, OR, bare_in)} '
+            f'else {expression(node.orelse, TEST, bare_in)}'
+        )
+    if isinstance(node, n.Collection):
+        return '<' + ', '.join(expression(item, ATOM) for item in node.items) + '>'
+    raise TypeError(f'no text for {type(node).__name__}')
 
 
-def hanging(spaced, indent):
-    """(the place of the opening bracket, of its closing bracket) of a line that hangs, or None: a
-    line that does not fit, whose first bracket is a `(` right after its `:`, its `=` (or `+=`, `-=`)
-    or a word of `HANG_AFTER`, with something inside."""
-    tokens = [token for _, token in spaced]
-    if any(token.kind == 'text' and '\n' in token.value for token in tokens):
-        return None
-    if indent + sum(len(space) + len(written(token)) for space, token in spaced) <= WIDTH:
-        return None
-    i = next((k for k, token in enumerate(tokens) if token.kind == 'op' and token.value in OPENS), None)
-    if i is None or i == 0 or not tokens[i].is_op('('):
-        return None
-    before = tokens[i - 1]
-    if not (before.is_op(':', '=', '+=', '-=') or (before.kind == 'name' and before.value in HANG_AFTER)):
-        return None
-    j = closing(tokens, i)
-    return None if j == i + 1 else (i, j)
+def interval(low, high):
+    """`[lo, hi]`, with a side left empty as the spec writes it: `[0,]`, `[, 10 L]`."""
+    if high is None:
+        return f'[{expression(low)},]'
+    if low is None:
+        return f'[, {expression(high)}]'
+    return f'[{expression(low)}, {expression(high)}]'
 
 
-def closing(tokens, i):
-    """The place of the bracket that closes the bracket at `i`."""
-    depth = 0
-    for j in range(i, len(tokens)):
-        token = tokens[j]
-        if token.kind == 'op' and token.value in OPENS:
-            depth += 1
-        elif token.kind == 'op' and token.value in (')', ']'):
-            depth -= 1
-            if depth == 0:
-                return j
-    raise ValueError('a bracket has no closing bracket')
+def unit_text(unit):
+    """The unit of a type: `L/h`, `person * year`, `tunings/(tuner * year)`."""
+    if isinstance(unit, str):
+        return unit
+    right = f'({unit_text(unit.right)})' if isinstance(unit.right, n.UnitOp) else unit.right
+    return f'{unit_text(unit.left)}/{right}' if unit.op == '/' else f'{unit_text(unit.left)} * {right}'
 
 
-def fill(spaced, indent, depth=0, continued=None):
-    """The rows of tokens that start on a row at `indent`, `depth` brackets deep, on rows at
-    `continued` after the first (one level deeper by default). Each row is filled; a row that is too
-    long breaks at its best place (`breaks`): in the second half of the row, the last of the places
-    with the fewest brackets open, so `a * (1 - b) + c` breaks before `+`, not inside the bracket. A
-    text with spaces breaks inside itself (`text_rows`)."""
-    rows = []
-    row = ' ' * indent
-    deeper = ' ' * (indent + INDENT if continued is None else continued)
-    start = depth
-    marks = []  # (where the space is in the row, the brackets open there): where the row can break
-    for k, (space, token) in enumerate(spaced):
-        tail = trailing(spaced, k, start)
-        here = breaks(spaced, k, depth)
-        if token.kind == 'text' and SINGLE_SPACE.search(token.value):
-            fits = len(row) + len(space) + len(written(token)) + tail <= WIDTH
-            gap = space
-            if not fits and here and row.strip():
-                rows.append(row)
-                row, gap = deeper, ''
-            opening = len(row) - len(row.lstrip(' '))
-            done, row = text_rows(row + gap, token.value, ' ' * (opening + INDENT), tail)
-            rows += done
-            marks = []
-            continue
-        piece = space + written(token)
-        while len(row) + len(piece) + tail > WIDTH and row.strip():
-            options = marks + ([(len(row), depth)] if here else [])
-            if not options:
-                break
-            # The places in the second half of the row, unless it has none: a break earlier would
-            # leave a short row.
-            lead = len(row) - len(row.lstrip(' '))
-            options = [o for o in options if o[0] - lead >= (WIDTH - lead) // 2] or options
-            fewest = min(level for _, level in options)
-            cut = max(offset for offset, level in options if level == fewest)
-            rows.append(row[:cut])
-            if cut == len(row):
-                row, piece, here, marks = deeper, written(token), False, []
-            else:
-                shift = len(deeper) - (cut + 1)
-                row = deeper + row[cut + 1 :]
-                marks = [(offset + shift, level) for offset, level in marks if offset > cut]
-        if here:
-            marks.append((len(row), depth))
-        row += piece
-        if token.kind == 'op' and token.value in OPENS:
-            depth += 1
-        elif token.kind == 'op' and token.value in (')', ']'):
-            depth -= 1
-    rows.append(row)
-    return [r.rstrip() for r in rows]
+def type_text(node):
+    if isinstance(node, n.WordType):
+        return node.word
+    if isinstance(node, n.NamedType):
+        return node.name
+    if isinstance(node, n.UnitType):
+        return unit_text(node.unit)
+    if isinstance(node, n.EnumType):
+        return f'enum[{", ".join(node.members)}]'
+    if isinstance(node, n.FormulaType):
+        return f'formula({type_text(node.of)})'
+    if isinstance(node, n.DistributionType):
+        return f'distribution({type_text(node.of)})'
+    if isinstance(node, n.CollectionType):
+        return f'<{type_text(node.of)}>'
+    raise TypeError(f'no type text for {type(node).__name__}')
 
 
-def trailing(spaced, k, start=0):
-    """The length of what must stay on the row of token `k`: the tokens after it up to the next place
-    where the row can break (`breaks`), or to the end of the line. The tokens start `start` brackets
-    deep."""
-    length = 0
-    depth = start
-    for _, token in spaced[: k + 1]:
-        if token.kind == 'op' and token.value in OPENS:
-            depth += 1
-        elif token.kind == 'op' and token.value in (')', ']'):
-            depth -= 1
-    for m in range(k + 1, len(spaced)):
-        space, token = spaced[m]
-        if breaks(spaced, m, depth):
-            break
-        if token.kind == 'text' and SINGLE_SPACE.search(token.value):
-            # A text can break inside itself; its first word stays on the row.
-            length += len(space) + 1 + len(SINGLE_SPACE.split(token.value, 1)[0])
-            break
-        length += len(space) + len(written(token))
-        if token.kind == 'op' and token.value in OPENS:
-            depth += 1
-        elif token.kind == 'op' and token.value in (')', ']'):
-            depth -= 1
-    return length
+# ---- lines ------------------------------------------------------------------------------------------
 
 
-def breaks(spaced, k, depth):
-    """Whether a row can break before token `k`, `depth` brackets deep: at a space inside a bracket,
-    but not inside a number with its unit, and not right after an operator."""
-    space, token = spaced[k]
-    if depth <= 0 or space != ' ' or token.kind == 'unit' or k == 0:
-        return False
-    previous = spaced[k - 1][1]
-    if previous.kind == 'op' and previous.value in OPERATORS:
-        return False
-    return not (previous.kind == 'name' and previous.value in WORD_OPERATORS)
+def _indent(depth):
+    return ' ' * (4 * depth)
 
 
-def text_rows(row, value, deeper, tail):
-    """The rows of a text that starts on `row`: its words at single spaces, filling each row; each
-    line break of the text an empty row. Returns (the finished rows, the row where the text ends).
-    `tail` is the length of what follows the text on its last row."""
-    paragraphs = value.split('\n')
-    for i, paragraph in enumerate(paragraphs):
-        if i and paragraph.startswith(' '):
-            raise ValueError(f'a text cannot start a line with a space after a line break: {value!r}')
-        if i < len(paragraphs) - 1 and paragraph.endswith(' '):
-            raise ValueError(f'a text cannot end a line with a space before a line break: {value!r}')
-    rows = []
-    current = row + '"'
-    for i, paragraph in enumerate(paragraphs):
-        if i:
-            # Each line break is one empty row, so an empty paragraph between two breaks has no row.
-            if current != deeper:
-                rows.append(current)
+def _lead_rows(lead):
+    return [f'{_indent(depth)}{text}' if text else '' for depth, text in lead]
+
+
+def _cites(cites):
+    return ''.join(f' @{cite.name}' for cite in cites)
+
+
+def _escaped(piece):
+    return piece.replace('\\', '\\\\').replace('"', '\\"')
+
+
+def text_rows(prefix, value, depth):
+    """The rows of `prefix` (a row's start, with its indentation) and a text that ends the row. A line
+    break of the text is an empty row, and its next piece goes one level deeper; a text that is too
+    long for the row breaks at single spaces onto rows one level deeper, since a row break inside a
+    text reads as a space."""
+    deeper = _indent(depth + 1)
+    pieces = value.split('\n')
+    if len(pieces) > 1:
+        rows = [f'{prefix}"{_escaped(pieces[0])}']
+        for k, piece in enumerate(pieces[1:], 1):
             rows.append('')
-            current = deeper
-        words = SINGLE_SPACE.split(paragraph) if paragraph else ['']
-        started = False  # whether a word of this paragraph is on the row
-        for j, word in enumerate(words):
-            last = i == len(paragraphs) - 1 and j == len(words) - 1
-            end = 1 + tail if last else 0
-            joined = word if not started else ' ' + word
-            if started and word and len(current) + len(joined) + end > WIDTH:
-                rows.append(current)
-                current = deeper + word
+            if piece or k == len(pieces) - 1:
+                rows.append(deeper + _escaped(piece))
+        rows[-1] += '"'
+        return rows
+    words = [_escaped(word) for word in value.split(' ')]
+    if len(prefix) + len(value) + 2 <= WIDTH or '' in words:
+        return [prefix + text_text(value)]
+    rows, current = [], f'{prefix}"{words[0]}'
+    for word in words[1:]:
+        if len(current) + 1 + len(word) > WIDTH:
+            rows.append(current)
+            current = deeper + word
+        else:
+            current += ' ' + word
+    return [*rows, current + '"']
+
+
+def _rows(node, depth, head, under=(), text=None):
+    """The rows of a line: its lead, its head (and a text that ends it) with its comment, then the
+    rows under it. The comments of the other rows of a long line go above it."""
+    rows = _lead_rows(node.lead)
+    comments = list(node.tail)
+    rows += [f'{_indent(depth)}{comment}' for comment in comments[:-1]]
+    written = [_indent(depth) + head] if text is None else text_rows(_indent(depth) + head, text, depth)
+    if comments:
+        written[-1] += f'  {comments[-1]}'
+    return rows + written + list(under)
+
+
+def _described(node, depth):
+    """The rows of the text and the evidence of a line, one level under it."""
+    rows = [] if node.text is None else text_rows(_indent(depth + 1), node.text, depth + 1)
+    return rows + evidence_rows(node.evidence, depth + 1)
+
+
+def evidence_rows(evidence, depth):
+    rows, cites = [], []
+    for item in evidence:
+        if isinstance(item, n.Cite):
+            cites.append(f'@{item.name}')
+            continue
+        if cites:
+            rows.append(_indent(depth) + ' '.join(cites))
+            cites = []
+        rows += text_rows(f'{_indent(depth)}@{item.kind} ', item.text, depth)
+        rows += _record_lines(item, depth + 1)
+    if cites:
+        rows.append(_indent(depth) + ' '.join(cites))
+    return rows
+
+
+def _record_lines(record, depth):
+    rows = [f'{_indent(depth)}{kind} {identifier}' for kind, identifier in record.relations]
+    if record.claims:
+        rows.append(f'{_indent(depth)}claims:')
+        for claim in record.claims:
+            rows.append(f'{_indent(depth + 1)}{claim.id}')
+            if claim.datum:
+                rows.append(f'{_indent(depth + 2)}datum: {claim.datum}')
+    return rows
+
+
+def _block(items, depth):
+    return [row for item in items for row in line_rows(item, depth)]
+
+
+def _params(params):
+    out = []
+    for param in params:
+        written = f'{param.name}: {type_text(param.type)}'
+        if param.range is not None:
+            written += f' in {interval(param.range.low, param.range.high)}'
+        out.append(written)
+    return ', '.join(out)
+
+
+def _declaration_head(node):
+    head = f'{node.modifier} ' if node.modifier else ''
+    head += node.name
+    if node.type is not None:
+        head += f': {type_text(node.type)}'
+    if node.value is not None:
+        head += f' = {expression(node.value, bare_in=False)}'
+    if node.range is not None and not node.range_row:
+        head += f' in {interval(node.range.low, node.range.high)}'
+    if node.scale is not None:
+        head += f' scale {expression(node.scale, bare_in=False)}'
+    return head + _cites(node.cites)
+
+
+def _note_value(value):
+    if isinstance(value, n.Text):
+        return text_text(value.value)
+    if isinstance(value, n.Number):
+        return number_text(value.value)
+    if isinstance(value, tuple):
+        return '[' + ', '.join(_note_value(item) for item in value) + ']'
+    return value
+
+
+def line_rows(node, depth):
+    """The rows of a line and of the lines under it, at `depth`."""
+    inner = _indent(depth + 1)
+    if isinstance(node, n.Scenario):
+        under = []
+        for key in HEADER:
+            value = getattr(node, key)
+            if value is None or value == ():
+                continue
+            if key in ('summary', 'scope', 'library'):
+                under += text_rows(f'{inner}{key} ', value, depth + 1)
+            elif key == 'timescales':
+                under.append(f'{inner}{key} {", ".join(expression(item) for item in value)}')
             else:
-                current += joined
-            started = True
-    return rows, current + '"'
+                under.append(f'{inner}{key} {expression(value)}')
+        return _rows(node, depth, f'{node.role} {text_text(node.title)}', under)
+    if isinstance(node, n.Use):
+        return _rows(node, depth, f'use {node.name}')
+    if isinstance(node, n.Record):
+        return _rows(
+            node, depth, f'record {node.name}: {node.kind} ', _record_lines(node, depth + 1), node.text
+        )
+    if isinstance(node, n.Entity):
+        under = []
+        if node.text is not None:
+            under += text_rows(inner, node.text, depth + 1)
+        if node.title is not None:
+            under += text_rows(f'{inner}title ', node.title, depth + 1)
+        if node.role is not None:
+            under.append(f'{inner}role {node.role}')
+        under += evidence_rows(node.evidence, depth + 1) + _block(node.members, depth + 1)
+        return _rows(node, depth, f'{node.name}:{_cites(node.cites)}', under)
+    if isinstance(node, n.Table):
+        head = f'{node.name}: {node.template} from {text_text(node.file)}{_cites(node.cites)}'
+        return _rows(node, depth, head, _described(node, depth))
+    if isinstance(node, n.Declaration):
+        under = []
+        if node.range is not None and node.range_row:
+            under.append(f'{inner}in {interval(node.range.low, node.range.high)}')
+        under += _described(node, depth) + _block(node.properties, depth + 1)
+        return _rows(node, depth, _declaration_head(node), under)
+    if isinstance(node, n.Property):
+        head = f'{".".join(node.path)} = {expression(node.value, bare_in=False)}{_cites(node.cites)}'
+        return _rows(node, depth, head, _described(node, depth))
+    if isinstance(node, n.Flow):
+        head = f'flow {node.name}:'
+        if node.arrow:
+            head += f' {".".join(node.source)} {node.arrow} {".".join(node.sink)}'
+        under = _described(node, depth) + _block(node.properties, depth + 1) + _block(node.legs, depth + 1)
+        return _rows(node, depth, head + _cites(node.cites), under)
+    if isinstance(node, n.Event):
+        head = f'{node.modifier} ' if node.modifier else ''
+        head += f'{node.name} = event({_params(node.params)}):{_cites(node.cites)}'
+        under = _described(node, depth) + _block(node.locals, depth + 1)
+        under += _block(node.triggers, depth + 1) + _block(node.steps, depth + 1)
+        return _rows(node, depth, head, under)
+    if isinstance(node, n.Trigger):
+        under = _described(node, depth) + _block(node.captures, depth + 1) + _block(node.starts, depth + 1)
+        if node.reset is not None:
+            under += line_rows(node.reset, depth + 1)
+        return _rows(node, depth, f'when {expression(node.test)}:{_cites(node.cites)}', under)
+    if isinstance(node, n.Capture):
+        return _rows(node, depth, f'{node.name} = {expression(node.value, bare_in=False)}')
+    if isinstance(node, n.Reset):
+        return _rows(node, depth, f'reset {node.kind} {expression(node.value)}')
+    if isinstance(node, n.Stage):
+        head = f'after {expression(node.delay)}'
+        if node.wait:
+            return _rows(node, depth, head)
+        if node.guard is not None:
+            head += f' when {expression(node.guard)}'
+        under = _described(node, depth) + _block(node.body, depth + 1)
+        return _rows(node, depth, f'{head}:{_cites(node.cites)}', under)
+    if isinstance(node, n.Gate):
+        return _rows(node, depth, f'until {expression(node.test)}')
+    if isinstance(node, n.Assign):
+        head = f'{expression(node.target, ATOM)} {node.op} {expression(node.value, bare_in=False)}'
+        return _rows(node, depth, head + _cites(node.cites))
+    if isinstance(node, n.Start):
+        return _rows(node, depth, expression(node.call))
+    if isinstance(node, n.Move):
+        head = f'move {expression(node.amount)} from {expression(node.source, ATOM)} to '
+        return _rows(node, depth, head + expression(node.destination, ATOM) + _cites(node.cites))
+    if isinstance(node, n.If):
+        rows = _rows(node, depth, f'if {expression(node.test)}:', _block(node.then, depth + 1))
+        if node.orelse is not None:
+            rows += [f'{_indent(depth)}else:', *_block(node.orelse, depth + 1)]
+        return rows
+    if isinstance(node, n.Switch):
+        under = _block(node.cases, depth + 1)
+        if node.orelse is not None:
+            under += [f'{inner}else:', *_block(node.orelse, depth + 2)]
+        return _rows(node, depth, f'switch {expression(node.selector)}:', under)
+    if isinstance(node, n.Case):
+        head = node.member + (f' when {expression(node.guard)}' if node.guard is not None else '')
+        return _rows(
+            node,
+            depth,
+            f'{head}:{_cites(node.cites)}',
+            _described(node, depth) + _block(node.body, depth + 1),
+        )
+    if isinstance(node, n.Solver):
+        head = f'{node.modifier} ' if node.modifier else ''
+        under = _described(node, depth)
+        for key in ('inputs', 'solve_for', 'constraints', 'objective'):
+            items = getattr(node, key)
+            if not items:
+                continue
+            under.append(f'{inner}{key}:')
+            for item in items:
+                if isinstance(item, n.Line):
+                    under += line_rows(item, depth + 2)
+                else:
+                    under.append(f'{_indent(depth + 2)}{expression(item)}')
+        return _rows(node, depth, f'{head}{node.name} = solver:{_cites(node.cites)}', under)
+    if isinstance(node, n.Binding):
+        return _rows(node, depth, f'{node.name} = {expression(node.value, bare_in=False)}')
+    if isinstance(node, n.Unknown):
+        head = f'{node.name}: {type_text(node.type)}'
+        if node.value is not None:
+            head += f' = {expression(node.value, bare_in=False)}'
+        if node.range is not None:
+            head += f' in {interval(node.range.low, node.range.high)}'
+        if node.scale is not None:
+            head += f' scale {expression(node.scale, bare_in=False)}'
+        return _rows(node, depth, head)
+    if isinstance(node, n.Objective):
+        return _rows(node, depth, f'{node.sense}({expression(node.value)})')
+    if isinstance(node, n.Status):
+        head = f'status {node.rating}' + (f' when {expression(node.test)}' if node.test is not None else '')
+        return _rows(node, depth, head + _cites(node.cites), _described(node, depth))
+    if isinstance(node, n.Assert):
+        return _rows(
+            node, depth, f'assert {expression(node.test)}{_cites(node.cites)}', _described(node, depth)
+        )
+    if isinstance(node, n.Sees):
+        return _rows(node, depth, f'sees {expression(node.path, ATOM)}')
+    if isinstance(node, n.Change):
+        under = _described(node, depth) + _block(node.members, depth + 1)
+        return _rows(node, depth, f'change {node.name}:{_cites(node.cites)}', under)
+    if isinstance(node, n.Options):
+        return _rows(node, depth, f'options {text_text(node.group)}:', _block(node.options, depth + 1))
+    if isinstance(node, n.Option):
+        return _rows(node, depth, f'{text_text(node.name)}:', _block(node.settings, depth + 1))
+    if isinstance(node, n.Runs):
+        return _rows(node, depth, 'runs:', _block(node.runs, depth + 1))
+    if isinstance(node, n.RunLine):
+        return _rows(node, depth, f'{node.name} = {" + ".join(text_text(item) for item in node.options)}')
+    if isinstance(node, n.Notes):
+        return _rows(node, depth, 'notes:', _block(node.notes, depth + 1))
+    if isinstance(node, n.Note):
+        head = f'{node.key}:' + (f' {_note_value(node.value)}' if node.value is not None else '')
+        under = evidence_rows(node.evidence, depth + 1) + _block(node.notes, depth + 1)
+        return _rows(node, depth, head + _cites(node.cites), under)
+    raise TypeError(f'no rows for {type(node).__name__}')

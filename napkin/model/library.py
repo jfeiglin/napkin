@@ -161,10 +161,12 @@ def shared_library(model_path):
 
 
 def model_document(path):
-    """What the evidence walkers read of a model file: its projection (`language.front.projection`)."""
-    from .language import front
+    """What the evidence walkers read of a model file: its records, by the path of each line that
+    has evidence (`language.evidence.document`)."""
+    from .language.evidence import document
+    from .language.parse import parse
 
-    return front.projection(front.load(Path(path))[0])
+    return document(parse(Path(path).read_text(encoding='utf-8')))
 
 
 def load_library(model_path, *, document=None, allow_unused=False, references=True):

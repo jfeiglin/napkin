@@ -1,0 +1,9 @@
+Utility:
+    unserved_rate = formula(max(0 L/h, this.demand - this.delivery.actual_rate))
+    unserved: L = 0 in [0,]
+    flow count_unserved: SOURCE -> this.unserved
+        request = formula(this.unserved_rate)
+
+initial_unserved = sum(Utility.instances.unserved)
+unserved_volume = formula(sum(Utility.instances.unserved))
+unserved_now = formula(sum(Utility.instances.unserved_rate))

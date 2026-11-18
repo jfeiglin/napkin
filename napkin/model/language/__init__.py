@@ -1,3 +1,4 @@
-"""The front end of the language (docs/language.md): the lines and tokens of a file (`lex`), its parts
-(`nodes`, `parse`), its expressions (`expressions`), the formatter (`format`), its evidence and identity
-(`evidence`), its semantic model (`resolve`) and the pipeline that builds its model (`front`)."""
+"""The front end of the language (scratch/rewrite/spec.md): the lines and the tokens of a text
+(`lex`), its tree (`nodes`, `parse`), the formatter (`format`), the diagnostics (`problems`), the
+records that the evidence walkers read (`evidence`) and the files of one model (`modules`). The
+declared model is `napkin/model/semantic.py`, its lowering to a program `napkin/model/lowering.py`."""

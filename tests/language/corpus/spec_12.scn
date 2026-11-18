@@ -1,0 +1,15 @@
+first:
+    water: L = 0 in [0, 0]
+    flow feed: SOURCE -> this.water
+        capacity = 1 L/h
+    flow to_a: this.water -> SINK
+        request = 1 L/h
+    flow onward: this.water -> second.water
+        request = 1 L/h
+
+second:
+    water: L = 0 in [0, 0]
+    flow to_b: this.water -> SINK
+        request = 1 L/h
+    flow to_c: this.water -> SINK
+        request = 1 L/h

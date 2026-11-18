@@ -1,0 +1,7 @@
+input delay: h = 3
+    in [0.5, 12]
+    @timing
+
+water: L = 8 in [0,]
+
+assert total in [initial - tolerance, initial + tolerance]

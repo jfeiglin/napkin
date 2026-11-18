@@ -1,0 +1,7 @@
+machine:
+    operational: bool = false
+    input repair_times = uniform(1 h, 3 h)
+    repair = event():
+        duration: h = this.repair_times.draw()
+        after duration:
+            this.operational = true
