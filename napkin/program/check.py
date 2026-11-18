@@ -48,6 +48,7 @@ The codes:
 from __future__ import annotations
 
 import dataclasses
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
@@ -509,7 +510,7 @@ class _Checker(Resolver):
         return tuple(self.diagnostics)
 
     def unique(self, names, where, what):
-        twice = sorted({name for name in names if names.count(name) > 1})
+        twice = sorted(name for name, count in Counter(names).items() if count > 1)
         for name in twice:
             self.fail('duplicate_name', where, f'{what} is declared twice: {name}')
 

@@ -290,6 +290,9 @@ def test_a_stage_refuses_with_a_code(body, code):
         ('x = a < b > c\n', 'chain'),
         ('Rate = 3\n', 'name'),
         ('x = chance(A: 1)\n', 'retired'),
+        # Copies of a template, from tests/model/test_copies_and_start.py: write the instances or a table.
+        ('couriers: Courier * 3\n', 'retired'),
+        ('couriers: Courier * 3 from "couriers.csv"\n', 'retired'),
     ],
 )
 def test_the_parser_refuses_with_a_code(text, code):

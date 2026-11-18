@@ -1,38 +1,55 @@
 """The declared model: a parsed model text with its names resolved and its types and units checked.
 
 It holds what a run needs and what the report and the drawings read beside the program: the scenario
-line, the entities with their values and flows, the values of the top level, the records and the
-notes, each with its texts and its evidence. Each declared part has a stable path, the path that the
-program gives the part as its `origin` (`tank.water`, `clinic.delivery`, `close` at the top level),
-so a report or a trace finds the label and the evidence of a part from the program.
+line, the entities and templates with their values and flows, their members (instances written by
+hand and the rows of tables), the values and assertions of the top level, the records and the notes,
+each with its texts and its evidence. Each declared part has a stable path, the path that the program
+gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top level, the member
+`sites.clinic`), so a report or a trace finds the label and the evidence of a part from the program.
 
 - **Types and units.** A value's type is declared (`water: L`) or inferred from its initializer. A
   number's unit is checked by its dimension, from the units of the library and of the model: `+`,
   `-`, comparisons, `min`, `max`, `clip` and both sides of `if ... else` need one dimension, and `*`
   and `/` make the dimension of their result (D12). A bare number takes the declared unit where the
   spec says so: the whole initializer, a bare end of the declaration's range, its scale, the value
-  arguments of a distribution that (or whose draw) is the whole initializer; and a bare zero beside
-  a value of known unit.
+  arguments of a distribution that (or whose draw) is the whole initializer, a member's own value and
+  a table cell; and a bare zero beside a value of known unit.
 - **Unit runs.** After a number, a name is a unit while the library has a unit of that name and the
   run has not stopped; the first name that is no unit stops the run, and it and the names after it
   are values (`(2 h) * hour` against `2 h * hour`). The arithmetic is the same either way.
+- **Members and links.** A template (`Place:`) is the schema that its members share; an entity
+  written once (`tank:`) is the template of its one member, under its own name. A member is written
+  by hand (`north: Utility`, with its own values and links under it) or is a row of a table. A link
+  (`origin: Place`) names one member, fixed for the run: the member sets it, or the link's
+  initializer names it (`origin = sites.junction`), so the declared model knows each target.
+- **Collections** (`<T>`) are typed with their template and their key: `Template.instances`, a
+  literal, `where` (a bare name in its test that is a field of the member is the member's, and it
+  must be fixed: an input or a link), `by(field)` (the key) and `.at(x)` (one member, `x` in the
+  key's unit). A step from a collection is a projection, which only a reduction reads: `sum` and
+  `min`/`max` of numbers, `count` of members or of yes/no values, `any` and `all` of yes/no values.
 - **Expressions** become a small typed form (`Const`, `Read`, `Apply`, `Retain`, `Distribution`,
-  `Drawn`) that the lowering writes as a program.
+  `Drawn`, `Reduced`) that the lowering writes as a program. A `Read` knows whether what it reads is
+  fixed for the run (inputs, links and the members of fixed collections), which `where` and `assert`
+  need.
 - **What a later slice brings** is kept as a `Deferred` part, with the construct and the slice that
-  brings it; the lowering refuses it by name. This slice resolves entities written once, values,
-  inputs (a default may draw from a distribution), formulas, `readonly`, ranges with either side
-  open, scales, stores and directed flows with `request` and `capacity`.
+  brings it; the lowering refuses it by name. This slice resolves the entities, the templates and
+  their members, the tables, values, inputs (a default may draw from a distribution), formulas,
+  `readonly`, ranges with either side open, scales, links, collections and their reductions, stores,
+  directed flows with `request` and `capacity` on one member's stores, and assertions over inputs.
 """
 
 from __future__ import annotations
 
 import difflib
 import math
+import re
 from dataclasses import dataclass, field
 from fractions import Fraction
 
 from .language import nodes as n
-from .language.problems import LanguageError, Problem
+from .language import tables
+from .language.parse import parse_expression
+from .language.problems import LanguageError, Problem, SyntaxProblem
 
 # ---- units ------------------------------------------------------------------------------------------
 
@@ -145,9 +162,47 @@ class Dist:
         return f'distribution({self.of})'
 
 
+@dataclass(frozen=True)
+class Ent:
+    """A member of a template: `this`, a link, a named member, a row or a keyed read. An entity
+    written once is the template of its one member, under its own name."""
+
+    template: str
+
+    def __str__(self):
+        return f'a member of {self.template}'
+
+
+@dataclass(frozen=True)
+class Many:
+    """A collection of members (`of` is an `Ent`), or a projection of a field over one (`of` is the
+    field's type), with the type of its keys: the creation number (a plain number) or the field that
+    a `by` names."""
+
+    of: object
+    key: Num = PLAIN
+
+    def __str__(self):
+        if isinstance(self.of, Ent):
+            return f'a collection of {self.of.template}'
+        return f'a projection of {self.of}'
+
+
+@dataclass(frozen=True)
+class FlowOf:
+    """A flow, which is no value: its rates are read (`actual_rate`, `request`, `capacity`)."""
+
+    rate: Num
+
+    def __str__(self):
+        return f'a flow in {self.rate}'
+
+
 def compatible(a, b):
     if isinstance(a, Num) and isinstance(b, Num):
         return a.dimension == b.dimension
+    if isinstance(a, Many) and isinstance(b, Many):
+        return a.of == b.of
     return a == b
 
 
@@ -164,12 +219,19 @@ class Const:
 
 @dataclass(frozen=True)
 class Read:
-    """A read from a start: `('this',)`, `('named', entity)`, `('root',)` or `('time',)`, through its
-    steps (a value, a flow and its rate)."""
+    """A read from a start through its steps (a value, a link, a flow and its rate). The starts are
+    `('this',)`, `('named', id)` (an entity, an instance or a row), `('root',)`, `('time',)`,
+    `('item',)` (the member of a `where`), `('instances', template)`, `('literal', reads)`, `('where',
+    source, test)`, `('by', source, field)` and `('lookup', source, key)`. `fixed` says that what it
+    reads is fixed for the run."""
 
     start: tuple
     steps: tuple
     type: object
+    fixed: bool = False
+    # The path of the formula that the read ends at, when the way to it is fixed: an assertion that
+    # reads it is over inputs when the formula is.
+    formula: str = field(default='', compare=False)
 
 
 @dataclass(frozen=True)
@@ -181,6 +243,15 @@ class Apply:
     args: tuple
     type: object
     detail: object = None
+
+
+@dataclass(frozen=True)
+class Reduced:
+    """`sum`, `count`, `any`, `all`, `min` or `max` of a collection or of a projection (`source`)."""
+
+    op: str
+    source: Read
+    type: object
 
 
 @dataclass(frozen=True)
@@ -208,16 +279,44 @@ class Drawn:
     type: Num
 
 
+def reads_of(expression):
+    """The reads of a typed expression, outside the starts of its keyed reads."""
+    if isinstance(expression, Read):
+        yield expression
+    elif isinstance(expression, Reduced):
+        yield expression.source
+    elif isinstance(expression, Apply):
+        for arg in expression.args:
+            yield from reads_of(arg)
+    elif isinstance(expression, Retain):
+        yield from reads_of(expression.body)
+
+
+def fixed(expression):
+    """Whether a typed expression reads only what is fixed for the run."""
+    if isinstance(expression, Const):
+        return True
+    if isinstance(expression, Read):
+        return expression.fixed
+    if isinstance(expression, Reduced):
+        return expression.source.fixed
+    if isinstance(expression, Apply):
+        return all(fixed(arg) for arg in expression.args)
+    return False
+
+
 # ---- the declared parts -------------------------------------------------------------------------------
 
 INPUT, STATE, FORMULA, DISTRIBUTION = 'input', 'state', 'formula', 'distribution'
+LINK, COLLECTION = 'link', 'collection'
 
 
 @dataclass(frozen=True)
 class DeclaredValue:
-    """A value of an entity or of the top level: its kind (`input`, `state`, `formula`,
-    `distribution`), its type, its initializer, its range (either side None), its scale, its texts
-    and its evidence (the records that it cites and those written under it)."""
+    """A value of an entity, a template or the top level: its kind (`input`, `state`, `formula`,
+    `distribution`, `link`, `collection`), its type, its initializer (None for a value of a template
+    that each member gives, or a link that each member sets), its range (either side None), its
+    scale, its texts and its evidence (the records that it cites and those written under it)."""
 
     path: str
     name: str
@@ -231,6 +330,14 @@ class DeclaredValue:
     text: str | None = None
     evidence: tuple = ()
     line: int = 0
+
+
+def fixed_kind(value):
+    """Whether a declared value is fixed for the run: an input, a link, or a collection whose members
+    are fixed."""
+    if value.kind in (INPUT, LINK):
+        return True
+    return value.kind == COLLECTION and value.init is not None and value.init.fixed
 
 
 @dataclass(frozen=True)
@@ -251,6 +358,18 @@ class DeclaredFlow:
 
 
 @dataclass(frozen=True)
+class DeclaredAssert:
+    """An assertion over what is fixed for the run, checked once: its test, its message (`text`) and
+    its evidence. Its path is `assert[k]` of its owner."""
+
+    path: str
+    test: object
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
 class DeclaredEntity:
     """An entity written once: a template of one member, with its parts in written order."""
 
@@ -259,6 +378,58 @@ class DeclaredEntity:
     text: str | None = None
     title: str | None = None
     role: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredTemplate(DeclaredEntity):
+    """A template: the schema and the behaviour that its members share, with its parts in written
+    order."""
+
+
+@dataclass(frozen=True)
+class Given:
+    """A member's own initializer of a value of its template (a typed expression, a `Retain` in
+    place of the template's formula, a `Distribution`), or for a link the id of the member that it
+    names."""
+
+    name: str
+    init: object
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredMember:
+    """A member of a template: written by hand (`north: Utility`), or a row of the table `table`. Its
+    path is its id (`north`, `sites.clinic`, or `readings[0]` for a row of a table without ids). Its
+    line is in `file`: the model's ('') or the table's."""
+
+    path: str
+    template: str
+    values: tuple[Given, ...] = ()
+    links: tuple[Given, ...] = ()
+    table: str | None = None
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+    file: str = ''
+
+
+@dataclass(frozen=True)
+class DeclaredTable:
+    """A table: its name, its template, the file that the model names and the one read (`origin`),
+    its columns (`tables.Column`, with their units and records) and the ids of its members in file
+    order."""
+
+    path: str
+    template: str
+    file: str
+    origin: str
+    columns: tuple = ()
+    members: tuple[str, ...] = ()
+    text: str | None = None
     evidence: tuple = ()
     line: int = 0
 
@@ -291,8 +462,9 @@ class Scenario:
 
 @dataclass(frozen=True)
 class DeclaredModel:
-    """A declared model: its scenario line, its entities and top-level values in written order, its
-    records and notes, the parts that a later slice brings, its units and its tree."""
+    """A declared model: its scenario line; its entities and templates, its top-level values, its
+    members (instances by hand and table rows, in written order) and its top-level assertions; its
+    tables, records and notes; the parts that a later slice brings; its units and its tree."""
 
     scenario: Scenario | None
     entities: tuple[DeclaredEntity, ...]
@@ -302,16 +474,21 @@ class DeclaredModel:
     deferred: tuple[Deferred, ...] = ()
     units: Units = None
     tree: n.File = field(default=None, repr=False)
+    members: tuple[DeclaredMember, ...] = ()
+    tables: tuple[DeclaredTable, ...] = ()
+    asserts: tuple[DeclaredAssert, ...] = ()
 
     def part(self, path):
-        """The declared part of a path (an entity, a value, a flow or a deferred part), or None."""
+        """The declared part of a path (an entity, a template, a value, a flow, an assertion, a
+        member, a table or a deferred part), or None."""
         for entity in self.entities:
             if entity.path == path:
                 return entity
             for part in entity.parts:
                 if part.path == path:
                     return part
-        return next((part for part in (*self.root, *self.deferred) if part.path == path), None)
+        parts = (*self.members, *self.tables, *self.root, *self.asserts, *self.deferred)
+        return next((part for part in parts if part.path == path), None)
 
 
 # ---- resolution ---------------------------------------------------------------------------------------
@@ -336,24 +513,17 @@ class Refused(Exception):
 
 
 @dataclass(frozen=True)
-class EntityRef:
-    """An entity named in an expression: only a step from it reads a value."""
+class Scope:
+    """Where an expression stands: the template whose member `this` names ('' at the top level), and
+    inside the test of a `where` the template of the member under test (`item`)."""
 
-    name: str
-    start: tuple
-
-
-@dataclass(frozen=True)
-class FlowRef:
-    """A flow named in an expression: only its rates are read."""
-
-    path: str
-    start: tuple
-    steps: tuple
-    rate: Num
+    owner: str = ''
+    item: str | None = None
 
 
+TOP = Scope()
 FLOW_READS = ('actual_rate', 'request', 'capacity')
+KEYED = ('where', 'by', 'at')
 SHAPES = {'lognormal': {1}}  # the positions of the plain (shape) arguments of a family: the gsd
 ARITY = {
     'uniform': (2,),
@@ -365,17 +535,14 @@ ARITY = {
 }
 PURE = ('exp', 'expm1', 'ln', 'log1p', 'erf')
 LATER_CALLS = {
-    **dict.fromkeys(('sum', 'count', 'any', 'all'), ('a reduction', 'S1')),
     **dict.fromkeys(('since', 'elapsed', 'delayed'), ('history (since, elapsed, delayed)', 'S4')),
     **dict.fromkeys(('priority', 'proportional'), ('an allocation (priority, proportional)', 'S2')),
 }
 LATER_METHODS = {
-    'where': ('a where filter', 'S1'),
-    'by': ('a key (by)', 'S1'),
-    'at': ('a keyed read (at)', 'S1'),
     'draw': ('a draw outside the default of an input', 'S4'),
     'choose': ("an actor's choice", 'S4'),
 }
+ID = re.compile(r'[A-Za-z_][A-Za-z0-9_]*\Z')
 
 
 def close(name, names):
@@ -395,35 +562,46 @@ def literal(node):
 
 
 class Resolver:
-    """Resolves the parts of one parsed text against a table of units."""
+    """Resolves the parts of one parsed text against a table of units, reading its tables with
+    `read_table` (see `tables.in_folder`)."""
 
-    def __init__(self, tree, units):
-        self.tree, self.units = tree, units
+    def __init__(self, tree, units, read_table):
+        self.tree, self.units, self.read_table = tree, units, read_table
         self.problems, self.deferred = [], []
-        self.entities, self.root, self.records, self.templates, self.tables = {}, {}, {}, set(), set()
+        self.entities, self.templates, self.instances, self.tables = {}, {}, {}, {}
+        self.root, self.records = {}, {}
         self.syntax, self.done, self.active = {}, {}, set()
+        self.ids, self.data = {}, {}  # the ids of the rows of each table that was read, and its form
+        self.owned = {}  # the paths of the values of each template, once a member asks for them
+        self.inputs_only = {}  # whether each formula that an assertion reaches reads inputs only
         for item in tree.items:
-            if isinstance(item, n.Entity) and item.name[:1].islower():
-                self.entities[item.name] = item
+            if isinstance(item, n.Entity):
+                (self.entities if item.name[:1].islower() else self.templates)[item.name] = item
                 for member in item.members:
                     name = getattr(member, 'name', None)
                     if isinstance(member, (n.Declaration, n.Flow, n.Event, n.Solver)) and name:
                         self.syntax[f'{item.name}.{name}'] = (item.name, member)
-            elif isinstance(item, n.Entity):
-                self.templates.add(item.name)
-            elif isinstance(item, n.Table):
-                self.tables.add(item.name)
+        for item in tree.items:
+            if isinstance(item, n.Table):
+                self.tables[item.name] = item
             elif isinstance(item, n.Declaration):
-                self.root[item.name] = item
-                self.syntax[item.name] = ('', item)
+                if (
+                    item.value is None
+                    and isinstance(item.type, n.NamedType)
+                    and item.type.name in self.templates
+                ):
+                    self.instances[item.name] = item
+                else:
+                    self.root[item.name] = item
+                    self.syntax[item.name] = ('', item)
             elif isinstance(item, n.Record):
                 self.records[item.name] = item
 
     def fail(self, code, message, node=None):
         raise Refused(code, message, node)
 
-    def report(self, code, message, line=0, column=0):
-        self.problems.append(Problem(code, message, line, column))
+    def report(self, code, message, line=0, column=0, file=''):
+        self.problems.append(Problem(code, message, line, column, file))
 
     # ---- types and units ---------------------------------------------------------------------
 
@@ -450,7 +628,7 @@ class Resolver:
             return (PLAIN if node.word == 'number' else Word(node.word)), False
         if isinstance(node, n.NamedType):
             if node.name in self.templates:
-                raise Later('a link to a template', 'S1')
+                return Ent(node.name), False
             if node.name[:1].isupper() and not self.units.has(node.name):
                 self.fail(
                     'unknown_name',
@@ -468,14 +646,17 @@ class Resolver:
         if isinstance(node, n.EnumType):
             raise Later('an enum', 'S4')
         if isinstance(node, n.CollectionType):
-            raise Later('a collection', 'S1')
+            inner, _ = self.declared_type(node.of)
+            if not isinstance(inner, Ent):
+                self.fail('type', 'a collection holds members of a template, as <Pump>', node)
+            return Many(inner), False
         self.fail('type', 'no type', node)
 
     # ---- expressions -----------------------------------------------------------------------------
 
     def expression(self, node, scope, unit=None):
-        """The typed form of an expression in a scope (`''` for the top level, or an entity's name).
-        `unit` is the declared unit that a bare number takes (the whole initializer)."""
+        """The typed form of an expression in a scope. `unit` is the declared unit that a bare number
+        takes (the whole initializer)."""
         found = literal(node)
         if found is not None:
             value, written = found
@@ -488,13 +669,14 @@ class Resolver:
             return Const(node.value, BOOL)
         if isinstance(node, n.Text):
             return Const(node.value, TEXT)
-        if isinstance(node, (n.Name, n.Member)):
+        if isinstance(node, (n.Name, n.Member, n.Collection)) or (
+            isinstance(node, n.Method) and node.name in KEYED
+        ):
             found = self.path(node, scope)
-            if isinstance(found, (EntityRef, FlowRef)):
-                what = 'an entity' if isinstance(found, EntityRef) else 'a flow'
+            if isinstance(found.type, FlowOf):
                 self.fail(
                     'type',
-                    f'{what} is no value: read one of its values, as tank.water or delivery.actual_rate',
+                    'a flow is no value: read its actual_rate, request or capacity, as delivery.actual_rate',
                     node,
                 )
             return found
@@ -512,8 +694,6 @@ class Resolver:
                 'formula(...) keeps a calculation where a value stands: it is the whole initializer',
                 node,
             )
-        if isinstance(node, n.Collection):
-            raise Later('a collection', 'S1')
         if isinstance(node, n.Unary):
             operand = self.expression(node.operand, scope)
             if node.op == 'not':
@@ -573,8 +753,8 @@ class Resolver:
         result = Const(value, self.num(spelling, node))
         for op, name in node.unit[k:]:
             other = self.path(n.Name(name, line=node.line, column=node.column), scope)
-            if isinstance(other, (EntityRef, FlowRef)):
-                self.fail('type', f'{name} is no value', node)
+            if isinstance(other.type, (Ent, Many, FlowOf)):
+                self.fail('type', f'{name} is no number', node)
             result = self.product('mul' if op == '*' else 'div', result, other, node)
         return result
 
@@ -623,6 +803,8 @@ class Resolver:
                     'unit', f'{op} needs one dimension on both sides: {left.type} and {right.type}', node
                 )
             return left, right
+        if isinstance(left.type, Many) or isinstance(right.type, Many):
+            self.fail('type', f'{op} takes values, not collections: reduce one, as sum(c.f)', node)
         if left.type != right.type:
             self.fail('type', f'{op} needs one type on both sides: {left.type} and {right.type}', node)
         if op not in ('==', '!=', 'if'):
@@ -632,6 +814,8 @@ class Resolver:
     def want_number(self, value, node, op):
         if not isinstance(value.type, Num):
             hint = ': write (1 if c else 0)' if value.type == BOOL else ''
+            if isinstance(value.type, Many):
+                hint = ': reduce it, as sum(c.f)'
             self.fail('type', f'{op} takes numbers, not {value.type}{hint}', node)
 
     def want_bool(self, value, node, op):
@@ -639,8 +823,12 @@ class Resolver:
             self.fail('type', f'{op} takes a yes/no, not {value.type}', node)
 
     def call(self, node, scope):
-        if node.function in LATER_CALLS or (node.function in ('min', 'max') and len(node.args) == 1):
-            raise Later(*LATER_CALLS.get(node.function, ('a reduction', 'S1')))
+        if node.function in LATER_CALLS:
+            raise Later(*LATER_CALLS[node.function])
+        if node.function in ('sum', 'count', 'any', 'all') or (
+            node.function in ('min', 'max') and len(node.args) == 1
+        ):
+            return self.reduction(node, scope)
         if node.function in ARITY or node.function == 'categorical':
             self.fail(
                 'draw',
@@ -657,8 +845,6 @@ class Resolver:
                 'arguments', f'{node.function} takes {wanted} argument' + ('s' if wanted > 1 else ''), node
             )
         if node.function in ('min', 'max', 'clip'):
-            if len(args) < 2:
-                self.fail('arguments', f'{node.function} of values takes two at least', node)
             reference = next((arg for arg in args if arg.type != PLAIN), args[0])
             for k, arg in enumerate(args):
                 _, args[k] = self.alike(reference, arg, node, node.function)
@@ -681,64 +867,248 @@ class Resolver:
             self.fail('unit', f'{node.function} takes a plain number, not {args[0].type}', node)
         return Apply('call', tuple(args), PLAIN, node.function)
 
+    def reduction(self, node, scope):
+        """`sum`, `count`, `any`, `all`, `min` or `max` of one collection or projection (D4: an empty
+        `sum` is zero in its unit, `count` zero, `any` false, `all` true)."""
+        op = node.function
+        if len(node.args) != 1:
+            self.fail('arguments', f'{op} takes one collection or projection, as {op}(c.f)', node)
+        source = self.expression(node.args[0], scope)
+        if not (isinstance(source, Read) and isinstance(source.type, Many)):
+            what = 'of values is min(a, b)' if op in ('min', 'max') else 'takes a collection'
+            self.fail('collection', f'{op} {what}: {op}(c.f) reduces a projection', node)
+        of = source.type.of
+        if op == 'count':
+            if isinstance(of, Num):
+                self.fail(
+                    'type',
+                    'count counts members, or true values: sum(c.f) is the total of numbers, and '
+                    'count(c) the number of members',
+                    node,
+                )
+            if not (isinstance(of, (Ent, FlowOf)) or of == BOOL):
+                self.fail('type', f'count counts members or yes/no values, not {of}', node)
+            return Reduced(op, source, PLAIN)
+        if op in ('any', 'all'):
+            if of != BOOL:
+                self.fail('type', f'{op} takes yes/no values, not {of}', node)
+            return Reduced(op, source, BOOL)
+        if not isinstance(of, Num):
+            self.fail('type', f'{op} takes numbers, not {of}', node)
+        return Reduced(op, source, of)
+
     # ---- paths -------------------------------------------------------------------------------------
 
+    def item_field(self, scope, name):
+        """Whether a bare name is a value of the member under test of a `where`."""
+        found = self.syntax.get(f'{scope.item}.{name}') if scope.item is not None else None
+        return found is not None and isinstance(found[1], n.Declaration)
+
     def path(self, node, scope):
-        """What a name or a dotted path names: a value (`Read`), an entity, or a flow."""
+        """What a name, a dotted path, a keyed operation or a literal names, as a `Read` with its
+        type: a value, a member, a collection, a projection or a flow."""
         if isinstance(node, n.Name):
             return self.name(node, scope)
-        base = self.path(node.base, scope)
-        if isinstance(base, EntityRef):
-            return self.entity_part(base, node.name, node)
-        if isinstance(base, FlowRef):
-            if node.name in FLOW_READS:
-                return Read(base.start, (*base.steps, node.name), base.rate)
-            if node.name in ('source', 'sink'):
-                raise Later("a flow's ends as values", 'S2')
-            self.fail(
-                'unknown_name',
-                f'a directed flow reads actual_rate, request and capacity, not {node.name}',
-                node,
-            )
-        if node.name in ('outflow', 'inflow'):
-            raise Later('the settings of an endpoint (outflow, inflow)', 'S2')
-        if isinstance(base.type, Dist) and node.name in ('mean', 'std'):
-            raise Later("a distribution's mean and std", 'S4')
-        self.fail('unknown_name', f'{node.name} is no part of a {base.type} value', node)
+        if isinstance(node, n.Collection):
+            return self.literal(node, scope)
+        if isinstance(node, n.Method) and node.name in KEYED:
+            return self.keyed(node, scope)
+        if not isinstance(node, n.Member):
+            self.fail('syntax', 'only a name, a member or a collection has parts', node)
+        head = node.base.name if isinstance(node.base, n.Name) else None
+        if head is not None and not self.item_field(scope, head):
+            if head in self.tables:
+                return self.row(head, node.name, node)
+            if head in self.templates:
+                if node.name == 'instances':
+                    return Read(('instances', head), (), Many(Ent(head)), True)
+                self.fail('unknown_name', f'{head} is a template: {head}.instances names its members', node)
+            if node.name == 'instances' and head[:1].isupper():
+                self.fail('unknown_name', f'{head} is no template' + close(head, self.templates), node)
+        return self.step(self.path(node.base, scope), node.name, node)
 
     def name(self, node, scope):
         name = node.name
         if name == 'this':
-            if not scope:
+            if not scope.owner:
                 self.fail('unknown_name', 'this is the entity of a member: the top level has none', node)
-            return EntityRef(scope, ('this',))
+            return Read(('this',), (), Ent(scope.owner), True)
         if name == 't':
             return Read(('time',), (), self.num('h', node))
+        if self.item_field(scope, name):
+            return self.step(Read(('item',), (), Ent(scope.item), True), name, node)
         if name in self.root:
             value = self.value(name)
-            return Read(('root',), (name,), value.type)
+            formula = name if value.kind == FORMULA else ''
+            return Read(('root',), (name,), value.type, fixed_kind(value), formula)
         if name in self.entities:
-            return EntityRef(name, ('named', name))
+            return Read(('named', name), (), Ent(name), True)
+        if name in self.instances:
+            return Read(('named', name), (), Ent(self.instances[name].type.name), True)
         if name in self.templates:
-            raise Later('a template and its instances', 'S1')
+            self.fail('unknown_name', f'{name} is a template: {name}.instances names its members', node)
         if name in self.tables:
-            raise Later('a table', 'S1')
+            template = self.tables[name].template
+            self.fail(
+                'unknown_name',
+                f'{name} is a table: {name}.id names one of its rows, and {template}.instances every member',
+                node,
+            )
         if name[:1].isupper():
             raise Later('a member of an enum', 'S4')
-        known = [*self.root, *self.entities]
+        known = [*self.root, *self.entities, *self.instances]
         self.fail('unknown_name', f'{name} names nothing here' + close(name, known), node)
 
-    def entity_part(self, entity, name, node):
-        path = f'{entity.name}.{name}'
-        if path not in self.syntax:
-            parts = [key.split('.', 1)[1] for key in self.syntax if key.startswith(f'{entity.name}.')]
-            self.fail('unknown_name', f'{entity.name} has no {name}' + close(name, parts), node)
-        _, syntax = self.syntax[path]
-        if isinstance(syntax, n.Flow):
-            return FlowRef(path, entity.start, (name,), self.rate(path))
-        if isinstance(syntax, n.Declaration):
-            return Read(entity.start, (name,), self.value(path).type)
-        raise Later('an event', 'S4') if isinstance(syntax, n.Event) else Later('a solver', 'S5')
+    def row(self, table, id, node):
+        """`sites.clinic`: the row of a table by its id."""
+        if table not in self.ids:
+            raise Refused('depends', f'the table {table} has a problem of its own')
+        ids = self.ids[table]
+        if ids is None:
+            self.fail('unknown_name', f'the rows of {table} have no ids: an id column names them', node)
+        template = self.tables[table].template
+        if id not in ids:
+            if f'{template}.{id}' in self.syntax:
+                self.fail(
+                    'unknown_name',
+                    f'{table} is a table, which names its rows by their ids: the {id} of every member is '
+                    f'{template}.instances.{id}',
+                    node,
+                )
+            self.fail('unknown_name', f'{table} has no row {id}' + close(id, ids), node)
+        return Read(('named', f'{table}.{id}'), (), Ent(template), True)
+
+    def step(self, base, name, node):
+        """The read one step on from `base`: a part of a member (a projection from a collection), or
+        a rate of a flow."""
+        kind = base.type
+        many = isinstance(kind, Many)
+        inner = kind.of if many else kind
+        steps = (*base.steps, name)
+        if isinstance(inner, Ent):
+            template = inner.template
+            path = f'{template}.{name}'
+            if path not in self.syntax:
+                parts = [key.split('.', 1)[1] for key in self.syntax if key.startswith(f'{template}.')]
+                self.fail('unknown_name', f'{template} has no {name}' + close(name, parts), node)
+            _, syntax = self.syntax[path]
+            formula = ''
+            if isinstance(syntax, n.Flow):
+                found, steady = FlowOf(self.rate(path)), False
+            elif isinstance(syntax, n.Declaration):
+                value = self.value(path)
+                found, steady = value.type, base.fixed and fixed_kind(value)
+                formula = path if base.fixed and value.kind == FORMULA else ''
+            else:
+                raise Later('an event', 'S4') if isinstance(syntax, n.Event) else Later('a solver', 'S5')
+            if many:
+                if isinstance(found, Many):
+                    self.fail(
+                        'collection',
+                        f'{name} is a collection on each member, and a projection of collections is no '
+                        'collection: reduce it on the member, then reduce that value',
+                        node,
+                    )
+                found = Many(found, kind.key)
+            return Read(base.start, steps, found, steady, formula)
+        if isinstance(inner, FlowOf):
+            if name in FLOW_READS:
+                return Read(base.start, steps, Many(inner.rate, kind.key) if many else inner.rate)
+            if name in ('source', 'sink'):
+                raise Later("a flow's ends as values", 'S2')
+            self.fail(
+                'unknown_name', f'a directed flow reads actual_rate, request and capacity, not {name}', node
+            )
+        if name in ('outflow', 'inflow'):
+            raise Later('the settings of an endpoint (outflow, inflow)', 'S2')
+        if isinstance(inner, Dist) and name in ('mean', 'std'):
+            raise Later("a distribution's mean and std", 'S4')
+        self.fail('unknown_name', f'{name} is no part of a value of {kind}', node)
+
+    def literal(self, node, scope):
+        """`<a, b>`: members of one template, each named once."""
+        if not node.items:
+            self.fail('collection', 'an empty collection needs its type: name: <Template> = <>', node)
+        items = tuple(self.path(item, scope) for item in node.items)
+        for item in items:
+            if not isinstance(item.type, Ent):
+                self.fail('collection', f'a collection lists members, and one of these is {item.type}', node)
+        templates = sorted({item.type.template for item in items})
+        if len(templates) > 1:
+            self.fail(
+                'collection', f'a collection holds members of one template, not {", ".join(templates)}', node
+            )
+        if len(set(items)) < len(items):
+            self.fail('duplicate_literal', 'a collection names each member once', node)
+        return Read(('literal', items), (), Many(Ent(templates[0])), all(item.fixed for item in items))
+
+    def keyed(self, node, scope):
+        """`c.where(test)`, `c.by(field)` and `c.at(key)` of a collection of members."""
+        source = self.path(node.base, scope)
+        if not (isinstance(source.type, Many) and isinstance(source.type.of, Ent)):
+            self.fail(
+                'collection', f'.{node.name}(...) takes a collection of members, not {source.type}', node
+            )
+        of, key = source.type.of, source.type.key
+        if len(node.args) != 1:
+            self.fail('arguments', f'.{node.name}(...) takes one argument', node)
+        (arg,) = node.args
+        if node.name == 'where':
+            test = self.expression(arg, Scope(scope.owner, of.template))
+            self.want_bool(test, node, 'where')
+            for read in reads_of(test):
+                if read.start == ('item',) and not read.fixed:
+                    self.fail(
+                        'where_live',
+                        f'where tests what is fixed for each member, and {".".join(read.steps)} is not: '
+                        'for a live test, put a yes/no formula on the member and reduce it',
+                        node,
+                    )
+            return Read(('where', source, test), (), source.type, source.fixed and fixed(test))
+        if node.name == 'by':
+            path = f'{of.template}.{getattr(arg, "name", "")}'
+            if not isinstance(arg, n.Name) or not isinstance(self.syntax.get(path, (0, 0))[1], n.Declaration):
+                parts = [k.split('.', 1)[1] for k in self.syntax if k.startswith(f'{of.template}.')]
+                self.fail(
+                    'unknown_name',
+                    f'by names a value of {of.template}' + close(getattr(arg, 'name', ''), parts),
+                    node,
+                )
+            value = self.value(path)
+            if not isinstance(value.type, Num):
+                self.fail('type', f'a key is a number, and {arg.name} is {value.type}', node)
+            return Read(
+                ('by', source, arg.name), (), Many(of, value.type), source.fixed and fixed_kind(value)
+            )
+        found = self.expression(arg, scope)
+        self.want_number(found, node, '.at')
+        if found.type.dimension != key.dimension:
+            if not _zero(found):
+                self.fail('unit', f'.at(...) reads a key in {key}, not {found.type}', node)
+            found = Const(found.value, key)
+        return Read(('lookup', source, found), (), of, source.fixed and fixed(found))
+
+    def link_target(self, found, expected, node):
+        """The id of the member that a link's initializer names: an entity, an instance or a row."""
+        if not (
+            isinstance(found, Read)
+            and found.start[0] == 'named'
+            and not found.steps
+            and isinstance(found.type, Ent)
+        ):
+            self.fail(
+                'link',
+                'a link names a member: an entity, an instance or a row of a table (sites.junction)',
+                node,
+            )
+        if expected is not None and found.type != expected:
+            self.fail(
+                'type',
+                f'the link is to a member of {expected.template}, and {found.start[1]} is a member of '
+                f'{found.type.template}',
+                node,
+            )
+        return found.start[1]
 
     # ---- values ------------------------------------------------------------------------------------
 
@@ -760,7 +1130,7 @@ class Resolver:
             )
         self.active.add(path)
         try:
-            found = self.declaration(path, owner, syntax)
+            found = self.declaration(path, Scope(owner), syntax)
         except Later as later:
             self.done[path] = Deferred(path, later.construct, later.slice, syntax.line)
             raise
@@ -776,13 +1146,22 @@ class Resolver:
         if node.properties:
             raise Later('the settings of an endpoint (outflow, inflow)', 'S2')
         declared, retained = (None, False) if node.type is None else self.declared_type(node.type)
+        template = scope.owner in self.templates
         if node.value is None:
-            if (
-                isinstance(node.type, n.NamedType)
-                and node.type.name[:1].isupper()
-                and not self.units.has(node.type.name)
-            ):
-                raise Later('an instance of a template', 'S1')
+            if isinstance(declared, Ent):
+                if not template:
+                    self.fail(
+                        'link',
+                        f'{node.name} names no member: a link of an entity names its member, as '
+                        f'{node.name} = pump_a',
+                        node,
+                    )
+                return self.finish(path, scope, node, LINK, declared, None)
+            if template and declared is not None and not retained:
+                kind = (
+                    COLLECTION if isinstance(declared, Many) else INPUT if node.modifier == 'input' else STATE
+                )
+                return self.finish(path, scope, node, kind, declared, None)
             self.fail(
                 'no_value', f'{node.name} has no starting value: an annotation gives no value (D4)', node
             )
@@ -792,6 +1171,42 @@ class Resolver:
         if declared is not None and not compatible(init.type, declared):
             code = 'unit' if isinstance(declared, Num) and isinstance(init.type, Num) else 'type'
             self.fail(code, f'{node.name} is declared {declared}, and its initializer is {init.type}', node)
+        if isinstance(init, Retain) and isinstance(init.type, (Ent, Many)):
+            self.fail(
+                'formula', 'a formula gives a number, a yes/no or a text, not a member or a collection', node
+            )
+        if isinstance(init.type, Ent):
+            if not scope.owner:
+                self.fail(
+                    'link',
+                    'a link belongs to an entity or a template; at the top level, name: Template is an instance',
+                    node,
+                )
+            if node.modifier == 'input':
+                self.fail('link', f'{node.name} is a link, fixed for the run: it is no input', node)
+            self.link_target(init, None, node)
+            kind = LINK
+        elif isinstance(init.type, Many):
+            if not isinstance(init.type.of, Ent):
+                self.fail(
+                    'collection',
+                    'a projection is no list of values: put the calculation on the member and reduce it, '
+                    'as sum(c.f)',
+                    node,
+                )
+            if init.steps or init.start[0] not in ('literal', 'instances', 'where', 'by'):
+                self.fail(
+                    'collection',
+                    'a collection value is a literal, the instances of a template, or a where or a by of one',
+                    node,
+                )
+            if node.modifier == 'input':
+                self.fail('collection', f'{node.name} is a collection: it is no input', node)
+            kind = COLLECTION
+        return self.finish(path, scope, node, kind, value_type, init)
+
+    def finish(self, path, scope, node, kind, value_type, init):
+        """The declared value, with its range, its scale and its evidence."""
         lower = upper = scale = None
         if node.range is not None:
             if not isinstance(value_type, Num):
@@ -813,8 +1228,7 @@ class Resolver:
             scale = self.bound(node.scale, scope, value_type, node)
         if kind == INPUT and isinstance(init, Drawn):
             lower, upper = self.support(init.source, lower, upper, node)
-        evidence = self.evidence(node)
-        return DeclaredValue(
+        found = DeclaredValue(
             path,
             node.name,
             kind,
@@ -825,9 +1239,11 @@ class Resolver:
             scale,
             node.modifier == 'readonly',
             node.text,
-            evidence,
+            self.evidence(node),
             node.line,
         )
+        self.within(init, found, node)
+        return found
 
     def initializer(self, node, scope, declared, retained, unit):
         """(kind, typed initializer) of a declaration."""
@@ -845,6 +1261,12 @@ class Resolver:
             return FORMULA, Retain(body, body.type)
         if retained:
             self.fail('formula', f'{node.name} is declared a formula: its initializer is formula(...)', node)
+        if isinstance(value, n.Collection) and not value.items:
+            if not isinstance(declared, Many):
+                self.fail(
+                    'collection', f'an empty collection needs its type: {node.name}: <Template> = <>', node
+                )
+            return STATE, Read(('literal', ()), (), declared, True)
         if isinstance(value, n.Call) and (value.function in ARITY or value.function == 'categorical'):
             source = self.distribution(value, unit.of if isinstance(unit, Dist) else unit)
             return (INPUT if node.modifier == 'input' else DISTRIBUTION), source
@@ -871,6 +1293,17 @@ class Resolver:
             )
         return found
 
+    def within(self, found, value, node):
+        """A number written in place (a starting value, a member's value, a cell) lies in the value's
+        range."""
+        if not isinstance(found, Const) or not isinstance(found.type, Num):
+            return
+        at = Fraction(found.value) * self.scale(found.type)
+        for bound, sign, side in ((value.lower, 1, 'below'), (value.upper, -1, 'above')):
+            if isinstance(bound, Const) and sign * (at - Fraction(bound.value) * self.scale(bound.type)) < 0:
+                written = f'{found.value} {found.type.unit}'.strip()
+                self.fail('range', f'{written} is {side} the range of {value.name}', node)
+
     def distribution(self, node, unit):
         """A distribution of numbers: its value arguments take the declared unit, or they write one."""
         if node.function == 'categorical':
@@ -892,7 +1325,7 @@ class Resolver:
             first = next(
                 item for k, item in enumerate(found) if k not in shapes and isinstance(item[1], n.Quantity)
             )
-            target = self.quantity(1, first[1], '').type
+            target = self.quantity(1, first[1], TOP).type
         target = target or PLAIN
         params = []
         for k, (value, written_node) in enumerate(found):
@@ -902,7 +1335,7 @@ class Resolver:
                 params.append(value)
                 continue
             if isinstance(written_node, n.Quantity):
-                own = self.quantity(1, written_node, '').type
+                own = self.quantity(1, written_node, TOP).type
                 if own.dimension != target.dimension:
                     self.fail('unit', f'{node.function} takes its arguments in {target}, not {own}', node)
                 params.append(
@@ -981,7 +1414,7 @@ class Resolver:
                 and found is not None
                 and isinstance(found[1], n.Quantity)
             ):
-                return self.quantity(1, found[1], owner).type
+                return self.quantity(1, found[1], Scope(owner)).type
         for end in (node.source, node.sink):
             if end not in (('SOURCE',), ('SINK',)):
                 store = self.store(end, owner, node)
@@ -989,14 +1422,17 @@ class Resolver:
         self.fail('flow_units', f'flow {node.name}: SOURCE -> SINK needs a rate written with its unit', node)
 
     def store(self, end, owner, node):
-        """The stored number that an end of a flow names: `this.water` or `tank.water`."""
+        """The stored number that an end of a flow names: `this.water`, or for an entity written once
+        `tank.water`. A flow of a template ends at its own member's stores."""
         if len(end) != 2:
-            raise Later('an end of a flow through a link or a local', 'S1' if len(end) > 2 else 'S4')
+            raise Later('an end of a flow through a link or a local', 'S2' if len(end) > 2 else 'S4')
         head, name = end
         if head == 'this':
             entity = owner
-        elif head in self.entities:
+        elif head in self.entities and owner in self.entities:
             entity = head
+        elif head in (*self.entities, *self.instances, *self.tables):
+            raise Later('a flow between members of two templates', 'S2')
         else:
             self.fail('unknown_name', f'{head} names no entity' + close(head, self.entities), node)
         path = f'{entity}.{name}'
@@ -1039,10 +1475,10 @@ class Resolver:
             if key in settings:
                 self.fail('property', f'{key} is given twice', item)
             if isinstance(item.value, n.Formula):
-                body = self.expression(item.value.body, owner)
+                body = self.expression(item.value.body, Scope(owner))
                 found = Retain(body, body.type)
             else:
-                found = self.expression(item.value, owner)
+                found = self.expression(item.value, Scope(owner))
             if not compatible(found.type, rate):
                 if _zero(found):
                     found = Const(found.value, rate)
@@ -1062,15 +1498,380 @@ class Resolver:
             node.line,
         )
 
+    def assertion(self, path, scope, node):
+        """An assertion over what is fixed for the run, checked once; one that reads state is a later
+        slice's."""
+        test = self.expression(node.test, scope)
+        self.want_bool(test, node, 'assert')
+        if not self.over_inputs(test):
+            raise Later('an assertion over state', 'S4')
+        return DeclaredAssert(path, test, node.text, self.evidence(node), node.line)
+
+    def over_inputs(self, expression):
+        """Whether an expression reads only what is fixed for the run, also through the formulas that
+        it reads: each formula is looked at once, so a deep chain of shared formulas costs its length."""
+        for read in reads_of(expression):
+            if read.fixed:
+                continue
+            if not read.formula:
+                return False
+            if read.formula not in self.inputs_only:
+                template, _, name = read.formula.rpartition('.')
+                # A member written by hand may replace its template's formula with one of its own.
+                replaced = any(
+                    member.type.name == template and any(item.path == (name,) for item in member.properties)
+                    for member in self.instances.values()
+                )
+                found = not replaced and self.over_inputs(self.value(read.formula).init.body)
+                self.inputs_only[read.formula] = found
+            if not self.inputs_only[read.formula]:
+                return False
+        return True
+
+    # ---- members -----------------------------------------------------------------------------------
+
+    def given(self, template, path, node, line_node, evidence):
+        """A member's own value or link: (whether it is a link, the `Given`)."""
+        if len(path) != 1:
+            self.fail(
+                'property',
+                f'{".".join(path)} is a setting of a part of {template}: a member gives the values and '
+                'the links of its template, and its template the settings of its parts',
+                line_node,
+            )
+        (name,) = path
+        found = self.syntax.get(f'{template}.{name}')
+        if found is None:
+            parts = [key.split('.', 1)[1] for key in self.syntax if key.startswith(f'{template}.')]
+            self.fail('unknown_name', f'{template} has no {name}' + close(name, parts), line_node)
+        if isinstance(found[1], n.Flow):
+            self.fail(
+                'property',
+                f"{name} is a flow of {template}: the settings of a flow are its template's",
+                line_node,
+            )
+        if not isinstance(found[1], n.Declaration):
+            raise Later('an event', 'S4') if isinstance(found[1], n.Event) else Later('a solver', 'S5')
+        value = self.value(f'{template}.{name}')
+        scope, line = Scope(template), line_node.line
+        if value.kind == LINK:
+            target = self.link_target(self.expression(node, scope), value.type, node)
+            return True, Given(name, target, evidence, line)
+        if value.kind == FORMULA:
+            if not isinstance(node, n.Formula):
+                self.fail(
+                    'formula',
+                    f'{name} is a formula of {template}: a member replaces it with formula(...)',
+                    node,
+                )
+            body = self.expression(node.body, scope)
+            if not compatible(body.type, value.type):
+                self.fail('unit', f'{name} of {template} is {value.type}, and this formula {body.type}', node)
+            return False, Given(name, Retain(body, body.type), evidence, line)
+        if isinstance(node, n.Formula):
+            self.fail(
+                'formula', f'{name} of {template} keeps no calculation: a member gives it a value', node
+            )
+        if isinstance(value.type, Dist):
+            if not (isinstance(node, n.Call) and node.function in ARITY):
+                self.fail(
+                    'type', f'{name} holds a distribution: a member gives another, as uniform(1 h, 3 h)', node
+                )
+            found = self.distribution(node, value.type.of)
+            return False, Given(name, found, evidence, line)
+        unit = value.type if isinstance(value.type, Num) else None
+        if isinstance(node, n.Collection) and not node.items and isinstance(value.type, Many):
+            return False, Given(name, Read(('literal', ()), (), value.type, True), evidence, line)
+        found = self.expression(node, scope, unit)
+        if not compatible(found.type, value.type):
+            if not (_zero(found) and isinstance(value.type, Num)):
+                code = 'unit' if isinstance(found.type, Num) and isinstance(value.type, Num) else 'type'
+                self.fail(code, f'{name} of {template} is {value.type}, and this value is {found.type}', node)
+            found = Const(found.value, value.type)
+        if value.kind == COLLECTION and (
+            found.steps or found.start[0] not in ('literal', 'instances', 'where', 'by')
+        ):
+            self.fail(
+                'collection',
+                'a collection value is a literal, the instances of a template, or a where or a by of one',
+                node,
+            )
+        self.within(found, value, node)
+        return False, Given(name, found, evidence, line)
+
+    def instance(self, node):
+        """A member written by hand: `north: Utility` with its own values and links under it."""
+        template = node.type.name
+        if node.range is not None or node.scale is not None:
+            self.fail(
+                'range', f'{node.name} is a member: a range or a scale belongs to a value of {template}', node
+            )
+        values, links, seen = [], [], {}
+        for item in node.properties:
+            key = '.'.join(item.path)
+            if key in seen:
+                self.report('property', f'{key} is given twice; the first is on line {seen[key]}', item.line)
+                continue
+            seen[key] = item.line
+            try:
+                is_link, found = self.given(template, item.path, item.value, item, self.evidence(item))
+            except Later as later:
+                self.deferred.append(Deferred(f'{node.name}.{key}', later.construct, later.slice, item.line))
+                continue
+            except Refused as refused:
+                if refused.code != 'depends':
+                    self.report(refused.code, refused.message, refused.line or item.line, refused.column)
+                continue
+            (links if is_link else values).append(found)
+        member = DeclaredMember(
+            node.name, template, tuple(values), tuple(links), None, node.text, self.evidence(node), node.line
+        )
+        self.complete(member, {path[0] for path in (item.path for item in node.properties)})
+        return member
+
+    def complete(self, member, written=()):
+        """Each link of a member names a member, and each value has a starting value (D4). A value that
+        the member writes (`written`) has its own problem if it is not among its values."""
+        given = {item.name for item in (*member.values, *member.links)} | set(written)
+        if member.template not in self.owned:
+            self.owned[member.template] = [
+                key
+                for key, (owner, syntax) in self.syntax.items()
+                if owner == member.template and isinstance(syntax, n.Declaration)
+            ]
+        for key in self.owned[member.template]:
+            if key.rpartition('.')[2] in given:
+                continue
+            try:
+                value = self.value(key)
+            except (Later, Refused):
+                continue
+            if value.init is not None:
+                continue
+            if value.kind == LINK:
+                message = (
+                    f'{member.path} sets no {value.name}: a link names a member, and there is no none value'
+                )
+                self.report('link_unset', message, member.line, 0, member.file)
+            else:
+                message = (
+                    f'{member.path} gives no {value.name}, which {member.template} leaves without a value'
+                )
+                self.report('no_value', message, member.line, 0, member.file)
+
+    # ---- tables ------------------------------------------------------------------------------------
+
+    def load(self, node):
+        """Read the form of a table and the ids of its rows, before any name is resolved."""
+        if node.template not in self.templates:
+            message = f'{node.template} is no template' + close(node.template, self.templates)
+            self.report('unknown_name', message, node.line)
+            return
+        text, origin = self.read_table(node.file)
+        if text is None:
+            self.report('table', f'{node.file!r} {origin}', node.line)
+            return
+        try:
+            data = tables.read(text, origin)
+        except LanguageError as error:
+            self.problems.extend(error.problems)
+            return
+        self.data[node.name] = data
+        names = [column.name for column in data.columns]
+        if 'id' not in names:
+            self.ids[node.name] = None
+            return
+        where, ids = names.index('id'), {}
+        for row in data.rows:
+            cell = row.cells[where]
+            if not cell:
+                self.report(
+                    'table',
+                    f'a row of {node.name} has no id: each row of a table with ids has one',
+                    row.line,
+                    0,
+                    origin,
+                )
+            elif not ID.match(cell):
+                self.report(
+                    'table',
+                    f'the id {cell!r} is no name: an id is written as a name, as junction',
+                    row.line,
+                    0,
+                    origin,
+                )
+            elif cell in ids:
+                message = f'{node.name} names the row {cell} twice; the first is on line {ids[cell]}'
+                self.report('duplicate_name', message, row.line, 0, origin)
+            else:
+                ids[cell] = row.line
+        self.ids[node.name] = ids
+
+    def table(self, node):
+        """A table and its members, one for each row: each cell that is not empty is the row's value
+        of its column."""
+        data = self.data.get(node.name)
+        if data is None:
+            return None, []
+        evidence = ()
+        try:
+            evidence = self.evidence(node)
+        except Refused as refused:
+            self.report(refused.code, refused.message, refused.line, refused.column)
+        columns, names = [], [column.name for column in data.columns]
+        for k, column in enumerate(data.columns):
+            if column.name == 'id':
+                continue
+            try:
+                columns.append((k, column, self.column(node.template, column)))
+            except Refused as refused:
+                if refused.code != 'depends':
+                    self.report(refused.code, refused.message, 1, 0, data.origin)
+            except Later as later:
+                message = (
+                    f'the column {column.name}: {later.construct} comes with a later slice ({later.slice})'
+                )
+                self.report('later_slice', message, 1, 0, data.origin)
+        ids, members = self.ids[node.name], []
+        for index, row in enumerate(data.rows):
+            if ids is None:
+                id = f'{node.name}[{index}]'
+            else:
+                cell = row.cells[names.index('id')]
+                if ids.get(cell) != row.line:
+                    continue  # a row without its own id has its problem already
+                id = f'{node.name}.{cell}'
+            values, links = [], []
+            for k, column, value in columns:
+                if not row.cells[k]:
+                    continue
+                try:
+                    is_link, found = self.cell(value, column, row.cells[k], row.line)
+                except Refused as refused:
+                    if refused.code != 'depends':
+                        self.report(refused.code, f'{id}: {refused.message}', row.line, 0, data.origin)
+                    continue
+                (links if is_link else values).append(found)
+            member = DeclaredMember(
+                id,
+                node.template,
+                tuple(values),
+                tuple(links),
+                node.name,
+                None,
+                evidence,
+                row.line,
+                data.origin,
+            )
+            self.complete(member, {name for name, cell in zip(names, row.cells) if cell})
+            members.append(member)
+        declared = DeclaredTable(
+            node.name,
+            node.template,
+            node.file,
+            data.origin,
+            data.columns,
+            tuple(member.path for member in members),
+            node.text,
+            evidence,
+            node.line,
+        )
+        return declared, members
+
+    def column(self, template, column):
+        """The value or the link of the template that a column gives, with the unit of its header."""
+        key = f'{template}.{column.name}'
+        found = self.syntax.get(key)
+        if found is None:
+            parts = [name.split('.', 1)[1] for name in self.syntax if name.startswith(f'{template}.')]
+            self.fail(
+                'unknown_name',
+                f'the column {column.name} names no value of {template}' + close(column.name, parts),
+            )
+        if not isinstance(found[1], n.Declaration):
+            self.fail(
+                'table',
+                f'the column {column.name} names no value of {template}: a column gives a value or a link',
+            )
+        value = self.value(key)
+        if value.kind not in (INPUT, STATE, LINK) or isinstance(value.type, Dist):
+            self.fail(
+                'table',
+                f'the column {column.name} names a {value.kind} of {template} ({value.type}): a column '
+                'gives a number, a yes/no or a text of an input or a stored value, or a link',
+            )
+        if column.unit is not None:
+            if not isinstance(value.type, Num):
+                self.fail('unit', f'{column.name} takes no number: its header names no unit')
+            unit = self.num(column.unit)
+            if unit.dimension != value.type.dimension:
+                self.fail(
+                    'unit',
+                    f'the column {column.name} is in {unit}, and {template}.{column.name} in {value.type}',
+                )
+        for name in column.cites:
+            if name not in self.records:
+                self.fail(
+                    'unknown_record', f'@{name} names no record of the model' + close(name, self.records)
+                )
+        return value
+
+    def cell(self, value, column, text, line):
+        """A cell as the row's value of its column: a number (in the unit of the header, its own, or
+        the value's), true or false, a text, or for a link the name of a member."""
+        cites = tuple(n.Cite(name, line=line) for name in column.cites)
+        if value.kind == LINK:
+            node = _cell_path(text) or _cell_expression(text)
+            if not isinstance(node, (n.Name, n.Member)):
+                self.fail('link', f'{text!r} names no member: a link cell names a row, as sites.junction')
+            return True, Given(
+                column.name, self.link_target(self.path(node, TOP), value.type, None), cites, line
+            )
+        if value.type == BOOL:
+            if text not in ('true', 'false'):
+                self.fail('table', f'{column.name} is a yes/no: true or false, not {text!r}')
+            return False, Given(column.name, Const(text == 'true', BOOL), cites, line)
+        if value.type == TEXT:
+            return False, Given(column.name, Const(text, TEXT), cites, line)
+        found = _cell_number(text) or literal(_cell_expression(text))
+        if found is None or not isinstance(value.type, Num):
+            self.fail(
+                'table', f'{text!r} is not a number, true or false: a cell holds a value, not a calculation'
+            )
+        number, written = found
+        if isinstance(written, n.Quantity):
+            if column.unit is not None:
+                self.fail(
+                    'unit', f'the header of {column.name} gives its unit: a cell writes the number alone'
+                )
+            names = [name for _, name in written.unit]
+            for name in names:
+                if not self.units.has(name):
+                    self.fail(
+                        'unit',
+                        f'{name} is no unit of the library or of the model' + close(name, self.units.base),
+                    )
+            unit = self.num(names[0] + ''.join(op + name for op, name in written.unit[1:]))
+        else:
+            unit = self.num(column.unit) if column.unit is not None else value.type
+        if unit.dimension != value.type.dimension:
+            self.fail('unit', f'{column.name} is in {value.type}, not {unit}')
+        result = Const(number, unit)
+        self.within(result, value, None)
+        return False, Given(column.name, result, cites, line)
+
     # ---- the model ---------------------------------------------------------------------------------
 
     def part(self, path, owner, node):
-        """A declared part of an entity, a `Deferred` one, or None after a problem."""
+        """A declared part of an entity, a template or the top level, a `Deferred` one, or None after
+        a problem."""
         try:
             if isinstance(node, n.Declaration):
                 return self.value(path)
             if isinstance(node, n.Flow):
                 return self.flow(path, owner, node)
+            if isinstance(node, n.Assert):
+                return self.assertion(path, Scope(owner), node)
         except Later as later:
             return Deferred(path, later.construct, later.slice, node.line)
         except Refused as refused:
@@ -1081,56 +1882,71 @@ class Resolver:
             n.Event: ('an event', 'S4'),
             n.Solver: ('a solver', 'S5'),
             n.Status: ('a status display', 'C'),
-            n.Assert: ('an assertion', 'S1'),
             n.Sees: ('sees', 'S4'),
-            n.Property: ('a property set by its path', 'S1'),
+            n.Property: ('a property set by its path', 'S6'),
         }[type(node)]
         return Deferred(path, construct, slice_, node.line)
 
+    def entity(self, item):
+        """An entity written once or a template, with its parts."""
+        parts, asserts = [], 0
+        for k, member in enumerate(item.members):
+            if isinstance(member, n.Assert):
+                name, asserts = f'assert[{asserts}]', asserts + 1
+            else:
+                name = getattr(member, 'name', None) or f'{type(member).__name__.lower()}[{k}]'
+            found = self.part(f'{item.name}.{name}', item.name, member)
+            if isinstance(found, Deferred):
+                self.deferred.append(found)
+            elif found is not None:
+                parts.append(found)
+        try:
+            evidence = self.evidence(item)
+        except Refused as refused:
+            self.report(refused.code, refused.message, refused.line, refused.column)
+            evidence = ()
+        kind = DeclaredTemplate if item.name in self.templates else DeclaredEntity
+        return kind(item.name, tuple(parts), item.text, item.title, item.role, evidence, item.line)
+
     def model(self):
-        entities, root, notes, scenario = [], [], [], None
+        for item in self.tree.items:
+            if isinstance(item, n.Table):
+                self.load(item)
+        entities = [self.entity(item) for item in self.tree.items if isinstance(item, n.Entity)]
+        root, members, tables_, asserts, notes, scenario = [], [], [], [], [], None
         top_later = {
-            n.Entity: ('a template and its instances', 'S1'),
-            n.Table: ('a table', 'S1'),
             n.Use: ('use', 'S6'),
             n.Change: ('change', 'S6'),
             n.Options: ('options', 'S6'),
             n.Runs: ('runs', 'S6'),
-            n.Assert: ('an assertion', 'S1'),
-            n.Property: ('a property set by its path', 'S1'),
+            n.Property: ('a property set by its path', 'S6'),
         }
         for index, item in enumerate(self.tree.items):
             if isinstance(item, n.Scenario):
                 scenario = self.scenario(item)
-            elif isinstance(item, n.Entity) and item.name in self.entities:
-                parts = []
-                for k, member in enumerate(item.members):
-                    name = getattr(member, 'name', None) or f'{type(member).__name__.lower()}[{k}]'
-                    found = self.part(f'{item.name}.{name}', item.name, member)
-                    if isinstance(found, Deferred):
-                        self.deferred.append(found)
-                    elif found is not None:
-                        parts.append(found)
+            elif isinstance(item, (n.Entity, n.Record)):
+                continue
+            elif isinstance(item, n.Table):
+                declared, rows = self.table(item)
+                if declared is not None:
+                    tables_.append(declared)
+                    members.extend(rows)
+            elif isinstance(item, n.Declaration) and item.name in self.instances:
                 try:
-                    evidence = self.evidence(item)
+                    members.append(self.instance(item))
                 except Refused as refused:
-                    self.report(refused.code, refused.message, refused.line, refused.column)
-                    evidence = ()
-                entities.append(
-                    DeclaredEntity(
-                        item.name, tuple(parts), item.text, item.title, item.role, evidence, item.line
-                    )
-                )
-            elif isinstance(item, n.Declaration):
-                found = self.part(item.name, '', item)
+                    self.report(refused.code, refused.message, refused.line or item.line, refused.column)
+            elif isinstance(item, (n.Declaration, n.Assert)):
+                path = item.name if isinstance(item, n.Declaration) else f'assert[{len(asserts)}]'
+                found = self.part(path, '', item)
                 if isinstance(found, Deferred):
                     self.deferred.append(found)
+                elif isinstance(found, DeclaredAssert):
+                    asserts.append(found)
                 elif found is not None:
                     root.append(found)
             elif isinstance(item, n.Notes):
                 notes.extend(item.notes)
-            elif isinstance(item, n.Record):
-                continue
             else:
                 construct, slice_ = top_later[type(item)]
                 self.deferred.append(
@@ -1144,8 +1960,10 @@ class Resolver:
         if scenario is not None and scenario.role == 'variant':
             self.deferred.append(Deferred('scenario', 'a variant', 'S6', scenario.line))
         self.check_names()
+        if not self.problems:
+            self.problems.extend(Order(entities, members, root).cycles())
         if self.problems:
-            raise LanguageError(sorted(self.problems, key=lambda item: (item.line, item.column)))
+            raise LanguageError(sorted(self.problems, key=lambda item: (item.file, item.line, item.column)))
         return DeclaredModel(
             scenario,
             tuple(entities),
@@ -1155,6 +1973,9 @@ class Resolver:
             tuple(self.deferred),
             self.units,
             self.tree,
+            members=tuple(members),
+            tables=tuple(tables_),
+            asserts=tuple(asserts),
         )
 
     def check_names(self):
@@ -1189,7 +2010,7 @@ class Resolver:
             if value is None:
                 return None
             try:
-                found = self.expression(value, '')
+                found = self.expression(value, TOP)
             except (Refused, Later):
                 self.report('scenario', f'{key} is a time, such as 30 days', node.line)
                 return None
@@ -1211,6 +2032,226 @@ class Resolver:
         )
 
 
+class Order:
+    """The starting values of a model's members follow their dependencies, across members and
+    whatever the order of the file (spec, "Model-level initializers follow their value
+    dependencies"): a value needs what its initializer reads, its own or its template's, and a
+    formula what it reads. Links are fixed, so each read reaches known members. A cycle has no order
+    and is an error, given at a value on it; mutual links are no cycle.
+
+    A node is `(member, value)`, `('', value)` of the top level, or `('*', read)` for a read that is
+    the same for every member (`sum(Place.instances.need)`), which is walked once, so a template's
+    read of all its members costs the members once and not once for each of them."""
+
+    def __init__(self, entities, members, root):
+        self.parts = {
+            entity.path: {part.name: part for part in entity.parts if isinstance(part, DeclaredValue)}
+            for entity in entities
+        }
+        self.members = {entity.path: [] for entity in entities}
+        self.own, self.template, self.files = {}, {}, {}
+        for entity in entities:
+            if not isinstance(entity, DeclaredTemplate):
+                self.members[entity.path].append(entity.path)
+                self.own[entity.path], self.template[entity.path] = {}, entity.path
+                self.files[entity.path] = ''
+        for member in members:
+            self.members[member.template].append(member.path)
+            self.own[member.path] = {given.name: given for given in (*member.values, *member.links)}
+            self.template[member.path], self.files[member.path] = member.template, member.file
+        self.root = {value.name: value for value in root}
+        self.shared = {}
+
+    def init(self, node):
+        """The initializer of a node: the member's own, or its template's."""
+        member, name = node
+        if member == '':
+            return self.root[name].init
+        given = self.own[member].get(name)
+        return given.init if given is not None else self.parts[self.template[member]][name].init
+
+    def needs(self, expression, member, item=()):
+        """The nodes that a typed expression reads for a member ('' at the top level), in the order
+        in which it reads them (a dict used as an ordered set, so the search is the same each run)."""
+        found = {}
+        for read in reads_of(expression):
+            if _own(read):
+                self.walk(read, member, item, found)
+            else:
+                key = ('*', read)
+                if key not in self.shared:
+                    self.shared[key] = {}
+                    self.walk(read, '', (), self.shared[key])
+                found[key] = None
+        return found
+
+    def walk(self, read, member, item, found):
+        """The members that a read reaches, adding to `found` each value that it reads on its way. A
+        flow's rate is no starting value, so a read through a flow reaches nothing."""
+        kind, steps = read.start[0], read.steps
+        if kind == 'time':
+            return {}
+        if kind == 'root':
+            value = self.root.get(steps[0])
+            if value is None or value.kind != COLLECTION:
+                if value is not None:
+                    found[('', steps[0])] = None
+                return {}
+            current, steps = self.walk(value.init, '', (), found), steps[1:]
+        else:
+            current = self.starts(read.start, member, item, found)
+        for step in steps:
+            following = {}
+            for each in current:
+                part = self.parts[self.template[each]].get(step)
+                if part is None:
+                    continue
+                if part.kind == LINK:
+                    given = self.own[each].get(step)
+                    target = given.init if given is not None else part.init and part.init.start[1]
+                    if target:
+                        following[target] = None
+                elif part.kind == COLLECTION:
+                    init = self.init((each, step))
+                    if init is not None:
+                        following.update(self.walk(init, each, (), found))
+                else:
+                    found[(each, step)] = None
+            current = following
+        return current
+
+    def starts(self, start, member, item, found):
+        kind = start[0]
+        if kind == 'this':
+            return {member: None}
+        if kind == 'named':
+            return {start[1]: None}
+        if kind == 'item':
+            return dict.fromkeys(item)
+        if kind == 'instances':
+            return dict.fromkeys(self.members.get(start[1], ()))
+        if kind == 'literal':
+            reached = {}
+            for each in start[1]:
+                reached.update(self.walk(each, member, item, found))
+            return reached
+        source = self.walk(start[1], member, item, found)
+        if kind == 'where':
+            found.update(self.needs(start[2], member, tuple(source)))
+        elif kind == 'by':
+            found.update(dict.fromkeys((each, start[2]) for each in source))
+        else:
+            found.update(self.needs(start[2], member, item))
+        return source
+
+    def cycles(self):
+        """The problems of the cycles among the starting values: one for each cycle that the search
+        meets, at the line of a value on it."""
+        nodes = [('', name) for name in self.root]
+        for member, template in self.template.items():
+            nodes += [(member, name) for name, part in self.parts[template].items() if part.kind != LINK]
+        state, problems, seen = {}, [], set()
+        for first in nodes:
+            if first in state:
+                continue
+            state[first] = 'open'
+            stack = [(first, iter(self.edges(first)))]
+            while stack:
+                node, edges = stack[-1]
+                following = next(edges, None)
+                if following is None:
+                    state[node] = 'done'
+                    stack.pop()
+                elif following not in state:
+                    state[following] = 'open'
+                    stack.append((following, iter(self.edges(following))))
+                elif state[following] == 'open':
+                    path = [each for each, _ in stack]
+                    ring = [each for each in path[path.index(following) :] if each[0] != '*']
+                    if frozenset(ring) not in seen:
+                        seen.add(frozenset(ring))
+                        problems.append(self.problem(ring))
+        return problems
+
+    def edges(self, node):
+        """The nodes that a node needs; a constant needs none."""
+        if node[0] == '*':
+            return self.shared[node]
+        init = self.init(node)
+        if init is None or isinstance(init, Const):
+            return ()
+        return self.needs(init, node[0])
+
+    def problem(self, ring):
+        """The problem of a cycle, at the line of its first value: a member's own, in the file of the
+        member, or its template's."""
+        names = [f'{member}.{name}' if member else name for member, name in ring]
+        member, name = ring[0]
+        if member == '':
+            line, file = self.root[name].line, ''
+        elif name in self.own[member]:
+            line, file = self.own[member][name].line, self.files[member]
+        else:
+            line, file = self.parts[self.template[member]][name].line, ''
+        message = (
+            f'the starting values of {" and ".join(names)} read each other: they have no order'
+            if len(names) > 1
+            else f'the starting value of {names[0]} reads itself: it has no order'
+        )
+        return Problem('cycle', message, line, 0, file)
+
+
+def _own(read, bound=False):
+    """Whether a read depends on the member that reads it: it starts at `this`, or at the member of an
+    enclosing `where` (not `bound` by a `where` inside the read), or a collection or a key on the way
+    does."""
+    kind = read.start[0]
+    if kind == 'this' or (kind == 'item' and not bound):
+        return True
+    if kind == 'literal':
+        return any(_own(each, bound) for each in read.start[1])
+    if kind == 'where':
+        return _own(read.start[1], bound) or any(_own(each, True) for each in reads_of(read.start[2]))
+    if kind == 'lookup':
+        return _own(read.start[1], bound) or any(_own(each, bound) for each in reads_of(read.start[2]))
+    if kind == 'by':
+        return _own(read.start[1], bound)
+    return False
+
+
+# A cell that is a plain number, or a name with at most one dot: most cells of a large table, which
+# are read without the parser (each as the parser reads it).
+_CELL_NUMBER = re.compile(r'-?([0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)\Z')
+_CELL_PATH = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?\Z')
+
+
+def _cell_number(text):
+    """(number, its node) of a cell that is a plain number, as `literal` gives them, or None."""
+    found = _CELL_NUMBER.match(text)
+    if found is None:
+        return None
+    written = found[1]
+    number = float(written) if any(char in written for char in '.eE') else int(written)
+    return (-number if text.startswith('-') else number), n.Number(number, written=written)
+
+
+def _cell_path(text):
+    """The tree of a cell that is a name or `table.id`, or None."""
+    found = _CELL_PATH.match(text)
+    if found is None:
+        return None
+    head = n.Name(found[1], line=1, column=1)
+    return head if found[2] is None else n.Member(head, found[2], line=1, column=1)
+
+
+def _cell_expression(text):
+    """The tree of a cell as an expression, or None when the cell is no expression."""
+    try:
+        return parse_expression(text)
+    except SyntaxProblem:
+        return None
+
+
 def _zero(value):
     return (
         isinstance(value, Const)
@@ -1230,7 +2271,10 @@ def _converted(value, scale_from, scale_to):
     return float(value * scale_from / scale_to)
 
 
-def declare(tree, units):
+def declare(tree, units, tables_reader=None):
     """The declared model of a parsed text (`nodes.File`) with a table of units (`Units`, or a table
-    as `Units` takes it). Raises `LanguageError` with every problem that it finds."""
-    return Resolver(tree, units if isinstance(units, Units) else Units(units)).model()
+    as `Units` takes it), reading its tables with `tables_reader` (`tables.in_folder`,
+    `tables.in_memory`; a text with none has no table). Raises `LanguageError` with every problem
+    that it finds."""
+    reader = tables_reader or tables.no_tables
+    return Resolver(tree, units if isinstance(units, Units) else Units(units), reader).model()

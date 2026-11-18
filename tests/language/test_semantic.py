@@ -170,14 +170,16 @@ def test_a_construct_of_a_later_slice_is_kept_by_name():
                 after 1 h:
                     this.water += 1 L
         Place:
-            x = 1
-        total = sum(Place.instances.x)
+            a: L = 1
+            b: L = 1
+            flow link: this.a <-> this.b
+        since_refill = formula(since(tank.refill))
         """
     )
     assert [(part.path, part.slice) for part in model.deferred] == [
         ('tank.refill', 'S4'),
-        ('Place', 'S1'),
-        ('total', 'S1'),
+        ('Place.link', 'S3'),
+        ('since_refill', 'S4'),
     ]
 
 

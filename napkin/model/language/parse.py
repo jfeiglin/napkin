@@ -70,6 +70,10 @@ TOP = (
     'instance (`name: Template`), a table (`name: Template from "file.csv"`), a value (`name = value`), a '
     'property by its path (`a.b.request = value`), an assert, a record, a change, options, runs or notes'
 )
+COPIES = (
+    'copies of a template are no form of the language: write each instance (name: Template), or give '
+    'the rows in a table (name: Template from "file.csv")'
+)
 MEMBER = (
     'a line of an entity is its text, evidence, title, role, sees, a value (`name: type = value`), a flow, '
     'an event (`name = event(...):`), a solver (`name = solver:`), an assert or a status case'
@@ -882,6 +886,17 @@ class Parser:
         third = cursor.peek(2)
         if third is None or third.kind == 'at':
             return self.entity(line)
+        # `couriers: Courier * 3` of the old notation; a unit's type never multiplies by a number.
+        following, count = cursor.peek(3), cursor.peek(4)
+        if (
+            third.kind == 'name'
+            and not small(third.value)
+            and following is not None
+            and following.is_op('*')
+            and count is not None
+            and count.kind == 'number'
+        ):
+            cursor.fail(COPIES, third, 'retired')
         cursor.i = 2
         declared = self.type(cursor)
         if cursor.at_name('from'):

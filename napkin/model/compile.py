@@ -1,12 +1,14 @@
 """The entry point of the front end: a model file, or a text, as its declared model, its program and
 the configuration of its default run.
 
-`compile_text` reads a text with a table of units: it parses it (`language.parse`), declares it
-(`semantic.declare`) and lowers it (`lowering.lower`). `load_scenario` reads the main file of a
-package: its units are those of the prelude, of the library that its scenario line names and of the
-folder of the package (`library.load_library`), and its default run is a median run to the horizon of
-its scenario line, with its `resolution` as the longest step. Each refusal is a `LanguageError` with
-every problem, each with its code and its place in the file.
+`compile_text` reads a text with a table of units, and the tables that it names when they are given
+with it: it parses it (`language.parse`), declares it (`semantic.declare`) and lowers it
+(`lowering.lower`). `load_scenario` reads the main file of a package: its units are those of the
+prelude, of the library that its scenario line names and of the folder of the package
+(`library.load_library`), its tables are files of that folder, and its default run is a median run to
+the horizon of its scenario line, with its `resolution` as the longest step. Each refusal is a
+`LanguageError` with every problem, each with its code and its place: the model file, or the file
+and the line of a table.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from ..program.parts import Program
 from .language.evidence import document
 from .language.parse import parse
 from .language.problems import LanguageError, Problem, SyntaxProblem
+from .language.tables import in_folder, in_memory
 from .lowering import lower
 from .semantic import DeclaredModel, declare
 
@@ -37,12 +40,15 @@ class Compiled:
     configuration: Configuration | None
 
 
-def compile_text(text, units, file=''):
+def compile_text(text, units, file='', tables=None):
     """The compiled model of a text, with a table of units as `napkin.program.build.Builder` takes it
-    (a spelling and its dimension, or its dimension and its scale)."""
+    (a spelling and its dimension, or its dimension and its scale). `tables` gives the tables that
+    the text names: a mapping of the name that it writes to the text of the file, or a reader
+    (`language.tables.in_folder`)."""
+    reader = in_memory(tables) if isinstance(tables, dict) else tables
     try:
         tree = parse(text)
-        declared = declare(tree, units)
+        declared = declare(tree, units, reader)
         program = lower(declared)
     except SyntaxProblem as problem:
         raise LanguageError([problem.problem], file) from None
@@ -90,7 +96,7 @@ def load_scenario(path):
     if tree.scenario is None or tree.scenario.role != 'scenario':
         raise LanguageError([Problem('scenario', MAIN, 1)], file)
     library = load_library(path, document=document(tree))
-    compiled = compile_text(text, library_units(library), file)
+    compiled = compile_text(text, library_units(library), file, in_folder(path.parent))
     if compiled.configuration is None:
         raise LanguageError([Problem('scenario', HORIZON, tree.scenario.line)], file)
     return compiled

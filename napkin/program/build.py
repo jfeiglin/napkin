@@ -928,7 +928,7 @@ class Builder:
         self._members[name] = []
         return TemplateHandle(name)
 
-    def member(self, template, id, **values):
+    def member(self, template, id, /, **values):
         """A member of a template, with its own values and links."""
         name = template.name if isinstance(template, TemplateHandle) else template
         self._members[name].append((id, values))

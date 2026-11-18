@@ -1,12 +1,19 @@
 """The lowering: a declared model (`semantic.py`) written as a program, through `napkin.program.build`.
 
-Each entity written once is a template of one member with its name; its values and flows are the
-template's, the values of the top level are the root's, and `Builder.finish` gives each part its
-origin, which is the path of the declared part it comes from. An expression is written as a node of
-`napkin/core/expr` with the read of each of its names (`refs.Path`, `refs.TIME`), the form in which
-the builder's own handles write it, so a source text and the program that a test builds by hand have
-the same canonical bytes. A number with a unit is the core's literal `q(number, unit)`; a bare number
-that takes a unit is written with it.
+Each template is a template of the program with its parts, and each entity written once a template
+of one member with its name. Each member written by hand is a member of its template with its own
+values and the member that each link names (its own, or the link's initializer); the rows of a table
+go to `Builder.table`, which names a row with an id `table.id` and keeps those rows in the order of
+their ids, so a reordered file gives the same program. The values and the assertions of the top
+level are the root's. `Builder.finish` gives each part its origin, which is the path of the declared
+part it comes from.
+
+An expression is written as a node of `napkin/core/expr` with the read of each of its names
+(`refs.Path`, `refs.Reduce`, `refs.TIME`), the form in which the builder's own handles write it, so a
+source text and the program that a test builds by hand have the same canonical bytes. A read through
+a collection starts at `Instances`, `Literal`, `Where`, `By` or `Lookup`, and a test or a key inside
+one is an `Expr` of its own. A number with a unit is the core's literal `q(number, unit)`; a bare
+number that takes a unit is written with it.
 
 A part that a later slice brings is refused by name (`later_slice`), with the slice that brings it.
 A refusal of the program's checker is given at the line of the declared part that it names.
@@ -20,7 +27,23 @@ from fractions import Fraction
 from ..core import expr as nodes
 from ..program import build
 from ..program.check import ProgramError
-from ..program.refs import ROOT, THIS, TIME, Distribution, Draw, Named, Path, spelled
+from ..program.refs import (
+    ITEM,
+    ROOT,
+    THIS,
+    TIME,
+    By,
+    Distribution,
+    Draw,
+    Instances,
+    Literal,
+    Lookup,
+    Named,
+    Path,
+    Reduce,
+    Where,
+    spelled,
+)
 from . import semantic as s
 from .language.problems import LanguageError, Problem
 
@@ -43,9 +66,24 @@ def lower(model):
     if model.deferred:
         raise LanguageError([refusal(part) for part in model.deferred])
     builder = build.Builder(model.units.table)
+    templates = {}
     for entity in model.entities:
-        builder.entity(entity.path, *(part_of(part) for part in entity.parts))
-    builder.root(*(value_of(value) for value in model.root))
+        templates[entity.path] = entity
+        parts = [part_of(part) for part in entity.parts]
+        if isinstance(entity, s.DeclaredTemplate):
+            builder.template(entity.path, *parts)
+        else:
+            builder.entity(entity.path, *parts, **_links(entity, ()))
+    tables = set()
+    for member in model.members:
+        template = templates[member.template]
+        if member.table is None:
+            builder.member(member.template, member.path, **_given(member, template))
+        elif member.table not in tables:
+            tables.add(member.table)
+            rows = [_row(each, template) for each in model.members if each.table == member.table]
+            builder.table(member.table, member.template, rows)
+    builder.root(*(value_of(value) for value in model.root), *(_assertion(item) for item in model.asserts))
     try:
         return builder.finish()
     except ProgramError as error:
@@ -54,12 +92,40 @@ def lower(model):
 
 def _located(model, item):
     """A refusal of the checker at the line of the declared part whose path is its origin, or a part
-    above it (`tank.water.outflow` is about `tank.water`)."""
+    above it (`tank.water.outflow` is about `tank.water`); a row's line is in the file of its table."""
     path = item.part
     while path and model.part(path) is None:
         path = path.rpartition('.')[0]
     found = model.part(path) if path else None
-    return Problem(item.code, f'{item.part}: {item.message}', getattr(found, 'line', 0))
+    return Problem(
+        item.code, f'{item.part}: {item.message}', getattr(found, 'line', 0), 0, getattr(found, 'file', '')
+    )
+
+
+# ---- members --------------------------------------------------------------------------------------
+
+
+def _links(entity, own):
+    """The member that each link of a member names: its own, or the link's initializer."""
+    targets = {given.name: given.init for given in own}
+    for part in entity.parts:
+        if isinstance(part, s.DeclaredValue) and part.kind == s.LINK and part.init is not None:
+            targets.setdefault(part.name, part.init.start[1])
+    return {name: build.named(target) for name, target in targets.items()}
+
+
+def _given(member, template):
+    """A member's own values and its links, as `Builder.member` takes them."""
+    return {
+        **{given.name: initial(given.init) for given in member.values},
+        **_links(template, member.links),
+    }
+
+
+def _row(member, template):
+    """A row of a table as `Builder.table` takes it: with its id when the table has ids."""
+    _, _, id = member.path.partition('.')
+    return {'id': id, **_given(member, template)} if id else _given(member, template)
 
 
 # ---- parts ------------------------------------------------------------------------------------------
@@ -74,27 +140,44 @@ def _type(kind):
 
 
 def part_of(part):
-    return value_of(part) if isinstance(part, s.DeclaredValue) else flow_of(part)
+    if isinstance(part, s.DeclaredFlow):
+        return flow_of(part)
+    if isinstance(part, s.DeclaredAssert):
+        return _assertion(part)
+    return value_of(part)
 
 
 def value_of(value):
     """The program's value of a declared value."""
+    if value.kind == s.LINK:
+        return build.link(value.name, value.type.template)
+    if value.kind == s.COLLECTION:
+        init = None if value.init is None else initial(value.init)
+        return build.value(value.name, build.group_of(value.type.of.template), init, readonly=value.readonly)
     bounds = {
         'lower': None if value.lower is None else handle(value.lower),
         'upper': None if value.upper is None else handle(value.upper),
         'scale': None if value.scale is None else handle(value.scale),
     }
-    init = initial(value.init)
+    init = None if value.init is None else initial(value.init)
     if value.kind == s.INPUT:
         return build.input_(value.name, _type(value.type), init, **bounds)
     return build.value(value.name, _type(value.type), init, readonly=value.readonly, **bounds)
 
 
+def _assertion(declared):
+    return build.assertion(handle(declared.test))
+
+
 def initial(init):
+    """An initializer as the builder takes it: a formula, a distribution, the path of a collection, or
+    an expression."""
     if isinstance(init, s.Retain):
         return build.formula(handle(init.body))
     if isinstance(init, s.Distribution):
         return distribution(init)
+    if isinstance(init, s.Read) and isinstance(init.type, s.Many):
+        return build.X.read(_path(init))
     return handle(init)
 
 
@@ -121,12 +204,27 @@ def flow_of(flow):
 
 
 def _path(read):
-    start = read.start[0]
-    if start == 'this':
-        return Path(THIS, read.steps)
-    if start == 'named':
-        return Path(Named(read.start[1]), read.steps)
-    return Path(ROOT, read.steps)
+    """The program's path of a read, from its start through its steps."""
+    kind, *rest = read.start
+    if kind == 'this':
+        start = THIS
+    elif kind == 'named':
+        start = Named(rest[0])
+    elif kind == 'root':
+        start = ROOT
+    elif kind == 'item':
+        start = ITEM
+    elif kind == 'instances':
+        start = Instances(rest[0])
+    elif kind == 'literal':
+        start = Literal(tuple(_path(item) for item in rest[0]))
+    elif kind == 'where':
+        start = Where(_path(rest[0]), build.expr_of(handle(rest[1])))
+    elif kind == 'by':
+        start = By(_path(rest[0]), rest[1])
+    else:
+        start = Lookup(_path(rest[0]), build.expr_of(handle(rest[1])))
+    return Path(start, read.steps)
 
 
 def handle(expression):
@@ -164,6 +262,8 @@ def _node(item, reads):
         return _number(item.value)
     if isinstance(item, s.Read):
         return _named(TIME if item.start == ('time',) else _path(item), reads)
+    if isinstance(item, s.Reduced):
+        return _named(Reduce(item.op, _path(item.source)), reads)
     if isinstance(item, s.Drawn):
         # A temporary site, distinct for each draw, until `Builder.finish` gives the draw its place.
         return _named(Draw(distribution(item.source), f'?lowered{next(_SITES)}'), reads)
