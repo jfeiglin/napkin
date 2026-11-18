@@ -2706,7 +2706,11 @@ def main(argv):
     show_tree = '--tree' in argv
     argv = [arg for arg in argv if arg != '--tree']
     if argv[:1] == ['--expr']:
-        node = parse_expression(argv[1])
+        try:
+            node = parse_expression(argv[1])
+        except SyntaxProblem as problem:
+            print(f'REFUSED at column {problem.column}: {problem.message}')
+            return 1
         print(write(node))
         print(sexpr(node))
         return 0
