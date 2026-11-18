@@ -1,7 +1,6 @@
 # Rulings for gate G0
 
-Sources: `a1/`, `a2/`, `a4a/`, `a4b/`, `a5/` FINDINGS.md, `g0-notes.md`, `open-items.md`. A3's rulings are in; its
-measurements at 30,000 places are pending. Ruling ids are R-<prototype>-<nn>.
+Sources: `a1/`, `a2/`, `a4a/`, `a4b/`, `a5/` FINDINGS.md, `g0-notes.md`, `open-items.md`. All six prototypes have reported. Ruling ids are R-<prototype>-<nn>.
 
 ## Part 0. How to read this
 
@@ -24,15 +23,23 @@ What was not verified:
 Question: two ranks of the spec's selection order are costly on a large network that is short of
 supply: inherited fair sharing, and the last distance step after it. What does the first version do
 there?
-Measured (A3; its numbers at 30,000 places are still pending):
-- Fair sharing, exact method: 50 to 172 programs and 1.1 to 4.4 s at 3,000 places, by the degree of
-  shortage. At 30,000 places A3 calls it a no-go. An earlier run there took 383 programs and 75.8 s
-  and then failed; the failure is mended, the cost is not.
+Measured (A3, `a3/FINDINGS.md`):
+- Fair sharing, exact method. At 3,000 places: 50 to 172 programs and 1.1 to 4.4 s, by the degree
+  of shortage (552 to 1,880 claims below 100%). At 30,000 places, base case (4,315 claims below
+  100%): 467 programs and 128 s. At 30,000 places with need x1.45: it failed part way (a later
+  program was infeasible). 10,000 places was not measured.
 - The distance step after a fair rank: A3's own method does not converge at 3,000 places. The QP of
-  HiGHS is exact there and takes 38 s. With no fair rank before it, the step takes 0.5 s.
-- With no shortage, neither rank costs anything.
-- Members that join and leave: a go. Inequality rows in the distance step: right on 200 random
-  problems against an exact calculation.
+  HiGHS is exact there and takes 38 s.
+- The distance step with no fair rank before it: 0.5 s at 3,000 places; at 30,000 places it did not
+  finish in 590 s. Note (main session): an earlier and narrower method, for equalities and bounds
+  only, took 0.1 to 2.7 s at 30,000 places (`scratch/networks/nearest.py`, other code and another
+  run). The general method is far slower; the solver slice should keep the narrow one for a problem
+  that has no inequality row.
+- A solve in which no claim is short leaves the fair rank nothing to do (by construction; not timed).
+- Members that join and leave: a go. At 30,000 places, 300 flows join in 0.90 s on the kept
+  instance, against 6.12 s for a problem formed fresh, with equal optima.
+- Inequality rows in the distance step are right on 200 random problems against an exact
+  calculation (7e-9).
 Rule (R-A3-04, R-A3-05): keep the selection order as the spec has it. Each of the two ranks has a
 budget. A solve that passes it stops the run by name (`fair-sharing budget exceeded (N levels)`,
 `distance step: no answer within budget`). The engine never gives another answer.
@@ -40,8 +47,8 @@ Alternative A: change the language for a large solver: it must write objectives 
 to inherited fair sharing, and the compiler refuses one that does not.
 Alternative B: hold the solver slice until a faster exact method exists.
 Example: the worked network with 30,000 places. Supply meets every request: it runs under the rule.
-Supply is short: under the rule it runs up to about 3,000 places, at seconds to about 40 s for each
-solve, and stops by name above that.
+Supply is short: under the rule it runs up to about 3,000 places and about 170 levels, at seconds
+to about 40 s for each solve, and stops by name above that.
 Cost if changed later: none for model text under the rule; a faster method later only moves the
 limit. Alternative A changes what an author must write. Ids: R-A3-04, R-A3-05.
 Note (main session): this is the network use that started the rewrite. The rule keeps every answer
@@ -596,5 +603,4 @@ The findings change the content of some stages, not their order:
 8. **Still open in the keel.** The one last run of the old test suite.
 9. **Agents** run on the `opus` model from now on, to save usage.
 
-A3 (solver numerics) has given its rulings; they are in this document. Its measurements at 30,000
-places are still running: the numbers of D0 for that size are filled in when it ends.
+All six prototypes have reported, and every ruling is in this document.

@@ -7,7 +7,7 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
 - [x] Step 0: the spec and the plan in `scratch/rewrite/`, the environment, the base worktree
 - [x] A1 notation and types (`a1/FINDINGS.md`, 32 rulings)
 - [x] A2 reference semantics (`a2/FINDINGS.md`, 23 rulings; 96 tests)
-- [ ] A3 solver numerics
+- [x] A3 solver numerics (`a3/FINDINGS.md`, 9 rulings; fair sharing and the last distance step are a no-go at 30,000 places)
 - [x] A4 engine at scale, as two prototypes: A4a (`a4a/FINDINGS.md`, 8 rulings; its `measure.py` is not yet run end to end) and A4b (`a4b/FINDINGS.md`, 8 rulings; `a4b/LAYOUT.md`)
 - [x] A5 catalogue fit (`a5/FINDINGS.md`, 15 rulings)
 - [ ] B0 keel, beside Phase A
