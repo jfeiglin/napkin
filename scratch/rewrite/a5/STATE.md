@@ -31,7 +31,7 @@ FINDINGS.md: started, with TODO marks.
 - Not in the first version: copies `* k`, `while K` on an event header, `count(e.outcome)`. `each W` = a trigger capture with `reset when W != captured`.
 
 ## In the middle of
-`check.py` crashes in `Old.texts_and_numbers`: `exprs.old_tree` gives ('old', name) nodes and `exprs.canonical` has no case for them. Fix: in `canonical` and `walk` treat ('old', x) as a leaf (return it unchanged). Then run `check.py OLD translated/auto/NEW` on the two examples and fix what it reports.
+(checkpoint 2) Crash fixed (`exprs.canonical` treats ('old', x) as a leaf). Both examples hand-translated in `translated/examples/`, check PASSES on each. Next: water.scn.
 
 ## Steps that remain, in order
 1. Fix the crash above; make `check.py` pass on `translated/auto/examples/piano_tuners/model.scn`.

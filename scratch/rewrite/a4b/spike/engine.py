@@ -54,19 +54,19 @@ class RunStopped(Exception):
 class Columns:
     """Arrays of one length that grow together. `n` rows are in use."""
 
-    def __init__(self, spec, capacity=64):
+    def __init__(self, spec, room=64):
         self.spec = dict(spec)  # name -> (dtype, fill)
-        self.n, self.capacity = 0, capacity
+        self.n, self.room = 0, room  # `room`, not `capacity`: a column may be named `capacity`
         for name, (dtype, fill) in self.spec.items():
-            setattr(self, name, np.full(capacity, fill, dtype=dtype))
+            setattr(self, name, np.full(room, fill, dtype=dtype))
 
     def add(self, count=1):
         """`count` new rows with their fill values: the first of them."""
         first, need = self.n, self.n + count
-        if need > self.capacity:
-            self.capacity = max(need, 2 * self.capacity)
+        if need > self.room:
+            self.room = max(need, 2 * self.room)
             for name, (dtype, fill) in self.spec.items():
-                grown = np.full(self.capacity, fill, dtype=dtype)
+                grown = np.full(self.room, fill, dtype=dtype)
                 grown[:first] = getattr(self, name)[:first]
                 setattr(self, name, grown)
         self.n = need
@@ -75,7 +75,7 @@ class Columns:
     def column(self, name, dtype, fill):
         """One more column, before any row is in use."""
         self.spec[name] = (dtype, fill)
-        setattr(self, name, np.full(self.capacity, fill, dtype=dtype))
+        setattr(self, name, np.full(self.room, fill, dtype=dtype))
 
     def nbytes(self):
         return sum(getattr(self, name)[: self.n].nbytes for name in self.spec)
