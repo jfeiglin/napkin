@@ -176,6 +176,11 @@ class Symbols:
                     info.values[member.name] = 'output'
         return info
 
+    def declarer(self, thing):
+        """The thing that declares the members of `thing`: its template for an instance, else itself."""
+        node = self.nodes.get(thing)
+        return node.template if node is not None and node.template is not None else thing
+
     def link_owner(self, info, part):
         """What a link of a thing reads: ('thing', name) for one thing (a slot of a template reads the
         template's members) or ('list', template) for a list of things."""
@@ -265,6 +270,76 @@ class Symbols:
         return None
 
 
+def quantity_kinds(files, symbols):
+    """{(thing, member): `stock`, `tally` or `state`} of each number var of the files of one model,
+    by the old compiler's own rule (`napkin/model/language/resolve.py`, `var_kinds`): a stock when a
+    flow or a move joins it and something takes from it (a flow, a move, `-=` or `=`), a tally when a
+    flow or a move joins it and nothing takes from it, and a number state when no flow or move joins
+    it. The thing is the template or the thing that declares the var: an instance has its
+    template's kinds."""
+    ends, drained = set(), set()
+
+    def key(symbol, thing):
+        found = symbols.read(symbol, thing)
+        if found is None or found[0] != 'value':
+            return None
+        # A flow of one thing can name a var of an instance (`controls_crew.hours`): the kind is the
+        # template's, so that one declaration has one kind. It is the widest kind of its instances.
+        return (symbols.declarer(found[2]), found[3])
+
+    for file in files:
+        for thing in [*file.things, *file.changes]:
+            for member in thing.members:
+                if isinstance(member, nodes.Flow):
+                    pairs = member.together if member.together is not None else [member.pair]
+                    for pair in pairs:
+                        if pair.source != 'outside':
+                            ends.add(key(pair.source, thing.name))
+                            drained.add(key(pair.source, thing.name))
+                        if pair.target != 'outside':
+                            ends.add(key(pair.target, thing.name))
+                elif isinstance(member, nodes.Event):
+                    for outcome in member.outcomes:
+                        for line in outcome.lines:
+                            if isinstance(line, nodes.Move):
+                                ends.update({key(line.source, thing.name), key(line.target, thing.name)})
+                                drained.add(key(line.source, thing.name))
+                            elif isinstance(line, nodes.Assign) and line.op != '+=':
+                                drained.add(key(line.target, thing.name))
+    kinds = {}
+    for name, info in symbols.things.items():
+        if info.kind == 'instance':
+            continue
+        for member, kind in info.values.items():
+            if kind != 'var.number':
+                continue
+            found = (name, member)
+            if found not in ends:
+                kinds[found] = 'state'
+            else:
+                kinds[found] = 'stock' if found in drained else 'tally'
+    return kinds
+
+
+def model_of(path):
+    """(the `File` of `path`, relinked; the files of its model; its `Symbols`; the kinds of its
+    number vars)."""
+    path = Path(path).resolve()
+    parts = context_files(path)
+    names = {thing.name for _, file in parts for thing in file.things}
+    own = None
+    for current, file in parts:
+        relink(file, names)
+        if current.resolve() == path:
+            own = file
+    if own is None:
+        own = relink(parse_file(path), names)
+        parts.append((path, own))
+    files = [file for _, file in parts]
+    symbols = Symbols(files)
+    return own, files, symbols, quantity_kinds(files, symbols)
+
+
 def symbols_for(path):
     """(the `File` of `path`, relinked over its model; the `Symbols` of that model)."""
     path = Path(path).resolve()
@@ -317,10 +392,12 @@ __all__ = [
     'home_entry',
     'lex',
     'model_files',
+    'model_of',
     'modules',
     'nodes',
     'parse',
     'parse_file',
+    'quantity_kinds',
     'relink',
     'symbols_for',
     'tree_of',

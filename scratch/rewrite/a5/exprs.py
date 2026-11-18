@@ -1,0 +1,708 @@
+"""Expressions for the scripts of A5: one small tree, a printer in the proposed notation, a reader of
+that notation, and the rewrite of an expression of the old language into it.
+
+The tree is made of tuples:
+
+    ('num', text, unit or None)        a number as written, with its unit: `12 h`, `0.3`
+    ('name', 'a.b.c')                  a path: `this.water`, `Utility.instances.unserved`, `t`, `OPEN`
+    ('text', 'words')                  a quoted text
+    ('none',)                          `none`
+    ('call', 'f', [args])              `f(a, b)`
+    ('method', obj, 'm', [args])       `obj.m(a)`: `.draw()`, `.at(t)`, `.where(...)`, `.by(...)`
+    ('attr', obj, 'x')                 `obj.x` where obj is not a plain path: `c.at(t).factor`
+    ('un', op, x)                      op is `-`, `+` or `not`
+    ('bin', op, a, b)                  op is `+ - * / **`
+    ('cmp', op, a, b)                  op is `== != < <= > >=`
+    ('bool', op, [values])             op is `and` or `or`
+    ('if', test, then, otherwise)      `then if test else otherwise`
+    ('in', x, low, high)               `x in [low, high]`
+    ('coll', [items])                  `<a, b>`
+    ('pair', key, value)               `KEY: value` inside a call: `choice(OPEN: 1, WAIT: else)`
+    ('else',)                          the word `else` as the value of a pair
+
+`rewrite_old` reads an expression of the old language with the old compiler's own reader
+(`napkin.model.language.expressions`) and gives it in this tree, with each name as the new language
+writes it. `parse_new` reads the proposed notation. Two expressions mean the same when their trees
+are equal after `canonical`.
+"""
+
+from __future__ import annotations
+
+import ast
+import re
+from decimal import Decimal, InvalidOperation
+
+# ---- the printer ------------------------------------------------------------------------------------------
+
+PRECEDENCE = {'if': 1, 'or': 2, 'and': 3, 'not': 4, 'cmp': 5, '+': 6, '-': 6, '*': 7, '/': 7, 'neg': 8, '**': 9}
+ATOM = 10
+
+
+def level(node):
+    kind = node[0]
+    if kind == 'if':
+        return PRECEDENCE['if']
+    if kind == 'bool':
+        return PRECEDENCE[node[1]]
+    if kind == 'un':
+        return PRECEDENCE['not'] if node[1] == 'not' else PRECEDENCE['neg']
+    if kind in ('cmp', 'in'):
+        return PRECEDENCE['cmp']
+    if kind == 'bin':
+        return PRECEDENCE[node[1]]
+    if kind == 'num' and node[1].startswith('-'):
+        return PRECEDENCE['neg']
+    return ATOM
+
+
+def show(node, parent=0, right=False):
+    """The text of a tree in the proposed notation, with the brackets that it needs."""
+    kind = node[0]
+    mine = level(node)
+    if kind == 'num':
+        text = node[1] if node[2] is None else f'{node[1]} {node[2]}'
+        # A number with its unit is one value: `(2 h)` after a division keeps it together.
+        if node[2] is not None and parent >= PRECEDENCE['*'] and right:
+            return f'({text})'
+    elif kind == 'name':
+        text = node[1]
+    elif kind == 'text':
+        text = '"' + node[1].replace('\\', '\\\\').replace('"', '\\"') + '"'
+    elif kind == 'none':
+        text = 'none'
+    elif kind == 'else':
+        text = 'else'
+    elif kind == 'call':
+        text = f'{node[1]}({", ".join(show(arg) for arg in node[2])})'
+    elif kind == 'method':
+        text = f'{show(node[1], ATOM)}.{node[2]}({", ".join(show(arg) for arg in node[3])})'
+    elif kind == 'attr':
+        text = f'{show(node[1], ATOM)}.{node[2]}'
+    elif kind == 'un':
+        if node[1] == 'not':
+            text = f'not {show(node[2], mine)}'
+        else:
+            text = f'{node[1]}{show(node[2], mine)}'
+    elif kind == 'bin':
+        op = node[1]
+        if op == '**':
+            text = f'{show(node[2], mine + 1)} ** {show(node[3], mine)}'
+        else:
+            text = f'{show(node[2], mine)} {op} {show(node[3], mine, right=True)}'
+            # `a - (b - c)` and `a / (b * c)` keep their brackets: the right side binds one level tighter.
+            if level(node[3]) == mine:
+                text = f'{show(node[2], mine)} {op} ({show(node[3])})'
+    elif kind == 'cmp':
+        text = f'{show(node[2], mine + 1)} {node[1]} {show(node[3], mine + 1)}'
+    elif kind == 'in':
+        text = f'{show(node[1], mine + 1)} in [{show(node[2])}, {show(node[3])}]'
+    elif kind == 'bool':
+        text = f' {node[1]} '.join(show(value, mine + 1) for value in node[2])
+    elif kind == 'if':
+        text = f'{show(node[2], mine + 1)} if {show(node[1], mine + 1)} else {show(node[3], mine)}'
+    elif kind == 'coll':
+        text = '<' + ', '.join(show(item) for item in node[1]) + '>'
+    elif kind == 'pair':
+        text = f'{show(node[1])}: {show(node[2])}'
+    else:
+        raise ValueError(f'no text for {node!r}')
+    return f'({text})' if mine < parent else text
+
+
+def number_value(text):
+    try:
+        return Decimal(text)
+    except InvalidOperation:
+        return None
+
+
+def canonical(node):
+    """A tree with each number as its value, so that `100000.0` and `100000` are one number, and with
+    a sign joined to its number."""
+    kind = node[0]
+    if kind == 'num':
+        value = number_value(node[1])
+        return ('num', str(value.normalize()) if value is not None else node[1], node[2])
+    if kind == 'un' and node[1] == '-' and node[2][0] == 'num':
+        inner = canonical(node[2])
+        value = number_value(inner[1])
+        return ('num', str((-value).normalize()) if value is not None else '-' + inner[1], inner[2])
+    if kind in ('name', 'text', 'none', 'else'):
+        return node
+    if kind == 'call':
+        return ('call', node[1], [canonical(arg) for arg in node[2]])
+    if kind == 'method':
+        return ('method', canonical(node[1]), node[2], [canonical(arg) for arg in node[3]])
+    if kind == 'attr':
+        return ('attr', canonical(node[1]), node[2])
+    if kind == 'un':
+        return ('un', node[1], canonical(node[2]))
+    if kind in ('bin', 'cmp'):
+        return (kind, node[1], canonical(node[2]), canonical(node[3]))
+    if kind == 'bool':
+        flat = []
+        for value in node[2]:
+            value = canonical(value)
+            if value[0] == 'bool' and value[1] == node[1]:
+                flat += value[2]
+            else:
+                flat.append(value)
+        return ('bool', node[1], flat)
+    if kind == 'if':
+        return ('if', canonical(node[1]), canonical(node[2]), canonical(node[3]))
+    if kind == 'in':
+        return ('in', canonical(node[1]), canonical(node[2]), canonical(node[3]))
+    if kind == 'coll':
+        return ('coll', [canonical(item) for item in node[1]])
+    if kind == 'pair':
+        return ('pair', canonical(node[1]), canonical(node[2]))
+    raise ValueError(f'no canonical form for {node!r}')
+
+
+def walk(node):
+    """Each node of a tree, the node itself first."""
+    yield node
+    kind = node[0]
+    if kind == 'call':
+        children = node[2]
+    elif kind == 'method':
+        children = [node[1], *node[3]]
+    elif kind == 'attr':
+        children = [node[1]]
+    elif kind == 'un':
+        children = [node[2]]
+    elif kind in ('bin', 'cmp'):
+        children = [node[2], node[3]]
+    elif kind == 'bool':
+        children = node[2]
+    elif kind == 'if':
+        children = [node[1], node[2], node[3]]
+    elif kind == 'in':
+        children = [node[1], node[2], node[3]]
+    elif kind == 'coll':
+        children = node[1]
+    elif kind == 'pair':
+        children = [node[1], node[2]]
+    else:
+        children = []
+    for child in children:
+        yield from walk(child)
+
+
+def numbers_of(node, unit=None):
+    """[(value, unit)] of the numbers of a tree. A number with no unit that is the whole tree, an
+    argument of a distribution that is the whole tree, or an end of a range takes `unit`: a declared
+    unit supplies the unit of a direct numeric literal."""
+    node = canonical(node)
+    out = []
+
+    def direct(n):
+        """Whether `n` is a literal that the declaration's unit reaches: the value itself, or an
+        argument of the one distribution that is the value (also behind `.draw()`)."""
+        if n[0] == 'num':
+            return [n]
+        if n[0] == 'method' and n[2] == 'draw' and not n[3]:
+            return direct(n[1])
+        if n[0] == 'call' and n[1] in DISTRIBUTIONS:
+            return [arg for arg in n[2] if arg[0] == 'num']
+        return []
+
+    reached = {id(n) for n in direct(node)}
+    for n in walk(node):
+        if n[0] == 'num':
+            value = number_value(n[1])
+            given = n[2] if n[2] is not None else (unit if id(n) in reached else None)
+            out.append((value if value is not None else n[1], given))
+    return out
+
+
+def names_of(node):
+    """The paths that a tree reads."""
+    return [n[1] for n in walk(node) if n[0] == 'name']
+
+
+def calls_of(node):
+    return [n[1] for n in walk(node) if n[0] == 'call'] + [n[2] for n in walk(node) if n[0] == 'method']
+
+
+DISTRIBUTIONS = frozenset(
+    {'uniform', 'triangular', 'pert', 'loguniform', 'normal', 'lognormal', 'beta', 'bernoulli', 'categorical'}
+)
+FUNCTIONS = frozenset(
+    {'min', 'max', 'clip', 'abs', 'exp', 'expm1', 'ln', 'log1p', 'sqrt', 'erf', 'sum', 'count', 'any', 'all'}
+    | {'since', 'elapsed', 'delayed'}
+)
+
+# ---- the rewrite of an old expression -------------------------------------------------------------------
+
+
+class Hand(Exception):
+    """An expression that no mechanical rule translates: the reason, for the `# TODO(hand)` line."""
+
+
+IDENTIFIER = re.compile(r'[A-Za-z_][A-Za-z0-9_]*\Z')
+
+
+def member_of(value):
+    """The enum member that a named value of the old language becomes: `"boil_water"` is
+    `BOIL_WATER`."""
+    if not IDENTIFIER.match(value):
+        raise Hand(f'the named value "{value}" is no name: choose a member name by hand')
+    return value.upper()
+
+
+def old_tree(expr):
+    """(the tree of an expression of the old language, before its names are resolved; the text that
+    the old reader made of it). Names are ('old', 'a.b')."""
+    from napkin.model.language import expressions
+
+    text, names, _ = expressions.python(expr.tokens)
+    try:
+        tree = ast.parse(text, mode='eval').body
+    except SyntaxError as exc:
+        raise Hand(f'the old reader does not read this expression: {exc.msg}') from None
+
+    def segment(node):
+        return ast.get_source_segment(text, node)
+
+    def visit(node):
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, str):
+                return ('text', node.value)
+            if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+                raise Hand(f'a constant {node.value!r}')
+            return ('num', segment(node), None)
+        if isinstance(node, ast.Name):
+            if node.id in names:
+                return ('old', names[node.id])
+            return ('name', node.id)
+        if isinstance(node, ast.Call):
+            if not isinstance(node.func, ast.Name):
+                raise Hand('a call of something that is no name')
+            name = node.func.id
+            if name in names:
+                raise Hand(f'{names[name]} is not a function of the language')
+            if name == 'q':
+                return ('num', segment(node.args[0]), node.args[1].value)
+            if node.keywords:
+                args = [visit(arg) for arg in node.args]
+                args += [('pair', ('name', k.arg), visit(k.value)) for k in node.keywords]
+                return ('call', name, args)
+            return ('call', name, [visit(arg) for arg in node.args])
+        if isinstance(node, ast.BinOp):
+            ops = {ast.Add: '+', ast.Sub: '-', ast.Mult: '*', ast.Div: '/', ast.Pow: '**'}
+            if type(node.op) not in ops:
+                raise Hand(f'the operator {type(node.op).__name__}')
+            return ('bin', ops[type(node.op)], visit(node.left), visit(node.right))
+        if isinstance(node, ast.UnaryOp):
+            ops = {ast.USub: '-', ast.UAdd: '+', ast.Not: 'not'}
+            if type(node.op) not in ops:
+                raise Hand(f'the operator {type(node.op).__name__}')
+            return ('un', ops[type(node.op)], visit(node.operand))
+        if isinstance(node, ast.BoolOp):
+            return ('bool', 'and' if isinstance(node.op, ast.And) else 'or', [visit(v) for v in node.values])
+        if isinstance(node, ast.Compare):
+            ops = {ast.Eq: '==', ast.NotEq: '!=', ast.Lt: '<', ast.LtE: '<=', ast.Gt: '>', ast.GtE: '>='}
+            sides = [node.left, *node.comparators]
+            parts = []
+            for op, left, right in zip(node.ops, sides, sides[1:], strict=False):
+                if type(op) not in ops:
+                    raise Hand(f'the comparison {type(op).__name__}')
+                parts.append(('cmp', ops[type(op)], visit(left), visit(right)))
+            return parts[0] if len(parts) == 1 else ('bool', 'and', parts)
+        if isinstance(node, ast.IfExp):
+            return ('if', visit(node.test), visit(node.body), visit(node.orelse))
+        raise Hand(f'a {type(node).__name__} is no part of the new notation')
+
+    return visit(tree)
+
+
+class Scope:
+    """Where an old expression stands: the names of its model (`oldmodel.Symbols`), the thing that it
+    is read in (None: the top level), and the names of the outputs of the scenario, which a top-level
+    expression can read."""
+
+    def __init__(self, symbols, thing, outputs=(), own='this.'):
+        self.symbols = symbols
+        self.thing = thing
+        self.outputs = set(outputs)
+        # What stands before a member of the thing itself: `this.` in the thing, and the thing's own
+        # name where the expression stands outside it (a line of an option).
+        self.own = own
+
+    def path(self, name):
+        """The new path of an old dotted name, and what it reads (`Symbols.read`)."""
+        found = self.symbols.read(name, self.thing)
+        parts = name.split('.')
+        head = parts[0]
+        if found is None:
+            if self.thing is None and len(parts) == 1 and name in self.outputs:
+                return name, ('output', name)
+            raise Hand(f'the name {name} reads nothing that this script resolves')
+        info = self.symbols.things.get(self.thing) if self.thing is not None else None
+        if info is not None and (
+            head in info.values or head in info.events or head in info.flows or head in info.links
+        ):
+            # A member of the thing itself, or a path through one of its links.
+            return self.own + name, found
+        if head in self.symbols.templates:
+            if len(parts) == 1:
+                return f'{head}.instances', found
+            return f'{head}.instances.' + '.'.join(parts[1:]), found
+        return name, found
+
+
+def rewrite_old(expr, scope, draws=True):
+    """The tree of an old expression in the new language. Raises `Hand` for a part that needs a
+    decision. With `draws`, a distribution is drawn where it stands: `pert(a, m, b).draw()`."""
+    return _new(old_tree(expr), scope, draws)
+
+
+def _new(node, scope, draws):
+    kind = node[0]
+    if kind == 'old':
+        if node[1] == 'copy':
+            raise Hand('`copy` has no form in the first version')
+        path, found = scope.path(node[1])
+        if found[0] == 'event':
+            raise Hand(f'the event {node[1]} is read as a value')
+        return ('name', path)
+    if kind == 'text':
+        return ('name', member_of(node[1]))
+    if kind in ('num', 'name'):
+        return node
+    if kind == 'call':
+        return _call(node, scope, draws)
+    if kind == 'un':
+        return ('un', node[1], _new(node[2], scope, draws))
+    if kind == 'bin':
+        return ('bin', node[1], _new(node[2], scope, draws), _new(node[3], scope, draws))
+    if kind == 'cmp':
+        sides = [node[2], node[3]]
+        since = [k for k, side in enumerate(sides) if side[0] == 'call' and side[1] == 'since']
+        if since:
+            # The old compiler reads `since(e) OP x` as `count(e) > 0 and t - e_time OP x`
+            # (napkin/model/lower/expressions.py, `since_form`). The new language fails a run that
+            # reads `since(e)` before the first occurrence, so the guard is written out.
+            if len(since) != 1:
+                raise Hand('since() on both sides of a comparison')
+            event = _event(sides[since[0]], scope)
+            other = _new(sides[1 - since[0]], scope, draws)
+            if event[0] == 'state':
+                clock = ('call', 'elapsed', [('name', event[1])])
+                ordered = (clock, other) if since[0] == 0 else (other, clock)
+                return ('cmp', node[1], *ordered)
+            clock = ('call', 'since', [('name', event[1])])
+            ordered = (clock, other) if since[0] == 0 else (other, clock)
+            happened = ('cmp', '>', ('call', 'count', [('name', event[1] + '.occurrences')]), ('num', '0', None))
+            return ('bool', 'and', [happened, ('cmp', node[1], *ordered)])
+        return ('cmp', node[1], _new(node[2], scope, draws), _new(node[3], scope, draws))
+    if kind == 'bool':
+        values = []
+        for value in node[2]:
+            value = _new(value, scope, draws)
+            # `a and (b and c)` is `a and b and c`: the guard of a `since` joins the condition it is in.
+            values += value[2] if value[0] == 'bool' and value[1] == node[1] else [value]
+        return ('bool', node[1], values)
+    if kind == 'if':
+        return ('if', _new(node[1], scope, draws), _new(node[2], scope, draws), _new(node[3], scope, draws))
+    if kind == 'pair':
+        return ('pair', node[1], _new(node[2], scope, draws))
+    raise Hand(f'no rule for {node!r}')
+
+
+def _event(call, scope):
+    """('event', path) of the event that `since(e)` or `count(e)` reads, or ('state', path) for
+    `since(state)`, which the old compiler reads as `elapsed(state)`."""
+    args = call[2]
+    if len(args) != 1 or args[0][0] != 'old':
+        raise Hand(f'{call[1]}() of something that is no name')
+    path, found = scope.path(args[0][1])
+    if found[0] == 'event':
+        if found[3] is not None:
+            raise Hand(
+                f'{call[1]}({args[0][1]}) reads one outcome of an event: the new language keeps no history of '
+                'an outcome. Start an event of its own on that branch, and read that event'
+            )
+        return ('event', path)
+    if found[0] == 'value' and found[1] == 'var.named' and call[1] == 'since':
+        return ('state', path)
+    raise Hand(f'{call[1]}({args[0][1]}) reads no event')
+
+
+def _call(node, scope, draws):
+    name, args = node[1], node[2]
+    if name == 'since':
+        raise Hand('since() outside a comparison')
+    if name == 'count':
+        if len(args) == 1 and args[0][0] == 'old':
+            path, found = scope.path(args[0][1])
+            if found[0] == 'value' and found[4]:
+                return ('call', 'count', [('name', path)])
+        event = _event(node, scope)
+        return ('call', 'count', [('name', event[1] + '.occurrences')])
+    if name == 'elapsed':
+        if len(args) != 1 or args[0][0] != 'old':
+            raise Hand('elapsed() of something that is no name')
+        path, _ = scope.path(args[0][1])
+        return ('call', 'elapsed', [('name', path)])
+    if name in ('sum', 'any', 'all'):
+        if len(args) != 1 or args[0][0] != 'old':
+            raise Hand(f'{name}() of something that is no list')
+        path, found = scope.path(args[0][1])
+        if not (found[0] == 'value' and found[4]):
+            raise Hand(f'{name}({args[0][1]}) reads no list')
+        return ('call', name, [('name', path)])
+    if name in ('min', 'max'):
+        lists, others = [], []
+        for arg in args:
+            if arg[0] == 'old':
+                path, found = scope.path(arg[1])
+                if found[0] == 'value' and found[4]:
+                    lists.append(('call', name, [('name', path)]))
+                    continue
+            others.append(_new(arg, scope, draws))
+        if not lists:
+            return ('call', name, others)
+        # `max(list.x, v)`: the largest of the members' values and the other arguments.
+        return ('call', name, [*lists, *others]) if others or len(lists) > 1 else lists[0]
+    if name in DISTRIBUTIONS:
+        made = ('call', name, [_new(arg, scope, draws) for arg in args])
+        return ('method', made, 'draw', []) if draws else made
+    if name == 'delayed':
+        return ('call', name, [_new(arg, scope, draws) for arg in args])
+    if name in FUNCTIONS:
+        return ('call', name, [_new(arg, scope, draws) for arg in args])
+    raise Hand(f'the function {name}')
+
+
+# ---- the reader of the proposed notation ---------------------------------------------------------------
+
+TOKEN = re.compile(
+    r"""
+    (?P<space>\s+)
+  | (?P<number>[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)
+  | (?P<text>"(?:[^"\\]|\\.)*")
+  | (?P<name>[A-Za-z_][A-Za-z0-9_]*)
+  | (?P<op><->|->|\*\*|<=|>=|==|!=|\+=|-=|[-+*/<>=(),.:\[\]@])
+    """,
+    re.X,
+)
+# A word after a number that is a word of the notation, never a unit.
+NOT_UNITS = frozenset(
+    'in if else and or not when scale to from until after reset is then versus cumulative lag'.split()
+)
+UNIT = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(?:[-/^][A-Za-z0-9_]+)*')
+ESCAPE = re.compile(r'\\(.)')
+
+
+class NewSyntax(Exception):
+    """A text that the reader of the proposed notation does not read."""
+
+
+def tokens_of(text):
+    """The tokens of a text in the proposed notation: (kind, value). A number takes the word after
+    one space as its unit, as the old language does: `12 h`, `5 L/h`, `0.5 Wh/L`."""
+    out, i = [], 0
+    while i < len(text):
+        if text[i] == '#':
+            break  # a trailing comment
+        found = TOKEN.match(text, i)
+        if found is None:
+            raise NewSyntax(f'no token at {text[i : i + 20]!r}')
+        kind = found.lastgroup
+        value = found.group(kind)
+        i = found.end()
+        if kind == 'space':
+            continue
+        if kind == 'number':
+            unit = None
+            if i < len(text) and text[i] == ' ':
+                word = UNIT.match(text, i + 1)
+                if word is not None and word.group(0).split('/')[0].split('-')[0].split('^')[0] not in NOT_UNITS:
+                    end = word.end()
+                    # A unit is one word: it ends at a space, a comma or a bracket.
+                    if end == len(text) or text[end] in ' ,)]:\n':
+                        unit = word.group(0)
+                        i = end
+            out.append(('num', value, unit))
+            continue
+        if kind == 'text':
+            out.append(('text', ESCAPE.sub(r'\1', value[1:-1])))
+            continue
+        out.append((kind, value))
+    return out
+
+
+class Parser:
+    """A precedence reader of one expression of the proposed notation."""
+
+    def __init__(self, tokens):
+        self.tokens = tokens
+        self.i = 0
+
+    def peek(self, k=0):
+        return self.tokens[self.i + k] if self.i + k < len(self.tokens) else None
+
+    def at(self, kind, value=None):
+        token = self.peek()
+        return token is not None and token[0] == kind and (value is None or token[1] == value)
+
+    def take(self, kind=None, value=None):
+        token = self.peek()
+        if token is None or (kind is not None and token[0] != kind) or (value is not None and token[1] != value):
+            raise NewSyntax(f'expected {value or kind}, found {token!r}')
+        self.i += 1
+        return token
+
+    def done(self):
+        return self.i >= len(self.tokens)
+
+    def expression(self):
+        body = self.or_()
+        if self.at('name', 'if'):
+            self.take()
+            test = self.or_()
+            self.take('name', 'else')
+            return ('if', test, body, self.expression())
+        return body
+
+    def or_(self):
+        values = [self.and_()]
+        while self.at('name', 'or'):
+            self.take()
+            values.append(self.and_())
+        return values[0] if len(values) == 1 else ('bool', 'or', values)
+
+    def and_(self):
+        values = [self.not_()]
+        while self.at('name', 'and'):
+            self.take()
+            values.append(self.not_())
+        return values[0] if len(values) == 1 else ('bool', 'and', values)
+
+    def not_(self):
+        if self.at('name', 'not'):
+            self.take()
+            return ('un', 'not', self.not_())
+        return self.comparison()
+
+    def comparison(self):
+        left = self.sum_()
+        token = self.peek()
+        if token is not None and token[0] == 'op' and token[1] in ('==', '!=', '<', '<=', '>', '>='):
+            self.take()
+            return ('cmp', token[1], left, self.sum_())
+        if self.at('name', 'in') and self.peek(1) == ('op', '['):
+            self.take()
+            self.take('op', '[')
+            low = self.expression()
+            self.take('op', ',')
+            high = self.expression()
+            self.take('op', ']')
+            return ('in', left, low, high)
+        return left
+
+    def sum_(self):
+        left = self.product()
+        while self.at('op', '+') or self.at('op', '-'):
+            op = self.take()[1]
+            left = ('bin', op, left, self.product())
+        return left
+
+    def product(self):
+        left = self.unary()
+        while self.at('op', '*') or self.at('op', '/'):
+            op = self.take()[1]
+            left = ('bin', op, left, self.unary())
+        return left
+
+    def unary(self):
+        if self.at('op', '-') or self.at('op', '+'):
+            op = self.take()[1]
+            return ('un', op, self.unary())
+        return self.power()
+
+    def power(self):
+        base = self.postfix()
+        if self.at('op', '**'):
+            self.take()
+            return ('bin', '**', base, self.unary())
+        return base
+
+    def arguments(self):
+        args = []
+        self.take('op', '(')
+        while not self.at('op', ')'):
+            arg = self.expression() if not self.at('name', 'else') else (self.take() and ('else',))
+            if self.at('op', ':'):
+                self.take()
+                value = ('else',) if self.at('name', 'else') and self.take() else self.expression()
+                arg = ('pair', arg, value)
+            args.append(arg)
+            if self.at('op', ','):
+                self.take()
+        self.take('op', ')')
+        return args
+
+    def postfix(self):
+        node = self.atom()
+        while True:
+            if self.at('op', '.') and self.peek(1) is not None and self.peek(1)[0] == 'name':
+                self.take()
+                name = self.take('name')[1]
+                if self.at('op', '('):
+                    node = ('method', node, name, self.arguments())
+                elif node[0] == 'name':
+                    node = ('name', f'{node[1]}.{name}')
+                else:
+                    node = ('attr', node, name)
+                continue
+            return node
+
+    def atom(self):
+        token = self.peek()
+        if token is None:
+            raise NewSyntax('an expression ends too soon')
+        if token[0] == 'num':
+            self.take()
+            return token
+        if token[0] == 'text':
+            self.take()
+            return ('text', token[1])
+        if token == ('op', '('):
+            self.take()
+            node = self.expression()
+            self.take('op', ')')
+            return node
+        if token == ('op', '<'):
+            # A collection literal: `<a, b>` or `<>`.
+            self.take()
+            items = []
+            while not self.at('op', '>'):
+                items.append(self.sum_())
+                if self.at('op', ','):
+                    self.take()
+            self.take('op', '>')
+            return ('coll', items)
+        if token[0] == 'name':
+            self.take()
+            if token[1] == 'none':
+                return ('none',)
+            if self.at('op', '('):
+                return ('call', token[1], self.arguments())
+            return ('name', token[1])
+        raise NewSyntax(f'{token[1]!r} starts no expression')
+
+
+def parse_new(text):
+    """The tree of one expression of the proposed notation."""
+    parser = Parser(tokens_of(text) if isinstance(text, str) else text)
+    node = parser.expression()
+    if not parser.done():
+        raise NewSyntax(f'{parser.peek()!r} follows the expression')
+    return node
+
+
+def same(a, b):
+    return canonical(a) == canonical(b)

@@ -1,0 +1,36 @@
+path,lines,tests,needs,class,slice,delete_share,oracle,note
+tests/engine/distribution_oracles.py,137,0,none,HELPER,-,,,"Independent mpmath oracle: cdf, quantiles and moments of the distribution families; no production code; kept and study tests use it."
+tests/engine/test_admission_scope.py,45,3,source,PORT-CONSUMER,C,,message-text,"Study entry points refuse runs outside a model's admission scope, by diagnostic code; unsure that admission_runs survives the rewrite."
+tests/engine/test_ai_layer.py,187,4,source,DELETE,S4,,independent-code+message-text,"Delayed reaction with old keep/stopped outcomes, ties by file order, and `versus` runs with brief settings; all of these go."
+tests/engine/test_availability.py,93,8,source,PORT-ENGINE,S4,50,message-text+closed-form,"Availability of an outcome (`when`) in choices and picks; spec keeps eligibility; chance-sum, `sight` and one-outcome rules are old: unsure."
+tests/engine/test_binary_controls.py,159,6,source,PORT-FRONT,S0,15,message-text+structure,"Bool inputs and states: declaration and edit diagnostics, a state read as a condition; one test pins the 0/1 quantity."
+tests/engine/test_bound_balance.py,125,4,source,PORT-ENGINE,S2,,closed-form,"Roundoff residual of a full tank goes to a leg; tank from source; three tests call Allocation.balance directly, without language."
+tests/engine/test_chance.py,70,3,source,PORT-ENGINE,S4,,closed-form,"Chance outcomes: likeliest in the central run, first on a tie, sampled share; old syntax, but spec keeps the rule."
+tests/engine/test_chattering.py,122,5,source,PORT-ENGINE,S2,,closed-form+message-text,Rates that switch at an empty tank stop the run with `chattering`; closed-form emptying time; imports model_of from test_roundoff_properties.
+tests/engine/test_closed_form_short.py,126,2,source,PORT-ENGINE,S2,,property+closed-form,Short path of the bound allocation equals the full closed form bit for bit; stays only if A3 keeps it.
+tests/engine/test_combinations.py,187,6,source,PORT-FRONT,S6,15,closed-form+message-text,"Model.combination of options that no run makes, with edit precedence; one test needs the per-start structures, which go."
+tests/engine/test_continuous_domains.py,140,5,source,PORT-ENGINE,S0,,closed-form+message-text,"Domain proofs between report samples (dynamic_domain) for rates, outputs, state checks; proofs move to napkin/program; unsure front or engine."
+tests/engine/test_coupled_queue_boundaries.py,228,6,source,PORT-ENGINE,S3,,closed-form,Two-leg flows share a resource at empty or full stocks; hand-worked rates; one 'upstream first' split may change with max-min.
+tests/engine/test_cumulative_integration.py,299,4,source,PORT-ENGINE,S0,,closed-form+message-text,"Roundoff at bounds in dense reads, bound violations that stop a run, cash-control integrals across a kink; closed forms."
+tests/engine/test_decision_resolver.py,155,8,source,PORT-ENGINE,S4,,property+message-text,"Decision resolver (used by napkin/session.py): read-only boundary, live answers equal saved replay; pause point open; imports two test modules."
+tests/engine/test_distributions.py,171,9,none,KEEP,-,,independent-code+closed-form,"Quantiles, medians and moments of napkin/distributions.py against mpmath oracles; no sampling and no model."
+tests/engine/test_distributions_deep.py,104,3,catalogue,KEEP,M,,independent-code+property,Deep: a million draws against the cdf and Latin means need no model; the third test studies a catalogue scenario.
+tests/engine/test_erf.py,97,5,source,KEEP,S0,,independent-code+closed-form,erf of the expression core against mpmath; four tests need no model; the fifth integrates a tally from source.
+tests/engine/test_estimators.py,394,20,none,KEEP,B0,30,closed-form+independent-code,"Intervals, stopping rule, control variate and every_path of estimators.py; six tail_slopes tests go now with the derivative code."
+tests/engine/test_evidence_trail.py,348,7,source,PORT-CONSUMER,C,,property+closed-form,"Evidence trail of the report: the parts that an output exercised, through triggers, lags, flows and outputs that read outputs."
+tests/engine/test_expectations.py,799,38,source,DELETE,B0,75,closed-form+independent-code,28 of 38 tests on `controlled` and `derivatives` go now; 8 on `weighted` port in C; 2 on mean_of stay.
+tests/engine/test_finite_face_kernel.py,555,19,source,PORT-ENGINE,S4,5,closed-form+message-text,"Zero and positive faces, crossings with clocks, repayment legs, face proofs; closed forms; needs events; one test pins file order."
+tests/engine/test_finite_stock_boundaries.py,748,20,source,PORT-ENGINE,S4,,closed-form+message-text,"A stock that empties and refills by events: exact faces, boundary roundoff corrections, pass-through queues, face proofs; closed forms."
+tests/engine/test_firing_values.py,98,5,source,PORT-ENGINE,S4,,closed-form+property,"A draw at each firing (median in the central run, a stream per sample) and delayed(x, D); becomes explicit .draw()."
+tests/engine/test_highs.py,89,4,none,KEEP,-,,independent-code+closed-form,"highs.solve equals SciPy linprog bit for bit, with one optimum from linear-program theory; no model."
+tests/engine/test_initiation.py,205,7,source,PORT-FRONT,S4,15,message-text+closed-form,"Rules of the old `event start` at build and at t=0; the spec has no start: unsure, may be DELETE."
+tests/engine/test_moment.py,48,2,source,DELETE,S4,,closed-form,Events due at one moment go in the order of their lines; the rounds of the new moment replace this.
+tests/engine/test_monotone_crossing.py,80,4,source,PORT-ENGINE,S4,,closed-form+message-text,Triggers on a quantity that only rises or falls fire at the closed-form decay time; a mixed direction is refused.
+tests/engine/test_monte_carlo_study.py,446,21,source,PORT-CONSUMER,C,,closed-form+property,"Monte Carlo studies: each sample equals its closed form; seeds, Latin and Sobol bounds, remote samples; reads no catalogue."
+tests/engine/test_options_and_runs.py,664,22,source,PORT-FRONT,S6,5,closed-form+message-text,"Options, runs and the levels of an edit document, mostly through studies, with a closed form; last test: old events."
+tests/engine/test_options_runs_closed_forms.py,533,19,source,PORT-FRONT,S6,5,closed-form+message-text,"Options, runs and edit precedence through the Runs table and direct runs; closed-form totals; reads no catalogue."
+tests/engine/test_pause.py,212,6,source,PORT-ENGINE,S4,,property,"A run pauses at an unanswered decision, keeps earlier same-time steps, replays the same with picks; pause point open (A2)."
+tests/engine/test_paused_results.py,102,4,source,PORT-CONSUMER,C,,message-text+property,Reports and the run store refuse a paused run; the checks of a run read it up to its pause.
+tests/engine/test_play.py,97,6,source,PORT-ENGINE,S4,,closed-form+message-text,"Played runs through evaluate_study: what an actor sees, control by actor or event, picks; choices and `sees` stay (S4)."
+tests/engine/test_priority_at_a_face.py,112,3,source,PORT-ENGINE,S2,,closed-form+independent-code,A priority share at an empty stock passes the inflow in order; forty seeded tanks with closed-form tallies.
+tests/engine/test_public_engine.py,441,22,source,PORT-CONSUMER,C,5,message-text+closed-form,"Public study and report contract: edit transactions, JSON envelope, bounds; three time integrals; one test pins file order; no catalogue."

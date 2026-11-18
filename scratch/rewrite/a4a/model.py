@@ -82,13 +82,40 @@ output first: L = places.1.stock  @shape
     "Held by the first place of the file"
     level
 '''
+# The request of the flow of a route, in the old language, for each kind of model of the measurements
+# of task 2. `constant` reads nothing that moves. The others read a stock, which moves between moments:
+# `linear` asks a share of what the origin holds in an hour, `saturating` slows down as the origin
+# runs low, and `target` asks what brings the destination to a goal in a given time (the form of
+# the spec: `formula(max(0 L, 15 L - this.water) / (2 h))`).
+KINDS = {
+    'constant': ('rate', ''),
+    'linear': ('pull * origin.stock', '    input pull: fraction/h = 0.02 fraction/h in 0 fraction/h to 10 fraction/h  @shape\n'),
+    'saturating': (
+        'rate * origin.stock / (origin.stock + half)',
+        '    input half: L = 20 L in 1 L to 1000 L  @shape\n',
+    ),
+    'target': (
+        'max(0 L, goal - destination.stock) / lag',
+        '    input goal: L = 150 L in 0 L to 1000 L  @shape\n    input lag: h = 20 h in 1 h to 1000 h  @shape\n',
+    ),
+}
+
+
+def old_text(kind='constant', horizon=3.0):
+    """The old model with the request of the kind."""
+    request, inputs = KINDS[kind]
+    body = OLD.replace('    flow carried: origin.stock -> destination.stock at rate  @shape\n', f'{inputs}    flow carried: origin.stock -> destination.stock at {request}  @shape\n')
+    assert body != OLD or kind == 'constant'
+    return HEAD.format(horizon=horizon) + body + RECORD
+
+
 UNITS = {
     'L': {'kind': 'volume', 'dimensions': {'volume': 1}, 'scale': 1, 'description': 'Litres.'},
     'L/h': {'kind': 'volume_rate', 'dimensions': {'volume': 1, 'time': -1}, 'scale': 1, 'description': 'Litres in an hour.'},
 }
 
 
-def write(folder, places, routes, horizon=3.0, old=True):
+def write(folder, places, routes, horizon=3.0, old=True, kind='constant'):
     """Write the two tables, and the old model beside them. `places`: (id, stock, need) for each;
     `routes`: (id, origin id, destination id, rate, lot, ship_at) for each."""
     folder = Path(folder)
@@ -105,7 +132,7 @@ def write(folder, places, routes, horizon=3.0, old=True):
             f'{i},places.{a},places.{b},{rate!r},{lot!r},{at!r}\n' for i, a, b, rate, lot, at in routes
         )
     if old:
-        (folder / 'model.scn').write_text(HEAD.format(horizon=horizon) + OLD + RECORD)
+        (folder / 'model.scn').write_text(old_text(kind, horizon))
         (folder / 'units.json').write_text(json.dumps(UNITS))
     return folder
 
