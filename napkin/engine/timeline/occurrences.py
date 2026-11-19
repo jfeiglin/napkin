@@ -34,12 +34,12 @@ has none (D7). Its flows leave the network at the settling of the round, and rea
 **A finished occurrence is frozen** (spec, "State owned by an invocation": "a write to it is an
 error"), and one check says so wherever a write or a transfer of a run lands (`writable`): the
 target of an assignment and each end of a `move` (`moment.py`), whatever spells it (a reference
-saved at the entry, a copy of one, `.occurrences.at(t)`, a parameter); each end of a flow as it
-joins the network (`register`); and each store of an occurrence as it finishes, which no flow of
-another occurrence may still meet (`complete`): a flow is present at its ends for its owner's
-lifetime, whatever its rate, and a frozen store can neither take nor give. The run fails there, at
-that moment, naming the value, the finished occurrence and the writer. An edit at a stop is refused
-by the same rule (`checkpoints.py`).
+saved at the entry, a copy of one, `.occurrences.at(t)`, another member's through a link); each end
+of a flow as it joins the network (`register`); and each store of an occurrence as it finishes,
+which no flow of another occurrence may still meet (`complete`): a flow is present at its ends for
+its owner's lifetime, whatever its rate, and a frozen store can neither take nor give. The run
+fails there, at that moment, naming the value, the finished occurrence and the writer. An edit at a
+stop is refused by the same rule (`frozen`, `checkpoints.py`).
 
 The limits of a runaway run (D6) are checked before each start: `max_occurrences` starts of one
 event, and `max_active` occurrences of one event alive at once, whose message names the oldest
@@ -316,14 +316,21 @@ class Occurrences:
         if owner in self.live:
             self.live[owner].met.add(store)
 
+    def frozen(self, name):
+        """The finished occurrence that owns an engine name, or None: its values are frozen."""
+        owner = self.plan.occurrence_of(name)
+        live = self.live.get(owner) if owner is not None else None
+        return owner if live is not None and not live.active else None
+
     def writable(self, name, writer):
         """The one check of a write or a transfer that lands on an engine name (see the module): a
         value of a finished occurrence is frozen, and the run fails, naming the value, its
         occurrence and the writer (a statement's origin, or a flow)."""
-        owner = self.plan.occurrence_of(name)
-        live = self.live.get(owner) if owner is not None else None
-        if live is not None and not live.active:
-            raise SimulationError(f'{writer}: {name} belongs to the finished occurrence {owner}, which is frozen')
+        owner = self.frozen(name)
+        if owner is not None:
+            raise SimulationError(
+                f'{writer}: {name} belongs to the finished occurrence {owner}, which is frozen'
+            )
 
     def waiting(self):
         """The occurrences that wait at a gate, in the order in which they were made."""

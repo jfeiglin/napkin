@@ -35,9 +35,13 @@ pieces of each value of a run:
   an occurrence is a member from its start, a flow of an occurrence while it is active.
 - **An edit of a store** at a stop (`checkpoints.py`) is a transfer from or to outside in its books:
   the store's history `external` (`tank.water.external`, in the store's unit) is what edits brought
-  into it so far, from its start, a piece at each edit; a withdrawal lowers it. The record keeps the
-  ledger of every store that an edit changed, whatever its request names, and holds it with the
-  store or alone (`Manifest.names`); a store with no ledger took nothing from outside.
+  into it so far, a piece at each edit, the first at the first edit (before it, nothing came from
+  outside: the ledger reads 0); a withdrawal lowers it. The record keeps the ledger of every store
+  that an edit changed by its end, whatever its request names, and holds it with the store or alone
+  (`Manifest.names`); a store with no ledger took nothing from outside. So a ledger has a piece only
+  where an edit made one, as the run goes: a record that ends before the first edit of a store holds
+  no ledger of it, fresh or cut from a longer record (`store.served`), and an edit adds to the budget
+  of pieces at its own time, never before.
 - **The time of a change** that `elapsed` reads has a piece at the start of its value and at each
   commit that changed it. It has no key in the record: the reader finds it from the history of the
   value that it reads.
@@ -53,7 +57,9 @@ pieces of each value of a run:
   too.
 
 The values that a record holds have at most the request's budget of pieces: a record that would hold
-more ends before the time of the first piece that does not fit, naming the budget (`Record.within`).
+more ends before the time of the first piece that does not fit, naming the budget (`Record.within`),
+and a run whose record so far would hold more at a stop ends there by its budget, before any checkpoint
+(`checkpoints.Breaks`).
 
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of each
 path, from what the record holds and from nothing else (`Record.unavailable`): any other value is
@@ -193,7 +199,9 @@ class Recorder:
     def external(self, store, t, amount, start):
         """An edit at a stop moved `amount` into a store from outside (a withdrawal is negative): its
         books hold it as an external transfer, the history `external` beside the store, what edits
-        brought in so far, from the store's start."""
+        brought in so far, a piece at each edit. `start` is when the store started, which the run's
+        savepoint keeps with the transfers (`moment._Savepoint`); the ledger reads 0 from then to its
+        first edit without a piece of its own."""
         self.transfers.setdefault(store, (start, []))[1].append((t, amount))
 
     def segment(self, component, segment, stores, flows):
@@ -351,17 +359,20 @@ class Recorder:
         keys = set(request.keys)
         if needed is not None:
             keys |= {plan.values[name].key for name in needed if plan.values[name].key is not None}
-        # The ledger of every store that an edit changed, whatever the request names: the books of
-        # the store, which a record that holds the store, or the ledger, reads.
-        for name, (start, moved) in self.transfers.items():
+        # The ledger of every store that an edit changed by the end, whatever the request names: the
+        # books of the store, which a record that holds the store, or the ledger, reads. Its first
+        # piece is at the first edit, so a record that ends before it holds none (see the module).
+        for name, (_, moved) in self.transfers.items():
             key = plan.values[name].key
             if key is None or plan.occurrence_of(name) not in started:
                 continue
-            total, pieces = 0.0, [(start, 0.0, 0.0)]
+            total, pieces = 0.0, []
             for at, amount in moved:
                 if at <= end:
                     total += amount
                     pieces.append((at, total, 0.0))
+            if not pieces:
+                continue
             ledger = Key(key.owner, (*key.steps, 'external'))
             histories[f'{name}.external'] = self._history(ledger, pieces)
             keys.add(ledger)
@@ -882,13 +893,14 @@ class Reader:
 
     def ledger(self, key, t):
         """What edits brought into a store from outside up to time t (`Recorder.external`): the record
-        keeps the ledger of every store that an edit changed, whatever its request names, so a store
-        with none took nothing from outside."""
+        keeps the ledger of every store that an edit changed by its end, whatever its request names,
+        from its first edit, so a store with none, or a time before its first edit, took nothing from
+        outside."""
         try:
             history = self.record.history(key)
         except KeyError:
             return 0.0
-        return history.at(t)
+        return history.at(t) if history.pieces[0].t <= t else 0.0
 
     def stores(self):
         """The engine names of the stores of the run: the stored numbers that its flows meet."""

@@ -93,3 +93,25 @@ def test_a_text_with_line_breaks_keeps_them():
     tree = parse(text)
     assert tree.items[0].text == 'first\nsecond\n\nthird'
     assert parse(write(tree)) == tree
+
+
+def test_a_sum_of_thousands_of_terms_formats_and_parses_to_the_same_tree():
+    """A chain from the left (`a + b - c ...`, `a * b / c ...`) is written link by link, as the parser
+    reads it and the front end resolves it, so a long one costs no depth of calls (the audit's row
+    15): at a recursion limit of 400, 3,000 terms of each level, with quantities and the bare names
+    after which a quantity is bracketed."""
+    import sys
+
+    sums = ' + '.join(f'v{k}' if k % 3 else f'{k} L' for k in range(3000))
+    products = ' * '.join('x' if k % 2 else '(2 h)' for k in range(3000))
+    text = f'total = formula({sums} - 1 L)\nproduct = formula({products} / y)\n'
+    before = sys.getrecursionlimit()
+    sys.setrecursionlimit(400)
+    try:
+        # The text is written as the formatter writes it, so it formats to itself; its tree, read
+        # again, writes the same text (a tree thousands deep is compared by its text: Python's own
+        # comparison of two such trees recurses).
+        written = format_text(text)
+        assert written == text and write(parse(written)) == text
+    finally:
+        sys.setrecursionlimit(before)

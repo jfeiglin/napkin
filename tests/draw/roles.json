@@ -1,0 +1,3198 @@
+{
+ "cards": {
+  "map": {
+   "arrows": [
+    {
+     "count": 1,
+     "from": "operator",
+     "how": [
+      "adds",
+      "takes"
+     ],
+     "kind": "changes",
+     "to": "meter",
+     "values": [
+      "meter.y"
+     ]
+    }
+   ],
+   "cards": [
+    {
+     "copies": 3,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "wards",
+     "machines": [],
+     "pipes": [
+      {
+       "flows": [
+        "wards.arrive"
+       ],
+       "from": null,
+       "key": "->wards.people",
+       "label": "Arrive",
+       "to": "wards.people"
+      }
+     ],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "wards.people",
+       "kind": "tally",
+       "name": "People"
+      }
+     ],
+     "template": "Ward",
+     "title": "Wards",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "north",
+     "machines": [],
+     "pipes": [
+      {
+       "flows": [
+        "north.arrive"
+       ],
+       "from": null,
+       "key": "->north.people",
+       "label": "Arrive",
+       "to": "north.people"
+      }
+     ],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "north.people",
+       "kind": "tally",
+       "name": "People"
+      }
+     ],
+     "template": "Ward",
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": null,
+     "id": "crew",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": null,
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Crew",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": null,
+     "id": "meter",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": null,
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Meter",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "server",
+     "id": "operator",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "operator",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Operator",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [],
+    "horizon": "10 h",
+    "run": null,
+    "runs": 1
+   },
+   "groups": [],
+   "name": "cards",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A fixture"
+  },
+  "svg": {
+   "bytes": 14484,
+   "sha256": "328c8bf257d35ea76e4d7babb397cd7879c89582e4999855a44adce7453a3134"
+  }
+ },
+ "plans": {
+  "map": {
+   "arrows": [],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "server",
+     "id": "plant",
+     "machines": [
+      {
+       "initial": "A",
+       "name": "X",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "A",
+        "B",
+        "C"
+       ],
+       "transitions": [
+        {
+         "by": "plant",
+         "event": "plant.back",
+         "from": [
+          "B"
+         ],
+         "to": "A"
+        },
+        {
+         "by": "plant",
+         "event": "plant.branched",
+         "from": [
+          "B"
+         ],
+         "to": "C"
+        },
+        {
+         "by": "plant",
+         "event": "plant.either",
+         "from": [
+          "B",
+          "C"
+         ],
+         "to": "A"
+        },
+        {
+         "by": "plant",
+         "event": "plant.either",
+         "from": [
+          "C"
+         ],
+         "to": "B"
+        },
+        {
+         "by": "plant",
+         "event": "plant.guarded",
+         "from": [
+          "C"
+         ],
+         "to": "A"
+        },
+        {
+         "by": "plant",
+         "event": "plant.later",
+         "from": [
+          "B"
+         ],
+         "to": "C"
+        },
+        {
+         "by": "plant",
+         "event": "plant.loose",
+         "from": null,
+         "to": "A"
+        },
+        {
+         "by": "plant",
+         "event": "plant.mirror",
+         "from": null,
+         "to": "A"
+        },
+        {
+         "by": "plant",
+         "event": "plant.mirror",
+         "from": null,
+         "to": "B"
+        },
+        {
+         "by": "plant",
+         "event": "plant.mirror",
+         "from": null,
+         "to": "C"
+        },
+        {
+         "by": "plant",
+         "event": "plant.switched",
+         "from": [
+          "A"
+         ],
+         "to": "B"
+        },
+        {
+         "by": "plant",
+         "event": "plant.to_b",
+         "from": [
+          "A"
+         ],
+         "to": "B"
+        },
+        {
+         "by": "plant",
+         "event": "plant.to_c",
+         "from": [
+          "A",
+          "B"
+         ],
+         "to": "C"
+        },
+        {
+         "by": "plant",
+         "event": "plant.vague",
+         "from": null,
+         "to": "B"
+        },
+        {
+         "by": "plant",
+         "event": "plant.waits",
+         "from": null,
+         "to": "C"
+        }
+       ],
+       "var": "plant.x"
+      },
+      {
+       "initial": "B",
+       "name": "Y",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "A",
+        "B",
+        "C"
+       ],
+       "transitions": [],
+       "var": "plant.y"
+      },
+      {
+       "initial": null,
+       "name": "Z",
+       "place": "inside",
+       "starts_by": [
+        {
+         "option": "Planned A",
+         "state": "A"
+        },
+        {
+         "option": "Planned B",
+         "state": "B"
+        }
+       ],
+       "states": [
+        "A",
+        "B",
+        "C"
+       ],
+       "transitions": [],
+       "var": "plant.z"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "operator",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Plant",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [],
+    "horizon": "10 h",
+    "run": null,
+    "runs": 1
+   },
+   "groups": [],
+   "name": "plans",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "Plans"
+  },
+  "svg": {
+   "bytes": 18650,
+   "sha256": "d2bedd5cd3963b383808351d3362252e44566c4c90726f07165adba6bcbe1c1b"
+  }
+ },
+ "states": {
+  "map": {
+   "arrows": [],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "server",
+     "id": "plant",
+     "machines": [
+      {
+       "initial": "A",
+       "name": "X",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "A",
+        "B",
+        "C"
+       ],
+       "transitions": [
+        {
+         "by": "plant",
+         "event": "plant.back",
+         "from": [
+          "B"
+         ],
+         "to": "A"
+        },
+        {
+         "by": "plant",
+         "event": "plant.branched",
+         "from": [
+          "B"
+         ],
+         "to": "C"
+        },
+        {
+         "by": "plant",
+         "event": "plant.either",
+         "from": [
+          "B",
+          "C"
+         ],
+         "to": "A"
+        },
+        {
+         "by": "plant",
+         "event": "plant.either",
+         "from": [
+          "C"
+         ],
+         "to": "B"
+        },
+        {
+         "by": "plant",
+         "event": "plant.guarded",
+         "from": [
+          "C"
+         ],
+         "to": "A"
+        },
+        {
+         "by": "plant",
+         "event": "plant.later",
+         "from": [
+          "B"
+         ],
+         "to": "C"
+        },
+        {
+         "by": "plant",
+         "event": "plant.loose",
+         "from": null,
+         "to": "A"
+        },
+        {
+         "by": "plant",
+         "event": "plant.mirror",
+         "from": null,
+         "to": "A"
+        },
+        {
+         "by": "plant",
+         "event": "plant.mirror",
+         "from": null,
+         "to": "B"
+        },
+        {
+         "by": "plant",
+         "event": "plant.mirror",
+         "from": null,
+         "to": "C"
+        },
+        {
+         "by": "plant",
+         "event": "plant.switched",
+         "from": [
+          "A"
+         ],
+         "to": "B"
+        },
+        {
+         "by": "plant",
+         "event": "plant.to_b",
+         "from": [
+          "A"
+         ],
+         "to": "B"
+        },
+        {
+         "by": "plant",
+         "event": "plant.to_c",
+         "from": [
+          "A",
+          "B"
+         ],
+         "to": "C"
+        },
+        {
+         "by": "plant",
+         "event": "plant.vague",
+         "from": null,
+         "to": "B"
+        },
+        {
+         "by": "plant",
+         "event": "plant.waits",
+         "from": null,
+         "to": "C"
+        }
+       ],
+       "var": "plant.x"
+      },
+      {
+       "initial": "B",
+       "name": "Y",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "A",
+        "B",
+        "C"
+       ],
+       "transitions": [],
+       "var": "plant.y"
+      },
+      {
+       "initial": null,
+       "name": "Z",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "A",
+        "B",
+        "C"
+       ],
+       "transitions": [],
+       "var": "plant.z"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "operator",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Plant",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [],
+    "horizon": "10 h",
+    "run": null,
+    "runs": 1
+   },
+   "groups": [],
+   "name": "states",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A fixture"
+  },
+  "svg": {
+   "bytes": 18328,
+   "sha256": "634ccec387cd296348a06f958a787a075b1a1434bec87e5e8410e985858447fd"
+  }
+ },
+ "wards": {
+  "map": {
+   "arrows": [],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "north",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "east",
+     "machines": [
+      {
+       "initial": "LOW",
+       "name": "Level",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "LOW",
+        "HIGH"
+       ],
+       "transitions": [
+        {
+         "by": "east",
+         "event": "east.floods",
+         "from": null,
+         "to": "HIGH"
+        }
+       ],
+       "var": "east.level"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": "Ward",
+     "title": "East",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "west",
+     "machines": [
+      {
+       "initial": "LOW",
+       "name": "Level",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "LOW",
+        "HIGH"
+       ],
+       "transitions": [
+        {
+         "by": "west",
+         "event": "west.floods",
+         "from": null,
+         "to": "HIGH"
+        }
+       ],
+       "var": "west.level"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": "Ward",
+     "title": "West",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "target",
+     "id": "attacker",
+     "machines": [
+      {
+       "initial": "NONE",
+       "name": "Access",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NONE",
+        "KEPT"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.start",
+         "from": null,
+         "to": "KEPT"
+        }
+       ],
+       "var": "attacker.access"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "adversary",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Attacker",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [],
+    "horizon": "10 h",
+    "run": null,
+    "runs": 3
+   },
+   "groups": [],
+   "name": "wards",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A test"
+  },
+  "svg": {
+   "bytes": 17359,
+   "sha256": "f865b5d6a8dae58c2f97faad10ddd75159ab0410bbb9ca24cd2391296c5ae82b"
+  }
+ },
+ "wards_no_role": {
+  "map": {
+   "arrows": [],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "north",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "east",
+     "machines": [
+      {
+       "initial": "LOW",
+       "name": "Level",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "LOW",
+        "HIGH"
+       ],
+       "transitions": [
+        {
+         "by": "east",
+         "event": "east.floods",
+         "from": null,
+         "to": "HIGH"
+        }
+       ],
+       "var": "east.level"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": "Ward",
+     "title": "East",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "west",
+     "machines": [
+      {
+       "initial": "LOW",
+       "name": "Level",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "LOW",
+        "HIGH"
+       ],
+       "transitions": [
+        {
+         "by": "west",
+         "event": "west.floods",
+         "from": null,
+         "to": "HIGH"
+        }
+       ],
+       "var": "west.level"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": "Ward",
+     "title": "West",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": null,
+     "id": "plain",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": null,
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Plain",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": null,
+     "id": "crew",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": null,
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Crew",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "target",
+     "id": "attacker",
+     "machines": [
+      {
+       "initial": "NONE",
+       "name": "Access",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NONE",
+        "KEPT"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.start",
+         "from": null,
+         "to": "KEPT"
+        }
+       ],
+       "var": "attacker.access"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "adversary",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Attacker",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [],
+    "horizon": "10 h",
+    "run": null,
+    "runs": 3
+   },
+   "groups": [],
+   "name": "wards_no_role",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A test"
+  },
+  "svg": {
+   "bytes": 18408,
+   "sha256": "f06f59a4eab76a238704d01e6b100164631ea0da399a62f2e64a124a411ed45b"
+  }
+ },
+ "wards_stocked": {
+  "map": {
+   "arrows": [],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "north",
+     "machines": [],
+     "pipes": [
+      {
+       "flows": [
+        "north.serve"
+       ],
+       "from": "north.queue",
+       "key": "north.queue->north.served",
+       "label": "Serve",
+       "to": "north.served"
+      }
+     ],
+     "place": null,
+     "role": "community",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "north.queue",
+       "kind": "stock",
+       "name": "Queue"
+      },
+      {
+       "key": "north.served",
+       "kind": "tally",
+       "name": "Served"
+      }
+     ],
+     "template": null,
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "east",
+     "machines": [
+      {
+       "initial": "LOW",
+       "name": "Level",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "LOW",
+        "HIGH"
+       ],
+       "transitions": [
+        {
+         "by": "east",
+         "event": "east.floods",
+         "from": null,
+         "to": "HIGH"
+        }
+       ],
+       "var": "east.level"
+      }
+     ],
+     "pipes": [
+      {
+       "flows": [
+        "east.drain"
+       ],
+       "from": "east.water",
+       "key": "east.water->east.drained",
+       "label": "Drain",
+       "to": "east.drained"
+      }
+     ],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "east.water",
+       "kind": "stock",
+       "name": "Water"
+      },
+      {
+       "key": "east.drained",
+       "kind": "tally",
+       "name": "Drained"
+      }
+     ],
+     "template": "Ward",
+     "title": "East",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "west",
+     "machines": [
+      {
+       "initial": "LOW",
+       "name": "Level",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "LOW",
+        "HIGH"
+       ],
+       "transitions": [
+        {
+         "by": "west",
+         "event": "west.floods",
+         "from": null,
+         "to": "HIGH"
+        }
+       ],
+       "var": "west.level"
+      }
+     ],
+     "pipes": [
+      {
+       "flows": [
+        "west.drain"
+       ],
+       "from": "west.water",
+       "key": "west.water->west.drained",
+       "label": "Drain",
+       "to": "west.drained"
+      }
+     ],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "west.water",
+       "kind": "stock",
+       "name": "Water"
+      },
+      {
+       "key": "west.drained",
+       "kind": "tally",
+       "name": "Drained"
+      }
+     ],
+     "template": "Ward",
+     "title": "West",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "target",
+     "id": "attacker",
+     "machines": [
+      {
+       "initial": "NONE",
+       "name": "Access",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NONE",
+        "KEPT"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.start",
+         "from": null,
+         "to": "KEPT"
+        }
+       ],
+       "var": "attacker.access"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "adversary",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Attacker",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [],
+    "horizon": "10 h",
+    "run": null,
+    "runs": 3
+   },
+   "groups": [],
+   "name": "wards_stocked",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A test"
+  },
+  "svg": {
+   "bytes": 20074,
+   "sha256": "eb0538b19057b5015e37357ca00f9909129fbe5835944be8d11361d900c1083b"
+  }
+ },
+ "wards_styled": {
+  "map": {
+   "arrows": [],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "house",
+     "id": "north",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "target",
+     "id": "attacker",
+     "machines": [
+      {
+       "initial": "NONE",
+       "name": "Access",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NONE",
+        "KEPT"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.start",
+         "from": null,
+         "to": "KEPT"
+        }
+       ],
+       "var": "attacker.access"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "adversary",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Attacker",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [
+     "Ward"
+    ],
+    "horizon": "10 h",
+    "run": null,
+    "runs": 3
+   },
+   "groups": [],
+   "name": "wards_styled",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A test"
+  },
+  "svg": {
+   "bytes": 12902,
+   "sha256": "85cc5e56e2762bad5f41b5bf16edf7e6726433fdabd3d01b3c47283ae92709da"
+  }
+ },
+ "wards_table": {
+  "map": {
+   "arrows": [],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "north",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "east",
+     "machines": [
+      {
+       "initial": "LOW",
+       "name": "Level",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "LOW",
+        "HIGH"
+       ],
+       "transitions": [
+        {
+         "by": "east",
+         "event": "east.floods",
+         "from": null,
+         "to": "HIGH"
+        }
+       ],
+       "var": "east.level"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": "Ward",
+     "title": "East",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "west",
+     "machines": [
+      {
+       "initial": "LOW",
+       "name": "Level",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "LOW",
+        "HIGH"
+       ],
+       "transitions": [
+        {
+         "by": "west",
+         "event": "west.floods",
+         "from": null,
+         "to": "HIGH"
+        }
+       ],
+       "var": "west.level"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": "Ward",
+     "title": "West",
+     "triggers": null
+    },
+    {
+     "copies": 2,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "shield",
+     "id": "crews",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "responder",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": "Crew",
+     "title": "Crews",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "target",
+     "id": "attacker",
+     "machines": [
+      {
+       "initial": "NONE",
+       "name": "Access",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NONE",
+        "KEPT"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.start",
+         "from": null,
+         "to": "KEPT"
+        }
+       ],
+       "var": "attacker.access"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "adversary",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Attacker",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [],
+    "horizon": "10 h",
+    "run": null,
+    "runs": 3
+   },
+   "groups": [],
+   "name": "wards_table",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A test"
+  },
+  "svg": {
+   "bytes": 18473,
+   "sha256": "83759b06e8afb55e743305a503fdc3c1319d29d0d1d797b32165abf5782af7cb"
+  }
+ },
+ "wards_text": {
+  "map": {
+   "arrows": [],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "north",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "east",
+     "machines": [
+      {
+       "initial": "LOW",
+       "name": "Level",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "LOW",
+        "HIGH"
+       ],
+       "transitions": [
+        {
+         "by": "east",
+         "event": "east.floods",
+         "from": null,
+         "to": "HIGH"
+        }
+       ],
+       "var": "east.level"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": "Ward",
+     "title": "East",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "west",
+     "machines": [
+      {
+       "initial": "LOW",
+       "name": "Level",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "LOW",
+        "HIGH"
+       ],
+       "transitions": [
+        {
+         "by": "west",
+         "event": "west.floods",
+         "from": null,
+         "to": "HIGH"
+        }
+       ],
+       "var": "west.level"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": "Ward",
+     "title": "West",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "target",
+     "id": "attacker",
+     "machines": [
+      {
+       "initial": "NONE",
+       "name": "Access",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NONE",
+        "KEPT"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.start",
+         "from": null,
+         "to": "KEPT"
+        }
+       ],
+       "var": "attacker.access"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "adversary",
+     "starts": true,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Attacker",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [],
+    "horizon": "10 h",
+    "run": null,
+    "runs": 3
+   },
+   "groups": [],
+   "name": "wards_text",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A test"
+  },
+  "svg": {
+   "bytes": 17369,
+   "sha256": "4a828657a8fd625a2a194fed20f82ef403e088efc611b673ff153a6ebc588786"
+  }
+ },
+ "works": {
+  "map": {
+   "arrows": [
+    {
+     "count": 1,
+     "from": "attacker",
+     "how": [
+      "sets"
+     ],
+     "kind": "changes",
+     "to": "plant",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "crews",
+     "how": [
+      "sets"
+     ],
+     "kind": "changes",
+     "to": "plant",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "hospital",
+     "how": [],
+     "kind": "moves",
+     "to": "plant",
+     "values": [
+      "plant.treated"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "north",
+     "how": [],
+     "kind": "moves",
+     "to": "town",
+     "values": [
+      "town.stored"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "reads",
+     "to": "attacker",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "fires",
+     "to": "crews",
+     "values": [
+      "crews.repair"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "reads",
+     "to": "crews",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [
+      "shares"
+     ],
+     "kind": "changes",
+     "to": "hospital",
+     "values": [
+      "hospital.supply"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [
+      "shares"
+     ],
+     "kind": "changes",
+     "to": "town",
+     "values": [
+      "town.supply"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "south",
+     "how": [],
+     "kind": "moves",
+     "to": "town",
+     "values": [
+      "town.stored"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "town",
+     "how": [],
+     "kind": "moves",
+     "to": "plant",
+     "values": [
+      "plant.treated"
+     ]
+    }
+   ],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "target",
+     "id": "attacker",
+     "machines": [
+      {
+       "initial": "NONE",
+       "name": "Access to the plant",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NONE",
+        "GAINED",
+        "KEPT",
+        "LOST"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.break_in",
+         "from": null,
+         "to": "GAINED"
+        },
+        {
+         "by": "attacker",
+         "event": "attacker.hold",
+         "from": [
+          "GAINED"
+         ],
+         "to": "KEPT"
+        }
+       ],
+       "var": "attacker.access"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "adversary",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "The attacker",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "server",
+     "id": "plant",
+     "machines": [
+      {
+       "initial": "NORMAL",
+       "name": "Mode of the controls",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NORMAL",
+        "MANUAL",
+        "DOWN"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.take_over",
+         "from": [
+          "NORMAL"
+         ],
+         "to": "MANUAL"
+        },
+        {
+         "by": "crews",
+         "event": "crews.repair",
+         "from": [
+          "MANUAL"
+         ],
+         "to": "NORMAL"
+        }
+       ],
+       "var": "plant.mode"
+      }
+     ],
+     "pipes": [
+      {
+       "flows": [
+        "plant.intake"
+       ],
+       "from": null,
+       "key": "->plant.raw",
+       "label": "Intake",
+       "to": "plant.raw"
+      },
+      {
+       "flows": [
+        "plant.treat"
+       ],
+       "from": "plant.raw",
+       "key": "plant.raw->plant.treated",
+       "label": "Treatment",
+       "to": "plant.treated"
+      },
+      {
+       "flows": [
+        "plant.count"
+       ],
+       "from": null,
+       "key": "->plant.treated_total",
+       "label": "Count",
+       "to": "plant.treated_total"
+      }
+     ],
+     "place": null,
+     "role": "operator",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "plant.raw",
+       "kind": "stock",
+       "name": "Raw water"
+      },
+      {
+       "key": "plant.treated",
+       "kind": "stock",
+       "name": "Treated"
+      },
+      {
+       "key": "plant.treated_total",
+       "kind": "tally",
+       "name": "Water treated"
+      }
+     ],
+     "template": null,
+     "title": "The water treatment plant",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "town",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "town.stored",
+       "kind": "stock",
+       "name": "Water in the town"
+      }
+     ],
+     "template": null,
+     "title": "Town",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "hospital",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "hospital.stored",
+       "kind": "tally",
+       "name": "Stored"
+      }
+     ],
+     "template": null,
+     "title": "Hospital",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "shield",
+     "id": "crews",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "responder",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Crews",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "gauge",
+     "id": "north",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "environment",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "north.level",
+       "kind": "tally",
+       "name": "Water in the zone"
+      }
+     ],
+     "template": "Zone",
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "gauge",
+     "id": "south",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "environment",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "south.level",
+       "kind": "tally",
+       "name": "Water in the zone"
+      }
+     ],
+     "template": "Zone",
+     "title": "South",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [],
+    "horizon": "48 h",
+    "run": null,
+    "runs": 2
+   },
+   "groups": [],
+   "name": "works",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A water works and its town, a synthetic fixture for tests only"
+  },
+  "svg": {
+   "bytes": 30097,
+   "sha256": "ab3a2e510a98f9b51d5a845352019b8b8658eb1baf9d07aa124aa7972e756f56"
+  }
+ },
+ "works_attack": {
+  "map": {
+   "arrows": [
+    {
+     "count": 1,
+     "from": "attacker",
+     "how": [
+      "sets"
+     ],
+     "kind": "changes",
+     "to": "plant",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "crews",
+     "how": [
+      "sets"
+     ],
+     "kind": "changes",
+     "to": "plant",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "north",
+     "how": [],
+     "kind": "moves",
+     "to": "town",
+     "values": [
+      "town.stored"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "reads",
+     "to": "attacker",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "fires",
+     "to": "crews",
+     "values": [
+      "crews.repair"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "reads",
+     "to": "crews",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [
+      "shares"
+     ],
+     "kind": "changes",
+     "to": "town",
+     "values": [
+      "town.supply"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "south",
+     "how": [],
+     "kind": "moves",
+     "to": "town",
+     "values": [
+      "town.stored"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "town",
+     "how": [],
+     "kind": "moves",
+     "to": "plant",
+     "values": [
+      "plant.treated"
+     ]
+    }
+   ],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "target",
+     "id": "attacker",
+     "machines": [
+      {
+       "initial": "NONE",
+       "name": "Access to the plant",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NONE",
+        "GAINED",
+        "KEPT",
+        "LOST"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.break_in",
+         "from": null,
+         "to": "GAINED"
+        },
+        {
+         "by": "attacker",
+         "event": "attacker.hold",
+         "from": [
+          "GAINED"
+         ],
+         "to": "KEPT"
+        }
+       ],
+       "var": "attacker.access"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "adversary",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "The attacker",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "factory",
+     "id": "plant",
+     "machines": [
+      {
+       "initial": "NORMAL",
+       "name": "Mode of the controls",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NORMAL",
+        "MANUAL",
+        "DOWN"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.take_over",
+         "from": [
+          "NORMAL"
+         ],
+         "to": "MANUAL"
+        },
+        {
+         "by": "crews",
+         "event": "crews.repair",
+         "from": [
+          "MANUAL"
+         ],
+         "to": "NORMAL"
+        }
+       ],
+       "var": "plant.mode"
+      }
+     ],
+     "pipes": [
+      {
+       "flows": [
+        "plant.intake"
+       ],
+       "from": null,
+       "key": "->plant.raw",
+       "label": "Intake",
+       "to": "plant.raw"
+      },
+      {
+       "flows": [
+        "plant.treat"
+       ],
+       "from": "plant.raw",
+       "key": "plant.raw->plant.treated",
+       "label": "Treatment",
+       "to": "plant.treated"
+      },
+      {
+       "flows": [
+        "plant.count"
+       ],
+       "from": null,
+       "key": "->plant.treated_total",
+       "label": "Count",
+       "to": "plant.treated_total"
+      }
+     ],
+     "place": null,
+     "role": "operator",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "plant.raw",
+       "kind": "stock",
+       "name": "Raw water"
+      },
+      {
+       "key": "plant.treated",
+       "kind": "stock",
+       "name": "Treated"
+      },
+      {
+       "key": "plant.treated_total",
+       "kind": "tally",
+       "name": "Water treated"
+      }
+     ],
+     "template": null,
+     "title": "The water treatment plant",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "town",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "town.stored",
+       "kind": "stock",
+       "name": "Water in the town"
+      }
+     ],
+     "template": null,
+     "title": "Town",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "shield",
+     "id": "crews",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "responder",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Crews",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "gauge",
+     "id": "north",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "environment",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "north.level",
+       "kind": "tally",
+       "name": "Water in the zone"
+      }
+     ],
+     "template": "Zone",
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "gauge",
+     "id": "south",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "environment",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "south.level",
+       "kind": "tally",
+       "name": "Water in the zone"
+      }
+     ],
+     "template": "Zone",
+     "title": "South",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [
+     "Hospital"
+    ],
+    "horizon": "48 h",
+    "run": {
+     "label": "An attack with an AI",
+     "name": "attack",
+     "options": [
+      "Attacker AI"
+     ]
+    },
+    "runs": 1
+   },
+   "groups": [],
+   "name": "works_attack",
+   "panels": null,
+   "run": "attack",
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A water works and its town, a synthetic fixture for tests only"
+  },
+  "svg": {
+   "bytes": 28235,
+   "sha256": "c2438281643dd02b39a030e593007e25f34a7d1e18d422c4521533ac4a213be3"
+  }
+ },
+ "works_contract": {
+  "map": {
+   "arrows": [
+    {
+     "count": 1,
+     "from": "attacker",
+     "how": [
+      "sets"
+     ],
+     "kind": "changes",
+     "to": "plant",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "crews",
+     "how": [
+      "sets"
+     ],
+     "kind": "changes",
+     "to": "plant",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "north",
+     "how": [],
+     "kind": "moves",
+     "to": "town",
+     "values": [
+      "town.stored"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "reads",
+     "to": "attacker",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "fires",
+     "to": "crews",
+     "values": [
+      "crews.repair"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "reads",
+     "to": "crews",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [
+      "shares"
+     ],
+     "kind": "changes",
+     "to": "town",
+     "values": [
+      "town.supply"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "south",
+     "how": [],
+     "kind": "moves",
+     "to": "town",
+     "values": [
+      "town.stored"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "town",
+     "how": [],
+     "kind": "moves",
+     "to": "plant",
+     "values": [
+      "plant.treated"
+     ]
+    }
+   ],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "target",
+     "id": "attacker",
+     "machines": [
+      {
+       "initial": "NONE",
+       "name": "Access to the plant",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NONE",
+        "GAINED",
+        "KEPT",
+        "LOST"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.break_in",
+         "from": null,
+         "to": "GAINED"
+        },
+        {
+         "by": "attacker",
+         "event": "attacker.hold",
+         "from": [
+          "GAINED"
+         ],
+         "to": "KEPT"
+        }
+       ],
+       "var": "attacker.access"
+      }
+     ],
+     "pipes": [],
+     "place": {
+      "column": 1,
+      "row": 1
+     },
+     "role": "adversary",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "The attacker",
+     "triggers": {
+      "events": [
+       {
+        "event": "attacker.break_in",
+        "full": "break in \u2014 when ai and from 2 h, once; after 0 h: sets access; only with Attacker AI",
+        "label": "The attacker breaks in to the controls of the plant.",
+        "name": "break in",
+        "rule": "this.ai and t >= 2 h",
+        "text": "break in \u2014 when ai and from 2 h, once; after 0 h: sets access; only with Attacker AI"
+       },
+       {
+        "event": "attacker.hold",
+        "full": "hold \u2014 when access is gained and hold time has passed since break in, once; after 0 h: sets access; only with Attacker AI",
+        "label": null,
+        "name": "hold",
+        "rule": "this.access == GAINED and since(this.break_in) >= this.hold_time",
+        "text": "hold \u2014 when access is gained and hold time has passed since break in, once; after 0 h: sets access; only with Attacker AI"
+       },
+       {
+        "event": "attacker.take_over",
+        "full": "take over \u2014 when access is kept and mode is normal, once; after 0 h: sets mode; only with Attacker AI",
+        "label": "The attacker takes over the controls.",
+        "name": "take over",
+        "rule": "this.access == KEPT and plant.mode == NORMAL",
+        "text": "take over \u2014 when access is kept and mode is normal, once; after 0 h: sets mode; only with Attacker AI"
+       }
+      ],
+      "level": "rules",
+      "lines": 2,
+      "more": 0
+     }
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "factory",
+     "id": "plant",
+     "machines": [
+      {
+       "initial": "NORMAL",
+       "name": "Mode of the controls",
+       "place": "beside",
+       "starts_by": [],
+       "states": [
+        "NORMAL",
+        "MANUAL",
+        "DOWN"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.take_over",
+         "from": [
+          "NORMAL"
+         ],
+         "to": "MANUAL"
+        },
+        {
+         "by": "crews",
+         "event": "crews.repair",
+         "from": [
+          "MANUAL"
+         ],
+         "to": "NORMAL"
+        }
+       ],
+       "var": "plant.mode"
+      }
+     ],
+     "pipes": [
+      {
+       "flows": [
+        "plant.intake"
+       ],
+       "from": null,
+       "key": "->plant.raw",
+       "label": "Intake",
+       "to": "plant.raw"
+      },
+      {
+       "flows": [
+        "plant.treat"
+       ],
+       "from": "plant.raw",
+       "key": "plant.raw->plant.treated",
+       "label": "Treatment",
+       "to": "plant.treated"
+      },
+      {
+       "flows": [
+        "plant.count"
+       ],
+       "from": null,
+       "key": "->plant.treated_total",
+       "label": "Count",
+       "to": "plant.treated_total"
+      }
+     ],
+     "place": {
+      "column": 2,
+      "row": 1
+     },
+     "role": "operator",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "plant.raw",
+       "kind": "stock",
+       "name": "Raw water"
+      },
+      {
+       "key": "plant.treated",
+       "kind": "stock",
+       "name": "Treated"
+      },
+      {
+       "key": "plant.treated_total",
+       "kind": "tally",
+       "name": "Water treated"
+      }
+     ],
+     "template": null,
+     "title": "The water treatment plant",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "town",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "town.stored",
+       "kind": "stock",
+       "name": "Water in the town"
+      }
+     ],
+     "template": null,
+     "title": "Town",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "shield",
+     "id": "crews",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "responder",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Crews",
+     "triggers": {
+      "events": [
+       {
+        "event": "crews.repair",
+        "full": "repair \u2014 when The water treatment plant: alarm starts it; after 1 h: adds to repairs, if mode is manual: sets mode; only with Attacker AI",
+        "label": null,
+        "name": "repair",
+        "rule": null,
+        "text": null
+       }
+      ],
+      "level": "count",
+      "lines": 2,
+      "more": 0
+     }
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "gauge",
+     "id": "north",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "environment",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "north.level",
+       "kind": "tally",
+       "name": "Water in the zone"
+      }
+     ],
+     "template": "Zone",
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "gauge",
+     "id": "south",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "environment",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "south.level",
+       "kind": "tally",
+       "name": "Water in the zone"
+      }
+     ],
+     "template": "Zone",
+     "title": "South",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [
+     "Hospital"
+    ],
+    "horizon": "48 h",
+    "run": null,
+    "runs": 2
+   },
+   "groups": [
+    {
+     "label": "Site",
+     "members": [
+      "plant",
+      "crews"
+     ]
+    }
+   ],
+   "name": "works_contract",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A water works and its town, a synthetic fixture for tests only"
+  },
+  "svg": {
+   "bytes": 31287,
+   "sha256": "741fe5caf879e61982019d076247168a056d31810069b2400fde7f9e2db4cd1b"
+  }
+ },
+ "works_styled": {
+  "map": {
+   "arrows": [
+    {
+     "count": 1,
+     "from": "attacker",
+     "how": [
+      "sets"
+     ],
+     "kind": "changes",
+     "to": "plant",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "crews",
+     "how": [
+      "sets"
+     ],
+     "kind": "changes",
+     "to": "plant",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "north",
+     "how": [],
+     "kind": "moves",
+     "to": "town",
+     "values": [
+      "town.stored"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "reads",
+     "to": "attacker",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "fires",
+     "to": "crews",
+     "values": [
+      "crews.repair"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [],
+     "kind": "reads",
+     "to": "crews",
+     "values": [
+      "plant.mode"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "plant",
+     "how": [
+      "shares"
+     ],
+     "kind": "changes",
+     "to": "town",
+     "values": [
+      "town.supply"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "south",
+     "how": [],
+     "kind": "moves",
+     "to": "town",
+     "values": [
+      "town.stored"
+     ]
+    },
+    {
+     "count": 1,
+     "from": "town",
+     "how": [],
+     "kind": "moves",
+     "to": "plant",
+     "values": [
+      "plant.treated"
+     ]
+    }
+   ],
+   "cards": [
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "target",
+     "id": "attacker",
+     "machines": [
+      {
+       "initial": "NONE",
+       "name": "Access to the plant",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NONE",
+        "GAINED",
+        "KEPT",
+        "LOST"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.break_in",
+         "from": null,
+         "to": "GAINED"
+        },
+        {
+         "by": "attacker",
+         "event": "attacker.hold",
+         "from": [
+          "GAINED"
+         ],
+         "to": "KEPT"
+        }
+       ],
+       "var": "attacker.access"
+      }
+     ],
+     "pipes": [],
+     "place": null,
+     "role": "adversary",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "The attacker",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "factory",
+     "id": "plant",
+     "machines": [
+      {
+       "initial": "NORMAL",
+       "name": "Mode of the controls",
+       "place": "inside",
+       "starts_by": [],
+       "states": [
+        "NORMAL",
+        "MANUAL",
+        "DOWN"
+       ],
+       "transitions": [
+        {
+         "by": "attacker",
+         "event": "attacker.take_over",
+         "from": [
+          "NORMAL"
+         ],
+         "to": "MANUAL"
+        },
+        {
+         "by": "crews",
+         "event": "crews.repair",
+         "from": [
+          "MANUAL"
+         ],
+         "to": "NORMAL"
+        }
+       ],
+       "var": "plant.mode"
+      }
+     ],
+     "pipes": [
+      {
+       "flows": [
+        "plant.intake"
+       ],
+       "from": null,
+       "key": "->plant.raw",
+       "label": "Intake",
+       "to": "plant.raw"
+      },
+      {
+       "flows": [
+        "plant.treat"
+       ],
+       "from": "plant.raw",
+       "key": "plant.raw->plant.treated",
+       "label": "Treatment",
+       "to": "plant.treated"
+      },
+      {
+       "flows": [
+        "plant.count"
+       ],
+       "from": null,
+       "key": "->plant.treated_total",
+       "label": "Count",
+       "to": "plant.treated_total"
+      }
+     ],
+     "place": null,
+     "role": "operator",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "plant.raw",
+       "kind": "stock",
+       "name": "Raw water"
+      },
+      {
+       "key": "plant.treated",
+       "kind": "stock",
+       "name": "Treated"
+      },
+      {
+       "key": "plant.treated_total",
+       "kind": "tally",
+       "name": "Water treated"
+      }
+     ],
+     "template": null,
+     "title": "The water treatment plant",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "people",
+     "id": "town",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "community",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "town.stored",
+       "kind": "stock",
+       "name": "Water in the town"
+      }
+     ],
+     "template": null,
+     "title": "Town",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "shield",
+     "id": "crews",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "responder",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [],
+     "template": null,
+     "title": "Crews",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "gauge",
+     "id": "north",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "environment",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "north.level",
+       "kind": "tally",
+       "name": "Water in the zone"
+      }
+     ],
+     "template": "Zone",
+     "title": "North",
+     "triggers": null
+    },
+    {
+     "copies": 1,
+     "file": "model.scn",
+     "hidden_stocks": 0,
+     "icon": "gauge",
+     "id": "south",
+     "machines": [],
+     "pipes": [],
+     "place": null,
+     "role": "environment",
+     "starts": false,
+     "stock_order": null,
+     "stocks": [
+      {
+       "key": "south.level",
+       "kind": "tally",
+       "name": "Water in the zone"
+      }
+     ],
+     "template": "Zone",
+     "title": "South",
+     "triggers": null
+    }
+   ],
+   "direction": "left-to-right",
+   "facts": {
+    "hidden": [
+     "Hospital"
+    ],
+    "horizon": "48 h",
+    "run": null,
+    "runs": 2
+   },
+   "groups": [],
+   "name": "works_styled",
+   "panels": null,
+   "run": null,
+   "settings": {
+    "bundle": [
+     "reads",
+     "follows"
+    ],
+    "card_width": null,
+    "cards_per_column": 8,
+    "looks": {
+     "changes": "full",
+     "fires": "full",
+     "follows": "light",
+     "moves": "full",
+     "reads": "light"
+    },
+    "stocks": 4
+   },
+   "title": "A water works and its town, a synthetic fixture for tests only"
+  },
+  "svg": {
+   "bytes": 28163,
+   "sha256": "2fa8b4e8db86dd7c48cff889ea55cc524c4d3a00b3667d98dc55fdfa2e62a38c"
+  }
+ }
+}

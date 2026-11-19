@@ -610,21 +610,24 @@ def test_a_record_holds_at_most_its_budget_and_agrees_with_the_whole_run_before_
                 assert isinstance(value_, Unavailable) and 'budget' in value_.reason, (pieces, path, at)
 
 
-def test_a_budget_of_one_piece_stops_the_record_by_name_at_a_pause_and_at_the_end():
-    """Row 18: with a budget of one piece the family's record, whole or of the stock alone, at a pause
-    or to its end, holds one piece at most and names the budget."""
+def test_a_budget_of_one_piece_stops_the_record_by_name_before_a_pause_and_at_the_end():
+    """Row 18: with a budget of one piece the family's record, whole or of the stock alone, holds one
+    piece at most and names the budget, at 0 h, where the stock has two (its start and its line). The
+    run with a breakpoint at 3 h stops there by its budget, with no checkpoint: its record is that of the
+    run with none (the readiness audit of `8b3a01a`, row 18: the stop once gave a checkpoint whose record
+    was past its budget)."""
     case = SCENARIOS['family']()
     water = Key('tank', ('water',))
     for request in (Request(7, pieces=1), Request(7, everything=False, keys=(water,), pieces=1)):
         configuration = Configuration(request)
-        paused = run(case.program, configuration, (Breakpoint('tank.tick.step[2]'),)).record
+        paused = run(case.program, configuration, (Breakpoint('tank.tick.step[2]'),))
         ended = run(case.program, configuration)
-        for record in (paused, ended):
-            assert (
-                sum(len(history.pieces) for history in record.histories if record.manifest.names(history.key))
-                <= 1
-            )
-            assert record.failure.detail('budget') == 1 and 'budget of 1 piece' in record.stopped()
+        assert not isinstance(paused, Checkpoint) and paused == ended
+        assert (
+            sum(len(history.pieces) for history in ended.histories if ended.manifest.names(history.key)) <= 1
+        )
+        assert ended.end == 0
+        assert ended.failure.detail('budget') == 1 and 'budget of 1 piece' in ended.stopped()
 
 
 # ---- 15. no recursion in the reader ---------------------------------------------------------------------------

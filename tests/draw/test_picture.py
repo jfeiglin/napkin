@@ -910,39 +910,41 @@ def test_a_change_names_how_it_changes():
     }
 
 
-def test_a_card_names_its_template_copies_and_role():
-    model = compiled(
-        """
-        Ward:
-            role community
-            people: people = 0 people
-            flow arrive: SOURCE -> this.people
-                request = 1 people/h
-        wards: Ward from "wards.csv"
-        north: Ward
-        crew:
-            role crew
-            x: people = 0 people
-        meter:
-            y: people = 0 people
-        operator:
-            role operator
-            forecast = categorical(ACT: 0.5, WAIT: 0.5)
-            decide = event():
-                order: enum[ACT, WAIT] = WAIT
-                after 0 h:
-                    order = operator.forecast.draw()
-                    switch order:
-                        ACT:
-                            meter.y += 1 people
-                        WAIT:
-                            meter.y -= 1 people
+# A template with a table of three rows and a member, and three things written once: a crew, a meter and
+# an operator that decides at random.
+CARDS = """
+Ward:
+    people: people = 0 people
+    flow arrive: SOURCE -> this.people
+        request = 1 people/h
+wards: Ward from "wards.csv"
+north: Ward
+crew:
+    x: people = 0 people
+meter:
+    y: people = 0 people
+operator:
+    forecast = categorical(ACT: 0.5, WAIT: 0.5)
+    decide = event():
+        order: enum[ACT, WAIT] = WAIT
+        after 0 h:
+            order = operator.forecast.draw()
+            switch order:
+                ACT:
+                    meter.y += 1 people
+                WAIT:
+                    meter.y -= 1 people
 
-        operator.decide.start()
-        """,
-        tables={'wards.csv': 'id\na\nb\nc\n'},
-    )
-    doc = picture(model, style.Style())
+operator.decide.start()
+"""
+WARDS = {'wards.csv': 'id\na\nb\nc\n'}
+# Who plays the parts of CARDS: the template, whose rows and member it gives the role; the crew, whose
+# role is a word that is none of the six; the operator. The meter has no role.
+CARDS_ROLES = '[role]\ncommunity = ["Ward"]\ncrew = ["crew"]\noperator = ["operator"]\n'
+
+
+def test_a_card_names_its_template_copies_and_role():
+    doc = picture(compiled(CARDS, tables=WARDS), style.read(CARDS_ROLES))
     found = {card['id']: (card['template'], card['copies'], card['role']) for card in doc['cards']}
     # A role that is none of the six, and no role, are no role.
     assert found == {
@@ -963,7 +965,6 @@ def test_a_card_names_its_template_copies_and_role():
 
 STATES = """
 plant:
-    role operator
     x: enum[A, B, C] = A
     y: enum[A, B, C] = B
     input plan: enum[A, B, C] = C
@@ -1037,10 +1038,17 @@ plant:
                 A:
                     this.x = B
 """
+# Who plays the plant of STATES.
+STATES_ROLES = '[role]\noperator = ["plant"]\n'
+# STATES with options that start the named state `z` in two states.
+PLANS = (
+    'scenario "Plans"\n    horizon 10 h\n\noptions "Plan":\n    "Planned A":\n        "A."\n'
+    '        plant.plan = A\n    "Planned B":\n        "B."\n        plant.plan = B\n' + STATES
+)
 
 
 def test_each_assignment_of_a_named_state_is_a_transition_from_the_states_where_it_can_run():
-    doc = picture(compiled(STATES), style.Style())
+    doc = picture(compiled(STATES), style.read(STATES_ROLES))
     (x,) = [machine for machine in card_of(doc, 'plant')['machines'] if machine['var'] == 'plant.x']
     assert (x['states'], x['initial']) == (['A', 'B', 'C'], 'A')
     found = {(item['event'].rpartition('.')[2], item['to']): item['from'] for item in x['transitions']}
@@ -1075,11 +1083,7 @@ def test_each_assignment_of_a_named_state_is_a_transition_from_the_states_where_
 
 
 def test_an_option_that_sets_the_input_of_a_start_shows_on_its_machine():
-    model = compiled(
-        'scenario "Plans"\n    horizon 10 h\n\noptions "Plan":\n    "Planned A":\n        "A."\n'
-        '        plant.plan = A\n    "Planned B":\n        "B."\n        plant.plan = B\n' + STATES
-    )
-    doc = picture(model, style.Style())
+    doc = picture(compiled(PLANS), style.read(STATES_ROLES))
     (z,) = [machine for machine in card_of(doc, 'plant')['machines'] if machine['var'] == 'plant.z']
     assert z['starts_by'] == [{'option': 'Planned A', 'state': 'A'}, {'option': 'Planned B', 'state': 'B'}]
     # Its start is no member that the file writes.

@@ -19,6 +19,7 @@ import numpy as np
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import evaluate, names_in, stock_face_dependencies
+from .walk import walked
 
 # The coefficients of the [13/13] Pade approximant of the exponential, and the largest 1-norm for
 # which it holds to double precision (Higham 2005, table 2.3).
@@ -121,13 +122,16 @@ class MatrixExponential:
 class Classifier:
     """What moves in one segment. A rate proven zero in the current discrete mode leaves its
     quantity stationary; an expression that reads only stationary names, or that is constant on
-    every stock-zero face, does not move. The classification is syntactic: no probe guesses it."""
+    every stock-zero face, does not move. The classification is syntactic: no probe guesses it. Its
+    proofs follow the formulas that an expression reads on the driver of every walk of the graph
+    (`walk.walked`), as the compartment's affine forms do, so a chain of formulas is no limit."""
 
     def __init__(self, system, run, environment):
         s = self.system = system
         self.dynamic_dependencies = s.evolving | {'t'}
         self.env = environment(run.time, run.y)  # time and state are fixed for this classification
         self._zero = {}  # valid while dynamic_dependencies is unchanged
+        self._proving = set()  # the formulas that a proof that a rate is zero is on the way through
         self._face_inputs = None
         y, index, lower = run.y, s.index, s.lower
         # Propagate states proven stationary in the current discrete mode.
@@ -179,26 +183,33 @@ class Classifier:
                 if s.expanded_frozen(key[0]).isdisjoint(stationary)
             }
 
-    def proven_zero(self, expr, assumptions=frozenset(), seen=frozenset()):
+    def proven_zero(self, expr, assumptions=frozenset()):
         """Whether an expression (a number or a node) is proved zero in this segment.
-        `assumptions` holds the nodes that a branch knows not to be zero."""
-        node = nodes.read(expr)
-        key = (node, assumptions, seen)
+        `assumptions` holds the nodes that a branch knows not to be zero. The formulas that it reads
+        are followed with no recursion (`walk.walked`), so a chain of them is no limit."""
+        return walked(self._zero_of(nodes.read(expr), assumptions))
+
+    def _zero_of(self, node, assumptions):
+        """The computation of `proven_zero`, kept for each node and assumptions: an acyclic graph of
+        formulas (a plan refuses a cycle) gives one answer for a node, whatever path reaches it."""
+        key = (node, assumptions)
         if key not in self._zero:
             try:
-                self._zero[key] = self._proven_zero(node, assumptions, seen)
+                self._zero[key] = yield self._proven_zero(node, assumptions)
             except ExpressionError:
                 # A fixed part that reads a value with none now (on a side that the rate does not
                 # take): nothing is proved.
                 self._zero[key] = False
         return self._zero[key]
 
-    def _proven_zero(self, node, assumptions=frozenset(), seen=frozenset()):
-        """Prove inactive rates zero while preserving arithmetic domains."""
+    def _proven_zero(self, node, assumptions):
+        """Prove inactive rates zero while preserving arithmetic domains, as a computation of
+        `walk.walked`: each part, and each formula that a part reads, is one that it yields."""
         s = self.system
         units, index, lower, computed = s.units, s.index, s.lower, s.computed
         env = self.env
         dynamic_dependencies = self.dynamic_dependencies
+        proving = self._proving  # the formulas on the way to this one: a guard, as a plan has no cycle
 
         def static(n):
             return s.expanded_frozen(n).isdisjoint(dynamic_dependencies)
@@ -224,52 +235,62 @@ class Classifier:
                 if name in index:
                     return lower[index[name]] >= 0
                 if name in computed and name not in visiting:
-                    return nonnegative(nodes.read(computed[name]['expr']), visiting | {name})
+                    return (yield nonnegative(nodes.read(computed[name]['expr']), visiting | {name}))
             if isinstance(n, nodes.Binary):
                 if n.op in ('add', 'mul'):
-                    return nonnegative(n.left, visiting) and nonnegative(n.right, visiting)
+                    return (yield nonnegative(n.left, visiting)) and (yield nonnegative(n.right, visiting))
                 if n.op == 'div':
                     return (
-                        nonnegative(n.left, visiting)
+                        (yield nonnegative(n.left, visiting))
                         and static(n.right)
                         and evaluate(n.right, env, units) > 0
                     )
-            if isinstance(n, nodes.Call):
-                if n.function == 'max':
-                    return any(nonnegative(a, visiting) for a in n.args)
-                if n.function == 'min':
-                    return all(nonnegative(a, visiting) for a in n.args)
+            if isinstance(n, nodes.Call) and n.function in ('max', 'min'):
+                wanted = n.function == 'max'  # an argument that decides: any for max, all for min
+                for a in n.args:
+                    if bool((yield nonnegative(a, visiting))) == wanted:
+                        return wanted
+                return not wanted
             if isinstance(n, nodes.IfElse):
                 if static(n.test):
-                    return nonnegative(n.body if evaluate(n.test, env, units) else n.orelse, visiting)
-                return nonnegative(n.body, visiting) and nonnegative(n.orelse, visiting)
+                    return (yield nonnegative(n.body if evaluate(n.test, env, units) else n.orelse, visiting))
+                return (yield nonnegative(n.body, visiting)) and (yield nonnegative(n.orelse, visiting))
             return False
 
         def fixed_nonzero(n):
             """A denominator fixed in the segment and not zero."""
             return static(n) and evaluate(n, env, units) != 0
 
+        def formula(name, facts):
+            proving.add(name)
+            try:
+                return (yield self._zero_of(nodes.read(computed[name]['expr']), facts))
+            finally:
+                proving.discard(name)
+
         def zero(n, facts):
             if static(n):
                 return evaluate(n, env, units) == 0
             if isinstance(n, nodes.Ref):
                 name = n.name
-                if name in computed and name not in seen:
-                    return self.proven_zero(computed[name]['expr'], facts, seen | {name})
+                if name in computed and name not in proving:
+                    return (yield formula(name, facts))
                 return False
             if isinstance(n, nodes.Unary):
-                return zero(n.operand, facts)
+                return (yield zero(n.operand, facts))
             if isinstance(n, nodes.Binary):
                 if n.op == 'mul':
-                    return (zero(n.left, facts) and safe(n.right)) or (zero(n.right, facts) and safe(n.left))
+                    return ((yield zero(n.left, facts)) and safe(n.right)) or (
+                        (yield zero(n.right, facts)) and safe(n.left)
+                    )
                 if n.op in ('add', 'sub'):
-                    return zero(n.left, facts) and zero(n.right, facts)
+                    return (yield zero(n.left, facts)) and (yield zero(n.right, facts))
                 if n.op == 'div':
                     nonzero = n.right in facts or fixed_nonzero(n.right)
-                    return nonzero and zero(n.left, facts)
+                    return nonzero and (yield zero(n.left, facts))
             if isinstance(n, nodes.IfElse):
                 if static(n.test):
-                    return zero(n.body if evaluate(n.test, env, units) else n.orelse, facts)
+                    return (yield zero(n.body if evaluate(n.test, env, units) else n.orelse, facts))
                 body_facts = set(facts)
                 test = n.test
                 if (
@@ -280,14 +301,25 @@ class Classifier:
                     and evaluate(test.operands[1], env, units) == 0
                 ):
                     body_facts.add(test.operands[0])
-                return zero(n.body, frozenset(body_facts)) and zero(n.orelse, facts)
+                return (yield zero(n.body, frozenset(body_facts))) and (yield zero(n.orelse, facts))
             if isinstance(n, nodes.Call) and n.function == 'min':
-                return any(zero(a, facts) for a in n.args) and all(nonnegative(a) for a in n.args)
+                for a in n.args:
+                    if (yield zero(a, facts)):
+                        break
+                else:
+                    return False
+                for a in n.args:
+                    if not (yield nonnegative(a)):
+                        return False
+                return True
             if isinstance(n, nodes.Call) and n.function == 'max':
-                return all(zero(a, facts) for a in n.args)
+                for a in n.args:
+                    if not (yield zero(a, facts)):
+                        return False
+                return True
             return False
 
-        return zero(node, assumptions)
+        return (yield zero(node, assumptions))
 
     def on_faces(self, expr):
         """Whether ``expr`` is proved constant on every stock-zero face in this segment."""
@@ -308,23 +340,29 @@ class Classifier:
             )
         return s.face_proofs[key] is not None
 
-    def dynamic(self, expr, seen=None):
-        """Whether ``expr`` can change between moments in this segment."""
+    def dynamic(self, expr):
+        """Whether ``expr`` can change between moments in this segment. The formulas that it reads
+        are followed with no recursion (`walk.walked`)."""
+        return walked(self._moves(expr, set()))
+
+    def _moves(self, expr, seen):
+        """The computation of `dynamic`; `seen` holds the formulas on the way to this one."""
         s = self.system
         if self.proven_zero(expr):
             return False
         if s.proven_faces and self.on_faces(expr):
             return False
-        seen = set(seen or ())
         for name in names_in(expr):
             if name in self.dynamic_dependencies:
                 return True
-            if (
-                name in s.computed
-                and name not in seen
-                and self.dynamic(s.computed[name]['expr'], seen | {name})
-            ):
-                return True
+            if name in s.computed and name not in seen:
+                seen.add(name)
+                try:
+                    moves = yield self._moves(s.computed[name]['expr'], seen)
+                finally:
+                    seen.discard(name)
+                if moves:
+                    return True
         return False
 
 
@@ -497,8 +535,14 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
             is not None
         )
 
-    def linear(expr, visiting=frozenset()):
-        """Extract affine coefficients algebraically, preserving each live branch."""
+    def linear(expr):
+        """Extract affine coefficients algebraically, preserving each live branch; the formulas that
+        an expression reads are followed with no recursion (`walk.walked`)."""
+        return walked(affine(expr, frozenset()))
+
+    def affine(expr, visiting):
+        """The computation of `linear`: each part, and each formula that it reads, is one that it
+        yields; `visiting` holds the formulas on the way to this one."""
         if proven_zero(expr):
             return 0.0, {}
 
@@ -508,7 +552,7 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
             if isinstance(node, nodes.Ref):
                 name = node.name
                 if name in aliases and name not in visiting:
-                    return linear(aliases[name], visiting | {name})
+                    return (yield affine(aliases[name], visiting | {name}))
                 if name in index:
                     return 0.0, {index[name]: 1.0}
                 return None
@@ -516,15 +560,16 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
                 if not face_constant(node.test):
                     return None
                 branch = node.body if evaluate(node.test, env, units) else node.orelse
-                return walk(branch)
+                return (yield walk(branch))
             if isinstance(node, nodes.Unary) and node.op in ('pos', 'neg'):
-                value = walk(node.operand)
+                value = yield walk(node.operand)
                 if value is None:
                     return None
                 sign = -1 if node.op == 'neg' else 1
                 return sign * value[0], {k: sign * v for k, v in value[1].items()}
             if isinstance(node, nodes.Binary):
-                a, b = walk(node.left), walk(node.right)
+                a = yield walk(node.left)
+                b = yield walk(node.right)
                 if a is None or b is None:
                     return None
                 if node.op in ('add', 'sub'):
@@ -541,7 +586,8 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
             if certificate:
                 return certificate
             if isinstance(node, nodes.Call) and node.function == 'min' and len(node.args) == 2:
-                a, b = walk(node.args[0]), walk(node.args[1])
+                a = yield walk(node.args[0])
+                b = yield walk(node.args[1])
                 if a is not None and b is not None:
                     if b[1] and not a[1]:
                         constant_arm, variable_arm = a, b
@@ -561,7 +607,7 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
                 return float(evaluate(node, env, units)), {}
             return None
 
-        value = walk(nodes.read(expr))
+        value = yield walk(nodes.read(expr))
         if value is None:
             return None
         return value[0], {k: v for k, v in value[1].items() if v != 0}

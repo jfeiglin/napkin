@@ -21,6 +21,13 @@ on every path (`saved.py` says which), so the run that goes on is the run straig
 for number. The restored run's logical state must be the checkpoint's (`State`), or the resume is
 refused by name (`CheckpointError`), so a checkpoint never goes on as another run.
 
+**The budget of the record** holds at every stop as at the end: a stop whose record so far would hold
+more pieces than its request's budget gives no checkpoint, and the run ends there by its budget
+(`OverBudget`, a failure of the run, which `Run` records: the record then ends where its budget ends
+it, at the time of its first piece that does not fit, `Record.within`). So a run stops by its budget
+before any later stop or checkpoint, as a run with no breakpoint does, and no caller edits or resumes a
+run whose record is past its budget.
+
 The checkpoint's logical state (`State`) is what a caller inspects and edits.
 """
 
@@ -43,6 +50,7 @@ from ...program.checkpoint import (
     encode,
 )
 from ...program.record import Entry, Key
+from ..errors import SimulationError
 from .plan import BUILTINS, STARTS, STATE, _statements, name_of
 from .record import unit_of
 from .saved import save
@@ -86,6 +94,11 @@ class Stopped(Exception):
     def __init__(self, stop):
         super().__init__(f'stopped before {stop.at} at t = {stop.t:g} h')
         self.stop = stop
+
+
+class OverBudget(SimulationError):
+    """A hit whose record so far would hold more pieces than its budget: the run ends there, by its
+    budget, and gives no checkpoint (see the module)."""
 
 
 def _locations(program):
@@ -137,6 +150,7 @@ class Breaks:
         # The edits of the run, in order, and the places of those made at a stop before a stage,
         # which commit once.
         self.edits, self.done = [], set()
+        self.recorded = None  # the record so far at the last stop, within its budget
 
     # ---- hits -------------------------------------------------------------------------------------
 
@@ -182,6 +196,11 @@ class Breaks:
                     self.done.add(k)
                     self.apply(edit, stop, tx)
             return
+        # The record so far is the checkpoint's; a record past its budget ends the run here instead.
+        record = run.recorder.record(run.now, pause=pause_entry(stop))
+        if record.failure is not None:
+            raise OverBudget(record.failure.detail('message'))
+        self.recorded = record
         # The stage runs again from its start when the run resumes: its hits are counted again.
         self.hits = self.start
         raise Stopped(stop)
@@ -269,7 +288,8 @@ class Breaks:
     # ---- checkpoints ----------------------------------------------------------------------------
 
     def checkpoint(self, stop):
-        """The checkpoint of a stop (`napkin/program/checkpoint.py`)."""
+        """The checkpoint of a stop (`napkin/program/checkpoint.py`), with the record so far that the
+        hit found within its budget."""
         run, plan = self.run, self.run.plan
         return Checkpoint(
             program_digest(plan.program),
@@ -278,7 +298,7 @@ class Breaks:
             self.breakpoints,
             stop,
             self.state(),
-            run.recorder.record(run.now, pause=pause_entry(stop)),
+            self.recorded,
             tuple(self.edits),
             save(run),
         )

@@ -1007,7 +1007,10 @@ class Builder:
         draft = p.Program(
             templates=tuple(templates), root=root_values, setup=tuple(self._setup), asserts=root_asserts
         )
-        draft = replace(draft, templates=tuple(_flow_units(draft, template) for template in draft.templates))
+        resolver = checking.Resolver(draft)  # one for every template: it indexes the whole program
+        draft = replace(
+            draft, templates=tuple(_flow_units(resolver, template) for template in draft.templates)
+        )
         placed = replace(
             draft,
             templates=tuple(_placed(template, template.name) for template in draft.templates),
@@ -1134,11 +1137,10 @@ def _spellings(value, found):
             _spellings(getattr(value, item.name), found)
 
 
-def _flow_units(program, template):
+def _flow_units(resolver, template):
     """A template whose flows without a unit take the unit of a literal rate, or of an end per hour:
     `L/h`, and `1/h` for an end that is a plain number, the spelling that the front end writes and
-    that composes from the unit of time (D12)."""
-    resolver = checking.Resolver(program)
+    that composes from the unit of time (D12). `resolver` resolves the ends in the program."""
 
     def unit_of(flow, scope):
         if flow.kind == p.LEGS:

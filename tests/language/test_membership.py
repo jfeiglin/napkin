@@ -161,8 +161,9 @@ def test_a_formula_read_after_the_interval_is_reversed_is_unavailable_by_name():
 def test_an_interval_of_equal_ends_holds_its_one_value_only():
     """`[x, x]` contains exactly x: 2.5 h lies in [2.5 h, 2.5 h], and 2.5 h lies in no [lo, lo]
     whose end the run makes 2.4 h or 2.6 h."""
-    text = plant(
-        """
+    text = (
+        plant(
+            """
         go = event():
             after 2 h:
                 this.lo = 2.4 h
@@ -170,8 +171,11 @@ def test_an_interval_of_equal_ends_holds_its_one_value_only():
             after 1 h:
                 this.lo = 2.6 h
                 this.hi = 2.6 h""",
-        '    plant.go.start()',
-    ).replace('this.lo = 3 h', 'this.lo = 2.5 h').replace('this.hi = 2 h', 'this.hi = 2.5 h')
+            '    plant.go.start()',
+        )
+        .replace('this.lo = 3 h', 'this.lo = 2.5 h')
+        .replace('this.hi = 2 h', 'this.hi = 2.5 h')
+    )
     model = compiled(text)
     record = run(model.program, model.configuration)
     assert record.failure is None
@@ -244,30 +248,14 @@ RISING = """
     """
 
 
-# Where a trigger's or a gate's condition changes between moments is the engine's (`triggers.py`):
-# it reads the comparisons of a condition, and a membership's are those of its chain
-# (`napkin.core.expr.membership`), which agent E reads there in this round.
-PENDING = pytest.mark.xfail(strict=True, reason='E: triggers.py reads a membership as its chain')
-
-
 @pytest.mark.parametrize(
     'form',
     [
-        pytest.param(
-            ('            when this.water in [this.low, this.high]:\n                this.go.start()', ''),
-            id='trigger',
-            marks=PENDING,
-        ),
-        pytest.param(
-            ('            until this.water in [this.low, this.high]', '    plant.go.start()'),
-            id='gate',
-            marks=PENDING,
-        ),
-        pytest.param(
-            ('            when this.low <= this.water <= this.high:\n                this.go.start()', ''),
-            id='chain',
-        ),
+        ('            when this.water in [this.low, this.high]:\n                this.go.start()', ''),
+        ('            until this.water in [this.low, this.high]', '    plant.go.start()'),
+        ('            when this.low <= this.water <= this.high:\n                this.go.start()', ''),
     ],
+    ids=['trigger', 'gate', 'chain'],
 )
 def test_a_membership_of_a_moving_value_holds_from_where_the_value_reaches_an_end(form):
     """Between moments a membership changes where its value crosses an end of its interval, as the
@@ -279,3 +267,108 @@ def test_a_membership_of_a_moving_value_holds_from_where_the_value_reaches_an_en
     assert record.failure is None
     (at,) = read(record, model.program, ['plant.at'], [4])[0].values
     assert at == pytest.approx(2.0, abs=1e-6)
+
+
+def test_a_rate_of_the_continuous_engine_fails_by_name_where_its_interval_is_reversed():
+    """One flow whose request reads the store that it fills, through a membership: a component of
+    the continuous engine (`fields.py`), whose compiled program leaves a failure to the evaluation of
+    each value, which names it. The stage reverses [low, high] at 1 h."""
+    text = textwrap.dedent(
+        """
+        scenario "Component"
+            horizon 4 h
+
+        plant:
+            low: L = 0 L
+            high: L = 10 L
+            water: L = 1 L in [0,]
+            flow fill: SOURCE -> this.water
+                request = formula(2 L/h if this.water in [this.low, this.high] else 3 L/h)
+            swap = event():
+                after 1 h:
+                    this.low = 10 L
+                    this.high = 0 L
+
+        plant.swap.start()
+        """
+    )
+    model = compiled(text)
+    record = run(model.program, model.configuration)
+    found = failure(record)
+    assert found is not None and found[0] == pytest.approx(1.0) and NAME in found[1], found
+    # Before the stage the rate is 2 L/h, worked by hand: 1 L + 2 L/h x 0.5 h.
+    assert read(record, model.program, ['plant.water'], [0.5])[0].values == (pytest.approx(2.0),)
+
+
+def test_the_run_store_gives_the_same_failure_cold_warm_and_cut_from_a_longer_run(tmp_path):
+    """The run store (`napkin.store`): a run that fails by the name of a reversed interval is stored
+    with its failure, and gives it again warm; a shorter request cut from the stored longer run
+    fails the same way, where a fresh run of it does, and a formula read from it is as fresh."""
+    from dataclasses import replace
+
+    from napkin import store
+
+    model = compiled(plant(*PATHS['stage'][:3]))
+    shorter = replace(model.configuration, request=replace(model.configuration.request, horizon=3))
+    with store.use(tmp_path):
+        cold = store.run(model.program, model.configuration)
+        warm = store.run(model.program, model.configuration)
+        cut = store.run(model.program, shorter)
+    fresh = run(model.program, shorter)
+    assert failure(cold) == failure(warm) == failure(cut) == failure(fresh)
+    assert failure(cut)[0] == 2.0 and NAME in failure(cut)[1]
+    reading = read(cut, model.program, ['plant.ok'], [0.5, 1.5])[0].values
+    assert reading == read(fresh, model.program, ['plant.ok'], [0.5, 1.5])[0].values
+    assert reading[0] is True and NAME in reading[1].reason
+
+
+def test_a_membership_of_a_table_member_and_of_an_occurrence_fails_by_name():
+    """A row of a table whose interval its cells reverse (they are the member's values, which only a
+    run reads through `this`), and an occurrence whose parameters, its own names, make its interval
+    reversed: each fails where the run evaluates its membership, the row's at its stage at 2 h, the
+    occurrence's at its own stage at 1 h; a row in order reads the closed interval."""
+    rows = textwrap.dedent(
+        """
+        scenario "Rows"
+            horizon 4 h
+
+        Place:
+            lo: h = 0 h
+            hi: h = 0 h
+            x: h = 2.5 h
+            seen: bool = false
+            check = event():
+                after 2 h:
+                    this.seen = (this.x in [this.lo, this.hi])
+
+        places: Place from "places.csv"
+
+        Place.instances.check.start()
+        """
+    )
+    cells = 'id,lo: h,hi: h\nfirst,1,3\nsecond,3,2\n'
+    model = compile_text(rows, UNITS, tables={'places.csv': cells})
+    found = failure(run(model.program, model.configuration))
+    assert found is not None and found[0] == 2.0 and NAME in found[1], found
+    ordered = compile_text(rows, UNITS, tables={'places.csv': 'id,lo: h,hi: h\nfirst,1,3\n'})
+    record = run(ordered.program, ordered.configuration)
+    assert record.failure is None
+    assert read(record, ordered.program, ['places.first.seen'], [3])[0].values == (True,)
+    occurrence = textwrap.dedent(
+        """
+        scenario "Occurrence"
+            horizon 4 h
+
+        plant:
+            x: h = 2.5 h
+            seen: bool = false
+            go = event(lo: h, hi: h):
+                after 1 h:
+                    this.seen = (this.x in [lo, hi])
+
+        plant.go.start(3 h, 2 h)
+        """
+    )
+    model = compiled(occurrence)
+    found = failure(run(model.program, model.configuration))
+    assert found is not None and found[0] == 1.0 and NAME in found[1], found

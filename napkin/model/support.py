@@ -22,16 +22,20 @@ own: their parts do. Each warning is a `Problem` with the code `no_record` at th
 and a column's at the header of its table's file.
 
 A value that its record ties to a datum of a claim (`claims:` with `datum: key`) is that number
-(`cited_data`, code `datum`): a number fixed when the model compiles (written out, or arithmetic of
-such numbers), equal to the datum in dimension and scale, both read exactly (`semantic.exact_value`,
-`core.units.rational`), so `0.1 day` is the datum 2.4 h and `48 people/day` the datum 2 people/h. A
-datum states a number and a unit and no precision, so a value near it is not it: any other value
-needs a derivation, a transfer or an assumption (`docs/language.md` 2.10 at commit 8488047, where a
-difference was an error). A difference is a warning with both numbers: a model being explored still
-runs, and `tools.check` refuses a package with one, as it does one with a value that rests on no
-record.
-The values are those of the entities, the templates and the top level, the members' own values and
-cells, and the settings of the options.
+(`cited_data`, code `datum`): the number that the compiler's own folding of constants gives it
+(`semantic.exact_value`: every operation folded exactly where its result is rational, a number token
+the exact decimal that it writes), equal to the datum in dimension and scale, both read exactly
+(`core.units.rational`), so `0.1 day` is the datum 2.4 h, `48 people/day` the datum 2 people/h and
+`sqrt(34 h * 34 h)` the datum 34 h. A datum states a number and a unit and no precision, so a value
+near it is not it: any other value needs a derivation, a transfer or an assumption (`docs/language.md`
+2.10 at commit 8488047, where a difference was an error). A difference is a warning with both
+numbers; so is a value that the compiler cannot fix (it is computed when the model runs: a draw, a
+read of another value), and one that is no number (a distribution, a yes/no, a link), never a silent
+pass. A model being explored still runs, and `tools.check` refuses a package with such a warning, as
+it does one with a value that rests on no record.
+The values are those of the entities, the templates and the top level (of every kind), the
+parameters and locals of events, the unknowns of solvers, the members' own values and cells, and
+the settings of the options.
 """
 
 from __future__ import annotations
@@ -150,11 +154,21 @@ def _written(number):
 
 
 def _number(value):
-    """A rational for a message, as a decimal: `34`, `0.48`, `2.4`."""
+    """A rational for a message, exactly: a decimal where it has one (`34`, `0.48`, `2.4`,
+    `34.000000000000000001`), else its fraction (`103/3`)."""
     value = Fraction(value)
     if value.denominator == 1:
         return str(value.numerator)
-    return format(float(value), '.12g')
+    rest, places = value.denominator, 0
+    for prime in (2, 5):
+        count = 0
+        while rest % prime == 0:
+            rest, count = rest // prime, count + 1
+        places = max(places, count)
+    if rest != 1:
+        return f'{value.numerator}/{value.denominator}'
+    digits = str(abs(value.numerator * 10**places // value.denominator)).rjust(places + 1, '0')
+    return ('-' if value < 0 else '') + f'{digits[:-places]}.{digits[-places:]}'.rstrip('0')
 
 
 def cited_data(model, library):
@@ -178,40 +192,61 @@ def cited_data(model, library):
                 if claim.datum:
                     yield label, claim.id, claim.datum
 
-    def check(path, value, evidence, line, file=''):
-        if not isinstance(getattr(value, 'type', None), s.Num) or not evidence:
+    def check(path, value, evidence, line, file='', declared=None, computed=False):
+        """The warnings of one value (`value` its initializer, `declared` the type that it is
+        declared with, in whose unit a message writes it; `computed` for a result that the run
+        computes, a solver's unknown, whatever its preferred value)."""
+        cites = list(cited(evidence))
+        if not cites:
             return
-        at = s.exact_value(value, model.units)
-        if at is None:
-            return
-        for label, claim, key in cited(evidence):
+        typed = declared if computed else getattr(value, 'type', None)
+        shown = declared if isinstance(declared, s.Num) and isinstance(typed, s.Num) else typed
+        at = s.exact_value(value, model.units) if isinstance(typed, s.Num) and not computed else None
+        for label, claim, key in cites:
             datum = claims.get(claim, {}).get('data', {}).get(key)
             unit = None if datum is None else _datum_unit(datum['unit'], model.units, registry)
             if unit is None:
                 continue
-            stated = rational(datum['value']) * unit[1]
-            if unit[0] == value.type.dimension and at == stated:
-                continue
-            scale = model.units.of(value.type.unit)[1] if value.type.unit else 1
-            written = f'{_number(at / scale)} {value.type.unit}'.strip()
             datum_written = f'{_written(datum["value"])} {datum["unit"]}'
-            if unit[0] != value.type.dimension:
-                why = f'{written} is of another dimension'
+            if isinstance(typed, s.Dist):
+                why = 'it is a distribution, and a datum names a number'
+            elif not isinstance(typed, s.Num):
+                why = 'it is no number, and a datum names a number'
+            elif at is None:
+                why = 'it is computed when the model runs, and a datum names a number'
             else:
-                why = f'{written} differs from it'
+                stated = rational(datum['value']) * unit[1]
+                if unit[0] == typed.dimension and at == stated:
+                    continue
+                scale = model.units.of(shown.unit)[1] if shown.unit else 1
+                written = f'{_number(at / scale)} {shown.unit}'.strip()
+                if unit[0] != typed.dimension:
+                    why = f'{written} is of another dimension'
+                else:
+                    why = f'{written} differs from it'
             message = f'{path}: {label} cites the datum {key} of {claim}, {datum_written}, and {why}'
             found.append(Problem(DATUM, message, line, 0, file))
 
     for thing in model.entities:
         for part in thing.parts:
-            if isinstance(part, s.DeclaredValue) and part.kind in (s.INPUT, s.STATE):
-                check(part.path, part.init, part.evidence, part.line)
+            if isinstance(part, s.DeclaredValue):
+                check(part.path, part.init, part.evidence, part.line, declared=part.type)
+            elif isinstance(part, s.DeclaredEvent):
+                for local in (*part.params, *part.locals):
+                    if isinstance(local, s.DeclaredValue):
+                        check(local.path, local.init, local.evidence, local.line, declared=local.type)
+            elif isinstance(part, s.DeclaredSolver):
+                for unknown in part.unknowns:
+                    check(unknown.path, None, unknown.evidence, unknown.line, '', unknown.type, computed=True)
     for member in model.members:
         for given in member.values:
-            check(f'{member.path}.{given.name}', given.init, given.evidence, given.line, member.file)
+            value = model.part(f'{member.template}.{given.name}')
+            declared = value.type if isinstance(value, s.DeclaredValue) else None
+            check(
+                f'{member.path}.{given.name}', given.init, given.evidence, given.line, member.file, declared
+            )
     for value in model.root:
-        if value.kind in (s.INPUT, s.STATE):
-            check(value.path, value.init, value.evidence, value.line)
+        check(value.path, value.init, value.evidence, value.line, declared=value.type)
     for option in model.options:
         for setting in option.settings:
             check(setting.path, setting.value, setting.evidence, setting.line)

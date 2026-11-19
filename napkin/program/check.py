@@ -957,6 +957,7 @@ class _Checker(Resolver):
         value = statement.value
         if isinstance(value, Formula):
             self.check_expr(value.expr, scope, where, 'a formula')
+            self.lifetime(target, value, scope, where)
         elif isinstance(value, Distribution):
             self.distribution(value, where)
         elif isinstance(value, Path):
@@ -1025,6 +1026,61 @@ class _Checker(Resolver):
             )
             return
         self.assigned.setdefault((owner_key(found.owner), part.name), []).append(where)
+
+    def lifetime(self, target, formula, scope, where):
+        """A formula that a stage installs on a place that outlives the stage's occurrence may not read
+        one of the occurrence's own names (spec, "State owned by an invocation"). A place lives as long
+        as the owner of the target that it resolves to: a bare name of the occurrence, and a step from
+        it to the settings of its own flows and stores, is the occurrence's; a step from a parameter
+        that names an entity, a local that names another occurrence or a collection reaches a place of
+        that thing, and any other start (`this`, a member, the root) a place that lives for the run."""
+        if scope.event is None:
+            return
+        if isinstance(target.start, Local) and not self.refers(target.start.name, scope):
+            return
+        for name in sorted(self.own_names(formula.expr, scope)):
+            self.fail(
+                'lifetime',
+                where,
+                f'`{spelled(target)}` outlives the occurrence of {scope.event.origin}, and its formula '
+                f'reads `{name}`, which ends with the occurrence',
+            )
+
+    def refers(self, name, scope):
+        """Whether a bare name of an event refers to something else than the occurrence: a parameter
+        that names an entity, a local that names another occurrence, a collection."""
+        found = self.quiet().resolve(Path(Local(name), ()), scope, '')
+        if found is None or found.kind != 'value':
+            return False
+        return isinstance(found.part.type, (p.EntityType, p.OccurrenceType, p.CollectionType))
+
+    def own_names(self, expression, scope):
+        """The bare names of the occurrence that an expression reads, at any depth of its reads: the
+        start of a path, and the paths, keys and tests of its collections."""
+        found, pending = set(), [read for _, read in expression.reads]
+        while pending:
+            read = pending.pop()
+            if isinstance(read, (Reduce, Since)):
+                read = read.source if isinstance(read, Reduce) else read.event
+            elif isinstance(read, Elapsed):
+                read = read.value
+            elif isinstance(read, Draw):
+                read = read.source
+            if not isinstance(read, Path):
+                continue
+            start = read.start
+            if isinstance(start, Local) and scope.event is not None:
+                found.add(start.name)
+            elif isinstance(start, (Where, Lookup)):
+                pending.append(start.source)
+                pending += [
+                    inner for _, inner in (start.test if isinstance(start, Where) else start.key).reads
+                ]
+            elif isinstance(start, By):
+                pending.append(start.source)
+            elif isinstance(start, Literal):
+                pending += list(start.items)
+        return found
 
     # ---- solvers, displays ------------------------------------------------------------------------------
 

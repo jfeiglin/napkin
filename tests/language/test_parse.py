@@ -215,7 +215,6 @@ def test_entities_templates_tables_and_instances():
         tank:
             "A tank."
             title "The tank"
-            role environment
             readonly water: L = 8 in [0, 20]
         Place:
             origin: Place
@@ -224,7 +223,7 @@ def test_entities_templates_tables_and_instances():
         """
     )
     tank, place, sites, pump = file.items
-    assert (tank.name, tank.text, tank.title, tank.role) == ('tank', 'A tank.', 'The tank', 'environment')
+    assert (tank.name, tank.text, tank.title) == ('tank', 'A tank.', 'The tank')
     assert tank.members[0].modifier == 'readonly'
     assert place.members[0] == n.Declaration('', 'origin', n.NamedType('Place'))
     assert (sites.template, sites.file) == ('Place', 'places.csv')
@@ -254,14 +253,46 @@ def test_a_member_written_by_hand_has_its_title_which_formats_and_parses_back():
         ),
         ('dc: Utility\n    role operator\n', 2),
         ('change dc:\n    role operator\n', 2),
+        ('tank:\n    "A tank."\n    role environment\n    water: L = 8 L\n', 3),
+        ('Utility:\n    role operator\n    demand: L/h = 2 L/h\n', 2),
     ],
-    ids=['event', 'case', 'member', 'change'],
+    ids=['event', 'case', 'member', 'change', 'entity', 'template'],
 )
-def test_a_role_outside_an_entity_or_a_template_is_refused_with_the_wrapper_that_holds_it(text, line):
-    """An event's role, a case's and a member's belong to the scenario's wrapper (PLAN, change 19), and
-    so does a variant's: the model refuses each by name rather than lose it."""
+def test_a_role_anywhere_in_a_model_is_refused_with_where_it_goes(text, line):
+    """No part of a model has a role (PLAN, changes 19 and 23): who plays an event, a case, a
+    member, an entity or a template, and a part of a variant, belongs to the scenario's wrapper
+    (roles.toml), and the model refuses each by name rather than lose it."""
     found = refused(text, 'role', line)
-    assert "belongs to the scenario's wrapper (its UI or brief.toml)" in found.problem.message
+    assert "belongs to the scenario's wrapper (roles.toml), not to the model" in found.problem.message
+
+
+@pytest.mark.parametrize(
+    ('text', 'message'),
+    [
+        (
+            'tank:\n    role environment\n',
+            "an entity has no role: who plays it belongs to the scenario's wrapper (roles.toml), not to "
+            'the model, and the pictures take it from the [role] of style.toml, such as environment = '
+            '["tank"]',
+        ),
+        (
+            'Utility:\n    role operator\n',
+            "a template has no role: who plays its members belongs to the scenario's wrapper "
+            '(roles.toml), not to the model, and the pictures take it from the [role] of style.toml, '
+            'such as operator = ["Utility"]',
+        ),
+        (
+            'dc: Utility\n    role operator\n',
+            "a member has no role: who plays it belongs to the scenario's wrapper (roles.toml), not to "
+            'the model, and the pictures take it from the [role] of style.toml, such as operator = ["dc"]',
+        ),
+    ],
+    ids=['entity', 'template', 'member'],
+)
+def test_a_role_of_a_thing_says_the_line_of_the_stylesheet_that_takes_it(text, message):
+    """The refusal of a thing's role names the line of style.toml's [role] that takes it (change
+    23), from which the pictures take who plays a part."""
+    assert refused(text, 'role', 2).problem.message == message
 
 
 def test_a_flow_has_its_ends_properties_and_legs():
@@ -393,3 +424,18 @@ def test_the_scenario_line_and_records():
 def test_a_record_in_place_under_a_value():
     item = only('input staff = 3 tuner\n    @assumption "Three tuners."\n        assumption A-STAFF\n')
     assert item.evidence == (n.Inline('assumption', 'Three tuners.', (('assumption', 'A-STAFF'),)),)
+
+
+def test_a_number_token_is_the_exact_decimal_that_it_writes():
+    """The audit's row 17: a number token is the decimal that it writes, never read through a float.
+    `34.000000000000000001` and `34` are one float and two numbers: two trees; `0.10` and `0.1` one
+    number, written two ways (the formatter keeps each)."""
+    from fractions import Fraction
+
+    long, short = parse_expression('34.000000000000000001'), parse_expression('34')
+    assert long.value == short.value == 34 and long != short
+    assert long.exact == Fraction('34.000000000000000001') and short.exact == 34
+    assert parse_expression('0.10') == parse_expression('0.1') == n.Number(0.1)
+    quantity = parse_expression('33.999999999999999999 h')
+    assert quantity.exact == Fraction('33.999999999999999999') and quantity != parse_expression('34 h')
+    assert parse_expression('1e-3 h').exact == Fraction(1, 1000)

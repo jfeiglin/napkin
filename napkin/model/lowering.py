@@ -173,20 +173,22 @@ def side_table(model, program, file=''):
 
 
 def _columns(tree):
-    """The column of each line of a parsed model, its first word's, by the line's number."""
+    """The column of each line of a parsed model, its first word's, by the line's number: a walk of
+    the tree in written order, on an explicit stack, so that an expression of any depth (a sum of a
+    thousand terms is a tree a thousand deep) costs no depth of calls."""
     found = {}
-
-    def walk(node):
+    pending = list(reversed(tree.items))
+    while pending:
+        node = pending.pop()
         if isinstance(node, n.Line):
             found.setdefault(node.line, node.column)
+        parts = []
         for item in fields(node):
             value = getattr(node, item.name)
-            for each in value if isinstance(value, tuple) else (value,):
-                if isinstance(each, n.Node):
-                    walk(each)
-
-    for item in tree.items:
-        walk(item)
+            parts += [
+                each for each in (value if isinstance(value, tuple) else (value,)) if isinstance(each, n.Node)
+            ]
+        pending += reversed(parts)
     return found
 
 

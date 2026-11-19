@@ -533,8 +533,9 @@ def segment_roots(system, run, watcher, environment):
 
 
 def switching_surfaces(system):
-    """Every min/max/clip/abs argument pair and every state-dependent condition in the rate
-    expressions, in their first order: the switching surfaces of the run (`switching_roots`).
+    """Every min/max/clip/abs argument pair and every state-dependent condition (a comparison, a
+    membership's two ends) in the rate expressions, in their first order: the switching surfaces of
+    the run (`switching_roots`).
 
     They read only the run's expressions and the quantities that move, so a run finds them once.
     """
@@ -564,6 +565,9 @@ def switching_surfaces(system):
                     pairs = [(args[0], args[1]), (args[0], args[2])]
                 elif node.function == 'abs' and len(args) == 1:
                     pairs = [(args[0], ZERO)]
+                elif nodes.membership(node) is not None:
+                    # `x in [lo, hi]` switches where x meets an end of its interval.
+                    pairs = [(args[1], args[0]), (args[0], args[2])]
             elif isinstance(node, nodes.Compare):
                 pairs = [
                     (left, right)

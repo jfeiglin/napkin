@@ -1,7 +1,8 @@
 #!/bin/sh
 # Makes the results of the migration scripts again (stage M, PLAN.md "Changes after G0", item 17):
-# the mechanical translation of the two test targets with their compile, the check of the hand
-# translation of the piano tuners (it must PASS, its runs included), the check of each wrong
+# the mechanical translation of the two test targets with their compile, that no translated model has
+# a role (change 23: who plays a part is in roles.toml and in the [role] of style.toml), the check of
+# the hand translation of the piano tuners (it must PASS, its runs included), the check of each wrong
 # translation (each must FAIL in its own group, and in the run step too where the fault moves a
 # result), the wrong copies of the run step again with their changes listed (each must PASS): one
 # whose value moves, and one whose run fails at its horizon with the old values (re-audit 19), the
@@ -15,6 +16,12 @@ status=0
 echo "--- translate (the old compiler reads; the compiler of now compiles)"
 PYTHONPATH=$OLD $PY translate.py --compile examples/reservoir scenarios/water_controls_wipe/model.scn \
     scenarios/water_controls_wipe/water.scn scenarios/water_controls_wipe/variants/jamestown/model.scn
+echo "--- no translated model has a role (change 23)"
+if grep -rlE '^ +role [A-Za-z_]+ *$' --include='*.scn' translated/now; then
+    echo "NOT as it must be: the files above hold a role"; status=1
+else
+    echo "none has one, as it must be"
+fi
 echo "--- the hand translation of the piano tuners: the check must PASS"
 $PY check.py --quiet "$OLD/examples/piano_tuners/model.scn" /home/user/napkin/examples/piano_tuners/model.scn || status=1
 # Each wrong copy, with the summary that its check must end with: a changed number and a value that

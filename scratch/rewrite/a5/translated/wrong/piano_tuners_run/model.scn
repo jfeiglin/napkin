@@ -8,7 +8,6 @@ scenario "Piano tuners"
 
 tuners:
     "The piano tuners of the town."
-    role environment
     input rate: tunings/(tuner * year) = pert(600, 1000, 1200).draw() in [500, 1500]
         "Tunings that one tuner does in a year"
         @assumption "The example assumes about four tunings in each working day, and a spread around it."

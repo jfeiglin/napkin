@@ -4,7 +4,8 @@
 ...)` writes a package (its main file, modules, a stylesheet and a library) and loads it, so that a
 stylesheet is found beside it and the references read its library. `WORKS` is the water works: a
 model with every kind of card, part and relation that the picture draws, whose expected pictures the
-tests work out by hand from its text.
+tests work out by hand from its text. Who plays each of its parts is its stylesheet's (`WORKS_ROLES`,
+PLAN.md change 23 after G0): a model has no role.
 """
 
 from __future__ import annotations
@@ -43,7 +44,6 @@ runs:
 attacker:
     "The attacker."
     title "The attacker"
-    role adversary
     input ai: bool = false  @fixture
         "Whether the attacker has an AI"
     input hold_time: h = 2 h in [1 h, 12 h]  @fixture
@@ -74,7 +74,6 @@ attacker:
 plant:
     "The water treatment plant of the town."
     title "The water treatment plant"
-    role operator
     input capacity: L/h = 10 L/h in [0 L/h, 50 L/h]  @fixture
         "Treatment capacity"
     mode: enum[NORMAL, MANUAL, DOWN] = NORMAL
@@ -108,7 +107,6 @@ plant:
 
 town:
     "The town."
-    role community
     stored: L = 0 L in [0 L,]
         "Water in the town"
     flow supply: plant.treated -> this.stored
@@ -117,14 +115,12 @@ town:
 
 hospital:
     "The hospital."
-    role community
     stored: L = 0 L in [0 L,]
     flow supply: plant.treated -> this.stored
         request = 5 L/h
 
 crews:
     "The crews."
-    role responder
     repairs = 0
     repair = event():
         after 1 h:
@@ -134,7 +130,6 @@ crews:
 
 Zone:
     "A zone of the town."
-    role environment
     input need: L = 1 L in [0 L,]  @fixture
         "Need of the zone"
     level: L = 0 L in [0 L,]
@@ -150,8 +145,17 @@ south: Zone
 record fixture: assumption "A synthetic test fixture."
 """
 
-# A stylesheet of the water works: it hides the hospital and gives the plant an icon of its own.
-WORKS_STYLE = '[layout]\nhide = ["hospital"]\n\n[icon]\nfactory = ["plant"]\n'
+# Who plays each part of the water works: the stylesheet's `[role]`, which gives each of these things
+# the icon of its role unless `[icon]` gives it one.
+WORKS_ROLES = (
+    '[role]\nadversary = ["attacker"]\noperator = ["plant"]\ncommunity = ["town", "hospital"]\n'
+    'responder = ["crews"]\nenvironment = ["Zone"]\n'
+)
+# A stylesheet of the water works: its roles; it hides the hospital and gives the plant an icon of its
+# own.
+WORKS_STYLE = WORKS_ROLES + '\n[layout]\nhide = ["hospital"]\n\n[icon]\nfactory = ["plant"]\n'
+# The scenario line that `compiled` gives a text without one.
+HEADER = 'scenario "A fixture"\n    horizon 10 h\n\n'
 
 
 def compiled(text, tables=None):
@@ -159,7 +163,7 @@ def compiled(text, tables=None):
     gets one with a horizon of 10 h."""
     text = textwrap.dedent(text)
     if not text.lstrip().startswith('scenario'):
-        text = 'scenario "A fixture"\n    horizon 10 h\n\n' + text
+        text = HEADER + text
     return compile_text(text, UNITS, tables=tables)
 
 

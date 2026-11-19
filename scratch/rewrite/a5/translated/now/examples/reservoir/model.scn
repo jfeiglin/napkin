@@ -40,7 +40,6 @@ reservoir:
 
 operator:
     "The operator of the dam."
-    role operator
     input level: fraction = 0.7 in [0.5, 1]
         "Water level at which the operator opens the spillway"
         @assumption "The example assumes that the operator opens the spillway at 70% of the capacity."

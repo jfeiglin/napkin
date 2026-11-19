@@ -195,13 +195,11 @@ STEPS = {'time': Fraction(24, 100), 'volume': Fraction(1, 1000), 'share': Fracti
 
 
 def written(value, unit):
-    """A canonical value in `unit` as a decimal text with its unit (`0.1 day`)."""
-    number = (
-        Decimal(value.numerator)
-        / Decimal(value.denominator)
-        / (Decimal(FAMILIES_OF[unit][unit].numerator) / Decimal(FAMILIES_OF[unit][unit].denominator))
-    )
-    return f'{format(number.normalize(), "f")} {unit}'
+    """A canonical value in `unit` as the exact decimal text of it with its unit (`0.1 day`): the
+    quotient by the unit's scale is taken in fractions, so a minute's 1/60 is no rounded decimal, and
+    a step of `STEPS` has a finite decimal in every unit."""
+    number = value / FAMILIES_OF[unit][unit]
+    return f'{format((Decimal(number.numerator) / Decimal(number.denominator)).normalize(), "f")} {unit}'
 
 
 FAMILIES_OF = {name: units for units in FAMILIES.values() for name in units}

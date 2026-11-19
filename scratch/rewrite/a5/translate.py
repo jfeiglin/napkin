@@ -44,20 +44,28 @@ every name is resolved with the names of the model (`oldmodel.Symbols`). What it
   label and reason under `not_estimated:`, and each `versus` pair under `comparisons:` (D9).
 
 A member written by hand keeps its `title` (change 19). What the model no longer holds goes beside
-it, by rule of change 19: `timescales` are retired, and the old hint stays in the notes (`timescales:`,
-listed when it runs) so that M confirms the accuracy without it; the `role` of an event or a case
-belongs to the scenario's wrapper and goes into `roles.toml` beside the model files (`ROLES`). What
+it, by rule of changes 19 and 23: `timescales` are retired, and the old hint stays in the notes
+(`timescales:`, listed when it runs) so that M confirms the accuracy without it; who plays a part
+belongs to the scenario's wrapper, so the `role` of an event, a case, an entity or a template goes
+into `roles.toml` beside the model files (`ROLES`), and the `role` of an entity or a template also
+into the `[role]` of the package's stylesheet, from which the pictures take it (`write_styles`: each
+`style.toml` of the package, as the old package has it, with that table beside its `[icon]`). What
 leaves the language with no trace: `sees` (change 15), `level`, `signed`, `cumulative`. Braces in a
 text stay as written.
+
+With `--compile`, the stylesheet of each entry file that compiles is checked too, as `napkin compile`
+checks it (`napkin.draw.style.of`): its `[role]` names things and templates of the translated model.
 """
 
 from __future__ import annotations
 
 import collections
 import json
+import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from decimal import Decimal
 from pathlib import Path
 
@@ -172,6 +180,7 @@ class Translator:
         self.renames = self._renames()
         self.started = self._started()
         self.roles = {}  # {event path, or event path.CASE: role}: for `roles.toml`
+        self.played = {}  # {entity or template: role}: for `roles.toml` and `style.toml`'s `[role]`
         self.timescales = []  # the old hints, as written
 
     # ---- bookkeeping ---------------------------------------------------------------------------------
@@ -404,10 +413,16 @@ class Translator:
             first = child.first
             word = first.value if first.kind == 'name' else None
             member = members.get(child.number)
-            if word in ('title', 'role') and member is None:
-                if word == 'role' and thing.template is not None:
-                    # A member takes a title (change 19), and no role: who plays it is the wrapper's.
+            if word == 'role' and member is None:
+                if instance or len(child.tokens) != 2:
+                    # The old language gives an instance and a change no role of their own.
                     return False
+                # Who plays an entity or a template is the wrapper's and, for the pictures, the
+                # stylesheet's (change 23): `roles.toml` and the `[role]` of `style.toml`.
+                self.played[name] = child.tokens[1].value
+                self.done(child.number)
+                return True
+            if word == 'title' and member is None:
                 self.verbatim(child.number)
                 return True
             if word == 'sees' and member is None:
@@ -1240,6 +1255,7 @@ class Translator:
             'dropped': dict(self.dropped),
             'defaults': dict(self.defaults),
             'roles': dict(self.roles),
+            'played': dict(self.played),
             'timescales': list(self.timescales),
         }
 
@@ -1420,31 +1436,115 @@ def entries(written):
     return sorted(found)
 
 
-# The file beside a package's model files that keeps the roles of its events for the scenario's
-# wrapper. The old publisher gave each timeline card the role of its outcome, else of its event, else of
-# its entity, as the card's actor (`tools/publish/pages.py`, `Pages.cards` at 8488047), which the water
-# UI shows (`ui/web/src/App.tsx`). An event's role belongs to the wrapper now (change 19), and nothing
-# of the new layout reads it yet: the publisher of stage M reads this file beside `brief.toml`.
+# The file beside a package's model files that keeps who plays its parts for the scenario's wrapper.
+# The old publisher gave each timeline card the role of its outcome, else of its event, else of its
+# entity, as the card's actor (`tools/publish/pages.py`, `Pages.cards` at 8488047), which the water UI
+# shows (`ui/web/src/App.tsx`), and the AI operation is the entity with the role adversary. Who plays a
+# part belongs to the wrapper now (changes 19 and 23), and nothing of the new layout reads this file
+# yet: the publisher of stage M reads it beside `brief.toml`.
 ROLES = 'roles.toml'
+# The picture of a package or of a variant, which takes who plays each thing from its `[role]` (change
+# 23, `napkin/draw/style.py`): a variant's own file replaces its package's whole.
+STYLE = 'style.toml'
+# A table's header in a stylesheet: a line at the start that opens `[name]` or `[name.part]`.
+HEADER = re.compile(r'\[[^\[\]]+\]\s*(#.*)?$')
 
 
-def write_roles(package, roles):
-    """Write the roles of a package's events (`{event path: role}`, a case as `event.CASE`) into
-    `roles.toml` beside its translated model files; a package with none gets no file."""
+def write_roles(package, events, played):
+    """Write who plays each part of a package into `roles.toml` beside its translated model files: each
+    entity and template (`played`, `{name: role}`) and each event (`events`, `{event path: role}`, a case
+    as `event.CASE`) that the old model gave a role; a package with none gets no file."""
     target = OUT / package.relative_to(BASE) / ROLES
-    if not roles:
+    if not events and not played:
         target.unlink(missing_ok=True)
         return
     lines = [
-        '# Who plays each event, and each case of an event, that the old model gave a role: the actor of',
-        "# its timeline cards (tools/publish/pages.py, `Pages.cards`, at 8488047). An event's role belongs",
-        "# to the scenario's wrapper (PLAN.md, change 19 after G0); the publisher reads it here.",
-        '',
-        '[events]',
-        *(f'"{event}" = "{role}"' for event, role in sorted(roles.items())),
+        '# Who plays each part that the old model gave a role: each entity and template, and each event and',
+        "# case of an event, the actor of its timeline cards (an outcome's, else its event's, else its",
+        "# entity's: tools/publish/pages.py, `Pages.cards`, at 8488047). Who plays a part belongs to the",
+        "# scenario's wrapper (PLAN.md, changes 19 and 23 after G0); the publisher reads it here, and the",
+        '# pictures read who plays each entity and template from the [role] of style.toml.',
     ]
+    if played:
+        lines += ['', '[entities]', *(f'"{name}" = "{role}"' for name, role in sorted(played.items()))]
+    if events:
+        lines += ['', '[events]', *(f'"{event}" = "{role}"' for event, role in sorted(events.items()))]
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+
+def folder_of(path):
+    """The folder whose stylesheet the models of an old model file read for their roles: its variant's
+    for a file of a variant, else its package's."""
+    package = package_of(path)
+    parts = Path(path).resolve().relative_to(package.resolve()).parts
+    return package / parts[0] / parts[1] if parts[0] == 'variants' and len(parts) > 2 else package
+
+
+def with_roles(text, played):
+    """A stylesheet's text with the `[role]` table of who plays each thing (`played`, `{name: role}`):
+    one line for each role, its names in the order of the old files, beside the `[icon]` table (after it)
+    when the text has one, else at its end. The rest of the text is kept as written."""
+    if not played:
+        return text
+    names = {}
+    for name, role in played.items():
+        names.setdefault(role, []).append(name)
+    table = [
+        "# Who plays each thing: the old model's `role` lines (PLAN.md, change 23 after G0).",
+        '[role]',
+        *(f'{role} = [{", ".join(json.dumps(name) for name in listed)}]' for role, listed in names.items()),
+    ]
+    lines = text.splitlines()
+    icon = next((k for k, line in enumerate(lines) if line.partition('#')[0].strip() == '[icon]'), None)
+    if icon is None:
+        merged = [*lines, ''] if lines else []
+        merged += table
+    else:
+        # The end of `[icon]`: the next header, before the comments and blank lines that lead to it.
+        end = next((k for k in range(icon + 1, len(lines)) if HEADER.match(lines[k])), len(lines))
+        while end > icon + 1 and (not lines[end - 1].strip() or lines[end - 1].lstrip().startswith('#')):
+            end -= 1
+        merged = [*lines[:end], '', *table, *lines[end:]]
+    out = '\n'.join(merged) + '\n'
+    expected = {**tomllib.loads(text), 'role': names}
+    if tomllib.loads(out) != expected:
+        raise SystemExit(f'the [role] table does not merge with the stylesheet:\n{out}')
+    return out
+
+
+def write_styles(package, played):
+    """Write the stylesheets of a package into `translated/now/` (`with_roles`): each `style.toml` of the
+    package and of its variants, as the old package has it, with who plays each thing (`played`:
+    `{folder_of: {name: role}}`). A variant's own stylesheet replaces its package's whole, so it takes
+    the roles of the package's files with those of its own; a variant whose own files give a role and
+    that has no stylesheet gets its package's with them. A folder with no stylesheet and no role gets no
+    file."""
+    shared = played.get(package, {})
+    for folder in [package, *sorted((package / 'variants').glob('*'))]:
+        roles = shared if folder == package else {**shared, **played.get(folder, {})}
+        target = OUT / folder.relative_to(BASE) / STYLE
+        if (folder / STYLE).is_file():
+            text = (folder / STYLE).read_text(encoding='utf-8')
+        elif folder == package and roles:
+            text = ''
+        elif folder != package and played.get(folder):
+            text = (package / STYLE).read_text(encoding='utf-8') if (package / STYLE).is_file() else ''
+        else:
+            target.unlink(missing_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(with_roles(text, roles), encoding='utf-8')
+
+
+def played_in(package, played):
+    """{entity or template: role} of every file of a package (`played`: `{folder_of: {name: role}}`)."""
+    return {
+        name: role
+        for folder, found in played.items()
+        if package_of(folder) == package
+        for name, role in found.items()
+    }
 
 
 def unspellable_units(packages):
@@ -1509,6 +1609,7 @@ def main(argv):
     )
     rows, written, packages = [], [], set()
     roles = collections.defaultdict(dict)  # {package: {event: role}}
+    played = collections.defaultdict(dict)  # {folder_of: {entity or template: role}}
     timescales = []  # (file, the old hint)
     for path in paths:
         translator = Translator(path, events=events)
@@ -1538,6 +1639,7 @@ def main(argv):
         dropped.update(counts['dropped'])
         defaults.update(counts['defaults'])
         roles[package_of(path)].update(counts['roles'])
+        played[folder_of(path)].update(counts['played'])
         timescales += [(relative.as_posix(), hint) for hint in counts['timescales']]
         if counts['missed']:
             print(f'  {relative}: lines that the script lost: {counts["missed"][:8]}', file=sys.stderr)
@@ -1545,7 +1647,8 @@ def main(argv):
         return 0
     for package in sorted(packages):
         copy_support(package)
-        write_roles(package, roles.get(package, {}))
+        write_roles(package, roles.get(package, {}), played_in(package, played))
+        write_styles(package, played)
     width = max(len(row[0]) for row in rows)
     print(f'{"file":{width}}  lines  translated  left  share')
     for name, logical, done, todo, missed, share in rows:
@@ -1567,10 +1670,15 @@ def main(argv):
             for reason, n in counter.most_common():
                 print(f'  {n:5d}  {reason}')
     print(f'\nwrote {OUT}')
-    for package, found in sorted(roles.items()):
-        if found:
+    for package in sorted(packages):
+        events, things = roles.get(package, {}), len(played_in(package, played))
+        if events or things:
             where = (OUT / package.relative_to(BASE) / ROLES).relative_to(OUT).as_posix()
-            print(f'\nthe roles of {len(found)} events and cases, for the wrapper: {where}')
+            print(
+                f'\nthe roles of {things} entities and templates and of {len(events)} events and cases, '
+                f'for the wrapper: {where}; the roles of the entities and templates, for the pictures: '
+                f'the [role] of each {STYLE}'
+            )
     if timescales:
         print(
             f'\nretired timescales (change 19), kept in the notes; confirm the accuracy without them ({len(timescales)}):'
@@ -1592,7 +1700,13 @@ def main(argv):
         name = Path(entry).relative_to(OUT).as_posix()
         warnings = collections.Counter(item['code'] for item in found['reports'])
         if found['ok']:
-            print(f'  {name}: compiles; warnings {dict(warnings) or "none"}')
+            sheet = found['style']
+            held = 'its stylesheet holds' if not sheet else f'its stylesheet has {len(sheet)} problems'
+            print(f'  {name}: compiles; warnings {dict(warnings) or "none"}; {held}')
+            for item in sheet[:12]:
+                print(f'      {item["code"]:14s} {item["file"]}:{item["line"]}  {item["message"][:150]}')
+            if sheet:
+                status = 1
             continue
         status = 1
         codes = collections.Counter(item['code'] for item in found['problems'])

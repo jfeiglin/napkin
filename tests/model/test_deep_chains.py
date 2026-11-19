@@ -47,7 +47,12 @@ def linked(n):
 def local(n):
     """Formulas of the locals of one event, each reading the next (a formula may read below)."""
     rows = [f'        v{k} = formula(v{k + 1} + 1 L)' for k in range(n - 1)]
-    return HEAD + 'm:\n    go = event():\n' + '\n'.join([*rows, f'        v{n - 1} = formula(1 L)', '        after 1 h']) + '\n'
+    return (
+        HEAD
+        + 'm:\n    go = event():\n'
+        + '\n'.join([*rows, f'        v{n - 1} = formula(1 L)', '        after 1 h'])
+        + '\n'
+    )
 
 
 def stored(n):
@@ -95,8 +100,29 @@ def table(n):
     return HEAD + '\n'.join(rows) + '\n', {'places.csv': '\n'.join(cells) + '\n'}
 
 
+def solved(n):
+    """A solver whose constraint reads the head of a chain of formulas of the top level, which the
+    check of what a solver may say reads through (`model/solvers.py`)."""
+    rows = [f'v{k} = formula(v{k + 1} + 0 L/h)' for k in range(n - 1)] + [f'v{n - 1} = formula(1 L/h)']
+    rows += [
+        'plant:',
+        '    water: L = 0 L in [0,]',
+        '    flow fill: SOURCE -> this.water',
+        '        request = 1 L/h',
+        '    choose = solver:',
+        '        inputs:',
+        '            cap = v0',
+        '        solve_for:',
+        '            this.fill.actual_rate',
+        '        constraints:',
+        '            this.fill.actual_rate <= cap',
+    ]
+    return HEAD + '\n'.join(rows) + '\n'
+
+
 FORMS = {
     'top': top,
+    'solved': solved,
     'entity': entity,
     'linked': linked,
     'local': local,
@@ -153,6 +179,9 @@ def test_a_chain_of_five_thousand_links_compiles_with_the_recursion_limit_at_400
     elif form == 'keyed':
         members = program.template('Node').members
         assert len(members) == LINKS
+    elif form == 'solved':
+        (solver,) = program.template('plant').solvers
+        assert len(solver.constraints) == 1 and len(program.root) == LINKS
     elif form == 'collections':
         values = {value.name: value for value in program.root}
         assert len([name for name in values if name.startswith('c')]) == LINKS
@@ -168,3 +197,14 @@ def test_a_chain_of_five_thousand_links_closed_on_itself_is_a_cycle_with_its_cha
     (problem,) = [item for item in caught.value.problems if item.code == 'cycle']
     chain = ' reads '.join(f'v{k}' for k in range(LINKS))
     assert problem.message.startswith(f'{chain} reads v0')
+
+
+def test_a_wide_expression_of_values_written_after_it_is_resolved_once(shallow):
+    """A formula that reads 3,000 values declared after it, each resolved inside its reader's
+    resolution (a few deep at most) and so once: it compiles in a few seconds at the recursion
+    limit of 400, and reads every value."""
+    rows = ['total = formula(' + ' + '.join(f'v{k}' for k in range(3000)) + ')']
+    rows += [f'v{k} = formula({k} L)' for k in range(3000)]
+    program = compile_text(HEAD + '\n'.join(rows) + '\n', UNITS).program
+    (total,) = [value for value in program.root if value.name == 'total']
+    assert reads(total.init.expr) == sorted(f'v{k}' for k in range(3000))

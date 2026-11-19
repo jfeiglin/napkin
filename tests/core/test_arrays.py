@@ -264,11 +264,17 @@ def test_a_membership_over_many_instances_is_that_of_each_instance_and_fails_by_
     node = expr.call('within', [expr.ref('x'), expr.ref('lo'), expr.ref('hi')])
     for _ in range(200):
         size = rng.randrange(1, 8)
-        columns = {name: np.array([rng.choice((-1.0, 0.0, 0.5, 2.0, 3.0)) for _ in range(size)]) for name in ('x', 'lo', 'hi')}
+        columns = {
+            name: np.array([rng.choice((-1.0, 0.0, 0.5, 2.0, 3.0)) for _ in range(size)])
+            for name in ('x', 'lo', 'hi')
+        }
         if rng.random() < 0.5:
             columns['lo'] = np.minimum(columns['lo'], columns['hi'])
         env = {name: column if rng.random() < 0.8 else float(column[0]) for name, column in columns.items()}
-        each = [{name: float(value[i]) if isinstance(value, np.ndarray) else value for name, value in env.items()} for i in range(size)]
+        each = [
+            {name: float(value[i]) if isinstance(value, np.ndarray) else value for name, value in env.items()}
+            for i in range(size)
+        ]
         if any(one['lo'] > one['hi'] for one in each):
             with pytest.raises(ExpressionError, match='the interval of a membership test is reversed'):
                 arrays.values(node, env, UNITS, size)

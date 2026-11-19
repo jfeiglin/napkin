@@ -36,12 +36,10 @@ scenario "Reader test"
 
 switch:  @ident @access
     "The switch that feeds the service."
-    role operator
     var position: "on" | "off" | "jammed" = "on"
 
 service:  @ident
     "A service with users."
-    role operator
     let users = 1000 people  @ident
         "Users"
     let service_rate = 0.05 per_h  @ident
@@ -77,7 +75,6 @@ service:  @ident
 
 responders:  @ident
     "Responders who remove the attacker."
-    role responder
     input removal_time = 60 h in 1 h to 150 h  @ident
         "Time to remove the attacker"
     event clean_up once when attacker.access is "kept" and since(attacker.start) >= removal_time:  @ident
@@ -86,7 +83,6 @@ responders:  @ident
 
 attacker:  @attack
     "A synthetic attacker. It switches the service off and then jams its repair."
-    role adversary
     input actor = "The AI"
     var access: "none" | "kept" | "removed" = "none"
     input reaction_time = 10 h in 0.5 h to 80 h  @ident
@@ -151,12 +147,24 @@ def library():
 LIB = library()
 
 
-def write(tmp_path, *steps, text=FIXTURE, brief=BRIEF, style=None):
+# Who plays each part: the scenario's wrapper's, beside the model (PLAN, change 23), and no line of the
+# model's.
+ROLES = """\
+[entities]
+switch = "operator"
+service = "operator"
+responders = "responder"
+attacker = "adversary"
+"""
+
+
+def write(tmp_path, *steps, text=FIXTURE, brief=BRIEF, style=None, roles=ROLES):
     """The path of the file `text` with the steps of an edit, written with its brief settings
-    (`brief.toml`) and its stylesheet (`style.toml`); None writes no such file."""
+    (`brief.toml`), its stylesheet (`style.toml`) and who plays each part (`roles.toml`); None writes
+    no such file."""
     path = tmp_path / 'MODELTEST.scn'
     path.write_text(edit(text, *steps), encoding='utf-8')
-    for name, written in (('brief.toml', brief), ('style.toml', style)):
+    for name, written in (('brief.toml', brief), ('style.toml', style), ('roles.toml', roles)):
         if written is None:
             (tmp_path / name).unlink(missing_ok=True)
         else:

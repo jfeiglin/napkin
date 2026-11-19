@@ -4,7 +4,6 @@ platform:  @shared_channel @first_move
     "The remote-support platform of the OT integrator that the water systems of the place share. The
         integrator's engineers reach the utilities' controllers through it, and so does the attacker."
     title "Remote support"
-    role operator
     channel: enum[TRUSTED, COMPROMISED] = TRUSTED
         "Remote-support channel"
     input access_start: enum[NONE, KEPT, REMOVED] = NONE
@@ -29,7 +28,6 @@ attacker:
         the water systems of a place. Its first move wipes the controls of every system it reaches at once.
         With a hidden credential that the first cleanup misses, it watches the crews restore the controls and
         wipes them again within minutes of each restoration, until responders remove the credential."
-    role adversary
     @assumption "Published records of AI incidents and evaluations show that AI agents carry out the tasks
         given to them and rebuild their tooling when detected. The scenario chooses the access, the systems
         that the operation reaches, the depth of the first move and the loop of strikes on restored controls."
@@ -59,7 +57,6 @@ attacker:
 responders:  @response_basis
     "The integrator's incident responders and the state's cyber response team, who recognize the attack on the
         shared platform and remove the attacker's credential."
-    role responder
     input recognition_time = 24 h in [1 h, 168 h]  @response_basis
         "Time until responders recognize a cyber attack on the platform"
     input removal_time = 240 h in [1 h, 720 h]  @response_basis @removal_basis
@@ -88,7 +85,6 @@ Utility:  @reach
     "One water system, from the water it can produce or buy to the taps of its customers. Its stored water,
         its operators and the crews and parts that it shares with the other systems of the place decide how
         long its customers have water."
-    role operator
     buys: <Tie>
     sells: <Tie>
     input name = "The system"
@@ -538,7 +534,6 @@ Utility:  @reach
 
 Tie:  @bulk_dependence
     "A connection through which one water system of the scenario sells finished water to another."
-    role operator
     seller: Utility
     buyer: Utility
     input capacity = 10 Mgal/day in [0 Mgal/day, 500 Mgal/day]  @bulk_dependence
@@ -565,7 +560,6 @@ Tie:  @bulk_dependence
 CrewPool:  @shared_pool
     "A pool of qualified crews of one skill that the systems of the place share. It holds the utilities' own
         staff, the integrator's engineers and the mutual-aid crews that join them."
-    role responder
     utilities: <Utility>
     input skill = "The crews"
         "Name of the crews on their cards"
@@ -646,7 +640,6 @@ parts:  @spares_basis
     "The suppliers of replacement controllers, from the spares in stock to the batch that arrives after the
         lead time."
     title "Parts supplier"
-    role environment
     input spares_on_hand = 50 parts in [0 parts, 5000 parts]  @spares_basis
         "Replacement controllers in stock at the start"
     input lead_time = 60 days in [1 days, 365 days]  @lead_basis
@@ -686,7 +679,6 @@ relief:  @min_of_capacities
     "The emergency drinking water that the state and the utilities bring in. It is limited by the approved
         supply, the tankers, the receiving points and the staff who hand it out."
     title "Emergency water"
-    role responder
     input ration = 1 gal/person/day in [0.5 gal/person/day, 5 gal/person/day]  @ration_basis
         "Emergency drinking water for each person without service in a day"
     input approved_supply = 1 Mgal/day in [0 Mgal/day, 50 Mgal/day]  @min_of_capacities
@@ -734,7 +726,6 @@ relief:  @min_of_capacities
 
 Households:  @counts_people_once
     "The people who live in the homes that one water system serves."
-    role community
     utility: Utility
     input population = 100000 people in [0 people, 20000000 people]  @population_basis
         "People the system serves"
@@ -777,7 +768,6 @@ Households:  @counts_people_once
 Hospitals:  @reserve_basis
     "The hospitals that one water system supplies, with the water they keep in reserve and the critical care
         that needs water."
-    role clinician
     utility: Utility
     input name = "The system"
         "Name of the system that supplies the hospitals, on their cards"

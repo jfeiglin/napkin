@@ -5,7 +5,7 @@
    them reads is evaluated there and then, at time 0). The order is found as the values are asked,
    with no recursion, so a chain through the rows of a large table is no limit: an evaluation that
    asks for a read that is not known yet waits while that read is computed (`Pending`, on the stack
-   of `plan.walked`), so a side that its evaluation does not take is never read (`reads.py`). A draw is executed there,
+   of `walk.walked`), so a side that its evaluation does not take is never read (`reads.py`). A draw is executed there,
    keyed by its site and its member (`chance.py`); each is an entry of the trace. An input that the configuration sets must lie in its admitted range. The entries that each `where`
    keeps are found from fixed values, once (`kept_of`), and so is the sorted index of the keys of
    each keyed read (`stepped_of`). Then each assertion over inputs is checked once; one that does not
@@ -35,7 +35,7 @@ the ways (`t`): a store of a set from its instance, one written by this moment's
 was written, an actual rate or a served fraction from the instance of its flow (zero for a flow that
 is in no set), a formula from what it reads (a formula of a finished occurrence keeps its frozen
 value), a reduction, a keyed read and a dynamic read of a collection from their members (each such
-derived value computed after the derived values that it reads, on the stack of `plan.walked`, with
+derived value computed after the derived values that it reads, on the stack of `walk.walked`, with
 no recursion: `_derived`), the time
 of the last change of a stored value at a commit (`changed_at`), and any other value from what the
 run holds between moments (`env`). A stage reads its own writes first. A draw is executed when an
@@ -63,6 +63,7 @@ from ...program.checkpoint import CheckpointError
 from ...program.config import ConfigurationError
 from ...program.record import Unavailable
 from ..continuous.system import run_settings, step_cap
+from ..continuous.walk import walked
 from ..errors import SimulationError
 from .chance import Chance
 from .checkpoints import Breaks, Stopped
@@ -83,7 +84,6 @@ from .plan import (
     STARTS,
     STATE,
     Pending,
-    walked,
 )
 from .reads import lazily
 from .record import Recorder, remember
@@ -263,7 +263,7 @@ class Run:
         return walked(self._starting(name, set()))
 
     def _starting(self, name, waiting):
-        """The computation of a starting value (`plan.walked`): after what it reads, each computed
+        """The computation of a starting value (`walk.walked`): after what it reads, each computed
         first on the driver's stack, and evaluated again once they are known (`Pending`). A read
         that waits already is one of the values that wait for this one: a cycle."""
         env = self.env
@@ -487,7 +487,7 @@ class Run:
         return kind in (REDUCE, LOOKUP, DYNAMIC) or (kind == FORMULA and name not in self.frozen)
 
     def _derived(self, name, t, tx, known, waiting):
-        """The value of a derived value (`_is_derived`) at time t, as a computation of `plan.walked`
+        """The value of a derived value (`_is_derived`) at time t, as a computation of `walk.walked`
         (re-audit 15): what it reads is read as its evaluation asks for it (`reads.py`), and each
         derived value among those that this read has not computed yet (`known`) is computed first,
         on the driver's stack, after which it is evaluated again with the reads that it made kept.

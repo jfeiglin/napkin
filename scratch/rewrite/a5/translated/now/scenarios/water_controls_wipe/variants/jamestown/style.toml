@@ -1,0 +1,73 @@
+# The two sellers, their ties and the buyer go down one column, with the buyer in the middle.
+
+[layout]
+stocks = 6
+card_width = 320
+
+[place]
+attacker                = { column = 1, row = 1 }
+responders              = { column = 1, row = 2 }
+platform                = { column = 2 }
+greensboro              = { column = 3, row = 1 }
+greensboro_to_jamestown = { column = 3, row = 2 }
+jamestown               = { column = 3, row = 3 }
+high_point_to_jamestown = { column = 3, row = 4 }
+high_point              = { column = 3, row = 5 }
+CrewPool                = { column = 4 }
+parts                   = { column = 4 }
+relief                  = { column = 5 }
+Households              = { column = 6 }
+Hospitals               = { column = 6 }
+
+[group]
+"Repair crews" = ["CrewPool"]
+
+[icon]
+drop     = ["Utility", "relief"]
+pipe     = ["Tie"]
+wrench   = ["CrewPool"]
+box      = ["parts"]
+house    = ["Households"]
+hospital = ["Hospitals"]
+
+# Who plays each thing: the old model's `role` lines (PLAN.md, change 23 after G0).
+[role]
+operator = ["platform", "Utility", "Tie"]
+adversary = ["attacker"]
+responder = ["responders", "CrewPool", "relief"]
+environment = ["parts"]
+community = ["Households"]
+clinician = ["Hospitals"]
+
+# Each of these three only marks one part of the repair as done; "Controls" shows the repair.
+[state.Utility]
+controls_fixed = "hidden"
+field_fixed    = "hidden"
+parts_fixed    = "hidden"
+
+[stocks]
+Utility = ["finished", "room", "controls_work", "field_work", "unserved", "direct_loss"]
+
+[triggers]
+rules = ["attacker", "jamestown"]
+names = ["platform", "responders", "parts", "relief", "Hospitals"]
+count = ["CrewPool", "greensboro", "high_point"]
+
+[equations]
+things = ["jamestown", "jamestown_homes"]
+width = 1100
+
+[references]
+show = true
+
+[symbol.Utility]
+finished        = "W"
+supply_rate     = "q"
+supply_full     = "Q"
+production_rate = "p"
+purchases       = "b"
+own_rate        = "o"
+demand          = "delta"
+export_rate     = "e"
+leak_rate       = "l"
+service         = "s"

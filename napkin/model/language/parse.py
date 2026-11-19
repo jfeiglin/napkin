@@ -95,21 +95,25 @@ COPIES = (
     'the rows in a table (name: Template from "file.csv")'
 )
 MEMBER = (
-    'a line of an entity is its text, evidence, title, role, sees, a value (`name: type = value`), a flow, '
+    'a line of an entity is its text, evidence, title, sees, a value (`name: type = value`), a flow, '
     'an event (`name = event(...):`), a solver (`name = solver:`), an assert or a status case'
 )
 EVENT = (
     'a line of an event is its text, its evidence, a local value or a flow (before the steps), a trigger '
     '(`when C:`), or a step (`after D:`, `after D when C:`, `after D`, `until C`)'
 )
-# Who plays a part belongs to the scenario's wrapper, not to the model (PLAN, change 19 after G0): a
-# role stands under an entity or a template only, for the pictures (`napkin draw`), and any other is
-# refused by name, so that none is lost.
-WRAPPER = "belongs to the scenario's wrapper (its UI or brief.toml), not to the model"
+# Who plays a part belongs to the scenario's wrapper, not to the model (PLAN, changes 19 and 23 after
+# G0): no part of a model has a role, and each is refused by name with where it goes, so that none is
+# lost. The pictures (`napkin draw`) take a thing's role from the stylesheet; `{role}` and `{name}`
+# are the refused line's, to show the line that the stylesheet takes.
+WRAPPER = "belongs to the scenario's wrapper (roles.toml), not to the model"
+PICTURES = 'the pictures take it from the [role] of style.toml, such as {role} = ["{name}"]'
 ROLES = {
+    'entity': f'an entity has no role: who plays it {WRAPPER}, and {PICTURES}',
+    'template': f'a template has no role: who plays its members {WRAPPER}, and {PICTURES}',
+    'member': f'a member has no role: who plays it {WRAPPER}, and {PICTURES}',
     'event': f'an event has no role: who plays it {WRAPPER}',
     'case': f'a case has no role: who plays it {WRAPPER}',
-    'member': f"a member has its template's role: a role of its own {WRAPPER}",
     'change': f'a change sets no role: who plays a part in a variant {WRAPPER}',
 }
 ACTION = (
@@ -535,6 +539,8 @@ class Expressions:
         if token.kind == 'number':
             self.c.i += 1
             written = token.value
+            # The run computes with the float nearest; the node keeps the exact decimal that the token
+            # writes (`nodes.Number.exact`), which every comparison of the front end reads.
             value = float(written) if any(ch in written for ch in '.eE') else int(written)
             found = self.quantity(token, value)
             following = self.c.peek()
@@ -1078,9 +1084,9 @@ class Parser:
         cursor.i += 1
         cites = cursor.cites()
         cursor.end()
-        text, title, role, evidence, rest = None, None, None, [], []
+        text, title, evidence, rest = None, None, [], []
         for child in line.under:
-            first, second = child.first, child.tokens[1] if len(child.tokens) > 1 else None
+            first = child.first
             if first.kind == 'at':
                 evidence += self.evidence_row(child)
             elif first.kind == 'text':
@@ -1092,15 +1098,15 @@ class Parser:
                     raise SyntaxProblem('an entity has one title', child.number, 0, 'layout')
                 title = self.title_line(child)
             elif is_role(child):
-                if role is not None:
-                    raise SyntaxProblem('an entity has one role', child.number, 0, 'layout')
-                role = second.value
-                self.no_body(child, 'a role')
+                found = ROLES['entity' if small(name) else 'template']
+                raise SyntaxProblem(
+                    found.format(role=child.tokens[1].value, name=name), child.number, first.column, 'role'
+                )
             else:
                 rest.append(child)
         members = self.members(rest)
         return n.Entity(
-            name, members, title, role, cites=cites, text=text, evidence=tuple(evidence), **self.at(line)
+            name, members, title, cites=cites, text=text, evidence=tuple(evidence), **self.at(line)
         )
 
     def members(self, found):
@@ -1214,7 +1220,8 @@ class Parser:
                 found['title'] = self.title_line(child)
                 return True
             if member and is_role(child):
-                raise SyntaxProblem(ROLES['member'], child.number, child.first.column, 'role')
+                written = ROLES['member'].format(role=child.tokens[1].value, name=name)
+                raise SyntaxProblem(written, child.number, child.first.column, 'role')
             sub = Cursor(child)
             if sub.at_name('in'):
                 if found['range'] is not None:

@@ -4,6 +4,9 @@ card_width = 280   # wide enough for the name of the stock
 [icon]
 wrench = ["tuners"]
 
+[role]                   # who plays each thing; the model has no role
+environment = ["tuners"]
+
 [equations]
 things = ["tuners"]
 

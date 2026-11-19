@@ -21,6 +21,10 @@ or of a consumer (each has a limit). So a long study, which reads new numbers fo
 not fill the memory with nodes that nothing reads again. Two nodes that are both alive and have the
 same key are still one object.
 
+A membership `x in [lo, hi]` is the call `within(x, lo, hi)`, one operation that reads x once and
+fails where its interval is reversed; `membership` gives the chain of comparisons that it tests, for
+a consumer that reads the comparisons of a condition.
+
 `read` gives the node of an expression text of today's structures, once for each text. A part of a
 text that is outside the language (an operator or a form that the language does not have) is a
 `Foreign` node, which keeps Python's own tree of that part: such a text fails when its value is asked,

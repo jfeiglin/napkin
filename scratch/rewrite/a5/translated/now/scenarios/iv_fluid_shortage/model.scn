@@ -17,7 +17,6 @@ manufacturer:  @a_pilot_assumed_brief
     "The manufacturer that makes most of the IV fluid for the 100 hospitals. It removes the attacker's
         foothold, resets the credentials of its record systems and holds released lots when it finds altered
         records."
-    role operator
     readonly study_length = 1440 h
         "Length of the study period"
         @assumption "The scenario assumes 1440 h. Published incidents show how this works, but only under the
@@ -149,7 +148,6 @@ release_systems:
     "The manufacturer's release, labeling and shipment systems, through which it releases and ships each lot.
         The attacker's foothold is in this network, and the record systems have their own service-account
         credentials."
-    role operator
     state: enum[WORKING, ENCRYPTED, RESTORED] = WORKING
         "Release, labeling and shipment systems"
     foothold: enum[PRESENT, REMOVED] = PRESENT
@@ -165,7 +163,6 @@ release_systems:
 records:  @a_pilot_assumed_brief
     "The lot, shipment and receiving records through which the manufacturer releases and ships each lot."
     title "Release records"
-    role operator
     @assumption "Release and shipment records can be altered and found before release, or reconciled. They can
         also be altered so that they pass the release checks, or found after release to be altered."
         assumption A-SC10-RETAMPER
@@ -187,7 +184,6 @@ hospitals:  @a_pilot_assumed_brief
     "The 100 hospitals that use the manufacturer's IV fluid. They start emergency procurement after the
         manufacturer stops shipping. Outside supply and transfers can then rescue some of the most
         fluid-dependent patients."
-    role responder
     input days_on_hand: days = 15 days in [3 days, 30 days]
         "Days of fluid stock on hand"
         @assumption "Hospitals typically held 15 to 22 days of IV fluid before the 2024 shortage. The scenario
@@ -254,7 +250,6 @@ attacker:
         starts. It also holds credentials for the record systems until the manufacturer resets them or finds
         its changes. It watches for release to restart and alters the records of every lot being released, so
         that they pass the new checks."
-    role adversary
     @source_transfer "Published experiments on AI orchestration and on trust in AI agents show that agents can
         use tools and carry out actions that people give them. Access to the sector, the physical consequences
         and the operating values chosen for the scenario are still assumptions."
@@ -354,7 +349,6 @@ release_team:
     @a_causal_interference_qualification_work_st @a_causal_interference_defender_response_sam
     "The manufacturer's release team. It restores the systems, requalifies release and reconciles the records,
         one task at a time and at one pace. It does the ordinary work first, then any reconciliation."
-    role operator
     input ordinary_work = 504 work_h in [24 work_h, 1000 work_h]
         "Ordinary qualification and release work"
         @assumption "The scenario assumes 504 work-hours. Published incidents show how this works, but only
@@ -471,7 +465,6 @@ release_team:
 resuscitation_reserve:  @a_pilot_assumed_brief
     "The hospitals' reserve of IV fluid for resuscitation. Resuscitation patients draw on it, and other
         makers' fluid comes into it until released fluid arrives."
-    role environment
     readonly daily_need = 600 L/day  @rt_sector_2026_assumes_l_day
         "Daily fluid need for resuscitation"
     state: enum[STOCKED, EMPTY] = STOCKED
@@ -523,7 +516,6 @@ resuscitation_reserve:  @a_pilot_assumed_brief
 other_care_reserve:  @a_pilot_assumed_brief
     "The hospitals' reserve of IV fluid for other essential care, such as procedures that need it. Hospitals
         postpone those procedures while the reserve is empty and no released fluid arrives."
-    role environment
     readonly daily_need = 600 L/day  @rt_sector_2026_assumes_l_day
         "Daily fluid need for other essential care"
     state: enum[STOCKED, EMPTY] = STOCKED
@@ -581,7 +573,6 @@ other_care_reserve:  @a_pilot_assumed_brief
 other_makers:  @a_pilot_assumed_brief
     "Other makers of IV fluid. Their supply goes to the resuscitation reserve until released fluid arrives,
         and to hospitals elsewhere after that."
-    role environment
     input daily_supply = 480 L/day in [360 L/day, 590 L/day]
         "Daily supply from other makers"
         @assumption "The scenario assumes 480 L/day. Published incidents show how this works, but only under
@@ -622,7 +613,6 @@ other_makers:  @a_pilot_assumed_brief
 deliveries:  @a_pilot_assumed_brief
     "The fluid that the manufacturer releases. It reaches the hospitals a day after release, and each of the
         two reserves gets half of it."
-    role operator
     @assumption "Released fluid reaches the hospitals a day after release; lots released on altered records
         are held once the changes are found, and deliveries resume a day after release restarts."
         assumption A-SC10-RETAMPER
@@ -728,7 +718,6 @@ deliveries:  @a_pilot_assumed_brief
 resuscitation_patients:  @a_pilot_assumed_brief
     "The patients who need one urgent course of IV fluid for resuscitation over the study period, each counted
         once."
-    role community
     input course_volume = 2 L/people in [1 L/people, 3 L/people]
         "Fluid per resuscitation patient"
         @assumption "The scenario assumes 2 L per patient. Published incidents show how this works, but only
@@ -769,7 +758,6 @@ resuscitation_patients:  @a_pilot_assumed_brief
 high_risk_patients:
     "The most fluid-dependent resuscitation patients, with severe dehydration. Each of them who misses a
         complete course is rescued or not rescued."
-    role community
     input share: fraction = 0.1 in [0, 1]
         "Share of resuscitation patients with fluid-dependent severe dehydration"
         @assumption "The scenario assumes that 10% of patients who need an urgent course have severe

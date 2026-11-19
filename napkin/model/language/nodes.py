@@ -14,6 +14,7 @@ say, by the units of the library; the arithmetic is the same either way.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from fractions import Fraction
 
 
 def _place():
@@ -36,22 +37,44 @@ class Node:
 # ---- expressions ------------------------------------------------------------------------------------
 
 
+def _decimal(value, written):
+    """The exact number that a token writes (`34.000000000000000001`, which no float holds), or that
+    a number made by hand is: the decimal that writes it (`0.1` is 1/10)."""
+    try:
+        return Fraction(written) if written else Fraction(repr(value) if isinstance(value, float) else value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
 @dataclass(frozen=True)
 class Number(Node):
     """A number with no unit: an int, or a float when it is written with a point or an exponent.
-    `written` is its spelling (`0.30`), which the formatter keeps."""
+    `written` is its spelling (`0.30`), which the formatter keeps. `exact` is the exact decimal that
+    it writes, never read through a float: the front end compares numbers by it, so two numbers that
+    a float cannot tell apart (`34` and `34.000000000000000001`) are two trees."""
 
     value: int | float
     written: str = _layout('')
+    exact: Fraction | None = field(default=None, kw_only=True, repr=False)
+
+    def __post_init__(self):
+        if self.exact is None:
+            object.__setattr__(self, 'exact', _decimal(self.value, self.written))
 
 
 @dataclass(frozen=True)
 class Quantity(Node):
-    """A number and its unit run: `5 L/h` is (5, (('', 'L'), ('/', 'h')))."""
+    """A number and its unit run: `5 L/h` is (5, (('', 'L'), ('/', 'h'))). `exact` is the exact
+    decimal of its number, as for a `Number`."""
 
     value: int | float
     unit: tuple[tuple[str, str], ...]
     written: str = _layout('')
+    exact: Fraction | None = field(default=None, kw_only=True, repr=False)
+
+    def __post_init__(self):
+        if self.exact is None:
+            object.__setattr__(self, 'exact', _decimal(self.value, self.written))
 
 
 @dataclass(frozen=True)
@@ -527,13 +550,13 @@ class Sees(Line):
 
 @dataclass(frozen=True)
 class Entity(Described):
-    """`name:` (an entity) or `Name:` (a template), with its members; `title` and `role` describe it
-    for displays."""
+    """`name:` (an entity) or `Name:` (a template), with its members; `title` describes it for
+    displays. It has no role: who plays a part is the scenario's wrapper's, and the pictures'
+    stylesheet's (PLAN, change 23)."""
 
     name: str
     members: tuple[Line, ...] = ()
     title: str | None = None
-    role: str | None = None
 
 
 @dataclass(frozen=True)

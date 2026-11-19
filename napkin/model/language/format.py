@@ -118,14 +118,22 @@ def expression(node, level=TEST, bare_in=True, tail=False):
         own = LEVELS[node.op]
         if node.op == '**':
             return f'{expression(node.left, ATOM)} ** {expression(node.right, FACTOR, tail=tail)}'
-        # A quantity on the right of `*` or `/` is bracketed, as the spec writes `x / (2 h)`, and so is
-        # one on the left of another quantity, `(3 person) * (2 year)`, or of a bare name, which would
-        # continue its unit.
-        product = node.op in ('*', '/')
-        before = product and (_bare(node.right) or isinstance(node.right, n.Quantity))
-        left = expression(node.left, own, tail=before)
-        right = expression(node.right, own + 1, tail=tail or (product and isinstance(node.right, n.Quantity)))
-        return f'{left} {node.op} {right}'
+        # A chain from the left of one level (`a + b - c`, `a * b / c`) is written link by link, with no
+        # call of Python for each, so a sum of thousands of terms costs no depth of calls. A quantity
+        # on the right of `*` or `/` is bracketed, as the spec writes `x / (2 h)`, and so is one on the
+        # left of another quantity, `(3 person) * (2 year)`, or of a bare name, which would continue
+        # its unit.
+        chain = []
+        while isinstance(node, n.Binary) and node.op != '**' and LEVELS[node.op] == own:
+            chain.append(node)
+            node = node.left
+        rights, follows = [], tail  # what follows a link: the caller's tail, or the next link's need
+        for link in chain:
+            product = link.op in ('*', '/')
+            quantity = product and isinstance(link.right, n.Quantity)
+            rights.append(f' {link.op} {expression(link.right, own + 1, tail=follows or quantity)}')
+            follows = product and (_bare(link.right) or isinstance(link.right, n.Quantity))
+        return expression(node, own, tail=follows) + ''.join(reversed(rights))
     if isinstance(node, n.Compare):
         written = expression(node.operands[0], ARITH)
         for op, operand in zip(node.ops, node.operands[1:]):
@@ -338,8 +346,6 @@ def line_rows(node, depth):
             under += text_rows(inner, node.text, depth + 1)
         if node.title is not None:
             under += text_rows(f'{inner}title ', node.title, depth + 1)
-        if node.role is not None:
-            under.append(f'{inner}role {node.role}')
         under += evidence_rows(node.evidence, depth + 1) + _block(node.members, depth + 1)
         return _rows(node, depth, f'{node.name}:{_cites(node.cites)}', under)
     if isinstance(node, n.Table):

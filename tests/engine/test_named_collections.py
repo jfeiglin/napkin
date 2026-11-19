@@ -14,7 +14,8 @@ collection written in its place, and the closed form worked here from the member
   `.at(x)` after `by`, and `where` after the name;
 - an empty collection: `min` and `max` fail when read, both ways;
 - a broadcast start over a named collection (at the setup, in a stage of an entity and of an
-  event), a priority over a named collection of flows, and a solver's input.
+  event), a priority over a named collection of flows, a solver's input, and a trigger and a gate;
+- an occurrence whose collection a stage reads, stopped before it and resumed in a fresh process.
 """
 
 from __future__ import annotations
@@ -24,9 +25,11 @@ import textwrap
 
 import pytest
 
-from napkin.engine.timeline import read, run
+from napkin.engine.timeline import Plan, Run, read, run
 from napkin.model.compile import compile_text
+from napkin.program.checkpoint import Breakpoint, Checkpoint
 from napkin.program.record import Unavailable
+from tests.engine.test_frozen_occurrences import in_a_fresh_process
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 
@@ -168,7 +171,10 @@ def test_a_named_collection_of_a_named_collection_reads_its_members():
     """`big = Tank.instances.where(full)`, `tanks = big.where(rank >= 2)`: at the top level, in an
     entity and in an event, the sum over `tanks` is that over the full tanks of rank 2 at least: 6 L.
     (A bare `tanks = big` is no collection value of the language.)"""
-    text = HEAD + members_text([(1, True, 4), (2, False, 5), (3, True, 6)]) + """
+    text = (
+        HEAD
+        + members_text([(1, True, 4), (2, False, 5), (3, True, 6)])
+        + """
 
 big = Tank.instances.where(full)
 tanks = big.where(rank >= 2)
@@ -187,6 +193,7 @@ boss:
 
 boss.look.start()
 """
+    )
     found = compiled(text)
     record = run(found.program, found.configuration)
     assert record.failure is None, record.failure.detail('message')
@@ -194,7 +201,10 @@ boss.look.start()
     assert [r.values[0] for r in read(record, found.program, paths, [1.5])] == [6, 6, 6]
 
 
-BROADCAST = HEAD + members_text([(1, False, 1), (2, False, 2), (3, False, 3)]) + """
+BROADCAST = (
+    HEAD
+    + members_text([(1, False, 1), (2, False, 2), (3, False, 3)])
+    + """
 
 tanks = <t2, t0>
 
@@ -209,6 +219,7 @@ boss:
 tanks.fill.start(1 L)
 boss.poke.start()
 """
+)
 
 
 def test_a_start_on_a_named_collection_starts_each_member_at_the_setup_and_in_stages():
@@ -334,3 +345,35 @@ def test_a_trigger_and_a_gate_on_a_named_collection_meet_its_members(total):
     assert record.failure is None, record.failure.detail('message')
     values = [r.values[0] for r in read(record, found.program, ['bell.rung', 'bell.opened'], [4])]
     assert values == [pytest.approx(2), pytest.approx(3)]
+
+
+STOPPED = (
+    HEAD
+    + members_text([(1, True, 4), (2, False, 5), (3, True, 6)])
+    + """
+
+tanks = Tank.instances.where(full)
+
+boss:
+    seen: L = 0 L
+    look = event():
+        mine = Tank.instances.where(rank >= 2)
+        after 1 h:
+            this.seen = sum(mine.water) + sum(tanks.water)
+
+boss.look.start()
+"""
+)
+
+
+def test_a_named_collection_of_an_occurrence_stopped_and_resumed_reads_the_same_members(tmp_path):
+    """Stopped before the stage that reads an event's collection and the root's, saved and resumed in
+    a fresh process, the stage reads 5 + 6 L and 4 + 6 L, as straight through: 21 L."""
+    found = compiled(STOPPED)
+    straight = run(found.program, found.configuration)
+    assert read(straight, found.program, ['boss.seen'], [1.5])[0].values == (21,)
+    made = Run(Plan.of(found.program, found.configuration), (Breakpoint('boss.look.step[0]'),))
+    stopped = made.run()
+    assert isinstance(stopped, Checkpoint) and stopped.stop.t == 1
+    assert in_a_fresh_process(found.program, stopped, tmp_path) == straight
+    assert made.resume() == straight

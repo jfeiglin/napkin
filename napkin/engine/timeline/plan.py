@@ -150,6 +150,7 @@ from ...program.refs import (
     Where,
     spelled,
 )
+from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import Dynamic, Ends, Entries, Keyed, Reduction
 from .pools import Keys, pools_of
@@ -363,37 +364,6 @@ class _Unnamed(Exception):
         self.key, self.init, self.scope, self.origin = key, init, scope, origin
 
 
-def walked(computation):
-    """The result of a computation over the dependency graph, with no recursion (re-audit 15): a
-    computation is a generator that yields each computation that it needs and is sent its result,
-    and returns its own; an exception that a needed one raises is thrown into the one that waits for
-    it, where a call would have raised it. The computations that wait are kept on an explicit stack,
-    so a chain of formulas, links or keyed reads of any length is no limit of Python's. An evaluation
-    that the core compiles (`reads.lazily`) cannot yield: it raises `Pending` for a value that its
-    computation does not know yet, which yields that value's computation and evaluates it again (the
-    reads that it made are kept, so none is made twice). The start of a run, the present, the
-    expansions of the plan and the conditions of a run all walk the graph so."""
-    stack, sent, thrown = [computation], None, None
-    while True:
-        top = stack[-1]
-        try:
-            asked = top.send(sent) if thrown is None else top.throw(thrown)
-        except StopIteration as done:
-            stack.pop()
-            if not stack:
-                return done.value
-            sent, thrown = done.value, None
-            continue
-        except Exception as problem:
-            stack.pop()
-            if not stack:
-                raise
-            sent, thrown = None, problem
-            continue
-        stack.append(asked)
-        sent, thrown = None, None
-
-
 def _renamed(node, names):
     """A node with each of its names replaced by the node that `names` gives it."""
     if isinstance(node, nodes.Ref):
@@ -548,7 +518,7 @@ class Plan:
         # and whether a resolution of one is under way, which a nested one waits for.
         self._collection_points, self._naming = {}, False
         self._chosen_of = {}  # the id of the keys of a keyed read's entries -> (whole numbers, `Keys`)
-        self._fixed_lookups = {}  # a keyed read -> whether the inputs fix what it reads (`_fixed`)
+        self._fixed_lookups = {}  # the keyed reads that the inputs were found to fix (`_fixed`)
         self._expanded = {}
         self._expanding = False  # while an expansion is found: a read of one not found yet asks for it
         self._places = {}  # the place of each value in `values`, for `ordered`
@@ -717,9 +687,9 @@ class Plan:
     def _fixed(self, found):
         """Whether what an expansion reads is fixed by the inputs: inputs, links, and keyed reads
         with a fixed key of what is fixed (followed on a list, with no recursion). A read that is
-        none of these decides at once, and what a keyed read was found to read is known after (a
-        chain of keyed reads costs no walk of each link's chain)."""
-        todo, seen = [found], []
+        none of these decides at once; a keyed read found fixed is kept so, and a chain of keyed
+        reads is walked once, not once for each of its links."""
+        todo, seen = [found], set()
         while todo:
             part = todo.pop()
             if part.time or part.stepped:
@@ -729,12 +699,12 @@ class Plan:
                 value = self.values.get(leaf)
                 if value is None or value.kind in FIXED:
                     continue  # a draw, which only an input's initializer executes
-                if value.kind != LOOKUP or self._fixed_lookups.get(leaf) is False:
+                if value.kind != LOOKUP:
                     return False
                 lookups.append(leaf)
             for leaf in lookups:
                 if leaf not in self._fixed_lookups and leaf not in seen:
-                    seen.append(leaf)
+                    seen.add(leaf)
                     todo.append(self.lookup_reads(leaf))
         self._fixed_lookups.update(dict.fromkeys(seen, True))
         return True
@@ -794,7 +764,9 @@ class Plan:
             return None
         found = self._chosen_of.get(id(keyed.keys))
         if found is None or found[0] is not keyed.keys:
-            natural = all(test is None for test in keyed.tests) and all(type(key) is int for key in keyed.keys)
+            natural = all(test is None for test in keyed.tests) and all(
+                type(key) is int for key in keyed.keys
+            )
             found = (keyed.keys, natural, Keys(keyed.keys) if natural and keyed.keys else None)
             self._chosen_of[id(keyed.keys)] = found
         if not found[1]:
@@ -1888,7 +1860,9 @@ class Plan:
             elif before is not None:
                 # A where of a where keeps both tests, in order: one flat conjunction, so a chain of
                 # narrowings (`c2 = c1.where(...)`) makes no deeper node (re-audit 15).
-                terms = [*before.values] if isinstance(before, nodes.BoolOp) and before.op == 'and' else [before]
+                terms = (
+                    [*before.values] if isinstance(before, nodes.BoolOp) and before.op == 'and' else [before]
+                )
                 if node not in terms:
                     terms.append(node)
                 node = nodes.boolean('and', terms)

@@ -2,8 +2,9 @@
 other things, what they change, the events that they start and the material that they move.
 
 The map reads the declared model and the program through `things.Things`, the reachability of each
-run to know which events it can start (D16), and the picture (`style.toml`: `[layout] hide` and
-`[icon]`). Nothing in the model, the engine or the studies reads it.
+run to know which events it can start (D16), and the picture (`style.toml`: `[layout] hide`, `[icon]`
+and `[role]`, who plays each thing, which the model never says: PLAN.md change 23 after G0). Nothing in
+the model, the engine or the studies reads it.
 
 - A **card** is a thing: an entity written once, a member written by hand, or a table, whose rows
   share one card (`things.Card`).
@@ -47,7 +48,7 @@ from .defaults import (
 from .text import in_words
 from .things import FLOWS, TABLE, walk_expression
 
-# Who acts, in the words of a card: the word for each role.
+# Who acts, in the words of a card: the word for each role of `[role]`.
 ACTOR_NAMES = {
     'adversary': 'Attacker',
     'responder': 'Responders',
@@ -56,7 +57,7 @@ ACTOR_NAMES = {
     'community': 'Residents',
     'clinician': 'Clinicians',
 }
-# The roles that a card names; a role that names a thing, and no role, are None.
+# The roles that a card names; another role of `[role]`, and no role, are None.
 ROLES = ('adversary', 'operator', 'responder', 'environment', 'clinician', 'community')
 # The words of the relations of a "changes" arrow, which its tooltip shows.
 CHANGE_WORDS = ('sets', 'adds', 'takes', 'shares', 'solves')
@@ -380,6 +381,7 @@ class _Drawing:
         self.machine_places = styles.state_places(sheet, found)
         self.stock_orders = styles.stock_orders(sheet, found)
         self.icons = styles.icon_of(sheet, found)
+        self.roles = styles.roles_of(sheet, found)
         self.levels = styles.trigger_levels(sheet, found)
 
     def facts(self):
@@ -426,7 +428,8 @@ class _Drawing:
             item['how'] |= words.get(key, set())
 
     def card(self, entry):
-        """A card of the picture: `id`; `title`; `role`, one of `ROLES` or None; `icon`; `template`,
+        """A card of the picture: `id`; `title`; `role`, its role of `[role]` (`style.roles_of`) when it
+        is one of `ROLES`, else None; `icon`; `template`,
         the template of a member or a table, else None; `copies`, the number of rows of a table, else
         1; `starts`, whether the setup starts an event of it; `file`, the file that writes its line, from the
         folder of the package; `place`, `{column, row}` from `[place]` or None; its stocks, pipes and
@@ -437,10 +440,11 @@ class _Drawing:
         place = self.places.get(entry)
         stocks = self.stocks(entry)
         keys = {stock['key'] for stock in stocks}
+        role = self.roles.get(entry)
         return {
             'id': entry,
             'title': card.title,
-            'role': card.role if card.role in ROLES else None,
+            'role': role if role in ROLES else None,
             'icon': self.icons[entry],
             'template': card.shown_template,
             'copies': len(card.members) if card.kind == TABLE else 1,

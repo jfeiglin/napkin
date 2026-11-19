@@ -40,15 +40,28 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   that its manifest names (every value, or the keys of its request), from 0 h to its end. A store's
   ledger `external` (`tank.water.external`, what edits brought into it from outside) belongs to the
   books of the store: a record that holds the store holds its ledger too, and a request may name the
-  ledger alone. A record may keep the histories of other values, which a formula that it holds reads
-  (the engine's reader evaluates the formula from them); it holds them for that, not for a read of
-  their own. A value that the record does not hold is `Unavailable` with the reason, never a default.
+  ledger alone. A ledger has a piece at each edit that changed its store, from the first: before it,
+  nothing came from outside, and it reads 0. A record may keep the histories of other values, which
+  a formula that it holds reads (the engine's reader evaluates the formula from them); it holds them
+  for that, not for a read of their own. A value that the record does not hold is `Unavailable` with
+  the reason, never a default.
+- **One rule, as the run goes.** A record holds the pieces that its run made up to its end, and its
+  pieces up to a time are settled once the run is past that time: a ledger begins at its first edit,
+  the values of an occurrence at its start, and no later edit or start adds a piece before its own
+  time. So a record cut at a time holds what a run to that time holds, and its budget counts the
+  same pieces: the run store's cut of a longer record answers as a fresh run of the shorter request
+  (`store.served`), and a run past its budget stops where its record does, before any later stop. A
+  curve is what a cut cannot follow: a run fits it to the steps that it takes to its own end, so the
+  store gives a request at an earlier horizon a cut only where no value that it holds is on a curve
+  by then, and runs it otherwise.
 - **The budget** (`Record.within`, R-A4a-07): the values that a record holds have at most the
   request's number of pieces. A record that would hold more ends at the time of the first piece that
   does not fit, with a failure entry there that names the budget (the detail `budget`): it holds the
   values before that time, and from it on every value is `Unavailable` with that reason. Only the
   pieces of the values that the record holds count, so a record of a request cut from a wider record
-  ends where a fresh run of that request ends.
+  ends where a fresh run of that request ends. A run whose record so far would hold more at a stop
+  ends there by its budget, and gives no checkpoint (`napkin/engine/timeline/checkpoints.py`): a run
+  stops by its budget where its record does, before any later stop.
 """
 
 from __future__ import annotations
@@ -280,15 +293,23 @@ class Record:
     def value(self, key, time):
         """The value of a key at a time from what the record holds, or `Unavailable` with the reason
         (`unavailable`; a value that did not exist yet; a value whose history the record does not
-        keep)."""
+        keep). A ledger reads 0 before its first edit, from the start of its owner (an occurrence's,
+        from the trace); the engine's reader, which knows the stores, also reads 0 for the ledger of a
+        store that no edit changed (`timeline.record.Reader.ledger`)."""
         reason = self.unavailable(key, time)
         if reason is not None:
             return Unavailable(reason)
         try:
-            return self.history(key).at(time)
+            history = self.history(key)
         except KeyError:
             stopped = self.stopped()
             return Unavailable(f'the record keeps no history of {key}' + (f': {stopped}' if stopped else ''))
+        if key.store is not None and history.pieces and time < history.pieces[0].t:
+            begun = [entry.t for entry in self.trace if entry.kind == 'start' and entry.owner == key.owner]
+            if '#' not in key.owner or (begun and begun[0] <= time):
+                return 0.0  # nothing came from outside before the first edit
+        try:
+            return history.at(time)
         except LookupError as problem:
             return Unavailable(str(problem))
 

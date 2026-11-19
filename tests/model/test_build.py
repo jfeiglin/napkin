@@ -22,7 +22,6 @@ import pytest
 from napkin.engine import read, run
 from napkin.model.compile import compile_text
 from napkin.model.language.problems import LanguageError
-from napkin.program.canonical import program_bytes
 from tests.program.examples import UNITS
 
 GATE = """\
@@ -91,17 +90,19 @@ def test_a_read_of_history_names_one_event_or_one_value(read_, code, words):
     assert words in problem.message
 
 
-def test_the_compiler_reads_no_role():
-    """A role is a text of the pages: the program and the hash are those of the model without it."""
-    plain = compiled()
-    with_role = compiled(
-        GATE.replace(
-            '    "A gate that an attacker jams."\n',
-            '    "A gate that an attacker jams."\n    role operator\n',
+def test_a_model_has_no_role():
+    """No part of a model has a role (PLAN, change 23): who plays a part is the wrapper's
+    (`roles.toml`) and the pictures' stylesheet's, so a role under an entity is refused by name and
+    says where it goes."""
+    with pytest.raises(LanguageError) as caught:
+        compiled(
+            GATE.replace(
+                '    "A gate that an attacker jams."\n',
+                '    "A gate that an attacker jams."\n    role operator\n',
+            )
         )
-    )
-    assert program_bytes(with_role.program) == program_bytes(plain.program)
-    assert with_role.model_hash == plain.model_hash
+    (problem,) = caught.value.problems
+    assert problem.code == 'role' and 'roles.toml' in problem.message and 'style.toml' in problem.message
 
 
 @pytest.mark.parametrize('word', ['frobnicate', 'Max', 'mean'])

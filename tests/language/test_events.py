@@ -1012,3 +1012,49 @@ def test_a_saved_reference_keeps_naming_its_occurrence_after_later_starts():
     model = compiled(text)
     (seen,) = read(run(model.program, model.configuration), model.program, ['crew.seen'], [5])
     assert seen.values == (3,)
+
+
+@pytest.mark.parametrize(
+    ('target', 'refused_'),
+    [('local.target.rate', True), ('this.rate', True), ('local.mine', False)],
+)
+def test_a_program_built_by_hand_holds_the_rule_of_lifetimes(target, refused_):
+    """The program's checker holds the rule of lifetimes too (`lifetime`), so that no program runs a
+    formula that reads a name of an occurrence after the occurrence ends: through a parameter that
+    names an entity, or `this`, the place outlives the occurrence, and its own local does not."""
+    from napkin.program.build import (
+        Builder,
+        after,
+        assign,
+        event,
+        formula,
+        local,
+        param,
+        q,
+        ref_to,
+        this,
+        value,
+    )
+    from napkin.program.check import ProgramError
+
+    b = Builder(UNITS)
+    b.template('Crew', value('rate', 'L/h', formula(q(0, 'L/h'))))
+    b.member('Crew', 'north')
+    places = {'local.target.rate': local.target.rate, 'this.rate': this.rate, 'local.mine': local.mine}
+    b.entity(
+        'boss',
+        value('rate', 'L/h', formula(q(0, 'L/h'))),
+        event(
+            'order',
+            param('target', ref_to('Crew')),
+            param('amount', 'L'),
+            value('mine', 'L/h', formula(q(0, 'L/h'))),
+            after(q(1, 'h'), assign(places[target], formula(local.amount / q(2, 'h')))),
+        ),
+    )
+    if not refused_:
+        b.finish()
+        return
+    with pytest.raises(ProgramError) as caught:
+        b.finish()
+    assert [item.code for item in caught.value.diagnostics] == ['lifetime']

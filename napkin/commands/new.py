@@ -4,11 +4,13 @@
 stock, the people who wait, which a flow moves at a rate into a tally, the people served; a value of
 the top level that follows the people served, for a caller to report (D10); and one assumption
 record, which every value cites. It uses the prelude's units only and names no library, so it
-compiles in any folder. With `--variants east,west`, it also writes `variants/NAME/model.scn` for each
-NAME: a variant that changes the rate, each to a value of its own.
+compiles in any folder. It also writes the package's picture, `DIR/style.toml`, which says who plays
+the service (`[role]`): the model has no role (PLAN.md, change 23 after G0). With `--variants
+east,west`, it also writes `variants/NAME/model.scn` for each NAME: a variant that changes the rate,
+each to a value of its own.
 
-Each file is its own formatted text (`format_text`). The command writes no file when one of them is
-there already. Then it prints what to replace next: the title, the inputs and the record.
+Each model file is its own formatted text (`format_text`). The command writes no file when one of them
+is there already. Then it prints what to replace next: the title, the inputs and the record.
 """
 
 import re
@@ -23,8 +25,8 @@ SUMMARY = 'start a scenario that compiles and runs as written'
 
 DESCRIPTION = """\
 Write DIR/model.scn: a model that compiles and runs as written (a stock, a flow, a value that follows
-what it serves, one assumption record), plus variants/NAME/model.scn for each variant. Prints what to
-replace next."""
+what it serves, one assumption record), its picture DIR/style.toml, plus variants/NAME/model.scn for
+each variant. Prints what to replace next."""
 
 EXAMPLES = """\
 example:
@@ -52,7 +54,6 @@ scenario "{title}"
 
 service:
     "The service and the people who wait for it."
-    role operator
     input rate: people/day = {rate} people/day in [0 people/day, {high} people/day] @guess
         "People that the service serves in a day"
     waiting: people = 1000 people in [0,] scale 1000 people @guess
@@ -67,6 +68,14 @@ people_served: formula(people) = formula(service.served) in [0,] @guess
 
 record guess: assumption "An example value that napkin new writes. Replace each value that cites this record
     with your own value and its evidence."
+"""
+
+# The picture of the main file: who plays the service, which gives its card the icon of its role.
+STYLE = """\
+# The picture of the model, which `napkin draw` reads and the calculation never does (docs/draw.md).
+# [role]: who plays each thing, such as operator = ["service"]; a thing has the icon of its role.
+[role]
+operator = ["service"]
 """
 
 # A variant's file. `{name}` is its name, `{rate}` its rate.
@@ -126,13 +135,14 @@ def variant_names(text):
 
 
 def files(title=TITLE, variants=()):
-    """{path in DIR: text} of the files of a new package: its main file and the file of each variant,
-    each formatted (`format_text`). The k-th variant (from 1) sets the rate to (k + 1) × STEP people in
-    a day, and the range of the main file's rate holds each of them."""
+    """{path in DIR: text} of the files of a new package: its main file, its picture (`STYLE`) and the
+    file of each variant, each model file formatted (`format_text`). The k-th variant (from 1) sets the
+    rate to (k + 1) × STEP people in a day, and the range of the main file's rate holds each of them."""
+    from ..draw.style import STYLE_FILE
     from ..model.language.format import format_text
 
     high = STEP * max(10, len(variants) + 1)
-    found = {paths.ENTRY: format_text(MODEL.format(title=title, rate=STEP, high=high))}
+    found = {paths.ENTRY: format_text(MODEL.format(title=title, rate=STEP, high=high)), STYLE_FILE: STYLE}
     for k, name in enumerate(variants, start=1):
         text = VARIANT_MODEL.format(name=name, rate=(k + 1) * STEP)
         found[f'{paths.VARIANTS}/{name}/{paths.ENTRY}'] = format_text(text)
@@ -168,12 +178,14 @@ def main(args):
 def next_steps(folder, title, variants):
     """What `napkin new` prints after it writes the package in `folder`: the files, the commands that
     run the model and its variants, and what to replace next."""
+    from ..draw.style import STYLE_FILE
+
     main_file = folder / paths.ENTRY
     target = shlex.quote(str(folder))
     runs = [f'napkin run {target}'] + [
         f'napkin run {shlex.quote(str(folder / paths.VARIANTS / name))}' for name in variants
     ]
-    wrote = f'Wrote {main_file}'
+    wrote = f'Wrote {main_file} and its picture, {folder / STYLE_FILE}'
     if variants:
         kind = 'variants' if len(variants) > 1 else 'variant'
         wrote += f', and the {kind} {common.listed(variants)} in {folder / paths.VARIANTS}/'

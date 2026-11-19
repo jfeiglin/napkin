@@ -15,14 +15,19 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   arguments of a distribution that (or whose draw) is the whole initializer, a member's own value and
   a table cell; and a bare zero beside a value of known unit.
 - **A quantity is its dimension and its scale**, never its spelling. A number written out is the
-  decimal that writes it and a unit's scale is exact (`rational`), and every comparison of numbers
-  that the front end makes reads them in the canonical unit of their dimension (`exact_value`): an
+  exact decimal that its token writes (`nodes.Number.exact`, never read through a float) and a
+  unit's scale is exact (`rational`), and every comparison of numbers that the front end makes
+  reads them in the canonical unit of their dimension, from the compiler's own folding of constants
+  (`folded`, `exact_value`: every operation folded exactly where its result is rational): an
   interval (`interval`: a range, a domain, the ends of a test, so `[6 h, 1 day]` runs from 6 h to
   24 h, `[0.1 day, 2.4 h]` holds one value and a reversed one is an error wherever it stands), a
   value in its range (`within`), the support of a drawn input, the rule of a distribution, a fixed
-  key and a cited datum (`support.cited_data`). A square root and a power take the dimension's
-  powers times the exponent, each whole (`raised`: `sqrt(24 h * 1 day)` is a time, the square root
-  of a ratio a plain number). The run converts each quantity the same way, once
+  key and a cited datum (`support.cited_data`). A membership with two ends (`x in [lo, hi]`) is the
+  program's operation `within`, which checks its ends each time a run evaluates it, so an interval
+  that only a run reverses fails there by name (`napkin.core.ops.REVERSED`); in a solver's
+  constraint it is the chain of its two relations (`lowering`). A square root and a power take the
+  dimension's powers times the exponent, each whole (`raised`: `sqrt(24 h * 1 day)` is a time, the
+  square root of a ratio a plain number). The run converts each quantity the same way, once
   (`napkin.core.units.UnitRegistry.normalize`).
 - **Unit runs.** After a number, a name is a unit while the library has a unit of that name and the
   run has not stopped; the first name that is no unit stops the run, and it and the names after it
@@ -32,11 +37,11 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   by hand (`north: Utility`, with its own values and links under it, and its `title`) or is a row of
   a table. A link (`origin: Place`) names one member, fixed for the run: the member sets it, or the
   link's initializer names it (`origin = sites.junction`), so the declared model knows each target.
-- **Titles and roles** (PLAN, change 19 after G0). An entity, a template and a member written by
-  hand may have a `title` ("DC Water"), a label that reports and playback give the member
-  (`DeclaredModel.title`) and no hash covers. A `role` stands under an entity or a template only, for
-  the pictures; an event's, a case's, a member's and a change's belong to the scenario's wrapper (its
-  UI or `brief.toml`), and the parser refuses each by name (`role`).
+- **Titles, and no roles** (PLAN, changes 19 and 23 after G0). An entity, a template and a member
+  written by hand may have a `title` ("DC Water"), a label that reports and playback give the
+  member (`DeclaredModel.title`) and no hash covers. No part of a model has a `role`: who plays a
+  part belongs to the scenario's wrapper (`roles.toml`), and the pictures take it from the `[role]`
+  of `style.toml`; the parser refuses each by name (`role`), and says where it goes.
 - **Cycles** are the members' (change 19). A value that its template reads through other members
   (`total = this.demand + sum(this.children.total)`) is read, while it is resolved, as its
   declaration types it (`provisional`); one with no declared type is refused, since its type is not
@@ -102,8 +107,13 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   occurrence enters and assigned by no statement; `job.crew_size` reads that occurrence.
 - **Lifetimes.** A value lives as long as its owner: the run's and an entity's for the run, an
   occurrence's parameters and locals while it runs (frozen once it finishes, D7). A formula that a
-  stage installs may read only what lives at least as long as its place, or a copy (`lifetime`): an
+  stage installs may read only what lives at least as long as its place, or a copy (`lifetime`); a
+  place lives as long as the owner of the target that it resolves to, whatever its spelling
+  (`this.x`, a link, an event's parameter, a saved reference, a member of a collection), so an
   entity's formula that reads a parameter of the occurrence that installs it is refused.
+- **Order of resolution.** A value is resolved once, after what it reads, on an explicit stack
+  (`resolved`); the walks of the members' starting values run on one too (`walked`), so a chain of
+  values of any length costs no depth of Python's calls (the audit's row 15).
 - **Enums** (`EnumOf`) are their members in written order (E1 of the front end of S4): two
   declarations of `enum[OPEN, CLOSED]` are one type, and the program names it `enum[OPEN,
   CLOSED]`. A bare member takes its enum from its place: a declared type, the other side of a
@@ -459,10 +469,13 @@ def compatible(a, b):
 
 @dataclass(frozen=True)
 class Const:
-    """A number (in the unit of its type), a yes/no or a text."""
+    """A number (in the unit of its type), a yes/no or a text. `exact` is the exact decimal of a
+    number written out (`34.000000000000000001`, which no float holds), in the unit of its type, for
+    the front end's exact comparisons (`exact_value`); the program and the run take `value`."""
 
     value: object
     type: object
+    exact: object = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -963,7 +976,6 @@ class DeclaredEntity:
     parts: tuple = ()
     text: str | None = None
     title: str | None = None
-    role: str | None = None
     evidence: tuple = ()
     line: int = 0
     status: DeclaredStatus | None = None
@@ -1230,12 +1242,18 @@ class Files:
 # ---- resolution ---------------------------------------------------------------------------------------
 
 
+# How many values one inside the other a resolution resolves inside itself (`Resolver.value`); a
+# value deeper than that is resolved first on the explicit stack (`Resolver.resolved`).
+INLINE = 4
+
+
 class _Unresolved(Exception):
-    """A value that a resolution under way reads before it is resolved (`Resolver.resolved`)."""
+    """A value that a resolution under way reads before it is resolved (`Resolver.resolved`), and
+    the values that read it on the way, innermost first (`readers`)."""
 
     def __init__(self, path):
         super().__init__(path)
-        self.path = path
+        self.path, self.readers = path, []
 
 
 class Refused(Exception):
@@ -1316,6 +1334,19 @@ def literal(node):
     return None
 
 
+def decimal(node):
+    """The exact number of a literal (`literal`), with its signs: the decimal that its token writes
+    (`34.000000000000000001` is that, and not the float 34.0), or the number that a node made by hand
+    holds; None for any other node."""
+    sign = 1
+    while isinstance(node, n.Unary) and node.op in ('-', '+'):
+        sign = -sign if node.op == '-' else sign
+        node = node.operand
+    if not isinstance(node, (n.Number, n.Quantity)) or node.exact is None:
+        return None
+    return sign * node.exact
+
+
 class Resolver:
     """Resolves the parts of one parsed text against a table of units, reading its tables with
     `read_table` (see `tables.in_folder`)."""
@@ -1331,8 +1362,9 @@ class Resolver:
         self.changes, self.labels = {}, {}
         self.entities, self.templates, self.instances, self.tables = {}, {}, {}, {}
         self.root, self.records = {}, {}
-        # The values whose resolution is under way, outermost first (a dict as an ordered set).
-        self.syntax, self.done, self.active = {}, {}, {}
+        # The values whose resolution is under way, outermost first (a dict as an ordered set), and
+        # how many of them a resolution resolves inside itself now (`value`).
+        self.syntax, self.done, self.active, self.inline = {}, {}, {}, 0
         self.ids, self.data = {}, {}  # the ids of the rows of each table that was read, and its form
         self.owned = {}  # the paths of the values of each template, once a member asks for them
         self.creation = {}  # the creation numbers of the members of each template (`created`)
@@ -1491,11 +1523,12 @@ class Resolver:
         found = literal(node)
         if found is not None:
             value, written = found
+            exact = decimal(node)
             if isinstance(written, n.Quantity):
-                return self.quantity(value, written, scope)
+                return self.quantity(value, written, scope, exact)
             if isinstance(unit, Num) and isinstance(value, (int, float)) and not isinstance(value, bool):
-                return Const(value, unit)
-            return Const(value, PLAIN)
+                return Const(value, unit, exact)
+            return Const(value, PLAIN, exact)
         if isinstance(node, n.Bool):
             return Const(node.value, BOOL)
         if isinstance(node, n.Text):
@@ -1621,8 +1654,9 @@ class Resolver:
             return Apply('compare', (value, high), BOOL, ('<=',))
         self.fail('syntax', f'{type(node).__name__} is no value here', node)
 
-    def quantity(self, value, node, scope):
-        """A number and its unit run: the names that are units, then the names that are values."""
+    def quantity(self, value, node, scope, exact=None):
+        """A number and its unit run: the names that are units, then the names that are values.
+        `exact` is the decimal that the number writes."""
         first = node.unit[0][1]
         if not self.units.has(first):
             self.fail(
@@ -1636,7 +1670,7 @@ class Resolver:
             taken.append((1 if node.unit[k][0] == '*' else -1, node.unit[k][1]))
             k += 1
         spelling = taken[0][1] + ''.join(('*' if sign > 0 else '/') + name for sign, name in taken[1:])
-        result = Const(value, self.num(spelling, node))
+        result = Const(value, self.num(spelling, node), exact)
         for op, name in node.unit[k:]:
             other = self.path(n.Name(name, line=node.line, column=node.column), scope)
             if isinstance(other.type, (Ent, Many, FlowOf)):
@@ -2336,7 +2370,11 @@ class Resolver:
             return None
         numbers = self.created(source.type.of.template)
         if source.start[0] == 'instances':
-            return select(numbers, at)
+            # The creation numbers of the instances are 0, 1, 2, ... in their order: the greatest at
+            # or below the key is its floor, and the last member's beyond the last.
+            if at < 0 or not numbers:
+                return None
+            return list(numbers)[min(math.floor(at), len(numbers) - 1)]
         if source.start[0] != 'literal' or not all(
             item.start[0] == 'named' and not item.steps for item in source.start[1]
         ):
@@ -2456,7 +2494,7 @@ class Resolver:
             if found is None:
                 raise Refused('depends', f'{path} has a problem of its own')
             return found
-        owner, syntax = self.syntax[path]
+        syntax = self.syntax[path][1]
         if path in self.active:
             found = self.provisional(path, syntax)
             if found is not None:
@@ -2472,27 +2510,51 @@ class Resolver:
                     syntax,
                 )
             self.fail('cycle', f'{chain}: the values on a cycle have no order', syntax)
-        if self.active:
+        if not self.active:
+            return self.resolved(path)
+        if self.inline >= INLINE:
             raise _Unresolved(path)
-        return self.resolved(path)
+        # A value that a resolution under way reads, resolved inside it, at most `INLINE` deep: so a
+        # wide expression of values not resolved yet is resolved once, and a chain costs no depth.
+        self.inline += 1
+        self.active[path] = None
+        try:
+            found = self.declared(path)
+        except _Unresolved as unresolved:
+            unresolved.readers.append(path)  # the driver resolves it again after what it reads
+            raise
+        except Refused:
+            self.done[path] = None
+            raise
+        finally:
+            self.inline -= 1
+            del self.active[path]
+        self.done[path] = found
+        return found
 
     def resolved(self, path):
         """Resolve a value, and each value that its resolution reads before it, on an explicit stack
         (`active`, outermost first, so that a cycle is its chain from the value that it returns to):
-        the value on top is resolved; a value that it reads and that is not resolved yet raises
-        `_Unresolved`, goes on top and is resolved first, and the value under it is then resolved
-        again, from its start. A resolution has no effect but the values that it resolves, so
-        resolving it again gives what one resolution would. A problem of a value refuses each value
-        under it on the stack, as a problem of what it reads, and is the caller's to report."""
+        the value on top is resolved; a value that it reads is resolved inside it, up to `INLINE`
+        deep, and one deeper that is not resolved yet raises `_Unresolved`, goes on top and is
+        resolved first, and the value under it is then resolved again, from its start. A resolution
+        has no effect but the values that it resolves, so resolving it again gives what one
+        resolution would, and each value is resolved a few times at most. A problem of a value
+        refuses each value under it on the stack, as a problem of what it reads, and is the caller's
+        to report."""
         stack = self.active
         stack[path] = None
+        self.inline = 0
         try:
             while stack:
                 current = next(reversed(stack))
                 try:
                     found = self.declared(current)
                 except _Unresolved as unresolved:
-                    stack[unresolved.path] = None
+                    # The values that were resolved inside `current` and wait for it, outermost first,
+                    # then the one that they read: so the stack is the chain of what reads what.
+                    for each in (*reversed(unresolved.readers), unresolved.path):
+                        stack[each] = None
                     continue
                 except Refused:
                     for each in stack:
@@ -3491,18 +3553,27 @@ class Resolver:
 
     def lifetime(self, target, found, scope, spelled, node):
         """Refuse a formula that a stage installs where it outlives the stage's occurrence and that
-        reads that occurrence's own parameters or locals (spec, "State owned by an invocation": a live
-        formula installed in a longer-lived entity that would read a retired local is refused, and the
-        calculated scalar is safe). A formula may read only what lives at least as long as it: a place
-        lives as long as its owner, so a value or a setting of an entity or of the top level lives for
-        the run and a local of another occurrence (reached through a reference to it, or `.at(t)`) as
-        long as that one; this occurrence's own locals and the settings of its own flows and stores,
-        named bare, live as long as it does."""
+        reads that occurrence's own names: a parameter, a local, a flow of it (spec, "State owned by an
+        invocation": a live formula installed in a longer-lived entity that would read a retired local
+        is refused, and the calculated scalar is safe). A formula may read only what lives at least as
+        long as it: a place lives as long as the owner of the target that the statement resolves to
+        (`own_place`), whatever its spelling, so a value or a setting of an entity or of the top level
+        lives for the run, reached through `this`, a link, a parameter that names an entity or a member
+        of a collection, and a local of another occurrence (reached through a reference to it, or
+        `.at(t)`) as long as that one; this occurrence's own locals and the settings of its own flows
+        and stores live as long as it does."""
         if scope.event is None or not isinstance(found, Retain) or self.own_place(target, scope):
             return
         for read in _local_reads(found.body):
             name = read.start[1]
-            what = 'parameter' if isinstance(self.syntax[f'{scope.event}.{name}'][1], n.Param) else 'local'
+            syntax = self.syntax[f'{scope.event}.{name}'][1]
+            what = (
+                'parameter'
+                if isinstance(syntax, n.Param)
+                else 'flow'
+                if isinstance(syntax, n.Flow)
+                else 'local'
+            )
             self.fail(
                 'lifetime',
                 f'{spelled} outlives this occurrence of {scope.event}, and its formula reads {name}, a {what} '
@@ -3512,13 +3583,15 @@ class Resolver:
             )
 
     def own_place(self, target, scope):
-        """Whether an assignment's target is a place of the stage's own occurrence: one of its bare
-        names (a local, a parameter's copy, a flow or a store of its own, and their settings), and not
-        a reference to another occurrence."""
+        """Whether an assignment's target is a place of the stage's own occurrence, by the owner of the
+        target that it resolves to: one of the occurrence's bare names (a local, a parameter's copy, a
+        flow or a store of its own) and the settings of its own flows and stores. A step from a bare
+        name that refers to something else reaches a place of that thing: an entity that a parameter
+        names, another occurrence that a saved reference names, a member of a collection."""
         if target.start[0] != 'local':
             return False
-        local = self.done.get(f'{scope.event}.{target.start[1]}')
-        return not (isinstance(local, DeclaredValue) and isinstance(local.type, Occ))
+        head = self.name(n.Name(target.start[1]), scope)
+        return not isinstance(head.type, (Ent, Occ, Many))
 
     def transfer(self, path, scope, node):
         """`move amount from source to destination`: an amount of the dimension of two stores, each a
@@ -4181,7 +4254,10 @@ class Resolver:
             unit = self.num(column.unit) if column.unit is not None else value.type
         if unit.dimension != value.type.dimension:
             self.fail('unit', f'{column.name} is in {value.type}, not {unit}')
-        result = Const(number, unit)
+        exact = decimal(written)  # the decimal of the cell's text; its sign is the number's
+        if number < 0 < exact:
+            exact = -exact
+        result = Const(number, unit, exact)
         self.within(result, value, None)
         return False, Given(column.name, result, cites, line)
 
@@ -4255,7 +4331,7 @@ class Resolver:
         status = self.status(item.name, cases) if cases else None
         if status is not None and any(part.path == status.path for part in parts):
             self.report('status', STATUS_NAME.format(status.path), cases[0].line)
-        text, title, role, label = item.text, item.title, item.role, self.labels.get(item.name)
+        text, title, label = item.text, item.title, self.labels.get(item.name)
         try:
             evidence = self.evidence(item)
             if label is not None:
@@ -4267,7 +4343,7 @@ class Resolver:
             self.report(refused.code, refused.message, refused.line, refused.column)
             evidence = ()
         kind = DeclaredTemplate if item.name in self.templates else DeclaredEntity
-        return kind(item.name, tuple(parts), text, title, role, evidence, item.line, status)
+        return kind(item.name, tuple(parts), text, title, evidence, item.line, status)
 
     def model(self):
         for item in self.tree.items:
@@ -4687,7 +4763,10 @@ class Resolver:
             # In the input's own unit, so that two equal values are one value of a configuration; a
             # decimal is converted as written (`0.1 days` is 2.4 h).
             number = _converted(found.value, self.scale(found.type), self.scale(value.type))
-            found = Const(number, value.type)
+            exact = (
+                None if found.exact is None else found.exact * self.scale(found.type) / self.scale(value.type)
+            )
+            found = Const(number, value.type, exact)
         return found
 
     def declared_runs(self, lines, options):
@@ -4835,6 +4914,9 @@ class Order:
             self.template[member.path], self.files[member.path] = member.template, member.file
         self.root = {value.name: value for value in root}
         self.shared = {}
+        # What the walk of each collection value of the top level reaches and reads, which is the same
+        # for every reader: walked once, so a chain of collection values costs its length.
+        self.collected = {}
         self.exact, self.created = exact, created
 
     def init(self, node):
@@ -4881,7 +4963,13 @@ class Order:
                 if value is not None:
                     found[('', steps[0])] = None
                 return {}
-            current, steps = (yield self._walk(value.init, '', (), found)), steps[1:]
+            if steps[0] not in self.collected:
+                read_on_its_way = {}
+                reached = yield self._walk(value.init, '', (), read_on_its_way)
+                self.collected[steps[0]] = (reached, read_on_its_way)
+            reached, read_on_its_way = self.collected[steps[0]]
+            found.update(read_on_its_way)
+            current, steps = dict(reached), steps[1:]
         else:
             current = yield self._starts(read.start, member, item, found)
         for step in steps:
@@ -5329,43 +5417,135 @@ def _converted(value, scale_from, scale_to):
 
 
 def exact_value(expression, units):
-    """The value of a typed expression fixed when the model compiles, exactly and in the canonical
-    unit of its dimension, with the model's `Units`: a number written out is the decimal that writes
-    it (`rational`) times its unit's scale, so `0.1 day` and `2.4 h` are both 12/5; and the signs, sums,
-    differences, products, quotients, whole powers, `min`, `max` and `abs` of such values (`2 h - 30
-    min` is 3/2). None for any other expression, whose value only a run knows. Every check of a number
-    against another that the front end makes reads its numbers here: a range, a domain, the interval
-    of a test, a value in its range, the support of a drawn input, a fixed key, a cited datum."""
+    """The value of a typed number fixed when the model compiles, exactly and in the canonical unit of
+    its dimension, with the model's `Units` (`folded`), or None for one that only a run knows or that
+    is no rational number. Every check of a number against another that the front end makes reads
+    its numbers here: a range, a domain, the interval of a test, a value in its range, the support of
+    a drawn input, a fixed key, a cited datum."""
+    found = folded(expression, units)
+    return found if isinstance(found, Fraction) else None
+
+
+def folded(expression, units):
+    """The value of a typed expression that the model fixes when it compiles, computed exactly: the
+    compiler's own folding of constants. A number is a Fraction in the canonical unit of its
+    dimension, the decimal that writes it times its unit's exact scale, so `0.1 day` and `2.4 h` are
+    both 12/5 and `34.000000000000000001 h` is not 34; a yes/no is a bool, a text or a member of an
+    enum its str. Each operation folds where its result is rational: signs, sums, differences,
+    products, quotients, `min`, `max`, `abs`, `clip`, a whole power, a square root (or a power of one
+    half) of an exact square, the comparisons, `not`, a membership, and `exp`, `expm1`, `ln`,
+    `log1p` and `erf` where they give a whole number; a conditional, `and` and `or` fold from what
+    they read, as a run reads it (the branch that a fixed test takes). None for anything else: what a
+    value, a reduction, a draw or the time reads is a run's to know."""
     if isinstance(expression, Const):
         value = expression.value
-        if not isinstance(expression.type, Num) or isinstance(value, bool):
-            return None
-        if not isinstance(value, (int, float, Fraction)):
-            return None
-        return rational(value) * (units.of(expression.type.unit)[1] if expression.type.unit else 1)
+        if isinstance(value, bool):
+            return value
+        if isinstance(expression.type, Num):
+            if not isinstance(value, (int, float, Fraction)):
+                return None
+            number = rational(value) if expression.exact is None else Fraction(expression.exact)
+            return number * (units.of(expression.type.unit)[1] if expression.type.unit else 1)
+        return value if isinstance(value, str) else None
+    if isinstance(expression, Retain):
+        return folded(expression.body, units)
     if not isinstance(expression, Apply):
         return None
     op = expression.detail if expression.op == 'call' else expression.op
-    if op not in _EXACT:
-        return None
-    args = []
-    for arg in expression.args:
-        found = exact_value(arg, units)
+    args = expression.args
+    if op == 'if':
+        test = folded(args[0], units)
+        return folded(args[1] if test else args[2], units) if isinstance(test, bool) else None
+    if op in ('and', 'or'):
+        decides = op == 'or'  # the value of a term that decides the whole
+        for arg in args:
+            found = folded(arg, units)
+            if not isinstance(found, bool):
+                return None
+            if found == decides:
+                return decides
+        return not decides
+    if op == 'compare':
+        return _compared(expression.detail, args, units)
+    values = []
+    for arg in args:
+        found = folded(arg, units)
         if found is None:
             return None
-        args.append(found)
-    return _EXACT[op](*args)
+        values.append(found)
+    if op == 'not':
+        return not values[0] if isinstance(values[0], bool) else None
+    if not all(isinstance(each, Fraction) for each in values) or op not in _EXACT:
+        return None
+    return _EXACT[op](*values)
+
+
+# A comparison of the typed form, by its symbol.
+_ORDER = {
+    '==': lambda a, b: a == b,
+    '!=': lambda a, b: a != b,
+    '<': lambda a, b: a < b,
+    '<=': lambda a, b: a <= b,
+    '>': lambda a, b: a > b,
+    '>=': lambda a, b: a >= b,
+}
+
+
+def _compared(symbols, args, units):
+    """A chain of comparisons folded from the left, as a run reads it: an operand after a link that
+    fails is not read. Numbers compare in order; a yes/no, a text and a member of an enum by `==`
+    and `!=` only."""
+    left = folded(args[0], units)
+    if left is None:
+        return None
+    for symbol, arg in zip(symbols, args[1:]):
+        right = folded(arg, units)
+        if right is None:
+            return None
+        numbers = isinstance(left, Fraction) and isinstance(right, Fraction)
+        if not numbers and symbol not in ('==', '!='):
+            return None
+        if not _ORDER[symbol](left, right):
+            return False
+        left = right
+    return True
 
 
 def _power(base, exponent):
-    """`base ** exponent` exactly, for a whole exponent (and a base that is not zero below zero);
-    None otherwise, since a root is seldom rational."""
-    if exponent.denominator != 1 or (base == 0 and exponent < 0) or abs(exponent) > 1024:
+    """`base ** exponent` exactly: for a whole exponent (and a base that is not zero below zero), and
+    for an exponent of one half of a whole number, from an exact square root; None otherwise."""
+    if abs(exponent) > 1024 or (base == 0 and exponent < 0):
         return None
-    return base ** int(exponent)
+    if exponent.denominator == 1:
+        return base ** int(exponent)
+    if exponent.denominator == 2:
+        root = _root(base)
+        return None if root is None else _power(root, Fraction(exponent.numerator))
+    return None
 
 
-# The operations whose result `Resolver.exact` computes exactly from exact arguments.
+def _root(number):
+    """The square root of a rational number exactly, when it is the square of a rational; else None."""
+    if number < 0:
+        return None
+    top, bottom = math.isqrt(number.numerator), math.isqrt(number.denominator)
+    if top * top != number.numerator or bottom * bottom != number.denominator:
+        return None
+    return Fraction(top, bottom)
+
+
+def _clip(value, low, high):
+    """`clip` exactly; None for bounds in the wrong order, which fail where a run reads them."""
+    return None if low > high else min(max(value, low), high)
+
+
+def _within(value, low, high):
+    """A membership exactly; None for a reversed interval, which fails where a run reads it."""
+    return None if low > high else low <= value <= high
+
+
+# The operations of numbers whose result `folded` computes exactly from exact arguments: None where
+# the result is no rational number, or is no value.
 _EXACT = {
     'neg': lambda value: -value,
     'add': lambda a, b: a + b,
@@ -5377,6 +5557,14 @@ _EXACT = {
     'min': lambda *values: min(values),
     'max': lambda *values: max(values),
     'abs': abs,
+    'clip': _clip,
+    'within': _within,
+    'sqrt': _root,
+    'exp': lambda value: Fraction(1) if value == 0 else None,
+    'expm1': lambda value: Fraction(0) if value == 0 else None,
+    'ln': lambda value: Fraction(0) if value == 1 else None,
+    'log1p': lambda value: Fraction(0) if value == 0 else None,
+    'erf': lambda value: Fraction(0) if value == 0 else None,
 }
 
 

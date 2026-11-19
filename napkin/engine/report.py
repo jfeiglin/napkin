@@ -454,7 +454,7 @@ class _Trail:
         other, so what another value of the report read, at its times or at these, takes no part in
         this trail. Any other part that the run evaluated (`evaluated`) reaches what it reads, on a
         branch only maybe (`Reads.sometimes`). `times` are those at which the report read the value
-        through an evaluation of the reader (`Reader.holds`)."""
+        through an evaluation of the reader (`Reader.refusal`)."""
         evaluated = self.reader.read
         start = name_of(key)
         pairs = frozenset((start, t) for t in times if (start, t) in evaluated)

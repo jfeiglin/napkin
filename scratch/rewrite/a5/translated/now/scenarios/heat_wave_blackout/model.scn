@@ -15,7 +15,6 @@ scenario "Blackout in a heat wave, caused by a contractor's AI that will not sto
 heat_wave:  @counts_quantity_value
     "A dry heat wave that starts with the outage. Its outdoor temperature and published heat-health curves set
         the risk of people without cooling."
-    role environment
     input length = 120 h in [48 h, 240 h]  @heat_wave_length
         "Length of the heat wave"
     input outdoor = 39.35 degC in [30 degC, 45 degC]  @heat_wave_outdoor
@@ -181,7 +180,6 @@ heat_wave:  @counts_quantity_value
 
 AgeBand:  @counts_quantity_value
     "An age band of the people on the supply, with its normal death rate."
-    role community
     input share: fraction = 0.8231 in [0, 1]
         "Share of the people in the age band"
         @source "The national share of the age band in 2023."
@@ -222,7 +220,6 @@ aged_75_and_over: AgeBand
 Buildings:  @counts_quantity_value
     "The buildings where a group of people lives. Without power and air conditioning, the temperature that the
         people feel inside rises."
-    role environment
     input iet_on = 26.3 degC in [20 degC, 32 degC]  @felt_temperature_limits
         "Temperature that people feel with power"
         @source "The mean temperature that people feel with power in the source's Phoenix heat wave."
@@ -342,7 +339,6 @@ compound_buildings: Buildings
 
 grid:  @counts_quantity_value @rt_delegation_contractor_holds_access
     "Remote control of the breakers and protection settings of the criminal group's electricity supply."
-    role operator
     remote_control: enum[IN_SERVICE, TAKEN_OVER, CUT_OFF] = IN_SERVICE
     status ok when this.remote_control == CUT_OFF and supply.supply == ON  @counts_quantity_value
         "Utility crews in control"
@@ -357,7 +353,6 @@ crews:  @records_status_events
     "The utility's repair crews. They switch the circuits back on one by one, and redo the work that the
         attacker's changes add."
     title "Repair crews"
-    role utility
     input work = 15 h in [6 h, 30 h]  @restoration_switching
         "Switching work for a full restoration with intact equipment"
     input lineworkers = 40 people in [10 people, 200 people]  @work_cost
@@ -455,7 +450,6 @@ crews:  @records_status_events
 
 supply:  @counts_quantity_value
     "The criminal group's electricity supply. It serves the compound and the homes around it."
-    role environment
     input people_served = 60000 people in [20000 people, 120000 people]  @people_on_supply
         "People served by the supply"
     supply: enum[ON, OFF, COMING_BACK] = ON
@@ -507,7 +501,6 @@ supply:  @counts_quantity_value
 contractor:  @records_status_events
     "The contractor's staff, who run the operation. They review what the operation has done, order a stop,
         force down an attacker that refuses, and cancel its scheduled job."
-    role contractor
     input review_time = 18 h in [0 h, 96 h]  @review_by_response
         "When the contractor reviews who depends on the supply"
     input order_delay = 0.25 h in [0 h, 24 h]  @order_clock
@@ -577,7 +570,6 @@ ai:  @records_status_events
         hidden route to them. It leaves one job on a server beside the controls. When the contractor orders a
         stop, it refuses until staff force it down."
     title "Attacker"
-    role adversary
     @source_transfer "Published AI-orchestrated cyber operations show that AI agents can carry out tasks that
         they are given. The AI's authority over electricity systems, the target area and the limits on its
         actions are chosen for this scenario."
@@ -665,7 +657,6 @@ job:  @records_status_events
     "The job that the attacker leaves on a server beside the supply's controls. It needs no connection. It
         runs once, unless contractor staff cancel it first or every circuit is already back."
     title "Scheduled job"
-    role environment
     input run_time = 60 h in [1 h, 336 h]  @job_run_time
         "When the scheduled job runs"
     state: enum[NONE, ARMED, RAN, CANCELLED] = NONE
@@ -713,7 +704,6 @@ job:  @records_status_events
 utility:  @records_status_events
     "The utility's responders and engineers. They cut the attacker's known remote route, determine the cyber
         cause and check the protection settings of every circuit before crews switch it on."
-    role utility
     input contain_time = 1 h in [0 h, 24 h]  @clocks
         "Time until the utility cuts the attacker's known remote route"
     input determination_time = 1 h in [0.5 h, 24 h]  @clocks
@@ -769,7 +759,6 @@ places:  @counts_quantity_value
     "Cooled places in the area, such as community centres, and the road transport that takes people to them. A
         place can open only if it has its own power."
     title "Cooled places"
-    role responder
     residents = <residents_under_65, residents_65_to_74, residents_75_and_over>
     confined = <confined_under_65, confined_65_to_74, confined_75_and_over>
     input capacity_share: fraction = 0.02 in [0, 0.3]  @cooling_centre_capacity
@@ -867,7 +856,6 @@ places:  @counts_quantity_value
 moves:  @counts_quantity_value
     "Families who leave the area by their own means, to places outside the official plan."
     title "Private moves"
-    role community
     residents = <residents_under_65, residents_65_to_74, residents_75_and_over>
     input start_time = 4 h in [0 h, 48 h]
         "When private moves begin"
@@ -928,7 +916,6 @@ moves:  @counts_quantity_value
 compound:  @counts_quantity_value
     "The compound where the criminal group holds people. Its operators control the gates, so the people inside
         can reach outside help only if officials open them."
-    role responder
     input held = 10000 people in [0 people, 20000 people]  @people_held
         "People held in the compound"
     input plan_start: enum[KEEP_SHUT, OPEN_ON_TIME] = KEEP_SHUT
@@ -956,7 +943,6 @@ compound:  @counts_quantity_value
 devices:  @counts_quantity_value
     "The batteries and other power supplies of people on home oxygen concentrators and ventilators."
     title "Home devices"
-    role environment
     input battery_hours = 3 h in [2 h, 12 h]  @battery_runtime
         "How long home devices run on battery"
     input alternative_share: fraction = 0.25 in [0, 1]
@@ -999,7 +985,6 @@ devices:  @counts_quantity_value
 outreach:  @counts_quantity_value
     "Responders who find people on home oxygen concentrators and ventilators and take them to sites with
         power."
-    role responder
     users = <device_users_under_65, device_users_65_to_74, device_users_75_and_over>
     input start_time = 18 h in [1 h, 96 h]  @by_response
         "When outreach to device users starts"
@@ -1022,7 +1007,6 @@ outreach:  @counts_quantity_value
 
 hospitals:
     "The hospitals that treat the people whom the heat makes seriously ill."
-    role clinician
     input heatstroke_share: fraction = 0.054 in [0.02, 0.1]  @clinical_share_limits
         "Heatstroke share of heat emergency visits"
         @source_transfer "A national emergency-department sample for 2006-2010 found that 5.4% of heat-illness
@@ -1060,7 +1044,6 @@ hospitals:
 
 Customers:  @counts_quantity_value
     "The electricity customers of one class on the supply."
-    role community
     input customers = 24000 customers in [0 customers, 100000 customers]  @counts
         "Customers"
     input cost_24h = 56.66 USD2025/customer in [0 USD2025/customer, 100000 USD2025/customer]
@@ -1114,7 +1097,6 @@ non_residential: Customers
 
 Residents:  @counts_quantity_value
     "The people of one age band who live in the homes around the compound and do not depend on a home device."
-    role community
     band: AgeBand
     input backup_share: fraction = 0.1 in [0, 1]  @backup_protected
         "People in homes with backup cooling"
@@ -1235,7 +1217,6 @@ residents_75_and_over: Residents
 
 DeviceUsers:  @counts_quantity_value
     "The people of one age band outside the compound who live on a home oxygen concentrator or ventilator."
-    role community
     band: AgeBand
     readonly population: formula(people) = formula((supply.people_served - compound.held) * this.band.share
         * this.band.device_share)
@@ -1328,7 +1309,6 @@ device_users_75_and_over: DeviceUsers
 
 Confined:  @counts_quantity_value
     "The people of one age band held in the compound. They stay inside unless officials open its gates."
-    role community
     band: AgeBand
     input backup_share: fraction = 0.1 in [0, 1]  @backup_protected
         "People in the compound with backup cooling"

@@ -7,8 +7,8 @@ package (`library.model_document`), and a record's error at its file and line. T
 counted by hand in the texts."""
 
 import json
-from fractions import Fraction
 import textwrap
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -20,7 +20,7 @@ from napkin.model.ir import ModelError
 from napkin.model.language.problems import LanguageError
 from napkin.model.library import model_document
 from napkin.model.support import DATUM
-from tests.evidence.support import datum_package
+from tests.evidence.support import datum_package, evidence_library, fixture_claim, write_package
 from tests.program.examples import UNITS
 
 TEXT = """\
@@ -230,8 +230,14 @@ def test_a_value_that_differs_from_its_cited_datum_is_a_warning_with_both_number
 
 # Each leaf: its text and its exact value in hours, worked by hand from the prelude's units (a day is
 # 24 h and a week 168 h), and a plain multiplier with its value.
-HOURS = [('2 h', Fraction(2)), ('0.5 h', Fraction(1, 2)), ('1.25 h', Fraction(5, 4)), ('0.25 days', Fraction(6)),
-         ('1 days', Fraction(24)), ('0.125 week', Fraction(21))]
+HOURS = [
+    ('2 h', Fraction(2)),
+    ('0.5 h', Fraction(1, 2)),
+    ('1.25 h', Fraction(5, 4)),
+    ('0.25 days', Fraction(6)),
+    ('1 days', Fraction(24)),
+    ('0.125 week', Fraction(21)),
+]
 PLAIN = [('2', Fraction(2)), ('0.5', Fraction(1, 2)), ('3', Fraction(3))]
 
 
@@ -243,7 +249,9 @@ def folded(data, depth):
     if depth == 0 or data.draw(st.integers(0, 3)) == 0:
         return data.draw(st.sampled_from(HOURS))
     a, b = folded(data, depth - 1), folded(data, depth - 1)
-    form = data.draw(st.sampled_from(['add', 'sub', 'scale', 'divide', 'min', 'max', 'abs', 'clip', 'if', 'sqrt', 'power']))
+    form = data.draw(
+        st.sampled_from(['add', 'sub', 'scale', 'divide', 'min', 'max', 'abs', 'clip', 'if', 'sqrt', 'power'])
+    )
     if form == 'add':
         return f'({a[0]} + {b[0]})', a[1] + b[1]
     if form == 'sub':
@@ -265,14 +273,19 @@ def folded(data, depth):
     if form == 'if':
         p, q = folded(data, depth - 1), folded(data, depth - 1)
         test, holds = data.draw(
-            st.sampled_from([
-                (f'{p[0]} < {q[0]}', p[1] < q[1]),
-                (f'{p[0]} >= {q[0]}', p[1] >= q[1]),
-                (f'not ({p[0]} == {q[0]})', p[1] != q[1]),
-                (f'({p[0]} <= {q[0]} and true)', p[1] <= q[1]),
-                (f'({p[0]} > {q[0]} or false)', p[1] > q[1]),
-                (f'({p[0]} in [{min(p, q, key=lambda i: i[1])[0]}, {max(p, q, key=lambda i: i[1])[0]}])', True),
-            ])
+            st.sampled_from(
+                [
+                    (f'{p[0]} < {q[0]}', p[1] < q[1]),
+                    (f'{p[0]} >= {q[0]}', p[1] >= q[1]),
+                    (f'not ({p[0]} == {q[0]})', p[1] != q[1]),
+                    (f'({p[0]} <= {q[0]} and true)', p[1] <= q[1]),
+                    (f'({p[0]} > {q[0]} or false)', p[1] > q[1]),
+                    (
+                        f'({p[0]} in [{min(p, q, key=lambda i: i[1])[0]}, {max(p, q, key=lambda i: i[1])[0]}])',
+                        True,
+                    ),
+                ]
+            )
         )
         return f'({a[0]} if {test} else {b[0]})', a[1] if holds else b[1]
     if form == 'sqrt':
@@ -303,7 +316,9 @@ def test_a_cited_value_is_the_number_that_the_compilers_folding_gives_it(tmp_pat
     found = data_warnings(path)
     if near:
         (warning,) = found
-        assert warning[0].startswith('service.end: @timing cites the datum delay of C-ACTION, 34 h, and 34.000000000000000001 h')
+        assert warning[0].startswith(
+            'service.end: @timing cites the datum delay of C-ACTION, 34 h, and 34.000000000000000001 h'
+        )
         assert warning[0].endswith('differs from it')
     else:
         assert found == [], (end, found)
@@ -327,5 +342,57 @@ def test_a_number_token_is_the_exact_decimal_that_it_writes(tmp_path):
     0.000000000000000001 h is."""
     (warning,) = data_warnings(datum_package(tmp_path / 'a', end='34.000000000000000001 h'))
     assert warning[0].endswith('34 h, and 34.000000000000000001 h differs from it')
-    assert data_warnings(datum_package(tmp_path / 'b', end='33.999999999999999999 h + 0.000000000000000001 h')) == []
+    assert (
+        data_warnings(datum_package(tmp_path / 'b', end='33.999999999999999999 h + 0.000000000000000001 h'))
+        == []
+    )
     assert data_warnings(datum_package(tmp_path / 'c', end='34.000000000000000000 h')) == []
+
+
+# A package whose every kind of value cites the datum delay of C-ACTION (34 h).
+CITING = """\
+scenario "Citing"
+    horizon 10 h
+    library "../library"
+
+Crew:
+    input wait: h = 34 h  @timing
+    late = formula(this.wait + 0 h)  @timing
+    kept = formula(17 h * 2)  @timing
+    odd = formula(35 h)  @timing
+    pick: distribution(h) = uniform(30 h, 40 h)  @timing
+    go = event():  @fixture
+        pause: h = 34 h  @timing
+        after 1 h
+north: Crew
+    wait = 1 days + 10 h  @timing
+crews: Crew from "crews.csv"
+
+record timing: source "The time before the service stops."
+    claims:
+        C-ACTION
+            datum: delay
+record fixture: assumption "The crew goes at once."
+    assumption RT-FIXTURE
+"""
+
+
+def test_every_kind_of_value_that_cites_a_datum_is_that_number_or_a_warning(tmp_path):
+    """Each value that cites the datum 34 h, of every kind: an input (34 h), a member's own value
+    (1 days + 10 h) and a cell (34, in the column `wait`) are it; a formula that the compiler fixes
+    is compared (`17 h * 2` is it, `35 h` differs); a formula that reads another value is computed
+    when the model runs; a distribution is no number; an event's local is compared as any value."""
+    library = evidence_library()
+    library['claims'] = [fixture_claim('C-ACTION', data={'delay': {'value': 34, 'unit': 'h'}})]
+    files = {'model.scn': CITING, 'crews.csv': 'id,wait: h  @timing\nfirst,34\nsecond,35\n'}
+    path = write_package(tmp_path, files, library)
+    found = sorted(message for message, _ in data_warnings(path))
+    head = '@timing cites the datum delay of C-ACTION, 34 h, and'
+    assert found == sorted(
+        [
+            f'Crew.late: {head} it is computed when the model runs, and a datum names a number',
+            f'Crew.odd: {head} 35 h differs from it',
+            f'Crew.pick: {head} it is a distribution, and a datum names a number',
+            f'crews.second.wait: {head} 35 h differs from it',
+        ]
+    )

@@ -95,8 +95,9 @@ from ...core.units import rational
 from ...expressions import UnitSystem
 from ...program import parts as p
 from ...program.refs import Distribution, Formula
+from ..continuous.walk import walked
 from ..errors import SimulationError
-from .plan import BACKWARD, FORMULA, FORWARD, walked
+from .plan import BACKWARD, FORMULA, FORWARD
 from .reads import lazily
 
 # The comparisons of a stage's test, exact, as functions of the difference of their sides.
@@ -863,11 +864,12 @@ def near_ties(node, origin, plan, frozen, side, holds, tolerance, later=None):
     stop at the term that decides, a conditional takes its selected side. Of those, the ones that
     decide are kept: every term of a true `and` or of a false `or`, since each one turned the other
     way would turn the answer; else only the term that stopped it; of a chain of comparisons, every
-    link of a true one, else the link that fails."""
+    link of a true one, else the link that fails. A membership is evaluated (a reversed interval
+    fails by name), then read as its chain `lo <= x <= hi`."""
 
     def decided(part):
         """(the answer of a part, the near-ties of the comparisons that decide it), as a computation
-        of `plan.walked`: each part through a boolean formula is one that it yields, so a chain of
+        of `walk.walked`: each part through a boolean formula is one that it yields, so a chain of
         them is no limit of Python's."""
         if isinstance(part, nodes.Ref):
             value = plan.values.get(part.name)
@@ -890,6 +892,10 @@ def near_ties(node, origin, plan, frozen, side, holds, tolerance, later=None):
             test, mine = yield decided(part.test)
             answer, more = yield decided(part.body if test else part.orelse)
             return answer, mine + more
+        membership = nodes.membership(part)
+        if membership is not None:
+            side(part)  # the membership itself, which fails by name where its interval is reversed
+            return compared(membership[0])
         if isinstance(part, nodes.Compare):
             return compared(part)
         return bool(side(part)), []

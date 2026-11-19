@@ -25,6 +25,7 @@ import sys
 from fractions import Fraction
 from pathlib import Path
 
+from napkin.draw import style as styles
 from napkin.engine.report import Lag, report
 from napkin.engine.timeline import run as run_program
 from napkin.engine.timeline.record import key_of, unit_of
@@ -39,8 +40,9 @@ from napkin.program.record import Key, Unavailable
 
 
 def compiled(entry):
-    """{'ok', 'problems', 'reports'} of the compile of an entry file: the problems as dicts with their
-    code, file, line and message."""
+    """{'ok', 'problems', 'reports', 'style'} of the compile of an entry file: the problems as dicts with
+    their code, file, line and message, and for a model that compiles the problems of its stylesheet, as
+    `napkin compile` checks it (`napkin.draw.style.of`)."""
 
     def plain(problem):
         return {'code': problem.code, 'file': problem.file, 'line': problem.line, 'message': problem.message}
@@ -58,7 +60,20 @@ def compiled(entry):
             'problems': [{'code': 'missing', 'file': str(entry), 'line': 0, 'message': str(error)}],
             'reports': [],
         }
-    return {'ok': True, 'problems': [], 'reports': [plain(item) for item in found.reports]}
+    try:
+        styles.of(found)
+        sheet = []
+    except styles.StyleError as error:
+        sheet = [
+            {
+                'code': item['code'],
+                'file': item['file'],
+                'line': item.get('line') or 0,
+                'message': item['message'],
+            }
+            for item in error.diagnostics
+        ]
+    return {'ok': True, 'problems': [], 'reports': [plain(item) for item in found.reports], 'style': sheet}
 
 
 def library_problem(item):

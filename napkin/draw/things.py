@@ -7,7 +7,9 @@ declared model (`napkin/model/semantic.py`) and the program.
   member of a template written by hand (its id, `north`), or a table, whose rows share one card (its
   name, `places`; `members` are its rows). A template has no card of its own: its members stand for
   it. The top level has no card: its values are on no card, and nothing points to them. The cards
-  stand in the order of the model's lines; a table stands at its own line.
+  stand in the order of the model's lines; a table stands at its own line. A card has no role: the
+  model has none (PLAN.md change 23 after G0), and who plays a thing is the stylesheet's `[role]`
+  (`style.roles_of`).
 - **Kinds by use** (`kind`, change 14 of the plan). A stored number at an end of a flow, a leg, a
   route or a `move` is a `stock`, and a `tally` when nothing takes from it: it is the source of no
   flow, of no `move`, and at the end of no route (a route takes from both of its ends). Any other
@@ -49,14 +51,13 @@ FLOWS = (s.DeclaredFlow, s.DeclaredLegs)
 
 @dataclass(frozen=True)
 class Card:
-    """A thing of the picture: `id`, `title` (its title, else its name in words), `role` (its
-    template's for a member or a table), `template` (the path of the declared entity or template whose
-    parts its members have), `members` (their ids), `line`, `text` and `kind` (`entity`, `member` or
-    `table`). `shown_template` is the template's name for a member or a table, else None."""
+    """A thing of the picture: `id`, `title` (its title, else its name in words), `template` (the path
+    of the declared entity or template whose parts its members have), `members` (their ids), `line`,
+    `text` and `kind` (`entity`, `member` or `table`). `shown_template` is the template's name for a
+    member or a table, else None."""
 
     id: str
     title: str
-    role: str | None
     template: str
     members: tuple
     line: int
@@ -143,7 +144,6 @@ class Things:
                     Card(
                         entity.path,
                         title,
-                        entity.role,
                         entity.path,
                         (entity.path,),
                         entity.line,
@@ -153,12 +153,10 @@ class Things:
                 )
         for member in declared.members:
             if member.table is None:
-                role = self.entities[member.template].role
                 found.append(
                     Card(
                         member.path,
                         in_words(member.path),
-                        role,
                         member.template,
                         (member.path,),
                         member.line,
@@ -167,12 +165,10 @@ class Things:
                     )
                 )
         for table in declared.tables:
-            role = self.entities[table.template].role
             found.append(
                 Card(
                     table.path,
                     in_words(table.path),
-                    role,
                     table.template,
                     table.members,
                     table.line,

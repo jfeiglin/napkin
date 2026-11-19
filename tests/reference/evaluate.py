@@ -674,11 +674,12 @@ class Ev:
         bounds are an error. Ends that move are compared just after the moment, and the first time at
         which they can cross is a stop, as for any comparison."""
         v, low, high = self.val(x), self.val(lo), self.val(hi)
-        if not isinstance(low, Lin) and not isinstance(high, Lin):
-            if isinstance(low, (Fraction, Poly, int)) and isinstance(high, (Fraction, Poly, int)):
-                gap = plain(poly(low) - poly(high)) if isinstance(low, Poly) or isinstance(high, Poly) else low - high
-                if self.sign(gap) > 0:
-                    raise RunFailed(f'{REVERSED}: {show(E("within", x, lo, hi))} reads [{low}, {high}]')
+        # Ends that are unknowns of a solve are relations, which no interval orders.
+        if isinstance(low, (Fraction, Poly, int)) and isinstance(high, (Fraction, Poly, int)):
+            moving = isinstance(low, Poly) or isinstance(high, Poly)
+            gap = plain(poly(low) - poly(high)) if moving else low - high
+            if self.sign(gap) > 0:
+                raise RunFailed(f'{REVERSED}: {show(E("within", x, lo, hi))} reads [{low}, {high}]')
         return self.between(v, low, high, x, lo, hi)
 
     def between(self, v, low, high, x, lo, hi):

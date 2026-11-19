@@ -1,74 +1,64 @@
 # Audit 3, agent E: the engine (track b1/audit3-e)
 
-Brief: `briefs/audit3.md` "E, the engine", `COMMON-B.md`. Owns engine/timeline/{moment,occurrences,
-plan,collections,triggers,run,pools,chance}.py, engine/continuous/ but fields.py, new tests/engine.
+Brief: `briefs/audit3.md` "E", `COMMON-B.md`. Before-states: new tests run on `git archive 8b3a01a`.
 
 ## Where each cause acts (listed before any change)
-F14, a write to a finished occurrence (spec.md:632, D7, G0 "Allow writes to live occurrences"):
-- moment.target (assign, `move` ends): only a dynamic `.occurrences.at(t)` target is checked; a saved
-  reference (`job.x`, plan._referred), a reference of a reference, a bare local: no check.
-- moment.assign, an allocation (`job.batch.inflow = priority(...)`): no check.
-- flows: occurrences.register marks met only the new occurrence's own stores (another's store that
-  its flow meets is skipped by retirement); run.flow_joins/_present: a flow that joins at a store of a
-  finished occurrence; occurrences.complete: a finishing occurrence's store that another's present
-  flow meets keeps receiving (probe: 2 L into a finished batch, no failure).
-- checkpoints.checked (R): an edit of a finished occurrence's value, refused (CheckpointError): holds.
-- run.write / moment._publish: where the above land; no check of their own (none needed once
-  every writer is checked).
-- oracle tests/reference/run.py (not mine): `_assign` and `_editable` check; `_move` and flows do not.
-N15, a named collection (`tanks = Tank.instances`): a path that steps into it reads its init.
-- plan._step 'root' (plan.py:1650): `('value', name)` for a collection; then any step fails.
-- plan.occurrence frame names / plan._start Local / plan._step 'occurrence': an event's collection
-  local is `('value', name)`, a name with no value (KeyError at the run).
-- plan._step 'member': resolves the init (holds). Solver inputs (plan._declare_solver) resolve
-  through the same `resolve`, so a root collection named in inputs failed too.
-- proofs.py _step 'root' and _local (R): the same cause in the never-falls/start proofs.
-- model/solvers.py walk (F): root and member collections resolved (holds).
-R15, recursion on a chain of 5,000 links, limit 400 (paths `plan.walked` may not cover):
-- (to probe) plan.resolve/_step through a chain of named collections; keyed reads (_keyed,
-  lookup_reads, _members_part, _chosen); triggers' conditions; declared.value/_name (not mine) over
-  formulas that read unknowns; component._expand, sparse.values, ways.build.level_of (not mine);
-  continuous/kernels.py dynamic, _proven_zero, compartment_solution (mine).
-M, F's membership operation in a trigger's or a gate's condition: waiting for F's "For E".
+F14 a write to a finished occurrence: moment.target (only `.at(t)` checked), moment.assign
+(allocation), occurrences.register (a flow joining a finished store; another's store never met, so
+not retired), occurrences.complete (another's flow still at its store); checkpoints.checked (R,
+holds); oracle `_move` and flows (not mine).
+N15 a named collection: plan._step root (plan.py:1650), an event's collection local (no value:
+KeyError), solver inputs; proofs.py _step root/_local and the trail (R). Holds: member, solvers.py.
+R15 chains: plan._named/resolve (a chain of names), plan._where (nested tests), keyed reads
+(_chosen, _fixed, _members_part, `reads`: cubic); kernels.py proofs and affine forms (by calls);
+not mine: declared.value, family.at + core/arrays, component._expand, sparse.compiled, core/faces,
+record._lookup (quadratic).
+M12 `within`: triggers._truth_of/_atoms_of, moment.near_ties, integrate.switching_surfaces.
 
-## Rule tests (written first, failure on the code as it was)
-- F14 `tests/engine/test_frozen_occurrences.py` (49): before the fix 25 failed (19 random writes after
-  the finish made silently, through `job`, `other = job`, `.at(t)`; the flows present at the finish,
-  in and out; a flow started at a finished store; another's flow retired as none; stop+resume and
-  edit-at-stop runs that finish).
-- N15 `tests/engine/test_named_collections.py` (44): before the fix 29 failed (every top-level and
-  event read over a name: Outside / KeyError; a name of a name; broadcasts; priority over a named
-  collection of flows; a solver input naming one; a trigger and a gate); in place, all held.
-- (Before-states are run on `git archive HEAD` in the scratchpad, with the new test files copied.)
+## Rule tests (written first; failure on the code as it was)
+- test_frozen_occurrences.py (51): 25 failed (writes after the finish made; flows; retirement).
+- test_named_collections.py (45): 29 failed (top level and event: Outside / KeyError).
+- test_deep_engine_paths.py (5 + 5 deep + 5 strict xfail, others' files): named collections failed
+  (Outside), then recursed (_named, nodes.names); keyed chain cubic (26 s at 100 links).
+- test_membership_conditions.py (7): 4 failed on 8b3a01a; with `within`, trigger/gate never met.
+- test_compiled_chains.py (8 deep): F's forms at 5,000 links run, read, trigger at limit 400.
+- kernels.py: with component._expand iterative (a probe), proven_zero recursed, then linear.
 
 ## Done
-- F14: one check, `Occurrences.writable(name, writer)`, called where each write and transfer lands:
-  moment.target (every assignment and both ends of a move, whatever spells the target), an
-  allocation, each end of a flow as it joins (register), each store of a finishing occurrence that
-  another's flow still meets (complete). register marks another occurrence's store met (retired).
-- N15: plan._named: a named collection (root, member, event local) is its init resolved in its
-  declaring scope; _step root/member/occurrence and _start Local through it (`_bare`); an event's
-  collection local enters with no value.
+- F14: one check `Occurrences.writable` (`frozen` its rule): target, allocation, each end of a
+  joining flow, each store of a finishing occurrence met by another's flow; others' stores met.
+- N15: plan._named: init resolved in its scope, once, on an explicit stack; flat where of where.
+- Keyed reads: `_chosen` once per entries, `_fixed` memo, members' parts lazily, a source written
+  again shares its entries, a chosen read reads its entry (`reads`), `define` clears `_members`.
+- M12: a membership is evaluated (ops.REVERSED by name), then read as its chain.
+- continuous/walk.py holds the driver; kernels.py walks on it.
 
 ## Decisions
-- A flow present at a store of a finished occurrence fails the run when they meet (the finish, or the
-  start of the flow's owner), whatever its rate: spec "A flow whose rate falls to zero stays
-  connected for its owner's lifetime", "a write to it is an error"; G0 "A transfer that should
-  continue after an event finishes belongs on the entity". A rate watched for leaving zero would
-  need the integrators to report it; this is never later than a write (owner asked, below).
-- A move of 0 L, and an assignment of the value held, to a finished occurrence fail as any write:
-  the statement targets the frozen value (the oracle's `_assign` fails any assignment so).
+- A flow at a frozen store fails the run when they meet, whatever its rate: spec "a write to it is
+  an error", "A flow whose rate falls to zero stays connected for its owner's lifetime"; G0 "A
+  transfer that should continue after an event finishes belongs on the entity".
+- Any statement that targets a frozen value fails (a move of 0 L too), as the oracle's `_assign`.
 
-## For F
 ## For R
-- proofs.py `_step` 'root' (and `_local` for an event's collection local) give a named collection as
-  a value: a lag of `formula(sum(tanks.water))` is refused ("it reads tanks.water, a setting or a
-  property of a value"; in place it lags), and the trail lists only `total` (in place: both
-  waters and flows). Resolve the init in its scope, as plan._named does.
+- proofs.py `_step` root / `_local`: a named collection read as a value: a lag of
+  `formula(sum(tanks.water))` refused (in place it lags: 12 for 14), the trail lists only `total`.
+- record.py `formula` -> `_switches(at)`: a yes/no formula that raises inside a piece (a membership
+  reversed at 1 h) escapes as an ExpressionError (`run()` raises); `firsts` catches it.
+- record.py `_lookup`: a chain of n constant-key reads is n^2 holders (39 of 54 s at 2,000): read
+  the chosen entry alone (`plan._chosen`), as `plan.reads` does.
+- checkpoints.checked: its finished-occurrence test is `run.occurrences.frozen(name)`: use it.
+## For F
+- core/arrays.py values (family.py at): a rate through a chain of known formulas recurses (xfail);
+  core/faces.constant_on_faces walks formulas by calls. Your chain-form rate switch: not
+  reproduced (rising and falling, three spellings give 3, 5, 6, 7 L).
 ## For the main session
-- oracle tests/reference/run.py: `_move` and flows do not check a finished occurrence (`_assign`
-  and `_editable` do).
-- (F) the language refuses a bare alias `tanks = big` of a named collection ("a collection value is
-  a literal, the instances..."); `big.where(...)` passes. Spec silent; not changed.
+- Strict xfails in test_deep_engine_paths.py: declared.py value/_name/reads_unknown; family.py at;
+  component.py _expand (iterative in a probe: then the path passes); sparse.py compiled/_group.
+- Oracle tests/reference/run.py: `_move` and flows do not check a finished occurrence.
+- tests/engine/test_deep_graphs.py (B's) docstring: `plan.walked` is now `walk.walked`.
+- Found, not fixed (continuous/, as on 8b3a01a; F saw it): on a component, a rate that switches
+  where a rising store meets its threshold at a segment's end stops ("the solver failed ... rates
+  switch back and forth"): `2 L/h if water >= 3 L else 1 L/h` from 1 L fails at 2 h; `3 L <= water
+  <= 5 L` from 2 L at 1 h; from 1 L with horizon 7 h it gives 4.994 L at 3 h for 5 L (4 h: right).
 ## For the owner
 - A flow at a frozen store with a zero rate: fail when they meet (done), or only once it transfers?

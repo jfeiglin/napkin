@@ -63,7 +63,9 @@ scenario "{title}"
 
 STYLE = """\
 # The picture of the model on the map of the system (docs/draw.md). The calculation never reads it.
-# [icon]: the icon of a thing, one of twenty icons, such as factory = ["plant"].
+# [role]: who plays each thing, such as operator = ["plant"]; a model has no role.
+# [icon]: the icon of a thing, one of twenty icons, such as factory = ["plant"]; without one, a thing
+# has the icon of its role.
 # [layout]: hide = ["Thing"] names the templates and things that the map does not draw.
 # [place] and [group]: the column and row of a thing, and labelled frames around things.
 # [arrows]: the look of each kind of arrow ("full", "light" or "hidden"), and the kinds that bundle.
@@ -134,8 +136,8 @@ with its file, line and column, and `napkin run {folder}` the values of its defa
    the research note in research.md (scenarios/docs/evidence/README.md).
 3. The local units, {folder}/units.json, for each unit that the shared vocabulary does not have.
 4. The brief settings, {folder}/brief.toml: show, drivers, featured, attack and choice_group. The
-   picture, {folder}/style.toml: [icon], and [layout] with hide. `napkin compile {folder}` checks the
-   stylesheet, and `napkin draw {folder}` draws the picture.
+   picture, {folder}/style.toml: [role] (who plays each thing), [icon], and [layout] with hide.
+   `napkin compile {folder}` checks the stylesheet, and `napkin draw {folder}` draws the picture.
 5. The tests, {folder}/tests/: the expected orders of the standard runs (expected-orders.json), the
    oracle inputs (oracle-inputs.json), and owned tests with independent mathematics (CONTRIBUTING.md, "Testing").
 6. The summaries: `python -B -m tools.publish --write --scenario {name}`. Then

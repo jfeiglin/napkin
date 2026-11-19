@@ -1,0 +1,8 @@
+# Who plays each part that the old model gave a role: each entity and template, and each event and
+# case of an event, the actor of its timeline cards (an outcome's, else its event's, else its
+# entity's: tools/publish/pages.py, `Pages.cards`, at 8488047). Who plays a part belongs to the
+# scenario's wrapper (PLAN.md, changes 19 and 23 after G0); the publisher reads it here, and the
+# pictures read who plays each entity and template from the [role] of style.toml.
+
+[entities]
+"operator" = "operator"

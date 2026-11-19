@@ -6,8 +6,8 @@ occurrences"): every write to a field or a store of an occurrence after it finis
 name at that moment, whatever makes it, and the same write while the occurrence runs is made.
 
 - **Statements.** `=`, `+=`, `-=` and `= formula(...)` on a field, and a `move` into or out of a
-  store, through a reference saved at the entry, a reference copied from one, or
-  `.occurrences.at(t)`, which names the newest start then. The property runs each of them at random
+  store, through a reference saved at the entry, a reference copied from one, `.occurrences.at(t)`,
+  which names the newest start then, or a reference to another member's occurrence through a link. The property runs each of them at random
   times before and after the finish, with a later start of the same event or none: the run fails at
   the time of the write, naming the value, the finished occurrence and the statement, and holds
   nothing of the stage that wrote (its write before that one included); before the finish the write
@@ -70,7 +70,7 @@ def frozen_model(write, reference, repair, writes, second):
     back; a watch, started with it, writes 5 L to `seen` and then makes `write` through `reference`
     at `writes` h; `second`, the time of a second repair of 7 L, or None."""
     statement = WRITES[write][0].replace('REF', REFERENCES[reference])
-    again = '' if second is None else f'crew.again.start()\n'
+    again = '' if second is None else 'crew.again.start()\n'
     horizon = max(repair, writes, second or 0) + repair + 1
     return compiled(
         f"""
@@ -324,3 +324,41 @@ def test_a_shorter_run_finishes_and_is_the_failed_runs_record_cut_to_its_horizon
     assert [r.values for r in read(cut, found.program, keys, times)] == [
         r.values for r in read(fresh, found.program, keys, times)
     ]
+
+
+LINKED = """
+    scenario "Frozen"
+        horizon 6 h
+    Crew:
+        partner: Crew
+        size: L = 0 L
+        repair = event(amount: L):
+            size: L = amount
+            after 1 h
+        watch = event():
+            job = this.partner.repair.occurrences.at(t)
+            after WHEN h:
+                job.size = 1 L
+    north: Crew
+        partner = south
+    south: Crew
+        partner = north
+    south.repair.start(3 L)
+    north.watch.start()
+    """
+
+
+@pytest.mark.parametrize('when', [0.5, 2])
+def test_a_reference_through_a_link_to_another_members_occurrence_is_frozen_too(when):
+    """North's watch saves south's repair, which takes 1 h: at 0.5 h its write is made; at 2 h it
+    fails, naming south's occurrence."""
+    found = compiled(LINKED.replace('WHEN', str(when)))
+    record = run(found.program, found.configuration)
+    if when < 1:
+        assert record.failure is None, message(record)
+        assert value_at(record, found.program, Key('south.repair#0', ('size',)), 6) == 1
+    else:
+        assert record.failure is not None and record.failure.t == 2
+        assert 'south.repair#0.size belongs to the finished occurrence south.repair#0, which is frozen' in (
+            message(record)
+        )

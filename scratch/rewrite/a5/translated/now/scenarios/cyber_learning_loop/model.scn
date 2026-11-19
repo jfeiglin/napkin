@@ -14,7 +14,6 @@ scenario "A country's cyber attacks and the learning loop"
 ai_tools:  @ai_path
     "The AI tools that the country's cyber force can use. They improve over the years that the model follows."
     title "AI tools"
-    role environment
     input pace: fraction = 1 in [0, 1]  @ai_pace
         "Share of AI progress that reaches the cyber force"
     input progress_time: years = 5 years in [2 years, 20 years]  @ai_pace
@@ -41,7 +40,6 @@ leadership:  @split_basis
     "The country's leaders, who split the country's cyber operators between surveillance and attacks each year
         from the assessed results."
     title "Leaders"
-    role operator
     input experts: people = 40535 people in [5000 people, 100000 people]  @experts_pool
         "Cyber experts of the country: researchers, operators and analysts"
     input share_now: fraction = 0.087 in [0.07, 0.16]  @share_today
@@ -156,7 +154,6 @@ researchers:  @research_basis
     "The country's experts who find flaws that the defenders do not know and build the tools that use them.
         One group serves both missions, and its work goes to each pool of capabilities as the pool needs it."
     title "Researchers"
-    role operator
     input share: fraction = 0.03 in [0.01, 0.1]  @research_share
         "Share of the experts who find flaws and build tools"
     input reserve_time: years = 1 years in [0.1 years, 5 years]  @capability_reserve
@@ -185,7 +182,6 @@ operators:  @operator_basis
         execute it. On surveillance they gain access, move inside the network and deploy implants. The leaders
         split them between the two missions, and their hours go first to the operations farthest along."
     title "Operators"
-    role operator
     readonly attack_now: formula(people) = formula(effects_program.attacks_now
         * effects_program.operator_cost_now)  @expert_pools
         "Operators on attacks today"
@@ -222,7 +218,6 @@ collection_specialists:  @collection_basis
     "Surveillance's collection specialists. They run collection on the deployed implants, translate, and turn
         the raw take into intelligence."
     title "Collection specialists"
-    role operator
     readonly runners_now: formula(people) = formula((1 - surveillance_program.analysis_share)
         * surveillance_program.experts_now - operators.spy_now)  @expert_pools
         "Collection specialists who run collection today"
@@ -237,7 +232,6 @@ analysts:  @analyst_basis
         intelligence. By default they go first to the mission where one more analyst-year is worth more. On
         attacks, damage assessment takes at most its share of the work waiting, and planning the rest."
     title "Analysts"
-    role operator
     input load_now: fraction = 0.9 in [0.5, 1]  @analyst_load
         "Share of the analysts' capacity that today's work fills"
     input adjust_time: years = 1 years in [0.25 years, 5 years]  @analyst_split
@@ -311,7 +305,6 @@ surveillance_program:  @surveillance_basis
         the implants and process the take, and its analysts plan new accesses. It loses accesses to the
         defenders and to attacks."
     title "Surveillance"
-    role operator
     input returns_scale: fraction = 0.8 in [0.5, 1]  @surveillance_returns
         "Exponent of the value of surveillance in the collection that its analysts process"
     input alert_sensitivity: fraction = 0.3 in [0, 1]  @surveillance_alert
@@ -607,7 +600,6 @@ defenders:  @defender_basis
         they answer and fades within months, they fix what attacks expose, and their lasting capability can
         grow."
     title "Defenders"
-    role responder
     input alert_now: ratio = 0.05 in [0, 0.2]  @alertness_today
         "Attention of the defenders today, as a loss of log-odds of an attack's success"
     input calm_rate: per_year = 2 per_year in [1 per_year, 3 per_year]  @alertness_fades
@@ -683,7 +675,6 @@ defenders:  @defender_basis
 other_states:  @politics_basis
     "The other countries that attribute attacks and answer them with sanctions or replies."
     title "Other countries"
-    role environment
     input sanction_cost: sev/operation = 10 sev/operation in [1 sev/operation,
         100 sev/operation]  @sanction_cost
         "Cost of the sanctions and replies that one attributed attack draws"
@@ -701,7 +692,6 @@ military_planners:  @planning_basis
     "The country's military planners, who build plans around cyber attacks only when a plan of attacks gives
         its intended effect reliably."
     title "Military planners"
-    role operator
     input tolerance: fraction = 0.25 in [0.2, 0.5]  @plan_tolerance
         "Shortfall from the planned share of targets hit that the planners accept"
     input acceptance: fraction = 0.8 in [0.75, 0.95]  @plan_tolerance
@@ -797,7 +787,6 @@ military_planners:  @planning_basis
 
 Plan:  @plan_test
     "A plan of one length that counts on the cyber attacks that the force can mass on one objective."
-    role military_planners
     input length: days = 30 days in [1 days, 91 days]  @plan_lengths
         "Length of the plan"
     readonly finished: formula(operations) = formula(effects_program.ready_rate * effect_pool.attack_served
@@ -935,7 +924,6 @@ effects_program:  @program_basis
     "The country's cyber force when it makes attacks: its experts, its access and its tools. An AI agent does
         more of the work as AI improves."
     title "Effects program"
-    role adversary
     input actor = "The AI"
     input supervision: ratio = 0.2 in [0.05, 0.5]  @stage_supervision
         "Expert work to supervise AI work, for each unit of it, when one expert runs one attack at a time"
@@ -1727,7 +1715,6 @@ effects_program:  @program_basis
 
 Stage:  @stage_basis
     "A kind of work that an attack needs. AI does a growing share of it."
-    role effects_program
     input work: person * years/operation = 1 person * years/operation in [0.05 person * years/operation,
         10 person * years/operation]  @stage_work
         "Expert work by hand for one attack, apart from its targets"
@@ -1901,7 +1888,6 @@ Pool:  @capability_pool
         the tools that use it, and it burns as a whole. It is never used, used by surveillance, used in an
         attack, or burned. Used in an attack, it is held by an attack underway, or kept from an earlier attack
         that was not exposed."
-    role researchers
     input known: fraction = 0.8 in [0, 0.99]  @one_day_chance
         "Share of the needs of the step that a known flaw or the target's own functions can serve"
     input patch_pace: ratio = 1 in [0, 2]  @one_day_chance
@@ -2296,7 +2282,6 @@ collection_pool: Pool
 
 Channel:  @attribution_channels
     "A kind of evidence by which other countries attribute an attack."
-    role other_states
     input chance_now: fraction = 0.2 in [0, 0.9]  @attribution_channels
         "Chance today that this evidence attributes an attack"
     input chance_end: fraction = 0.2 in [0, 0.9]  @attribution_channels

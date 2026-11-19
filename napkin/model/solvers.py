@@ -70,6 +70,15 @@ class _Refused(Exception):
         self.code, self.message = code, message
 
 
+class _Unsettled(Exception):
+    """A formula whose class the classification of another one reads before it is known
+    (`_Decision.settle`)."""
+
+    def __init__(self, key, body, scope):
+        super().__init__(key)
+        self.key, self.body, self.scope = key, body, scope
+
+
 def problems(program):
     """The refusals of the declared decisions of a program, each a `check.Diagnostic`, in the order
     of its templates and solvers."""
@@ -135,7 +144,8 @@ class _Decision:
                 self.values.add(('value', check.owner_key(found.owner), found.part.name))
             elif found.kind == 'property' and found.of.kind == 'flow' and found.of.part is not None:
                 self.rates.add(('rate', check.owner_key(found.of.owner), found.of.part.name))
-        self.formulas, self.open = {}, set()
+        # The class of each formula that has one, and the formulas being settled (`settle`).
+        self.formulas, self.open = {}, {}
 
     def problems(self):
         """The refusals of this solver's domains, constraints and objectives."""
@@ -407,13 +417,30 @@ class _Decision:
             if key not in self.formulas:
                 if key in self.open:
                     continue  # a formula that reads itself: the run refuses it, and it adds nothing here
-                self.open.add(key)
-                try:
-                    self.formulas[key] = self.expr(body.expr, scope)
-                finally:
-                    self.open.discard(key)
+                if self.open:
+                    raise _Unsettled(key, body, scope)
+                self.settle(key, body, scope)
             result = max(result, self.formulas[key])
         return result
+
+    def settle(self, key, body, scope):
+        """The class of a formula, and of each formula that it reads through, each before the one that
+        reads it, on an explicit stack (`open`, the formulas being settled, in order), so that a chain
+        of formulas costs no depth of calls: a formula that the one on top reads and whose class is
+        not known yet goes on top, and the one under it is classified again from its start."""
+        self.open[key] = (body, scope)
+        try:
+            while self.open:
+                top = next(reversed(self.open))
+                body, scope = self.open[top]
+                try:
+                    self.formulas[top] = self.expr(body.expr, scope)
+                except _Unsettled as unsettled:
+                    self.open[unsettled.key] = (unsettled.body, unsettled.scope)
+                    continue
+                del self.open[top]
+        finally:
+            self.open.clear()
 
     def rate(self, of, path):
         """A rate of the instant, which the solver must determine: of a flow, a route or a flow with

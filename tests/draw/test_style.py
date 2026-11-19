@@ -2,7 +2,8 @@
 file and the key, and that the model and its runs never read it.
 
 The model of the test writes its own things and templates, and each expectation follows from them and
-from the rule of the reader that it names.
+from the rule of the reader that it names. Who plays each of its parts is the stylesheet's `[role]`
+(`ROLES`, PLAN.md change 23 after G0): a model has no role.
 """
 
 from __future__ import annotations
@@ -48,7 +49,6 @@ runs:
 
 north:  @counts
     "A district."
-    role community
     input x: h = 2 h in [1 h, 5 h]  @counts
         "X"
     people: person = 10 person  @counts
@@ -59,7 +59,6 @@ north:  @counts
 
 Ward:  @counts
     "A ward."
-    role community
     input y: h = 1 h in [0 h, 3 h]  @counts
         "Y"
     level: enum[LOW, HIGH] = LOW
@@ -73,7 +72,6 @@ Ward:  @counts
 
 Depot:  @counts
     "A template that no thing is made of."
-    role operator
 
 east: Ward
 
@@ -81,7 +79,6 @@ west: Ward
 
 attacker:  @counts
     "An attacker."
-    role adversary
     access: enum[NONE, KEPT] = NONE
     enters = event():
         "The attacker gets in."
@@ -99,14 +96,22 @@ attacker.start.start()
 record counts: identity "The test counts."
 """
 
-STYLE = """\
+# Who plays each part of MODEL: a role and the things and templates that play it. A template that no
+# thing is made of can have one.
+ROLES = '[role]\ncommunity = ["north", "Ward"]\noperator = ["Depot"]\nadversary = ["attacker"]\n'
+
+STYLE = (
+    """\
 # The picture of the map.
 [layout]
 hide = ["Ward"]
 
 [icon]
 house = ["north"]
+
 """
+    + ROLES
+)
 
 
 def built(tmp_path, picture=None):
@@ -114,14 +119,28 @@ def built(tmp_path, picture=None):
     return package(tmp_path, MODEL, style=picture)
 
 
-def test_without_a_stylesheet_the_map_draws_each_line_with_the_icon_of_its_role(tmp_path):
+def test_without_a_stylesheet_the_map_draws_each_line_with_no_role_and_no_icon(tmp_path):
     model = built(tmp_path)
     sheet = style.of(model)
     assert sheet == style.Style()
-    # Every entity line, in the order of the file, each with the icon of the role that the model writes.
+    # Every entity line, in the order of the file; who plays it is the stylesheet's, and there is none.
     assert style.hidden_lines(sheet, Things(model)) == set()
     assert style.drawn(sheet, Things(model)) == ['north', 'east', 'west', 'attacker']
+    assert style.roles_of(sheet, Things(model)) == {}
+    assert style.icon_of(sheet, Things(model)) == dict.fromkeys(['north', 'east', 'west', 'attacker'])
+
+
+def test_each_thing_that_plays_a_role_has_the_icon_of_the_role(tmp_path):
+    model = built(tmp_path, ROLES)
+    sheet = style.of(model)
+    assert sheet.roles == (
+        ('community', ('north', 'Ward')),
+        ('operator', ('Depot',)),
+        ('adversary', ('attacker',)),
+    )
+    # A template stands for each of its members.
     roles = {'north': 'community', 'east': 'community', 'west': 'community', 'attacker': 'adversary'}
+    assert style.roles_of(sheet, Things(model)) == roles
     assert style.icon_of(sheet, Things(model)) == {
         entry: style.ROLE_ICONS[role] for entry, role in roles.items()
     }
@@ -148,14 +167,16 @@ def test_a_template_stands_for_its_instances_and_an_instance_s_own_icon_wins(tmp
 
 
 # Two things whose role has no icon: one without a role, and one whose role names a thing.
-NO_ROLE = '\nplain:  @counts\n    "A thing without a role."\n\ncrew:  @counts\n    "A crew."\n    role crew\n'
+NO_ROLE = '\nplain:  @counts\n    "A thing without a role."\n\ncrew:  @counts\n    "A crew."\n'
+NO_ROLE_MODEL = MODEL.replace('west: Ward\n', 'west: Ward\n' + NO_ROLE)
+NO_ROLE_ROLES = ROLES + 'crew = ["crew"]\n'
 
 
 @pytest.mark.parametrize(
-    ('picture', 'expected'), [(None, None), ('[icon]\nbox = ["plain", "crew"]\n', 'box')]
+    ('picture', 'expected'), [('', None), ('[icon]\nbox = ["plain", "crew"]\n\n', 'box')]
 )
 def test_a_thing_whose_role_has_no_icon_has_none_unless_the_stylesheet_gives_one(tmp_path, picture, expected):
-    model = package(tmp_path, MODEL.replace('west: Ward\n', 'west: Ward\n' + NO_ROLE), style=picture)
+    model = package(tmp_path, NO_ROLE_MODEL, style=picture + NO_ROLE_ROLES)
     icons = style.icon_of(style.of(model), Things(model))
     assert (icons['plain'], icons['crew']) == (expected, expected)
     assert icons['north'] == style.ROLE_ICONS['community']
@@ -169,16 +190,18 @@ def test_hide_names_any_thing_an_instance_included(tmp_path):
     assert style.drawn(sheet, Things(model)) == ['north', 'west', 'attacker']
 
 
+# MODEL with a template whose members are the rows of a table, and its role.
+ROWS_MODEL = MODEL.replace(
+    'west: Ward\n', 'west: Ward\n\nCrew:  @counts\n    "A crew."\n\ncrews: Crew from "crews.csv"\n'
+)
+CREWS = {'crews.csv': 'id\na\nb\n'}
+ROWS_ROLES = ROLES + 'responder = ["Crew"]\n'
+
+
 def test_a_table_is_named_by_its_card(tmp_path):
     # The rows of a table are members of a template, and one card holds them all: the template that
-    # `hide` names hides the card, and so each row of it.
-    rows = '\nCrew:  @counts\n    "A crew."\n    role responder\n\ncrews: Crew from "crews.csv"\n'
-    model = package(
-        tmp_path,
-        MODEL.replace('west: Ward\n', 'west: Ward\n' + rows),
-        style='[layout]\nhide = ["Crew"]\n',
-        tables={'crews.csv': 'id\na\nb\n'},
-    )
+    # `hide` names hides the card, and so each row of it; its role is still a name of the model.
+    model = package(tmp_path, ROWS_MODEL, style='[layout]\nhide = ["Crew"]\n\n' + ROWS_ROLES, tables=CREWS)
     found = Things(model)
     assert found.cards['crews'].members == ('crews.a', 'crews.b')
     sheet = style.of(model)
@@ -206,6 +229,19 @@ def test_a_table_is_named_by_its_card(tmp_path):
         ('[icon]\nhouse = [1]\n', 'icon.house', None, 'list of names'),
         ('[icon]\nhouse = ["north", "north"]\n', 'icon.house', None, 'twice'),
         ('[icon]\nhouse = ["north"]\nshop = ["north"]\n', 'icon.shop', None, 'icon.house also names'),
+        # A role is a word with a list of names, in the shape of [icon]; a name has one role at most.
+        ('role = 3\n', 'role', None, 'is a table'),
+        ('[role]\noperator = "north"\n', 'role.operator', None, 'list of names'),
+        ('[role]\noperator = [1]\n', 'role.operator', None, 'list of names'),
+        ('[role]\noperator = ["north", "north"]\n', 'role.operator', None, 'twice'),
+        (
+            '[role]\noperator = ["north"]\nresponder = ["north"]\n',
+            'role.responder',
+            None,
+            'role.operator also names',
+        ),
+        ('[role]\n"night watch" = ["north"]\n', 'role.night watch', None, 'a role is a word'),
+        ('[role]\n"" = ["north"]\n', 'role.', None, 'a role is a word'),
         # A place is a table with a column, and an optional row, each a whole number from 1.
         ('[place]\nnorth = 1\n', 'place.north', None, 'is a table'),
         ('[place]\nnorth = { row = 1 }\n', 'place.north', None, 'no column'),
@@ -319,6 +355,9 @@ north    = { column = 3, row = 2 }
 [icon]
 house  = ["Ward"]
 target = ["attacker"]
+[role]
+community = ["Ward", "north"]
+operator  = ["Depot"]
 [state.attacker]
 access = "beside"
 [state.Ward]
@@ -332,6 +371,7 @@ def test_each_key_of_the_picture_is_read(tmp_path):
     assert sheet == style.Style(
         hide=('Depot',),
         icons=(('house', ('Ward',)), ('target', ('attacker',))),
+        roles=(('community', ('Ward', 'north')), ('operator', ('Depot',))),
         origin=str(tmp_path / style.STYLE_FILE),
         direction='left-to-right',
         places=(('attacker', 1, None), ('Ward', 2, None), ('north', 3, 2)),
@@ -349,6 +389,7 @@ def test_each_key_of_the_picture_is_read(tmp_path):
         'attacker': (1, None),
     }
     assert style.groups_of(sheet, Things(model)) == [('Wards', ['north', 'east', 'west'])]
+    assert style.roles_of(sheet, Things(model)) == dict.fromkeys(['north', 'east', 'west'], 'community')
     assert style.state_places(sheet, Things(model)) == {
         'east': {'level': 'hidden'},
         'west': {'level': 'hidden'},
@@ -385,6 +426,19 @@ def test_a_thing_s_own_setting_wins_over_its_template_s(tmp_path):
         ('[layout]\nhide = ["Ward"]\n\n[icon]\nhouse = ["Ward"]\n', 'icon.house', 'hides it'),
         ('[layout]\nhide = ["Ward"]\n\n[icon]\nhouse = ["east"]\n', 'icon.house', 'hides it'),
         ('[icon]\nhouse = ["Depot"]\n', 'icon.house', 'no member'),
+        # A role names templates and things of the model, and a thing plays one role at most: its own
+        # name and its template's give it one role.
+        ('[role]\noperator = ["nowhere"]\n', 'role.operator', 'nowhere is not a template or a thing'),
+        (
+            '[role]\ncommunity = ["Ward"]\nresponder = ["east"]\n',
+            'role.responder',
+            'gives east this role, but role.community gives it its role: a thing plays one role at most',
+        ),
+        (
+            '[role]\nresponder = ["east"]\ncommunity = ["Ward"]\n',
+            'role.community',
+            'gives east this role, but role.responder gives it its role',
+        ),
         # A place names a thing or a template that the picture draws.
         ('[place]\nnowhere = { column = 1 }\n', 'place.nowhere', 'not a template or a thing'),
         ('[place]\nDepot = { column = 1 }\n', 'place.Depot', 'no member'),
@@ -497,6 +551,42 @@ def test_a_row_that_splits_no_group_is_accepted(tmp_path, text):
 def test_rows_in_the_order_of_the_groups_are_accepted(tmp_path, place):
     model = built(tmp_path, f'[place]\n{place}\n[group]\n"First" = ["east"]\n"Second" = ["west"]\n')
     assert style.check(style.of(model), model) == []
+
+
+@pytest.mark.parametrize(
+    'text',
+    [
+        # Who plays a part is no part of the picture: a role of a thing that the picture does not draw,
+        # or of a template that no thing is made of, holds.
+        '[layout]\nhide = ["Ward"]\n\n[role]\ncommunity = ["Ward"]\n',
+        '[layout]\nhide = ["east"]\n\n[role]\ncommunity = ["east"]\n',
+        '[role]\noperator = ["Depot"]\n',
+        # A thing by its own name and by its template's, in one role; a role that is none of the six; a
+        # list that names nothing.
+        '[role]\ncommunity = ["Ward", "east"]\n',
+        '[role]\nnight_watch = ["attacker"]\nresponder = []\n',
+    ],
+)
+def test_a_role_names_what_the_model_declares_and_gives_each_thing_one_role(tmp_path, text):
+    model = built(tmp_path, text)
+    assert style.check(style.of(model), model) == []
+
+
+def test_a_role_goes_to_the_members_of_its_template_and_a_member_can_have_its_own(tmp_path):
+    model = package(
+        tmp_path,
+        ROWS_MODEL,
+        style='[role]\nresponder = ["Crew", "east"]\nadversary = ["attacker"]\n',
+        tables=CREWS,
+    )
+    sheet, found = style.of(model), Things(model)
+    assert style.roles_of(sheet, found) == {
+        'east': 'responder',
+        'crews': 'responder',
+        'attacker': 'adversary',
+    }
+    icons = style.icon_of(sheet, found)
+    assert (icons['east'], icons['crews'], icons['west']) == (style.ROLE_ICONS['responder'],) * 2 + (None,)
 
 
 def test_a_template_without_an_instance_is_still_a_name(tmp_path):
@@ -630,8 +720,8 @@ def test_the_stocks_table_names_the_stocks_of_things_that_the_picture_draws(tmp_
 # ---- the stylesheet of a variant (D-22) -----------------------------------------------------------
 
 # Two stylesheets that differ in every key: the package's and one variant's own.
-PACKAGE_STYLE = '[layout]\nhide = ["Ward"]\n\n[icon]\nhouse = ["north"]\n'
-OWN_STYLE = '[icon]\nshop = ["east"]\n'
+PACKAGE_STYLE = '[layout]\nhide = ["Ward"]\n\n[icon]\nhouse = ["north"]\n\n' + ROLES
+OWN_STYLE = '[icon]\nshop = ["east"]\n\n[role]\nresponder = ["Ward"]\n'
 
 
 def family(tmp_path, package_style=PACKAGE_STYLE, own=OWN_STYLE):
@@ -656,13 +746,16 @@ def test_a_variant_without_a_stylesheet_takes_its_package_s(tmp_path):
 
 
 def test_a_variant_s_own_stylesheet_replaces_its_package_s_whole(tmp_path):
-    """Nothing of the package's file merges into the variant's own: the variant hides nothing, and only
-    its own icon is given."""
+    """Nothing of the package's file merges into the variant's own: the variant hides nothing, only its
+    own icon is given, and only its own roles are played."""
     models = family(tmp_path)
     sheet = style.of(models['styled'])
     assert sheet == style.read(OWN_STYLE, str(tmp_path / 'family' / 'variants' / 'styled' / style.STYLE_FILE))
     assert sheet.hide == () and dict(sheet.icons) == {'shop': ('east',)}
-    assert style.icon_of(sheet, Things(models['styled']))['north'] == style.ROLE_ICONS['community']
+    found = Things(models['styled'])
+    assert style.roles_of(sheet, found) == {'east': 'responder', 'west': 'responder'}
+    icons = style.icon_of(sheet, found)
+    assert (icons['north'], icons['east'], icons['west']) == (None, 'shop', style.ROLE_ICONS['responder'])
 
 
 def test_the_cache_names_the_file_that_each_model_read(tmp_path):

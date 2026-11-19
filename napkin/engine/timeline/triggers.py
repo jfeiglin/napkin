@@ -27,7 +27,9 @@ watched too, since the first instant at which an assertion fails exists for eith
 an actual rate, the time) holds within the tolerance of what it reads (spec: a crossing counts as
 reached within the numerical tolerance of the quantity that it reads): `x <= c` holds while
 `x - c` is at most that tolerance. A comparison of what holds between moments is exact. A boolean
-formula is read through its expression, so its comparisons are read the same way. `and` and `or`
+formula is read through its expression, so its comparisons are read the same way, and so is a
+membership `x in [lo, hi]` (the program's `within`): it is evaluated, so that a reversed interval
+fails the run by name where it is read, then read as its chain `lo <= x <= hi`. `and` and `or`
 read their terms left to right up to the one that decides, a conditional its selected side, and a
 side its names as its evaluation asks for them (`reads.py`): a read with no value on a side that is
 not taken (`since(e)` before the first start) fails nothing, and a comparison on such a side has no
@@ -121,11 +123,12 @@ from ...core.errors import ExpressionError
 from ...program.record import Unavailable
 from ..continuous import dense
 from ..continuous.dense import Motion
+from ..continuous.walk import walked
 from ..errors import SimulationError
 from .family import Family
 from .lines import Lines
 from .moment import Tx, near_ties
-from .plan import FORMULA, LOOKUP, RATE, REDUCE, walked
+from .plan import FORMULA, LOOKUP, RATE, REDUCE
 from .reads import lazily
 
 # The comparisons of `napkin/core/expr`, as functions of the difference of their sides and of the
@@ -191,7 +194,7 @@ class Triggers:
         """The truth of a condition at time t; a comparison read on the way whose sides differ by no
         more than the widest tolerance of the run is added to `close`, when it is given, so that a
         condition with none has no near-tie to look for. It is read through boolean formulas with no
-        recursion (`plan.walked`)."""
+        recursion (`walk.walked`)."""
         return walked(self._truth_of(node, t, band, close))
 
     def _truth_of(self, node, t, band, close):
@@ -215,6 +218,12 @@ class Triggers:
         if isinstance(node, nodes.IfElse):
             test = yield self._truth_of(node.test, t, band, close)
             return (yield self._truth_of(node.body if test else node.orelse, t, band, close))
+        membership = nodes.membership(node)
+        if membership is not None:
+            # The membership itself first, which fails by name where its interval is reversed; then
+            # its chain `lo <= x <= hi`, read within tolerance as any comparison.
+            self.side(node, t)
+            return (yield self._truth_of(membership[0], t, band, close))
         if isinstance(node, nodes.Compare):
             for left, op, right in zip(node.operands, node.ops, node.operands[1:]):
                 a, b = self.side(left, t), self.side(right, t)
@@ -488,7 +497,7 @@ class Triggers:
 
     def _atoms(self, node, positive=True):
         """The comparisons of a condition, through its boolean formulas, each with its polarity
-        (whether `not` turns it over), found with no recursion (`plan.walked`)."""
+        (whether `not` turns it over), found with no recursion (`walk.walked`)."""
         return walked(self._atoms_of(node, positive))
 
     def _atoms_of(self, node, positive):
@@ -513,6 +522,9 @@ class Triggers:
             return []
         if isinstance(node, nodes.Unary) and node.op == 'not':
             return (yield self._atoms_of(node.operand, not positive))
+        membership = nodes.membership(node)
+        if membership is not None:
+            return (yield self._atoms_of(membership[0], positive))  # its chain `lo <= x <= hi`
         if isinstance(node, nodes.Compare):
             return [
                 (left, op, right, positive)
@@ -718,7 +730,7 @@ class Triggers:
     def _weights(self, node, moving, t):
         """The weight of each moving name in an affine node (`_affine`), through formulas and the sums
         of their kept entries: {name: weight}, with what holds between moments read at time t, found
-        with no recursion (`plan.walked`)."""
+        with no recursion (`walk.walked`)."""
         found = {}
         walked(self._weights_of(node, moving, t, 1.0, found))
         return found
@@ -848,7 +860,7 @@ def _side(edge, difference, band):
 
 def _affine(node, moving, plan):
     """Whether a node is affine in the moving names that it reads, through formulas, found with no
-    recursion (`plan.walked`)."""
+    recursion (`walk.walked`)."""
     return walked(_affine_of(node, moving, plan))
 
 

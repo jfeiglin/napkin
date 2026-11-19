@@ -14,6 +14,7 @@ keys:
 | `[place]` with `n = {column = c, row = r}` | The column of a thing, from 1, and its row, from 1 (`row` is optional). A template places each of its members on the rows that follow its row | The layout places it |
 | `[group]` with `"Label" = [n, …]` | A frame with its label around these things and no other thing; a thing is in one group at most | No frame |
 | `[icon]` with `icon = [n, …]` | The icon of each thing and template that a line names (`ICONS`) | The icon of its role (`ROLE_ICONS`), else no icon |
+| `[role]` with `role = [n, …]` | Who plays each thing and template that a line names: a word, such as `operator`. A card has the icon of its role when `[icon]` gives it none (`ROLE_ICONS`), and the map names its role (`model_map.ROLES`) | No role |
 | `[state.n]` with `var = "inside"` | Where the state machine of the named state `n.var` goes: `inside` its thing, `beside` it, or `hidden` (`STATE_PLACES`) | `inside` |
 | `[arrows]` with `kind = "light"` | The look of the arrows of a kind (`ARROW_KINDS`): `full`, `light` (a paler, thinner line) or `hidden` (no line; the legend and the tooltips still name the kind) (`ARROW_LOOKS`, D-51) | `light` for reads and follows, `full` for the others |
 | `[arrows]` with `bundle = [kind, …]` | The kinds whose arrows from one card toward one side share one trunk that branches near the cards at their ends (D-51) | reads and follows |
@@ -32,7 +33,13 @@ keys:
 
 A name is a thing (a card of the picture: an entity written once, a member written by hand, or a
 table, whose rows share one card) or a template, which stands for each of its members. A thing's own
-setting wins over its template's, and for an icon, the template's wins over the role's.
+setting wins over its template's, and for an icon, the template's wins over the role's. A thing plays
+one role at most, by its own name or by its template's.
+
+The model has no role (PLAN.md, change 23 after G0): who plays a part belongs to the scenario's
+wrapper (`roles.toml`, which the publisher and the UI read) and, for the pictures, to `[role]`. A role
+of `[role]` names things and templates of the model, drawn or not, since who plays a part is no part
+of the picture.
 
 The built-in `tomllib` reads the file. A key that the file does not know is an error, so that a
 misspelt key shows. Each name is one that the model declares, and each icon is one of `ICONS`. The
@@ -55,15 +62,16 @@ from .defaults import ARROW_KINDS, ARROW_LOOKS, DEFAULT_DEPTH, DEFAULT_PANEL_LIN
 
 STYLE_FILE = 'style.toml'
 # The tables of `style.toml` that this version reads, the keys of `[layout]` and of a place, the
-# directions of a picture and the places of a state machine. `[icon]` has a key for each icon,
-# `[place]` and `[group]` one for each place and group, `[state.<thing>]` one for each named state,
-# `[stocks]` one for each thing or template, `[symbol.<thing>]` one for each member, and `[subscript]`
-# one for each thing.
+# directions of a picture and the places of a state machine. `[icon]` has a key for each icon, `[role]`
+# one for each role, `[place]` and `[group]` one for each place and group, `[state.<thing>]` one for
+# each named state, `[stocks]` one for each thing or template, `[symbol.<thing>]` one for each member,
+# and `[subscript]` one for each thing.
 STYLE_TABLES = (
     'layout',
     'place',
     'group',
     'icon',
+    'role',
     'state',
     'arrows',
     'stocks',
@@ -100,8 +108,8 @@ EQUATIONS_KEYS = ('things', *EQUATION_RANGES, *EQUATION_FLAGS, 'instances')
 REFERENCE_KINDS = ('source', 'source_transfer', 'identity', 'convention', 'assumption')
 REFERENCES_KEYS = ('show', 'kinds')
 # The icons that the map draws (icons.py, with the same names in tests/draw/map-icons.json), and the
-# icon of a thing that the stylesheet gives none: the icon of its role. A thing without a role, or with
-# a role that names a thing, has no icon.
+# icon of a thing that `[icon]` gives none: the icon of its role of `[role]`. A thing without a role, or
+# with another role, has no icon.
 ICONS = (
     'target',
     'server',
@@ -132,6 +140,8 @@ ROLE_ICONS = {
     'community': 'people',
     'environment': 'gauge',
 }
+# A role of `[role]`: a word, as a name of the language is (`napkin/model/language/lex.py`, NAME).
+ROLE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 # The line that tomllib names in the message of a text that is not TOML.
 AT_LINE = re.compile(r'\(at line (\d+), column \d+\)')
 
@@ -210,6 +220,7 @@ class Style:
     """The picture that `style.toml` gives, each part in the order of the file:
     - `hide`: the names that `[layout]` hides;
     - `icons`: the names of each icon of `[icon]`, ((icon, (name, …)), …);
+    - `roles`: the names of each role of `[role]`, ((role, (name, …)), …);
     - `origin`: the file;
     - `direction`: the direction of `[layout]`;
     - `places`: each place of `[place]`, ((name, column, row or None), …);
@@ -230,12 +241,13 @@ class Style:
       `equation_instances`: its other keys, each None without the key;
     - `references_show` and `references_kinds`: the keys of `[references]` (D-55), each None without
       the key.
-    Without a file, nothing is hidden, placed or grouped, no thing has an icon of its own, each
-    state machine is inside its thing, the layout chooses the rows of each card, every symbol is
+    Without a file, nothing is hidden, placed or grouped, no thing has an icon of its own or a role,
+    each state machine is inside its thing, the layout chooses the rows of each card, every symbol is
     made from the model's names, and there is no panel of equations."""
 
     hide: tuple = ()
     icons: tuple = ()
+    roles: tuple = ()
     origin: str | None = None
     direction: str = DIRECTIONS[0]
     places: tuple = ()
@@ -284,6 +296,7 @@ def read(text, origin=STYLE_FILE):
     - `[place]`: for each name, a table with a `column` and an optional `row`, each 1 or more;
     - `[group]`: for each label, a list of one name or more;
     - `[icon]`: for each icon of `ICONS`, a list of names;
+    - `[role]`: for each role, a word (`ROLE`), a list of names;
     - `[state.<name>]`: for each named state, one of `STATE_PLACES`;
     - `[arrows]`: for each kind of `ARROW_KINDS`, one of `ARROW_LOOKS`, and `bundle`, a list of kinds;
     - `[stocks]`: for each name, a list of one stock or tally or more;
@@ -296,8 +309,9 @@ def read(text, origin=STYLE_FILE):
       `INSTANCES`;
     - `[references]`: `show`, true or false, which needs `[equations] things`; `kinds`, a list of
       `REFERENCE_KINDS` that keeps `assumption`.
-    Another key, a value of another shape or outside its range, a name that two icons or two groups
-    name, and a name written twice in one list raise `StyleError`, with every problem of the file."""
+    Another key, a value of another shape or outside its range, a name that two icons, two roles or two
+    groups name, and a name written twice in one list raise `StyleError`, with every problem of the
+    file."""
     found, problems = table(text, origin), []
     unknown(found, STYLE_TABLES, origin, problems)
     for key in STYLE_TABLES:
@@ -324,6 +338,7 @@ def read(text, origin=STYLE_FILE):
             given.setdefault(name, icon)
         if listed is not None:
             icons.append((icon, listed))
+    roles = _read_roles(_tables(found, 'role'), origin, problems)
     places = _read_places(_tables(found, 'place'), origin, problems)
     groups = _read_groups(_tables(found, 'group'), origin, problems)
     states = _read_states(_tables(found, 'state'), origin, problems)
@@ -340,6 +355,7 @@ def read(text, origin=STYLE_FILE):
     return Style(
         hide=hide or (),
         icons=tuple(icons),
+        roles=roles,
         origin=origin,
         direction=direction,
         places=places,
@@ -354,6 +370,26 @@ def read(text, origin=STYLE_FILE):
         **equations,
         **references,
     )
+
+
+def _read_roles(found, origin, problems):
+    """((role, (name, …)), …) of `[role]`, in the shape of `[icon]`, with the problems of its lists: a
+    role that is not a word (`ROLE`), a value that is not a list of names, and a name that two roles
+    name."""
+    roles, given = [], {}
+    for role, value in found.items():
+        key = f'role.{role}'
+        if not ROLE.fullmatch(role):
+            problems.append(problem(origin, key, 'a role is a word, such as operator = ["pump"]'))
+            continue
+        listed = names_of(value, key, origin, problems)
+        for name in listed or ():
+            if name in given:
+                problems.append(problem(origin, key, f'names {name}, which role.{given[name]} also names'))
+            given.setdefault(name, role)
+        if listed is not None:
+            roles.append((role, listed))
+    return tuple(roles)
 
 
 def _read_arrows(found, origin, problems):
@@ -662,6 +698,8 @@ def _on_map(origin, key, name, found, templates, shown, out):
 def check(style, model):
     """The problems of a picture against its model (a `Compiled`, or its `Things`):
     - `hide` names templates and things (a member too);
+    - `[role]` names templates and things too, drawn or not, and gives a thing one role at most, by its
+      own name or by its template's (`_check_roles`);
     - `[icon]`, `[place]`, `[group]` and `[state]` name templates and things that the picture draws;
     - two things are never in one cell of `[place]`, and a thing is in one group at most;
     - no thing has a row between the rows of two things of a group that it is not in, in their column
@@ -680,6 +718,7 @@ def check(style, model):
     for name in style.hide:
         if name not in templates and name not in found.cards:
             out.append(problem(style.origin, 'layout.hide', f'{name} is not a template or a thing'))
+    out += _check_roles(style, found, templates)
     shown = set(drawn(style, found))
     for icon, names in style.icons:
         for name in names:
@@ -759,6 +798,28 @@ def check(style, model):
     for name in style.equations:
         _on_map(style.origin, 'equations.things', name, found, templates, shown, out)
     out += _check_symbols(style, found, templates, shown)
+    return out
+
+
+def _check_roles(style, found, templates):
+    """The problems of `[role]` against the model: a name that is no template or thing, and a thing
+    that two roles give a role, by its own name and by its template's (the later role in the file has
+    the problem)."""
+    out, given = [], {}
+    for role, names in style.roles:
+        key = f'role.{role}'
+        for name in names:
+            if name not in templates and name not in found.cards:
+                out.append(problem(style.origin, key, f'{name} is not a template or a thing'))
+                continue
+            for entry in expand(name, found):
+                other = given.setdefault(entry, role)
+                if other != role:
+                    message = (
+                        f'gives {entry} this role, but role.{other} gives it its role: a thing plays one '
+                        'role at most'
+                    )
+                    out.append(problem(style.origin, key, message))
     return out
 
 
@@ -870,13 +931,20 @@ def drawn(style, found):
     return [card for card in found.cards if card not in hide]
 
 
+def roles_of(style, found):
+    """{card: its role} of each card that `[role]` names, itself or by its template: who plays it. A
+    checked file gives a thing one role at most (`check`); in another, its own name wins."""
+    return _own_or_template({name: role for role, names in style.roles for name in names}, found)
+
+
 def icon_of(style, found):
     """{card: its icon}: the icon that `[icon]` gives the card, else its template's, else its role's
-    (`ROLE_ICONS`), else None: a thing without a role, or with a role that names a thing, has no
-    icon."""
+    (`roles_of`, `ROLE_ICONS`), else None: a thing without a role, or with a role that has no icon, has
+    no icon."""
     given = {name: icon for icon, names in style.icons for name in names}
+    roles = roles_of(style, found)
     return {
-        card.id: given.get(card.id) or given.get(card.shown_template) or ROLE_ICONS.get(card.role)
+        card.id: given.get(card.id) or given.get(card.shown_template) or ROLE_ICONS.get(roles.get(card.id))
         for card in found.cards.values()
     }
 
@@ -1084,6 +1152,7 @@ __all__ = [
     'PLACE_KEYS',
     'REFERENCES_KEYS',
     'REFERENCE_KINDS',
+    'ROLE',
     'ROLE_ICONS',
     'STATE_PLACES',
     'STOCK_KINDS',
@@ -1112,6 +1181,7 @@ __all__ = [
     'place_of',
     'problem',
     'read',
+    'roles_of',
     'state_places',
     'states_of',
     'stock_names',
