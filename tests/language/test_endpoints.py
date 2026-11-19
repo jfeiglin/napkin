@@ -454,11 +454,3 @@ def test_a_setting_or_a_read_of_an_endpoint_is_refused_with_its_code(settings, r
 def test_a_wrong_end_of_a_flow_is_refused_with_its_code(text, code, line, words):
     found = refused(text, code, line)
     assert words in found.message, found
-
-
-def test_a_leg_of_a_route_in_a_priority_comes_with_a_later_slice():
-    text = 'c:\n    a: L = 1\n        outflow.allocation = priority(this.link.forward)\n    b: L = 1\n'
-    with pytest.raises(LanguageError) as caught:
-        compiled(text + '    flow link: this.a <-> this.b\n')
-    assert set(caught.value.codes) == {'later_slice'}
-    assert any(item.line == 3 and '(S3)' in item.message for item in caught.value.problems)

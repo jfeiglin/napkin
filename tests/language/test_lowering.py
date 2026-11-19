@@ -146,6 +146,40 @@ for _name, _at in (('one_pipe', None), *((f'one_pipe_capped_at_{at}', at) for at
     SOURCES[_name] = ONE_PIPE.format(
         **{scope: f'\n            {CAPS[scope]} = 7 L/h' if scope == _at else '' for scope in CAPS}
     )
+# The table of the legs of a route (spec, "Flows and algebraic solvers"), at a signed request of -3 L/h.
+SOURCES['reversible_route'] = """
+    west:
+        water: L = 10 in [0, 20]
+
+    east:
+        water: L = 10 in [0, 20]
+
+    channel:
+        flow link: west.water <-> east.water
+            request = -3 L/h
+    """
+# "Shared resources and competing invocations": a labor leg and a work leg, served at one fraction.
+LEGS = """
+    crew:
+        hours: crew_h = 100 in [0,]
+        used: crew_h = 0 in [0,]
+
+    site:
+        crew = crew
+        controls_work: work_unit = 100 in [0,]
+        controls_done: work_unit = 0 in [0,]
+        flow restore:
+            flow labor: this.crew.hours -> this.crew.used
+                request = {labor} crew_h/h{cap}
+            flow work: this.controls_work -> this.controls_done
+                request = {work} work_unit/h
+    """
+for _name, _labor, _work, _cap in (
+    ('legs_half_service', 4, 8, '\n                capacity = 2 crew_h/h'),
+    ('legs_zero_leg', 0, 8, ''),
+    ('legs_all_zero', 0, 0, ''),
+):
+    SOURCES[_name] = LEGS.format(labor=_labor, work=_work, cap=_cap)
 # The tables that a source names, by the name that it writes.
 TABLES = {'keyed_lookup': {'readings.csv': 'hour: h,factor\n10,2\n11,3\n'}}
 
@@ -327,17 +361,6 @@ def test_a_distribution_valued_value_keeps_its_type():
         ('c:\n    status ok\n        "Fine."\n', 'a status display', 'C'),
         ('tank:\n    water: L = 8\nassert tank.water > 0 L\n', 'an assertion over state', 'S4'),
         ('d:\n    sees e.x\ne:\n    x = 1\n', 'sees', 'S4'),
-        (
-            'tank:\n    water: L = 8\n    flow f: this.water -> SINK\n    far = formula(this.f.sink)\n',
-            "a flow's ends as values",
-            'S3',
-        ),
-        ('c:\n    a: L = 1\n    b: L = 1\n    flow link: this.a <-> this.b\n', 'a reversible route', 'S3'),
-        (
-            's:\n    a: L = 1\n    b: L = 0\n    flow r:\n        flow l: this.a -> this.b\n            request = 1 L/h\n',
-            'a flow with legs',
-            'S3',
-        ),
         ('use pumps.common\n', 'use', 'S6'),
         ('change tank:\n    x = 2\n', 'change', 'S6'),
         ('options "Speed":\n    "Fast":\n        tank.x = 2\n', 'options', 'S6'),

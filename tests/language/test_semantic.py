@@ -171,14 +171,15 @@ def test_a_construct_of_a_later_slice_is_kept_by_name():
                     this.water += 1 L
         Place:
             a: L = 1
-            b: L = 1
-            flow link: this.a <-> this.b
+            charge = solver:
+                solve_for:
+                    this.a
         since_refill = formula(since(tank.refill))
         """
     )
     assert [(part.path, part.slice) for part in model.deferred] == [
         ('tank.refill', 'S4'),
-        ('Place.link', 'S3'),
+        ('Place.charge', 'S5'),
         ('since_refill', 'S4'),
     ]
 

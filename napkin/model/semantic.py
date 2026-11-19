@@ -35,6 +35,20 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   priority(this.main, this.backup)`; `DeclaredEndpoint`). A setting is resolved after its store, so
   it may read it. `priority(...)` ranks flows, or a projection of flows over a collection by its
   keys; that each is incident at the store is the program's rule (`check.priority_item`).
+- **Routes and legs.** A reversible route (`flow link: west.water <-> east.water`, a
+  `DeclaredRoute`) has one signed `actual_rate` and `request` and a `capacity` on the magnitude,
+  and its legs `link.forward` and `link.backward` (`FlowOf.view`), which read the positive part of
+  the rate and of the request in their direction, are members of the flows of its ends and are what
+  a `priority(...)` names; a bare route is no claim there. Both ends of a route are stores. No mark
+  makes a store receive-only: a tally is a store that nothing takes from, and a route takes from
+  both of its ends, so a store at an end of a route is a stock, and only `SOURCE` and `SINK` (and
+  what is no stored number) are refused there. A flow with legs (`DeclaredLegs`) reads its
+  `served_fraction` and its legs, each a directed flow in its own unit at `owner.flow.leg`, named in
+  the priority of its own endpoint; it has no rate and no request of its own.
+- **The ends of a flow** (`f.source`, `f.sink`, also of a leg and of a leg of a route) read the
+  store at that end, with its amount and the steps of a store. The ends are fixed for the run, so
+  the read goes to the store's own path from the flow's member (`end`); an end at `SOURCE` or
+  `SINK`, or of a member of an endpoint's `flows`, which may end anywhere, has no store to read.
 - **Expressions** become a small typed form (`Const`, `Read`, `Apply`, `Retain`, `Distribution`,
   `Drawn`, `Reduced`) that the lowering writes as a program. A `Read` knows whether what it reads is
   fixed for the run (inputs, links and the members of fixed collections), which `where` and `assert`
@@ -43,8 +57,9 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   brings it; the lowering refuses it by name. These slices resolve the entities, the templates and
   their members, the tables, values, inputs (a default may draw from a distribution), formulas,
   `readonly`, ranges with either side open, scales, links, collections and their reductions, stores,
-  directed flows between any stores with `request` and `capacity`, the settings and the reads of
-  endpoints, and assertions over inputs.
+  directed flows between any stores with `request` and `capacity`, reversible routes, flows with
+  legs, the reads of the ends of a flow, the settings and the reads of endpoints, and assertions
+  over inputs.
 """
 
 from __future__ import annotations
@@ -200,15 +215,44 @@ class Many:
 
 @dataclass(frozen=True)
 class FlowOf:
-    """A flow, which is no value: its rates are read (`actual_rate`, `request`, `capacity`). `flow`
-    is the path of its declaration, or '' for a member of an endpoint's `flows`, which may be any of
-    the flows incident there."""
+    """A directed flow, which is no value: its rates are read (`actual_rate`, `request`, `capacity`)
+    and its ends (`source`, `sink`). `flow` is the path of its declaration: a flow, a leg of a flow
+    with legs (`site.restore.labor`) or a leg of a route (`channel.link.forward`, a `view`), or ''
+    for a member of an endpoint's `flows`, which may be any of the flows incident there. A leg of a
+    route reads the positive part of the route's rate and request in its direction, and has no
+    capacity of its own."""
 
     rate: Num
     flow: str = field(default='', compare=False)
+    view: bool = field(default=False, compare=False)
 
     def __str__(self):
         return f'a flow in {self.rate}'
+
+
+@dataclass(frozen=True)
+class RouteOf:
+    """A reversible route, which is no value: its signed `actual_rate` and `request` (positive from
+    its first end to its second), its `capacity` on the magnitude, and its two legs `forward` and
+    `backward`, which are members of the collections of flows of its ends."""
+
+    rate: Num
+    flow: str = ''
+
+    def __str__(self):
+        return f'a reversible route in {self.rate}'
+
+
+@dataclass(frozen=True)
+class LegsOf:
+    """A flow with several legs (`flow` is the path of its declaration), which is no value and has
+    no rate of its own: its `served_fraction` (a plain number from 0 to 1) and each leg by its name
+    (`restore.labor`, a directed flow in its own unit) are read."""
+
+    flow: str
+
+    def __str__(self):
+        return 'a flow with legs'
 
 
 @dataclass(frozen=True)
@@ -394,9 +438,9 @@ def _stored(value):
 
 @dataclass(frozen=True)
 class DeclaredFlow:
-    """A directed flow: its ends (`'SOURCE'`, `'SINK'` or the `Read` of a store: of its own member,
-    through a link, of a named member or of the top level), the type of its rates, its request and
-    its capacity (captured once, or a `Retain`)."""
+    """A directed flow, or a leg of a flow with legs: its ends (`'SOURCE'`, `'SINK'` or the `Read` of
+    a store: of its own member, through a link, of a named member or of the top level), the type of
+    its rates, its request and its capacity (captured once, or a `Retain`)."""
 
     path: str
     name: str
@@ -405,6 +449,27 @@ class DeclaredFlow:
     rate: Num
     request: object = None
     capacity: object = None
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredRoute(DeclaredFlow):
+    """A reversible route (`flow link: west.water <-> east.water`): one signed rate, positive from
+    `source` to `sink`, a signed request and a capacity on the magnitude. Both ends are stores, which
+    supply and receive through it: `SOURCE` and `SINK` stand at the ends of a directed flow only."""
+
+
+@dataclass(frozen=True)
+class DeclaredLegs:
+    """A flow with several legs, served at one fraction: each leg is a `DeclaredFlow` with its own
+    ends, unit, request and capacity, at the path `owner.flow.leg` (`site.restore.labor`). The
+    parent has no request and no rate of its own."""
+
+    path: str
+    name: str
+    legs: tuple[DeclaredFlow, ...]
     text: str | None = None
     evidence: tuple = ()
     line: int = 0
@@ -533,7 +598,7 @@ class DeclaredModel:
 
     def part(self, path):
         """The declared part of a path (an entity, a template, a value, the settings of an
-        endpoint, a flow, an assertion, a member, a table or a deferred part), or None."""
+        endpoint, a flow, a leg, an assertion, a member, a table or a deferred part), or None."""
         return self._paths.get(path)
 
     @cached_property
@@ -545,6 +610,8 @@ class DeclaredModel:
             found.setdefault(entity.path, entity)
             for part in entity.parts:
                 found.setdefault(part.path, part)
+                for leg in part.legs if isinstance(part, DeclaredLegs) else ():
+                    found.setdefault(leg.path, leg)
         for part in (*self.members, *self.tables, *self.root, *self.asserts, *self.deferred):
             found.setdefault(part.path, part)
         for value in [part for part in found.values() if isinstance(part, DeclaredValue)]:
@@ -586,6 +653,7 @@ class Scope:
 
 TOP = Scope()
 FLOW_READS = ('actual_rate', 'request', 'capacity')
+ENDS = ('source', 'sink')
 SIDES = ('outflow', 'inflow')
 SETTINGS = ('capacity', 'request', 'allocation')
 ALLOCATIONS = ('priority', 'proportional')
@@ -741,10 +809,17 @@ class Resolver:
             isinstance(node, n.Method) and node.name in KEYED
         ):
             found = self.path(node, scope)
-            if isinstance(found.type, FlowOf):
+            if isinstance(found.type, (FlowOf, RouteOf)):
                 self.fail(
                     'type',
                     'a flow is no value: read its actual_rate, request or capacity, as delivery.actual_rate',
+                    node,
+                )
+            if isinstance(found.type, LegsOf):
+                self.fail(
+                    'type',
+                    'a flow with legs is no value: read its served_fraction, or the actual_rate of a leg, '
+                    'as restore.labor.actual_rate',
                     node,
                 )
             if isinstance(found.type, EndOf):
@@ -1062,8 +1137,9 @@ class Resolver:
 
     def step(self, base, name, node):
         """The read one step on from `base`: a part of a member (a projection from a collection), a
-        rate of a flow, the outflow or the inflow of a stored number, or what an endpoint reads (its
-        rates and its flows)."""
+        rate or an end of a flow, a rate or a leg of a route, the fraction or a leg of a flow with
+        legs, the outflow or the inflow of a stored number, or what an endpoint reads (its rates and
+        its flows)."""
         kind = base.type
         many = isinstance(kind, Many)
         inner = kind.of if many else kind
@@ -1077,7 +1153,7 @@ class Resolver:
             _, syntax = self.syntax[path]
             formula, stored = '', False
             if isinstance(syntax, n.Flow):
-                found, steady = FlowOf(self.rate(path), path), False
+                found, steady = self.flow_type(path, template, syntax), False
             elif isinstance(syntax, n.Declaration):
                 value = self.value(path)
                 found, steady = value.type, base.fixed and fixed_kind(value)
@@ -1087,12 +1163,56 @@ class Resolver:
                 raise Later('an event', 'S4') if isinstance(syntax, n.Event) else Later('a solver', 'S5')
             return Read(base.start, steps, self.projected(found, kind, name, node), steady, formula, stored)
         if isinstance(inner, FlowOf):
+            if name in FLOW_READS and not (inner.view and name == 'capacity'):
+                return Read(base.start, steps, Many(inner.rate, kind.key) if many else inner.rate)
+            if name in ENDS:
+                return self.end(base, inner, name, node)
+            if inner.view:
+                self.fail(
+                    'unknown_name',
+                    f'a leg of a route reads actual_rate, request, source and sink, not {name}: the '
+                    "route's capacity limits both its legs",
+                    node,
+                )
+            self.fail(
+                'unknown_name',
+                f'a directed flow reads actual_rate, request, capacity, source and sink, not {name}',
+                node,
+            )
+        if isinstance(inner, RouteOf):
             if name in FLOW_READS:
                 return Read(base.start, steps, Many(inner.rate, kind.key) if many else inner.rate)
-            if name in ('source', 'sink'):
-                raise Later("a flow's ends as values", 'S3')
+            if name in ('forward', 'backward'):
+                leg = FlowOf(inner.rate, f'{inner.flow}.{name}', view=True)
+                return Read(base.start, steps, Many(leg, kind.key) if many else leg)
+            hint = f': a route has its ends through its legs, as forward.{name}' if name in ENDS else ''
             self.fail(
-                'unknown_name', f'a directed flow reads actual_rate, request and capacity, not {name}', node
+                'unknown_name',
+                f'a reversible route reads actual_rate, request, capacity, forward and backward, not '
+                f'{name}{hint}',
+                node,
+            )
+        if isinstance(inner, LegsOf):
+            owner, parent = self.syntax[inner.flow]
+            leg = next((each for each in parent.legs if each.name == name), None)
+            if leg is not None:
+                found = FlowOf(self.rate(owner, leg), f'{inner.flow}.{name}')
+                return Read(base.start, steps, Many(found, kind.key) if many else found)
+            if name == 'served_fraction':
+                return Read(base.start, steps, Many(PLAIN, kind.key) if many else PLAIN)
+            if name in FLOW_READS:
+                self.fail(
+                    'type',
+                    f'a flow with legs has no {name} of its own: read a leg, as '
+                    f'{parent.name}.{parent.legs[0].name}.{name}, or its served_fraction',
+                    node,
+                )
+            legs = [each.name for each in parent.legs]
+            self.fail(
+                'unknown_name',
+                f'{parent.name} reads served_fraction and its legs ({", ".join(legs)}), not {name}'
+                + close(name, legs),
+                node,
             )
         if isinstance(inner, EndOf):
             if name in FLOW_READS:
@@ -1516,14 +1636,17 @@ class Resolver:
 
     # ---- flows and endpoints ---------------------------------------------------------------------
 
-    def rate(self, path):
-        """The type of a flow's rates, from its ends (a store's unit per hour), or for `SOURCE ->
-        SINK` from a rate written with its unit."""
-        owner, node = self.syntax[path]
-        if not node.arrow:
-            raise Later('a flow with legs', 'S3')
+    def flow_type(self, path, owner, node):
+        """The type of a declared flow: a directed flow, a reversible route or a flow with legs."""
+        if node.arrow == '->':
+            return FlowOf(self.rate(owner, node), path)
         if node.arrow == '<->':
-            raise Later('a reversible route', 'S3')
+            return RouteOf(self.rate(owner, node), path)
+        return LegsOf(path)
+
+    def rate(self, owner, node):
+        """The type of the rates of a directed flow, a leg or a route, from its ends (a store's unit
+        per hour), or for `SOURCE -> SINK` from a rate written with its unit."""
         # As the program's builder does: a rate written with its unit first, then a store's unit per hour.
         for item in node.properties:
             found = literal(item.value.body if isinstance(item.value, n.Formula) else item.value)
@@ -1563,7 +1686,12 @@ class Resolver:
         return found
 
     def flow(self, path, owner, node):
-        rate = self.rate(path)
+        """A declared flow: a directed flow (or a leg), a reversible route (`DeclaredRoute`), or a
+        flow with legs (`DeclaredLegs`). Each end is `SOURCE`, `SINK` or a stored number of the
+        dimension of the rates per time; the parser keeps `SOURCE` and `SINK` off a route."""
+        if not node.arrow:
+            return self.legs(path, owner, node)
+        rate = self.rate(owner, node)
         ends = []
         for end in (node.source, node.sink):
             if end in (('SOURCE',), ('SINK',)):
@@ -1578,15 +1706,17 @@ class Resolver:
                     node,
                 )
             ends.append(store)
+        route = node.arrow == '<->'
         settings = {}
         for item in node.properties:
             key = '.'.join(item.path)
             if key not in ('request', 'capacity'):
-                self.fail('property', f'a directed flow takes request and capacity, not {key}', item)
+                what = 'a reversible route' if route else 'a directed flow'
+                self.fail('property', f'{what} takes request and capacity, not {key}', item)
             if key in settings:
                 self.fail('property', f'{key} is given twice', item)
             settings[key] = self.rate_setting(item, Scope(owner), rate, f'the {key} of {node.name}')
-        return DeclaredFlow(
+        return (DeclaredRoute if route else DeclaredFlow)(
             path,
             node.name,
             ends[0],
@@ -1598,6 +1728,73 @@ class Resolver:
             self.evidence(node),
             node.line,
         )
+
+    def legs(self, path, owner, node):
+        """A flow with legs: each leg a directed flow of its own, at `path.leg`, named once, and by no
+        name that the flow reads or refuses itself (`restore.served_fraction`, `restore.request`)."""
+        legs, seen = [], {}
+        for leg in node.legs:
+            if leg.name in ('served_fraction', *FLOW_READS):
+                self.fail(
+                    'reserved',
+                    f'a leg is not named {leg.name}: {node.name}.{leg.name} reads the flow with legs',
+                    leg,
+                )
+            if leg.name in seen:
+                self.fail(
+                    'duplicate_name',
+                    f'{node.name} has two legs named {leg.name}; the first is on line {seen[leg.name]}',
+                    leg,
+                )
+            seen[leg.name] = leg.line
+            legs.append(self.flow(f'{path}.{leg.name}', owner, leg))
+        return DeclaredLegs(path, node.name, tuple(legs), node.text, self.evidence(node), node.line)
+
+    def end(self, base, flow, name, node):
+        """`f.source` or `f.sink` of one declared flow, leg or leg of a route (`base` reads the flow):
+        the store at that end, read as that store, with its amount and the steps of a store. The ends
+        of a flow are fixed for the run, so the read goes to the store's own path, from the member of
+        the flow: `this.main.sink` of `flow main: SOURCE -> this.water` reads `this.water`, and
+        `Site.instances.restore.labor.sink` reads `Site.instances.crew.used`. An end at SOURCE or SINK
+        holds nothing to read, and a member of an endpoint's `flows` may end anywhere."""
+        if not flow.flow:
+            self.fail(
+                'flow_end',
+                f'a member of flows may end at any store, or at SOURCE or SINK: read the {name} of a '
+                f'declared flow, as this.main.{name}',
+                node,
+            )
+        owner, ends = self.ends_of(flow)
+        end = ends[0] if name == 'source' else ends[1]
+        if end in (('SOURCE',), ('SINK',)):
+            self.fail('flow_end', f'the {name} of {flow.flow} is {end[0]}, which holds nothing to read', node)
+        store = self.store(end, owner, node)
+        many = isinstance(base.type, Many)
+        if store.start != ('this',):
+            if many:
+                self.fail(
+                    'collection',
+                    f'the {name} of {flow.flow} is {".".join(end)} for every member: read it by its path',
+                    node,
+                )
+            return store
+        # The flow's own steps follow its member's: one for a flow, two for a leg (`restore.labor`).
+        member = base.steps[: -flow.flow.count('.')]
+        kind = Many(store.type, base.type.key) if many else store.type
+        return Read(base.start, (*member, *store.steps), kind, stored=not many)
+
+    def ends_of(self, flow):
+        """The owner of a declared flow, leg or leg of a route, and its two ends as written: a leg of
+        a route runs from its route's first end (`forward`) or from its second (`backward`)."""
+        if flow.flow in self.syntax:
+            owner, node = self.syntax[flow.flow]
+            return owner, (node.source, node.sink)
+        parent, _, name = flow.flow.rpartition('.')
+        owner, node = self.syntax[parent]
+        if flow.view:
+            return owner, ((node.source, node.sink) if name == 'forward' else (node.sink, node.source))
+        leg = next(each for each in node.legs if each.name == name)
+        return owner, (leg.source, leg.sink)
 
     def rate_setting(self, item, scope, rate, what):
         """A request or a capacity (of a flow or of an endpoint): a rate of the dimension of `rate`,
@@ -1670,10 +1867,12 @@ class Resolver:
         return value
 
     def allocation(self, node, scope):
-        """`proportional()`, or `priority(...)` over flows, first to last: each a flow
-        (`hospital.delivery`, `this.main`) or a projection of flows over a collection
+        """`proportional()`, or `priority(...)` over flows, first to last: each a directed flow
+        (`hospital.delivery`, `this.main`), a leg of a flow with legs (`this.restore.labor`), a leg of
+        a route (`this.link.forward`), or a projection of these over a collection
         (`Customer.instances.by(rank).delivery`, ranked by the collection's keys), each named once.
-        That each flow is incident at the store is the program's rule (`check.priority_item`)."""
+        A bare route or a flow with legs is no claim at one endpoint. That each flow is incident at
+        the store, in its direction, is the program's rule (`check.priority_item`)."""
         if not (isinstance(node, n.Call) and node.function in ALLOCATIONS):
             self.fail('allocation', 'an allocation is priority(...) or proportional()', node)
         if node.function == 'proportional':
@@ -1688,6 +1887,20 @@ class Resolver:
                 self.fail('priority_item', 'priority(...) names flows, as hospital.delivery', arg)
             found = self.path(arg, scope)
             kind = found.type.of if isinstance(found.type, Many) else found.type
+            if isinstance(kind, RouteOf):
+                self.fail(
+                    'priority_item',
+                    'a reversible route is no claim at one endpoint: name its leg in the direction of '
+                    'this endpoint, as link.forward or link.backward',
+                    arg,
+                )
+            if isinstance(kind, LegsOf):
+                self.fail(
+                    'priority_item',
+                    'a flow with legs is no claim at one endpoint: name its leg at this endpoint, as '
+                    'restore.labor',
+                    arg,
+                )
             if not isinstance(kind, FlowOf) or not kind.flow:
                 what = "an endpoint's collection of flows" if isinstance(kind, FlowOf) else str(found.type)
                 self.fail(

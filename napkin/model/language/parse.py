@@ -1216,7 +1216,9 @@ class Parser:
                 cursor.fail('a leg of a flow goes one way: source -> sink', arrow)
             if ('SOURCE',) in ends or ('SINK',) in ends:
                 cursor.fail(
-                    'a reversible route joins two stocks: SOURCE and SINK stand at an end of a -> flow', arrow
+                    'a reversible route joins two stocks: SOURCE and SINK stand at an end of a -> flow',
+                    arrow,
+                    'route_end',
                 )
         elif source == ('SINK',) or sink == ('SOURCE',):
             cursor.fail('SOURCE stands on the left of -> and SINK on the right', arrow)

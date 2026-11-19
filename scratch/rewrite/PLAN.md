@@ -38,7 +38,10 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] the engine (its agent stopped at a restart of the container after step 8 of 9; the main session finished it): one sparse network, local sharing settled in the direction of supply, lines for rates held between moments, a sparse integrator for moving sets; 300 random networks agree with the oracle (2,000 under `deep`)
   - [ ] carried into S3: the moving benchmark at 30,000 places stops at 41.94 h with a failure of local sharing that names no part (3,000 places run to the end); not yet ported: `test_chattering.py`, `test_closed_form_short.py`, `test_roundoff_properties.py`
   - [ ] performance, separate from behaviour: rates held between moments on 30,000 places run in 87 s (one set of 52,038 stores, 113,009 line starts), where the prototype's lines took 1.4 s
-- [ ] S3 reversible flows and flows with legs: two tracks at work (`briefs/s3.md`), with the carry-over of S2
+- [ ] S3 reversible flows and flows with legs (`briefs/s3.md`), with the carry-over of S2
+  - [x] the front end: `<->` with its legs, flows with legs and one `served_fraction`, `.source` and `.sink` typed as the store at that end (`tests/language/`, 378 tests). A tally is known by use: a store at a route's end is a stock, so only `SOURCE` and `SINK` are refused there
+  - [ ] the engine, with the carry-over of S2
+  - [ ] for S4: refuse an assignment through `.source` or `.sink` (the front end writes the read as the store's own path, so a write would change the store); for the join: `napkin run` lists the fields of a flow with legs and of a route's legs last
 - [ ] S4 occurrences and time
 - [ ] S5 solvers
 - [ ] S6 packages and configurations

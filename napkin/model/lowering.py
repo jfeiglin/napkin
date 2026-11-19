@@ -15,7 +15,9 @@ a collection starts at `Instances`, `Literal`, `Where`, `By` or `Lookup`, and a 
 one is an `Expr` of its own. A number with a unit is the core's literal `q(number, unit)`; a bare
 number that takes a unit is written with it. The settings of a store's outflow and inflow are its
 `build.endpoint`; a side that sets nothing but `proportional()`, the default, is a side that sets
-nothing, so the two texts are one program.
+nothing, so the two texts are one program. A reversible route is a `build.route`, and a flow with
+legs a `build.legs` of its legs, each a directed flow. A read of a flow's end reaches the lowering
+as the read of its store (`semantic.Resolver.end`), so the program reads the store by its path.
 
 A part that a later slice brings is refused by name (`later_slice`), with the slice that brings it.
 A refusal of the program's checker is given at the line of the declared part that it names, and so
@@ -150,6 +152,8 @@ def _type(kind):
 
 
 def part_of(part):
+    if isinstance(part, s.DeclaredLegs):
+        return build.legs(part.name, *(flow_of(leg) for leg in part.legs))
     if isinstance(part, s.DeclaredFlow):
         return flow_of(part)
     if isinstance(part, s.DeclaredAssert):
@@ -217,8 +221,9 @@ def distribution(found):
 
 
 def flow_of(flow):
-    """The program's flow of a declared directed flow. Its unit is the builder's to give: a rate
-    written with its unit, or its store's unit per hour; a plain store's rate is `1/h`."""
+    """The program's flow of a declared directed flow, leg or reversible route (`build.route`). Its
+    unit is the builder's to give: a rate written with its unit, or its store's unit per hour; a
+    plain store's rate is `1/h`."""
     ends = [
         build.X.read(_path(end)) if isinstance(end, s.Read) else getattr(build, end)
         for end in (flow.source, flow.sink)
@@ -228,7 +233,8 @@ def flow_of(flow):
         for key, setting in (('request', flow.request), ('capacity', flow.capacity))
     }
     unit = flow.rate.unit if flow.rate.unit == '1/h' else ''
-    return build.flow(flow.name, *ends, unit=unit, **settings)
+    make = build.route if isinstance(flow, s.DeclaredRoute) else build.flow
+    return make(flow.name, *ends, unit=unit, **settings)
 
 
 # ---- expressions ---------------------------------------------------------------------------------------
