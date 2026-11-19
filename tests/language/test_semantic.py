@@ -171,13 +171,12 @@ def test_a_construct_of_a_later_slice_is_kept_by_name():
                     this.water += 1 L
         Place:
             a: L = 1
-            charge = solver:
-                solve_for:
-                    this.a
+            status ok
+                "Fine."
         since_refill = formula(since(tank.refill))
         """
     )
-    assert [(part.path, part.slice) for part in model.deferred] == [('Place.charge', 'S5')]
+    assert [(part.path, part.slice) for part in model.deferred] == [('Place.status[1]', 'C')]
 
 
 # ---- refusals -------------------------------------------------------------------------------------

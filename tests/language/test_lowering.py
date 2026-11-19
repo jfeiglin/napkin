@@ -307,7 +307,6 @@ def test_a_distribution_valued_value_keeps_its_type():
 @pytest.mark.parametrize(
     ('text', 'construct', 'slice_'),
     [
-        ('p:\n    s = solver:\n        solve_for:\n            this.x\n', 'a solver', 'S5'),
         ('c:\n    status ok\n        "Fine."\n', 'a status display', 'C'),
         ('use pumps.common\n', 'use', 'S6'),
         ('change tank:\n    x = 2\n', 'change', 'S6'),
@@ -328,15 +327,6 @@ def test_a_construct_of_a_later_slice_is_refused_by_name(text, construct, slice_
     message = caught.value.problems[0].message
     assert construct in message and f'({slice_})' in message
     assert caught.value.problems[0].line >= 1
-
-
-def test_a_value_that_reads_a_later_slice_is_refused_with_it():
-    with pytest.raises(LanguageError) as caught:
-        compiled(
-            'p:\n    a: L = 1\n    s = solver:\n        solve_for:\n            this.a\n'
-            'x = formula(p.s.y)\nboth = formula(x + x)\n'
-        )
-    assert caught.value.codes == ['later_slice'] * 3
 
 
 def test_a_refusal_of_the_checker_is_at_the_line_of_its_part():

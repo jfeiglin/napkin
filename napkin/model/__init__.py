@@ -1,8 +1,9 @@
 """The scenario language: read a model file and lower it to its program (docs/language.md).
 
 The front end (`language/`) parses a file, `semantic` declares it (names, types and units),
-`lowering` writes it as a program (`napkin/program`), and `compile` is the entry of all three
-(`load_scenario`, `compile_text`). `library` gives a model its units and its records. The modules
+`lowering` writes it as a program (`napkin/program`), `solvers` checks what each declared solver says
+about what it determines, and `compile` is the entry of all of them (`load_scenario`,
+`compile_text`). `library` gives a model its units and its records. The modules
 `ir`, `runs`, `views`, `uncertain` and `analysis/` hold work of the old compiler that a later stage
 ports; nothing on the path from a file to a run loads `runs`, `views` or `analysis/`.
 

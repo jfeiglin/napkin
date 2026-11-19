@@ -408,8 +408,6 @@ SOURCES = {
     'scalar_input_default': SCALAR_INPUT,
 }
 TABLES = {'lookup_below_first_key': {'readings.csv': 'hour: h,factor\n2,5\n'}}
-# The examples of S4 that wait for a solver (S5).
-SOLVED = ('staffing', 'two_writes_one_solve')
 
 
 def compiled(text, tables=None):
@@ -426,40 +424,6 @@ def refused(text, tables=None):
 def test_the_text_of_an_example_lowers_to_its_program(name):
     found = compiled(SOURCES[name], TABLES.get(name)).program
     assert program_bytes(found) == program_bytes(EXAMPLES[name]().program)
-
-
-def test_an_example_that_needs_a_solver_is_refused_by_name():
-    """`two_writes_one_solve` (and `staffing`, `network*`) need a declared solver, which S5 brings."""
-    text = """
-        office:
-            staff_hours: h = 100 h
-            outreach_minimum = formula(0.30 * this.staff_hours)
-            staffing = solver:
-                inputs:
-                    available = this.staff_hours
-                    minimum_outreach = this.outreach_minimum
-                solve_for:
-                    care: h in [0 h, available]
-                    outreach: h in [minimum_outreach, available]
-                constraints:
-                    care + outreach == available
-                objective:
-                    maximize(care)
-            lower = event():
-                after 1 h:
-                    this.staff_hours = 90 h
-            restore = event():
-                when this.staffing.care <= 60 h:
-                    this.restore.start()
-                    reset when false
-                after 0 h:
-                    this.staff_hours = 100 h
-
-        office.lower.start()
-        """
-    error = refused(text)
-    assert set(error.codes) == {'later_slice'} and all('(S5)' in item.message for item in error.problems)
-    assert {item.message.split(':')[0] for item in error.problems} == {'office.staffing', 'office.restore'}
 
 
 # ---- what an event writes, reads and starts ----------------------------------------------------------

@@ -84,9 +84,20 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   whether what it reads is fixed for the run (inputs, links and the members of fixed collections),
   which `where` and `assert` need, whether it ends at a stored number, which a flow, an endpoint and a
   move need, and the declared value that it ends at, which an assignment needs.
+- **Solvers** (`DeclaredSolver`) belong to an entity or a template. An input (`DeclaredBinding`)
+  names a value, a flow, a member or a collection by its path in the owner's scope, and the solver
+  reads it under its own name; inside the solver a bare name is an input or an unknown
+  (`Scope.solver`; they stand in `syntax` under the solver's path, `clinic.staffing.care`).
+  `solve_for` names stored numbers, the rates of flows and routes and served fractions, also
+  projected over a collection (`places.supply.actual_rate`), and declares new unknowns, each a
+  number with its domain, its preferred value and its scale; a yes/no unknown is a yes-or-no
+  problem, which the language leaves out (`nonlinear`). A caller reads a solver's unknowns
+  (`this.staffing.care`, `SolverOf`) and assigns none (`result_write`). What a constraint and an
+  objective may say about what the solver determines (affine relations, the participants of the
+  decision, one solver for each connected set) is checked on the program (`solvers.py`).
 - **What a later slice brings** is kept as a `Deferred` part, with the construct and the slice that
-  brings it; the lowering refuses it by name: solvers (S5), status displays (C), `use`, `change`,
-  options, runs, variants and a property set by its path (S6).
+  brings it; the lowering refuses it by name: status displays (C), `use`, `change`, options, runs,
+  variants and a property set by its path (S6).
 """
 
 from __future__ import annotations
@@ -330,6 +341,18 @@ class EndOf:
         return f'an endpoint in {self.rate}'
 
 
+@dataclass(frozen=True)
+class SolverOf:
+    """A declared solver (`solver` is the path of its declaration, `provider.dispatch`), which is no
+    value: a caller reads its published results, the new unknowns that it declares under
+    `solve_for` (`clinic.staffing.care`)."""
+
+    solver: str
+
+    def __str__(self):
+        return f'the solver {self.solver}'
+
+
 def compatible(a, b):
     if isinstance(a, Num) and isinstance(b, Num):
         return a.dimension == b.dimension
@@ -490,6 +513,7 @@ def fixed(expression):
 
 INPUT, STATE, FORMULA, DISTRIBUTION = 'input', 'state', 'formula', 'distribution'
 LINK, COLLECTION = 'link', 'collection'
+UNKNOWN = 'unknown'  # a new unknown of a solver: a result that the solver publishes
 
 
 @dataclass(frozen=True)
@@ -511,10 +535,12 @@ class DeclaredEndpoint:
 @dataclass(frozen=True)
 class DeclaredValue:
     """A value of an entity, a template or the top level: its kind (`input`, `state`, `formula`,
-    `distribution`, `link`, `collection`), its type, its initializer (None for a value of a template
-    that each member gives, or a link that each member sets), its range (either side None), its
-    scale, its texts and its evidence (the records that it cites and those written under it). A
-    stored number has the settings of its `outflow` and its `inflow` (`DeclaredEndpoint`), or None."""
+    `distribution`, `link`, `collection`, or `unknown` for a new unknown of a solver), its type, its
+    initializer (None for a value of a template that each member gives, or a link that each member
+    sets; of an unknown, its preferred value), its range (either side None; of an unknown, its
+    domain), its scale, its texts and its evidence (the records that it cites and those written under
+    it). A stored number has the settings of its `outflow` and its `inflow` (`DeclaredEndpoint`), or
+    None."""
 
     path: str
     name: str
@@ -605,6 +631,63 @@ class DeclaredSees:
     path: str
     read: Read
     line: int = 0
+
+
+# ---- solvers ------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DeclaredBinding:
+    """An input of a solver (`places = Place.instances`): a name for the `Read` of a value, a flow,
+    a member or a collection in the scope of the solver's owner, which follows its source. Its path
+    is the solver's and its name (`provider.dispatch.places`)."""
+
+    path: str
+    name: str
+    read: Read
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredRelation:
+    """A constraint of a solver (its `test`, a yes/no) or an objective (`sense` is `minimize` or
+    `maximize`, and `test` the number that it ranks), at `solver.constraint[k]` or
+    `solver.objective[k]`."""
+
+    path: str
+    test: object
+    sense: str = ''
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredSolver:
+    """A solver of an entity or a template (`provider.dispatch`): its inputs, the existing fields
+    that it determines (`solve_for`, each the `Read` of a stored number, of the rate of a flow or a
+    route, of a served fraction, or a projection of one of these over a collection), its new unknowns
+    (`DeclaredValue`s of kind `unknown`), its constraints and its objectives in written order. Inside
+    it a bare name is an input or an unknown (`Scope.solver`). What it may write in its constraints
+    and objectives is the program's affair (`napkin/model/solvers.py`)."""
+
+    path: str
+    name: str
+    inputs: tuple[DeclaredBinding, ...] = ()
+    solve_for: tuple[Read, ...] = ()
+    unknowns: tuple[DeclaredValue, ...] = ()
+    constraints: tuple[DeclaredRelation, ...] = ()
+    objective: tuple[DeclaredRelation, ...] = ()
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+def solver_parts(solver):
+    """Each part of a solver that has a path: its inputs, its unknowns, its constraints and its
+    objectives."""
+    yield from solver.inputs
+    yield from solver.unknowns
+    yield from solver.constraints
+    yield from solver.objective
 
 
 # ---- events: their statements, steps and triggers ------------------------------------------------
@@ -883,8 +966,8 @@ class DeclaredModel:
 
     def part(self, path):
         """The declared part of a path (an entity, a template, a value, the settings of an
-        endpoint, a flow, a leg, an event and each part of it, an assertion, a member, a table, a
-        start of the setup or a deferred part), or None."""
+        endpoint, a flow, a leg, an event or a solver and each part of it, an assertion, a member, a
+        table, a start of the setup or a deferred part), or None."""
         return self._paths.get(path)
 
     @cached_property
@@ -900,6 +983,8 @@ class DeclaredModel:
                     found.setdefault(leg.path, leg)
                 for inner in event_parts(part) if isinstance(part, DeclaredEvent) else ():
                     found.setdefault(inner.path, inner)
+                for inner in solver_parts(part) if isinstance(part, DeclaredSolver) else ():
+                    found.setdefault(inner.path, inner)
         for part in (*self.members, *self.tables, *self.root, *self.asserts, *self.setup, *self.deferred):
             found.setdefault(part.path, part)
         for value in [part for part in found.values() if isinstance(part, DeclaredValue)]:
@@ -910,14 +995,6 @@ class DeclaredModel:
 
 
 # ---- resolution ---------------------------------------------------------------------------------------
-
-
-class Later(Exception):
-    """A construct that a later slice brings, met while a part is resolved."""
-
-    def __init__(self, construct, slice_):
-        super().__init__(construct)
-        self.construct, self.slice = construct, slice_
 
 
 class Refused(Exception):
@@ -936,13 +1013,15 @@ class Scope:
     inside the test of a `where` the template of the member under test (`item`). Inside an event,
     `event` is its path, whose parameters and locals the bare names read; inside a trigger, which
     has no occurrence (`trigger` is its path), `captures` are the paths of the captures that it has
-    taken so far."""
+    taken so far. Inside a solver, `solver` is its path, whose inputs and unknowns the bare names
+    read."""
 
     owner: str = ''
     item: str | None = None
     event: str | None = None
     captures: tuple = ()
     trigger: str | None = None
+    solver: str | None = None
 
 
 TOP = Scope()
@@ -1014,6 +1093,13 @@ class Resolver:
                         self.scopes[event] = Scope(item.name, event=event)
                         for part in (*member.params, *member.locals):
                             self.syntax.setdefault(f'{event}.{part.name}', (event, part))
+                    if isinstance(member, n.Solver):
+                        # The inputs and the unknowns of a solver are in `syntax` under its path.
+                        solver = f'{item.name}.{name}'
+                        self.scopes[solver] = Scope(item.name, solver=solver)
+                        unknowns = [part for part in member.solve_for if isinstance(part, n.Unknown)]
+                        for part in (*member.inputs, *unknowns):
+                            self.syntax.setdefault(f'{solver}.{part.name}', (solver, part))
         for item in tree.items:
             if isinstance(item, n.Table):
                 self.tables[item.name] = item
@@ -1173,6 +1259,12 @@ class Resolver:
                     'type',
                     'an event is no value: read its occurrences, as count(this.refill.occurrences), or '
                     'since(this.refill), and start it with .start(...)',
+                    node,
+                )
+            if isinstance(found.type, SolverOf):
+                self.fail(
+                    'type',
+                    'a solver is no value: read one of the unknowns that it declares, as this.staffing.care',
                     node,
                 )
             return found
@@ -1363,10 +1455,17 @@ class Resolver:
                 self.fail('history', f'since takes an event, as since(this.repair), not {source.type}', node)
             return History('since', source, hours)
         if (
-            isinstance(source.type, (Many, Ent, EventOf, FlowOf, RouteOf, LegsOf, EndOf, Dist))
+            isinstance(source.type, (Many, Ent, EventOf, FlowOf, RouteOf, LegsOf, EndOf, Dist, SolverOf))
             or not source.part
         ):
             self.fail('history', f'{node.function} takes a value, not {source.type}', node)
+        if self.value(source.part).kind == UNKNOWN:
+            self.fail(
+                'history',
+                f"{node.function} takes a value that commits change, and a solver's result changes when "
+                'its solver settles',
+                node,
+            )
         if node.function == 'elapsed':
             return History('elapsed', source, hours)
         delay = self.expression(node.args[1], scope)
@@ -1509,6 +1608,15 @@ class Resolver:
             return Read(
                 ('local', name), (), value.type, stored=_stored(value) and value.init is not None, part=own
             )
+        own = f'{scope.solver}.{name}'
+        if scope.solver is not None and self.syntax.get(own, ('',))[0] == scope.solver:
+            # An input of the solver reads as its source, under its own name; an unknown is a number.
+            if isinstance(self.syntax[own][1], n.Binding):
+                source = self.binding(own).read
+                return Read(
+                    ('local', name), (), source.type, source.fixed, source.formula, source.stored, source.part
+                )
+            return Read(('local', name), (), self.value(own).type, part=own)
         if name in self.root:
             value = self.value(name)
             formula = name if value.kind == FORMULA else ''
@@ -1529,11 +1637,12 @@ class Resolver:
         if name[:1].isupper():
             self.member_of(node, None)
         known = [*self.root, *self.entities, *self.instances]
-        if scope.event is not None:
-            known += [
-                key.rpartition('.')[2] for key, (owner, _) in self.syntax.items() if owner == scope.event
-            ]
+        for inner in (scope.event, scope.solver):
+            if inner is not None:
+                known += [key.rpartition('.')[2] for key, (owner, _) in self.syntax.items() if owner == inner]
         hint = '; a trigger has no occurrence: it reads its captures and this' if scope.trigger else ''
+        if name in ('yes', 'no'):
+            hint = '; a yes/no value is written true or false'
         self.fail('unknown_name', f'{name} names nothing here' + close(name, known) + hint, node)
 
     def row(self, table, id, node):
@@ -1582,9 +1691,29 @@ class Resolver:
             elif isinstance(syntax, n.Event):
                 found, steady = EventOf(path), False
             else:
-                raise Later('a solver', 'S5')
+                found, steady = SolverOf(path), False
             return Read(
                 base.start, steps, self.projected(found, kind, name, node), steady, formula, stored, part
+            )
+        if isinstance(inner, SolverOf):
+            own = f'{inner.solver}.{name}'
+            if isinstance(self.syntax.get(own, (0, 0))[1], n.Unknown):
+                found = self.value(own).type
+                return Read(base.start, steps, self.projected(found, kind, name, node), part=own)
+            unknowns = [
+                key.rpartition('.')[2]
+                for key, (owner, syntax) in self.syntax.items()
+                if owner == inner.solver and isinstance(syntax, n.Unknown)
+            ]
+            hint = (
+                f': {name} is an input, which a caller reads by its own path'
+                if isinstance(self.syntax.get(own, (0, 0))[1], n.Binding)
+                else close(name, unknowns)
+            )
+            self.fail(
+                'unknown_name',
+                f'a solver publishes the unknowns that it declares under solve_for, not {name}{hint}',
+                node,
             )
         if isinstance(inner, EventOf):
             if name == 'occurrences':
@@ -1813,11 +1942,10 @@ class Resolver:
     # ---- values ------------------------------------------------------------------------------------
 
     def value(self, path):
-        """The declared value of a path, resolved once; a later-slice value raises `Later` again."""
+        """The declared value of a path, resolved once; a value with a problem refuses its readers
+        quietly (`depends`), since its own problem is reported."""
         if path in self.done:
             found = self.done[path]
-            if isinstance(found, Deferred):
-                raise Later(found.construct, found.slice)
             if found is None:
                 raise Refused('depends', f'{path} has a problem of its own')
             return found
@@ -1833,11 +1961,10 @@ class Resolver:
             scope = self.scope_of(owner)
             if isinstance(syntax, n.Param):
                 found = self.param(path, scope, syntax)
+            elif isinstance(syntax, n.Unknown):
+                found = self.unknown(path, scope, syntax)
             else:
                 found = self.declaration(path, scope, syntax)
-        except Later as later:
-            self.done[path] = Deferred(path, later.construct, later.slice, syntax.line)
-            raise
         except Refused:
             self.done[path] = None
             raise
@@ -2468,8 +2595,6 @@ class Resolver:
                 else:
                     rate = self.per_hour(value.type)
                     settings[item.path[1]] = self.rate_setting(item, scope, rate, f'{value.name}.{key}')
-            except Later as later:
-                self.deferred.append(Deferred(f'{value.path}.{key}', later.construct, later.slice, item.line))
             except Refused as refused:
                 if refused.code != 'depends':
                     self.report(refused.code, refused.message, refused.line or item.line, refused.column)
@@ -2717,6 +2842,13 @@ class Resolver:
         if not target.part:
             self.fail('fixed_write', f'{spelled} is no value that a statement assigns', node)
         value = self.done.get(target.part) or self.value(target.part)
+        if value.kind == UNKNOWN:
+            self.fail(
+                'result_write',
+                f'{spelled} is a result of the solver {target.part.rpartition(".")[0]}, read-only to its '
+                'callers: change its inputs',
+                node,
+            )
         if value.kind in (INPUT, LINK) or isinstance(value.type, Ent):
             self.fail('fixed_write', f'{spelled} is fixed for the run: no statement assigns it', node)
         if value.readonly:
@@ -2871,6 +3003,192 @@ class Resolver:
             path, test, tuple(captures), starts, reset, node.text, self.evidence(node), node.line
         )
 
+    # ---- solvers -----------------------------------------------------------------------------------
+
+    def solver(self, path, owner, node):
+        """A solver of an entity or a template: its inputs, read in the owner's scope; its new
+        unknowns and the fields that it determines; its constraints (each a yes/no) and its
+        objectives (each a number), read in the solver's scope, where a bare name is an input or an
+        unknown. None of them draws or asks an actor: a solve reads them again."""
+        seen = {}
+        unknowns = [entry for entry in node.solve_for if isinstance(entry, n.Unknown)]
+        for item in (*node.inputs, *unknowns):
+            if item.name in seen:
+                self.fail(
+                    'duplicate_name',
+                    f'{path}.{item.name} is declared twice; the first is on line {seen[item.name]}',
+                    item,
+                )
+            seen[item.name] = item.line
+        scope = self.scopes[path]
+        inputs = tuple(self.binding(f'{path}.{item.name}') for item in node.inputs)
+        declared = tuple(self.value(f'{path}.{item.name}') for item in unknowns)
+        solve_for = tuple(
+            self.determined(entry, scope) for entry in node.solve_for if not isinstance(entry, n.Unknown)
+        )
+        constraints, objective = [], []
+        for k, item in enumerate(node.constraints):
+            test = self.expression(item, scope)
+            self.want_bool(test, item, 'a constraint')
+            self.no_draws(test, item, 'a constraint')
+            constraints.append(DeclaredRelation(f'{path}.constraint[{k}]', test, line=item.line))
+        for k, item in enumerate(node.objective):
+            value = self.expression(item.value, scope)
+            self.want_number(value, item, f'{item.sense}(...)')
+            self.no_draws(value, item, 'an objective')
+            objective.append(DeclaredRelation(f'{path}.objective[{k}]', value, item.sense, item.line))
+        return DeclaredSolver(
+            path,
+            node.name,
+            inputs,
+            solve_for,
+            declared,
+            tuple(constraints),
+            tuple(objective),
+            node.text,
+            self.evidence(node),
+            node.line,
+        )
+
+    def binding(self, path):
+        """An input of a solver, resolved once: the `Read` of what its path names in the scope of the
+        solver's owner (a value, a flow, a member or a collection), which the input follows. A
+        calculation is a formula of the owner, which the input then names."""
+        if path in self.done:
+            if self.done[path] is None:
+                raise Refused('depends', f'{path} has a problem of its own')
+            return self.done[path]
+        solver, node = self.syntax[path]
+        self.done[path] = None
+        if not isinstance(node.value, (n.Name, n.Member, n.Collection)) and not (
+            isinstance(node.value, n.Method) and node.value.name in KEYED
+        ):
+            self.fail(
+                'solver_input',
+                f'the input {node.name} names a value, a flow, a member or a collection by its path: put a '
+                'calculation in a formula of the entity, and name the formula',
+                node,
+            )
+        found = self.path(node.value, Scope(self.scopes[solver].owner))
+        if found.start == ('time',):
+            self.fail(
+                'solver_input', f'the input {node.name} names the time, which a solver reads as t', node
+            )
+        self.done[path] = DeclaredBinding(path, node.name, found, node.line)
+        return self.done[path]
+
+    def unknown(self, path, scope, node):
+        """A new unknown of a solver: a number with its domain (its range, read at each solve), its
+        preferred value (its initializer; zero in its unit without one) and its scale. A yes/no or a
+        member of an enum would make a yes-or-no problem, which the language leaves out."""
+        declared, retained = self.declared_type(node.type)
+        if declared == BOOL or isinstance(declared, EnumOf):
+            self.fail(
+                'nonlinear',
+                f'the unknown {node.name} is {declared}: a solver chooses numbers, and a yes-or-no '
+                'problem is left out of the language',
+                node,
+            )
+        if retained or not isinstance(declared, Num):
+            self.fail(
+                'type',
+                f'the unknown {node.name} is a number, not {"a formula" if retained else declared}',
+                node,
+            )
+        init = None
+        if node.value is not None:
+            init = self.expression(node.value, scope, declared)
+            if not compatible(init.type, declared):
+                if not _zero(init):
+                    self.fail(
+                        'unit',
+                        f'the unknown {node.name} is in {declared}, and its preferred value in {init.type}',
+                        node,
+                    )
+                init = Const(init.value, declared)
+        lower = upper = scale = None
+        if node.range is not None:
+            lower, upper = (
+                self.bound(end, scope, declared, node) for end in (node.range.low, node.range.high)
+            )
+            if isinstance(lower, Const) and isinstance(upper, Const) and lower.value > upper.value:
+                self.fail(
+                    'range',
+                    f'the domain of {node.name} is reversed: [{lower.value}, {upper.value}]',
+                    node.range,
+                )
+        if node.scale is not None:
+            scale = self.bound(node.scale, scope, declared, node)
+        for found in (init, lower, upper, scale):
+            if found is not None:
+                self.no_draws(found, node, f'the domain of {node.name}')
+        value = DeclaredValue(path, node.name, UNKNOWN, declared, init, lower, upper, scale, line=node.line)
+        self.within(init, value, node)
+        return value
+
+    def determined(self, node, scope):
+        """An entry of `solve_for` that names an existing field: a stored number, the `actual_rate` of
+        a directed flow or of a route, the `served_fraction` of a flow with legs, or a projection of
+        one of these. A leg's rate follows its route's rate or its flow's fraction, and an endpoint's
+        total its flows, so neither is named; a yes/no or a member of an enum would make a yes-or-no
+        problem."""
+        found = self.path(node, scope)
+        written = _spelled(node)
+        if isinstance(node, n.Member) and node.name in ('actual_rate', 'served_fraction'):
+            base = self.path(node.base, scope)
+            of = base.type.of if isinstance(base.type, Many) else base.type
+            if isinstance(of, RouteOf) and node.name == 'actual_rate':
+                return found
+            if isinstance(of, LegsOf) and node.name == 'served_fraction':
+                return found
+            if isinstance(of, FlowOf) and node.name == 'actual_rate':
+                # The flow that a leg belongs to, as written (`link` of `link.forward`).
+                parent = (
+                    _spelled(node.base.base)
+                    if isinstance(node.base, n.Member)
+                    else of.flow.rpartition('.')[0].rpartition('.')[2]
+                )
+                if of.view:
+                    self.fail(
+                        'solve_for',
+                        f"{written} follows its route's one signed rate: name {parent}.actual_rate",
+                        node,
+                    )
+                if of.flow and of.flow not in self.syntax:
+                    self.fail(
+                        'solve_for',
+                        f'{written} is a leg, served at the fraction of its flow: name '
+                        f'{parent}.served_fraction',
+                        node,
+                    )
+                if of.flow:
+                    return found
+            if isinstance(of, EndOf):
+                self.fail(
+                    'solve_for',
+                    f'{written} is the total of an endpoint, which follows its flows: name the actual_rate '
+                    'of each flow',
+                    node,
+                )
+        value = self.value(found.part) if found.part in self.syntax else None
+        kind = found.type.of if isinstance(found.type, Many) else found.type
+        if value is not None and value.kind == STATE and (kind == BOOL or isinstance(kind, EnumOf)):
+            self.fail(
+                'nonlinear',
+                f'{written} is {kind}: a solver chooses numbers, and a yes-or-no problem is left out of '
+                'the language',
+                node,
+            )
+        if value is None or value.kind != STATE or not isinstance(kind, Num):
+            what = 'an unknown of a solver' if value is not None and value.kind == UNKNOWN else kind
+            self.fail(
+                'solve_for',
+                f'a solver cannot determine {written}, which is {what}: name a stored number, the '
+                'actual_rate of a flow or a route, or a served_fraction',
+                node,
+            )
+        return found
+
     # ---- members -----------------------------------------------------------------------------------
 
     def given(self, template, path, node, line_node, evidence):
@@ -2899,8 +3217,13 @@ class Resolver:
                 f'{name} is an event of {template}: a member gives values and links, and its template the events',
                 line_node,
             )
-        if not isinstance(found[1], n.Declaration):
-            raise Later('a solver', 'S5')
+        if isinstance(found[1], n.Solver):
+            self.fail(
+                'property',
+                f'{name} is a solver of {template}: a member gives values and links, and its template the '
+                'solver',
+                line_node,
+            )
         value = self.value(f'{template}.{name}')
         scope, line = Scope(template), line_node.line
         if value.kind == LINK:
@@ -2966,9 +3289,6 @@ class Resolver:
             seen[key] = item.line
             try:
                 is_link, found = self.given(template, item.path, item.value, item, self.evidence(item))
-            except Later as later:
-                self.deferred.append(Deferred(f'{node.name}.{key}', later.construct, later.slice, item.line))
-                continue
             except Refused as refused:
                 if refused.code != 'depends':
                     self.report(refused.code, refused.message, refused.line or item.line, refused.column)
@@ -2995,7 +3315,7 @@ class Resolver:
                 continue
             try:
                 value = self.value(key)
-            except (Later, Refused):
+            except Refused:
                 continue
             if value.init is not None:
                 continue
@@ -3078,11 +3398,6 @@ class Resolver:
             except Refused as refused:
                 if refused.code != 'depends':
                     self.report(refused.code, refused.message, 1, 0, data.origin)
-            except Later as later:
-                message = (
-                    f'the column {column.name}: {later.construct} comes with a later slice ({later.slice})'
-                )
-                self.report('later_slice', message, 1, 0, data.origin)
         ids, members = self.ids[node.name], []
         for index, row in enumerate(data.rows):
             if ids is None:
@@ -3238,14 +3553,13 @@ class Resolver:
                 return DeclaredSees(path, found, node.line)
             if isinstance(node, n.Start):
                 return self.start(path, TOP, node)
-        except Later as later:
-            return Deferred(path, later.construct, later.slice, node.line)
+            if isinstance(node, n.Solver):
+                return self.solver(path, owner, node)
         except Refused as refused:
             if refused.code != 'depends':
                 self.report(refused.code, refused.message, refused.line or node.line, refused.column)
             return None
         construct, slice_ = {
-            n.Solver: ('a solver', 'S5'),
             n.Status: ('a status display', 'C'),
             n.Property: ('a property set by its path', 'S6'),
         }[type(node)]
@@ -3379,7 +3693,7 @@ class Resolver:
                 return None
             try:
                 found = self.expression(value, TOP)
-            except (Refused, Later):
+            except Refused:
                 self.report('scenario', f'{key} is a time, such as 30 days', node.line)
                 return None
             if not isinstance(found, Const) or found.type.dimension != (('time', 1),):
@@ -3618,6 +3932,15 @@ def _cell_expression(text):
         return parse_expression(text)
     except SyntaxProblem:
         return None
+
+
+def _spelled(node):
+    """A path as written (`places.use.actual_rate`), for a message."""
+    if isinstance(node, n.Name):
+        return node.name
+    if isinstance(node, (n.Member, n.Method)):
+        return f'{_spelled(node.base)}.{node.name}' + ('(...)' if isinstance(node, n.Method) else '')
+    return 'this expression'
 
 
 def _zero(value):

@@ -561,13 +561,16 @@ ROUTES = (
         'closes_at_two': True,
     },
 )
-READINGS = ({'hour': 0, 'factor': 1}, {'hour': 1, 'factor': F(1, 2)}, {'hour': 2, 'factor': 1})
+# A table's cells are read as written: `0.5` is a float.
+READINGS = ({'hour': 0, 'factor': 1}, {'hour': 1, 'factor': 0.5}, {'hour': 2, 'factor': 1})
 
 
 def network_program(places=PLACES, routes=ROUTES, critical_first=False, power='W'):
     """Spec, "Using collections in a solver": three places, two reversible routes and hourly
     readings, from the tables of "Worked network data and expected rates". `power` is the unit of
-    every power of the model (`kW` writes it in kW and kWh, the route strength 0.001 kW)."""
+    every power of the model (`kW` writes it in kW and kWh, the route strength 0.001 kW, and the
+    table's cells 0.008 and 0.006 as the file writes them). As in its source, a flow's rates are in
+    its stores' unit per hour (`Wh/h`, `kWh/h`), which measures what `W` and `kW` measure."""
     energy = 'Wh' if power == 'W' else 'kWh'
     b = Builder(UNITS)
     readings = b.template('Reading', input_('hour', 'h', 0), input_('factor', '', 1))
@@ -579,19 +582,19 @@ def network_program(places=PLACES, routes=ROUTES, critical_first=False, power='W
         value('level', '', 0, lower=-30, upper=30),
         value('power', energy, 0, lower=0, upper=0),
         value('need', power, formula(this.base_need * readings.instances.by('hour').at(t).factor)),
-        flow('supply', SOURCE, this.power, capacity=this.supply_limit, unit=power),
-        flow('use', this.power, SINK, request=formula(this.need), capacity=formula(this.need), unit=power),
+        flow('supply', SOURCE, this.power, capacity=this.supply_limit),
+        flow('use', this.power, SINK, request=formula(this.need), capacity=formula(this.need)),
         value('unmet', power, formula(fmax(q(0, power), this.use.request - this.use.actual_rate))),
     )
     routes_template = b.template(
         'Route',
         link('origin', 'Place'),
         link('destination', 'Place'),
-        input_('strength', power, 1 if power == 'W' else F(1, 1000)),
+        input_('strength', power, 1 if power == 'W' else 0.001),
         input_('closes_at_two', BOOL, False),
         value('up', BOOL, True),
         value('pull', power, formula(ifelse(this.up, this.strength, q(0, power)))),
-        route('carried', this.origin.power, this.destination.power, unit=power),
+        route('carried', this.origin.power, this.destination.power),
         value(
             'rate_follows_levels',
             BOOL,
@@ -606,7 +609,8 @@ def network_program(places=PLACES, routes=ROUTES, critical_first=False, power='W
     scaled = [dict(row) for row in places]
     if power == 'kW':
         for row in scaled:
-            row['supply_limit'], row['base_need'] = F(row['supply_limit'], 1000), F(row['base_need'], 1000)
+            for name in ('supply_limit', 'base_need'):
+                row[name] = row[name] / 1000 if row[name] else 0
     b.table('sites', places_template, scaled)
     b.table('links', routes_template, routes)
     b.table('readings', readings, READINGS)
@@ -781,7 +785,8 @@ def staffing():
 
 def _pump_battery(name, water, requests, expected):
     """Spec, "Water and electricity in one coordinated decision": a pump of 0.5 Wh/L, a charger of
-    1 W, a tank and a clinic-first provider (acceptance row 15)."""
+    1 W, a tank and a clinic-first provider (acceptance row 15). As in its source, the pump's power
+    flow is in its battery's unit per hour (`Wh/h`, which measures what `W` measures)."""
     b = Builder(UNITS)
     tank = b.entity('tank', value('water', 'L', water, lower=0, upper=20))
     battery = b.entity(
@@ -792,7 +797,7 @@ def _pump_battery(name, water, requests, expected):
     pump = b.entity(
         'pump',
         flow('fill', SOURCE, tank.water, capacity=q(4, 'L/h')),
-        flow('power', battery.energy, SINK, unit='W'),
+        flow('power', battery.energy, SINK),
     )
     clinic = b.entity('clinic', flow('delivery', tank.water, SINK, request=q(requests, 'L/h')))
     town = b.entity('town', flow('delivery', tank.water, SINK, request=q(requests, 'L/h')))

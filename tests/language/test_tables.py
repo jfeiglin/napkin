@@ -350,8 +350,8 @@ def test_a_problem_of_a_table_of_a_package_is_at_its_file(tmp_path):
 
 # ---- the worked network ----------------------------------------------------------------------------
 
-# The templates of the spec's worked network ("Using collections in a solver") with what this slice
-# lowers: its route flow (S3), its close event (S4) and its provider's solver (S5) are left out.
+# The templates and tables of the spec's worked network ("Using collections in a solver") without
+# its route, its event and its solver: the whole network is in `test_solvers.py`.
 NETWORK = """
     Reading:
         input hour: h = 0

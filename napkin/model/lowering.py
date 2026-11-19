@@ -25,9 +25,14 @@ statement is the builder's assignment, move, start or branch, and the setup's st
 (`enum[OPEN, CLOSED]`), its members a `refs.EnumValue`; a draw and a choice carry a temporary site
 until `Builder.finish` gives each its place, as the builder's own `draw` and `choose` do.
 
+A solver is a `build.solver` of its inputs, the fields that it determines, its new unknowns, its
+constraints and its objectives; a bare name of it is `refs.Local`, and a caller reads its unknowns by
+their paths (`this.staffing.care`). What its constraints and objectives may say is checked on the
+finished program (`solvers.problems`).
+
 A part that a later slice brings is refused by name (`later_slice`), with the slice that brings it.
-A refusal of the program's checker is given at the line of the declared part that it names, and so
-is each of the setup's reports (`reports`), which refuse nothing.
+A refusal of the program's checker, or of `solvers.problems`, is given at the line of the declared
+part that it names, and so is each of the setup's reports (`reports`), which refuse nothing.
 """
 
 from __future__ import annotations
@@ -64,6 +69,7 @@ from ..program.refs import (
     spelled,
 )
 from . import semantic as s
+from . import solvers
 from .language.problems import LanguageError, Problem
 
 _SITES = itertools.count()
@@ -108,9 +114,13 @@ def lower(model):
     builder.root(*(value_of(value) for value in model.root), *(_assertion(item) for item in model.asserts))
     builder.setup(*(_statement(start) for start in model.setup))
     try:
-        return builder.finish()
+        program = builder.finish()
     except ProgramError as error:
         raise LanguageError([_located(model, item) for item in error.diagnostics]) from None
+    found = solvers.problems(program)
+    if found:
+        raise LanguageError([_located(model, item) for item in found])
+    return program
 
 
 def reports(model, program):
@@ -196,6 +206,8 @@ def _type(kind):
 def part_of(part):
     if isinstance(part, s.DeclaredEvent):
         return event_of(part)
+    if isinstance(part, s.DeclaredSolver):
+        return solver_of(part)
     if isinstance(part, s.DeclaredSees):
         return build.sees(build.X.read(_path(part.read)))
     if isinstance(part, s.DeclaredLegs):
@@ -363,6 +375,36 @@ def flow_of(flow):
     unit = flow.rate.unit if flow.rate.unit == '1/h' else ''
     make = build.route if isinstance(flow, s.DeclaredRoute) else build.flow
     return make(flow.name, *ends, unit=unit, **settings)
+
+
+# ---- solvers ----------------------------------------------------------------------------------------
+
+
+def solver_of(solver):
+    """The program's solver: its inputs (`build.given`, each the path of its source), the fields that
+    it determines, its new unknowns (each with its domain, its preferred value and its scale), its
+    constraints and its objectives, each group in written order. A bare name of a solver is
+    `refs.Local`."""
+
+    def optional(expression):
+        return None if expression is None else handle(expression)
+
+    parts = [build.given(item.name, build.X.read(_path(item.read))) for item in solver.inputs]
+    parts += [build.solve_for(build.X.read(_path(entry))) for entry in solver.solve_for]
+    parts += [
+        build.unknown(
+            value.name,
+            _type(value.type),
+            lower=optional(value.lower),
+            upper=optional(value.upper),
+            init=optional(value.init),
+            scale=optional(value.scale),
+        )
+        for value in solver.unknowns
+    ]
+    parts += [build.constraint(handle(item.test)) for item in solver.constraints]
+    parts += [getattr(build, item.sense)(handle(item.test)) for item in solver.objective]
+    return build.solver(solver.name, *parts)
 
 
 # ---- expressions ---------------------------------------------------------------------------------------
