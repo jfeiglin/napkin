@@ -42,9 +42,11 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] the engine (`b1/s3-engine/STATE.md`): a route is one signed rate with two leg views, a flow with legs one fraction, both through local sharing; routes and legs run as lines or on the sparse integrator, never as arrays or one component; an endpoint request that a route meets stops the run by name (the oracle has no answer either). 300 random networks with routes and legs agree with the oracle (2,000 under `deep`). Ported: `test_coupled_queue_boundaries.py`, `test_chattering.py`, `test_closed_form_short.py`, `test_roundoff_properties.py` (moves, timers and stock faces dropped: S4)
   - [x] the carry-over of S2: local sharing at scale solves each part in its own units, with claim rows as served fractions and a distance step from a feasible vertex or by the dual method; the moving benchmark at 30,000 places runs to 48 h (build 3.6 s, plan 22.2 s, run 299 s). Lines re-solve only what lies downstream of a changed store: held at 30,000 places, run 8.1 s (was 87 s); equal to the whole-part path up to roundoff (5.7e-14)
   - [x] the join: `napkin run` lists a route's legs and a flow with legs' fields in file order, each leg in its own unit, and a link as the name of its member
-  - [ ] for S4: refuse an assignment through `.source` or `.sink` (the front end writes the read as the store's own path, so a write would change the store)
   - [ ] performance, for later: about 3/4 of the moving benchmark's 299 s goes to 2,948 two-store components, each run and fitted alone
-- [ ] S4 occurrences and time
+- [ ] S4 occurrences and time (`briefs/s4.md`). The largest slice: its engine comes in two parts, one after the other; the front end does the whole slice beside the first part
+  - [ ] the front end, the whole slice, with the refusal of an assignment through `.source` or `.sink`; then the reachability of D16, ported from `81b367b`, if usage allows
+  - [ ] the engine, part one: occurrences, stages, gates, triggers, moves, retirement, history, limits (23 examples)
+  - [ ] the engine, part two: draws and run modes in stages, inputs that are distributions, choices and the pause, assertions over state, `elapsed` and `delayed` (9 examples)
 - [ ] S5 solvers
 - [ ] S6 packages and configurations
 - [ ] Gate G1
