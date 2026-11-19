@@ -68,6 +68,8 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [ ] for C: studies and admission, reuse of pages, the library hash and the closure of evidence (from the ported files); whether the publisher needs a hash that moves with texts and evidence, as the old `model_hash` did. For M: the three catalogue cases of `test_runs.py`. Not done: an instance value needs no record yet, though the spec says it does ("as an instance value does"); the dead `LANGUAGE_VERSION` of `ir.py`; `tests/model/test_build.py`, `test_diagnostic_places.py`, `test_library.py` still dormant; `tests/test_package.py`, `test_nested_packages.py` and `tests/evidence/test_adopt.py` import fixtures of deleted files
 - [ ] Gate G1
 - [ ] C results and consumers
+  - [ ] near-ties (change 10): the engine marks a firing, a branch, a crossing or a split of who is served that was decided within tolerance of its boundary, and the report shows each one
+  - [ ] tolerances (change 10): loosen those of R-A3-02 and of integration where P1's measurements and the strict invariants allow; adopting a solver needs the owner's approval
 - [ ] Gate G2
 - [ ] M catalogue migration
 - [ ] Gate G3
@@ -103,9 +105,23 @@ These override the text of this plan below, wherever the two differ. The owner's
 8. **Inputs (D2).** An override follows the declared type; a distribution-valued input exists.
 9. **Worktrees.** The tracks of B1 work in the main checkout, each in new directories that no other
    track touches, because the harness makes an agent's worktree from `main`, not from this branch.
-10. **Priorities (owner, 2026-11-19).** Defensibility first, then speed, then precision. A result
-   must be reproducible and explainable before it is fast, and fast before it is exact to the last
-   bit. Choices between methods, tolerances and budgets are weighed in that order.
+10. **Priorities (owner, 2026-11-19).** Defensibility first, then speed, then precision; choices
+   between methods, tolerances and budgets are weighed in that order.
+   - Defensibility: every number traces to a stated rule and its evidence; the same run gives the
+     same result again; a run that cannot answer stops with a named failure instead of a quietly
+     different answer (D0's "never another allocation" is a rule of defensibility).
+   - Speed: people explore a Fermi model, rerun it, sample it and change assumptions, so a run of
+     20 minutes is not used. This argues for interior-point solvers, fewer fair-sharing programs
+     and parallel samples.
+   - Precision: inputs are uncertain by tens of percent, so 1e-7 against 1e-10 means nothing. The
+     tolerances of R-A3-02 (1e-7, and 1e-10 in fair sharing, which is part of why HiGHS failed at
+     scale) and of integration may be loosened, keeping exact the precision that is defensibility:
+     - conservation: the books of each store balance;
+     - equal treatment: two equal claims get equal shares;
+     - bounds and never-falls proofs: a store stays in its range, a cumulative value never drops;
+     - discrete outcomes: where a tiny difference flips a trigger, a branch or who is served, the
+       engine does not compute more precisely; it detects the near-tie and reports it ("this
+       trigger fired within tolerance of its threshold").
 11. **Reproducibility (owner, 2026-11-19).** The same run (the same code, configuration, seed and
    thread settings on one machine) is deterministic. Anything else (a sample alone or in a batch,
    another solver, another platform) agrees within the stated tolerances, not bit for bit. A
