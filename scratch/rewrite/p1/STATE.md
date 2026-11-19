@@ -17,9 +17,8 @@ FINDINGS.md is refused to a subagent: its text goes in the last message (PLAN.md
   `--tol --fix --updates` patched into `fair`.
 - `correct.py`: a method in the library's place on test_spec_answers + test_random + deep sweep
   (827 cases), errors against each test's tolerance (`correct.jsonl`).
-- `hybrid.py` (IPM start for the Newton method), `polish.py` (IPM then OSQP's polish): negatives at
-  scale. `harder.py`: the engine's form. `same.py`: determinism across processes. `table.py`.
-- `exports.sh`, `queue.sh` (+ /home/user/p1-data/queue.txt): 30,000-place runs, one at a time.
+- `hybrid.py`, `polish.py`: negatives at scale; `harder.py`: the engine's form; `same.py`: bits;
+  `table.py`; `exports.sh`, `queue.sh` (+ /home/user/p1-data/queue*.txt): 30,000 runs, one at a time.
 
 ## Findings (numbers in the records; see the last message for the tables)
 - Engine's form: a store held at [0,0] is two `<=` rows: 30,000 Newton system 316k vs 233k,
@@ -46,8 +45,15 @@ FINDINGS.md is refused to a subagent: its text goes in the last message (PLAN.md
   vs 150 s, same 28,436 iterations, levels bitwise; x1.7 at tol 1e-7: renewals 43 -> 0, one claim
   1.2e-6 (near-tie); UPDATES 1,000: normal -5%, x1.45 +24% (114 renewals): keep 100. Clarabel and
   parts bitwise across two processes at 30,000.
-- Version: all records 922afd1210e6 (cb6661d) but the last three fair ones (fc1f9ff178e1, ef2d9bf:
-  adds Kept.fresh/of and Solver.renew, off the path of a first solve).
+- Version: records 922afd1210e6 (cb6661d) but the last three fair ones (ef2d9bf, off that path).
+
+## Adopted (change 18, 2026-11-19), in napkin/
+- declared.py: a store at both bounds is one row `==`; distance.py: qdldl LDL' (two refinement
+  steps), the stage goes on by SuperLU at a solve whose backward error is above 1e-10 or a refused
+  factorization, and runs again by SuperLU alone if it does not converge (a switch at each stall
+  was tried: too eager, the method stalls early with SuperLU too); fair.py: parts in one program.
+  New tests in tests/engine/solve/test_failures.py (2) and tests/engine/test_solvers.py (1).
+- New times: `adopted.py` (30,000, one scenario a process) and docs/scoping/solver-speed.md.
 
 ## Done. Not done
 - SuperLU distance on x1.45 and damaged at 30,000; a parametric or bisection step; holding every

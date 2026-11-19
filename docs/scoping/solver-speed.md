@@ -138,8 +138,8 @@ The new times, with the library's bench (`scratch/rewrite/b1/solve/bench.py`) an
 | --- | --- | --- | --- | --- |
 | 30,000 normal | 4.8 s | 155 s, 459 programs | 45 s, 446 + 3 steps | 150 s, 342 s |
 | 30,000 damaged | 4.5 s | 35 s, 22 programs | 25 s, 341 + 3 steps | 174 s, not measured |
-| 30,000 x1.45 | PENDING | | | 396 s, no answer |
-| 30,000 x1.7 | PENDING | | | 602 s, no answer |
+| 30,000 x1.45 | 6.5 s | 396 s, 1,261 programs, 34 renewals | did not finish in the 8 minutes left of the 15 | 396 s, no answer |
+| 30,000 x1.7 | 7.5 s | 607 s, 1,748 programs, 42 renewals | did not finish in the 5 minutes left of the 15 | 602 s, no answer |
 | 3,000 normal | 0.2 s | 1.4 s | 1.0 s | 1.2 s, 3.7 s |
 | 3,000 x1.45 | 0.2 s | 3.2 s | 1.5 s | 3.1 s, 4.4 s |
 | 3,000 damaged | 0.2 s | 0.5 s, 9 programs | 0.7 s | 1.4 s, 2.1 s |
@@ -189,7 +189,8 @@ A precision profile is a named set of tolerances and methods for the solvers, su
 Need x1.45 and need x1.7 at 30,000 places. In P1 the distance step gave no answer: at x1.45 it did
 not finish in 15 minutes, and at x1.7 the method did not converge in 500 Newton steps (nor 2,000),
 and HiGHS's QP then called the face infeasible. That face is feasible at HiGHS's primal tolerance
-1e-9 and infeasible to HiGHS at 1e-7. After the adoption: PENDING.
+1e-9 and infeasible to HiGHS at 1e-7. After the adoption the two cases are still open: fair sharing
+takes 396 s and 607 s, and the distance step does not finish in what is left of 15 minutes.
 
 ## The changes
 
