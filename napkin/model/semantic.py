@@ -926,7 +926,8 @@ class Given:
 class DeclaredMember:
     """A member of a template: written by hand (`north: Utility`), or a row of the table `table`. Its
     path is its id (`north`, `sites.clinic`, or `readings[0]` for a row of a table without ids). Its
-    line is in `file`: the model's ('') or the table's."""
+    line is in `file`: the model's ('') or the table's. A member written by hand may have its title
+    (`title "DC Water"`), the name that the reports and the playback give it."""
 
     path: str
     template: str
@@ -937,6 +938,7 @@ class DeclaredMember:
     evidence: tuple = ()
     line: int = 0
     file: str = ''
+    title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1096,6 +1098,17 @@ class DeclaredModel:
                 ):
                     found += setting.evidence
         return tuple(found)
+
+    def title(self, member):
+        """The title of a member (`title "DC Water"`): of an entity written once or of a member
+        written by hand, as its line or a change gives it; None for a row of a table or a member with
+        none. The title is a label: no hash covers it (`identity.model_hash`)."""
+        found = self.part(member)
+        if isinstance(found, DeclaredMember) or (
+            isinstance(found, DeclaredEntity) and not isinstance(found, DeclaredTemplate)
+        ):
+            return found.title
+        return None
 
     def part(self, path):
         """The declared part of a path (an entity, a template, a value, the settings of an
@@ -3642,13 +3655,15 @@ class Resolver:
             kept = links if is_link else values
             kept[:] = [item for item in kept if item.name != found.name] + [found]
             written.add(line_node.name)
-        text, evidence = node.text, self.evidence(node)
+        text, title, evidence = node.text, node.title, self.evidence(node)
         label = self.labels.get(node.name)
         if label is not None:
+            # A change of the labels of a member replaces each label that it writes, as of an entity.
             text = label.text if label.text is not None else text
+            title = label.title if label.title is not None else title
             evidence = self.evidence(label) or evidence
         member = DeclaredMember(
-            node.name, template, tuple(values), tuple(links), None, text, evidence, node.line
+            node.name, template, tuple(values), tuple(links), None, text, evidence, node.line, title=title
         )
         self.complete(member, written)
         return member
@@ -3960,7 +3975,6 @@ class Resolver:
                 # A change of the labels of an entity replaces each label that it writes.
                 text = label.text if label.text is not None else text
                 title = label.title if label.title is not None else title
-                role = label.role if label.role is not None else role
                 evidence = self.evidence(label) or evidence
         except Refused as refused:
             self.report(refused.code, refused.message, refused.line, refused.column)
@@ -4168,8 +4182,8 @@ class Resolver:
         """Each line of each `change name:` by the path of the value or the link that it sets. A change
         names an entity, a template or a member written by hand of an earlier file, sets only what it
         declares (R-A5-03: a change of a missing name is an error), and sets each value once: two
-        changes of one value are an error, whatever the order of the files. Its own text, `title`,
-        `role` and records replace those of what it names."""
+        changes of one value are an error, whatever the order of the files. Its own text, `title`
+        and records replace those of what it names."""
         for item in self.tree.items:
             if not isinstance(item, n.Change):
                 continue
@@ -4184,7 +4198,7 @@ class Resolver:
                     item.line,
                 )
                 continue
-            if item.text is not None or item.title is not None or item.role is not None or item.cites:
+            if item.text is not None or item.title is not None or item.cites:
                 first = self.labels.setdefault(item.name, item)
                 if first is not item:
                     self.report(

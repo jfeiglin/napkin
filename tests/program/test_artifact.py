@@ -49,8 +49,17 @@ TABLE = SideTable(
             ),
         ),
         Location('grinder.refill.step[0]', 'stage', '', 'grinder.scn', 5, 9),
+        Location('north', 'member', 'north', 'grinder.scn', 7, 1, 'The north grinder', (), 'North grinder'),
     )
 )
+
+
+def test_the_format_is_the_third_with_the_titles_of_the_side_table():
+    """A location's title is a field of the side table's records (PLAN, change 19), so the format went
+    up from 2 to 3 (the version rule of the module), and a title is kept through the file."""
+    assert FORMAT_VERSION == 3
+    loaded = loads(Artifact(grinder_refill().program, TABLE).data()).table
+    assert (loaded.title('north'), loaded.title('grinder'), loaded.title('south')) == ('North grinder', None, None)
 
 
 @pytest.mark.parametrize('name', sorted(EXAMPLES))

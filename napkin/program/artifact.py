@@ -8,15 +8,18 @@ program equal to the one saved, with the same bytes, so the engine runs it to th
   its `Location`: its kind (`EXECUTABLE` are the kinds at which a run can stop: an event, a stage, a
   gate, a trigger and each statement and case), its name, its place in the source (file, line and
   column, from 1) and, for a value, a flow or any part with a text, its label (the first text under
-  it) and its evidence (each record that it rests on, with its content). It is outside the
-  program's identity: a label, a record or a moved line changes the table and leaves the program's
-  bytes, its digest, the model's hash and the key of a stored run.
+  it) and its evidence (each record that it rests on, with its content). Each member written by
+  hand has a location of the kind `member` under its id, and a member's title (`title "DC Water"`,
+  the name that reports and playback give it) is at its location: an entity written once's at its
+  template's (`SideTable.title`). The table is outside the program's identity: a label, a title, a
+  record or a moved line changes the table and leaves the program's bytes, its digest, the model's
+  hash and the key of a stored run.
 - **The identity** of a compiled program is its digest (`Artifact.digest`), the SHA-256 of its
   canonical bytes: a checkpoint names its program by it.
 
 The file is a header of two lines, then two sections, each a line with its size and its bytes:
 
-    napkin program 2               the name of the format and its version
+    napkin program 3               the name of the format and its version
     language 0.1.0                 the version of the language of the program
     program <size> <sha256>        the program's canonical bytes, and their digest
     <the program's bytes>
@@ -49,7 +52,8 @@ from . import config, parts, record, refs
 from .canonical import Malformed, decode, program_bytes, value_bytes
 
 FORMAT = b'napkin program'
-FORMAT_VERSION = 2
+# 3: a location has its title (PLAN, change 19 after G0).
+FORMAT_VERSION = 3
 # The version of the language: what a program means. A model's identity changes with it, never with
 # the version of the package.
 LANGUAGE_VERSION = '0.1.0'
@@ -80,6 +84,8 @@ KINDS = {
 }
 # The kinds of the locations at which a run can stop.
 EXECUTABLE = ('event', 'stage', 'gate', 'trigger', 'assign', 'move', 'start', 'if', 'switch', 'case')
+# The kind of the location of a member written by hand, under its id: no record of the program has it.
+MEMBER = 'member'
 
 
 class ArtifactError(ValueError):
@@ -109,9 +115,10 @@ class Evidence:
 
 @dataclass(frozen=True)
 class Location:
-    """A part of the program as its source writes it: its origin, its kind (`KINDS`), its name (`''`
-    for a statement; a case's member), its file (`''` for a text with no file), its line and its
-    column (from 1, 0 for none), its label (the first text under it, or None) and its evidence."""
+    """A part of the program as its source writes it: its origin, its kind (`KINDS`, or `MEMBER`), its
+    name (`''` for a statement; a case's member), its file (`''` for a text with no file), its line
+    and its column (from 1, 0 for none), its label (the first text under it, or None), its evidence
+    and, for a member or a template, its title (or None)."""
 
     origin: str
     kind: str
@@ -121,6 +128,7 @@ class Location:
     column: int = 0
     label: str | None = None
     evidence: tuple[Evidence, ...] = ()
+    title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -139,6 +147,11 @@ class SideTable:
     def location(self, origin):
         """The location of a part by its origin, or KeyError."""
         return self._index[origin]
+
+    def title(self, member):
+        """The title of a member by its id (of an entity written once: its template's), or None."""
+        found = self._index.get(member)
+        return None if found is None else found.title
 
     def executable(self):
         """The locations at which a run can stop (`EXECUTABLE`), in the order of the program."""

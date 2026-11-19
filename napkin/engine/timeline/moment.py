@@ -104,12 +104,80 @@ class Tx:
         self.defined = {}
         self.near = ()  # the near-ties of its tests (`near_ties`)
         self.edits = []  # (part, owner, details) of the trace entry of each edit made in it
+        self.mark = None  # the length of the trace when its statements are done (`execute`)
 
     def details(self):
         """The details of the trace entry of the commit: the definitions that it gives, by the
         statements that give them (`Plan.definitions_of`), and the near-ties of its tests."""
         found = {'defines': tuple(self.defined.items())} if self.defined else {}
         return found | ({'near': tuple(self.near)} if self.near else {})
+
+
+class _Savepoint:
+    """What a commit changes of the record of its run, taken before it publishes anything, so that a
+    failure in the commit discards the whole stage (spec: "If the stage fails, its writes and queued
+    starts are discarded"). A failure ends the run, so what is taken back is what its record reads:
+    the trace from the end of the stage's statements (its commit or firing entry, its edits, moves
+    and starts, the draws of its children's entries), the pieces and the times of change of what it
+    writes, the definitions that it gives, and the transfers of its edits. The children that it
+    started stay in the plan, and the record holds only the occurrences that its trace starts
+    (`Recorder.record`)."""
+
+    def __init__(self, run, tx):
+        recorder, plan = run.recorder, run.plan
+        self.run = run
+        self.trace = len(recorder.trace) if tx.mark is None else tx.mark
+        names = set(tx.writes)
+        for name in tx.writes:
+            names.update(plan.described_of.get(name, ()))
+        self.pieces = {name: _length(recorder.pieces, name) for name in names}
+        self.changes = {name: _length(run.changes, name) for name in tx.writes}
+        self.defined = {
+            name: (_length(plan.defined, name), plan.values[name]) for name in tx.writes if name in plan.values
+        }
+        stores = {details['target'] for _, _, details in tx.edits}
+        self.transfers = {
+            store: None if store not in recorder.transfers else len(recorder.transfers[store][1])
+            for store in stores
+        }
+
+    def discard(self):
+        """Take back what the commit changed of the record."""
+        run, recorder, plan = self.run, self.run.recorder, self.run.plan
+        del recorder.trace[self.trace :]
+        _cut(recorder.pieces, self.pieces)
+        _cut(run.changes, self.changes)
+        for store, count in self.transfers.items():
+            if count is None:
+                recorder.transfers.pop(store, None)
+            else:
+                del recorder.transfers[store][1][count:]
+        for name, (count, value) in self.defined.items():
+            found = plan.defined.get(name)
+            if found is None or len(found) <= (count or 0):
+                continue  # the commit gave it no definition
+            # The value takes back its definition, so that what reads it is found again (`Plan.define`).
+            plan.define(name, value.node if value.kind == FORMULA else None, run.now, found[0][0])
+            if count is None:
+                del plan.defined[name]
+            else:
+                del found[count:]
+            plan.values[name] = value
+
+
+def _length(lists, name):
+    """The length of a list of a mapping of lists, or None when the mapping has none."""
+    found = lists.get(name)
+    return None if found is None else len(found)
+
+
+def _cut(lists, lengths):
+    """Each list of a mapping back to its length (`_length`); a list that was not there goes."""
+    for name, count in lengths.items():
+        if count is None:
+            lists.pop(name, None)
+        elif name in lists:
+            del lists[name][count:]
 
 
 class _Moving:
@@ -303,7 +371,8 @@ class Moment:
         return answer
 
     def execute(self, statements, tx, scope):
-        """Run statements in order (see the module); a breakpoint at one stops before it."""
+        """Run statements in order (see the module); a breakpoint at one stops before it. Once they are
+        done, `tx.mark` holds the length of the trace: what a failed commit takes back starts there."""
         breaks = self.run.breaks
         for statement in statements:
             tx.origin = statement.origin
@@ -322,6 +391,7 @@ class Moment:
                 self.execute(self.select(statement, tx, scope), tx, scope)
             else:
                 raise SimulationError(f'{statement!r} is no statement')
+        tx.mark = len(self.run.recorder.trace)
 
     def resolved(self, path, scope, origin):
         """What a path of a scope names, found once."""
@@ -504,7 +574,17 @@ class Moment:
         return statement.orelse
 
     def commit(self, tx):
-        """Publish the writes of a stage and register the occurrences that it queued."""
+        """Publish the writes of a stage and register the occurrences that it queued. A failure in it
+        (a start that a limit, its arguments or its entry refuse) discards the whole stage, and the run
+        fails (`_Savepoint`)."""
+        saved = _Savepoint(self.run, tx)
+        try:
+            self._publish(tx)
+        except Exception:
+            saved.discard()
+            raise
+
+    def _publish(self, tx):
         run = self.run
         for part, owner, details in tx.edits:  # an edit at a stop in the stage (`checkpoints.py`)
             run.recorder.entry(run.now, 'edit', part, owner, **details)

@@ -429,8 +429,9 @@ def test_an_entity_keeps_its_title_and_a_change_replaces_it(tmp_path):
 
 def test_a_change_that_sets_a_role_is_refused_at_its_line(tmp_path):
     variant = EAST.replace('change second:\n', 'change second:\n    role operator\n')
-    (problem,) = problems(package(tmp_path, {'variants/east/model.scn': variant}) / 'variants/east/model.scn')
-    assert (problem.code, problem.file, problem.line) == ('role', 'variants/east/model.scn', 9)
+    folder = package(tmp_path, {'variants/east/model.scn': variant})
+    (problem,) = problems(folder / 'variants/east/model.scn')
+    assert (problem.code, problem.file, problem.line) == ('role', (folder / 'variants/east/model.scn').as_posix(), 9)
 
 
 # ---- the hash of a model --------------------------------------------------------------------------

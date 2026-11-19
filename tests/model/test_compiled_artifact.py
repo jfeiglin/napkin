@@ -80,6 +80,46 @@ def test_a_label_a_record_or_a_moved_line_moves_no_key():
     assert after.evidence[0].explanation == 'The hopper, weighed on a scale.'
 
 
+# Two tanks of one template, the first with its title, and a pump written once with its own.
+TITLED = """\
+Tank:
+    water: L = 10 L
+first: Tank
+    "The tank by the gate."
+    title "Gate tank"
+second: Tank
+pump:
+    title "Main pump"
+    rate: L/h = 2 L/h
+"""
+
+
+def test_a_title_is_kept_with_the_labels_in_the_side_table():
+    """A member written by hand has a location of its own, with its title (PLAN, change 19); an entity
+    written once has its title at its template's location; a member with none has no title."""
+    table = compile_text(TITLED, UNITS, file='tanks.scn').table
+    assert table.location('first') == Location(
+        'first', 'member', 'first', 'tanks.scn', 3, 1, 'The tank by the gate.', (), 'Gate tank'
+    )
+    assert table.location('pump').kind == 'template'
+    assert [table.title(name) for name in ('first', 'second', 'pump', 'Tank')] == [
+        'Gate tank',
+        None,
+        'Main pump',
+        None,
+    ]
+    assert table.title('nothing') is None and 'first' not in [item.origin for item in table.executable()]
+
+
+def test_a_title_edit_moves_no_key():
+    first = compile_text(TITLED, UNITS)
+    second = compile_text(TITLED.replace('Gate tank', 'Tank at the gate'), UNITS)
+    assert program_bytes(first.program) == program_bytes(second.program)
+    assert first.artifact().digest == second.artifact().digest
+    assert first.model_hash == second.model_hash
+    assert (first.table.title('first'), second.table.title('first')) == ('Gate tank', 'Tank at the gate')
+
+
 def test_a_package_places_each_part_in_its_own_file(tmp_path):
     folder = tmp_path / 'tanks'
     files = {
