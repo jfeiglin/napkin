@@ -25,8 +25,9 @@
    when it changes what a watched condition or another set's setting reads. An event at the time of
    a moment only puts its store on its bound: the moment's settling solves its set after the stages
    of the moment, as the oracle settles once.
-5. **The horizon** is an inclusive cutoff: the work due there settles as at any moment, and the
-   record holds the state that its last round committed.
+5. **The horizon** is an inclusive cutoff: the work due there settles as at any moment, with the
+   steps due within the time tolerance after it (`occurrences.py`), and the record holds the state
+   that its last round committed.
 
 The present (`value`): the value of an engine name now, or at a time inside the present window of
 the ways (`t`): a store of a set from its instance, one written by this moment's commits from what
@@ -39,8 +40,9 @@ expression of a stage, an entry, a delay or a firing reads it (`truth`), which r
 evaluation asks for it.
 
 A run that fails stops there: its record holds the failure, as the last entry of its trace, and the
-histories to the time at which it stopped. A run that a breakpoint stops gives its checkpoint, whose
-record so far ends with a `pause` entry, and `resume` goes on in place (`checkpoints.py`).
+histories to the time at which it stopped, without the stage that failed. A run that a breakpoint
+stops gives its checkpoint, whose record so far ends with a `pause` entry, and `resume` goes on in
+place (`checkpoints.py`). A record that stops early gives no value after its stop (`Record.after`).
 """
 
 from __future__ import annotations

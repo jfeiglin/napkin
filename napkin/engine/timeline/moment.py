@@ -3,7 +3,9 @@
 At a time, rounds. One round is:
 
 1. **Stages.** The stages that are due when the round begins commit one after the other, in the
-   order in which their occurrences were made (D5). A stage's guard (`after D when C`) is read once,
+   order in which their occurrences were made (D5); the first round of a moment takes those due
+   within the time tolerance after it as due at it (`occurrences.py`), so 0.1 h then 0.2 h is the
+   moment of 0.3 h, the horizon's too. A stage's guard (`after D when C`) is read once,
    when it comes due; a stage whose guard is false runs nothing and commits no entry. Its statements
    run in order and each sees the writes before it (`Tx`): `=`, `+=` and `-=` on a writable value (of
    the receiver, through a link or an entity parameter, of an occurrence of the stage or of a live
@@ -13,7 +15,8 @@ At a time, rounds. One round is:
    `formula(...)` on a formula, a request or a capacity, which reads the new calculation from the
    commit on (a number written to a request or a capacity that was a formula captures it; spec:
    "A scalar assignment captures a value. `formula(...)` explicitly installs a live calculation");
-   `move`, which debits and credits two stores together or fails whole; `.start(...)`, whose
+   `move`, which debits and credits two stores together or fails whole (one store at both ends
+   keeps its inventory: the debit and the credit cancel); `.start(...)`, whose
    arguments are evaluated at the caller left to right when the statement runs, on one event or on
    each member of a collection in the order of its keys; `if`/`else`; and `switch` on an enum value,
    whose case guards are read before the selector: a draw as the selector picks among the eligible
@@ -23,9 +26,11 @@ At a time, rounds. One round is:
    A value that misses a bound by less than its tolerance is
    put on the bound; one that misses it by more fails the run, and so does a move that does not fit.
    A commit publishes the stage's writes, traces its edits and its moves and registers the
-   occurrences that it queued, in order; a failure discards the stage and stops the run. A breakpoint
-   stops the run before a stage or a statement (`checkpoints.py`): the stage and those after it in its
-   round are held (`held`), and `resume` runs them again from the stopped one.
+   occurrences that it queued, in order; a failure discards the stage and stops the run, also a
+   failure in the commit itself (a start that a limit, its arguments or its entry refuse): the
+   record holds nothing of the stage, neither its writes nor its earlier starts (`_Savepoint`). A
+   breakpoint stops the run before a stage or a statement (`checkpoints.py`): the stage and those
+   after it in its round are held (`held`), and `resume` runs them again from the stopped one.
 2. **Settle.** The connected sets that the round touched are built again from the state there
    (`ways.py`): those that hold a store that a commit wrote, or read a value that changed (a written
    value, a collection of occurrences or of flows whose members changed, a rate or a result of a set
@@ -133,7 +138,9 @@ class _Savepoint:
         self.pieces = {name: _length(recorder.pieces, name) for name in names}
         self.changes = {name: _length(run.changes, name) for name in tx.writes}
         self.defined = {
-            name: (_length(plan.defined, name), plan.values[name]) for name in tx.writes if name in plan.values
+            name: (_length(plan.defined, name), plan.values[name])
+            for name in tx.writes
+            if name in plan.values
         }
         stores = {details['target'] for _, _, details in tx.edits}
         self.transfers = {

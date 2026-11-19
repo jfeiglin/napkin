@@ -8,6 +8,9 @@ model has no report of its own: any named value can be reported, and the caller 
 - **A value** is read as `napkin.engine.read` reads it, in its declared unit: a number, a yes/no, a
   text, or `Unavailable` with the reason (D7). Its label is the first text under its declaration in
   the declared model (`model`; of the flow for a field of a flow, of the store for an endpoint's).
+  Where the report names a member (the owner of a value's path, of a part of a trail, of a near-tie;
+  of an occurrence, its receiver), it gives the member's title too (`DeclaredModel.title`: "DC
+  Water"), a label that no value depends on.
 - **A status display** (`member.status`) reads, at each time, the case that the record holds as
   applying (`Shown`): its rating, its text, and its origin, so that two cases with one rating keep
   their own explanations.
@@ -102,13 +105,15 @@ class Used:
     records: tuple[str, ...]
     exercised: bool | None
     why: str
+    title: str | None = None  # the title of the member that runs it
 
 
 @dataclass(frozen=True)
 class Reported:
     """One selected value: its path, its unit, its label, its values at the times of the report, its
     lag (None for a plain read), its note (why the lag holds, or the diagnostic of a lag that does
-    not, whose values are then the plain read), and its evidence trail."""
+    not, whose values are then the plain read), its evidence trail, and the title of the member of
+    its path."""
 
     path: str
     unit: str
@@ -117,14 +122,15 @@ class Reported:
     lag: Lag | None = None
     note: str | None = None
     trail: tuple[Used, ...] = ()
+    title: str | None = None
 
 
 @dataclass(frozen=True)
 class NearTie:
     """A decision of the run within tolerance of its boundary: when, the kind of its entry (`fire`,
     `miss`, `commit`, `skip`, `release` or `settle`), the part that decided, the member or
-    occurrence, the comparison, its difference and its tolerance in canonical units, and the
-    message."""
+    occurrence, the comparison, its difference and its tolerance in canonical units, the message,
+    and the title of the member."""
 
     t: float
     kind: str
@@ -134,6 +140,7 @@ class NearTie:
     difference: float
     tolerance: float
     message: str
+    title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -192,8 +199,18 @@ def report(record, program, configuration, paths, times, lags=None, model=None, 
         else:
             values = read(record, program, [key], within)[0].values
         values = tuple(values) + (Unavailable(stopped),) * (len(times) - len(within))
-        reported.append(Reported(path, unit, label, values, lag, note, trail.of(key)))
-    return Report(times, tuple(reported), _near_ties(record), end, stopped, trail.records())
+        title = _title(model, key.owner)
+        reported.append(Reported(path, unit, label, values, lag, note, trail.of(key), title))
+    return Report(times, tuple(reported), _near_ties(record, model), end, stopped, trail.records())
+
+
+def _title(model, owner):
+    """The title of the member that an owner names (`DeclaredModel.title`): a member, or the receiver
+    of an occurrence or of an event's occurrences (`tank.receive#0`, `tank.receive#`); None for the
+    root, a member with none, or no declared model."""
+    if model is None or not owner:
+        return None
+    return model.title(owner.rsplit('#', 1)[0].rsplit('.', 1)[0] if '#' in owner else owner)
 
 
 def _changes(record, program, key):
@@ -330,17 +347,26 @@ _NEAR = {
 }
 
 
-def _near_ties(record):
-    """The near-ties of a record (`Record.near_ties`), each with its message."""
+def _near_ties(record, model=None):
+    """The near-ties of a record (`Record.near_ties`), each with its message and its member's title."""
     found = []
     for entry, (origin, comparison, difference, tolerance) in record.near_ties():
         message = (
             f'{origin} at {float(entry.t):g} h: {_NEAR[entry.kind]}: {comparison} '
             f'(its sides differ by {difference:.3g}, within the tolerance {tolerance:.3g} of what it reads)'
         )
+        title = _title(model, entry.owner)
         found.append(
             NearTie(
-                float(entry.t), entry.kind, origin, entry.owner, comparison, difference, tolerance, message
+                float(entry.t),
+                entry.kind,
+                origin,
+                entry.owner,
+                comparison,
+                difference,
+                tolerance,
+                message,
+                title,
             )
         )
     return tuple(found)
@@ -387,8 +413,9 @@ class _Trail:
             did, why = self.acted(part, found)
             if part not in reached and (part not in found.blocked or self.edited):
                 did, why = False, 'it is read only through parts that the run did not exercise'
+            records = self.cites(part.origin, part.owner)
             used.append(
-                Used(part.kind, part.origin, part.owner, self.cites(part.origin, part.owner), did, why)
+                Used(part.kind, part.origin, part.owner, records, did, why, _title(self.model, part.owner))
             )
         return tuple(used)
 

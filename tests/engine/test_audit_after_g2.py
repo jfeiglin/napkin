@@ -31,6 +31,7 @@ from napkin.program.build import (
     categorical,
     dist_of,
     draw,
+    elapsed,
     event,
     flow,
     formula,
@@ -100,18 +101,26 @@ def test_a_move_from_a_store_to_itself_leaves_it_as_it_was(amount):
 
 
 def ordering(where, failure):
-    """At 1 h a stage of `order` (or, by `where`, the setup at 0 h) writes 5 orders and starts two
-    children, of 3 L and of 9 L, or a trigger of the child at 1 h starts the two (a trigger only
-    starts); the second start fails: its size is outside the child's range [0 L, 5 L], or (`failure`
-    'limit', with 4 L) the child may start once."""
+    """At 1 h a stage of `order` (or, by `where`, the setup at 0 h) gives `pace` (orders + 1) the
+    formula orders + 10, writes 5 orders and starts two children, of 3 L and of 9 L; or a trigger of
+    the child at 1 h starts the two (a trigger only starts). The second start fails: its size is
+    outside the child's range [0 L, 5 L], or (`failure` 'limit', with 4 L) the child may start once.
+    `quiet` is the time since `orders` last changed."""
     b = Builder(UNITS)
     depot = this if where != 'setup' else named('depot')
     second = q(9, 'L') if failure == 'range' else q(4, 'L')
-    body = (assign(depot.orders, 5), start(depot.child, q(3, 'L')), start(depot.child, second))
-    triggers = [when(t >= q(1, 'h'), *body[1:], reset=reset_when(False))] if where == 'firing' else []
+    body = (
+        assign(depot.pace, formula(depot.orders + 10)),
+        assign(depot.orders, 5),
+        start(depot.child, q(3, 'L')),
+        start(depot.child, second),
+    )
+    triggers = [when(t >= q(1, 'h'), *body[2:], reset=reset_when(False))] if where == 'firing' else []
     b.entity(
         'depot',
         value('orders', '', 0),
+        value('pace', '', formula(this.orders + 1)),
+        value('quiet', 'h', formula(elapsed(this.orders))),
         event(
             'child', param('size', 'L', lower=0, upper=5), after(q(1, 'h'), add(this.orders, 1)), *triggers
         ),
@@ -129,22 +138,51 @@ def ordering(where, failure):
 @pytest.mark.parametrize('where', ['stage', 'setup', 'firing'])
 def test_a_stage_whose_second_start_fails_is_discarded_whole(where, failure):
     """The run fails when the second child starts (at 1 h, or at 0 h in the setup). Nothing of the
-    stage is in its record: the orders stay 0 at the failure, the first child never started, and the
-    trace has no commit, firing or start of it; it ends with the failure."""
+    stage is in its record: at the failure the orders stay 0, `pace` keeps its formula (0 + 1, not
+    0 + 10) and `quiet` counts from the start; the first child never started, and the trace has no
+    commit, firing or start of it; it ends with the failure."""
     program, configuration = ordering(where, failure)
     at = 0 if where == 'setup' else 1
     record = run(program, configuration)
     assert record.failure is not None and record.failure.t == at
     message = record.failure.detail('message')
     assert ('outside its range' if failure == 'range' else 'max_occurrences') in message
-    (orders,) = read(record, program, ['depot.orders'], [at])
-    assert orders.values == (0,)
+    found = read(record, program, ['depot.orders', 'depot.pace', 'depot.quiet'], [at])
+    assert [reading.values for reading in found] == [(0,), (1,), (at,)]
+    # The histories that the record holds say the same, read without the engine's reader.
+    held = [record.value(Key('depot', (name,)), at) for name in ('orders', 'pace', 'quiet')]
+    assert held == [0, 1, pytest.approx(at)]
     assert not record.entries('start', 'depot.child')
     assert not record.entries('commit', 'depot.order.step[0]') and not record.entries('fire')
     assert record.trace[-1] == record.failure
     assert not [history for history in record.histories if history.key.owner.startswith('depot.child#')]
     (size,) = read(record, program, ['depot.child#0.size'], [at])
     assert isinstance(size.values[0], Unavailable)
+
+
+def test_an_edit_in_a_stage_whose_commit_fails_is_discarded_with_it():
+    """Stopped before its start, the stage at 1 h gets an edit of the tank, 8 L to 10 L, which joins
+    its writes; resumed, its start of 9 L fails. The tank holds 8 L at the failure, its books hold no
+    transfer from outside, and the trace has no edit and no commit."""
+    b = Builder(UNITS)
+    b.entity(
+        'depot',
+        value('water', 'L', 8, lower=0),
+        value('count', '', 0),
+        flow('drain', this.water, SINK, request=q(0, 'L/h')),
+        event('child', param('size', 'L', lower=0, upper=5), after(q(1, 'h'))),
+        event('order', after(q(1, 'h'), add(this.count, 1), start(this.child, q(9, 'L')))),
+    )
+    b.setup(start(named('depot').order))
+    program, configuration = b.finish(), Configuration(Request(3))
+    made = Run(Plan.of(program, configuration), (Breakpoint('depot.order.step[0].do[1]'),))
+    made.run()
+    made.edit('depot.water', 10)
+    record = made.resume()
+    assert record.failure is not None and record.failure.t == 1
+    found = read(record, program, ['depot.water', 'depot.water.external', 'depot.count'], [1])
+    assert [reading.values for reading in found] == [(8,), (0,), (0,)]
+    assert not record.entries('edit') and not record.entries('commit')
 
 
 # ---- 3. a draw from a distribution that the stage replaced ----------------------------------------
@@ -190,7 +228,8 @@ def test_a_stage_draws_from_the_distribution_that_it_gave_a_value():
     assert [reading.values for reading in found] == [(15,), (15,), (0,), (1,)]
     oracle, failure = run_of(program, configuration)
     assert failure is None
-    assert [value_at(oracle, program, Key('depot', (name,)), 2) for name in ('demand', 'mean', 'b')] == [15, 15, 1]
+    exact = {name: value_at(oracle, program, Key('depot', (name,)), 2) for name in ('demand', 'mean', 'b')}
+    assert exact == {'demand': 15, 'mean': 15, 'b': 1}
 
 
 # ---- 4. equivalent schedules ----------------------------------------------------------------------

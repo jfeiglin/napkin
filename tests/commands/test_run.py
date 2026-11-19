@@ -353,3 +353,19 @@ def test_the_rows_of_a_table_are_listed_by_their_ids(tmp_path, capsys):
     assert rows['wells.south.depth'] == ['m', '30', '30']
     assert rows['wells.north.water'] == rows['wells.south.water'] == ['L', '10', '8']
     assert rows['wells.south.draw.actual_rate'] == ['L/h', '1', '1']
+
+
+def test_a_row_that_names_a_member_with_a_title_shows_it(tmp_path, capsys):
+    """The tank's title is in brackets after the paths of its values, in the table and in the JSON
+    document; the clinic has none. 8 L at 3 L/h hold 2 L at 2 h."""
+    model = package(tmp_path / 'tank', TANK.replace('tank:\n', 'tank:\n    title "Main tank"\n'), UNITS)
+    found = napkin(capsys, 'run', model, '--value', 'tank.water,clinic.delivery.request', '--at', '0h,2h')
+    assert found.code == 0, found.err
+    rows = found.out.splitlines()[2:]
+    assert rows[0].split() == ['tank.water', '(Main', 'tank)', 'L', '8', '2']
+    assert rows[1].split() == ['clinic.delivery.request', 'L/h', '3', '3']
+    doc = napkin(capsys, 'run', model, '--json', '--value', 'tank.water,clinic.delivery.request').doc
+    assert [doc['values'][path]['title'] for path in ('tank.water', 'clinic.delivery.request')] == [
+        'Main tank',
+        None,
+    ]

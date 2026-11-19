@@ -8,7 +8,8 @@ the document whole). `napkin.engine.run` gives its record, and the report reads 
 of the model in the order of the file (a status display with its entity's values; a flow's actual
 rate, request and capacity under its line, a route's then those of its legs `forward` and
 `backward`, a flow with legs' `served_fraction` then each leg's), at each time of `--at`, or at the
-start and at the horizon, each in its declared unit, with its label. The values of an occurrence
+start and at the horizon, each in its declared unit, with its label; a row whose path names a member
+with a title gives the title in brackets (`dc.demand (DC Water)`). The values of an occurrence
 (`tank.deliver#0.pipe.request`, the first start of `tank.deliver`) are not in that list, as a run can
 start many: `--value` names them, and before its start such a value is `unavailable`.
 
@@ -31,12 +32,12 @@ no smaller difference of it, and an integration or a solver leaves such residues
 is 0 (`4.05538e-26`). A unit that composes names shows as the name that the model's table of units
 gives the same dimension and scale (`Wh/h` as `W`), so the number is the record's number in either
 (`common.unit_shown`). `--json` prints one JSON document instead: the model, its title, the run and
-the edits, the times in hours and, for each path, its unit, its label, its values as the record
-holds them (`{"unavailable": reason}` for a value that has none, `{"rating", "text", "case"}` for a
-status display), its lag and its note, and its evidence trail (with the settings of the options that
-the run takes); the records that the trails cite; the near-ties; why the run stopped; the
-diagnostics; and every warning of the model, with its place (`warnings`: the text gives the parts
-that rest on no record as one line that counts them, `common.warn`).
+the edits, the times in hours and, for each path, its unit, its label, its member's title, its
+values as the record holds them (`{"unavailable": reason}` for a value that has none, `{"rating",
+"text", "case"}` for a status display), its lag and its note, and its evidence trail (with the
+settings of the options that the run takes); the records that the trails cite; the near-ties; why
+the run stopped; the diagnostics; and every warning of the model, with its place (`warnings`: the
+text gives the parts that rest on no record as one line that counts them, `common.warn`).
 
 The run goes through the run store (`napkin.store`): a run that the store holds is read, not run
 again; `NAPKIN_STORE=off` turns it off.
@@ -323,13 +324,15 @@ def lines(model, record, configuration, times, found):
 
 
 def row_name(value):
-    """The name of a row: its path, and its lag when it has one (`s.finished (lag 2 h..6 h)`)."""
+    """The name of a row: its path, with the title of its member in brackets when it has one
+    (`dc.demand (DC Water)`), and its lag when it has one (`s.finished (lag 2 h..6 h)`)."""
+    name = f'{value.path} ({value.title})' if value.title else value.path
     if value.lag is None:
-        return value.path
+        return name
     lag = value.lag
     if lag.shortest == lag.longest:
-        return f'{value.path} (lag {common.number(lag.shortest)} h)'
-    return f'{value.path} (lag {common.number(lag.shortest)} h..{common.number(lag.longest)} h)'
+        return f'{name} (lag {common.number(lag.shortest)} h)'
+    return f'{name} (lag {common.number(lag.shortest)} h..{common.number(lag.longest)} h)'
 
 
 def floor_of(record, program, value, factor):
@@ -419,6 +422,7 @@ def document(model, entry, args, configuration, times, found, stopped):
             value.path: {
                 'unit': common.unit_shown(model.declared.units, value.unit),
                 'label': value.label,
+                'title': value.title,
                 'values': [shown(item) for item in value.values[: len(times)]],
                 'lag': lag(value),
                 'note': value.note,

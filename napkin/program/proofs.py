@@ -64,6 +64,7 @@ from ..core.evaluation import checked_value
 from ..core.units import UnitSystem
 from . import parts as p
 from .reach import reach
+from .record import Key
 from .refs import (
     By,
     Distribution,
@@ -103,7 +104,7 @@ class Change:
     number (`record.Key`), the amount that it added in canonical units (below zero for one that
     lowered it), and what it did, which a proof that it withdraws gives as its reason."""
 
-    key: object
+    key: Key
     amount: float
     why: str
 

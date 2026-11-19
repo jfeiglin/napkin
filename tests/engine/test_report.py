@@ -357,3 +357,16 @@ def test_a_count_of_occurrences_rests_on_its_event_and_trigger_and_can_be_lagged
     assert trail['event', 'siren.ring'].why == 'it started at 2 h'
     assert trail['trigger', 'siren.ring.when[0]'].why == 'it fired at 2 h'
     assert trail['value', 'siren.level'].exercised and trail['flow', 'siren.fill'].why == 'it moved material'
+
+
+def test_a_member_named_in_the_report_comes_with_its_title():
+    """The tank's title, "Main tank", is given where the report names it: with the path of its water,
+    and with the part of a trail that the tank runs. The clinic has no title."""
+    text = TANK.replace('    tank:\n', '    tank:\n        title "Main tank"\n')
+    model = compiled(text, {**UNITS, 'kL': ({'volume': 1}, 1000)})
+    water, rate = reported(model, ['tank.water', 'clinic.delivery.actual_rate'], [2]).values
+    assert (water.title, rate.title) == ('Main tank', None)
+    assert water.values == pytest.approx((5,))
+    titles = {(used.kind, used.origin): used.title for used in water.trail}
+    assert titles[('value', 'tank.water')] == 'Main tank'
+    assert titles[('flow', 'clinic.delivery')] is None
