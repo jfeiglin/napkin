@@ -9,6 +9,9 @@ they never silently launch the full catalogue. --plan shows the stages without w
 Repeat it for several paths. --deep adds matching deep tests.
 --skip-summaries reuses existing publication results for a focused scenario check.
 
+The evidence stage compiles each selected package (every one with --all) and fails when a value of
+it rests on no record, the compiler's `no_record` warning (the evidence rule, change 16).
+
 --all retains the complete tests and catalogue publication comparison.
 --all --deep also runs exhaustive admission tests and replays three stored simulations.
 --release adds release metadata and wheel checks and uses an empty run store.
@@ -183,6 +186,52 @@ def scope_of(paths, scenario_ids, readers=None):
             return None, f'{path} is outside the scenario folders and the written docs'
     names = ', '.join(sorted(scope)) or 'no scenario'
     return tuple(sorted(scope)), f'every change is in the docs or in the folder of {names}'
+
+
+def unsupported(scope=None, root=ROOT):
+    """{owner: [message]} of each owner of the catalogue at `root` that runs as a model of its own
+    (`catalogue.entries`), or of those that `scope` names, whose model rests a value on no record: the
+    warnings of the evidence rule (item 16 of the plan's changes after G0), the reports of its compile
+    with the code `no_record` (`napkin.model.support`), each at its file and line. A model being
+    explored still runs with them, but a scenario package of the catalogue has none. A model that does
+    not compile gives its first problem, since its evidence cannot be read."""
+    from napkin.model.compile import load_scenario
+    from napkin.model.language.problems import LanguageError
+    from napkin.model.support import CODE
+
+    def place(problem):
+        file = Path(problem.file)
+        return f'{file.relative_to(root).as_posix() if file.is_relative_to(root) else file}:{problem.line}'
+
+    found = {}
+    for name, entry in catalogue.entries(root).items():
+        if scope is not None and name not in scope:
+            continue
+        try:
+            reports = load_scenario(entry).reports
+        except LanguageError as error:
+            first = error.problems[0]
+            found[name] = [
+                f'{place(first)}: it does not compile, so its evidence is not read: {first.message}'
+            ]
+            continue
+        warned = [f'{place(item)}: {item.message}' for item in reports if item.code == CODE]
+        if warned:
+            found[name] = warned
+    return found
+
+
+def evidence(scope=None, root=ROOT):
+    """The stage of the evidence rule: 0 when no selected package rests a value on no record
+    (`unsupported`), else 1, with each warning."""
+    if scope == ():
+        return 0
+    found = unsupported(scope, root)
+    for name, messages in found.items():
+        print(f'{name}: {len(messages)} {"part rests" if len(messages) == 1 else "parts rest"} on no record')
+        for message in messages:
+            print(f'  {message}')
+    return 1 if found else 0
 
 
 def catalogue_problems(model):
@@ -426,6 +475,7 @@ def main(argv=None):
             if scope != () or args.tests
             else []
         ),
+        *([('Evidence', lambda: evidence(scope))] if not paths_only and scope != () else []),
         *([('Stored runs', verify_store)] if deep and scope is None and not paths_only else []),
         *(
             [

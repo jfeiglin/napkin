@@ -237,10 +237,11 @@ class Translator:
     def children(self, number):
         return self.logical[number].under
 
-    def note(self, top, keys, value, cites=''):
+    def note(self, top, keys, value, cites='', rows=()):
         """A note that the script adds under `notes:`: `top:` / each key / the last key with its value
-        (a text, or a word), and the records that it cites."""
-        self.extra[top].append((tuple(keys), value, cites))
+        (a text, or a word), the records that it cites, and `rows` under it: (depth under the key,
+        text) of its records in place."""
+        self.extra[top].append((tuple(keys), value, cites, tuple(rows)))
 
     # ---- small parts ---------------------------------------------------------------------------------
 
@@ -529,7 +530,10 @@ class Translator:
             raise Hand(f'a field of kind {kind}')
         if kind.startswith('var.') and (self.symbols.declarer(thing), value.name) in self.started:
             # An option sets only an input (R-A5-04): the start of a state that an option sets is an
-            # input of its own, which the option sets, and the state starts from it.
+            # input of its own, which the option sets, and the state starts from it. An input's
+            # default is a value written out, so a start that is a calculation is left for a person.
+            if not oldmodel_literal(value.value.tokens):
+                raise Hand('an option sets the start of a state that starts from a calculation: an input of its own')
             declared, _, start = head.partition(' = ')
             start, bounds = start.partition(' in [')[0], start.partition(' in [')[1] + start.partition(' in [')[2]
             self.emit(number, 1, f'input {name}_start{declared[len(name):]} = {start}{cites}')
@@ -1026,7 +1030,8 @@ class Translator:
             cites = self.all_cites(lines.support)
             if lines.text is not None:
                 self.note('not_estimated', [*keys, 'label'], quoted(text_of(lines.text)))
-            self.note('not_estimated', [*keys, 'reason'], quoted(text_of(lines.unestimated)), cites)
+            records = [item for item in lines.support if isinstance(item, nodes.Record)]
+            self.note('not_estimated', [*keys, 'reason'], quoted(text_of(lines.unestimated)), cites, record_rows(records))
             self.reporting(lines, keys, number, thing)
             for k in self.block(number):
                 self.state.setdefault(k, 'done')
@@ -1147,12 +1152,14 @@ class Translator:
                     continue
                 self.emit(where, 1, f'{top}:')
                 written = set()
-                for keys, value, cites in items:
+                for keys, value, cites, rows in items:
                     for k in range(len(keys) - 1):
                         if keys[: k + 1] not in written:
                             written.add(keys[: k + 1])
                             self.emit(where, 2 + k, f'{keys[k]}:')
                     self.emit(where, 1 + len(keys), f'{keys[-1]}: {value}{cites}')
+                    for depth, row in rows:
+                        self.emit(where, 2 + len(keys) + depth, row)
         finally:
             self.anchor = None
 
@@ -1218,6 +1225,23 @@ def chances(outcomes):
         weight = rest if outcome.is_else else given.get(outcome.name, Decimal(1))
         out.append((outcome.name, format(weight.normalize(), 'f')))
     return out
+
+
+def record_rows(records):
+    """[(depth, text)] of records in place: `@kind "explanation"`, the ID that it names on a line of its
+    own (R-A5-02), and its claims with their data."""
+    rows = []
+    for record in records:
+        rows.append((0, f'@{record.kind} {quoted(record.text)}'))
+        if record.id is not None:
+            rows.append((1, f'{id_label(record.kind)} {record.id}'))
+        if record.claims:
+            rows.append((1, 'claims:'))
+            for claim in record.claims:
+                rows.append((2, claim.id))
+                if claim.datum:
+                    rows.append((3, f'datum: {claim.datum}'))
+    return rows
 
 
 def literal_text(expr):

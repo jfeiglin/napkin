@@ -34,5 +34,14 @@ scratch/rewrite/a5/, scratch/rewrite/briefs/m.md, tools/check.py, tests/test_che
 - A state that an option sets starts from a new input `x_start` (R-A5-04); a value `status`
   beside status lines is renamed `state`.
 
+- Step 2: a5/check.py OLD NEW (by meaning; old side oldmodel.py in a subprocess under napkin-base,
+  new side newmodel.facts): groups compile, number, text, kind, flow, cumulative; `--rename`.
+  piano_tuners (hand) PASSES; translated/wrong/piano_tuners_{number,text,kind,cumulative} each
+  FAIL in exactly its group; the reservoir translation FAILS 1 text (its empty WAIT case).
+  `sh a5/run_all.sh` runs it all: OK (6 s).
+- Step 3: tools/check.py `unsupported`, `evidence` and the stage 'Evidence' (not with --tests
+  alone); S7-F's warning had landed (compile.py reports `support.CODE`). tests/test_check_evidence.py
+  5 passed (stub packages SC97/SC98 in tmp_path).
+
 ## In progress
-- step 2: check.py
+- step 4: briefs/m.md; then lint a5 scripts; migration-table rows that changed.

@@ -25,6 +25,7 @@ from pathlib import Path
 
 from napkin.model import semantic as s
 from napkin.model.compile import load_scenario
+from napkin.model.ir import ModelError
 from napkin.model.language import nodes as n
 from napkin.model.language.problems import LanguageError
 from napkin.program.proofs import Proofs
@@ -42,19 +43,33 @@ def compiled(entry):
         found = load_scenario(entry)
     except LanguageError as error:
         return {'ok': False, 'problems': [plain(item) for item in error.problems], 'reports': []}
+    except ModelError as error:
+        # The library's refusals (its records, its units) come as diagnostics.
+        return {'ok': False, 'problems': [library_problem(item) for item in error.diagnostics], 'reports': []}
     except FileNotFoundError as error:
         return {'ok': False, 'problems': [{'code': 'missing', 'file': str(entry), 'line': 0, 'message': str(error)}], 'reports': []}
     return {'ok': True, 'problems': [], 'reports': [plain(item) for item in found.reports]}
 
 
+def library_problem(item):
+    """A diagnostic of the library (`napkin.model.ir.diagnostic`) as a problem of the compile."""
+    return {'code': f'library.{item.get("code", "")}', 'file': item.get('path', ''), 'line': 0, 'message': item['message']}
+
+
 # ---- the facts of a model -------------------------------------------------------------------------------
 
 
+def dims_text(dimension):
+    """A dimension as the check compares it (the same text as `oldmodel._unit`)."""
+    return json.dumps(sorted([str(k), float(v)] for k, v in dimension))
+
+
 def number_key(value, scale, dimension):
-    """A number as the check compares it: its value in base units with 12 significant digits, and its
-    dimension, so that `12 h` and `0.5 day` are one number."""
-    base = float(Fraction(str(value)) * Fraction(scale)) if not isinstance(value, bool) else value
-    return (f'{base:.12g}', tuple(sorted((str(k), v) for k, v in dimension)))
+    """A number as the check compares it: its value in base units with 12 significant digits and its
+    dimension, so that `12 h` and `0.5 day` are one number; a zero has no dimension, since a bare zero
+    takes the unit of its place (`oldmodel.number_key`)."""
+    base = float(Fraction(str(value)) * Fraction(scale))
+    return f'{base:.12g}', dims_text(() if base == 0 else dimension)
 
 
 def normal_text(text):
@@ -84,7 +99,28 @@ class Collector:
         if isinstance(value, str) and value:
             self.texts[normal_text(value)] += 1
 
-    def walk(self, node, skip=('tree', 'units')):
+    def scenario_lines(self, entry):
+        """The texts and the numbers of the scenario line of each file of the model, as each file
+        writes it: the declared model holds one line, merged from the main file's and the variant's."""
+        from napkin.model.language.modules import files
+        from napkin.model.language.parse import parse
+
+        for _, text in files(Path(entry)).files:
+            for item in parse(text).items:
+                if not isinstance(item, n.Scenario):
+                    continue
+                for key in ('title', 'summary', 'scope', 'library'):
+                    self.text(getattr(item, key, None))
+                for node in (item.horizon, item.resolution, *(item.timescales or ())):
+                    if isinstance(node, n.Quantity):
+                        spelled = ''.join(op + name for op, name in node.unit)
+                        found = self.units.of(spelled)
+                        if found is not None:
+                            self.numbers[number_key(node.value, found[1], found[0])] += 1
+                    elif isinstance(node, n.Number):
+                        self.numbers[number_key(node.value, 1, ())] += 1
+
+    def walk(self, node, skip=('tree', 'units', 'scenario')):
         if isinstance(node, (list, tuple)):
             for item in node:
                 self.walk(item)
@@ -105,8 +141,9 @@ class Collector:
             for param in node.params:
                 self.number(param, of if isinstance(of, s.Num) else s.PLAIN)
             return
-        if isinstance(node, n.Text):
-            self.text(node.value)
+        if isinstance(node, (n.Text, s.Scenario)):
+            if isinstance(node, n.Text):
+                self.text(node.value)
             return
         if isinstance(node, n.Number):
             # A number of a note, which has no unit.
@@ -168,19 +205,21 @@ def kinds(declared):
 
     def dimension(type_):
         if isinstance(type_, s.Num):
-            return [list(item) for item in type_.dimension]
+            return dims_text(type_.dimension)
         if isinstance(type_, s.Dist) and isinstance(type_.of, s.Num):
-            return [list(item) for item in type_.of.dimension]
+            return dims_text(type_.of.dimension)
         return str(type_)
 
     def value(part):
         kind = part.kind
-        if kind == s.STATE and isinstance(part.type, s.Num):
-            kind = 'stock' if part.path in drained else 'tally' if part.path in ends else 'state'
-            if kind == 'state' and part.readonly:
-                kind = 'fixed'
+        if kind == s.STATE and isinstance(part.type, s.Num) and part.path in ends:
+            kind = 'stock' if part.path in drained else 'tally'
+        elif kind == s.STATE and part.readonly:
+            kind = 'fixed'
         elif kind == s.STATE:
-            kind = 'state.' + ('bool' if part.type == s.BOOL else 'enum' if isinstance(part.type, s.EnumOf) else str(part.type))
+            kind = 'state' if isinstance(part.type, s.Num) else 'state.' + (
+                'bool' if part.type == s.BOOL else 'enum' if isinstance(part.type, s.EnumOf) else str(part.type)
+            )
         elif kind == s.INPUT:
             kind = 'input.' + (
                 'bool' if part.type == s.BOOL else 'text' if part.type == s.TEXT else 'enum' if isinstance(part.type, s.EnumOf) else 'number'
@@ -204,7 +243,8 @@ def kinds(declared):
 
 
 def flow_ends(declared):
-    """{path of a flow or a leg: [source, sink]}, each the path of a store or SOURCE or SINK."""
+    """{path of a flow: its legs (one for a flow of one pair) as [source, sink], sorted}, each end the
+    path of a store, or SOURCE or SINK."""
 
     def end(read):
         if isinstance(read, s.Read):
@@ -214,9 +254,10 @@ def flow_ends(declared):
     found = {}
     for entity in declared.entities:
         for part in entity.parts:
-            for flow in part.legs if isinstance(part, s.DeclaredLegs) else (part,):
-                if isinstance(flow, s.DeclaredFlow):
-                    found[flow.path] = [end(flow.source), end(flow.sink)]
+            if isinstance(part, s.DeclaredLegs):
+                found[part.path] = sorted([end(leg.source), end(leg.sink)] for leg in part.legs)
+            elif isinstance(part, s.DeclaredFlow):
+                found[part.path] = [[end(part.source), end(part.sink)]]
     return found
 
 
@@ -272,15 +313,22 @@ def facts(entry, proven=(), runs=()):
         found = load_scenario(entry)
     except LanguageError as error:
         return {'problems': [[item.code, item.file, item.line, item.message] for item in error.problems]}
+    except ModelError as error:
+        return {'problems': [list(library_problem(item).values()) for item in error.diagnostics]}
     declared = found.declared
     collector = Collector(declared.units)
     collector.walk(declared)
+    collector.scenario_lines(entry)
+    for group in dict.fromkeys(option.group for option in declared.options):
+        collector.text(group)
     for option in declared.options:
         collector.text(option.name)
-        collector.text(option.group)
+    for run in declared.runs:
+        for name in run.options:
+            collector.text(name)
     return {
         'problems': [],
-        'numbers': [[*key, count] for key, count in collector.numbers.items()],
+        'numbers': [[*key, total] for key, total in collector.numbers.items()],
         'texts': dict(collector.texts),
         'kinds': {path: list(value) for path, value in kinds(declared).items()},
         'flows': flow_ends(declared),

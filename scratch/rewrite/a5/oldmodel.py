@@ -6,14 +6,22 @@ never with a text pattern over the source. Run each script with the old package 
     PYTHONPATH=/home/user/napkin-base /home/user/napkin/.venv/bin/python <script>.py
 
 `symbols(context)` gives a small table of the names of one model, which the census and the check use to
-say what a dotted name reads: a value of a kind, an event, an outcome, a list, a thing.
+say what a dotted name reads: a value of a kind, an event, an outcome, a list, a thing. `facts(entry)`
+gives what `check.py` compares of an old model; run alone, this module prints them as JSON:
+
+    PYTHONPATH=/home/user/napkin-base /home/user/napkin/.venv/bin/python oldmodel.py ENTRY.scn
 """
 
 from __future__ import annotations
 
 import ast
+import collections
+import dataclasses
+import json
 import os
+import sys
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 
 BASE = Path(os.environ.get('NAPKIN_BASE', '/home/user/napkin-base'))
@@ -381,6 +389,256 @@ def written(tokens):
     return ''.join(out)
 
 
+# ---- what check.py compares of an old model ----------------------------------------------------------------
+
+# The kinds of the old language as `check.py` compares them with the kinds of now (`newmodel.kinds`).
+KINDS = {
+    'input.number': 'input.number',
+    'input.bool': 'input.bool',
+    'input.text': 'input.text',
+    'input.named': 'input.enum',
+    'let.fixed': 'fixed',
+    'let.formula': 'formula',
+    'var.named': 'state.enum',
+    'var.bool': 'state.bool',
+    'output': 'formula',
+}
+
+
+def number_key(value, scale, dimension):
+    """A number as the check compares it: its value in base units with 12 significant digits and its
+    dimension, so that `12 h` and `0.5 day` are one number; a zero has no dimension (`newmodel`)."""
+    base = float(Fraction(str(value)) * Fraction(scale))
+    dims = [] if base == 0 else sorted([str(k), float(v)] for k, v in dimension)
+    return f'{base:.12g}', json.dumps(dims)
+
+
+def facts(entry):
+    """What `check.py` compares of an old model (an entry file with the files that it reads):
+
+    - `numbers`: [value in base units, dimension, count] of each number of every file of the model,
+      a bare number in the unit that its declaration gives it (`exprs.numbers_of`); the delays of a
+      reporting lag are left out, because a caller selects a lag now (D10);
+    - `texts`: {text: count} of every text, record explanation, name of an option or of its group,
+      and text value;
+    - `kinds`: {path: [kind, type]} of each thing, value, flow and event, by the path of the thing that
+      declares it (a template for its instances), with a stored number's kind by its use (`stock`,
+      `tally`, `state`), as `quantity_kinds` gives it;
+    - `flows`: {path of a flow: its pairs as [source, sink], sorted}, each end the path of a store;
+    - `unestimated`: the outputs that have no estimate, which have no declaration now (D4);
+    - `proven`: {run: the paths of the outputs that the old compiler proved cumulative in it}, with
+      `''` for a model that has no runs (the old `base` run)."""
+    from napkin.core.units import UnitSystem
+    from napkin.model.library import load_library
+    from napkin.model.model import build_model
+
+    entry = Path(entry).resolve()
+    own, files, symbols, kinds_ = model_of(entry)
+    units = UnitSystem(load_library(entry)['units'])
+    numbers, texts = collections.Counter(), collections.Counter()
+
+    def say(text):
+        if isinstance(text, str) and text:
+            texts[' '.join(text.split())] += 1
+
+    def count(tree, unit=None):
+        from exprs import numbers_of
+
+        for value, spelled in numbers_of(tree, unit):
+            try:
+                found = units.parse_unit(spelled) if spelled else None
+            except Exception:  # a unit that names a text value in braces: compared by its spelling
+                numbers[(str(value), json.dumps(spelled))] += 1
+                continue
+            scale, dims = (found.scale, found.dims) if found is not None else (1, ())
+            numbers[number_key(value, scale, dims)] += 1
+
+    for file in files:
+        _numbers_and_texts(file, symbols, say, count)
+    found_kinds, flows, unestimated = {}, {}, []
+    for name, thing in symbols.nodes.items():
+        info = symbols.things[name]
+        if info.kind == 'instance':
+            found_kinds[name] = [f'member of {thing.template}', '']
+            continue
+        found_kinds[name] = [info.kind, '']
+        for member in thing.members:
+            if isinstance(member, nodes.Value):
+                kind = field_kind(member)
+                sort = kinds_.get((name, member.name)) if kind == 'var.number' else KINDS.get(kind, kind)
+                if kind == 'let.fixed' and any(
+                    isinstance(m, nodes.Change) and m.kind is not None and m.name == member.name
+                    for other in symbols.nodes.values()
+                    if other.template == name
+                    for m in other.members
+                ):
+                    sort = 'formula'  # an instance gives it a formula, so its template declares one
+                found_kinds[f'{name}.{member.name}'] = [sort, _type_of(member, units)]
+            elif isinstance(member, (nodes.LinkDecl, nodes.LinkBind)):
+                found_kinds[f'{name}.{member.name}'] = ['collection' if member.many else 'link', '']
+            elif isinstance(member, nodes.Flow):
+                found_kinds[f'{name}.{member.name}'] = ['flow', '']
+                pairs = member.together if member.together is not None else [member.pair]
+                ends = []
+                for pair in pairs:
+                    ends.append([_end(pair.source, name, symbols), _end(pair.target, name, symbols, 'SINK')])
+                flows[f'{name}.{member.name}'] = sorted(ends)
+            elif isinstance(member, nodes.Event):
+                found_kinds[f'{name}.{member.name}'] = ['event', '']
+            elif isinstance(member, nodes.Output):
+                path = f'{name}.{member.name}'
+                if member.lines.unestimated is not None:
+                    unestimated.append(path)
+                else:
+                    found_kinds[path] = ['formula', _unit(member.type, units)]
+    for file in files:
+        for output in file.outputs:
+            if output.lines.unestimated is not None:
+                unestimated.append(output.name)
+            else:
+                found_kinds[output.name] = ['formula', _unit(output.type, units)]
+    model = build_model(entry)
+    proven = {}
+    for run in model.runs:
+        paths = []
+        for name in sorted(model.resolve(run).proven_cumulative_outcomes):
+            head, _, member = name.removesuffix('.output').rpartition('.')
+            if not head:
+                paths.append(member)
+            else:
+                declarer = symbols.declarer(head)
+                paths.append(f'{declarer}.instances.{member}' if declarer != head else f'{head}.{member}')
+        proven['' if run == 'base' and len(model.runs) == 1 else run] = sorted(set(paths))
+    return {
+        'numbers': [[*key, n] for key, n in numbers.items()],
+        'texts': dict(texts),
+        'kinds': found_kinds,
+        'flows': flows,
+        'unestimated': sorted(unestimated),
+        'proven': proven,
+    }
+
+
+def _unit(spelled, units):
+    """The dimension of a unit as the check compares it, or the word of a type that is no unit."""
+    if not isinstance(spelled, str):
+        return ''
+    if spelled == 'bool':
+        return 'bool'
+    try:
+        dims = units.parse_unit(spelled).dims
+    except Exception:
+        return spelled
+    return json.dumps(sorted([str(k), float(v)] for k, v in dims))
+
+
+def _type_of(value, units):
+    """The type of a value as the check compares it: the dimension of its unit, `bool`, `text`, or
+    `enum[A, B]` of a named state."""
+    kind = field_kind(value)
+    if kind in ('input.text',):
+        return 'text'
+    if kind in ('input.bool', 'var.bool'):
+        return 'bool'
+    if kind in ('input.named', 'var.named') and isinstance(value.type, list):
+        return 'enum[' + ', '.join(v.upper() for v in value.type) + ']'
+    return _unit(value.type, units)
+
+
+def _end(name, thing, symbols, outside='SOURCE'):
+    """The path of the store at an end of a flow: the thing that declares it and the member."""
+    if name == 'outside':
+        return outside
+    found = symbols.read(name, thing)
+    if found is None or found[0] != 'value':
+        return '?' + name
+    return f'{symbols.declarer(found[2])}.{found[3]}'
+
+
+def _numbers_and_texts(file, symbols, say, count):
+    """Give every text of a file to `say` and every number, with the unit of its place, to `count`."""
+    from exprs import Hand, old_tree
+
+    units = {}  # id of an expression -> the unit that its declaration gives a bare number
+    text_values = set()  # ids of the expressions whose one token is a text value, not a named value
+
+    def declare(value):
+        unit = value.type if isinstance(value.type, str) and value.type != 'bool' else None
+        for part in (value.value, value.min and value.min.expr, value.max and value.max.expr, value.size and value.size.expr):
+            if part is not None:
+                units[id(part)] = unit
+
+    for thing in [*file.things, *file.changes]:
+        for member in thing.members:
+            if isinstance(member, nodes.Value):
+                declare(member)
+                if field_kind(member) == 'input.text':
+                    text_values.add(id(member.value))
+            elif isinstance(member, nodes.Change) and member.lines is not None and member.lines.value is not None:
+                found = symbols.read(member.name, thing.name)
+                if found is not None and found[0] == 'value' and found[1] == 'input.text':
+                    text_values.add(id(member.lines.value))
+            elif isinstance(member, nodes.Event):
+                for outcome in member.outcomes:
+                    for line in outcome.lines:
+                        if isinstance(line, nodes.Assign):
+                            found = symbols.read(line.target, thing.name)
+                            if found is not None and found[0] == 'value' and found[1] == 'input.text':
+                                text_values.add(id(line.value))
+            elif isinstance(member, nodes.Output) and member.expr is not None:
+                units[id(member.expr)] = member.type
+    for output in file.outputs:
+        if output.expr is not None:
+            units[id(output.expr)] = output.type
+    for group in file.profiles:
+        say(group.name)
+        for option in group.profiles:
+            say(option.name)
+            for setting in option.settings:
+                found = symbols.read(setting.target, None)
+                if found is not None and found[0] == 'value' and found[1] == 'input.text':
+                    text_values.add(id(setting.value))
+    for run in file.runs:
+        for name in run.profiles:
+            say(name)
+    seen = set()
+
+    def walk(node):
+        if id(node) in seen:
+            return
+        seen.add(id(node))
+        if isinstance(node, nodes.Text):
+            for value in node.value if isinstance(node.value, list) else [node.value]:
+                say(value)
+            return
+        if isinstance(node, nodes.Lag):
+            return  # a caller selects a lag now (D10)
+        if isinstance(node, nodes.Record):
+            say(node.text)
+        if isinstance(node, nodes.Expr):
+            if id(node) in text_values:
+                say(node.tokens[0].value)
+                return
+            try:
+                tree = old_tree(node)
+            except Hand:
+                return
+            count(tree, units.get(id(node)))
+            return
+        if isinstance(node, nodes.Note) and isinstance(node.value, lex.Token) and node.value.kind == 'number':
+            count(('num', str(node.value.value), None))
+        if dataclasses.is_dataclass(node) and not isinstance(node, type):
+            for item in dataclasses.fields(node):
+                value = getattr(node, item.name)
+                if item.name != 'place' and not isinstance(value, dict):
+                    walk(value)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+
+    walk(file)
+
+
 __all__ = [
     'BASE',
     'Symbols',
@@ -403,3 +661,8 @@ __all__ = [
     'tree_of',
     'written',
 ]
+
+
+if __name__ == '__main__':
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    json.dump(facts(sys.argv[1]), sys.stdout)

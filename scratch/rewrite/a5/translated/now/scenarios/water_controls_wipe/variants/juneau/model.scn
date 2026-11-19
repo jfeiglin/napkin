@@ -1,0 +1,113 @@
+# Water systems' controls wiped through a shared remote-support platform: Juneau, Alaska
+variant "Juneau, Alaska"
+    summary "An AI agent wipes the controls of the water system of Juneau, Alaska through the remote-support
+        platform of the OT integrator that it uses."
+    scope "The people that the water system of Juneau, Alaska serves, the hospitals that it supplies and the
+        businesses that need public water there."
+
+juneau: Utility
+    "City and Borough of Juneau, Alaska. Its ID in the federal inventory is AK2110342."
+    buys = <>
+    sells = <>
+    name = "Juneau"
+    demand = 4.7619 Mgal/day  @juneau_demand
+    nameplate = 5.024 Mgal/day  @juneau_nameplate
+    storage = 11 Mgal  @juneau_storage
+    bought = 0 Mgal/day  @juneau_bought
+    sold = 0 Mgal/day  @juneau_sold
+    va_rate = 461317.55 USD2025/h  @juneau_va_rate
+
+juneau_homes: Households
+    "The people that Juneau serves."
+    utility = juneau
+    population = 38526 people  @juneau_homes_population
+
+juneau_hospitals: Hospitals
+    "The hospital that Juneau supplies: Bartlett Regional Hospital."
+    utility = juneau
+    name = "Juneau"
+    facilities = 1 facilities  @juneau_hospitals_facilities
+
+notes:
+    limitations:
+        thin-margin: "On its peak day Juneau produces 5.024 Mgal against a need of 5.0 Mgal, so its stored
+            water refills at almost nothing after an outage. The city met its peaks by cutting its sales to
+            cruise ships, which the model cannot do, so the interruption can be longer here than in
+            fact."  @juneau_nameplate
+        wellfield: "No rated capacity of the wellfield was found; its 3.024 Mgal a day is one reading from
+            2014, before a planned expansion. If the wellfield gives more today, the system recovers faster in
+            fact than here."  @juneau_nameplate
+    verification:
+        research: "variants/juneau/evidence/research.md"
+    titles:
+        juneau: "Juneau"
+        juneau_homes: "Juneau: homes"
+        juneau_hospitals: "Juneau: hospitals"
+
+record juneau_demand: assumption "In the summer of 2013 the utility's daily output spiked to five million
+    gallons a day, against an average of 3.5 million, a peak ratio of 1.42857. CBJ sells no water to other
+    systems, so the demand is 5.0 / 1.05 = 4.7619 MGD. The peak includes the water sold to cruise ships, which
+    are customers, not water systems; that summer they were held to 200,000 gallons a day in all."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-JUNEAU-CBJ-PEAK
+        E-SC43-JUNEAU-CBJ-DELIVERED
+        E-SC43-JUNEAU-CBJ-SUPPLY
+
+record juneau_nameplate: source "The sum of the two sources: the Last Chance Basin wellfield, which at full
+    pumping in May 2014 drew about 2,100 gallons a minute (3.024 MGD), and the Salmon Creek membrane
+    filtration plant, rated at 2 MGD: 5.024 MGD. The utility superintendent gave the system a design capacity
+    of five million gallons a day in 2013. No source gives a rated capacity for the wellfield."
+    claims:
+        E-SC43-JUNEAU-CBJ-LCB-OUTPUT
+        E-SC43-JUNEAU-CBJ-PLANTS
+        E-SC43-JUNEAU-CBJ-PEAK
+        E-SC43-JUNEAU-CBJ-SUPPLY
+
+record juneau_storage: source "The 2012 draft supply plan gives 7 water reservoirs that store 11 million
+    gallons. The system now counts 9 reservoirs (6 reservoirs and 3 contact tanks on the CBJ page), but no
+    later volume is published. The plan does not say whether the 3.2 million gallons of the Mill Tunnel are
+    part of the 11 million."
+    claims:
+        E-SC43-JUNEAU-CBJ-STORAGE
+            datum: reservoir_storage
+        E-SC43-JUNEAU-CBJ-PLANTS
+        E-SC43-JUNEAU-CBJ-DELIVERED
+
+record juneau_bought: source "CBJ draws all its water from its own two sources, the Last Chance Basin
+    wellfield and Salmon Creek; no source names a purchase from another water system."
+    claims:
+        E-SC43-JUNEAU-CBJ-SUPPLY
+        E-SC43-JUNEAU-CBJ-PLANTS
+
+record juneau_sold: source "No source names a sale to another water system. CBJ sells water to cruise ships
+    (on average about 61 million gallons a year), but they are customers, so their water stays in the demand."
+    claims:
+        E-SC43-JUNEAU-CBJ-PEAK
+        E-SC43-JUNEAU-CBJ-SUPPLY
+        E-SC43-JUNEAU-CBJ-SC-OUTAGE
+
+record juneau_homes_population: assumption "SDWIS federal data list 38,526 people served by Juneau
+    (AK2110342), the system's own report through its state."
+    assumption A-SC43-REACH
+    claims:
+        E-SC43-SDWIS-AK2110342
+            datum: population_served
+
+record juneau_va_rate: assumption "38,526 people served times the 2024 GDP per resident of its county (Juneau
+    City and Borough, Alaska (02110): 3,226,767 thousand dollars and 31,572 people: 102,203.44 dollars a
+    resident) times the price factor 1.026324, over 8,760 h: 461,317.55 USD2025/h."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-AK2110342
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-02110
+        E-SC43-BEA-POP-02110
+        E-SC43-GDP-DEFLATOR
+
+record juneau_hospitals_facilities: assumption "The CMS hospital list gives 1 hospital of the counted types
+    whose geocoded address lies in the EPA service area of Juneau."
+    assumption A-SC43-HOSPITAL-JOIN
+    claims:
+        E-SC43-HOSPITALS-JUNEAU
+            datum: hospitals_supplied

@@ -1,0 +1,294 @@
+{
+  "operations": {
+    "kind": "count",
+    "dimensions": {
+      "operations": 1
+    },
+    "scale": 1,
+    "description": "Effects operations of the country: cyber attacks that aim at an effect outside the network."
+  },
+  "operations/year": {
+    "kind": "rate",
+    "dimensions": {
+      "operations": 1,
+      "time": -1
+    },
+    "scale": 0.00011415525114155251,
+    "description": "Effects operations in one 365-day year."
+  },
+  "targets": {
+    "kind": "count",
+    "dimensions": {
+      "targets": 1
+    },
+    "scale": 1,
+    "description": "Targets that an attack aims at: one system, network or site, each with its own outcome."
+  },
+  "targets/operation": {
+    "kind": "ratio",
+    "dimensions": {
+      "targets": 1,
+      "operations": -1
+    },
+    "scale": 1,
+    "description": "Targets that one effects operation aims at."
+  },
+  "targets/year": {
+    "kind": "rate",
+    "dimensions": {
+      "targets": 1,
+      "time": -1
+    },
+    "scale": 0.00011415525114155251,
+    "description": "Targets in one 365-day year: targets hit, or assessed outcomes learned or lost."
+  },
+  "person-years": {
+    "kind": "work",
+    "dimensions": {
+      "people": 1,
+      "time": 1
+    },
+    "scale": 8760,
+    "description": "The work of one expert for one 365-day year."
+  },
+  "person-years/operation": {
+    "kind": "unit_cost",
+    "dimensions": {
+      "people": 1,
+      "time": 1,
+      "operations": -1
+    },
+    "scale": 8760,
+    "description": "Expert work for one effects operation."
+  },
+  "person-years/target": {
+    "kind": "unit_cost",
+    "dimensions": {
+      "people": 1,
+      "time": 1,
+      "targets": -1
+    },
+    "scale": 8760,
+    "description": "Expert work for each target of an effects operation."
+  },
+  "sev": {
+    "kind": "value",
+    "dimensions": {
+      "sev": 1
+    },
+    "scale": 1,
+    "description": "Surveillance-equivalent value: the value that one expert gives the country in one year of surveillance in 2026. It is a unit of comparison between the two missions, not a price."
+  },
+  "sev/year": {
+    "kind": "value_rate",
+    "dimensions": {
+      "sev": 1,
+      "time": -1
+    },
+    "scale": 0.00011415525114155251,
+    "description": "Surveillance-equivalent value in one 365-day year."
+  },
+  "sev/person-year": {
+    "kind": "value_return",
+    "dimensions": {
+      "sev": 1,
+      "people": -1,
+      "time": -1
+    },
+    "scale": 0.00011415525114155251,
+    "description": "Surveillance-equivalent value that one expert gives in one 365-day year."
+  },
+  "sev/operation": {
+    "kind": "value_cost",
+    "dimensions": {
+      "sev": 1,
+      "operations": -1
+    },
+    "scale": 1,
+    "description": "Surveillance-equivalent value that one effects operation costs or gives."
+  },
+  "sev/target": {
+    "kind": "value",
+    "dimensions": {
+      "sev": 1,
+      "targets": -1
+    },
+    "scale": 1,
+    "description": "Surveillance-equivalent value of one intended effect on one target."
+  },
+  "per_operation": {
+    "kind": "ratio",
+    "dimensions": {
+      "operations": -1
+    },
+    "scale": 1,
+    "description": "A change for each effects operation."
+  },
+  "years/operation": {
+    "kind": "ratio",
+    "dimensions": {
+      "time": 1,
+      "operations": -1
+    },
+    "scale": 8760,
+    "description": "Years for each effects operation: the inverse of a rate of operations."
+  },
+  "USD2025_m/person-year": {
+    "kind": "unit_cost",
+    "dimensions": {
+      "USD2025": 1,
+      "people": -1,
+      "time": -1
+    },
+    "scale": 114.15525114155251,
+    "description": "Millions of US dollars at 2025 prices for the work of one expert for one 365-day year."
+  },
+  "per_target": {
+    "kind": "ratio",
+    "dimensions": {
+      "targets": -1
+    },
+    "scale": 1,
+    "description": "A change for each target or assessed outcome."
+  },
+  "sites": {
+    "kind": "count",
+    "dimensions": {
+      "sites": 1
+    },
+    "scale": 1
+  },
+  "customers": {
+    "dimensions": {
+      "customers": 1
+    },
+    "scale": 1,
+    "kind": "count"
+  },
+  "accesses": {
+    "kind": "count",
+    "dimensions": {
+      "accesses": 1
+    },
+    "scale": 1,
+    "description": "Accesses of surveillance: implants on computers and networks in other countries' networks."
+  },
+  "accesses/year": {
+    "kind": "rate",
+    "dimensions": {
+      "accesses": 1,
+      "time": -1
+    },
+    "scale": 0.00011415525114155251,
+    "description": "Accesses of surveillance in one 365-day year: built, lost or taken by attacks."
+  },
+  "person-years/access": {
+    "kind": "unit_cost",
+    "dimensions": {
+      "people": 1,
+      "time": 1,
+      "accesses": -1
+    },
+    "scale": 8760,
+    "description": "Expert work to build one access of surveillance."
+  },
+  "sev/access": {
+    "kind": "value",
+    "dimensions": {
+      "sev": 1,
+      "accesses": -1
+    },
+    "scale": 1,
+    "description": "Surveillance-equivalent value of one access of surveillance."
+  },
+  "capabilities": {
+    "kind": "count",
+    "dimensions": {
+      "capabilities": 1
+    },
+    "scale": 1,
+    "description": "Capabilities of the country: flaws that the defenders do not know, each with the tools that use it."
+  },
+  "capabilities/year": {
+    "kind": "rate",
+    "dimensions": {
+      "capabilities": 1,
+      "time": -1
+    },
+    "scale": 0.00011415525114155251,
+    "description": "Capabilities in one 365-day year: found, taken, burned or disclosed."
+  },
+  "capabilities/operation": {
+    "kind": "ratio",
+    "dimensions": {
+      "capabilities": 1,
+      "operations": -1
+    },
+    "scale": 1,
+    "description": "Capabilities that one effects operation needs at a step."
+  },
+  "capabilities/access": {
+    "kind": "ratio",
+    "dimensions": {
+      "capabilities": 1,
+      "accesses": -1
+    },
+    "scale": 1,
+    "description": "New capabilities for each access that surveillance builds."
+  },
+  "capabilities/person-year": {
+    "kind": "rate",
+    "dimensions": {
+      "capabilities": 1,
+      "people": -1,
+      "time": -1
+    },
+    "scale": 0.00011415525114155251,
+    "description": "Capabilities that one researcher finds in one 365-day year."
+  },
+  "accesses/capability": {
+    "kind": "ratio",
+    "dimensions": {
+      "accesses": 1,
+      "capabilities": -1
+    },
+    "scale": 1,
+    "description": "Accesses of surveillance that run on one capability."
+  },
+  "accesses/operation": {
+    "kind": "ratio",
+    "dimensions": {
+      "accesses": 1,
+      "operations": -1
+    },
+    "scale": 1,
+    "description": "Accesses of surveillance for each effects operation."
+  },
+  "people/access": {
+    "kind": "ratio",
+    "dimensions": {
+      "people": 1,
+      "accesses": -1
+    },
+    "scale": 1,
+    "description": "Analysts for each access whose collection they process."
+  },
+  "capabilities/target": {
+    "kind": "ratio",
+    "dimensions": {
+      "capabilities": 1,
+      "targets": -1
+    },
+    "scale": 1,
+    "description": "Capabilities that one target of an attack needs at a step: one for each kind of system of its attack."
+  },
+  "access-years": {
+    "kind": "exposure",
+    "dimensions": {
+      "accesses": 1,
+      "time": 1
+    },
+    "scale": 8760,
+    "description": "Take of surveillance: what one implant collects in one 365-day year."
+  }
+}

@@ -1,0 +1,1523 @@
+[
+  {
+    "id": "A-SC45-STRUCTURE",
+    "title": "How the model of a country's cyber force works",
+    "statement": "One capable country splits its cyber operators between surveillance and effects operations (attacks) for 25 years. Four fixed groups do the work: researchers, operators, collection specialists and analysts. Each operation is a chain of steps, and each step takes the units of the step before, people's hours and capabilities from a pool. An attack's targets go through initial access, movement inside the network and the effect, and the attack then waits ready or is made at once. Surveillance's accesses go through initial access, movement and the deployment of an implant, and the implants collect while they live. AI changes the share of the work that it does. Military doctrine is an indicator: plans count on cyber attacks after a plan passes planning reviews in a row.",
+    "rationale": "The essay argues that a loop of few attacks, little learning, weak results and little money keeps effects marginal, and that AI could reverse it. The model makes each link of that loop a mechanism with its own value, so the analysis can show where the loop holds and where it fails. The numbers of today come from the United States, the one country with a public split of money and people. The groups of experts, the steps and the pools of capabilities make the trade-off between the two missions follow from the work and the capabilities that each takes from the other.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "A count of effects operations, their costs and their assessed results for more than one country, and a record of how budgets followed those results.",
+    "supports": [
+      {
+        "claim": "E-SC45-CARTER-ISIS",
+        "relation": "mechanism_support",
+        "note": "The intelligence community delayed or blocked attacks that it claimed would hinder collection: the two missions compete."
+      },
+      {
+        "claim": "E-SC45-ZD-HANDOFF",
+        "relation": "context_limitations",
+        "note": "Criminal groups now pass an initial access to another group within seconds; the model's two missions never pass access to each other."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-SPLIT",
+    "title": "How the leaders split the operators",
+    "statement": "Each year the leaders move the share of the operators on attacks toward a target. The target is a logistic function of the difference between the assessed return of an operator on attacks and the return of an operator on surveillance, between a floor and a ceiling. As a second form, the share moves at a rate proportional to the difference. Today's split is a rest point of the rule, and the value of one intended effect follows from it.",
+    "rationale": "Revealed preference: a country that keeps about one expert on attacks for every eleven on surveillance shows how it values the two missions. Calibrating the value of an effect to today's split avoids a value chosen to give the essay's result. The floor stands for the attack capacity that a country keeps for strategy and readiness, whatever the results; the ceiling for the surveillance that it always keeps.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "Budgets and staff of attack and surveillance units over time, with the assessed results that preceded each change.",
+    "supports": [
+      {
+        "claim": "E-SC45-NSA-WORKFORCE",
+        "relation": "calibrates",
+        "note": "About 39,000 NSA employees in 2024 set the surveillance side of the pool."
+      },
+      {
+        "claim": "E-SC45-CMF-SIZE",
+        "relation": "calibrates",
+        "note": "The Cyber Mission Force of roughly 6,200 people, with its attack-oriented teams, sets the attack side."
+      },
+      {
+        "claim": "E-SC45-CYBERCOM-BUDGET",
+        "relation": "calibrates",
+        "note": "Cyber Command had $191 million in fiscal 2013, which sets the money ratio of the range."
+      },
+      {
+        "claim": "E-SC45-CARTER-ISIS",
+        "relation": "mechanism_support",
+        "note": "Funding of attacks competes with surveillance."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-COSTS",
+    "title": "What an attack costs in expert work",
+    "statement": "An attack needs five kinds of work: target analysis and approval, access, the effect, the running of the attack and damage assessment. Access is two steps, initial access and movement inside the network, which split its time and its work. Analysts do the target analysis and the damage assessment, and operators do the rest, with their hours first on the steps farthest along. Each kind has work for the attack and for each target, a share that AI does and a time. AI work costs supervision, which parallel attacks share, and compute. An attack that takes longer to build than its warning is built in advance and held ready, with upkeep and decay. Lessons save part of the work.",
+    "rationale": "The essay and its sources describe three costs: the work of the experts, the cost of waiting and the cost of using. An AI-orchestrated campaign in 2025 had AI do 80% to 90% of the tactical work. Holding access for years needs return visits to keep it. These numbers come from other settings, so the model treats them as assumptions with wide ranges.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "The expert work and the time to build an effects operation against defended infrastructure, with and without AI.",
+    "supports": [
+      {
+        "claim": "E-SC45-OPS-2011",
+        "relation": "calibrates",
+        "note": "About 231 offensive operations in 2011 give the attacks of a year today."
+      },
+      {
+        "claim": "E-SC45-CMF-SIZE",
+        "relation": "calibrates",
+        "note": "The attack-oriented posts give the expert work of those attacks."
+      },
+      {
+        "claim": "E-SC45-AI-CAMPAIGN",
+        "relation": "consistent_with",
+        "note": "AI performed 80-90% of one espionage campaign."
+      },
+      {
+        "claim": "E-SC45-CVE-GENIE",
+        "relation": "bounds",
+        "note": "Exploits for disclosed flaws cost about $2 and 18 minutes each: a lower bound of one part of an attack."
+      },
+      {
+        "claim": "E-VOLT-PREPOSITION",
+        "relation": "mechanism_support",
+        "note": "Access held for at least five years in advance of use shows the cost of waiting."
+      },
+      {
+        "claim": "E-SC45-POLAND-2025",
+        "relation": "mechanism_precedent",
+        "note": "Long-term infiltration preceded the attack on the heat plant."
+      },
+      {
+        "claim": "E-SC45-AN-GOSPEL-MIMRAN",
+        "relation": "calibrates",
+        "note": "20 officers for 300 days made 50 to 100 targets: about 0.16 to 0.33 analyst-years per target before AI (20 x 300/365 / 50 to 100; this calculation is not in the source), the same order as the 0.5 expert-years per target of planning."
+      },
+      {
+        "claim": "E-SC45-AN-TARGET-BANK",
+        "relation": "consistent_with",
+        "note": "Each finding needed two independent sources: per-target verification work stays with AI."
+      },
+      {
+        "claim": "E-SC45-AN-CIA-APPROVAL",
+        "relation": "context_limitations",
+        "note": "Delegation cut approval time about ten times (a year or more to weeks) in 2018, without AI: a change of authorities changes elapsed time more than expert-years. Model it apart from AI progress."
+      },
+      {
+        "claim": "E-SC45-AN-NSPM13-SPEED",
+        "relation": "context_limitations",
+        "note": "The 2018 framework is much quicker than PPD-20: the time of approval per attack depends on delegation, not AI."
+      },
+      {
+        "claim": "E-SC45-AN-NSPM13-AUTHORITY",
+        "relation": "context_limitations",
+        "note": "Authority to approve cyber operations without the White House: approval time is set by policy."
+      },
+      {
+        "claim": "E-SC45-AN-NSPM13-DELEGATION",
+        "relation": "context_limitations",
+        "note": "Delegation moves approval decisions down from the National Security Council: faster decisions, with no times given."
+      },
+      {
+        "claim": "E-SC45-AN-GS-APPROVAL",
+        "relation": "reports_value",
+        "note": "Weeks of NSC meetings for one operation under PPD-20: the elapsed time of approval per attack, before the 2018 delegation."
+      },
+      {
+        "claim": "E-SC45-AN-ARES-PREP",
+        "relation": "consistent_with",
+        "note": "Months of preparation before one campaign."
+      },
+      {
+        "claim": "E-SC45-AN-GS-AUTHORIZATION",
+        "relation": "consistent_with",
+        "note": "More vetting after the approval of the combatant command hampered operations: approval is a per-attack cost."
+      },
+      {
+        "claim": "E-SC45-AN-HAMMER-FINAL",
+        "relation": "consistent_with",
+        "note": "The final assessment of hard targets took more than three weeks after a preliminary one in two days. Unverified."
+      },
+      {
+        "claim": "E-SC45-WF-CMF-TEAM-SIZES",
+        "relation": "bounds",
+        "note": "About 975 support-team people over 231–326 attacks a year give 3.0–4.2 person-years of analyst work per attack, if the teams do only attack planning and assessment."
+      },
+      {
+        "claim": "E-SC45-WF-CYBERCOM-INTEL-GAP",
+        "relation": "consistent_with",
+        "note": "Cyber Command lacked the all-source base of knowledge about networks that kinetic targeting has. The target analysis of a cyber attack falls on scarce analysts."
+      },
+      {
+        "claim": "E-SC45-WF-GLOWING-SYMPHONY-SCALE",
+        "relation": "context_limitations",
+        "note": "The largest US offensive cyber operation was a campaign of months with no public team size or work. No source gives the work per attack directly."
+      },
+      {
+        "claim": "E-SC45-WF-ASSESSMENT-COLLECTION",
+        "relation": "specifies_component",
+        "note": "Damage assessment needs collection assets that intelligence agencies prepare before the attack. The model puts all assessment work on the analysts."
+      },
+      {
+        "claim": "E-SC45-WF-ELECTION-OPS-2020",
+        "relation": "consistent_with",
+        "note": "More than two dozen operations in one mission set in about one year agree with hundreds of operations a year in all mission sets. Their type is not known."
+      },
+      {
+        "claim": "E-SC45-WF-HUNT-FORWARD-2024",
+        "relation": "context_limitations",
+        "note": "The public counts after 2011 are of defensive hunt forward missions: about 5 in 2018, 22 in 2023 and 25 in 2024. No count of attacks after 2011 calibrates the attacks a year."
+      },
+      {
+        "claim": "E-SC45-OP-CROWDSTRIKE-BREAKOUT",
+        "relation": "bounds",
+        "note": "Criminal intrusions move past initial access in 29 minutes on average, a lower limit far below the movement time for hardened strategic targets."
+      },
+      {
+        "claim": "E-SC45-OP-NCSC-HUMANS",
+        "relation": "mechanism_support",
+        "note": "Human operators must direct, validate and adapt AI outputs, which is the supervision cost that AI work carries in the model."
+      },
+      {
+        "claim": "E-SC45-OP-GLM53-SUPERVISION",
+        "relation": "bounds",
+        "note": "In a test, 0.04 hours of human attention per hour of model work and $20.40 of compute give low limits for supervision and compute."
+      },
+      {
+        "claim": "E-SC45-OP-MYTHOS-PRICE",
+        "relation": "specifies_component",
+        "note": "The token price of a frontier cyber model, times the tokens of a task, gives the compute cost of AI work."
+      },
+      {
+        "claim": "E-SC45-OP-TIR-HUMANS",
+        "relation": "mechanism_support",
+        "note": "Target selection and the review of results stay human work in AI-run operations, which is the supervision that AI work costs in the model."
+      },
+      {
+        "claim": "E-SC45-OP-TIR-SCALE",
+        "relation": "consistent_with",
+        "note": "Single operators handled dozens of victims in parallel in broad campaigns; these are targets of one campaign, not parallel deliberate attacks."
+      },
+      {
+        "claim": "E-SC45-OP-CAI-SPEED",
+        "relation": "consistent_with",
+        "note": "Developers report an AI agent 11 times faster than humans on the tasks it can do, which agrees with AI that cuts stage time."
+      },
+      {
+        "claim": "E-SC45-OP-MYTHOS-COST",
+        "relation": "bounds",
+        "note": "Exploits that took under a day and under $2,000, against weeks for experts, put compute far below the model’s cost per expert-year of AI work."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-AI",
+    "title": "How AI progress reaches the cyber force",
+    "statement": "Each AI driver moves from its value today toward its end value on one of two paths: 1 - exp(-t / time), times a pace. The fast path reaches access and the running of attacks. It reaches about two thirds of its end in 5 years by default, and in 4 or 12 years under the options. The slow path reaches the effect, target analysis, damage assessment, the planning of new accesses and the processing of the take, and takes 10 years. Without AI progress, every driver keeps its value of today. The reversal option takes back 80% of the progress after 12 years.",
+    "rationale": "The model asks when the loop starts, not when AI arrives, so it treats the timing of AI as a choice of the reader. One path for all drivers keeps the bifurcation analysis along AI progress readable; each driver's end value is a separate input, so the analysis can rank them.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "Measured changes in the cost, speed and reach of offensive cyber work as AI tools improve.",
+    "supports": [
+      {
+        "claim": "E-SC45-AI-CAMPAIGN",
+        "relation": "consistent_with",
+        "note": "One AI-orchestrated campaign reached about thirty targets with AI doing most of the work."
+      },
+      {
+        "claim": "E-SC45-CVE-GENIE",
+        "relation": "consistent_with",
+        "note": "AI builds exploits for disclosed flaws in minutes."
+      },
+      {
+        "claim": "E-SC45-AN-CSET-SUMMARY",
+        "relation": "bounds",
+        "note": "Two thousand fewer people for the same targeting as the 2003 cell: about 1% of the human effort per target, if the workload was the same. An upper bound of the per-target AI share of planning at the end, because digital workflow explains part."
+      },
+      {
+        "claim": "E-SC45-AN-TARGET-PASS",
+        "relation": "consistent_with",
+        "note": "The time of one machine handoff fell more than 700 times in four years (2020 to 2024): a fast path for AI in kinetic targeting."
+      },
+      {
+        "claim": "E-SC45-AN-NGA-TIMELINES",
+        "relation": "consistent_with",
+        "note": "Targeting timelines from hours to minutes in 2025: the per-target AI share of planning is above zero today for a leading power, on a fast path."
+      },
+      {
+        "claim": "E-SC45-AN-MAVEN-USERS",
+        "relation": "consistent_with",
+        "note": "20,000 users in 2025, four times more than in March 2024: routine use of AI in US targeting today (per-target share of planning above zero)."
+      },
+      {
+        "claim": "E-SC45-AN-CENTCOM-2024",
+        "relation": "consistent_with",
+        "note": "In 2024 AI helped find and narrow targets for real strikes, but fell short on the choice of weapons and plans, and a human checks every AI step: the per-target share leads, the per-attack share of approval stays low."
+      },
+      {
+        "claim": "E-SC45-AN-CONVERGENCE",
+        "relation": "context_limitations",
+        "note": "A factor of 60 in the time of dynamic targeting in a 2020 demonstration: elapsed time, not analyst work, and not deliberate target analysis."
+      },
+      {
+        "claim": "E-SC45-AN-IRAN-FIRST-DAY",
+        "relation": "consistent_with",
+        "note": "Hours or days to minutes per target, and twice the 2003 first-day count, in the 2026 war: a high per-target AI share in kinetic planning."
+      },
+      {
+        "claim": "E-SC45-AN-IRAN-38-DAYS",
+        "relation": "consistent_with",
+        "note": "About 340 targets a day for 38 days (13,000 / 38; this calculation is not in the source) with AI that finds and ranks targets; no analyst counts."
+      },
+      {
+        "claim": "E-SC45-AN-IRAN-REVIEW",
+        "relation": "bounds",
+        "note": "When AI raises volume, human review per target becomes the step that fails: a cap on the per-target AI share if the quality of approval holds."
+      },
+      {
+        "claim": "E-SC45-AN-IRAN-BDA-LOOP",
+        "relation": "consistent_with",
+        "note": "AI reads damage reports and makes new target lists in minutes: the per-target first phase of kinetic damage assessment is already automated."
+      },
+      {
+        "claim": "E-SC45-AN-IRAN-WAPO-COUNTS",
+        "relation": "consistent_with",
+        "note": "Order of magnitude only: in 2026 AI ranks targets and helps assess strikes."
+      },
+      {
+        "claim": "E-SC45-AN-MAVEN-DAILY",
+        "relation": "consistent_with",
+        "note": "Daily use across much of the US military in 2026: the per-target AI share today is above zero."
+      },
+      {
+        "claim": "E-SC45-AN-MAVEN-1000-RECS",
+        "relation": "consistent_with",
+        "note": "Unconfirmed: 1,000 targeting recommendations an hour. Use only with confirmed sources."
+      },
+      {
+        "claim": "E-SC45-AN-GOSPEL-RATE",
+        "relation": "bounds",
+        "note": "Targets made rose about 730 times (100 a day against 50 a year): an upper bound, because the team sizes and the accepted error differ."
+      },
+      {
+        "claim": "E-SC45-AN-GOSPEL-MIMRAN",
+        "relation": "bounds",
+        "note": "At least 50 times faster with AI: if the team size held, the human share per target fell below 2%, an upper bound of the per-target AI share at the end."
+      },
+      {
+        "claim": "E-SC45-AN-IDF-PACE",
+        "relation": "consistent_with",
+        "note": "A daily rate of strikes more than double that of 2021 with AI target generation; the AI share of targets is not known."
+      },
+      {
+        "claim": "E-SC45-AN-GOSPEL-UNIT",
+        "relation": "consistent_with",
+        "note": "Target output about 730 times higher in 2021 with a target unit of hundreds of people; half of the targets were attacked."
+      },
+      {
+        "claim": "E-SC45-AN-LAVENDER",
+        "relation": "bounds",
+        "note": "About 20 seconds of human review per target and about 10% error from a sample: a per-target share above about 0.9 makes the review a stamp. Keep the per-target share below that, or add an error cost."
+      },
+      {
+        "claim": "E-SC45-AN-AVENGERS",
+        "relation": "consistent_with",
+        "note": "12,000 automatic detections a week in 2024: AI does one narrow subtask of target analysis at scale."
+      },
+      {
+        "claim": "E-SC45-AN-DELTA",
+        "relation": "consistent_with",
+        "note": "AI finds 70% of unique equipment units in 2025: a share of about 0.7 today for one subtask in a digital force; verification of damage at the scale of 130,000 targets."
+      },
+      {
+        "claim": "E-SC45-AN-HUMAN-JUDGMENT",
+        "relation": "bounds",
+        "note": "US policy keeps appropriate human judgment over the use of force: the per-attack AI share of legal review and approval stays low (about 0 to 0.2 at the end)."
+      },
+      {
+        "claim": "E-SC45-AN-AI-STRATEGY-2026",
+        "relation": "consistent_with",
+        "note": "The 2026 strategy funds AI for battle management and decision support, and permits any lawful use: the AI share of planning may rise faster after 2026."
+      },
+      {
+        "claim": "E-SC45-AN-WORKFLOW-WAIT",
+        "relation": "context_limitations",
+        "note": "AI speeds the analysis but not the coordination, validation and approval around it: the per-attack share stays low."
+      },
+      {
+        "claim": "E-SC45-AN-BDA-HOURS",
+        "relation": "consistent_with",
+        "note": "Kinetic damage assessment still takes hours with little automation (2026): the per-target AI share of assessment is low today and the Air Force wants it high."
+      },
+      {
+        "claim": "E-SC45-AN-SCALE-DAMAGE",
+        "relation": "consistent_with",
+        "note": "AI damage assessment from imagery, faster and more accurate than human reports (2023)."
+      },
+      {
+        "claim": "E-SC45-AN-BLACKSKY-BDA",
+        "relation": "consistent_with",
+        "note": "Contracts for AI damage assessment from space in 2026."
+      },
+      {
+        "claim": "E-SC45-AN-BDA-24H",
+        "relation": "consistent_with",
+        "note": "A 2021 aim of assessment reports by algorithm within 24 hours, for many targets at once."
+      },
+      {
+        "claim": "E-SC45-AN-CYBER-BDA-METHODS",
+        "relation": "context_limitations",
+        "note": "Cyber damage assessment has no mature method: a slower AI path for cyber assessment than for kinetic assessment. Unverified."
+      },
+      {
+        "claim": "E-SC45-AN-CYBERCOM-TRAFFIC",
+        "relation": "consistent_with",
+        "note": "AI cut network-data analysis from hours to weeks down to minutes to hours (about ten times): the nearest public analogue for the per-target work of cyber damage assessment."
+      },
+      {
+        "claim": "E-SC45-AN-BUNDESWEHR",
+        "relation": "consistent_with",
+        "note": "Score 1.59 times higher under time pressure: at fixed output, AI did about 37% of the work (1 - 1/1.59; this calculation is not in the source) with tools of 2024. Consistent with per-attack end shares of 0.2 to 0.3; below the per-target end share."
+      },
+      {
+        "claim": "E-SC45-AN-BUNDESWEHR-LIMITS",
+        "relation": "context_limitations",
+        "note": "AI errs on ambiguous and contradictory information: steps of judgment (legal review, campaign-level assessment) take a lower AI share."
+      },
+      {
+        "claim": "E-SC45-AN-DELOITTE-TIME",
+        "relation": "consistent_with",
+        "note": "17.5% of the time of an all-source analyst, with the AI of 2019 at scale: a floor for the end shares. Unverified."
+      },
+      {
+        "claim": "E-SC45-AN-BCG-FRONTIER",
+        "relation": "consistent_with",
+        "note": "40% better inside the frontier and 23% worse outside it: the AI share grows faster for tasks of volume than for tasks of judgment."
+      },
+      {
+        "claim": "E-SC45-AN-FACTSET",
+        "relation": "context_limitations",
+        "note": "Broader reports but lower accuracy under heavy information load: more AI help can lower the quality of judgment."
+      },
+      {
+        "claim": "E-SC45-AN-OSIRIS",
+        "relation": "consistent_with",
+        "note": "Thousands of analysts used a generative AI tool in 2024: the AI share of analysis today is above zero."
+      },
+      {
+        "claim": "E-SC45-AN-SABLE-SPEAR",
+        "relation": "consistent_with",
+        "note": "AI found twice the companies and 400% more people than human-only analysis in 2019."
+      },
+      {
+        "claim": "E-SC45-AN-CIA-USES",
+        "relation": "consistent_with",
+        "note": "Analysts use generative AI for search, writing and ideas in classified settings (2024)."
+      },
+      {
+        "claim": "E-SC45-AN-CIA-COWORKER",
+        "relation": "consistent_with",
+        "note": "AI as an everyday co-worker of analysts within a few years (2025). Unverified."
+      },
+      {
+        "claim": "E-SC45-AN-CYBERCOM-TASK-FORCE",
+        "relation": "consistent_with",
+        "note": "From opportunistic to systematic AI use in 2024: the AI share of cyber operations planning starts from a low base."
+      },
+      {
+        "claim": "E-SC45-AN-CYBERCOM-AI-FUNDING",
+        "relation": "consistent_with",
+        "note": "The first dedicated AI funding of Cyber Command in 2026. Unverified."
+      },
+      {
+        "claim": "E-SC45-AN-NSA-REVIEW",
+        "relation": "bounds",
+        "note": "AI outputs go to an analyst's review (2023): the human share of review stays. Unverified."
+      },
+      {
+        "claim": "E-SC45-AN-NGA-75",
+        "relation": "calibrates",
+        "note": "NGA's 2017 goal to automate 75% of analysts' tasks: the reference for a per-target end share of planning of about 0.75. A goal for imagery tasks."
+      },
+      {
+        "claim": "E-SC45-AN-MCKINSEY-POTENTIAL",
+        "relation": "bounds",
+        "note": "A technical ceiling of 60 to 70% of work time, and an adoption midpoint of 2045 for all occupations: for the whole economy, two thirds of the end comes later than 10 years. Unverified."
+      },
+      {
+        "claim": "E-SC45-AN-SCSP-HMT",
+        "relation": "consistent_with",
+        "note": "Expected gains in breadth and depth of analysis with human oversight; no numbers."
+      },
+      {
+        "claim": "E-SC45-SG-NSA-TRIAGE-2026",
+        "relation": "consistent_with",
+        "note": "surveillance_program.analysis_ai_now and analysis_ai_end: the NSA plans AI triage of its intake; no share is given."
+      },
+      {
+        "claim": "E-SC45-SG-POSTEDIT-NOVEL",
+        "relation": "consistent_with",
+        "note": "surveillance_program.analysis_ai_now = 0.1: post-editing multiples of 1.18 and 1.36 give AI shares of translation work of about 15% and 26% (1 - 1/m), before language models."
+      },
+      {
+        "claim": "E-SC45-SG-POSTEDIT-LANGUAGES",
+        "relation": "context_limitations",
+        "note": "analysis_ai: the gain from machine translation varies widely by language, so one share for all processing hides languages with small gains."
+      },
+      {
+        "claim": "E-SC45-SG-MT-EDIT-TREND",
+        "relation": "consistent_with",
+        "note": "surveillance_program.analysis_ai_end = 0.6: against about 7.2 seconds per word from scratch (E-SC45-SG-POSTEDIT-NOVEL), edit times of 3, 2 and 1 seconds give AI shares of text translation of about 58%, 72% and 86% (unverified)."
+      },
+      {
+        "claim": "E-SC45-SG-MT-EDIT-DATA",
+        "relation": "consistent_with",
+        "note": "analysis_ai path: the edit-time trend for commercial text falls in a straight line; speech and low-resource languages are slower."
+      },
+      {
+        "claim": "E-SC45-SG-TRANSLATOR-EXPOSURE",
+        "relation": "bounds",
+        "note": "surveillance_program.analysis_ai_end = 0.6: 76.5-82.4% of translator tasks could take at least half less time, an AI share of the work of about 38-80%."
+      },
+      {
+        "claim": "E-SC45-SG-TRANSLATOR-EXPOSURE-RISE",
+        "relation": "consistent_with",
+        "note": "analysis_ai: the exposure of translators and transcriptionists rose most with multimodal models, so gains in speech came with the newer models."
+      },
+      {
+        "claim": "E-SC45-SG-NSA-SPEECH-TECH",
+        "relation": "mechanism_support",
+        "note": "analysis_ai: speech recognition and machine translation pipelines indexed nearly all NSA voice by 2006, but people did the listening, so the input is a share of the work, not of the volume."
+      },
+      {
+        "claim": "E-SC45-SG-SPEECH-LIMITS",
+        "relation": "consistent_with",
+        "note": "analysis_ai on the slow path: transcription of noisy phone calls was still poor in 2015, while broadcast speech was good."
+      },
+      {
+        "claim": "E-SC45-SG-NSA-GENAI-USE",
+        "relation": "consistent_with",
+        "note": "surveillance_program.analysis_ai_now: more than 7,000 NSA analysts used pilot generative AI tools by 2024 (about 18% of about 39,000 staff); no share of the work is given."
+      },
+      {
+        "claim": "E-SC45-SG-NSA-LINGUIST-GAP",
+        "relation": "consistent_with",
+        "note": "analysis_ai: the NSA looks to AI to fill gaps in linguists, so AI adds most where no linguist exists."
+      },
+      {
+        "claim": "E-SC45-SG-NSCAI-AI-READY",
+        "relation": "consistent_with",
+        "note": "ai_path: the goal of an AI-ready intelligence community by 2025 gives a direction and a date, not a share."
+      },
+      {
+        "claim": "E-SC45-SG-LANGUAGE-LIMITS",
+        "relation": "context_limitations",
+        "note": "analysis_ai on the slow path: accents, tonal and low-resource languages limit AI processing (unverified)."
+      },
+      {
+        "claim": "E-SC45-SG-ASR-THRESHOLD",
+        "relation": "context_limitations",
+        "note": "analysis_ai: speech recognition helps transcribers only below about 30% word error rate (unverified)."
+      },
+      {
+        "claim": "E-SC45-SG-AI-TRIAGE-ERRORS",
+        "relation": "mechanism_support",
+        "note": "analysis_ai: AI sorted stolen data by intelligence value in one state campaign, with errors, so a quality term for AI-processed take is defensible."
+      },
+      {
+        "claim": "E-SC45-WF-MAVEN-EXERCISE",
+        "relation": "bounds",
+        "note": "About 100 times fewer staff for the same kinetic targeting workload in a demonstration. An upper limit on the AI share of analyst work per target, not a value for cyber targets."
+      },
+      {
+        "claim": "E-SC45-WF-MAVEN-IRAN",
+        "relation": "bounds",
+        "note": "Ten times more targets struck, and five times faster targeting from language models: 10–50 times if the gains multiply. An upper limit on the AI gain in target analysis."
+      },
+      {
+        "claim": "E-SC45-WF-MAVEN-VENDOR",
+        "relation": "bounds",
+        "note": "A vendor claims 20 intelligence officers for targeting work that took 2,000. An upper limit only."
+      },
+      {
+        "claim": "E-SC45-WF-IDF-TARGETS",
+        "relation": "bounds",
+        "note": "A year of kinetic targets in one or two months with AI, 6–12 times the output. An upper limit for the planning share of analyst work."
+      },
+      {
+        "claim": "E-SC45-WF-GAZA-TARGETS",
+        "relation": "context_limitations",
+        "note": "Mass kinetic targeting took about 60–120 officer-days per target without AI, by the NPR estimate. That work is different from a tailored cyber attack; do not transfer the work per target."
+      },
+      {
+        "claim": "E-SC45-ZD-AI-FORECAST",
+        "relation": "consistent_with",
+        "note": "A forecast that adversaries will use AI to speed vulnerability discovery and exploit development."
+      },
+      {
+        "claim": "E-SC45-OP-CROWDSTRIKE-AI-OPS",
+        "relation": "consistent_with",
+        "note": "Operations of AI-enabled adversaries rose 89% in one year, so real use of AI grows fast; this counts operations, not shares of work."
+      },
+      {
+        "claim": "E-SC45-OP-JADEPUFFER",
+        "relation": "mechanism_precedent",
+        "note": "An AI agent ran one criminal attack on IT servers end to end, so AI shares of access, effect and running can approach one."
+      },
+      {
+        "claim": "E-SC45-OP-NCSC-HUMANS",
+        "relation": "consistent_with",
+        "note": "An official judgement that AI raises speed and scale while humans stay essential agrees with AI shares well below one today."
+      },
+      {
+        "claim": "E-SC45-OP-NCSC-CHINA",
+        "relation": "consistent_with",
+        "note": "A capable state with its own frontier AI gains most against strategic targets, which agrees with a force that gets AI at the frontier pace."
+      },
+      {
+        "claim": "E-SC45-OP-NCSC-2027-LOOP",
+        "relation": "consistent_with",
+        "note": "Humans stay in the loop and full automation is unlikely to 2027, which agrees with an AI running share of 0.3 that rises over years."
+      },
+      {
+        "claim": "E-SC45-OP-NCSC-2027-STATES",
+        "relation": "consistent_with",
+        "note": "In the near term only highly capable states can use the full potential of AI, which fits the capable country that the model follows."
+      },
+      {
+        "claim": "E-SC45-OP-HACKERONE-AI",
+        "relation": "consistent_with",
+        "note": "Most skilled bug-bounty researchers already use AI help, while autonomous agents give few valid reports, so help is common and autonomy is not."
+      },
+      {
+        "claim": "E-SC45-OP-CAISI-CTF",
+        "relation": "consistent_with",
+        "note": "Frontier models solved most hard single offensive tasks in April 2026; this is capability on tasks, not the share of the work in a force."
+      },
+      {
+        "claim": "E-SC45-OP-CAISI-LAG",
+        "relation": "context_limitations",
+        "note": "The best Chinese model trails the US frontier by about 8 months, so a country without US frontier models gets the AI path months later."
+      },
+      {
+        "claim": "E-SC45-OP-GLM53-EXPLOITS",
+        "relation": "consistent_with",
+        "note": "Success at end-to-end exploits rose from near zero to about 12–14% per attempt between model generations in 2026, so exploit capability moves in months."
+      },
+      {
+        "claim": "E-SC45-OP-GLM53-OPEN-WEIGHTS",
+        "relation": "context_limitations",
+        "note": "An open-weight model about four months behind the frontier, without meaningful safeguards, gives near-frontier cyber AI to any state."
+      },
+      {
+        "claim": "E-SC45-OP-GLASSWING-SPREAD",
+        "relation": "consistent_with",
+        "note": "The developer expects Mythos-class cyber skills to spread to many firms soon, which agrees with a fast capability path."
+      },
+      {
+        "claim": "E-SC45-OP-CVP-CYSCENARIO",
+        "relation": "consistent_with",
+        "note": "A frontier model completes about two thirds of multi-stage operation scenarios without safeguards in late 2026, while public versions block most cyber work."
+      },
+      {
+        "claim": "E-SC45-OP-GLASSWING-OUTLOOK",
+        "relation": "consistent_with",
+        "note": "The developer expects capabilities to advance substantially within months and to proliferate soon, which agrees with a fast capability path."
+      },
+      {
+        "claim": "E-SC45-OP-TIR-HUMANS",
+        "relation": "consistent_with",
+        "note": "Humans still select targets and review results in AI-enabled operations, which agrees with an AI share of running well below one today."
+      },
+      {
+        "claim": "E-SC45-OP-MYTHOS5-ACCESS",
+        "relation": "defines_conditions",
+        "note": "The strongest cyber model goes only to selected defenders, so the AI that a force uses depends on its access to the best models."
+      },
+      {
+        "claim": "E-SC45-OP-GLASSWING-DIFFUSION",
+        "relation": "context_limitations",
+        "note": "The developer expects other firms to have Mythos-class models within 6 to 12 months, so a state without frontier access trails by under a year."
+      },
+      {
+        "claim": "E-SC45-OP-AISI-DOUBLING",
+        "relation": "consistent_with",
+        "note": "The length of cyber tasks that models complete doubled every 4.1–5.0 months to early 2026, which agrees with a fast path for capability."
+      },
+      {
+        "claim": "E-SC45-OP-AISI-RANGES",
+        "relation": "consistent_with",
+        "note": "A model completed both AISI attack ranges in 2026, so AI capability for access and running is high in ranges without defenders."
+      },
+      {
+        "claim": "E-SC45-OP-METR-DOUBLING",
+        "relation": "consistent_with",
+        "note": "Software task length doubled about every 7 months over 2019–2025, which agrees with a fast path for capability."
+      },
+      {
+        "claim": "E-SC45-OP-PALISADE-CTF",
+        "relation": "consistent_with",
+        "note": "AI agents reliably solved challenges of about one hour of median human effort in 2025, an earlier point on the fast capability path."
+      },
+      {
+        "claim": "E-SC45-OP-FRI-AUTONOMY",
+        "relation": "context_limitations",
+        "note": "Forecasters put public authorization of autonomous offensive operations by a NATO state at 2038–2041, so adoption in a state force may lag the capability path."
+      },
+      {
+        "claim": "E-SC45-OP-MDDR-MANUAL",
+        "relation": "consistent_with",
+        "note": "The most complex intrusions stay mainly manual in 2025–2026 and AI-orchestrated ones are few, which agrees with force-wide AI shares well below one today."
+      },
+      {
+        "claim": "E-SC45-OP-MDDR-WEAPONIZATION",
+        "relation": "context_limitations",
+        "note": "Open-weight models trail closed ones in attack orchestration by seven months, so a state without frontier access trails the AI path by months."
+      },
+      {
+        "claim": "E-SC45-OP-ASTRA-CRITICAL",
+        "relation": "consistent_with",
+        "note": "A developer could not rule out its Critical cyber level in August 2026, so end-state capability may come within years; adoption is a separate question."
+      },
+      {
+        "claim": "E-SC45-OP-AISI-NO-DEFENDERS",
+        "relation": "context_limitations",
+        "note": "The AI ranges have no active defenders, so every AI share that transfers from a range result applies to undefended networks only."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-RETURNS",
+    "title": "What an attack gives",
+    "statement": "An attack hits its targets, and each target gives the intended effect with a chance of about one in five today. In log-odds the chance rises with lessons toward seven in ten. It falls with the defenders' attention and lasting capability, and with reused items that the defenders have fixed. The value of a year's attacks has diminishing returns in the targets hit. Leaders averse to risk count less of a spread value.",
+    "rationale": "Documented effects show low success against their intended purpose: operators restored power by hand within hours, generation continued when wind and solar farms were hit, and Stuxnet delayed enrichment by months. The log-odds form keeps every chance between 0 and 1.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "The share of state effects operations that met their intended effect, by target class.",
+    "supports": [
+      {
+        "claim": "V-C01",
+        "relation": "mechanism_precedent",
+        "note": "Operators restored power by hand in six hours."
+      },
+      {
+        "claim": "E-SC45-STUXNET",
+        "relation": "mechanism_precedent",
+        "note": "Iran replaced about 1,000 broken centrifuges and kept enriching."
+      },
+      {
+        "claim": "E-SC45-POLAND-2025",
+        "relation": "mechanism_precedent",
+        "note": "Attacks on more than 30 farms did not stop the production of electricity."
+      },
+      {
+        "claim": "E-SC45-NOTPETYA-DAMAGE",
+        "relation": "context_limitations",
+        "note": "The largest damage of a state attack was mostly collateral, not its intended effect."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-LEARNING",
+    "title": "How the force learns and forgets",
+    "statement": "The force keeps two kinds of lessons. Lessons of effects come from the assessed outcomes of its attacks, and a damage assessment keeps part of what an outcome teaches. The targets of one attack teach less than as many attacks, because they share causes. Lessons of access come from every access that attacks and surveillance build, and they cut the work of access by Wright's law. Lessons get weight in the force's choices against a prior strength: with shape 1, the Bayesian weight of evidence. As a second form, lessons follow an exponential curve. The force loses lessons of effects faster than lessons of access, and as an option a share of that loss grows with the attacks.",
+    "rationale": "Learning from noisy signals: few assessed outcomes teach little, because each one is noisy and the prior is strong. Organizations lose what they learn: studies of production find that a stock of knowledge depreciates quickly. Damage assessment of cyber effects is noisy: Cyber Command rated its campaign against ISIS a success while the defense secretary was disappointed.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "Rates of learning and forgetting in cyber units, and the reliability of their damage assessments.",
+    "supports": [
+      {
+        "claim": "E-SC45-CARTER-ISIS",
+        "relation": "consistent_with",
+        "note": "The defense secretary judged a campaign ineffective that the command ran: assessments of effects are noisy."
+      },
+      {
+        "claim": "E-SC45-AN-CYBER-BDA-METHODS",
+        "relation": "consistent_with",
+        "note": "Without a mature method, an assessment keeps only part of what an outcome teaches. Unverified."
+      },
+      {
+        "claim": "E-SC45-AN-GS-ASSESSMENT",
+        "relation": "consistent_with",
+        "note": "The 30-day assessment judged costs imposed but could not measure the wider effect, and collection had to be ready before the start: campaign-level cyber assessment is slow and limited by data."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-DEFENDERS",
+    "title": "How the defenders answer",
+    "statement": "The defenders answer the whole threat flow, and the force's attacks are a small share of it. Their attention rises with that flow toward a cap and fades within months. Others find and disclose the force's flaws, and known flaws work only on targets that have not fixed them. As an option, their lasting capability grows with time or with their own AI. The targets of one attack fall together when they share a step. When a capability that the attacks of a plan share fails, it takes the attacks that depend on it.",
+    "rationale": "Exposure of a cyber weapon teaches defenders to patch the flaws it used and puts others on alert: the discovery of Stuxnet burned shared infrastructure. Shared defences and shared workarounds tie the outcomes of targets together, which limits what many targets make predictable.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "The change of defenders' patching and detection after exposed state effects operations.",
+    "supports": [
+      {
+        "claim": "E-SC45-STUXNET",
+        "relation": "consistent_with",
+        "note": "Defenders replaced what an attack broke and kept working."
+      },
+      {
+        "claim": "V-C01",
+        "relation": "consistent_with",
+        "note": "Defenders worked around the attack by hand."
+      },
+      {
+        "claim": "E-SC45-ZD-STOCKPILE-DATA",
+        "relation": "defines_conditions",
+        "note": "The population behind the RAND loss rates: one private group’s 207 exploits of 2002–2016, a proxy for a state; 4% bought."
+      },
+      {
+        "claim": "E-SC45-ZD-LONGEVITY",
+        "relation": "calibrates",
+        "note": "A mean life of 6.9 years gives 1/6.9 = 0.145 a year, the default of rediscovery_now. The survival points (75% at 1.51 years, 25% at 9.53 years) give 0.19 and 0.145 a year, so the curve is close to exponential. The life ends at public disclosure by any route."
+      },
+      {
+        "claim": "E-SC45-ZD-COLLISION",
+        "relation": "contradicts",
+        "note": "Independent rediscovery and disclosure, the event that rediscovery_now names, is 5.7% a year (0.059/yr), 0.87% in 90 days (3.5%/yr) and 40% in 14 years (3.6%/yr). 14.5% matches the all-route disclosure hazard instead; relabel the input or set about 0.04–0.06/yr for a state-class stockpile (the range 0.05–0.5 holds 0.059)."
+      },
+      {
+        "claim": "E-SC45-ZD-COLLISION-NEWS",
+        "relation": "reports_value",
+        "note": "Reports both RAND figures: the 6.9-year life that the record uses and the 5.7% yearly collision rate."
+      },
+      {
+        "claim": "E-SC45-ZD-COLLISION-PRIVATE",
+        "relation": "context_limitations",
+        "note": "Only public collisions count, so other states can hold the same flaw unseen; a private rediscovery does not burn the capability."
+      },
+      {
+        "claim": "E-SC45-ZD-REDISCOVERY",
+        "relation": "bounds",
+        "note": "Rediscovery among researchers of heavily researched consumer software: 12.7% in aggregate, 10.8% (Chrome) to 21.9% (Android) over each dataset. An upper range for mainstream browser and mobile targets, above RAND’s 5.7% for a state-class stockpile."
+      },
+      {
+        "claim": "E-SC45-ZD-2024-COUNT",
+        "relation": "consistent_with",
+        "note": "75 zero-days in 2024 (later revised to 78); 44% in enterprise products. The 2023 count was 98 here and 100 in the 2025 review: recent counts are lower bounds."
+      },
+      {
+        "claim": "E-SC45-ZD-COLLISIONS-2022",
+        "relation": "mechanism_support",
+        "note": "Attackers use the same flaws, so the fix of another actor’s exposed zero-day can break the force’s capability."
+      },
+      {
+        "claim": "E-SC45-ZD-EXCHANGE-SHARED",
+        "relation": "mechanism_precedent",
+        "note": "A researcher reported the flaws two days after their exploitation began: an independent rediscovery that led to the patch."
+      },
+      {
+        "claim": "E-SC45-ZD-EDGE-FIX-TIMES",
+        "relation": "consistent_with",
+        "note": "Average fix times of well-known edge flaws, by industry, run from a week to over 420 days, mostly 100–300 days; as means, 160–260 days is 1.4–2.3 a year, near fix_rate = 1.5."
+      },
+      {
+        "claim": "E-SC45-ZD-EDGE-FIXED",
+        "relation": "bounds",
+        "note": "Only 54% of the critical edge flaws were fully fixed in the period: 46% open, a proxy above residual = 25% for perimeter systems; the 32-day median covers the fixes."
+      },
+      {
+        "claim": "E-SC45-ZD-EDGE-MASS",
+        "relation": "consistent_with",
+        "note": "Edge flaws were mass exploited at day 0 and fixed in a median of 32 days among the fixes, the pace of the fast defenders (15 a year)."
+      },
+      {
+        "claim": "E-SC45-ZD-1H2025",
+        "relation": "consistent_with",
+        "note": "432 newly exploited flaws in half a year, about a third of them on or before the day of their CVE."
+      },
+      {
+        "claim": "E-SC45-ZD-OT-TRIAGE",
+        "relation": "consistent_with",
+        "note": "27% of OT flaws are never fixed, close to residual = 25%."
+      },
+      {
+        "claim": "E-SC45-ZD-OT-ADVISORIES",
+        "relation": "consistent_with",
+        "note": "25% of OT advisories of 2025 had no patch or mitigation, which supports a never-fixed share of at least 25% for industrial systems."
+      },
+      {
+        "claim": "E-SC45-ZD-OT-NOPATCH-2024",
+        "relation": "consistent_with",
+        "note": "26% of OT advisories of 2024 had no patch, 18% neither patch nor mitigation."
+      },
+      {
+        "claim": "E-SC45-ZD-KEV-SEVERITY",
+        "relation": "bounds",
+        "note": "Medians by severity convert (ln 2 / median) to 1.85 a year (critical, 137 days), 1.06 (high, 238), 0.49 (medium, 517) and 0.41 for flaws outside the KEV list (621): the range around fix_rate = 1.5 (174 days, 1.45 a year)."
+      },
+      {
+        "claim": "E-SC45-ZD-KEV-DEADLINES",
+        "relation": "reports_value",
+        "note": "The 174-day median of the record. Two reports of the same study give 63% and 56% for the federal agencies’ advantage."
+      },
+      {
+        "claim": "E-SC45-ZD-2025-SCOPE",
+        "relation": "context_limitations",
+        "note": "The counts are detected and disclosed cases and rise with later revisions: lower bounds of the threat flow."
+      },
+      {
+        "claim": "E-SC45-ZD-AI-FORECAST",
+        "relation": "consistent_with",
+        "note": "The same forecast expects AI to help defenders, the option of a growing rediscovery rate (find_gain)."
+      },
+      {
+        "claim": "E-SC45-ZD-KEV-COVERAGE",
+        "relation": "context_limitations",
+        "note": "Most newly exploited flaws are not on CISA’s list (245 of 884 in 2025), so the KEV-based fix rate of 1.5 a year can be fast for the average known flaw; a mixture near 0.4–1.5 a year fits."
+      },
+      {
+        "claim": "E-SC45-OP-NCSC-PATCH-RACE",
+        "relation": "consistent_with",
+        "note": "AI-found flaws push defenders to shorten the time to deploy patches, which agrees with defenders who fix known flaws faster as the threat grows."
+      },
+      {
+        "claim": "E-SC45-OP-NCSC-2027-EXPLOIT-TIME",
+        "relation": "consistent_with",
+        "note": "Exploitation of known flaws comes days after disclosure and AI shortens this, so known flaws serve only targets that have not fixed them."
+      },
+      {
+        "claim": "E-SC45-OP-GLASSWING-LEDGER",
+        "relation": "consistent_with",
+        "note": "Others patched 18 AI finds before the finder reported them, which agrees with others who find and fix the same flaws."
+      },
+      {
+        "claim": "E-SC45-OP-ZERODAY-CLOCK",
+        "relation": "context_limitations",
+        "note": "Claims of exploitation within days of disclosure rest on mixed dates, so they are only an outer limit on how fast attackers use known flaws."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-POLITICS",
+    "title": "What attribution costs",
+    "statement": "Other countries attribute an attack by four kinds of evidence: its tools, its infrastructure, its operators, and the choice of its targets and time. AI removes the evidence of the tools. An attributed attack draws sanctions or replies at a cost in units of surveillance value. With escalation, that cost grows with the attributed attacks in a year.",
+    "rationale": "NotPetya was attributed and drew sanctions. A wiper that CERT Polska assessed as likely AI-generated had no attribution clues. The model gives the expected cost of an attack as the chance of attribution times the cost of an attributed attack.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "The share of significant state attacks that are attributed, and the costs of the replies.",
+    "supports": [
+      {
+        "claim": "E-SC45-NOTPETYA-ATTRIBUTION",
+        "relation": "mechanism_precedent",
+        "note": "The White House attributed NotPetya to the Russian military."
+      },
+      {
+        "claim": "E-SC45-NOTPETYA-SANCTIONS",
+        "relation": "mechanism_precedent",
+        "note": "Sanctions followed and cited NotPetya."
+      },
+      {
+        "claim": "E-SC45-POLAND-2025",
+        "relation": "context_limitations",
+        "note": "The infrastructure of the Polish attacks overlapped with a known cluster, whatever AI added to the malware."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-SURVEILLANCE",
+    "title": "What surveillance gives",
+    "statement": "Surveillance gains accesses in other countries' networks with capabilities from the pools, moves inside them and deploys implants that collect while they live. Its operators deploy first and gain new access with the hours left, and its analysts plan the new accesses. Its collection specialists process the take first and run implants with the hours left, so the take waits in a queue. Its value comes from the processed take, so the implants, the collection specialists and the planners all limit it. AI cheapens new accesses, widens the reach of each collection specialist and speeds the processing. Surveillance loses accesses to the defenders and to patches, and also some that run on shared capabilities that exposed attacks burn.",
+    "rationale": "Surveillance pays each day it runs, and states weigh the intelligence that an attack can cost: in 2019 officials argued whether wiping an IRGC database was worth the lost intelligence. The unit of value is the yearly value of one expert on surveillance in 2026.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "A measure of the value of surveillance and of the intelligence lost to exposed attacks.",
+    "supports": [
+      {
+        "claim": "E-SC45-CARTER-ISIS",
+        "relation": "mechanism_support",
+        "note": "The intelligence community weighed attacks against the collection that they could cost."
+      },
+      {
+        "claim": "E-SC45-SG-FBI-PRIORITY",
+        "relation": "bounds",
+        "note": "surveillance_program.process_time (0.1 year): the refined counterterrorism backlog, 8,354 hours against 182,014 hours of yearly intake, is about 0.05 year, and none of it is in the highest priority."
+      },
+      {
+        "claim": "E-SC45-SG-FBI-INTAKE",
+        "relation": "bounds",
+        "note": "surveillance_program.process_time: with Table B, the whole counterterrorism backlog (38,514 hours) is about 0.2 year of FY 2004 intake, and the counterintelligence backlog about 1.15 years."
+      },
+      {
+        "claim": "E-SC45-SG-FBI-UNREVIEWED",
+        "relation": "context_limitations",
+        "note": "collection_queue: targeted take is lost as well as delayed: 27-29% of all FBI foreign-language audio stayed unreviewed (7% counterterrorism, 33-34% counterintelligence). The model queue loses no take."
+      },
+      {
+        "claim": "E-SC45-SG-FBI-TIMELINESS",
+        "relation": "context_limitations",
+        "note": "collection_queue: priority take has a 24-hour standard (about 0.003 year), and unreviewed low-priority material was deleted. The model has one wait for all take."
+      },
+      {
+        "claim": "E-SC45-SG-FBI-2004-DELAYS",
+        "relation": "context_limitations",
+        "note": "collection_queue: limited storage deleted unreviewed take, and some take waited more than two weeks."
+      },
+      {
+        "claim": "E-SC45-SG-FBI-2009",
+        "relation": "context_limitations",
+        "note": "collection_queue: from FY 2003 to FY 2008 the FBI did not review 25% of its audio and 31% of its electronic files, but reviewed all its text."
+      },
+      {
+        "claim": "E-SC45-SG-NSA-TRIAGE-2026",
+        "relation": "consistent_with",
+        "note": "surveillance_program.process_time: current methods \"can take days or weeks\" (about 0.003-0.1 year), so 0.1 year is at the upper end."
+      },
+      {
+        "claim": "E-SC45-SG-TEMPORA",
+        "relation": "bounds",
+        "note": "surveillance_program.process_time: bulk content was kept 3 days and metadata 30 days (about 0.008-0.08 year); this bounds unselected bulk take only, not stored implant take."
+      },
+      {
+        "claim": "E-SC45-SG-MYSTIC-BUFFER",
+        "relation": "bounds",
+        "note": "surveillance_program.process_time: a 30-day rolling buffer (about 0.08 year) caps the wait of unselected bulk voice take."
+      },
+      {
+        "claim": "E-SC45-SG-MYSTIC-LISTENED",
+        "relation": "context_limitations",
+        "note": "surveillance_use: in bulk voice collection, analysts hear only a fraction of 1% of the calls recorded; implant take is targeted, so this is a lower bound from another setting."
+      },
+      {
+        "claim": "E-SC45-SG-ACTIVE-IMPLANTS",
+        "relation": "bounds",
+        "note": "surveillance_program.used_now: about 1,543 actively managed implants is 2-7% of the 2008-2011 stocks, below 12%; growth needed more personnel."
+      },
+      {
+        "claim": "E-SC45-SG-NSA-OVERLOAD",
+        "relation": "mechanism_support",
+        "note": "surveillance_use and collection_queue: collection outran the capacity to exploit it, so people limit the take processed."
+      },
+      {
+        "claim": "E-SC45-SG-LINGUIST-YIELD",
+        "relation": "consistent_with",
+        "note": "surveillance_returns: most intercept that linguists scan is unproductive, so value comes from a small share of the take."
+      },
+      {
+        "claim": "E-SC45-SG-NSA-BULK-FUNNEL",
+        "relation": "context_limitations",
+        "note": "surveillance_use: in passive bulk collection, analysts see about 0.00004% of traffic. Implant take is targeted, so this is a lower bound from another setting."
+      },
+      {
+        "claim": "E-SC45-SG-GCHQ-SELECTION",
+        "relation": "context_limitations",
+        "note": "surveillance_use: bulk take is filtered so that people see only a tiny fraction; implant take is targeted."
+      },
+      {
+        "claim": "E-SC45-TURBINE",
+        "relation": "mechanism_support",
+        "note": "surveillance_program.run_ai_now = 0.3: automated control of implants in groups since 2010; human operators limited exploitation at scale."
+      },
+      {
+        "claim": "E-SC45-AI-CAMPAIGN",
+        "relation": "consistent_with",
+        "note": "surveillance_program.run_ai_end = 0.9: AI did 80-90% of one espionage campaign, with 4-6 human decisions."
+      },
+      {
+        "claim": "E-SC45-IMPLANT-COUNT",
+        "relation": "reports_value",
+        "note": "surveillance stock: implants grew from 100-150 in 2004 to tens of thousands by 2010-2012."
+      },
+      {
+        "claim": "E-SC45-WF-SIGINT-LANGUAGE-READINESS",
+        "relation": "mechanism_support",
+        "note": "Qualified language analysts covered only half of the language missions in 2004. Processing was short of people, so the take waits in a queue."
+      },
+      {
+        "claim": "E-SC45-WF-ARMY-LINGUIST-SHORTFALL",
+        "relation": "mechanism_support",
+        "note": "Material went untranslated for lack of personnel, and the Army had a 25% shortfall in two critical languages. Collected take waits for the collection specialists."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-PLANNING",
+    "title": "When plans count on cyber attacks",
+    "statement": "Planners count on cyber attacks only when a plan meets its plan reliably. They test plans from one day to one quarter by one rule. A plan passes when the chance that it hits its planned share of targets, less a tolerance, reaches the level that they accept. The chance counts the luck of each target, the defenders that all attacks face, a shared step that can fail, and the forecast error. Plans count on cyber attacks after reviews in a row pass, and stop after reviews in a row miss.",
+    "rationale": "Doctrine needs effects that can be scheduled. The law of large numbers makes the share of many targets hit predictable when their outcomes are independent, and the correlation of outcomes limits that gain. The model uses doctrine as an indicator by default, so that it does not impose a threshold on the dynamics.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "Records of military plans that depend on timed cyber effects, and the confidence that planners required.",
+    "supports": [
+      {
+        "claim": "E-SC45-POLAND-2025",
+        "relation": "consistent_with",
+        "note": "Many targets hit at once did not give the intended effect: outcomes share causes."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-NOISE",
+    "title": "How noisy the yearly assessment is",
+    "statement": "A yearly assessment of the value of attacks has an error in log units. Part of its spread falls with the targets hit and with the assessed outcomes, as an average does. A common error does not fall, so more attacks do not make the assessment precise. In the central run the error is the median, 0, so the central run is the deterministic model; a Monte Carlo study draws it each year.",
+    "rationale": "Damage assessment of cyber effects is uncertain, and few results give little signal. The spread follows the error of a mean of the year's outcomes and assessments.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "Comparisons of the assessed and the actual effects of state cyber operations.",
+    "supports": [
+      {
+        "claim": "E-SC45-CARTER-ISIS",
+        "relation": "consistent_with",
+        "note": "Judgements of the effects of one campaign differ."
+      },
+      {
+        "claim": "E-SC45-AN-HAMMER-INITIAL",
+        "relation": "consistent_with",
+        "note": "An initial assessment the day after the strikes differed from the claim of the striker: early assessments are noisy."
+      },
+      {
+        "claim": "E-SC45-AN-GS-ASSESSMENT",
+        "relation": "consistent_with",
+        "note": "The overall effect of one campaign could not be measured: the assessed value of attacks is noisy."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-SURGE",
+    "title": "What a one-off surge of money buys",
+    "statement": "A one-off surge of money buys extra experts for attacks while it lasts, at the cost of one expert-year: Cyber Command's resources in FY2026 over the Cyber Mission Force. The model treats the money as extra capacity, not as money taken from surveillance. The 2025 surge is USD 1 billion for offensive cyber operations through 2029, or USD 0.25 billion a year for four years.",
+    "rationale": "The question is whether a one-off push can start the loop. The 2025 appropriation is a real case of such a surge.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "How the 2025 money was spent, and how many effects operations it paid for.",
+    "supports": [
+      {
+        "claim": "E-SC45-SURGE-2025",
+        "relation": "reports_value",
+        "note": "$1 billion over four years for offensive cyber operations."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-CAPABILITIES",
+    "title": "How flaws and tools are found, used and burned",
+    "statement": "A capability is a flaw that the defenders do not know, with the tools that use it, and it burns as a whole. Each step has a pool: access and movement in the network serve both missions, the effect serves attacks and collection serves surveillance. A capability is never used, used by surveillance, used in an attack, or burned. A step needs one capability for each kind of target system that no known flaw serves, and an empty source holds back only its part. Each need takes a capability that surveillance uses, one kept from an earlier attack, or a never-used one, with chances that grow with each stock. An exposed attack burns the capabilities that it holds, and a hidden one keeps them for reuse. Others find capabilities at a fixed rate, researchers fill each pool in proportion to what leaves it unused, and AI raises their finds.",
+    "rationale": "The essay argues that attacks are costly because they burn what surveillance needs. Flaws that both missions use make that cost a flow: an attack that takes a capability from surveillance can burn it, and the defenders then find accesses that run on it. Flaws that only attacks use cost research without a loss to surveillance. Known flaws cost no research, but they work only until the target fixes them.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "Counts of the flaws that one state program holds and uses for each step, the share of its accesses that run on each, and the accesses that the disclosure of one flaw costs it.",
+    "supports": [
+      {
+        "claim": "E-SC45-ZERODAY-LIFE",
+        "relation": "calibrates",
+        "note": "A privately held zero-day lives 6.9 years on average before its disclosure."
+      },
+      {
+        "claim": "E-SC45-MYTHOS-FLAWS",
+        "relation": "mechanism_support",
+        "note": "AI finds and exploits zero-days at a scale that raises what each researcher finds."
+      },
+      {
+        "claim": "E-SC45-KEV-FIX",
+        "relation": "reports_value",
+        "note": "Half of known-exploited flaws are fixed in about six months, so known flaws serve for a time."
+      },
+      {
+        "claim": "E-SC45-ZERODAY-2025",
+        "relation": "context_limitations",
+        "note": "About 90 zero-days a year are found exploited in the wild, from every kind of actor."
+      },
+      {
+        "claim": "E-SC45-WF-VULN-PURCHASES",
+        "relation": "context_limitations",
+        "note": "The NSA bought software vulnerabilities for $25.1 million in a year (FY2013). In the model, researchers are the only source of new capabilities."
+      },
+      {
+        "claim": "E-SC45-ZD-EXPLOIT-TIME",
+        "relation": "specifies_component",
+        "note": "Over 70% of exploits take a month or less to build once the flaw is found, so the researchers’ time goes mostly to finding flaws."
+      },
+      {
+        "claim": "E-SC45-ZD-LIFE-STATUS",
+        "relation": "context_limitations",
+        "note": "A held capability also leaves the stockpile through security patches, code refactors, sharing and the holder’s own retirement; the model lumps every route of a never-used capability into one rate."
+      },
+      {
+        "claim": "E-SC45-ZD-IN-USE-NEWS",
+        "relation": "mechanism_support",
+        "note": "A zero-day in use lasted 312 days on average before disclosure (about 1.2 a year), ten times the loss rate of a held, unused flaw (0.06–0.15 a year): use drives burns."
+      },
+      {
+        "claim": "E-SC45-ZD-IN-USE-LIFE",
+        "relation": "mechanism_support",
+        "note": "The authors’ own figures: 312 days on average and up to 30 months in use before disclosure."
+      },
+      {
+        "claim": "E-SC45-ZD-2024-ACTORS",
+        "relation": "bounds",
+        "note": "Detected burn flow of the most active state program: PRC 5 zero-days in 2024 (7, 12, 5 and at least 10 in 2022–2025). About half of all zero-days have no attribution, so a run’s yearly burned zero-days for a major state should be of this order or above."
+      },
+      {
+        "claim": "E-SC45-ZD-CHAINS",
+        "relation": "specifies_component",
+        "note": "Needs per access step by kind of system: one flaw for enterprise and edge products, chains for mobile devices."
+      },
+      {
+        "claim": "E-SC45-ZD-SHARED-EXPLOIT",
+        "relation": "mechanism_precedent",
+        "note": "Two groups used the same exploits while one flaw was still a zero-day; zero-days are becoming easier to procure."
+      },
+      {
+        "claim": "E-SC45-ZD-2023-ACTORS",
+        "relation": "bounds",
+        "note": "PRC espionage groups burned 12 detected zero-days in 2023, more than any other state."
+      },
+      {
+        "claim": "E-SC45-ZD-FIX-COST",
+        "relation": "mechanism_support",
+        "note": "Quick discovery and patching shortens an exploit’s life and raises the cost of keeping capabilities: the burn cost that the model counts."
+      },
+      {
+        "claim": "E-SC45-ZD-2022-VARIANTS",
+        "relation": "context_limitations",
+        "note": "Over 40% of the zero-days of 2022 were variants of earlier flaws: a burned capability can often be rebuilt from the same flaw family, cheaper than the model’s full research cost."
+      },
+      {
+        "claim": "E-SC45-ZD-NDAY-GAP",
+        "relation": "mechanism_support",
+        "note": "Where patches reach targets slowly, known flaws serve the needs that zero-days would: the one-day mechanism."
+      },
+      {
+        "claim": "E-SC45-ZD-EXCHANGE-SHARED",
+        "relation": "mechanism_precedent",
+        "note": "Several state groups held one zero-day before its patch."
+      },
+      {
+        "claim": "E-SC45-ZD-EXCHANGE-AFTER",
+        "relation": "mechanism_precedent",
+        "note": "The day after the patch, many more espionage groups used the burned flaws as one-days, en masse."
+      },
+      {
+        "claim": "E-SC45-ZD-CSV-REUSE",
+        "relation": "mechanism_precedent",
+        "note": "A state actor reused surveillance vendors’ exploits as n-days against unpatched targets: a burned capability serves other actors as a known flaw."
+      },
+      {
+        "claim": "E-SC45-ZD-FANNY-STUXNET",
+        "relation": "bounds",
+        "note": "The one public sabotage case with a documented pool: two of Stuxnet’s four zero-days had been in an espionage tool a year or more before. A case bound near 25–50% on spy_source (10%), not a rate."
+      },
+      {
+        "claim": "E-SC45-ZD-STUXNET-FOUR",
+        "relation": "specifies_component",
+        "note": "An industrial attack with four zero-days, which served spreading and privilege escalation, the movement steps, not the physical effect."
+      },
+      {
+        "claim": "E-SC45-ZD-ZERO-SHARE",
+        "relation": "bounds",
+        "note": "Among high-profile exploited flaws, 61–70% were zero-days in 2020–2023: against hardened targets the 80% known-flaw share of access may be high."
+      },
+      {
+        "claim": "E-SC45-ZD-TTE-TREND",
+        "relation": "consistent_with",
+        "note": "Flaws are exploited within days of disclosure (an average of five days in 2023): on the model’s yearly scale, patching, not the building of the exploit, sets the window of a known flaw."
+      },
+      {
+        "claim": "E-SC45-ZD-NDAY-DELAY",
+        "relation": "consistent_with",
+        "note": "56% of n-days exploited within a month and 95% within six months of the patch."
+      },
+      {
+        "claim": "E-SC45-ZD-VENDOR-SPREAD",
+        "relation": "consistent_with",
+        "note": "Targets run many kinds of product: 58% of exploited vendors had one exploited flaw. No per-target measure exists for the 10% chance of a new kind of system."
+      },
+      {
+        "claim": "E-SC45-ZD-EDGE-SHARE",
+        "relation": "context_limitations",
+        "note": "Exploitation started 20% of breaches in the 2025 DBIR: most access uses credentials, phishing or earlier compromise, outside the capability pools."
+      },
+      {
+        "claim": "E-SC45-ZD-ESPIONAGE-VECTOR",
+        "relation": "consistent_with",
+        "note": "Espionage breaches began with the exploitation of a flaw 70% of the time, so surveillance access mostly needs a flaw, known or not."
+      },
+      {
+        "claim": "E-SC45-ZD-TRITON",
+        "relation": "specifies_component",
+        "note": "An industrial effect step served by one zero-day in a safety controller."
+      },
+      {
+        "claim": "E-SC45-ZD-INDUSTROYER",
+        "relation": "mechanism_support",
+        "note": "An industrial effect done through the target’s own protocols and a flaw known since 2015, with no zero-day: the share of effect needs that known flaws and native functions serve."
+      },
+      {
+        "claim": "E-SC45-ZD-OT-TRIAGE",
+        "relation": "consistent_with",
+        "note": "71% of OT flaws wait for compensating controls or the next maintenance cycle and 27% are never fixed: industrial systems fix at a fraction of the IT pace."
+      },
+      {
+        "claim": "E-SC45-ZD-OT-ROUTES",
+        "relation": "consistent_with",
+        "note": "OT intrusions mostly use credentials (73% of cases) and native tools, which supports the 90% share of movement needs that need no zero-day."
+      },
+      {
+        "claim": "E-SC45-ZD-OT-KEV",
+        "relation": "consistent_with",
+        "note": "12% of OT devices carry a known exploited flaw: industrial systems stay open to known flaws."
+      },
+      {
+        "claim": "E-SC45-ZD-VECTORS-2025",
+        "relation": "context_limitations",
+        "note": "About a third of initial access uses an exploit (32%); the rest uses people, earlier compromise or credentials, outside the capability pools."
+      },
+      {
+        "claim": "E-SC45-ZD-2025-SCOPE",
+        "relation": "mechanism_support",
+        "note": "Detection leads to a patch: every zero-day caught in 2025 has one, so an exposed capability burns."
+      },
+      {
+        "claim": "E-SC45-ZD-2025-ACTORS",
+        "relation": "bounds",
+        "note": "PRC espionage burned at least 10 detected zero-days in 2025."
+      },
+      {
+        "claim": "E-SC45-ZD-2025-TARGETS",
+        "relation": "consistent_with",
+        "note": "20 vendors were each exploited by just one zero-day in 2025."
+      },
+      {
+        "claim": "E-SC45-ZD-2025-CHAINS",
+        "relation": "specifies_component",
+        "note": "Some objectives need chains of three or more flaws; others are met with one bug at a lower level of access."
+      },
+      {
+        "claim": "E-SC45-ZD-PRC-SHARING",
+        "relation": "mechanism_support",
+        "note": "One state’s groups develop, share and distribute exploits among themselves: one pool serves many operations."
+      },
+      {
+        "claim": "E-SC45-ZD-MTRENDS-VECTORS",
+        "relation": "context_limitations",
+        "note": "Exploits start 32% of intrusions; voice phishing, earlier compromise and email phishing start much of the rest."
+      },
+      {
+        "claim": "E-SC45-ZD-TTE-2025",
+        "relation": "consistent_with",
+        "note": "Exploitation routinely comes before the patch (mean time to exploit about −7 days)."
+      },
+      {
+        "claim": "E-SC45-ZD-DBIR-2026-VECTOR",
+        "relation": "context_limitations",
+        "note": "Exploitation began 31% of the breaches of the 2026 DBIR: a growing share, but most access still uses other routes."
+      },
+      {
+        "claim": "E-SC45-ZD-ETERNALBLUE",
+        "relation": "mechanism_precedent",
+        "note": "A leaked espionage capability served another state’s disruptive attack as a known flaw months after its patch."
+      },
+      {
+        "claim": "E-SC45-OP-CROWDSTRIKE-PREDISCLOSURE",
+        "relation": "consistent_with",
+        "note": "In one vendor’s 2025 data, 42% of exploited vulnerabilities were used before disclosure, so access often needs flaws that the defenders do not know."
+      },
+      {
+        "claim": "E-SC45-OP-NCSC-2027-STATES",
+        "relation": "consistent_with",
+        "note": "The largest AI effect is expected in vulnerability research and exploit development, which agrees with AI that raises the researchers’ finds."
+      },
+      {
+        "claim": "E-SC45-OP-GLASSWING-RATE",
+        "relation": "bounds",
+        "note": "Frontier users report over ten times their former rate of finds in 2026, so the end gain of 10 is already reached for raw finds."
+      },
+      {
+        "claim": "E-SC45-OP-GLASSWING-TRIAGE",
+        "relation": "context_limitations",
+        "note": "Of assessed AI finds, about 91% were real and 62% held their severity, and few were patched, so human triage limits usable capabilities."
+      },
+      {
+        "claim": "E-SC45-OP-CVP-FINDS",
+        "relation": "consistent_with",
+        "note": "At least 129,000 verified flaws in four months from partners with frontier AI agree with AI that raises finds; there is no count of researchers."
+      },
+      {
+        "claim": "E-SC45-OP-GLASSWING-LAUNCH",
+        "relation": "consistent_with",
+        "note": "An AI model finds and exploits most flaws in the developer’s examples without human steering, which agrees with AI that raises the researchers’ finds."
+      },
+      {
+        "claim": "E-SC45-OP-OPUS46-FLAWS",
+        "relation": "consistent_with",
+        "note": "A general model found more than 500 validated high-severity flaws without special tools in early 2026, which agrees with AI that raises finds."
+      },
+      {
+        "claim": "E-SC45-OP-GLASSWING-LEDGER",
+        "relation": "context_limitations",
+        "note": "Under 1% of AI finds were fixed and about 10% disclosed after five months, so human triage limits how many raw finds become usable capabilities."
+      },
+      {
+        "claim": "E-SC45-OP-GLASSWING-SEVERITY",
+        "relation": "context_limitations",
+        "note": "The AI rated 91.5% of its finds critical or high where maintainers rated 51.3%, so AI severity claims overstate the usable capabilities."
+      },
+      {
+        "claim": "E-SC45-OP-KEV-1H2026",
+        "relation": "consistent_with",
+        "note": "About a quarter of newly exploited flaws were used on or before disclosure in 2025–2026, with no rise yet that AI could explain."
+      },
+      {
+        "claim": "E-SC45-OP-AI-FLAWS-EXPLOITED",
+        "relation": "context_limitations",
+        "note": "About 1.3% of AI-found flaws were exploited by mid-2026, the usual rate, so AI raises finds without making each find more usable."
+      }
+    ]
+  },
+  {
+    "id": "A-SC45-EXPERTS",
+    "title": "The four kinds of expert",
+    "statement": "The country's experts are researchers, operators, collection specialists and analysts, and each group is fixed. Researchers serve both missions, and the leaders split the operators between the missions. The operators' hours go to the operations farthest along first. Collection specialists serve surveillance only: they run collection on deployed implants and turn the raw take into intelligence, processing first. Analysts plan the operations of both missions, assess the damage of attacks and use the intelligence; on attacks they assess before they plan. Their split follows each mission's share of the analysis work waiting, and today's work of each kind sets the size of its group.",
+    "rationale": "Good flaw researchers are scarce and serve both missions, and operators are not analysts: the work of each kind limits the missions in its own way. In 2011 the implant program made full use of only an eighth of its machines with implants, so people, not accesses, limited what surveillance gave.",
+    "status": "selected",
+    "origin": "model",
+    "review": {
+      "status": "unreviewed"
+    },
+    "evidence_needed": "The numbers of researchers, operators, collection specialists and analysts in a state cyber program, and the share of their work for each mission.",
+    "supports": [
+      {
+        "claim": "E-SC45-GENIE-2011",
+        "relation": "mechanism_support",
+        "note": "The implant program used only part of its implants with its staff."
+      },
+      {
+        "claim": "E-SC45-NSA-WORKFORCE",
+        "relation": "calibrates",
+        "note": "The workforce sets the scale of the pools."
+      },
+      {
+        "claim": "E-SC45-AN-CSET-SUMMARY",
+        "relation": "consistent_with",
+        "note": "The number of people in the targeting cell set the output: analysts, not accesses, limit targets."
+      },
+      {
+        "claim": "E-SC45-AN-GOSPEL-UNIT",
+        "relation": "consistent_with",
+        "note": "Before AI, a target unit of hundreds made 50 targets a year: analysts limited the targets."
+      },
+      {
+        "claim": "E-SC45-AN-DESERT-STORM-BDA-COVERAGE",
+        "relation": "mechanism_precedent",
+        "note": "Assessment covered 41% of the strategic targets (357 of 862): the capacity of assessment limited a campaign with many targets."
+      },
+      {
+        "claim": "E-SC45-SG-FBI-LINGUISTS",
+        "relation": "consistent_with",
+        "note": "collection_specialists.processors_now: one linguist-year reviews 1,000 audio hours or 50,000 pages, a rule that can size the processing half from the take; capacity in the right language limits it (23 of 52 languages staffed)."
+      },
+      {
+        "claim": "E-SC45-SG-TEMPORA",
+        "relation": "consistent_with",
+        "note": "collection_specialists: about 550 analysts sifted the largest UK bulk system in 2012."
+      },
+      {
+        "claim": "E-SC45-WF-CMF-STRUCTURE",
+        "relation": "calibrates",
+        "note": "The 27 combat mission teams and the 25 support teams are the attack side of the Cyber Mission Force. With teams of 60–64 and 39 people, they give about 2,450–2,560 attack operators and about 975 attack analysts."
+      },
+      {
+        "claim": "E-SC45-WF-CMF-TEAM-SIZES",
+        "relation": "calibrates",
+        "note": "Mission teams of 64 and support teams of 39 linguists and analysts set the sizes of the attack side. A combat support team of 39 is assumed."
+      },
+      {
+        "claim": "E-SC45-WF-CMF-BUILD-2015",
+        "relation": "consistent_with",
+        "note": "Planned combat mission teams of 60 agree with the 64 people of the briefing of 2016. In January 2014 about 2,000 of a planned 6,000 were in place."
+      },
+      {
+        "claim": "E-SC45-WF-CMF-GROWTH-2028",
+        "relation": "context_limitations",
+        "note": "The model holds the groups fixed, but the 14 new teams add about 8–19% to the attack side by September 2028."
+      },
+      {
+        "claim": "E-SC45-WF-TAO-SIZE",
+        "relation": "consistent_with",
+        "note": "TAO had over 1,000 staff (2013) and 600 intercept operators (2007), of the same scale as the 1,790 surveillance operators. The 1,000 include analysts, targeting specialists and developers."
+      },
+      {
+        "claim": "E-SC45-WF-UNIT81-RESEARCH",
+        "relation": "bounds",
+        "note": "An allied technology unit of about a fifth of its SIGINT and cyber unit is an upper limit for the 3% share of researchers. It builds general technology, and flaw research is a part of it."
+      },
+      {
+        "claim": "E-SC45-WF-UNIT8200-SIZE",
+        "relation": "context_limitations",
+        "note": "A smaller country has 5,000–10,000 people in its SIGINT and cyber unit. The pool of 40,535 experts is for a country of the size of the United States."
+      },
+      {
+        "claim": "E-SC45-WF-IC-WORKFORCE-2013",
+        "relation": "consistent_with",
+        "note": "In 2013 the NSA held 14,950 of 23,400 military intelligence positions, and the intelligence community had 107,035 employees. The pool of 40,535 is of the scale of the NSA."
+      },
+      {
+        "claim": "E-SC45-WF-SIGINT-LANGUAGE-READINESS",
+        "relation": "reports_value",
+        "note": "Over 6,500 cryptologic language analysts (2004) are about a fifth of the 32,200 collection specialists, if the pool includes the linguists of the services."
+      },
+      {
+        "claim": "E-SC45-WF-SIGINT-LINGUIST-GROWTH",
+        "relation": "context_limitations",
+        "note": "About 1,200 of the 6,500 language analysts were civilians (2004), so about 82% were military. The NSA planned 50% more civilian linguists in five years; the model holds the groups fixed."
+      },
+      {
+        "claim": "E-SC45-WF-DLI-PROFICIENCY",
+        "relation": "context_limitations",
+        "note": "About a third of the graduates of the language school were below the minimum level (1994). Not every post of a collection specialist holds a qualified person."
+      },
+      {
+        "claim": "E-SC45-WF-NCF",
+        "relation": "consistent_with",
+        "note": "An allied cyber force takes about equal shares of its staff from defence and from intelligence, and it operates every day. It gives no headcount."
+      },
+      {
+        "claim": "E-SC45-WF-REDSPICE",
+        "relation": "context_limitations",
+        "note": "An allied plan doubles the staff and triples the offensive capability in ten years. The groups and the capability per expert are not fixed over 25 years."
+      }
+    ]
+  }
+]

@@ -1,0 +1,33 @@
+{
+  "sites": {
+    "kind": "count",
+    "dimensions": {
+      "sites": 1
+    },
+    "scale": 1
+  },
+  "customers": {
+    "dimensions": {
+      "customers": 1
+    },
+    "scale": 1,
+    "kind": "count"
+  },
+  "work_h": {
+    "kind": "work",
+    "dimensions": {
+      "work": 1
+    },
+    "scale": 1,
+    "description": "Standardized work equivalent to one hour at the declared reference processing rate; distinct from elapsed time and not an empirical staff-productivity estimate."
+  },
+  "work_h/h": {
+    "kind": "work_rate",
+    "dimensions": {
+      "work": 1,
+      "time": -1
+    },
+    "scale": 1,
+    "description": "Standardized work processed per elapsed model hour."
+  }
+}

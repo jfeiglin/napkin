@@ -1,0 +1,164 @@
+# Water systems' controls wiped through a shared remote-support platform: El Dorado County, California
+variant "El Dorado County, California"
+    summary "An AI agent wipes the controls of the water systems of El Dorado County, California at once,
+        through the remote-support platform of the OT integrator that they share: El Dorado and Georgetown
+        Divide."
+    scope "The people that the water systems of El Dorado County, California serve, the hospitals that those
+        systems supply and the businesses that need public water there."
+
+el_dorado: Utility
+    "El Dorado Irrigation District - main system, California. Its ID in the federal inventory is CA0910001."
+    buys = <>
+    sells = <>
+    name = "El Dorado"
+    demand = 73.7229369 Mgal/day  @el_dorado_demand
+    nameplate = 101.5 Mgal/day  @el_dorado_nameplate
+    storage = 93 Mgal  @el_dorado_storage
+    sold = 2.4909162 Mgal/day  @el_dorado_sold
+    va_rate = 901571.16 USD2025/h  @el_dorado_va_rate
+
+georgetown_divide: Utility
+    "Georgetown Divide Public Utility District, California. Its ID in the federal inventory is CA0910013."
+    buys = <>
+    sells = <>
+    name = "Georgetown Divide"
+    demand = 3.6952381 Mgal/day  @georgetown_divide_demand
+    nameplate = 6 Mgal/day  @georgetown_divide_nameplate
+    storage = 2.824 Mgal  @georgetown_divide_storage
+    va_rate = 66237.48 USD2025/h  @georgetown_divide_va_rate
+    pump_disabled = 0.8  @depth
+    manual_share = 0.9  @manual
+    activation_delay = 1 h  @manual
+    operator_duty = 0 work_h/h  @operator_competition
+    controls_load = 40 work_h  @work
+    field_load = 10 work_h  @work
+    replace_load = 20 work_h  @work
+
+el_dorado_homes: Households
+    "The people that El Dorado serves."
+    utility = el_dorado
+    population = 128408 people  @el_dorado_homes_population
+
+georgetown_divide_homes: Households
+    "The people that Georgetown Divide serves."
+    utility = georgetown_divide
+    population = 9434 people  @georgetown_divide_homes_population
+
+el_dorado_hospitals: Hospitals
+    "The hospital that El Dorado supplies: Marshall Medical Center."
+    utility = el_dorado
+    name = "El Dorado"
+    facilities = 1 facilities  @el_dorado_hospitals_facilities
+
+notes:
+    limitations:
+        peak-sum: "EID's peak is the sum of the 2013 highest days of three plants, which need not fall on one
+            day. With the family ratio, EID's daily use would be about 42.9 rather than 73.7 Mgal a day. So
+            EID's stored water runs out sooner here than in fact."  @el_dorado_demand
+        supply-limit: "The supply from Jenkinson Lake limits EID's three plants to about 87.5 Mgal a day
+            together, and the model gives them 101.5 Mgal a day. So EID can produce more water by hand and
+            refill faster here than in fact."  @el_dorado_nameplate
+    verification:
+        research: "variants/el_dorado/evidence/research.md"
+    titles:
+        el_dorado: "El Dorado"
+        georgetown_divide: "Georgetown Divide"
+        el_dorado_homes: "El Dorado: homes"
+        georgetown_divide_homes: "Georgetown Divide: homes"
+        el_dorado_hospitals: "El Dorado: hospitals"
+
+record el_dorado_demand: assumption "The highest day on record is the 2013 max day production of the three
+    plants, 79.9 MGD. The 2025 total potable use is 33,103 acre-feet (29.55 MGD), so the peak ratio is 2.7037.
+    The sale to Placerville, 1,032 AF (0.921 MGD), at that ratio is 2.491 MGD; demand is (79.9 - 2.491) / 1.05
+    = 73.72 MGD."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-ELDORADO-EID-MAXDAY
+        E-SC43-ELDORADO-EID-USE
+
+record el_dorado_nameplate: source "Sum of the lower capacities of the three main plants: Reservoir A 56,
+    Reservoir 1 26 and El Dorado Hills 19.5 MGD (filter limited since 2020; EID still gives 19.5 MGD as its
+    current operational capacity)."
+    claims:
+        E-SC43-ELDORADO-EID-PLANTS
+            datum: capacity_total_lower
+        E-SC43-ELDORADO-EID-EDHWTP
+
+record el_dorado_storage: source "The 2025 plan gives 33 storage facilities with a combined capacity of
+    approximately 93 million gallons. The 2013 inventory of the same 33 facilities gave 81.12 MG."
+    claims:
+        E-SC43-ELDORADO-EID-STORAGE
+            datum: treated_storage_2025
+        E-SC43-ELDORADO-EID-STORAGE2013
+
+record el_dorado_sold: assumption "The only sale to another system is to the City of Placerville: 1,032
+    acre-feet in 2025, 0.921 MGD, times the peak ratio 2.7037 = 2.491 MGD."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-ELDORADO-EID-USE
+        E-SC43-ELDORADO-EID-MAXDAY
+
+record el_dorado_homes_population: assumption "SDWIS federal data list 128,408 people served by El Dorado
+    (CA0910001), the system's own report through its state."
+    assumption A-SC43-REACH
+    claims:
+        E-SC43-SDWIS-CA0910001
+            datum: population_served
+
+record el_dorado_va_rate: assumption "128,408 people served times the 2024 GDP per resident of its county (El
+    Dorado County, California (06017): 11,555,433 thousand dollars and 192,823 people: 59,927.67 dollars a
+    resident) times the price factor 1.026324, over 8,760 h: 901,571.16 USD2025/h."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-CA0910001
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-06017
+        E-SC43-BEA-POP-06017
+        E-SC43-GDP-DEFLATOR
+
+record el_dorado_hospitals_facilities: assumption "The CMS hospital list gives 1 hospital of the counted types
+    whose geocoded address lies in the EPA service area of El Dorado."
+    assumption A-SC43-HOSPITAL-JOIN
+    claims:
+        E-SC43-HOSPITALS-EL-DORADO
+            datum: hospitals_supplied
+
+record georgetown_divide_demand: assumption "The highest day on record is the 2017 maximum day demand for
+    treated water, 3.88 MGD. The district sells no water and has no intertie, so demand is 3.88 / 1.05 = 3.695
+    MGD. Its 2025 gross water use of 1,726 acre-feet (1.541 MGD) gives a peak ratio of 2.518."
+    assumption A-SC43-PEAK-DAY
+    claims:
+        E-SC43-ELDORADO-GDPUD-MAXDAY
+        E-SC43-ELDORADO-GDPUD-USE
+        E-SC43-ELDORADO-GDPUD-SYSTEM
+
+record georgetown_divide_nameplate: source "The Walton Lake plant and the Sweetwater Treatment Plant, three
+    MGD each."
+    claims:
+        E-SC43-ELDORADO-GDPUD-PLANTS
+            datum: combined_capacity
+        E-SC43-ELDORADO-GDPUD-SYSTEM
+
+record georgetown_divide_storage: source "Treated water storage of 2.824 MG in 10 tanks, listed by LAFCO in
+    2022."
+    claims:
+        E-SC43-ELDORADO-GDPUD-STORAGE
+            datum: treated_storage
+
+record georgetown_divide_homes_population: assumption "SDWIS federal data list 9,434 people served by
+    Georgetown Divide (CA0910013), the system's own report through its state."
+    assumption A-SC43-REACH
+    claims:
+        E-SC43-SDWIS-CA0910013
+            datum: population_served
+
+record georgetown_divide_va_rate: assumption "9,434 people served times the 2024 GDP per resident of its
+    county (El Dorado County, California (06017): 11,555,433 thousand dollars and 192,823 people: 59,927.67
+    dollars a resident) times the price factor 1.026324, over 8,760 h: 66,237.48 USD2025/h."
+    assumption A-SC43-ECONOMY
+    claims:
+        E-SC43-SDWIS-CA0910013
+        E-SC43-SDWIS-COUNTIES
+        E-SC43-BEA-GDP-06017
+        E-SC43-BEA-POP-06017
+        E-SC43-GDP-DEFLATOR

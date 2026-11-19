@@ -1,0 +1,32 @@
+# A wrong translation of examples/piano_tuners, for the check: the fault is a text.
+# examples/piano_tuners: two units of its own (units.json), a stock, a flow and a distribution.
+scenario "Piano tuners"
+    summary "The tuners of a town tune the pianos that need a tuning. How many tunings do they do in a year?"
+    horizon 1 year
+    scope "The pianos of one town."
+
+tuners:
+    "The piano tuners of the town."
+    role environment
+    input rate: tunings/(tuner * year) = pert(600, 1000, 1200).draw() in [500, 1500]
+        "Tunings that one tuner does in a year"
+        @assumption "The example assumes about four tunings in each working day, and a spread around it."
+    input staff = 3 tuner in [1 tuner, 10 tuner]
+        "Tuners in the town"
+        @assumption "The example assumes three tuners."
+    input need = 5000 tunings in [0 tunings, 20000 tunings]
+        "Tunings that the pianos need in the year"
+        @assumption "The example assumes 2500 pianos, each tuned twice in a year."
+    due: tunings = this.need in [0,] scale 20000 tunings @counts
+        "Tunings that the pianos still need"
+    done: tunings = 0 scale 20000 tunings @counts
+        "Tunings that are done"
+    flow tune: this.due -> this.done @counts
+        request = formula(this.rate * this.staff)
+        capacity = formula(this.rate * this.staff)
+
+tunings_done: formula(tunings) = formula(tuners.done) in [0,]
+    "Tunings done in the year"
+    @identity "The tunings that the tuners do, each counted once."
+
+record counts: identity "The model counts each tuning once: a piano needs it, then a tuner does it."
