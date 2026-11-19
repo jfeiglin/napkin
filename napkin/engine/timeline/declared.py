@@ -728,11 +728,10 @@ class DeclaredWay:
 
     # ---- solving ------------------------------------------------------------------------------------
 
-    def answer(self, t, lower, upper, trace=True):
+    def answer(self, t, lower, upper):
         """The answer of the problem at time t with the stores flagged on their bounds: (the value of
-        each flow, {result: value}). A solve that is traced is one of the run's: a problem equal to
-        the one that the solver answered last is not solved again. A solve at a trial state between
-        moments is not traced and is no part of the once-in-a-round rule."""
+        each flow, {result: value}). A problem equal to the one that the solver answered last is not
+        solved again (the caller traces a solve that ran: `_settled`, `MovingDeclared._settle`)."""
         run, plan, declared = self.run, self.plan, self.declared
         try:
             problem = self.former.problem(t, lower, upper)
@@ -760,8 +759,6 @@ class DeclaredWay:
                 ) from None
             x = np.clip(polished(arrays, found.x, found.levels), arrays.lower, arrays.upper)
             run.ways.last[declared.id] = (signature, x)
-            if trace:
-                self.recorder.entry(t, 'solve', declared.origin, declared.member)
         at = {key: j for j, key in enumerate(arrays.keys)}
         flows = np.array([x[at[('flow', flow)]] for flow in self.flows], dtype=float)
         return flows, {name: float(x[at[('value', name)]]) for name in self.connected.results}
@@ -786,7 +783,48 @@ class DeclaredWay:
         """Solve the problem at time t, from the stores' values on their lines; gives the names of
         the rates and the results whose values changed."""
         values = self.y + self.slope * (t - self.since)
-        return self._publish(t, *self.answer(t, values <= self.lower, values >= self.upper))
+        return self._publish(t, *self._settled(t, values <= self.lower, values >= self.upper))
+
+    def _settled(self, t, low, high):
+        """The answer at time t with the stores flagged on their bounds (`low`, `high`) where it holds
+        them there: a store on one bound that the answer moves off is released, and the problem is
+        solved again without that bound, until the flags stay. The answer is then the one that holds
+        just after t, whatever moments other sets have, as the oracle's (`tests/reference/network.py`,
+        `solve`); it matters where a claim's level reads the bound (`network.supply_depths`). A
+        release whose answer would move a released store past its bound is not made. A solve that
+        ran is traced once, as one of the run's. Gives (flows, results)."""
+        ways, sid = self.run.ways, self.declared.id
+        last = ways.last.get(sid)
+        flows, results = self.answer(t, low, high)
+        for _ in range(len(self.stores)):
+            leaving = self._moved(flows, low ^ high, low, inward=True)
+            if not leaving.any():
+                break
+            trial = self.answer(t, low & ~leaving, high & ~leaving)
+            if self._moved(trial[0], leaving, low, inward=False).any():
+                break
+            low, high = low & ~leaving, high & ~leaving
+            flows, results = trial
+        if ways.last.get(sid) is not last:
+            self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
+        return flows, results
+
+    def _moved(self, flows, stores, low, inward):
+        """The flags of the stores of `stores` (each on its lower bound where `low` holds, else on its
+        upper) that the values of the flows move off their bound (`inward`) or past it, by more than
+        `NEAR` of what flows through them."""
+        inflow, outflow = self._through(flows)
+        off = np.where(low, 1.0, -1.0) * (inflow - outflow)
+        margin = NEAR * (inflow + outflow)
+        return stores & (off > margin if inward else off < -margin)
+
+    def _through(self, flows):
+        """(what flows into each store, what flows out of it) from the values of the flows."""
+        net = self.net
+        rate = net.carried(flows, _Asked(self.former.requests)) if len(self.flows) else np.zeros(0)
+        inflow = np.array([rate[net.ends[IN].of(s)].sum() for s in range(len(self.stores))])
+        outflow = np.array([rate[net.ends[OUT].of(s)].sum() for s in range(len(self.stores))])
+        return inflow, outflow
 
     def _lines(self, t, forced=()):
         """Start again the line of each store whose rate changed (or that is `forced`: the indices of
@@ -946,12 +984,8 @@ class MovingDeclared(DeclaredWay):
 
     def _net(self, flows):
         """The rate of change of each store from the values of the flows."""
-        net = self.net
-        rate = net.carried(flows, _Asked(self.former.requests)) if len(self.flows) else np.zeros(0)
-        found = np.zeros(len(self.stores))
-        for s in range(len(self.stores)):
-            found[s] = rate[net.ends[IN].of(s)].sum() - rate[net.ends[OUT].of(s)].sum()
-        return found
+        inflow, outflow = self._through(flows)
+        return inflow - outflow
 
     def _at(self, t, y):
         """(flows, results, the rate of each store) at a trial state, solved once for each state."""
@@ -960,7 +994,7 @@ class MovingDeclared(DeclaredWay):
         if found is None:
             self.trial = self._held(y)
             try:
-                flows, results = self.answer(float(t), self.low, self.high, trace=False)
+                flows, results = self.answer(float(t), self.low, self.high)
                 found = (flows, results, self._net(flows))
             finally:
                 self.trial = None
@@ -982,7 +1016,7 @@ class MovingDeclared(DeclaredWay):
         for _ in range(len(self.stores) + 1):
             self.trial = self._held(self.y)
             try:
-                flows, results = self.answer(t, self.low, self.high, trace=False)
+                flows, results = self.answer(t, self.low, self.high)
             finally:
                 self.trial = None
             rate = self._net(flows)

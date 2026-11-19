@@ -33,6 +33,10 @@ parts of a program, member by member.
   falls, a product by a fixed number from zero and a quotient by a fixed positive number.
 - A formula that a stage or the setup can give a new definition can fall, and so can a rate of a flow,
   a solver's unknown, `since`, `elapsed`, a keyed read whose key moves, and any other read.
+- A change from outside (`Change`: an edit at a stop, PLAN change 15) is one more writer of the run
+  that it changed, of known sign: one that lowers a stored number that a form counts, or raises one
+  that it subtracts, makes the form fall. So `never_falls(key, changes)` withdraws the proof for that
+  run, for the edited value and for every formula that rests on it, with the change's reason.
 
 **What a value reads** (`reads(program, configuration, key)`): the parts that the value can depend
 on, each as one member runs it (`Part`), with the parts that each of them reads. It starts at a named
@@ -94,6 +98,17 @@ class Proof:
 
 
 @dataclass(frozen=True)
+class Change:
+    """A change from outside of a stored number in one run (an edit at a stop): the record key of the
+    number (`record.Key`), the amount that it added in canonical units (below zero for one that
+    lowered it), and what it did, which a proof that it withdraws gives as its reason."""
+
+    key: object
+    amount: float
+    why: str
+
+
+@dataclass(frozen=True)
 class Part:
     """A part of a program as one member runs it: its kind (`value`, `flow`, `stage`, `event`,
     `trigger`, `solver` or `status`), its origin, and its owner: the member that runs it, `''` for the root, or
@@ -114,10 +129,11 @@ class Reads:
     blocked: dict = field(default_factory=dict)
 
 
-def never_falls(program, configuration, key):
+def never_falls(program, configuration, key, changes=()):
     """Whether the value of a record key (`record.Key`) never falls over a run of the program under the
-    configuration (None for the program's own inputs), with the reason (see the module)."""
-    return Proofs(program, configuration).never_falls(key)
+    configuration (None for the program's own inputs), with the reason; with `changes`, over the run
+    that they changed (see the module)."""
+    return Proofs(program, configuration).never_falls(key, changes)
 
 
 def reads(program, configuration, key):
@@ -215,6 +231,7 @@ class Proofs:
         )
         self.events = reach(program, configuration).events
         self._index = None
+        self._changes = ()  # the changes from outside of the run that `never_falls` is asked about
 
     # ---- paths, member by member ----------------------------------------------------------------------
 
@@ -595,12 +612,16 @@ class Proofs:
             part, at = self.program.root_value(name), _At()
         return ('value', at.owner, part, at) if isinstance(part, p.Value) else None
 
-    def never_falls(self, key):
-        """Whether the value of a record key never falls over a run, with the reason (`Proof`)."""
+    def never_falls(self, key, changes=()):
+        """Whether the value of a record key never falls over a run, with the reason (`Proof`); with
+        `changes` (`Change`), over the run that they changed."""
+        self._changes = tuple(changes)
         try:
             return Proof(True, self.value(key))
         except _Fall as fall:
             return Proof(False, str(fall))
+        finally:
+            self._changes = ()
 
     def value(self, key):
         """Why the value of a key never falls, or _Fall."""
@@ -792,6 +813,10 @@ class Proofs:
                     continue
                 self.writer(writer, form)
                 adds.append(_named(writer))
+        for change in self._changes:
+            lo, hi = form.get(_term(change.key), (0.0, 0.0))
+            if (change.amount < 0 and hi > 0) or (change.amount > 0 and lo < 0):
+                raise _Fall(change.why)
         reasons = []
         if adds:
             reasons.append('what changes it adds to what it counts or moves within it: ' + ', '.join(adds))
@@ -1019,6 +1044,13 @@ class _Index:
     stages: dict = field(default_factory=dict)
     triggers: dict = field(default_factory=dict)
     solvers: dict = field(default_factory=dict)
+
+
+def _term(key):
+    """The term of a linear form that a record key of a stored number names: its owner (the
+    occurrences of an event on a receiver share one, `tank.receive#`) and its name."""
+    owner = key.owner.rsplit('#', 1)[0] + '#' if '#' in key.owner else key.owner
+    return (owner, key.steps[0]) if len(key.steps) == 1 else None
 
 
 def _number(value):

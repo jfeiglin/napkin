@@ -18,9 +18,11 @@ model has no report of its own: any named value can be reported, and the caller 
   five Gauss-Legendre points in each, which is exact for a store's lines and curves (`DEGREE` 8 of
   `timeline/record.py`). A lag is valid only when a proof says that the value never falls over the
   run (`napkin.program.proofs.never_falls`); then its note is the proof's reason, else the note is
-  the diagnostic and the values are the plain read. An edit at a stop that lowered the value (an
-  entry `edit` of the trace, `napkin/program/checkpoint.py`) withdraws the proof for the run, and
-  the note says which edit.
+  the diagnostic and the values are the plain read. An edit at a stop (an entry `edit` of the trace,
+  `napkin/program/checkpoint.py`) is a change from outside of the stored number that it edits, which
+  the proof takes as one more writer of known sign (`_changes`): an edit that lowers what the value
+  counts, or raises what it subtracts, withdraws the proof for the run, for the edited value and
+  for every formula that rests on it, and the note says which edit.
 - **The evidence trail** of a value (`Used`) lists the parts that it can read (`proofs.reads`), each
   with the records that its evidence cites for its member under the options that the run takes
   (`DeclaredModel.evidence`), whether this run exercised it and why: a flow that moved material, an
@@ -28,15 +30,18 @@ model has no report of its own: any named value can be reported, and the caller 
   value read through exercised parts. An event that cannot start under the configuration is never
   exercised, and says so; "could have and did not" is what the trace says (D16). An edit at a stop
   withdraws those proofs for the run, and the trail of such an event says which edit. A part reached
-  only through parts that the run did not exercise is not exercised either.
+  only through parts that the run did not exercise is not exercised either. A flow whose rate a
+  record of some values does not hold is `not recorded`: the record cannot say whether it moved,
+  and the trail says neither (`exercised` is None).
 - **Near-ties** (change 10): each decision that the engine made within tolerance of its boundary
   (`Record.near_ties`), with a message by the kind of its entry: a trigger that fired (`fire`), or
   that came within tolerance of its threshold and did not fire (`miss`); a test of a stage that
   committed (`commit`), or a false guard of a stage that ran nothing (`skip`); a gate that released
   its occurrence (`release`); a split of who is served at a settling (`settle`). The report lists
   them and computes nothing more precisely.
-- **A run that stopped**: a failure, or the stop at a breakpoint, ends the record. The report reads up to that time,
-  each time after it is `Unavailable` with the reason, and `stopped` says when and why.
+- **A run that stopped**: a failure, or the stop at a breakpoint, ends the record (`Record.stop`). The
+  report reads up to that time, each time after it is `Unavailable` with the reason, and `stopped`
+  says when and why.
 """
 
 from __future__ import annotations
@@ -48,10 +53,9 @@ from itertools import pairwise
 import numpy as np
 
 from ..program import parts as p
-from ..program.proofs import Part, Proofs
-from ..program.record import Unavailable
+from ..program.proofs import Change, Part, Proofs
+from ..program.record import Key, Unavailable
 from .timeline import read
-from .timeline.chance import paused
 from .timeline.record import key_of, unit_of
 
 # Gauss-Legendre points and weights on [-1, 1]: five points integrate a polynomial of degree 9 exactly.
@@ -89,13 +93,14 @@ class Shown:
 @dataclass(frozen=True)
 class Used:
     """A part of an evidence trail: its kind, its origin, the member that runs it, the records that
-    its evidence cites, whether the run exercised it, and why."""
+    its evidence cites, whether the run exercised it (None when the record cannot say: a flow whose
+    rate it does not hold), and why."""
 
     kind: str
     origin: str
     owner: str
     records: tuple[str, ...]
-    exercised: bool
+    exercised: bool | None
     why: str
 
 
@@ -178,12 +183,11 @@ def report(record, program, configuration, paths, times, lags=None, model=None, 
                     f'the lag is refused: {path} is a status display, and a lag averages a number',
                 )
         elif lag is not None:
-            proof = proofs.never_falls(key)
-            lowered = _lowered(record, key, unit_of(program, key))
-            if proof.holds and lowered is None:
+            proof = proofs.never_falls(key, _changes(record, program, key))
+            if proof.holds:
                 values, note = _lagged(record, program, key, within, lag), proof.reason
             else:
-                lag, note = None, f'the lag is refused: {path} can fall: {lowered or proof.reason}'
+                lag, note = None, f'the lag is refused: {path} can fall: {proof.reason}'
                 values = read(record, program, [key], within)[0].values
         else:
             values = read(record, program, [key], within)[0].values
@@ -192,35 +196,35 @@ def report(record, program, configuration, paths, times, lags=None, model=None, 
     return Report(times, tuple(reported), _near_ties(record), end, stopped, trail.records())
 
 
-def _lowered(record, key, unit):
-    """Why the proof that a value never falls is withdrawn for a run: the first edit that lowered
-    it, with its numbers in the value's unit; or None."""
-    name = '.'.join((key.owner, *key.steps) if key.owner else key.steps)
-    spelling, scale = unit
+def _changes(record, program, key):
+    """The edits of a record as changes from outside of the numbers that they edit, for the proof
+    that the value of `key` never falls (`Proofs.never_falls`), in the order of the trace: each with
+    what it did, in the edited value's declared unit ("it" for the value itself)."""
+    found = []
     for entry in record.entries('edit'):
         old, new = entry.detail('old'), entry.detail('new')
-        if (
-            entry.detail('target') == name
-            and all(isinstance(each, int | float) and not isinstance(each, bool) for each in (old, new))
-            and new < old
-        ):
-            numbers = f'from {old / scale:g} to {new / scale:g} {spelling}'.rstrip()
-            return f'an edit at {float(entry.t):g} h, at {entry.part}, lowered it {numbers}'
-    return None
+        if not all(isinstance(each, int | float) and not isinstance(each, bool) for each in (old, new)):
+            continue
+        if new == old:
+            continue
+        target = key_of(program, entry.detail('target'))
+        spelling, scale = unit_of(program, target)
+        name = 'it' if target == key else entry.detail('target')
+        verb = 'lowered' if new < old else 'raised'
+        numbers = f'from {old / scale:g} to {new / scale:g} {spelling}'.rstrip()
+        why = f'an edit at {float(entry.t):g} h, at {entry.part}, {verb} {name} {numbers}'
+        found.append(Change(target, float(new) - float(old), why))
+    return tuple(found)
 
 
 def _end(record, horizon):
     """The time to which a record reaches, and why it stops before the horizon (None at it)."""
+    stopped = record.stopped()
+    if stopped is None:
+        return horizon, None
     if record.failure is not None:
-        message = record.failure.detail('message') or 'the run failed'
-        return float(record.failure.t), f'the run failed at {float(record.failure.t):g} h: {message}'
-    pause = paused(record)
-    if pause is not None:
-        return float(pause.t), (
-            f'the run stopped at {float(pause.t):g} h at the breakpoint {pause.detail("breakpoint")}, '
-            f'before {pause.part}: the report reads it up to its stop'
-        )
-    return horizon, None
+        return float(record.end), stopped
+    return float(record.end), f'{stopped}: the report reads it up to its stop'
 
 
 def _origin(program, key):
@@ -351,6 +355,7 @@ class _Trail:
         # An edit at a stop withdraws, for the run, the proofs that an event cannot start: the value
         # that the proof reads may take what it rules out (`napkin/program/checkpoint.py`).
         self.edited = record.entries('edit')
+        self.started = record.entries('start')
         self.cited = {}
         self.entries = {}
         for entry in record.trace:
@@ -405,6 +410,8 @@ class _Trail:
             return True, 'read'
         if part.kind == 'flow':
             moved = self.moved(part)
+            if moved is None:
+                return None, f'not recorded: the record of this run does not hold the rate of {part.origin}'
             return moved, 'it moved material' if moved else 'it moved nothing in this run'
         withdrawn = ''
         if part.kind == 'event' and part in found.blocked:
@@ -434,19 +441,28 @@ class _Trail:
         return Part('event', event.origin, part.owner) if isinstance(event, p.Event) else None
 
     def moved(self, part):
-        """Whether a flow moved material in the run: its actual rate is not zero on some piece."""
+        """Whether a flow moved material in the run: its actual rate is not zero on some piece. None
+        when it did not on the pieces that the record holds and a record of some values does not hold
+        its rate (of the flow, or of an occurrence of its event that started): it cannot say."""
         template = self.program.member(part.owner)[0]
         steps = part.origin[len(template.name) + 1 :].split('.')
-        owner = part.owner
+        owner, rate = part.owner, (*steps, 'actual_rate')
+        keys = [Key(owner, rate)]
         if self.event_of(part) is not None:  # a flow of the event's occurrences
-            owner, steps = f'{owner}.{steps[0]}#', steps[1:]
-        histories = self.rates.get((owner, (*steps, 'actual_rate')), ())
-        return any(
+            owner, rate = f'{owner}.{steps[0]}#', (*steps[1:], 'actual_rate')
+            keys = [Key(entry.owner, rate) for entry in self.started if entry.owner.startswith(owner)]
+        histories = self.rates.get((owner, rate), ())
+        if any(
             not isinstance(piece.value, (bool, str, Unavailable))
             and (piece.value != 0 or piece.rate != 0 or piece.curve is not None)
             for history in histories
             for piece in history.pieces
-        )
+        ):
+            return True
+        held = {history.key for history in histories}
+        if self.record.manifest.everything or all(key in held for key in keys):
+            return False
+        return None
 
     def cites(self, origin, member=''):
         """The records of the evidence of the declared part of an origin for one member, under the

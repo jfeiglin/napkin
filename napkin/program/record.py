@@ -24,11 +24,18 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   a move, of the solver for a solve, the site for a draw, and for an edit and a pause the stage or
   the statement before which a breakpoint stopped the run (`napkin/program/checkpoint.py`); an edit
   has the details `breakpoint`, `target`, `old` and `new`.
-- **A near-tie** (change 10) is the detail `near` of a firing or a commit that was decided within
-  tolerance of its boundary: one (origin, comparison, difference, tolerance) for each comparison of
-  a trigger, a guard, an `if` or the guard of a case whose sides differed by no more than the
-  tolerance of what they read, in canonical units (`Record.near_ties`). The engine detects it and
-  computes nothing more precisely.
+- **A near-tie** (change 10) is the detail `near` of an entry that was decided within tolerance of
+  its boundary: one (origin, comparison, difference, tolerance) for each comparison of a trigger, a
+  guard, an `if`, the guard of a case, a gate or a split of who is served whose sides differed by no
+  more than the tolerance of what they read, in canonical units (`Record.near_ties`). A firing and a
+  commit carry it in their own entry; a trigger that came within tolerance and did not fire, a
+  false guard of a stage that ran nothing, a released gate and a settling have an entry of their own
+  for it (`miss`, `skip`, `release`, `settle`). The engine detects it and computes nothing more
+  precisely.
+- **The end.** A run that fails, or that a breakpoint stops, ends its record there: the failure, or
+  the `pause` entry that ends its trace, says when (`Record.stop`). A value at a later time is
+  `Unavailable` with the reason, on every path that reads one (`Record.value`, and the engine's
+  reader), and never the value that the record held at the stop.
 """
 
 from __future__ import annotations
@@ -184,9 +191,45 @@ class Record:
             object.__setattr__(self, '_index', index)
         return index[key]
 
+    @property
+    def stop(self):
+        """The entry that ends the record before its horizon: the failure, or the `pause` of a stop
+        at a breakpoint, which ends the trace; None for a run to its horizon."""
+        if self.failure is not None:
+            return self.failure
+        if self.trace and self.trace[-1].kind == 'pause':
+            return self.trace[-1]
+        return None
+
+    @property
+    def end(self):
+        """The time to which the record reaches: the time of its stop, or the horizon."""
+        stop = self.stop
+        return self.manifest.horizon if stop is None else stop.t
+
+    def stopped(self):
+        """Why the record ends before its horizon (see the module), or None."""
+        stop = self.stop
+        if stop is None:
+            return None
+        if stop.kind == 'failure':
+            return f'the run failed at {float(stop.t):g} h: {stop.detail("message") or "the run failed"}'
+        return (
+            f'the run stopped at {float(stop.t):g} h at the breakpoint {stop.detail("breakpoint")}, '
+            f'before {stop.part}'
+        )
+
+    def after(self, time):
+        """`Unavailable` with the reason for a time after the end of a record that stopped early, or
+        None for a time that it reaches."""
+        if time <= self.end:
+            return None
+        return Unavailable(f'{self.stopped()}: the record holds no value at {float(time):g} h')
+
     def value(self, key, time):
-        """The value of a key at a time."""
-        return self.history(key).at(time)
+        """The value of a key at a time; after the end of a record that stopped early, `Unavailable`
+        with the reason."""
+        return self.after(time) or self.history(key).at(time)
 
     def entries(self, kind=None, part=None):
         """The entries of the trace of a kind, of a part, or both."""

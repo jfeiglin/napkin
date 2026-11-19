@@ -39,6 +39,8 @@ pieces of each value of a run:
 - **The time of a change** that `elapsed` reads has a piece at the start of its value and at each
   commit that changed it. It has no key in the record: the reader finds it from the history of the
   value that it reads.
+- **An occurrence that a failed commit started** holds no value in the record: the record holds the
+  occurrences that its trace starts, and the commit that failed is not in it (`moment.py`).
 - **A formula, and a request or a capacity written as one,** is made after the run from the
   histories of what it reads (a formula of an occurrence from its start, and from its finish the
   frozen value that the run gave it, D7): between two times at which one of them has a piece, it is one piece
@@ -272,9 +274,14 @@ class Recorder:
         plan, run = self.plan, self.run
         request = plan.configuration.request
         needed = None if request.everything else self._needed(request.keys)
+        # The occurrences that the trace starts (None: no occurrence's): a start that a failed commit
+        # discarded is in the plan, and its values are in no record (`moment._Savepoint`).
+        started = {entry.owner for entry in self.trace if entry.kind == 'start'} | {None}
         histories = {}
         for name, value in plan.values.items():
             if needed is not None and name not in needed:
+                continue
+            if plan.occurrence_of(name) not in started:
                 continue
             if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED) or name in plan.defined:
                 continue
@@ -293,6 +300,7 @@ class Recorder:
             for name, value in plan.values.items()
             if (value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC) or name in plan.defined)
             and (needed is None or name in needed)
+            and plan.occurrence_of(name) in started
         }
         for name in plan.ordered(calculated, ever=True):
             value = plan.values[name]
@@ -883,7 +891,8 @@ def read(record, program, paths, times):
     path, in order. A formula, and a request, a capacity or an actual rate that is one, is evaluated
     at each time from the recorded values of what it reads (see the module). A time that the record
     does not hold is a LookupError, and so is a formula whose reads it does not hold. A value of an
-    occurrence before its start is `Unavailable`."""
+    occurrence before its start is `Unavailable`, and so is any value after the end of a record that
+    a failure or a breakpoint stopped (`Record.after`)."""
     values_at = _Values(record, program)
     found = []
     for path in paths:
@@ -894,6 +903,10 @@ def read(record, program, paths, times):
             external = key.steps[-1:] == ('external',)
             if not record.manifest.holds(Key(key.owner, key.steps[:-1]) if external else key, t):
                 raise LookupError(f'{path}: the record holds no value at {t} h')
+            later = record.after(float(t))
+            if later is not None:
+                values.append(later)
+                continue
             try:
                 if external:
                     # What edits brought into a store from outside (`Recorder.external`): none, for a
