@@ -13,19 +13,12 @@ tests/release/
 tests/engine/test_admission_scope.py
 tests/engine/test_decision_resolver.py
 tests/engine/test_distributions_deep.py
-tests/engine/test_evidence_trail.py
 tests/engine/test_expectations.py
 tests/engine/test_monte_carlo_study.py
-tests/engine/test_paused_results.py
 tests/engine/test_public_engine.py
-tests/engine/test_reporting.py
-tests/engine/test_run_evidence.py
-tests/engine/test_timeline_derivatives.py
-tests/engine/test_timeline_reports.py
 tests/model/test_analysis.py
 tests/model/test_bases.py
 tests/model/test_build.py
-tests/model/test_categories.py
 tests/model/test_compile.py
 tests/model/test_continuation.py
 tests/model/test_contracts.py
@@ -50,7 +43,6 @@ tests/model/test_units.py
 tests/test_bench.py
 tests/test_check.py
 tests/test_cli.py
-tests/test_cli_derivatives.py
 tests/test_cli_tables.py
 tests/test_compare.py
 tests/test_examples.py

@@ -1,4 +1,4 @@
-# C-R: the report — state
+# C-R: the report — state (done)
 
 Brief: `briefs/c.md` (C-R) with `COMMON-B.md`; PLAN "Changes after G0" 7, 10-14. Baseline c3542cd (G1).
 
@@ -20,6 +20,11 @@ Brief: `briefs/c.md` (C-R) with `COMMON-B.md`; PLAN "Changes after G0" 7, 10-14.
   `NearTie`, `end`, `stopped`, `records`). tests/engine/test_report.py (13).
 - Deleted the six old dormant files: tests/engine/test_reporting.py, test_timeline_reports.py,
   test_evidence_trail.py, test_run_evidence.py, test_paused_results.py, tests/model/test_categories.py.
+
+## Tests
+- Final: core, program, reference, language, model, engine, acceptance, commands: 4170 passed (-n 2).
+- Files that can leave tests/dormant.txt: the six deleted above, and test_timeline_derivatives.py,
+  tests/test_cli_derivatives.py (already gone in cf5c8d3).
 
 ## Decisions
 - Before time 0 a lag reads the value at time 0 (the record has no history before the run).

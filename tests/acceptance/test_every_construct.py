@@ -7,10 +7,10 @@ move, solver, assertion and record; and a variant that changes a value of the mo
 below is worked by hand from the text: a rate times a time, a bound reached, a share of a limit, a
 median, the closed form of a solver.
 
-Left out, each refused or with no form in the first version: a status display (stage C refuses it by
-name, `later_slice`). Written elsewhere and not here, for the length of this file: the captures of a
-trigger, an event parameter that passes an entity (D13), `.at(t)` of occurrences and a start on each
-member of a collection (`tests/language/test_events.py`).
+Written elsewhere and not here, for the length of this file: a status display
+(`tests/language/test_status.py`, `tests/engine/test_report.py`), the captures of a trigger, an event
+parameter that passes an entity (D13), `.at(t)` of occurrences and a start on each member of a
+collection (`tests/language/test_events.py`).
 """
 
 from __future__ import annotations
