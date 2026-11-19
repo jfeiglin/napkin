@@ -176,10 +176,13 @@ def recorded(program, configuration, entry):
 
 
 def held(record):
-    """The path of every value that a record holds, an occurrence's included, in its order."""
+    """The path of every value that a record holds, an occurrence's included, in its order: each of its
+    histories whose key its manifest names (`Manifest.names`, the rule of `Record.unavailable`). A
+    history that the run keeps for its books alone, as the ledger of an edited store that the request
+    does not name, is not offered, since a read of it is unavailable."""
     from ..engine.timeline.plan import name_of
 
-    return [name_of(history.key) for history in record.histories]
+    return [name_of(history.key) for history in record.histories if record.manifest.names(history.key)]
 
 
 def named(model, record):

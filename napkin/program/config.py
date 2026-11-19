@@ -114,7 +114,12 @@ class Numerics:
 class Request:
     """What to record: the horizon (h, an inclusive cutoff), and every value or only `keys`, within a
     budget of pieces (R-A4a-07): the most pieces that the values of the record may have, which the
-    record enforces (see the module)."""
+    record enforces (see the module).
+
+    The horizon is held as the run holds every time (`engine.timeline.moment.Clock`): its exact value,
+    rounded once to a float. A model's `horizon 0.3 days` is the exact 36/5 h, and the request holds
+    7.2, the very float of the run's last moment and of a caller's `7.2 h`, so a read at the horizon
+    however it is spelled is a read at the time that the run reached, not past it."""
 
     horizon: Number
     everything: bool = True
@@ -124,6 +129,7 @@ class Request:
     def __post_init__(self):
         if isinstance(self.horizon, bool) or not isinstance(self.horizon, Number) or self.horizon < 0:
             raise ConfigurationError(f'the horizon must be a number of hours, not {self.horizon!r}')
+        object.__setattr__(self, 'horizon', float(self.horizon))
         if isinstance(self.pieces, bool) or not isinstance(self.pieces, int) or self.pieces < 1:
             raise ConfigurationError(
                 f'the budget of pieces must be a whole number from 1, not {self.pieces!r}'

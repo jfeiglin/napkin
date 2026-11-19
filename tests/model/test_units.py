@@ -185,6 +185,11 @@ DIMENSIONS = {'time': {'time': 1}, 'volume': {'volume': 1}, 'share': {}}
 SPELLED = {
     name: (DIMENSIONS[family], scale) for family, units in FAMILIES.items() for name, scale in units.items()
 }
+# The same units as a units file holds them: each scale the JSON number of its float, so a minute is
+# 0.016666666666666666 (`core.units.scale_of` reads it as 1/60 again).
+FILED = {
+    name: (dimension, json.loads(json.dumps(float(scale)))) for name, (dimension, scale) in SPELLED.items()
+}
 # A canonical step of each family whose multiples are finite decimals in every unit of the family.
 STEPS = {'time': Fraction(24, 100), 'volume': Fraction(1, 1000), 'share': Fraction(1, 100)}
 
@@ -202,10 +207,11 @@ def written(value, unit):
 FAMILIES_OF = {name: units for units in FAMILIES.values() for name in units}
 
 
-def checked(text):
-    """(the codes and lines of the problems of a text, or None) and its compiled model."""
+def checked(text, table=SPELLED):
+    """(the codes and lines of the problems of a text, or None) and its compiled model, with the
+    units of `table`."""
     try:
-        return None, compile_text(text, SPELLED)
+        return None, compile_text(text, table)
     except LanguageError as error:
         return sorted((item.code, item.line) for item in error.problems), None
 
@@ -249,17 +255,19 @@ def canonical(reading, program):
     return tuple(value if isinstance(value, bool) else value * float(scale) for value in reading.values)
 
 
+@pytest.mark.parametrize('table', [SPELLED, FILED], ids=['exact', 'as filed'])
 @settings(derandomize=True, max_examples=60, deadline=None)
-@given(models())
-def test_respelling_a_unit_never_changes_a_check_or_a_value(texts):
+@given(texts=models())
+def test_respelling_a_unit_never_changes_a_check_or_a_value(table, texts):
     """The rule of units (spec, "Units, comparisons and layout"): a quantity is its dimension and its
     scale, with its number read exactly as written, so writing one in another unit of its family (h,
     min, day; L, mL, kL; ratio, fraction, percent) changes no check of the front end (the range of an
     input and the value in it, the interval of a test, the unit of a square root and of a power, the
     rule of a distribution and the support of a drawn input) and no value: the configuration's
     horizon and each value that the run reads, in canonical units. A yes/no that compares two
-    quantities is the same, so a test of `0.1 day` against `2.4 h` is decided as if both were 2.4 h."""
-    first, second = (checked(text) for text in texts)
+    quantities is the same, so a test of `0.1 day` against `2.4 h` is decided as if both were 2.4 h.
+    It holds with the units as exact fractions and as a units file holds them, as floats (`FILED`)."""
+    first, second = (checked(text, table) for text in texts)
     assert first[0] == second[0], texts
     event('refused' if first[0] is not None else 'compiled and ran')
     if first[0] is not None:

@@ -64,3 +64,17 @@ def test_a_setting_out_of_its_range_is_refused(make):
 
 def test_a_sampled_run_has_its_seed():
     assert Configuration(Request(1), mode=SAMPLED, seed=7).seed == 7
+
+
+def test_a_requests_horizon_is_held_as_the_run_holds_a_time():
+    """A horizon is a time as the run holds every time (`engine.timeline.moment.Clock`): its exact
+    value rounded once to a float, whoever made the request. So the exact 36/5 h of `0.3 days` is the
+    float 7.2, the time that a caller writes as `7.2 h`, and the record of the run, whose manifest
+    takes the request's horizon, holds a value at it."""
+    from fractions import Fraction
+
+    from napkin.program.config import Request
+
+    for given, held in ((Fraction(36, 5), 7.2), (10, 10.0), (7.2, 7.2), (Fraction(1, 3), 1 / 3)):
+        horizon = Request(given).horizon
+        assert type(horizon) is float and horizon == held

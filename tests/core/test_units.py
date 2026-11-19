@@ -5,9 +5,13 @@ this file writes: it adds and scales the powers of the dimensions. The other rul
 cases whose unit follows from the rule itself, and each rule is shown to reject what it must reject.
 """
 
+import json
 import random
+from fractions import Fraction
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from napkin.core import expr, ops, units
 from napkin.core.errors import ExpressionError
@@ -200,3 +204,56 @@ def test_a_function_whose_rule_is_plain_takes_a_plain_number_and_gives_one(name)
 def test_a_written_number_with_its_sign_is_a_literal():
     assert [units.literal(expr.read(source)) for source in ('2', '-1', '+0.5', '--3')] == [2, -1, 0.5, 3]
     assert [units.literal(expr.read(source)) for source in ('x', 'True', '2 * 1', "'2'")] == [None] * 4
+
+
+# ---- the exact scale of a unit as a units file holds it ---------------------------------------------
+
+
+@settings(derandomize=True, max_examples=300, deadline=None)
+@given(st.integers(1, 10**5), st.integers(1, 10**4))
+def test_a_ratio_that_a_units_file_holds_as_a_float_is_read_as_the_ratio(numerator, denominator):
+    """A units file holds a scale as a JSON number, so a ratio such as the 1/24 of a unit per day is
+    the float that a program wrote out for it, 0.041666666666666664. Its exact scale is the ratio
+    (`units.scale_of`), for every ratio of whole numbers up to 10^5 over up to 10^4: no other fraction
+    that simple rounds to its float, and no decimal that rounds to it is as short as the ratio, since
+    one would need 13 digits or more."""
+    ratio = Fraction(numerator, denominator)
+    filed = json.loads(json.dumps(float(ratio)))
+    assert units.scale_of(filed) == ratio
+
+
+@settings(derandomize=True, max_examples=300, deadline=None)
+@given(st.integers(1, 10**12 - 1), st.integers(-25, 10))
+def test_a_decimal_that_a_units_file_writes_is_that_decimal(digits, exponent):
+    """A decimal of at most 12 significant digits, as a person writes a scale (0.001, 3785411.784),
+    is the scale that it writes: it survives its float, the float writes it again, and no fraction
+    that rounds to the float is written with fewer digits."""
+    written = f'{digits}e{exponent}'
+    assert (
+        units.scale_of(json.loads(json.dumps(float(written)))) == Fraction(digits) * Fraction(10) ** exponent
+    )
+
+
+@settings(derandomize=True, max_examples=300, deadline=None)
+@given(st.floats(min_value=5e-324, allow_nan=False, allow_infinity=False))
+def test_every_scale_is_a_fraction_that_rounds_to_the_float_of_its_file(value):
+    """Whatever a units file holds, its exact scale rounds to the float that it holds: reading a
+    scale exactly never moves it, it only chooses which number the float stood for."""
+    assert float(units.scale_of(value)) == value
+
+
+def test_the_scales_of_the_catalogue_are_their_ratios_and_their_decimals():
+    """The library's units per day and per year, a minute, a billion dollars a year and a million
+    gallons a year are their ratios; an acre-foot in litres and a gallon are the decimals that define
+    them."""
+    cases = {
+        0.041666666666666664: Fraction(1, 24),
+        0.016666666666666666: Fraction(1, 60),
+        0.00011415525114155251: Fraction(1, 8760),
+        114155.25114155251: Fraction(25_000_000, 219),
+        432.1246328767123: Fraction(3_785_411_784, 8_760_000),
+        1233481.83754752: Fraction('1233481.83754752'),
+        3785411.784: Fraction('3785411.784'),
+    }
+    for filed, scale in cases.items():
+        assert units.scale_of(filed) == scale, filed

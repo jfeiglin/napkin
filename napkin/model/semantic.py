@@ -169,7 +169,7 @@ from fractions import Fraction
 from functools import cached_property
 
 from ..core.expr import DEEPEST
-from ..core.units import rational
+from ..core.units import rational, scale_of
 from .language import nodes as n
 from .language import tables
 from .language.format import expression as written_as
@@ -182,8 +182,9 @@ from .language.problems import LanguageError, Problem, SyntaxProblem
 class Units:
     """The units of a model: a spelling and its dimension (base dimensions with their powers) or a
     pair of the dimension and its scale, as `napkin.program.build.Builder` takes them. A spelling with
-    `*` and `/` is composed from the left (D12). Each scale is exact (`rational`: a float scale is the
-    decimal that writes it, so 0.01 is 1/100)."""
+    `*` and `/` is composed from the left (D12). Each scale is exact (`core.units.scale_of`: a float
+    written as a decimal is that decimal, so 0.01 is 1/100; one that a program wrote out from a ratio
+    is the ratio, so 0.041666666666666664 is 1/24)."""
 
     def __init__(self, table):
         self.table = dict(table)
@@ -193,7 +194,7 @@ class Units:
             powers = (
                 (k, int(v) if float(v).is_integer() else rational(v)) for k, v in dimension.items() if v
             )
-            self.base[name] = (tuple(sorted(powers)), rational(scale))
+            self.base[name] = (tuple(sorted(powers)), scale_of(scale))
 
     def has(self, name):
         return name in self.base

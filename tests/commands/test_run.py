@@ -63,6 +63,63 @@ def test_napkin_run_gives_the_closed_form_of_the_piano_tuners(capsys):
     assert doc['diagnostics'] == []
 
 
+def test_a_command_offers_only_the_values_that_its_record_can_read():
+    """The paths that a command offers (`held`) are those that its record reads by its own rule
+    (`Record.unavailable`). A record of a request that names the tank's water keeps the ledger of an
+    edited pump for its books; that ledger is not offered, since a read of it is unavailable."""
+    from napkin.commands.run import held
+    from napkin.program.record import History, Key, Manifest, Piece, Record
+
+    water, level = Key('tank', ('water',)), Key('tank', ('water', 'external'))
+    books = Key('pump', ('stock', 'external'))
+    histories = tuple(History(key, (Piece(0, 1),)) for key in (water, level, books))
+    record = Record(Manifest(3, everything=False, keys=(water,)), histories)
+    assert held(record) == ['tank.water', 'tank.water.external']
+    for history in histories:
+        readable = record.unavailable(history.key, 1) is None
+        assert (str(history.key) in held(record)) == readable
+    assert held(Record(Manifest(3), histories)) == [
+        'tank.water',
+        'tank.water.external',
+        'pump.stock.external',
+    ]
+
+
+# A trigger that fires first at 0.1 days and again 4.8 h later, at 7.2 h, as the run's horizon.
+CLOCK = """\
+scenario "Clock"
+    horizon {horizon}
+
+plant:
+    ticks = 0
+    tick = event():
+        when t >= 0.1 days:
+            this.tick.start()
+            reset after 4.8 h
+        after 0 h:
+            this.ticks += 1
+"""
+
+
+@pytest.mark.parametrize('horizon', ['7.2 h', '0.3 days', '432 min'])
+def test_a_read_at_the_horizon_however_spelled_is_a_read_at_the_last_moment(tmp_path, capsys, horizon):
+    """The horizon is an inclusive cutoff, held as the run holds every time: its exact value rounded
+    once (`program.config.Request`). The trigger fires at 2.4 h and at 7.2 h, so the plant has ticked
+    twice at its horizon, which a read gives however the horizon and the time of the read are spelled,
+    with a minute that its units file holds as the float 0.016666666666666666. A read at the horizon
+    gave "unavailable" when the horizon was exact and the time a float, and 432 min read 1, the time
+    before the second tick, when a minute was the decimal of its float."""
+    units = {'min': {'dimensions': {'time': 1}, 'scale': 1 / 60, 'description': 'A minute.'}}
+    path = package(tmp_path / 'clock', CLOCK.format(horizon=horizon), units)
+    for at in ('7.2h', '0.3days', '432min'):
+        found = napkin(capsys, 'run', path, '--at', at, '--json')
+        assert found.code == 0, found.err
+        assert found.doc['times'] == [7.2]
+        assert found.doc['values']['plant.ticks']['values'] == [2], (horizon, at)
+    found = napkin(capsys, 'run', path, '--json')
+    assert found.doc['times'] == [0, 7.2] and found.doc['values']['plant.ticks']['values'] == [0, 2]
+
+
 def test_napkin_run_prints_every_named_value_in_the_order_of_the_file(capsys):
     """With no --value and no --at: each value at the start and the horizon, a flow's actual rate,
     request and capacity under its line, the top-level formula last as the file writes it."""

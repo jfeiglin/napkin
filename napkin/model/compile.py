@@ -26,9 +26,9 @@ process loads and runs without the parser (`napkin.program.artifact`).
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from fractions import Fraction
 from pathlib import Path
 
+from ..core.units import scale_of
 from ..program.artifact import Artifact, SideTable
 from ..program.config import Configuration, Numerics, Request
 from ..program.parts import Program
@@ -140,15 +140,12 @@ def default_run(declared):
 
 def library_units(library):
     """The units of a library (`library.load_library`) as `Builder` takes them: each with its
-    dimension and its exact scale (`0.01` is 1/100)."""
-    out = {}
-    for name, unit in library['units'].items():
-        scale = unit.get('scale', 1)
-        out[name] = (
-            dict(unit.get('dimensions', {})),
-            Fraction(str(scale)) if isinstance(scale, float) else Fraction(scale),
-        )
-    return out
+    dimension and its exact scale (`core.units.scale_of`: `0.01` is 1/100, and the
+    0.041666666666666664 of a unit per day is 1/24)."""
+    return {
+        name: (dict(unit.get('dimensions', {})), scale_of(unit.get('scale', 1)))
+        for name, unit in library['units'].items()
+    }
 
 
 def load_scenario(path, *, run=None, edits=None):
