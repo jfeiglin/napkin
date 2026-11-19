@@ -666,7 +666,6 @@ deliveries:  @a_pilot_assumed_brief
     # TODO(hand): an option sets the start of a state that starts from a calculation: an input of its own
     # | var supply_left: L = (daily_supply * max(0 h, manufacturer.study_length - earliest_receipt)) size 72000 L
     # |     @balances_stocks_work
-        outflow.capacity = formula(2 * this.delivery_rate)  @balances_fluid_stocks
     readonly half_supply: formula(L/h) = formula(this.daily_supply / 2)  @balances_fluid_stocks
     readonly delivery_rate: formula(L/h) = formula(this.half_supply if this.state == ARRIVING
         and release_systems.state != RESTORED else 0 L/h)  @balances_fluid_stocks
@@ -695,6 +694,8 @@ deliveries:  @a_pilot_assumed_brief
         "Released fluid goes to the reserve for other essential care."
         request = formula(this.delivery_rate)
         capacity = formula(this.delivery_rate)
+    # TODO(hand): share: the store is declared in another thing, after its share, or by hand
+    # | share supply_left limit 2 * delivery_rate  @balances_fluid_stocks
     first_arrival = event():
         @a_pilot_assumed_brief
         "Released fluid begins to reach the hospitals and meets demand; other makers' fluid goes back to
@@ -944,14 +945,17 @@ options "Access":
             removes the attacker's foothold, but the attacker keeps credentials for the release and shipment
             record systems. When release restarts, the attacker alters the records of every lot being
             released, unless the manufacturer resets those credentials first."
-        deliveries.supply_left_start = deliveries.daily_supply * manufacturer.study_length
-            @identity "Released fluid available over the whole study period; deliveries draw on it only while
-                released fluid reaches the hospitals, so stopped or held deliveries leave the rest unused."
+        # TODO(hand): an option sets a value that is a calculation: an option gives a constant now
+        # | deliveries.supply_left = daily_supply * manufacturer.study_length
+        # |     @identity "Released fluid available over the whole study period; deliveries draw on it only while
+        # |         released fluid reaches the hospitals, so stopped or held deliveries leave the rest unused."
         release_team.records_work = 168 work_h  @records_work
-        release_team.ordinary_left_start = release_team.ordinary_work  @a_causal_interference_qualification_work_st
-        release_team.reserve_start = release_team.records_work + release_team.product_work
-            @identity "The reserve of reconciliation work that found changes can create: two ordinary
-                reconciliations and one reconciliation against the product."
+        # TODO(hand): an option sets a value that is a calculation: an option gives a constant now
+        # | release_team.ordinary_left = ordinary_work  @a_causal_interference_qualification_work_st
+        # TODO(hand): an option sets a value that is a calculation: an option gives a constant now
+        # | release_team.reserve = records_work + product_work
+        # |     @identity "The reserve of reconciliation work that found changes can create: two ordinary
+        # |         reconciliations and one reconciliation against the product."
         attacker.access_start = KEPT
             @assumption "The attacker alters the shipment records when hospitals start emergency procurement.
                 The manufacturer removes the attacker's foothold, but the attacker keeps credentials for the

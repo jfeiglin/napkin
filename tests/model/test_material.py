@@ -1,256 +1,208 @@
-"""Material: flows that move several pairs, flows from or to outside the model, allocation of a stock
-that several flows draw on, and sum checks across entities.
+"""Material: a flow whose legs move together, flows from or to outside the model, a store that two
+flows draw on and that shares its capacity among them, and an assertion of a sum. Every expectation is
+a closed form of the inputs, worked by hand.
 
-They use MODELTEST (tests/model/modeltest.py), a service that an attacker switches off at t = 0 and
-that serves waiting users after its repair, and small additions to it. Every expectation is a closed
-form of the inputs, read from the model.
+The fixture is a service from t = 0: `users` people wait and are served at `k` times the number still
+waiting, so `served(t) = users (1 - exp(-k t))` (spec, "Flows and algebraic solvers"). A flow with legs
+serves its legs at one fraction (spec, "Shared resources and competing invocations"), so when one
+leg's store is empty both stop. `SOURCE` and `SINK` are the outside: a direct `SOURCE -> SINK` flow
+takes its unit from its rate. An endpoint's capacity is shared by its allocation (`proportional()`
+by default, or `priority(...)`); the rules at one moment are in `tests/engine/test_rationing.py`, and
+a name that a priority lists twice in `tests/language/test_endpoints.py`.
 """
 
 from __future__ import annotations
 
 import math
-import re
 
 import pytest
 
-from napkin.core.expr import text as written
-from napkin.model import ModelError
-from tests.build import block, member, replace
-from tests.model.modeltest import build, run
-from tests.model.test_parts import things, top, with_queues
+from napkin.engine import read, run
+from napkin.model.compile import compile_text
+from napkin.model.language.problems import LanguageError
+from tests.program.examples import UNITS
 
-# The fixture's flow of waiting users, with its text.
-SERVE = 'flow serve: waiting -> served at service_rate * waiting while status is not "down"  @ident'
-SERVE_TEXT = '        "Waiting users are served."'
+USERS, K = 1000, 0.05
 
+SERVICE = """\
+scenario "Service"
+    horizon 120 h
 
-def env_at(model, t, name='slow'):
-    _, trajectory = run(model, name)
-    return trajectory.env_at(t)
-
-
-def fixture_inputs(model, name='slow'):
-    values = model.run_values(name)
-    return values['service.users'], values['service.service_rate'], values['service.repair_time']
-
-
-def served(model, t, name='slow'):
-    """Users served by time t in the fixture: none while the service is down, then
-    users * (1 - exp(-k (t - repair)))."""
-    users, k, repair = fixture_inputs(model, name)
-    return 0.0 if t <= repair else users * (1 - math.exp(-k * (t - repair)))
+service:
+    "A service that serves the users who wait."
+    input users: person = 1000 person
+    input k = 0.05
+    waiting: person = this.users in [0 person,]
+    served: person = 0 person in [0 person,]
+{parts}
+"""
+SERVE = """\
+    flow serve: this.waiting -> this.served
+        request = formula(this.k * this.waiting / 1 h)
+"""
 
 
-def time_to_serve(model, amount, name='slow'):
-    """The time at which the fixture has served `amount` users."""
-    users, k, repair = fixture_inputs(model, name)
-    return repair - math.log(1 - amount / users) / k
+def served(t):
+    return USERS * (1 - math.exp(-K * t))
 
 
-# ---- flows that move several pairs -------------------------------------------------------------
+def time_to_serve(amount):
+    """The time at which the service has served `amount` users."""
+    return -math.log(1 - amount / USERS) / K
 
 
-def with_tokens(per_user=None, together='  @ident'):
-    """Each user served uses a token from a fixed stock: the serve flow moves both pairs together.
-    `per_user` gives the token pair its own rate, that many tokens for each user. `together` ends
-    the line of the flow, whose pairs are under it: its records, which say why they move together."""
-    pair = 'tokens -> used'
-    if per_user is not None:
-        pair = f'tokens -> used at {per_user} * service_rate * waiting  @ident'
-    head = 'flow serve at service_rate * waiting while status is not "down":' + together
-    pairs = '\n'.join(f'        {line}' for line in ('waiting -> served', pair))
-    return (
-        member('service', 'var tokens = 400 people  @ident', 'var used: people = 0  @ident'),
-        replace(f'{SERVE}\n{SERVE_TEXT}', f'{head}\n{SERVE_TEXT}\n{pairs}'),
-    )
+def values(parts, names, times, text=SERVICE):
+    model = compile_text(text.format(parts=parts), UNITS)
+    record = run(model.program, model.configuration)
+    assert record.failure is None, record.failure.detail('message')
+    return [reading.values for reading in read(record, model.program, names, list(times))]
 
 
-@pytest.mark.parametrize('per_user', [None, 2])
-def test_pairs_that_move_together_stop_together_when_one_runs_short(tmp_path, per_user):
-    model = build(tmp_path, *with_tokens(per_user))
-    tokens_per_user = per_user or 1
-    # Tokens run out once 400 / tokens_per_user users are served; the users' pair stops with them.
-    limit = 400 / tokens_per_user
-    out_of_tokens = time_to_serve(model, limit)
-    users = model.run_values('slow')['service.users']
-    for t in (out_of_tokens - 2, out_of_tokens + 5, 120.0):
-        env = env_at(model, t)
-        expected = min(served(model, t), limit)
-        assert env['service.served'] == pytest.approx(expected, rel=1e-6, abs=1e-6), t
-        assert env['service.used'] == pytest.approx(tokens_per_user * expected, rel=1e-6, abs=1e-6), t
-        assert env['service.waiting'] + env['service.served'] == pytest.approx(users)
-    # Without the second pair the service would have served far more by the end.
-    assert served(model, 120.0) > limit + 100
+# ---- a flow with legs -----------------------------------------------------------------------------
 
 
-def test_pairs_are_the_engine_s_coupled_flows(tmp_path):
-    s = build(tmp_path, *with_tokens(2)).structure_of('slow')
-    (group,) = s.coupling.values()
-    assert list(group.flows) == ['service.serve.0', 'service.serve.1']
-    flows = s.flows
-    assert (flows['service.serve.0'].source, flows['service.serve.0'].target) == (
-        'service.waiting',
-        'service.served',
-    )
-    assert (flows['service.serve.1'].source, flows['service.serve.1'].target) == (
-        'service.tokens',
-        'service.used',
-    )
-    # The pair's own rate, under the flow's `while`.
-    assert written(flows['service.serve.1'].rate).startswith('2 * service.service_rate * service.waiting if ')
+def with_tokens(per_user):
+    """Each user served uses `per_user` tokens of a store of 400: the legs move together."""
+    return f"""\
+    tokens: work_unit = 400 work_unit in [0 work_unit,]
+    used: work_unit = 0 work_unit in [0 work_unit,]
+    flow serve:
+        flow users: this.waiting -> this.served
+            request = formula(this.k * this.waiting / 1 h)
+        flow tokens: this.tokens -> this.used
+            request = formula({per_user} work_unit / 1 person * this.k * this.waiting / 1 h)
+"""
 
 
-def test_a_flow_of_several_pairs_says_why_they_move_together(tmp_path):
-    # The line of a flow of several pairs with no record.
-    with pytest.raises(ModelError, match='together'):
-        build(tmp_path, *with_tokens(together=''))
+@pytest.mark.parametrize('per_user', [1, 2])
+def test_legs_that_move_together_stop_together_when_one_runs_short(per_user):
+    """The tokens run out once 400 / per_user users are served; the users' leg stops with them."""
+    limit = 400 / per_user
+    out_of_tokens = time_to_serve(limit)
+    times = (out_of_tokens - 2, out_of_tokens + 5, 120)
+    names = ['service.served', 'service.used', 'service.waiting', 'service.serve.served_fraction']
+    found_served, used, waiting, fraction = values(with_tokens(per_user), names, times)
+    expected = [min(served(t), limit) for t in times]
+    assert found_served == pytest.approx(expected, rel=1e-6, abs=1e-6)
+    assert used == pytest.approx([per_user * x for x in expected], rel=1e-6, abs=1e-6)
+    assert [w + s for w, s in zip(waiting, found_served)] == pytest.approx([USERS] * 3)
+    assert fraction == pytest.approx((1, 0, 0), abs=1e-9)
+    # Without the second leg the service would have served far more by the end.
+    assert served(120) > limit + 100
 
 
-# ---- outside the model -------------------------------------------------------------------------
+# ---- outside the model ---------------------------------------------------------------------------
 
-
-WITH_OUTSIDE = member(
-    'service',
-    'var counted: people = 0  @ident',
-    'var spare = 100 people  @ident',
-    'flow count_served: -> counted at service_rate * waiting while status is not "down"  @ident',
-    'flow discard: spare -> at 0.1 per_h * spare  @ident',
+OUTSIDE = (
+    SERVE
+    + """\
+    counted: person = 0 person in [0 person,]
+    spare: person = 100 person in [0 person,]
+    flow count_served: SOURCE -> this.counted
+        request = formula(this.k * this.waiting / 1 h)
+    flow discard: this.spare -> SINK
+        request = formula(0.1 * this.spare / 1 h)
+"""
 )
 
 
-def test_flows_from_and_to_outside_the_model(tmp_path):
-    model = build(tmp_path, WITH_OUTSIDE)
-    s = model.structure_of('slow')
-    flows = s.flows
-    # The flow from outside into the tally `counted` is the engine's rate of that tally: it has no
-    # source.
-    assert 'service.count_served' not in flows
-    assert s.rates['service.counted'].path == 'service/count_served'
-    assert flows['service.discard'].source == 'service.spare' and flows['service.discard'].target is None
-    for t in (20.0, 45.0, 120.0):
-        env = env_at(model, t)
-        # A counter from outside takes the serve flow's rate, so it counts every user served.
-        assert env['service.counted'] == pytest.approx(served(model, t), rel=1e-6, abs=1e-6)
-        assert env['service.spare'] == pytest.approx(100 * math.exp(-0.1 * t), rel=1e-6)
+def test_flows_from_and_to_outside_the_model():
+    """A counter filled from outside at the rate of the service counts every user served, and the
+    spare store that drains to outside at a tenth of itself an hour holds 100 exp(-t / 10)."""
+    times = (20, 45, 120)
+    counted, spare = values(OUTSIDE, ['service.counted', 'service.spare'], times)
+    assert counted == pytest.approx([served(t) for t in times], rel=1e-6)
+    assert spare == pytest.approx([100 * math.exp(-0.1 * t) for t in times], rel=1e-6, abs=1e-6)
 
 
-def test_a_pair_has_an_end_inside_the_model(tmp_path):
-    with pytest.raises(ModelError, match='at least one value of the model'):
-        build(tmp_path, replace(SERVE, SERVE.replace('waiting -> served', '->')))
+def test_a_flow_from_outside_to_outside_takes_its_unit_from_its_rate():
+    passing = '    flow through: SOURCE -> SINK\n        request = 2 person/h\n    seen = formula(this.through.actual_rate)\n'
+    assert values(SERVE + passing, ['service.seen'], [1]) == [(2,)]
+    with pytest.raises(LanguageError) as raised:
+        compile_text(SERVICE.format(parts=SERVE + '    flow through: SOURCE -> SINK\n'), UNITS)
+    assert raised.value.codes == ['flow_units']
 
 
-# ---- allocation ---------------------------------------------------------------------------------
+# ---- a store that two flows draw on -----------------------------------------------------------------
+
+STORE = """\
+scenario "Store"
+    horizon 60 h
+
+store:
+    stock: person = 100 person in [0 person,]
+        outflow.capacity = {limit} person/h{allocation}
+    to_a: person = 0 person in [0 person,]
+    to_b: person = 0 person in [0 person,]
+    flow take_a: this.stock -> this.to_a
+        request = 3 person/h
+{second}"""
+SECOND = '    flow take_b: this.stock -> this.to_b\n        request = 2 person/h\n'
 
 
-def with_store(serve, limit, share=True, flows='ab'):
-    """A store of 100 that two flows draw on at 3 and 2 an hour, shared up to `limit` an hour (with no
-    share without `share`): `serve` is `proportional` or the flows in their order; `flows` names the
-    flows that the store has."""
-    order = '' if isinstance(serve, str) else ' order ' + ', '.join(serve)
-    return things(
-        block(
-            'store:  @ident',
-            '"A store that two flows draw on."',
-            'role operator',
-            'var stock = 100 people  @ident',
-            'var to_a: people = 0  @ident',
-            'var to_b: people = 0  @ident',
-            'flow take_a: stock -> to_a at 3 people / 1 h  @ident' if 'a' in flows else None,
-            'flow take_b: stock -> to_b at 2 people / 1 h  @ident' if 'b' in flows else None,
-            f'share stock limit {limit} people / 1 h{order}  @ident' if share else None,
-        )
-    )
+def shared(limit, order=None, second=SECOND, times=None):
+    allocation = '' if order is None else '\n        outflow.allocation = priority(' + ', '.join(f'this.{name}' for name in order) + ')'
+    text = STORE.format(limit=limit, allocation=allocation, second=second)
+    model = compile_text(text, UNITS)
+    record = run(model.program, model.configuration)
+    assert record.failure is None
+    return read(record, model.program, ['store.to_a', 'store.to_b', 'store.stock'], list(times))
 
 
 @pytest.mark.parametrize(
-    ('serve', 'limit', 'rate_a', 'rate_b'),
+    ('order', 'limit', 'rate_a', 'rate_b'),
     [
         # The first flow gets what it asks for, the second what is left under the limit.
-        (['take_a', 'take_b'], 4, 3.0, 1.0),
-        (['take_b', 'take_a'], 4, 2.0, 2.0),
+        (('take_a', 'take_b'), 4, 3.0, 1.0),
+        (('take_b', 'take_a'), 4, 2.0, 2.0),
         # Each flow gets the same share of its request.
-        ('proportional', 4, 3.0 * 4 / 5, 2.0 * 4 / 5),
+        (None, 4, 3.0 * 4 / 5, 2.0 * 4 / 5),
         # A limit above both requests does not bind.
-        ('proportional', 10, 3.0, 2.0),
+        (None, 10, 3.0, 2.0),
     ],
 )
-def test_a_rationing_entry_shares_its_stock_up_to_its_limit(tmp_path, serve, limit, rate_a, rate_b):
-    model = build(tmp_path, with_store(serve, limit))
+def test_a_store_shares_its_capacity_by_its_allocation_until_it_is_empty(order, limit, rate_a, rate_b):
     empty = 100 / (rate_a + rate_b)
-    for t in (empty / 2, empty + 10):
-        env = env_at(model, t)
-        hours = min(t, empty)
-        assert env['store.to_a'] == pytest.approx(rate_a * hours, rel=1e-6, abs=1e-6), t
-        assert env['store.to_b'] == pytest.approx(rate_b * hours, rel=1e-6, abs=1e-6), t
-        assert env['store.stock'] == pytest.approx(100 - (rate_a + rate_b) * hours, rel=1e-6, abs=1e-6), t
+    times = (empty / 2, empty + 10)
+    to_a, to_b, stock = (reading.values for reading in shared(limit, order, times=times))
+    hours = [min(t, empty) for t in times]
+    assert to_a == pytest.approx([rate_a * h for h in hours], rel=1e-6, abs=1e-6)
+    assert to_b == pytest.approx([rate_b * h for h in hours], rel=1e-6, abs=1e-6)
+    assert stock == pytest.approx([100 - (rate_a + rate_b) * h for h in hours], rel=1e-6, abs=1e-6)
 
 
 @pytest.mark.parametrize(('limit', 'rate'), [(2, 2.0), (10, 3.0)])
-def test_a_rationing_entry_of_one_flow_caps_it_at_its_limit(tmp_path, limit, rate):
-    # A list of a template's instances can have one member: the entry then shares its stock with no
-    # other flow, and its limit caps the one flow that draws on it.
-    model = build(tmp_path, with_store('proportional', limit, flows='a'))
+def test_the_capacity_of_a_store_with_one_flow_caps_that_flow(limit, rate):
     empty = 100 / rate
-    for t in (empty / 2, empty + 10):
-        env = env_at(model, t)
-        assert env['store.to_a'] == pytest.approx(rate * min(t, empty), rel=1e-6, abs=1e-6), t
+    to_a, _, _ = shared(limit, second='', times=(empty / 2, empty + 10))
+    assert to_a.values == pytest.approx([rate * empty / 2, 100], rel=1e-6, abs=1e-6)
 
 
-def test_a_rationing_entry_needs_a_flow_that_draws_on_its_stock(tmp_path):
-    # With no flow that takes from it, the var is no stock (docs/language.md, §2.4), so nothing shares it.
-    with pytest.raises(ModelError, match='stock is not a stock'):
-        build(tmp_path, with_store('proportional', 4, flows=''))
+# ---- an assertion of a sum ---------------------------------------------------------------------------
 
-
-def test_rationing_is_the_engine_s_allocation_group(tmp_path):
-    s = build(tmp_path, with_store(['take_b', 'take_a'], 4)).structure_of('slow')
-    (name,) = s.allocation
-    group = s.allocation[name]
-    assert group.policy == 'priority'
-    assert list(group.order) == ['store.take_b', 'store.take_a']
-    assert {s.flows[f].allocation for f in ('store.take_a', 'store.take_b')} == {name}
-
-
-def test_two_flows_out_of_one_stock_without_rationing_are_rejected(tmp_path):
-    with pytest.raises(ModelError, match='Competing withdrawals require one explicit allocation policy'):
-        build(tmp_path, with_store('proportional', 4, share=False))
-
-
-@pytest.mark.parametrize(
-    ('serve', 'match'),
-    [
-        (['take_a'], 'once'),
-        (['take_a', 'take_a'], 'serve lists'),
-        (['take_a', 'missing'], 'not a flow that draws on'),
-    ],
+BOOKS = 'assert service.waiting + service.served in [service.users - 0.001 person, service.users + 0.001 person]\n'
+# The spec writes a sum that must hold as such an assertion ("Assertions and their timing"), and says
+# that the compiler rejects an assertion whose guarantee the engine cannot give.
+UNCERTIFIED = pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason='bug: the front end accepts an assertion of the sum of two stores that move, and the engine '
+    'stops its run at 0 h: "the first contact ... cannot be certified: it reads more than one store"',
 )
-def test_a_priority_lists_every_flow_that_draws_on_the_stock_once(tmp_path, serve, match):
-    with pytest.raises(ModelError, match=match):
-        build(tmp_path, with_store(serve, 4))
 
 
-# ---- sum checks across entities ----------------------------------------------------------------
+@UNCERTIFIED
+def test_an_assertion_of_a_sum_holds_while_the_flows_keep_their_stores():
+    model = compile_text(SERVICE.format(parts=SERVE) + BOOKS, UNITS)
+    assert run(model.program, model.configuration).failure is None
 
 
-def with_main_sum(refs):
-    return top(
-        block(
-            f'assert {" + ".join(refs)} is small.size + large.size within 0.001 people  @ident',
-            '"Every user of the two queues is waiting or dealt with."',
-        )
-    )
-
-
-def test_a_sum_check_of_the_main_lists_stocks_of_several_entities(tmp_path):
-    refs = ['small.pending', 'small.handled', 'large.pending', 'large.handled']
-    model = build(tmp_path, *with_queues(), with_main_sum(refs))
-    (partition,) = [p for p in model.structure_of('slow').partitions.values() if len(p.parts) == 4]
-    assert list(partition.parts) == refs
-    env = env_at(model, 120.0)
-    values = model.run_values('slow')
-    assert sum(env[ref] for ref in refs) == pytest.approx(values['small.size'] + values['large.size'])
-
-
-def test_a_sum_check_of_the_main_lists_stocks_and_tallies_only(tmp_path):
-    with pytest.raises(ModelError, match=re.escape('dispatcher.total is not a number var')):
-        build(tmp_path, *with_queues(), with_main_sum(['small.pending', 'dispatcher.total']))
+@UNCERTIFIED
+def test_an_assertion_of_a_sum_fails_when_a_flow_takes_from_its_stores():
+    """A leak of 1 person an hour from the waiting users leaves the books 0.001 person short at
+    0.001 h."""
+    leak = SERVE + '    flow leak: this.waiting -> SINK\n        request = 1 person/h\n'
+    model = compile_text(SERVICE.format(parts=leak) + BOOKS, UNITS)
+    record = run(model.program, model.configuration)
+    assert record.failure is not None and record.failure.t == pytest.approx(0.001, rel=1e-6)
+    assert 'assert[0]: the assertion does not hold' in record.failure.detail('message')

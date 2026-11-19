@@ -230,7 +230,9 @@ class Translator:
         old_depth = self.logical[number].depth
         for k in range(number, last + 1):
             row = self.rows[k - 1]
-            self.emit(number, depth, ('# | ' + row[len(INDENT) * old_depth :]) if row.strip() else '# |', raw=True)
+            self.emit(
+                number, depth, ('# | ' + row[len(INDENT) * old_depth :]) if row.strip() else '# |', raw=True
+            )
         for row in draft or ():
             self.emit(number, depth, '# draft: ' + row, raw=True)
 
@@ -506,7 +508,9 @@ class Translator:
                     raise Hand('a fixed value that an instance replaces with a formula needs its type')
                 head = f'readonly {name}: formula({typed[2:]}) = formula({self.expr(value.value, thing)})'
             else:
-                head = f'readonly {name}{typed} = {self.expr(value.value, thing)}{self.range_of(value, thing)}'
+                head = (
+                    f'readonly {name}{typed} = {self.expr(value.value, thing)}{self.range_of(value, thing)}'
+                )
         elif kind == 'let.formula':
             if not typed:
                 raise Hand('a formula with no type')
@@ -533,10 +537,15 @@ class Translator:
             # input of its own, which the option sets, and the state starts from it. An input's
             # default is a value written out, so a start that is a calculation is left for a person.
             if not oldmodel_literal(value.value.tokens):
-                raise Hand('an option sets the start of a state that starts from a calculation: an input of its own')
+                raise Hand(
+                    'an option sets the start of a state that starts from a calculation: an input of its own'
+                )
             declared, _, start = head.partition(' = ')
-            start, bounds = start.partition(' in [')[0], start.partition(' in [')[1] + start.partition(' in [')[2]
-            self.emit(number, 1, f'input {name}_start{declared[len(name):]} = {start}{cites}')
+            start, bounds = (
+                start.partition(' in [')[0],
+                start.partition(' in [')[1] + start.partition(' in [')[2],
+            )
+            self.emit(number, 1, f'input {name}_start{declared[len(name) :]} = {start}{cites}')
             head = f'{declared} = this.{name}_start' + (f' {bounds}' if bounds else '')
             self.defaults['a state that an option sets starts from an input `x_start`'] += 1
         self.emit(number, 1, head + cites)
@@ -607,7 +616,9 @@ class Translator:
                 value = quoted(lines.value.tokens[0].value)
             else:
                 value = self.expr(lines.value, thing)
-            self.emit(number, 1, f'{self.renamed(thing, change.name)} = {value}{self.range_of(lines, thing)}{cites}')
+            self.emit(
+                number, 1, f'{self.renamed(thing, change.name)} = {value}{self.range_of(lines, thing)}{cites}'
+            )
         else:
             raise Hand('an instance line with no value: its text and records belong to the template')
         self.done(number)
@@ -712,9 +723,11 @@ class Translator:
         store = None
         if found is not None and found[0] == 'value' and found[2] == thing and '.' not in share.stock:
             node = self.symbols.nodes[thing]
-            store = next((m for m in node.members if isinstance(m, nodes.Value) and m.name == share.stock), None)
-        if store is None or store.line not in self.state:
-            raise Hand('share: the store is declared in another thing or after its share')
+            store = next(
+                (m for m in node.members if isinstance(m, nodes.Value) and m.name == share.stock), None
+            )
+        if store is None or self.state.get(store.line) != 'done':
+            raise Hand('share: the store is declared in another thing, after its share, or by hand')
         declared = self.symbols.nodes[self.symbols.declarer(thing)]
         flows = {m.name: m for m in declared.members if isinstance(m, nodes.Flow)}
         names = []
@@ -725,11 +738,15 @@ class Translator:
             if flows[name].together is not None:
                 legs = [
                     leg
-                    for pair, leg in zip(flows[name].together, self.leg_names(flows[name], thing), strict=True)
+                    for pair, leg in zip(
+                        flows[name].together, self.leg_names(flows[name], thing), strict=True
+                    )
                     if pair.source == share.stock
                 ]
                 if len(legs) != 1:
-                    raise Hand('share: its order names a flow of several pairs with no one leg from the store')
+                    raise Hand(
+                        'share: its order names a flow of several pairs with no one leg from the store'
+                    )
                 path = f'{path}.{legs[0]}'
             names.append(path)
         limit = self.expr(share.limit.expr, thing, draws=False)
@@ -787,7 +804,9 @@ class Translator:
             first = child.first
             if first.is_name('role') and len(child.tokens) == 2:
                 # An event has no role in the language of now.
-                self.emit(child.number, 2, f'# role {child.tokens[1].value}: an event has no role now', raw=True)
+                self.emit(
+                    child.number, 2, f'# role {child.tokens[1].value}: an event has no role now', raw=True
+                )
                 self.done(child.number)
                 self.dropped['the role of an event'] += 1
                 return True
@@ -841,7 +860,11 @@ class Translator:
         listed = ', '.join(members[outcome.name] for outcome in outcomes)
         if any(outcome.when is not None for outcome in outcomes):
             raise Hand('an outcome that can happen only under a condition: a guard on its case')
-        numbers = [outcome for outcome in outcomes if outcome.chance is not None and oldmodel_literal(outcome.chance.tokens)]
+        numbers = [
+            outcome
+            for outcome in outcomes
+            if outcome.chance is not None and oldmodel_literal(outcome.chance.tokens)
+        ]
         if event.choice or len(numbers) == len([o for o in outcomes if not o.is_else]):
             weights = chances(outcomes)
             spelled = ', '.join(f'{members[name]}: {weight}' for name, weight in weights)
@@ -868,7 +891,9 @@ class Translator:
                 raise Hand('an outcome with no chance beside others: two outcomes that always happen')
             tree = self.tree(outcome.chance, thing)
             if not self.condition(tree, thing):
-                raise Hand('an outcome whose chance is an expression: categorical() takes numbers written in place')
+                raise Hand(
+                    'an outcome whose chance is an expression: categorical() takes numbers written in place'
+                )
             test = show(tree, 1)
             conditional = f'{members[outcome.name]} if {test} else {conditional}'
         first = members[outcomes[0].name]
@@ -929,7 +954,9 @@ class Translator:
                 continue
             first = child.first
             if first.is_name('role') and len(child.tokens) == 2:
-                self.emit(child.number, depth, f'# role {child.tokens[1].value}: a case has no role now', raw=True)
+                self.emit(
+                    child.number, depth, f'# role {child.tokens[1].value}: a case has no role now', raw=True
+                )
                 self.done(child.number)
                 self.dropped['the role of an outcome'] += 1
             elif first.kind == 'text':
@@ -938,7 +965,9 @@ class Translator:
                 records = [
                     item
                     for item in outcome.support
-                    if isinstance(item, nodes.Record) and evidence_place(item.place) is not None and item.line == child.number
+                    if isinstance(item, nodes.Record)
+                    and evidence_place(item.place) is not None
+                    and item.line == child.number
                 ]
                 if records:
                     self.record_in_place(child.number, depth, records[0])
@@ -1000,7 +1029,9 @@ class Translator:
             terms = []
             for term, _ in check.terms:
                 path, found = scope.path(term)
-                terms.append(('call', 'sum', [('name', path)]) if found[0] == 'value' and found[4] else ('name', path))
+                terms.append(
+                    ('call', 'sum', [('name', path)]) if found[0] == 'value' and found[4] else ('name', path)
+                )
             total = with_new_units(exprs.rewrite_old(check.total, scope))
             within = with_new_units(exprs.rewrite_old(check.within.expr, scope))
             left = terms[0]
@@ -1031,7 +1062,13 @@ class Translator:
             if lines.text is not None:
                 self.note('not_estimated', [*keys, 'label'], quoted(text_of(lines.text)))
             records = [item for item in lines.support if isinstance(item, nodes.Record)]
-            self.note('not_estimated', [*keys, 'reason'], quoted(text_of(lines.unestimated)), cites, record_rows(records))
+            self.note(
+                'not_estimated',
+                [*keys, 'reason'],
+                quoted(text_of(lines.unestimated)),
+                cites,
+                record_rows(records),
+            )
             self.reporting(lines, keys, number, thing)
             for k in self.block(number):
                 self.state.setdefault(k, 'done')
@@ -1080,18 +1117,14 @@ class Translator:
         member = self.renamed(head, member)
         if (self.symbols.declarer(head), setting.target.rpartition('.')[2]) in self.started:
             member += '_start'
-        if head in self.symbols.templates:
-            target = f'{head}.instances.{member}'
-        else:
-            target = f'{head}.{member}'
+        target = f'{head}.instances.{member}' if head in self.symbols.templates else f'{head}.{member}'
         if kind == 'input.text':
             value = quoted(setting.value.tokens[0].value)
         else:
-            # The names of the value are read in the thing that the line sets, as the old language does.
-            own = '' if head in self.symbols.templates else f'{head}.'
-            if head in self.symbols.templates and not oldmodel_literal(setting.value.tokens):
-                raise Hand('an option gives every instance of a template a value that is an expression')
-            value = self.expr(setting.value, head, own=own)
+            if not oldmodel_literal(setting.value.tokens):
+                # An option gives an input a constant of its type (D2, `semantic.constant`).
+                raise Hand('an option sets a value that is a calculation: an option gives a constant now')
+            value = self.expr(setting.value, head, own='' if head in self.symbols.templates else f'{head}.')
         self.emit(setting.line, 2, f'{target} = {value}{self.cites(setting.support)}')
         self.done(setting.line)
         self.under(setting.line, 3, setting.support)
@@ -1210,15 +1243,50 @@ class Translator:
 
 # Words that a leg cannot be named by (`napkin/model/language/parse.py`, RESERVED).
 RESERVED = frozenset(
-    'true false this t none and or not if else in is from to when after until reset switch move assert flow '
-    'record readonly input formula event solver enum bool scale'.split()
+    [
+        'true',
+        'false',
+        'this',
+        't',
+        'none',
+        'and',
+        'or',
+        'not',
+        'if',
+        'else',
+        'in',
+        'is',
+        'from',
+        'to',
+        'when',
+        'after',
+        'until',
+        'reset',
+        'switch',
+        'move',
+        'assert',
+        'flow',
+        'record',
+        'readonly',
+        'input',
+        'formula',
+        'event',
+        'solver',
+        'enum',
+        'bool',
+        'scale',
+    ]
 )
 
 
 def chances(outcomes):
     """[(outcome, weight)] of outcomes whose chances are numbers, with `else` as 1 less the others,
     each a number written in place (a categorical's weights are, in the language of now)."""
-    given = {outcome.name: Decimal(literal_text(outcome.chance)) for outcome in outcomes if not outcome.is_else and outcome.chance is not None}
+    given = {
+        outcome.name: Decimal(literal_text(outcome.chance))
+        for outcome in outcomes
+        if not outcome.is_else and outcome.chance is not None
+    }
     rest = Decimal(1) - sum(given.values(), Decimal(0))
     out = []
     for outcome in outcomes:
@@ -1349,6 +1417,29 @@ def entries(written):
     return sorted(found)
 
 
+def unspellable_units(packages):
+    """[(file, unit, its spelling now, its parts that are no unit)] of the units that the prelude, the
+    catalogue's library and the `units.json` of `packages` declare under a composed name: the
+    language of now composes a unit of its parts (D12), so each part must be a unit too."""
+    files = [BASE / 'napkin' / 'std' / 'units.json', BASE / 'scenarios' / 'library' / 'vocabulary.json']
+    for package in sorted(packages):
+        files += sorted(package.rglob('units.json'))
+    declared = {}
+    for file in files:
+        if file.is_file():
+            found = json.loads(file.read_text(encoding='utf-8'))
+            for name in found.get('units', found):
+                declared.setdefault(name, file.relative_to(BASE).as_posix())
+    out = []
+    for name, file in declared.items():
+        spelled = new_unit(name)
+        parts = [part.strip() for piece in spelled.split('/') for part in piece.split('*')]
+        missing = [part for part in parts if part not in declared and part != '1']
+        if missing:
+            out.append((file, name, spelled, missing))
+    return out
+
+
 def compile_all(paths):
     """The compile of each entry file by the compiler of now, in a process without the old compiler
     (`newmodel.py --compile`): {entry: result}."""
@@ -1380,7 +1471,12 @@ def main(argv):
     every = not paths
     if every:
         paths = oldmodel.model_files()
-    total, why, dropped, defaults = collections.Counter(), collections.Counter(), collections.Counter(), collections.Counter()
+    total, why, dropped, defaults = (
+        collections.Counter(),
+        collections.Counter(),
+        collections.Counter(),
+        collections.Counter(),
+    )
     rows, written, packages = [], [], set()
     for path in paths:
         translator = Translator(path, events=events)
@@ -1395,7 +1491,16 @@ def main(argv):
         written.append(target)
         packages.add(package_of(path))
         share = counts['done'] / counts['logical'] if counts['logical'] else 1.0
-        rows.append((relative.as_posix(), counts['logical'], counts['done'], counts['todo'], len(counts['missed']), share))
+        rows.append(
+            (
+                relative.as_posix(),
+                counts['logical'],
+                counts['done'],
+                counts['todo'],
+                len(counts['missed']),
+                share,
+            )
+        )
         total.update({key: counts[key] for key in ('logical', 'done', 'todo')})
         why.update(counts['why'])
         dropped.update(counts['dropped'])
@@ -1409,9 +1514,14 @@ def main(argv):
     width = max(len(row[0]) for row in rows)
     print(f'{"file":{width}}  lines  translated  left  share')
     for name, logical, done, todo, missed, share in rows:
-        print(f'{name:{width}}  {logical:5d}  {done:10d}  {todo:4d}  {share:5.1%}' + (f'  ({missed} lost)' if missed else ''))
+        print(
+            f'{name:{width}}  {logical:5d}  {done:10d}  {todo:4d}  {share:5.1%}'
+            + (f'  ({missed} lost)' if missed else '')
+        )
     if len(rows) > 1:
-        print(f'{"all":{width}}  {total["logical"]:5d}  {total["done"]:10d}  {total["todo"]:4d}  {total["done"] / total["logical"]:5.1%}')
+        print(
+            f'{"all":{width}}  {total["logical"]:5d}  {total["done"]:10d}  {total["todo"]:4d}  {total["done"] / total["logical"]:5.1%}'
+        )
     for title, counter in (
         ('lines left for a person, by reason', why),
         ('what the language of now has no place for', dropped),
@@ -1422,6 +1532,13 @@ def main(argv):
             for reason, n in counter.most_common():
                 print(f'  {n:5d}  {reason}')
     print(f'\nwrote {OUT}')
+    missing = unspellable_units(packages)
+    if missing:
+        print(f'\nunits declared under a composed name whose parts are no unit ({len(missing)}):')
+        for file, name, spelled, parts in missing:
+            print(
+                f'  {file}: {name} is {spelled} now, and {", ".join(parts)} {"is" if len(parts) == 1 else "are"} no unit'
+            )
     if not do_compile:
         return 0
     status = 0

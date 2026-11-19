@@ -33,7 +33,19 @@ from decimal import Decimal, InvalidOperation
 
 # ---- the printer ------------------------------------------------------------------------------------------
 
-PRECEDENCE = {'if': 1, 'or': 2, 'and': 3, 'not': 4, 'cmp': 5, '+': 6, '-': 6, '*': 7, '/': 7, 'neg': 8, '**': 9}
+PRECEDENCE = {
+    'if': 1,
+    'or': 2,
+    'and': 3,
+    'not': 4,
+    'cmp': 5,
+    '+': 6,
+    '-': 6,
+    '*': 7,
+    '/': 7,
+    'neg': 8,
+    '**': 9,
+}
 ATOM = 10
 
 
@@ -75,10 +87,7 @@ def show(node, parent=0, right=False):
     elif kind == 'attr':
         text = f'{show(node[1], ATOM)}.{node[2]}'
     elif kind == 'un':
-        if node[1] == 'not':
-            text = f'not {show(node[2], mine)}'
-        else:
-            text = f'{node[1]}{show(node[2], mine)}'
+        text = f'not {show(node[2], mine)}' if node[1] == 'not' else f'{node[1]}{show(node[2], mine)}'
     elif kind == 'bin':
         op = node[1]
         if op == '**':
@@ -137,8 +146,8 @@ def canonical(node):
         return (kind, node[1], canonical(node[2]), canonical(node[3]))
     if kind == 'bool':
         flat = []
-        for value in node[2]:
-            value = canonical(value)
+        for item in node[2]:
+            value = canonical(item)
             if value[0] == 'bool' and value[1] == node[1]:
                 flat += value[2]
             else:
@@ -171,9 +180,7 @@ def walk(node):
         children = [node[2], node[3]]
     elif kind == 'bool':
         children = node[2]
-    elif kind == 'if':
-        children = [node[1], node[2], node[3]]
-    elif kind == 'in':
+    elif kind == 'if' or kind == 'in':
         children = [node[1], node[2], node[3]]
     elif kind == 'coll':
         children = node[1]
@@ -401,13 +408,18 @@ def _new(node, scope, draws):
                 return ('cmp', node[1], *ordered)
             clock = ('call', 'since', [('name', event[1])])
             ordered = (clock, other) if since[0] == 0 else (other, clock)
-            happened = ('cmp', '>', ('call', 'count', [('name', event[1] + '.occurrences')]), ('num', '0', None))
+            happened = (
+                'cmp',
+                '>',
+                ('call', 'count', [('name', event[1] + '.occurrences')]),
+                ('num', '0', None),
+            )
             return ('bool', 'and', [happened, ('cmp', node[1], *ordered)])
         return ('cmp', node[1], _new(node[2], scope, draws), _new(node[3], scope, draws))
     if kind == 'bool':
         values = []
-        for value in node[2]:
-            value = _new(value, scope, draws)
+        for item in node[2]:
+            value = _new(item, scope, draws)
             # `a and (b and c)` is `a and b and c`: the guard of a `since` joins the condition it is in.
             values += value[2] if value[0] == 'bool' and value[1] == node[1] else [value]
         return ('bool', node[1], values)

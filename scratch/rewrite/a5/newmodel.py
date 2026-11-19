@@ -47,13 +47,22 @@ def compiled(entry):
         # The library's refusals (its records, its units) come as diagnostics.
         return {'ok': False, 'problems': [library_problem(item) for item in error.diagnostics], 'reports': []}
     except FileNotFoundError as error:
-        return {'ok': False, 'problems': [{'code': 'missing', 'file': str(entry), 'line': 0, 'message': str(error)}], 'reports': []}
+        return {
+            'ok': False,
+            'problems': [{'code': 'missing', 'file': str(entry), 'line': 0, 'message': str(error)}],
+            'reports': [],
+        }
     return {'ok': True, 'problems': [], 'reports': [plain(item) for item in found.reports]}
 
 
 def library_problem(item):
     """A diagnostic of the library (`napkin.model.ir.diagnostic`) as a problem of the compile."""
-    return {'code': f'library.{item.get("code", "")}', 'file': item.get('path', ''), 'line': 0, 'message': item['message']}
+    return {
+        'code': f'library.{item.get("code", "")}',
+        'file': item.get('path', ''),
+        'line': 0,
+        'message': item['message'],
+    }
 
 
 # ---- the facts of a model -------------------------------------------------------------------------------
@@ -131,7 +140,11 @@ class Collector:
             return
         self.seen.add(id(node))
         if isinstance(node, s.Const):
-            if isinstance(node.type, s.Num) and isinstance(node.value, (int, float, Fraction)) and not isinstance(node.value, bool):
+            if (
+                isinstance(node.type, s.Num)
+                and isinstance(node.value, (int, float, Fraction))
+                and not isinstance(node.value, bool)
+            ):
                 self.number(node.value, node.type)
             elif node.type == s.TEXT:
                 self.text(node.value)
@@ -199,7 +212,9 @@ def kinds(declared):
                             ends.add(end(read))
                     if end(statement.source):
                         drained.add(end(statement.source))
-                elif isinstance(statement, s.DeclaredAssign) and statement.op != '+=' and end(statement.target):
+                elif (
+                    isinstance(statement, s.DeclaredAssign) and statement.op != '+=' and end(statement.target)
+                ):
                     drained.add(end(statement.target))
     found = {}
 
@@ -217,12 +232,27 @@ def kinds(declared):
         elif kind == s.STATE and part.readonly:
             kind = 'fixed'
         elif kind == s.STATE:
-            kind = 'state' if isinstance(part.type, s.Num) else 'state.' + (
-                'bool' if part.type == s.BOOL else 'enum' if isinstance(part.type, s.EnumOf) else str(part.type)
+            kind = (
+                'state'
+                if isinstance(part.type, s.Num)
+                else 'state.'
+                + (
+                    'bool'
+                    if part.type == s.BOOL
+                    else 'enum'
+                    if isinstance(part.type, s.EnumOf)
+                    else str(part.type)
+                )
             )
         elif kind == s.INPUT:
             kind = 'input.' + (
-                'bool' if part.type == s.BOOL else 'text' if part.type == s.TEXT else 'enum' if isinstance(part.type, s.EnumOf) else 'number'
+                'bool'
+                if part.type == s.BOOL
+                else 'text'
+                if part.type == s.TEXT
+                else 'enum'
+                if isinstance(part.type, s.EnumOf)
+                else 'number'
             )
         found[part.path] = (kind, dimension(part.type))
 
@@ -295,7 +325,10 @@ def proofs(compiled_, paths, runs):
                 try:
                     proof = proving.never_falls(key)
                 except (KeyError, AttributeError, ValueError) as error:
-                    out[path][run] = [False, f'{key.owner}.{".".join(key.steps)}: {type(error).__name__} {error}']
+                    out[path][run] = [
+                        False,
+                        f'{key.owner}.{".".join(key.steps)}: {type(error).__name__} {error}',
+                    ]
                     break
                 if not proof.holds:
                     out[path][run] = [False, f'{key.owner or "the top level"}: {proof.reason}']
@@ -334,7 +367,9 @@ def facts(entry, proven=(), runs=()):
         'flows': flow_ends(declared),
         'runs': [run.name for run in declared.runs],
         'warnings': [[item.code, item.file, item.line, item.message] for item in found.reports],
-        'proofs': proofs(found, list(proven), [run.name for run in declared.runs if run.name in runs or not runs]),
+        'proofs': proofs(
+            found, list(proven), [run.name for run in declared.runs if run.name in runs or not runs]
+        ),
     }
 
 

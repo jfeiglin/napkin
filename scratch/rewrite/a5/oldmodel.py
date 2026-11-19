@@ -250,7 +250,7 @@ class Symbols:
         parts = symbol.split('.')
         # A copy's number after the name of its set joins the name: `waves.2.x`.
         for cut in range(len(parts), 0, -1):
-            head, rest = parts[:cut - 1], parts[cut - 1:]
+            head, rest = parts[: cut - 1], parts[cut - 1 :]
             owner = self.owner_of(head, thing) if head else (('thing', thing) if thing is not None else None)
             if owner is None:
                 continue
@@ -433,7 +433,7 @@ def facts(entry):
     from napkin.model.model import build_model
 
     entry = Path(entry).resolve()
-    own, files, symbols, kinds_ = model_of(entry)
+    _, files, symbols, kinds_ = model_of(entry)
     units = UnitSystem(load_library(entry)['units'])
     numbers, texts = collections.Counter(), collections.Counter()
 
@@ -564,7 +564,12 @@ def _numbers_and_texts(file, symbols, say, count):
 
     def declare(value):
         unit = value.type if isinstance(value.type, str) and value.type != 'bool' else None
-        for part in (value.value, value.min and value.min.expr, value.max and value.max.expr, value.size and value.size.expr):
+        for part in (
+            value.value,
+            value.min and value.min.expr,
+            value.max and value.max.expr,
+            value.size and value.size.expr,
+        ):
             if part is not None:
                 units[id(part)] = unit
 
@@ -574,7 +579,11 @@ def _numbers_and_texts(file, symbols, say, count):
                 declare(member)
                 if field_kind(member) == 'input.text':
                     text_values.add(id(member.value))
-            elif isinstance(member, nodes.Change) and member.lines is not None and member.lines.value is not None:
+            elif (
+                isinstance(member, nodes.Change)
+                and member.lines is not None
+                and member.lines.value is not None
+            ):
                 found = symbols.read(member.name, thing.name)
                 if found is not None and found[0] == 'value' and found[1] == 'input.text':
                     text_values.add(id(member.lines.value))

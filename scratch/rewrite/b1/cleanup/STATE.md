@@ -28,12 +28,16 @@ Rules: `briefs/COMMON-B.md`. No git command that changes the repo. Do not edit `
   150 calls or choices: RecursionError at parse. semantic.py: a left sum of 700 terms likewise.
 - two `record shared: ...` lines in one model: no problem, the second replaces the first.
 - a note that cites no record (`checks: "x"  @missing`) is accepted by compile_text and load_scenario.
+- `tank:\n    go: L = 1 L\n    go = event():\n        after 1 h\n` (or `flow go: ...`): AttributeError
+  'Event'/'Flow' object has no attribute 'type'; the reverse order gives duplicate_name.
+- engine/front end: `assert a.x + a.y in [...]` over two moving stores (the spec's sum assertion)
+  compiles, then the run fails at 0 h: "cannot be certified: it reads more than one store".
 
 ## Ported (tests/model/, each passes alone)
 - test_continuation 9, test_shared_formulas 4, test_units 10, test_notes 10 (+2 xfail),
   test_bases 4, test_local_bases 8 (+1 xfail), test_diagnostic_places 13, test_library 7,
-  test_compile 8, test_long_expressions 38 (+7 xfail); deleted test_list_reductions
+  test_compile 8, test_long_expressions 38 (+7 xfail); deleted test_list_reductions;
+  test_analysis 14, test_structure_checks 10, test_contracts 47 (+2), test_material 10 (+2)
 
 ## In progress
-- test_analysis, test_structure_checks, test_contracts, test_material, test_parts,
-  test_copies_and_start, test_build; then ruff, the joint run, the last message
+- test_parts, test_copies_and_start, test_build; then ruff, the joint run, the last message

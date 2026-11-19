@@ -91,35 +91,46 @@ def compare(old, new, renames, report):
     mine, theirs = counter(old['numbers']), counter(new['numbers'])
     for (value, dimension), count in sorted(mine.items()):
         if theirs[(value, dimension)] < count:
-            report.error('number', f'{value} ({dims(dimension)}): {count} in the old model, {theirs[(value, dimension)]} in the new one')
+            report.error(
+                'number',
+                f'{value} ({dims(dimension)}): {count} in the old model, {theirs[(value, dimension)]} in the new one',
+            )
     extra = theirs - mine
     if extra:
-        report.note(f'{sum(extra.values())} numbers of the new model are not in the old one (a floor `in [0,]`, a capacity beside its request, a weight of `else`)')
+        report.note(
+            f'{sum(extra.values())} numbers of the new model are not in the old one (a floor `in [0,]`, a capacity beside its request, a weight of `else`)'
+        )
     for text, count in old['texts'].items():
         have = new['texts'].get(text, 0)
         if have < count:
             report.error('text', f'{count} in the old model, {have} in the new one: "{text[:100]}"')
     # Kinds and types.
     kinds = new['kinds']
-    for path, (kind, written) in old['kinds'].items():
-        path = renames.get(path, path)
+    for written_path, (kind, written) in old['kinds'].items():
+        path = renames.get(written_path, written_path)
         other = kinds.get(path)
         if other is None:
             report.error('kind', f'{path} ({kind}) is missing')
         elif other[0] != kind:
             report.error('kind', f'{path}: a {kind} in the old model, a {other[0]} in the new one')
         elif written and other[1] and written != other[1]:
-            report.error('kind', f'{path}: of {dims(written)} in the old model, of {dims(other[1])} in the new one')
+            report.error(
+                'kind', f'{path}: of {dims(written)} in the old model, of {dims(other[1])} in the new one'
+            )
     named = {renames.get(path, path) for path in old['kinds']}
     new_names = sorted(path for path in kinds if path not in named)
     if new_names:
-        report.note(f'{len(new_names)} names of the new model are not in the old one: {", ".join(new_names[:8])}')
+        report.note(
+            f'{len(new_names)} names of the new model are not in the old one: {", ".join(new_names[:8])}'
+        )
     for path in old['unestimated']:
         if path in kinds:
-            report.error('kind', f'{path} has no estimate in the old model, and a declaration in the new one (D4)')
+            report.error(
+                'kind', f'{path} has no estimate in the old model, and a declaration in the new one (D4)'
+            )
     # Flows.
-    for path, ends in old['flows'].items():
-        path = renames.get(path, path)
+    for written_path, ends in old['flows'].items():
+        path = renames.get(written_path, written_path)
         other = new['flows'].get(path)
         renamed = sorted([renames.get(a, a), renames.get(b, b)] for a, b in ends)
         if other is not None and other != renamed:
@@ -130,9 +141,15 @@ def compare(old, new, renames, report):
             proof = new['proofs'].get(path, {}).get(run)
             label = f'the run {run}' if run else 'the default run'
             if proof is None:
-                report.error('cumulative', f'{path}: proved cumulative in {label} of the old model; the new one has no such run or value')
+                report.error(
+                    'cumulative',
+                    f'{path}: proved cumulative in {label} of the old model; the new one has no such run or value',
+                )
             elif not proof[0]:
-                report.error('cumulative', f'{path}: proved cumulative in {label} of the old model; in the new one it can fall: {proof[1]}')
+                report.error(
+                    'cumulative',
+                    f'{path}: proved cumulative in {label} of the old model; in the new one it can fall: {proof[1]}',
+                )
     warnings = collections.Counter(item[0] for item in new['warnings'])
     if warnings:
         report.note(f'the setup reports of the new model: {dict(warnings)}')
