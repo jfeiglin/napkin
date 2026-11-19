@@ -1,5 +1,6 @@
-"""The public Python API (`napkin/__init__.py`): compile, run, read, report, study, the members of a
-template and the dynamics, each the object of the module that defines it, loaded on first use (D-24).
+"""The public Python API (`napkin/__init__.py`): compile, run, read, report, play, study, the
+members of a template and the dynamics, each the object of the module that defines it, loaded on
+first use (D-24).
 
 `import napkin` loads no other module of the package, nor numpy, scipy or jsonschema: a property of a
 fresh interpreter, not a timing. The file names each export's module as text and imports none, so the
@@ -102,15 +103,16 @@ API = {
     'read': 'napkin.engine.timeline.record',
     'report': 'napkin.engine.report',
     'Lag': 'napkin.engine.report',
+    'Session': 'napkin.session',
     'study': 'napkin.engine.study',
     'monte_carlo': 'napkin.engine.uncertainty',
     'spread': 'napkin.spread',
     'instances': 'napkin.model.views',
     'dynamics': 'napkin.dynamics',
 }
-# The names of the old API that are gone: the old report, the old studies, and the player's session
-# and actors, which breakpoints and checkpoints replace (slice S7).
-GONE = ('sample_result', 'evaluate_study', 'evaluate_uncertainty', 'uncertainty_report', 'Session', 'actors')
+# The names of the old API that are gone: the old report, the old studies, and the player's actors,
+# which breakpoints and checkpoints replace (slice S7); the session is a client of the checkpoints.
+GONE = ('sample_result', 'evaluate_study', 'evaluate_uncertainty', 'uncertainty_report', 'actors')
 
 # The modules whose loading `import napkin` must not cause, by their top-level name.
 HEAVY = ('numpy', 'scipy', 'jsonschema')

@@ -1,9 +1,12 @@
 """The run store (`napkin/store.py`): a stored record is the fresh record, bit for bit; the key covers
 what a run computes from and no label; a stored run serves a request that it covers, cut to it, and a
-request for a later horizon or for a value that it lacks runs again; a failure is stored and a pause is
-not; a process waits for a run that another holds; writes are atomic; the size limit removes the least
-recently used files; and a run calls only code of the files that its key digests. The values are worked
-by hand: the tank fills at its median rate, 2 L/h, so it holds 2 L for each hour."""
+request for a later horizon or for a value that it lacks runs again; a failure is stored; a run with
+edits is stored under its log, which its key digests with the code that plays it; a process waits
+for a run that another holds; writes are atomic; the size limit removes the least recently used
+files; and a run calls only code of the files that its key digests. The values are worked by hand:
+the tank fills at its median rate, 2 L/h, so it holds 2 L for each hour; the dispatch of change 15
+(`examples.pump_dispatch`) waits once unattended, and sends its one spare when its order is edited
+to SEND."""
 
 from __future__ import annotations
 
@@ -22,9 +25,11 @@ from napkin import store
 from napkin.engine import read
 from napkin.engine.timeline import run as fresh
 from napkin.model.compile import compile_text
-from napkin.program.config import SAMPLED, Request
+from napkin.program.checkpoint import Breakpoint, CheckpointError
+from napkin.program.config import SAMPLED, Configuration, Request
 from napkin.program.record import Entry, Key, Manifest, Record
-from tests.program.examples import EXAMPLES, UNITS
+from napkin.session import Session, play
+from tests.program.examples import DISPATCH, DISPATCH_SWITCH, EXAMPLES, UNITS, pump_dispatch
 
 TANK = textwrap.dedent("""\
     scenario "Tank"
@@ -59,6 +64,22 @@ def water(record, model, times):
 
 def sampled(model, seed):
     return replace(model.configuration, mode=SAMPLED, seed=seed)
+
+
+ONE_HOUR = Configuration(Request(1))
+
+
+def dispatch_log(order='SEND'):
+    """The dispatch and the log of a session stopped before its switch, its order edited to `order`."""
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR, [Breakpoint(DISPATCH_SWITCH, DISPATCH)])
+    session.advance()
+    session.edit(f'{DISPATCH}.order', order)
+    return program, session.log
+
+
+def sent(record, program):
+    return read(record, program, ['sent'], [1])[0].values[0]
 
 
 def test_a_stored_record_is_the_fresh_record_bit_for_bit(tmp_path):
@@ -154,24 +175,74 @@ def test_a_shorter_request_reads_the_stored_run_up_to_its_horizon_and_nothing_af
     assert water(cut, model, [0, 1, 2]) == pytest.approx(water(alone, model, [0, 1, 2]), rel=1e-12)
 
 
-def test_a_failure_is_stored_and_a_pause_is_not(tmp_path, monkeypatch):
-    """The median rate, 2 L/h, breaks the assertion at the start: the stored run fails the same way.
-    A run that the engine gives back paused is never stored."""
+def test_a_failure_is_stored(tmp_path):
+    """The median rate, 2 L/h, breaks the assertion at the start: the stored run fails the same way."""
     failing = tank(TANK + 'assert tank.rate <= 1.5 L/h\n')
     with store.use(tmp_path):
         failed, first = counted(lambda: store.run(failing.program, failing.configuration))
         again, second = counted(lambda: store.run(failing.program, failing.configuration))
     assert failed.failure is not None and failed.failure.t == 0
     assert first == {'hits': 0, 'misses': 1} and second == {'hits': 1, 'misses': 0} and again == failed
-    model = tank()
-    pause = Entry(1.0, 1, 'pause', 'tank.decide', 'tank', (('site', 'tank.decide'),))
-    monkeypatch.setattr(
-        'napkin.engine.timeline.run', lambda program, configuration: Record(Manifest(4), (), (pause,))
+
+
+def test_a_run_with_edits_is_stored_under_its_log_and_a_log_without_edits_is_the_plain_run(tmp_path):
+    """Edited to SEND, the dispatch sends one pump; unattended it sends none. The run of the log is
+    the session's run, bit for bit, and its entry keeps the log."""
+    program, log = dispatch_log()
+    with store.use(tmp_path):
+        edited, first = counted(lambda: store.run(program, ONE_HOUR, log))
+        again, second = counted(lambda: store.run(program, ONE_HOUR, log))
+        plain, third = counted(lambda: store.run(program, ONE_HOUR))
+        untouched, fourth = counted(lambda: store.run(program, ONE_HOUR, replace(log, edits=())))
+    assert first == third == {'hits': 0, 'misses': 1} and second == fourth == {'hits': 1, 'misses': 0}
+    assert (
+        store.fingerprint(again)
+        == store.fingerprint(edited)
+        == store.fingerprint(play(program, ONE_HOUR, log))
     )
-    with store.use(tmp_path / 'paused'):
-        store.run(model.program, model.configuration)
-        _, used = counted(lambda: store.run(model.program, model.configuration))
-    assert used == {'hits': 0, 'misses': 1} and not list((tmp_path / 'paused').glob('??/*.run'))
+    assert (sent(edited, program), sent(plain, program)) == (1, 0) and untouched == plain
+    entry = store._stored(tmp_path, store.key(program, ONE_HOUR, log))
+    assert entry['log'] == log and entry['engine'] == store.SESSION_DIGEST
+    assert store._stored(tmp_path, store.key(program, ONE_HOUR))['log'] is None
+
+
+def test_the_key_of_a_log_covers_its_breakpoints_its_edits_and_the_code_that_plays_it(monkeypatch):
+    """The session's code imports the engine's, so its digest covers both. The stops of a log are what
+    the run gives again, and no part of the key."""
+    program, log = dispatch_log()
+    base = store.key(program, ONE_HOUR, log)
+    assert store.key(program, ONE_HOUR, replace(log, stops=())) == base
+    changed = [
+        store.key(program, ONE_HOUR, dispatch_log('WAIT')[1]),
+        store.key(program, ONE_HOUR, replace(log, breakpoints=(Breakpoint(DISPATCH_SWITCH),))),
+        store.key(program, Configuration(Request(1), mode=SAMPLED, seed=3), log),
+        store.key(program, ONE_HOUR),
+    ]
+    monkeypatch.setattr(store, 'SESSION_DIGEST', '0' * 64)
+    changed.append(store.key(program, ONE_HOUR, log))
+    assert len({base, *changed}) == 1 + len(changed)
+    assert set(store.closure(store.ENGINE_STARTS)) < set(store.closure(store.SESSION_STARTS))
+
+
+def test_a_log_that_does_not_play_again_stores_nothing(tmp_path):
+    program, log = dispatch_log()
+    moved = replace(log, stops=(replace(log.stops[0], t=0.5),))
+    with store.use(tmp_path), pytest.raises(CheckpointError, match='does not play again'):
+        store.run(program, ONE_HOUR, moved)
+    assert not list(tmp_path.glob('??/*.run'))
+
+
+def test_verify_plays_a_stored_log_again(tmp_path, capsys):
+    program, log = dispatch_log()
+    with store.use(tmp_path):
+        store.run(program, ONE_HOUR, log)
+    assert store.verify(tmp_path, 1) == []
+    (path,) = tmp_path.glob('??/*.run')
+    entry = store._read(path)
+    entry['log'] = dispatch_log('WAIT')[1]
+    store._write(path, entry)
+    assert store.verify(tmp_path, 1) == [path]
+    assert '1 stored runs run again, 1 differ' in capsys.readouterr().out
 
 
 def test_what_a_run_computes_from_is_in_its_key_and_no_label_is(monkeypatch):
@@ -285,6 +356,27 @@ def test_a_run_calls_only_code_of_the_files_that_its_key_digests():
     files = {Path(name).resolve() for name in called}
     package = {path for path in files if path.is_relative_to(store.PACKAGE)}
     assert package and package <= set(store.closure()), sorted(package - set(store.closure()))
+
+
+def test_the_run_of_a_log_calls_only_code_of_the_files_that_its_key_digests():
+    """A log played through the session and the engine's checkpoints runs code of the session's
+    closure only."""
+    program, log = dispatch_log()
+    called = set()
+
+    def profile(frame, event, argument):
+        if event == 'call':
+            called.add(frame.f_code.co_filename)
+
+    sys.setprofile(profile)
+    try:
+        play(program, ONE_HOUR, log)
+    finally:
+        sys.setprofile(None)
+    files = {Path(name).resolve() for name in called}
+    package = {path for path in files if path.is_relative_to(store.PACKAGE)}
+    closure = set(store.closure(store.SESSION_STARTS))
+    assert package and package <= closure, sorted(package - closure)
 
 
 def test_the_store_folder_follows_its_settings(monkeypatch, tmp_path):

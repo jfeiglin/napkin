@@ -20,6 +20,8 @@ The public Python API is the names of `_EXPORTS`:
   (every model of a package);
 - run and read: `run`, `read` (values at times) and `report` (values with their units, labels, lags
   `Lag`, status displays, evidence trails and near-ties);
+- play: `Session` (one run stopped at breakpoints, shown and edited at each stop, saved, and resumed
+  in this process or another: `napkin/session.py`);
 - study: `study` (the named runs of a model), `monte_carlo` (samples of one run) and the module
   `spread` (a Monte Carlo study as a command asks for it);
 - read the model: `instances` (the members of a template); `dynamics` (its rest states).
@@ -67,6 +69,7 @@ _EXPORTS = {
     'read': 'napkin.engine.timeline.record',
     'report': 'napkin.engine.report',
     'Lag': 'napkin.engine.report',
+    'Session': 'napkin.session',
     'study': 'napkin.engine.study',
     'monte_carlo': 'napkin.engine.uncertainty',
     'spread': 'napkin.spread',

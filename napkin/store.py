@@ -7,11 +7,18 @@ R-A4a-08) is a digest of exactly these:
 - the canonical bytes of the program (`napkin/program/canonical.py`), which holds no label, text or
   evidence, so editing a label keeps the key;
 - the canonical bytes of the configuration without its request: the inputs, the mode, the seed, the
-  controllers and their picks, the limits, the budgets and the numerical settings;
+  limits, the budgets and the numerical settings;
 - a digest of the engine code: each package file that `engine/timeline/__init__.py`, the entry of a
   run, imports, directly or through other package files (its static import closure, with every
   parent package's `__init__.py`), and `expressions.py` and `distributions.py`;
-- the Python, numpy and scipy versions, the machine, the processor and the numpy CPU features.
+- the Python, numpy and scipy versions, the machine, the processor and the numpy CPU features;
+- for a run with edits, its log (`napkin.session.Log`): the breakpoints and each edit, with the stop
+  of its hit, that a caller made at a checkpoint (PLAN, change 15). Such a run is the program
+  stopped at each hit of the breakpoints, edited there and resumed, to the end
+  (`napkin.session.play`), so the code that plays it, `session.py` and its closure, takes the place
+  of the engine code in the key. A log with no edit keys as the run without it: a breakpoint alone
+  changes no run. The stops of a log are what a session saw, which the run gives again: they are
+  checked as the log plays, and they are no part of the key.
 
 A change to any of these is a miss, never a stale result. The thread settings of the linear algebra
 are not in the key: a run under other thread settings is not the same run bit for bit, and it agrees
@@ -27,15 +34,17 @@ tolerances of the run; a request that the entry covers gets the same record each
 that the entry does not cover (a later horizon, a value that it does not hold) runs again, with a
 request wide enough for both (`_widened`), and the new record takes the entry's place: an entry never
 covers less than before. A run that fails is stored, with its failure: the same run fails the same
-way. A paused run (a player's choice that no pick answers) is not stored, and nothing is stored for
-a run that the engine refuses with an exception.
+way. Nothing is stored for a run that the engine refuses with an exception, or for a log that does
+not play again (`CheckpointError`). A run with edits is stored under its log and serves only that
+log. A session (`napkin.session.Session`) that waits at a stop is not over, and stores nothing: the
+run of its log goes through the store (`run(program, configuration, log)`).
 
 Each entry is a compressed pickle in `<directory>/<2 hex>/<key>.run`, written to a temporary file and
-renamed into place, with the configuration that it ran and the digest of its program; the program is
-kept once, in `<directory>/programs/<digest>.program`, so that `verify` can run an entry again. Each
-key has a lock (`<directory>/locks/<key>.lock`): a process that needs a run that another process is
-running waits for it, then reads it. When the entries pass the size limit (`NAPKIN_STORE_LIMIT`, in
-gigabytes, 4 by default), the least recently used go.
+renamed into place, with the configuration that it ran, its log (None for none) and the digest of its
+program; the program is kept once, in `<directory>/programs/<digest>.program`, so that `verify` can
+run an entry again. Each key has a lock (`<directory>/locks/<key>.lock`): a process that needs a run
+that another process is running waits for it, then reads it. When the entries pass the size limit
+(`NAPKIN_STORE_LIMIT`, in gigabytes, 4 by default), the least recently used go.
 
 The store does nothing until a caller turns it on (`use`, `activate`): the commands, the catalogue
 tests (the root conftest.py) and the tools. The engine, language and acceptance unit tests never use
@@ -73,10 +82,12 @@ import numpy as np
 # The folder of the package, whose files the key of a run digests (`closure`).
 PACKAGE = Path(__file__).resolve().parent
 
-FORMAT = 3
+FORMAT = 4
 MAGIC = b'napkin run store 2\n'
-# The modules whose code a run runs, as files of the package.
+# The modules whose code a run runs, as files of the package; and the module that plays a run with
+# edits, which imports the engine.
 ENGINE_STARTS = ('engine/timeline/__init__.py', 'expressions.py', 'distributions.py')
+SESSION_STARTS = ('session.py',)
 DEFAULT_LIMIT_GB = 4.0
 
 # The store that this process uses: its directory, or None.
@@ -220,6 +231,45 @@ def _parts(path):
     return parts[:-1] if parts and parts[-1] == '__init__' else parts
 
 
+# The files that each file imports, as `_imports` found them in this process.
+_IMPORTS = {}
+
+
+def _imports(path, package):
+    """The package files that the module at `path`, of the package `package`, imports (see
+    `closure`), read once for each file: the closure of the session holds the engine's."""
+    found = _IMPORTS.get(path)
+    if found is not None:
+        return found
+    found = []
+    for node in ast.walk(ast.parse(path.read_bytes(), filename=str(path))):
+        names = []
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                head, *rest = alias.name.split('.')
+                if head == PACKAGE.name:
+                    names.append((tuple(rest), None))
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                if node.level - 1 > len(package):
+                    continue
+                base = package[: len(package) - (node.level - 1)]
+                base += tuple(node.module.split('.')) if node.module else ()
+            else:
+                head, *rest = (node.module or '').split('.')
+                if head != PACKAGE.name:
+                    continue
+                base = tuple(rest)
+            names.extend((base, alias.name) for alias in node.names)
+        for base, name in names:
+            submodule = _module_file((*base, name)) if name not in (None, '*') else None
+            target = submodule or _module_file(base)
+            if target is not None:
+                found.append(target)
+    _IMPORTS[path] = found
+    return found
+
+
 def closure(starts=ENGINE_STARTS):
     """The package files that the modules `starts` import, directly or through each other: each
     module that an import names, and each module whose names an import takes (so a package that
@@ -239,36 +289,14 @@ def closure(starts=ENGINE_STARTS):
             parent = _module_file(package[:depth])
             if parent is not None:
                 files.add(parent)
-        for node in ast.walk(ast.parse(path.read_bytes(), filename=str(path))):
-            names = []
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    head, *rest = alias.name.split('.')
-                    if head == PACKAGE.name:
-                        names.append((tuple(rest), None))
-            elif isinstance(node, ast.ImportFrom):
-                if node.level:
-                    if node.level - 1 > len(package):
-                        continue
-                    base = package[: len(package) - (node.level - 1)]
-                    base += tuple(node.module.split('.')) if node.module else ()
-                else:
-                    head, *rest = (node.module or '').split('.')
-                    if head != PACKAGE.name:
-                        continue
-                    base = tuple(rest)
-                names.extend((base, alias.name) for alias in node.names)
-            for base, name in names:
-                submodule = _module_file((*base, name)) if name not in (None, '*') else None
-                target = submodule or _module_file(base)
-                if target is not None:
-                    stack.append(target)
+        stack.extend(_imports(path, package))
     return sorted(files)
 
 
-def _engine_digest():
+def _code_digest(starts):
+    """The SHA-256 of the files of the closure of `starts`, each by its path and its bytes."""
     digest = hashlib.sha256()
-    for path in closure():
+    for path in closure(starts):
         digest.update(path.relative_to(PACKAGE).as_posix().encode() + b'\0')
         digest.update(hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
@@ -314,8 +342,9 @@ def _environment():
 
 
 # The code is digested once, at import: this names what the process loaded even if source files
-# change while a long-lived process runs.
-ENGINE_DIGEST = _engine_digest()
+# change while a long-lived process runs. The session's code holds the engine's.
+ENGINE_DIGEST = _code_digest(ENGINE_STARTS)
+SESSION_DIGEST = _code_digest(SESSION_STARTS)
 ENVIRONMENT = _environment()
 _ENVIRONMENT_BYTES = repr(sorted(ENVIRONMENT.items())).encode()
 
@@ -340,20 +369,36 @@ def program_digest(program):
     return kept[1]
 
 
-def key(program, configuration):
+def _edited(log):
+    """Whether a log makes another run than the run without it: whether it has an edit."""
+    return log is not None and bool(log.edits)
+
+
+def _code(log):
+    """The digest of the code of a run with this log (see the module)."""
+    return SESSION_DIGEST if _edited(log) else ENGINE_DIGEST
+
+
+def key(program, configuration, log=None):
     """The key of a stored run of a program under a run configuration (see the module): the program's
-    digest, the canonical bytes of the configuration without its request, the engine code and the
-    environment. Raises TypeError when a part has no canonical bytes."""
+    digest, the canonical bytes of the configuration without its request, the code and the
+    environment, and for a run with edits its log (`napkin.session.Log`), by its breakpoints and its
+    edits. Raises TypeError when a part has no canonical bytes."""
     from .program.canonical import configuration_bytes
 
-    digest = hashlib.sha256(MAGIC)
-    # Each part is length-prefixed, so no two keys share their bytes across a boundary.
-    for part in (
-        ENGINE_DIGEST.encode(),
+    parts = [
+        _code(log).encode(),
         _ENVIRONMENT_BYTES,
         program_digest(program).encode(),
         configuration_bytes(configuration),
-    ):
+    ]
+    if _edited(log):
+        out = []
+        _encode((tuple(log.breakpoints), tuple(log.edits)), out)
+        parts.append(b''.join(out))
+    digest = hashlib.sha256(MAGIC)
+    # Each part is length-prefixed, so no two keys share their bytes across a boundary.
+    for part in parts:
         digest.update(b'%d:' % len(part))
         digest.update(part)
     return digest.hexdigest()
@@ -442,8 +487,9 @@ def _write(path, value):
     os.replace(temporary, path)
 
 
-def _save(directory, run_key, program, configuration, record):
-    """Store the record of a run with the configuration that it ran, and its program once."""
+def _save(directory, run_key, program, configuration, record, log=None):
+    """Store the record of a run with the configuration that it ran and its log (None for a run
+    without edits), and its program once."""
     from .program.record import Record
 
     digest = program_digest(program)
@@ -452,10 +498,11 @@ def _save(directory, run_key, program, configuration, record):
     entry = {
         'format': FORMAT,
         'key': run_key,
-        'engine': ENGINE_DIGEST,
+        'engine': _code(log),
         'environment': ENVIRONMENT,
         'program': digest,
         'configuration': configuration,
+        'log': log if _edited(log) else None,
         # A fresh copy: a record keeps the index of its histories beside it once it is read.
         'record': Record(record.manifest, record.histories, record.trace, record.failure),
     }
@@ -536,18 +583,30 @@ def _held(directory, run_key, request):
 # --- Running through the store ------------------------------------------------------------------
 
 
-def run(program, configuration):
-    """The record of a run of a program under a configuration (`napkin.engine.run`), through the store
-    of this process when one is on (see the module): the stored record when its entry covers the
-    request, else a new run, which is stored unless it paused. An exception of the engine (a part that
-    it does not run, a configuration that the program cannot take) stores nothing and propagates."""
-    from .engine.timeline import paused
-    from .engine.timeline import run as fresh
+def _fresh(program, configuration, log):
+    """A new run: the engine's (`napkin.engine.run`), or for a run with edits the run of its log,
+    played through the engine's checkpoints and resumed in place past each stop to the end
+    (`napkin.session.play`)."""
+    if not _edited(log):
+        from .engine.timeline import run as fresh
 
+        return fresh(program, configuration)
+    from .session import play
+
+    return play(program, configuration, log)
+
+
+def run(program, configuration, log=None):
+    """The record of a run of a program under a configuration (`napkin.engine.run`), or of the run of
+    a log of its edits at the stops of its breakpoints (`log`, `napkin.session.Log`), through the
+    store of this process when one is on (see the module): the stored record when its entry covers
+    the request, else a new run, which is stored. An exception of the engine (a part that it does not
+    run, a configuration that the program cannot take, a log that does not play again) stores
+    nothing and propagates."""
     directory = _active['directory']
     if directory is None:
-        return fresh(program, configuration)
-    run_key = key(program, configuration)
+        return _fresh(program, configuration, log)
+    run_key = key(program, configuration, log)
     request = configuration.request
     record, _ = _held(directory, run_key, request)
     if record is None:
@@ -561,10 +620,8 @@ def run(program, configuration):
                     if manifest is None
                     else replace(configuration, request=_widened(manifest, request))
                 )
-                found = fresh(program, ran)
-                if paused(found) is not None:
-                    return found
-                _save(directory, run_key, program, ran, found)
+                found = _fresh(program, ran, log)
+                _save(directory, run_key, program, ran, found, log)
                 return served(found, request)
     counts['hits'] += 1
     return record
@@ -574,11 +631,9 @@ def run(program, configuration):
 
 
 def verify(directory, number, rng=None):
-    """Run `number` stored runs of this engine and environment again, each with the configuration
-    that it ran and its program, and compare each record with its entry, bit for bit (`fingerprint`).
-    Gives the paths of the entries that differ."""
-    from .engine.timeline import run as fresh
-
+    """Run `number` stored runs of this code and environment again, each with the configuration that
+    it ran, its log and its program, and compare each record with its entry, bit for bit
+    (`fingerprint`). Gives the paths of the entries that differ."""
     directory = Path(directory)
     candidates = []
     for _, _, path in _files(directory):
@@ -587,7 +642,7 @@ def verify(directory, number, rng=None):
         entry = _stored(directory, path.stem)
         if (
             entry is not None
-            and entry['engine'] == ENGINE_DIGEST
+            and entry['engine'] == _code(entry['log'])
             and entry['environment'] == ENVIRONMENT
             and _program_file(directory, entry['program']).is_file()
         ):
@@ -597,7 +652,7 @@ def verify(directory, number, rng=None):
     for path in chosen:
         entry = _stored(directory, path.stem)
         program = _read(_program_file(directory, entry['program']))
-        again = fresh(program, entry['configuration'])
+        again = _fresh(program, entry['configuration'], entry['log'])
         if fingerprint(again) != fingerprint(entry['record']):
             differ.append(path)
     print(f'{directory}: {len(chosen)} stored runs run again, {len(differ)} differ')

@@ -70,6 +70,24 @@ def test_a_named_run_takes_its_option(tmp_path, capsys):
     assert doc['values']['clinic.pace']['label'] == 'Pace of the clinic'
 
 
+def test_a_named_run_cites_the_records_of_its_options_in_its_trail(tmp_path, capsys):
+    """The option `Fast` sets the pace and cites a record of its own: the trail of the pace in the run
+    `fast` cites it after the input's own record, and the default run, which takes no option, does
+    not."""
+    text = PACED.replace('clinic.pace = 4 L/h  @pace', 'clinic.pace = 4 L/h  @fast_pace')
+    model = package(
+        tmp_path / 'paced', text + 'record fast_pace: assumption "A fast pace of a test."\n', UNITS
+    )
+
+    def cited(*argv):
+        doc = napkin(capsys, 'run', model, '--json', '--value', 'clinic.pace', *argv).doc
+        (used,) = doc['values']['clinic.pace']['trail']
+        return used['records'], sorted(record['name'] for record in doc['records'])
+
+    assert cited('--run', 'fast') == (['pace', 'fast_pace'], ['fast_pace', 'pace'])
+    assert cited() == (['pace'], ['pace'])
+
+
 def test_a_run_that_the_model_does_not_have_is_a_usage_error(tmp_path, capsys):
     model = package(tmp_path / 'paced', PACED, UNITS)
     found = napkin(capsys, 'run', model, '--run', 'fats')

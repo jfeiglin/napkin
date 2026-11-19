@@ -33,10 +33,10 @@ gives the same dimension and scale (`Wh/h` as `W`), so the number is the record'
 (`common.unit_shown`). `--json` prints one JSON document instead: the model, its title, the run and
 the edits, the times in hours and, for each path, its unit, its label, its values as the record
 holds them (`{"unavailable": reason}` for a value that has none, `{"rating", "text", "case"}` for a
-status display), its lag and its note, and its evidence trail; the records that the trails cite;
-the near-ties; why the run stopped; the diagnostics; and every warning of the model, with its
-place (`warnings`: the text gives the parts that rest on no record as one line that counts them,
-`common.warn`).
+status display), its lag and its note, and its evidence trail (with the settings of the options that
+the run takes); the records that the trails cite; the near-ties; why the run stopped; the
+diagnostics; and every warning of the model, with its place (`warnings`: the text gives the parts
+that rest on no record as one line that counts them, `common.warn`).
 
 The run goes through the run store (`napkin.store`): a run that the store holds is read, not run
 again; `NAPKIN_STORE=off` turns it off.
@@ -130,7 +130,7 @@ def main(args):
     lags = lags_of(model, args.lag, known)
     paths = chosen(named(model, record), known, args.value)
     paths += [path for path in lags if path not in paths]
-    found = reported(model, record, configuration, paths, times, lags)
+    found = reported(model, record, configuration, paths, times, lags, options_of(model, args.run))
     # The times after the run stopped hold nothing: the table ends there, and `stopped` says why.
     times = [(text, t) for text, t in times if t <= found.end]
     stopped = [] if found.stopped is None else [common.problem('run', found.stopped, entry)]
@@ -256,13 +256,28 @@ def lags_of(model, items, known):
     return found
 
 
-def reported(model, record, configuration, paths, times, lags):
+def options_of(model, run):
+    """The names of the options that the run `run` of a compiled model takes (none for the default
+    run), whose settings the evidence trails cite (`napkin.model.runs.options_of`)."""
+    from ..model.runs import options_of
+
+    return options_of(model.declared, run)
+
+
+def reported(model, record, configuration, paths, times, lags, options=()):
     """The report of the paths at the times (`napkin.engine.report.report`), with the texts and the
-    evidence of the declared model."""
+    evidence of the declared model, under the options that the run takes."""
     from ..engine.report import report
 
     return report(
-        record, model.program, configuration, paths, [t for _, t in times], lags, model=model.declared
+        record,
+        model.program,
+        configuration,
+        paths,
+        [t for _, t in times],
+        lags,
+        model=model.declared,
+        options=options,
     )
 
 

@@ -1,649 +1,492 @@
-"""A played run, one decision at a time (`napkin/session.py`), and `napkin play` on the reservoir example.
+"""The session (`napkin/session.py`): one run played through the engine's checkpoints. It stops at
+breakpoints, shows the stop (where, which occurrence, what runs next, the values asked for in their
+declared units with their labels), takes edits of live stored values, saves the stop and goes on
+from it in a fresh process, and keeps the log of its stops and edits, which plays the same run again.
 
-There are three ways to give the picks of a played run: live, with a resolver, in one simulation; step
-by step, with `advance()` and `pick()`, which simulates the run again from t = 0 for each pick; and
-`evaluate_study(…, play=…)` with the log. They give one run, bit for bit. The fixtures are the guard of
-`tests/build.py` (two decisions), the decision boundaries of `tests/engine/test_pause.py` (a decision
-beside other steps of its moment, a delayed decision, a decision inside a chain of events) and the
-reservoir example, whose names the tests read from the model.
+The acceptance example of change 15 (`examples.pump_dispatch`): a depot asks for a pump at 0 h, the
+dispatcher's forecast (SEND 0, WAIT 1) is drawn into the occurrence's `order`, and a switch sends a
+spare or counts a wait. Unattended it waits once; paused before its switch, saved, reopened in a
+fresh process and resumed untouched it is the same run; with `order` changed to SEND the send branch
+runs once, the drawn WAIT stays in the trace and the edit says why the run differs. A battery of
+4 h, which drains at 1 kW and takes 3 kWh at 1 h, gives the units and the labels: it holds
+2 - t kWh before the recharge and 5 - t kWh after it, and edited to 5 kWh at 1 h, 9 - t kWh after it.
+A clock whose stages come due at 1, 2 and 3 h gives stops at three times. Each expected value is
+worked by hand from these rules. No test reads the catalogue.
+
+The rules of the removed resolver's tests (`tests/engine/test_decision_resolver.py`) that still hold
+are here: a stop shows nothing of its stage, its view is read-only and reads formulas; an edit that
+does not hold is refused with no fallback; a log plays the same draws again in a sampled run; a log
+played again goes on to the stops after it; a save that fails changes nothing.
 """
 
 from __future__ import annotations
 
-import io
-import json
-import math
 import os
+import re
 import subprocess
 import sys
+import textwrap
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 import pytest
 
 from napkin import session as session_module
-from napkin.commands import common
-from napkin.commands import play as play_command
-from napkin.engine import edits_for, evaluate_study, sample_result
-from napkin.model import ModelError, load_scenario
-from napkin.model.views import actors
-from napkin.session import CONTEXT, OtherContext, Session
+from napkin.engine.timeline import read, run
+from napkin.model.compile import compile_text
+from napkin.program.artifact import Artifact
+from napkin.program.build import Builder, add, after, event, named, q, start, this, value
+from napkin.program.checkpoint import Breakpoint, CheckpointError, Edit, decode, dumps
+from napkin.program.config import Configuration, Request
+from napkin.program.record import Key, Unavailable
+from napkin.session import Log, Session, play
 from napkin.store import fingerprint
-from tests.build import (
-    DEFAULT_OPTIONS,
-    PLAY_WORLD,
-    compiled,
-    document,
-    option,
-    options,
-    play_guard,
-    play_scenario,
-    runs,
-)
-from tests.engine.test_pause import nested_model, timed_model
+from tests.engine.test_checkpoints import SCENARIOS
+from tests.program.examples import DISPATCH, DISPATCH_SWITCH, UNITS, pump_dispatch
 
 ROOT = Path(__file__).resolve().parents[1]
-RESERVOIR = ROOT / 'examples' / 'reservoir'
-CONTROL = {'guard': 'reader'}
-# The delay of the world's alarm under the option `Slow alarm`, in days (the fixture's own value).
-SLOW = 3
+DISPATCH_DRAW = 'depot.request_pump.step[0].do[0].draw[0]'
+ORDER = f'{DISPATCH}.order'
+BEFORE_SWITCH = Breakpoint(DISPATCH_SWITCH, DISPATCH)
+BEFORE_DRAW = Breakpoint('depot.request_pump.step[0].do[0]', DISPATCH)
+ONE_HOUR = Configuration(Request(1))
+
+BATTERY = textwrap.dedent("""\
+    scenario "Battery"
+        horizon 4 h
+    battery:
+        charge: kWh = 2 kWh in [0 kWh, 10 kWh]
+            "Charge of the battery"
+        share = formula(this.charge / 10 kWh)
+            "Share of a full charge"
+        input reserve: kWh = 1 kWh
+        recharge = event(amount: kWh):
+            mode: enum[SLOW, FAST] = SLOW
+                "Mode of the recharge"
+            after 1 h:
+                this.charge += amount
+        flow use: this.charge -> SINK
+            request = 1 kW
+    battery.recharge.start(3 kWh)
+    """)
+RECHARGE = 'battery.recharge.step[0]'
 
 
-def guard_model(**chances):
-    return compiled(play_scenario(**chances))
+def battery():
+    return compile_text(BATTERY, UNITS)
 
 
-def optioned_model():
-    """The guard with a second group of options: `Slow alarm` sets the delay. Run `b` takes it, run `a`
-    does not."""
-    groups = (
-        DEFAULT_OPTIONS,
-        options('Alarm', option('Slow alarm', 'A slower alarm.', f'world.delay = {SLOW} days  @fixture')),
+def clock(horizon=4):
+    """A clock whose stages come due at 1, 2 and 3 h, each adding one to `ticks`, and a breakpoint at
+    each stage."""
+    b = Builder(UNITS)
+    b.entity(
+        'clock',
+        value('ticks', '', 0),
+        event('tick', *(after(q(1, 'h'), add(this.ticks, 1)) for _ in range(3))),
     )
-    text = document(
-        'Play fixture',
-        PLAY_WORLD,
-        play_guard(),
-        horizon=10,
-        option_groups=groups,
-        run_lines=runs(a=['Default'], b=['Default', 'Slow alarm']),
+    b.setup(start(named('clock').tick))
+    breakpoints = [Breakpoint(f'clock.tick.step[{k}]') for k in range(3)]
+    return b.finish(), Configuration(Request(horizon)), breakpoints
+
+
+def values_at(record, program, path, times):
+    return read(record, program, [path], times)[0].values
+
+
+def finished(session):
+    """The record of a session gone on to its end from where it is."""
+    while session.advance() is not None:
+        pass
+    return session.record
+
+
+# ---- the acceptance example ---------------------------------------------------------------------
+
+
+def test_the_dispatch_unattended_waits_once_and_sends_nothing():
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR)
+    assert session.advance() is None and session.checkpoint is None and session.stops == []
+    record = session.record
+    assert record == run(program, ONE_HOUR)
+    assert values_at(record, program, 'depot.waits', [0, 1]) == (1, 1)
+    assert values_at(record, program, 'sent', [1]) == (0,)
+    (drawn,) = record.entries('draw')
+    assert (drawn.t, drawn.part, drawn.detail('value')) == (0, DISPATCH_DRAW, 'WAIT')
+    assert session.log == Log()
+
+
+def test_the_dispatch_stops_before_its_switch_and_shows_the_stop():
+    """The stop is before the switch, inside the stage: the stage has drawn WAIT into `order`, which
+    no one sees yet, and it runs again from its start when the run goes on."""
+    session = Session(pump_dispatch(), ONE_HOUR, [BEFORE_SWITCH])
+    checkpoint = session.advance()
+    assert checkpoint is session.checkpoint
+    view = session.view()
+    stop = view.stop
+    assert (stop.hit, stop.at, stop.owner, stop.member, stop.t) == (1, DISPATCH_SWITCH, DISPATCH, 'depot', 0)
+    assert stop.next == 'depot.request_pump.step[0]' and view.next == ((DISPATCH, stop.next),)
+    assert view.where is None  # a program built by hand has no side table
+    shown = {item.path: item for item in view.values}
+    assert list(shown) == ['depot.spares', 'depot.waits', ORDER]
+    assert (shown['depot.spares'].value, shown['depot.waits'].value) == (1, 0)
+    assert (shown[ORDER].value, shown[ORDER].choices, shown[ORDER].editable) == (
+        'WAIT',
+        ('SEND', 'WAIT'),
+        True,
     )
-    return compiled(text)
+    assert [(entry.part, entry.detail('value')) for entry in view.drawn] == [(DISPATCH_DRAW, 'WAIT')]
+    # Nothing of the stage is in the record: no commit, no wait counted.
+    assert checkpoint.record.entries('commit') == ()
+    # A value that the caller asks for: a formula, a built-in field and a distribution, none editable.
+    sent, started, forecast = session.view(['sent', f'{DISPATCH}.started', 'dispatcher.forecast']).values
+    assert (sent.value, started.value) == (0, 0)
+    assert (forecast.value.family, forecast.value.params, forecast.value.outcomes) == (
+        'categorical',
+        (0, 1),
+        ('SEND', 'WAIT'),
+    )
+    assert not any(item.editable for item in (sent, started, forecast))
+    with pytest.raises(FrozenInstanceError):
+        view.values[0].value = 3
 
 
-# The guard's decision `first` has an outcome that cannot happen: with the alarm on, it cannot wait.
-WHEN = {'shut': 'world.alarm is "on"', 'wait': 'else when world.alarm is "off"'}
+def test_the_dispatch_resumed_untouched_is_the_unattended_run():
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR, [BEFORE_SWITCH])
+    session.advance()
+    assert session.advance() is None
+    assert session.record == run(program, ONE_HOUR)
+    assert fingerprint(session.record) == fingerprint(run(program, ONE_HOUR))
 
 
-def available(decision):
-    return [item['name'] for item in decision['outcomes'] if item['available']]
-
-
-# How a scripted reader picks, by the decision alone.
-POLICIES = {
-    'first': lambda decision: available(decision)[0],
-    'last': lambda decision: available(decision)[-1],
-    'by turns': lambda decision: available(decision)[decision['pick'] % len(available(decision))],
-}
-
-
-@pytest.fixture(scope='module')
-def reservoir():
-    """(the model of the reservoir, checked for its only run as `napkin play` checks it; the run; the
-    control of its actor)."""
-    entry = RESERVOIR / 'model.scn'
-    (run,) = load_scenario(entry).runs
-    model = load_scenario(entry, admission_runs=[run])
-    (actor,) = actors(model)
-    return model, run, {actor['name']: 'reader'}
-
-
-def cases(reservoir):
-    """{name: (model, run, control)} of the played runs of the fixtures."""
-    return {
-        'guard': (guard_model(), 'a', CONTROL),
-        'one event of the guard': (guard_model(), 'a', {'guard.second': 'reader'}),
-        'a decision beside its moment': (timed_model(), 'a', {'actor': 'reader'}),
-        'a delayed decision': (timed_model(delayed=True), 'a', {'actor': 'reader'}),
-        'a decision in a chain': (nested_model(), 'a', {'actor': 'reader'}),
-        'the reservoir': reservoir,
+def test_the_dispatch_with_its_order_changed_to_send_sends_once_and_keeps_its_draw():
+    """SEND is eligible with one spare: the send branch starts `send_pump` once, at 0 h, which takes
+    the spare; no wait is counted. The drawn WAIT stays in the trace, and the edit is traced with
+    its old and new value."""
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR, [BEFORE_SWITCH])
+    session.advance()
+    checkpoint = session.edit(ORDER, 'SEND')
+    assert [(edit.hit, edit.target, edit.value) for edit in checkpoint.edits] == [
+        (1, Key(DISPATCH, ('order',)), 'SEND')
+    ]
+    assert session.view().edits == checkpoint.edits
+    assert session.advance() is None
+    record = session.record
+    assert values_at(record, program, 'depot.waits', [1]) == (0,)
+    assert values_at(record, program, 'depot.spares', [1]) == (0,)
+    assert values_at(record, program, 'sent', [1]) == (1,)
+    assert [entry.t for entry in record.entries('start', 'depot.send_pump')] == [0]
+    assert [entry.detail('value') for entry in record.entries('draw')] == ['WAIT']
+    (edit,) = record.entries('edit')
+    assert dict(edit.details) == {
+        'breakpoint': DISPATCH_SWITCH,
+        'target': ORDER,
+        'old': 'WAIT',
+        'new': 'SEND',
     }
 
 
-CASES = (
-    'guard',
-    'one event of the guard',
-    'a decision beside its moment',
-    'a delayed decision',
-    'a decision in a chain',
-    'the reservoir',
-)
-
-
-def live_session(model, run, control, policy, **kwargs):
-    return Session(
-        model, run, control=control, resolver=lambda decision: (policy(decision), 'live'), **kwargs
-    )
-
-
-def story(trajectory):
-    """Each step's time, event and changes, and the state at each of 11 times: the run without its log."""
-    steps = [(entry['t'], entry['event'], entry['changes']) for entry in trajectory.trace]
-    end = trajectory.end_time
-    states = [
-        {name: value for name, value in trajectory.env_at(end * k / 10).items() if not callable(value)}
-        for k in range(11)
-    ]
-    return steps, states
-
-
-def unmarked(run):
-    """A run of a report without the marks of its picks: its trace entries without `picked`."""
-    return {
-        **run,
-        'trace': [{key: value for key, value in entry.items() if key != 'picked'} for entry in run['trace']],
-    }
-
-
-# --- One run, three ways ------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize('policy', POLICIES)
-@pytest.mark.parametrize('case', CASES)
-def test_the_live_path_the_step_path_and_the_study_give_one_run(reservoir, case, policy, monkeypatch):
-    model, run, control = cases(reservoir)[case]
-    choose = POLICIES[policy]
-    calls = []
-    engine = session_module.simulate
-    monkeypatch.setattr(
-        session_module, 'simulate', lambda *args, **kwargs: calls.append(1) or engine(*args, **kwargs)
-    )
-    live = live_session(model, run, control, choose)
-    assert live.advance() is None and live.decision is None
-    # The live path simulates the run once, however many decisions it has.
-    assert len(calls) == 1 and live.picks
-    step = Session(model, run, control=control)
-    while (decision := step.advance()) is not None:
-        assert step.trajectory.paused and step.trajectory.end_time == decision['t']
-        step.pick(choose(decision), 'live')
-    assert len(calls) == 1 + len(step.picks) + 1
-    assert step.picks == live.picks
-    study = evaluate_study(model, runs=[run], play={'run': run, 'control': control, 'picks': live.picks})
-    assert study.admissible and study.decision is None, study.diagnostics
-    trajectories = [live.trajectory, step.trajectory, study.runs[run]['trajectory']]
-    assert len({fingerprint(trajectory) for trajectory in trajectories}) == 1
-    assert not live.trajectory.paused and live.trajectory.end_time == live.trajectory.horizon
-    assert live.result() == step.result() == sample_result(study)
-
-
-def test_a_resolver_that_gives_no_answer_stops_the_run_where_the_step_path_does():
-    model = guard_model()
-    asked = []
-    live = Session(model, 'a', control=CONTROL, resolver=lambda decision: asked.append(decision) or None)
-    step = Session(model, 'a', control=CONTROL)
-    decision = live.advance()
-    assert decision == step.advance() == asked[0] and len(asked) == 1
-    assert 'pick_index' not in decision and decision['pick'] == 0
-    assert fingerprint(live.trajectory) == fingerprint(step.trajectory) and live.trajectory.paused
-    assert live.picks == []
-
-
-def test_a_reader_who_always_shuts_gives_the_run_of_the_model_that_always_shuts():
-    """`shut 1` gives `wait` no chance: the model's run shuts at each decision, as the reader does."""
-    model = guard_model()
-    session = live_session(model, 'a', CONTROL, lambda decision: 'shut')
-    assert session.advance() is None
-    assert [(item['event'], item['outcome'], item['by']) for item in session.picks] == [
-        ('guard.first', 'shut', 'reader'),
-        ('guard.second', 'shut', 'reader'),
-    ]
-    sure = evaluate_study(guard_model(shut='1'))
-    assert story(session.trajectory) == story(sure.runs['a']['trajectory'])
-    played, chosen = session.result()['runs']['a'], sample_result(sure)['runs']['a']
-    assert unmarked(played) == unmarked(chosen)
-    picked = [
-        entry['picked'] for entry in played['trace'] if entry['rule'] in ('guard.first', 'guard.second')
-    ]
-    assert picked == ['reader', 'reader']
-    assert all(entry['picked'] is None for entry in chosen['trace'])
-    # The same log again gives the same run, bit for bit.
-    again = evaluate_study(model, play={'run': 'a', 'control': CONTROL, 'picks': session.picks})
-    assert again.admissible and again.decision is None, again.diagnostics
-    assert fingerprint(again.runs['a']['trajectory']) == fingerprint(session.trajectory)
-
-
-def test_a_reader_who_picks_what_the_model_picks_gives_the_models_run(reservoir):
-    model, run, control = reservoir
-    plain = evaluate_study(model, runs=[run])
-    choices = {choice['event'] for actor in actors(model) for choice in actor['choices']}
-    taken = {}
-    for entry in plain.runs[run]['trajectory'].trace:
-        if entry['rule'] in choices and entry['outcome'] is not None:
-            taken.setdefault(entry['rule'], []).append(entry['outcome'])
-    assert taken
-    session = live_session(model, run, control, lambda decision: taken[decision['event']].pop(0))
-    assert session.advance() is None
-    assert all(not outcomes for outcomes in taken.values())
-    assert story(session.trajectory) == story(plain.runs[run]['trajectory'])
-    assert unmarked(session.result()['runs'][run]) == unmarked(sample_result(plain)['runs'][run])
-
-
-def test_a_combination_that_a_run_makes_plays_as_that_run():
-    model = optioned_model()
-    first = POLICIES['first']
-    combined = live_session(model, 'a', CONTROL, first, options=['Slow alarm', 'Default', 'Slow alarm'])
-    declared = live_session(model, 'b', CONTROL, first)
-    assert combined.options == ('Default', 'Slow alarm')
-    assert combined.base is model and combined.model.runs['a']['options'] == model.runs['b']['options']
-    assert combined.advance() is None and declared.advance() is None
-    assert fingerprint(combined.trajectory) == fingerprint(declared.trajectory)
-    assert combined.picks == declared.picks
-    assert combined.result()['runs']['a'] == declared.result()['runs']['b']
-    # The guard sees the delay of the option, in the unit of its input.
-    decision = Session(model, 'a', control=CONTROL, options=['Slow alarm']).advance()
-    assert decision['view']['world.delay'] == pytest.approx(SLOW)
-
-
-def test_an_option_that_the_model_does_not_have_is_the_engines_refusal():
-    model = optioned_model()
-    with pytest.raises(ModelError) as raised:
-        Session(model, 'a', control=CONTROL, options=['Fast alarm'])
-    assert {item['code'] for item in raised.value.diagnostics} == {'reference'}
-
-
-# --- Refusals -------------------------------------------------------------------------------------
-
-
-def nan_edits():
-    return {'set': {'world.delay': math.nan}}
-
-
-# Each bad request: (the model, the run, the control, the picks, the edits, the numerical settings).
-REFUSED = {
-    'an unknown control': (guard_model, 'a', {'nobody': 'reader'}, [], None, None),
-    'a thing that is no actor': (guard_model, 'a', {'world': 'reader'}, [], None, None),
-    'a method that is none': (guard_model, 'a', {'guard': 'oracle'}, [], None, None),
-    'a pick of another event': (
-        guard_model,
-        'a',
-        CONTROL,
-        [{'event': 'guard.second', 'outcome': 'shut'}],
-        None,
-        None,
-    ),
-    'a pick of no outcome': (
-        guard_model,
-        'a',
-        CONTROL,
-        [{'event': 'guard.first', 'outcome': 'run'}],
-        None,
-        None,
-    ),
-    'a pick that cannot happen': (
-        lambda: guard_model(**WHEN),
-        'a',
-        CONTROL,
-        [{'event': 'guard.first', 'outcome': 'wait'}],
-        None,
-        None,
-    ),
-    'a pick without an outcome': (guard_model, 'a', CONTROL, [{'event': 'guard.first'}], None, None),
-    'an unknown run': (guard_model, 'zz', CONTROL, [], None, None),
-    'edits that are no object': (guard_model, 'a', CONTROL, [], ['set'], None),
-    'edits with a value that is not finite': (guard_model, 'a', CONTROL, [], nan_edits(), None),
-    'an edit beyond the range of its input': (
-        guard_model,
-        'a',
-        CONTROL,
-        [],
-        {'set': {'world.delay': 9}},
-        None,
-    ),
-    'edits of another model': (
-        guard_model,
-        'a',
-        CONTROL,
-        [],
-        {'schema_version': '0.0.1', 'model_hash': '0' * 64},
-        None,
-    ),
-    'settings that stop the run': (guard_model, 'a', CONTROL, [], None, {'max_events': 1}),
-}
-
-
-@pytest.mark.parametrize('name', REFUSED)
-def test_a_session_refuses_what_the_study_refuses_with_the_same_diagnostics(name):
-    build, run, control, picks, edits, settings = REFUSED[name]
-    model = build()
-    if isinstance(edits, dict) and 'model_hash' not in edits:
-        edits = edits_for(model, edits)
-    study = evaluate_study(
-        model, edits, settings, runs=[run], play={'run': run, 'control': control, 'picks': picks}
-    )
-    assert not study.admissible
-    session = Session(model, run, control=control, picks=picks, edits=edits, settings=settings)
-    with pytest.raises(ModelError) as raised:
-        session.advance()
-    assert raised.value.diagnostics == study.diagnostics
-    assert session.decision is None and session.trajectory is None
-
-
-def test_numerical_settings_that_are_not_valid_are_refused_when_the_session_starts():
-    with pytest.raises(ModelError) as raised:
-        Session(guard_model(), 'a', control=CONTROL, settings={'rtol': 0})
-    assert [item['code'] for item in raised.value.diagnostics] == ['numerical_settings']
-
-
-def test_a_pick_answers_only_a_decision_that_waits_with_an_outcome_that_can_happen():
-    session = Session(guard_model(**WHEN), 'a', control=CONTROL)
-    with pytest.raises(ValueError):
-        session.pick('shut')
-    decision = session.advance()
-    names = [item['name'] for item in decision['outcomes']]
-    cannot = [name for name in names if name not in available(decision)]
-    assert cannot, 'the fixture has an outcome that cannot happen'
-    for outcome in (*cannot, 'run'):
-        with pytest.raises(ValueError):
-            session.pick(outcome)
-    assert session.picks == [] and session.decision == decision
-    session.pick(available(decision)[0], 'why')
-    assert session.decision is None
-    assert session.picks == [
-        {
-            'event': decision['event'],
-            'outcome': available(decision)[0],
-            't': decision['t'],
-            'by': 'reader',
-            'reason': 'why',
-        }
-    ]
-    with pytest.raises(ValueError):
-        session.pick(available(decision)[0])
-
-
-def test_a_log_that_leaves_a_decision_has_no_result():
-    session = Session(guard_model(), 'a', control=CONTROL)
-    decision = session.advance()
-    session.pick(available(decision)[0])
-    with pytest.raises(ValueError):
-        session.result()
-
-
-class Stop(Exception):
-    """An exception of a resolver."""
-
-
-def test_a_resolver_that_raises_keeps_exactly_the_picks_before_it():
-    asked = []
-
-    def resolver(decision):
-        asked.append(decision['event'])
-        if len(asked) == 2:
-            raise Stop
-        return available(decision)[0], 'first'
-
-    session = Session(guard_model(), 'a', control=CONTROL, resolver=resolver)
-    with pytest.raises(Stop):
-        session.advance()
-    assert len(asked) == 2 and [item['event'] for item in session.picks] == asked[:1]
-    assert session.decision is None and session.trajectory is None
-    # The log goes on: without the resolver, the run stops at the decision that it did not answer.
-    assert Session(guard_model(), 'a', control=CONTROL, picks=session.picks).advance()['event'] == asked[1]
-
-
-def test_an_engine_error_of_a_resolver_propagates_as_it_is():
-    error = ModelError([{'code': 'agent', 'path': '', 'message': 'The agent stops.', 'severity': 'error'}])
-
-    def resolver(decision):
-        raise error
-
-    with pytest.raises(ModelError) as raised:
-        Session(guard_model(), 'a', control=CONTROL, resolver=resolver).advance()
-    assert raised.value is error
-
-
-@pytest.mark.parametrize(
-    'answer', [lambda decision: ('wait', None), lambda decision: 'shut', lambda decision: ('run', None)]
-)
-def test_an_answer_that_cannot_be_taken_is_no_pick(answer):
-    """`wait` cannot happen at the first decision; a bare outcome is no (outcome, reason); `run` is no
-    outcome."""
-    session = Session(guard_model(**WHEN), 'a', control=CONTROL, resolver=answer)
-    with pytest.raises(ValueError):
-        session.advance()
-    assert session.picks == []
-
-
-# --- Logs -----------------------------------------------------------------------------------------
-
-
-def test_a_saved_log_replays_the_run_exactly(tmp_path):
-    model = guard_model()
-    live = live_session(model, 'a', CONTROL, POLICIES['by turns'])
-    assert live.advance() is None
-    path = tmp_path / 'log.json'
-    live.save(path)
-    log = json.loads(path.read_text(encoding='utf-8'))
-    assert log == live.log() and set(CONTEXT) <= set(log)
-    assert (log['schema_version'], log['kind'], log['picks']) == ('0.0.1', 'play', live.picks)
-    assert list(tmp_path.iterdir()) == [path]
-    again = Session.load(path, model, 'a', control=CONTROL)
-    assert again.picks == live.picks
-    # No resolver: each decision takes its pick of the log.
-    assert again.advance() is None
-    assert fingerprint(again.trajectory) == fingerprint(live.trajectory)
-    assert again.result() == live.result()
-
-
-def test_a_log_saved_at_a_decision_goes_on_from_it(tmp_path):
-    model, choose = guard_model(), POLICIES['last']
-    whole = live_session(model, 'a', CONTROL, choose)
-    whole.advance()
-    first = Session(model, 'a', control=CONTROL)
-    first.pick(choose(first.advance()), 'live')
-    path = tmp_path / 'log.json'
-    first.save(path)
-    rest = Session.load(
-        path, model, 'a', control=CONTROL, resolver=lambda decision: (choose(decision), 'live')
-    )
-    assert rest.advance() is None
-    assert rest.picks == whole.picks
-    assert fingerprint(rest.trajectory) == fingerprint(whole.trajectory)
-
-
-# What a session changes in the context of a log of run `a` of the optioned model, by the field of the
-# log that then differs.
-CHANGED = {
-    'run': {'run': 'b'},
-    'options': {'options': ['Slow alarm']},
-    'control': {'control': {'guard.first': 'reader'}},
-    'edits': {'edits': {'set': {'world.delay': SLOW}}},
-    'numerical_settings': {'settings': {'rtol': 1e-8}},
-}
-
-
-@pytest.mark.parametrize('field', CHANGED)
-def test_a_log_is_refused_in_another_context_and_the_refusal_names_what_differs(field, tmp_path):
-    model = optioned_model()
-    path = tmp_path / 'log.json'
-    session = Session(model, 'a', control=CONTROL)
-    session.pick(available(session.advance())[0])
-    session.save(path)
-    given = {'run': 'a', 'control': CONTROL, **CHANGED[field]}
-    if 'edits' in given:
-        given['edits'] = edits_for(model, given['edits'])
-    run = given.pop('run')
-    with pytest.raises(OtherContext) as raised:
-        Session.load(path, model, run, **given)
-    assert raised.value.fields == (field,)
-    assert field in str(raised.value).replace(str(path), '')
-
-
-def test_a_log_is_refused_by_another_model_and_by_another_engine(tmp_path):
-    model, other = guard_model(), guard_model(shut='0.4')
-    assert other.model_hash != model.model_hash
-    path = tmp_path / 'log.json'
-    Session(model, 'a', control=CONTROL).save(path)
-    with pytest.raises(OtherContext) as raised:
-        Session.load(path, other, 'a', control=CONTROL)
-    assert raised.value.fields == ('model_hash',)
-    log = json.loads(path.read_text(encoding='utf-8'))
-    path.write_text(json.dumps({**log, 'implementation_hash': '0' * 64, 'run': 'b'}), encoding='utf-8')
-    with pytest.raises(OtherContext) as raised:
-        Session.load(path, model, 'a', control=CONTROL)
-    assert raised.value.fields == ('implementation_hash', 'run')
-    del log['edits']
-    path.write_text(json.dumps(log), encoding='utf-8')
-    with pytest.raises(OtherContext) as raised:
-        Session.load(path, model, 'a', control=CONTROL)
-    assert raised.value.fields == ('edits',)
-
-
-@pytest.mark.parametrize(
-    'change',
-    [{'kind': 'study'}, {'schema_version': '2'}, {'picks': {}}, {'picks': ['guard.first']}],
-    ids=['another kind', 'another schema', 'picks that are no list', 'a pick that is no object'],
-)
-def test_a_file_that_is_not_a_play_log_is_refused(change, tmp_path):
-    model = guard_model()
-    path = tmp_path / 'log.json'
-    path.write_text(json.dumps({**Session(model, 'a', control=CONTROL).log(), **change}), encoding='utf-8')
-    with pytest.raises(ValueError) as raised:
-        Session.load(path, model, 'a', control=CONTROL)
-    assert not isinstance(raised.value, OtherContext)
-
-
-# --- `napkin play` on the reservoir -----------------------------------------------------------------
-
-
-@pytest.mark.parametrize('face', ['terminal', 'json'])
-def test_play_writes_the_log_before_each_prompt(face, tmp_path, monkeypatch):
-    """When a decision is asked, the log on disk holds each pick before it: the answer that the engine
-    took is saved before the next question."""
-    model, log = guard_model(), tmp_path / 'log.json'
-    seen = []
-
-    class Reader(io.StringIO):
-        def readline(self, *args):
-            seen.append(json.loads(log.read_text(encoding='utf-8'))['picks'])
-            return json.dumps({'pick': 'shut'}) + '\n' if face == 'json' else 'shut\n'
-
-    session = Session(model, 'a', control=CONTROL)
-    if face == 'json':
-        prompts = play_command.Lines(Reader(), io.StringIO(), log)
-    else:
-        monkeypatch.setattr(sys, 'stdin', Reader())
-        monkeypatch.setattr(sys, 'stdout', io.StringIO())
-        prompts = play_command.Terminal(sys.stdout, log)
-    session.resolver = prompts.asker(session)
-    assert session.advance() is None and len(session.picks) == 2
-    # The terminal reads a reason after each pick, the JSON lines read none.
-    asked = seen if face == 'json' else seen[::2]
-    assert asked == [[], session.picks[:1]]
-
-
-def napkin(*argv, **kwargs):
-    """A `napkin` process at the root of the checkout, with no run store."""
-    env = {**os.environ, 'PYTHONPATH': str(ROOT), 'NAPKIN_STORE': 'off'}
-    return subprocess.Popen(
-        [sys.executable, '-B', '-m', 'napkin', *map(str, argv)],
+# A fresh process: it loads the program from its artifact and goes on from a saved stop to the end.
+FRESH = """
+import sys
+from napkin.program.artifact import load
+from napkin.program.checkpoint import encode
+from napkin.session import Session
+
+session = Session.load(sys.argv[2], load(sys.argv[1]).program)
+while session.advance() is not None:
+    pass
+print(encode(session.record))
+"""
+
+
+def in_a_fresh_process(program, session, folder):
+    """The record that a fresh process gives for the stop at which `session` waits, saved."""
+    Artifact(program).save(folder / 'program')
+    session.save(folder / 'stop.checkpoint')
+    environment = {**os.environ, 'PYTHONHASHSEED': '4321', 'NAPKIN_STORE': 'off'}
+    done = subprocess.run(
+        [sys.executable, '-c', FRESH, str(folder / 'program'), str(folder / 'stop.checkpoint')],
         cwd=ROOT,
-        env=env,
+        env=environment,
+        capture_output=True,
         text=True,
-        **kwargs,
+        check=False,
+        timeout=120,
     )
+    assert done.returncode == 0, done.stderr
+    return decode(done.stdout)
 
 
-def test_play_json_on_the_reservoir_plays_to_the_end(reservoir):
-    model, run, control = reservoir
-    (actor,) = control
-    child = napkin(
-        'play',
-        RESERVOIR,
-        '--control',
-        actor,
-        '--json',
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    lines, answers = [], []
-    try:
-        while True:
-            text = child.stdout.readline()
-            assert text, child.stderr.read()
-            line = json.loads(text)
-            assert line['schema_version'] == '0.0.1'
-            lines.append(line)
-            if line['type'] == 'result':
-                break
-            assert line['type'] == 'decision'
-            answers.append(available(line)[0])
-            child.stdin.write(json.dumps({'pick': answers[-1], 'reason': 'the first'}) + '\n')
-            child.stdin.flush()
-        child.stdin.close()
-        assert child.wait(timeout=120) == 0, child.stderr.read()
-    finally:
-        child.kill()
-        child.wait()
-        for stream in (child.stdin, child.stdout, child.stderr):
-            stream.close()
-    result = lines[-1]
-    assert result['finished'] is True and result['report']['admissible'] is True
-    assert 'decision' not in result and answers
-    assert [(item['outcome'], item['reason']) for item in result['picks']] == [
-        (name, 'the first') for name in answers
+def test_the_dispatch_saved_at_its_stop_goes_on_in_a_fresh_process_as_the_run_straight_through(tmp_path):
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR, [BEFORE_SWITCH])
+    session.advance()
+    assert in_a_fresh_process(program, session, tmp_path) == run(program, ONE_HOUR)
+    # The edited stop, saved, goes on there as here.
+    session.edit(ORDER, 'SEND')
+    fresh = in_a_fresh_process(program, session, tmp_path)
+    assert fresh == finished(session)
+    assert values_at(fresh, program, 'sent', [1]) == (1,)
+
+
+def test_a_session_goes_on_from_a_saved_stop_in_this_process_and_its_log_starts_there(tmp_path):
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR, [BEFORE_SWITCH])
+    session.advance()
+    session.edit(ORDER, 'SEND')
+    session.save(tmp_path / 'stop.checkpoint')
+    again = Session.load(tmp_path / 'stop.checkpoint', program, configuration=ONE_HOUR)
+    assert again.checkpoint == session.checkpoint and again.view().edits == session.view().edits
+    assert again.log == session.log
+    assert finished(again) == finished(session)
+
+
+# ---- the log --------------------------------------------------------------------------------------
+
+
+def test_the_log_of_two_stops_in_one_stage_plays_the_same_run_again():
+    """`examples.PAUSES['two_stops']`: 5 waits given before the draw and SEND before the switch. The
+    stage runs again from its start at each stop and keeps both edits once: 5 waits (the send
+    branch adds none) and one pump sent."""
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR, [BEFORE_DRAW, BEFORE_SWITCH])
+    session.advance()
+    session.edit('depot.waits', 5)
+    assert session.advance().stop.at == DISPATCH_SWITCH
+    session.edit(ORDER, 'SEND')
+    record = finished(session)
+    assert values_at(record, program, 'depot.waits', [1]) == (5,)
+    assert values_at(record, program, 'sent', [1]) == (1,)
+    log = session.log
+    assert [stop.hit for stop in log.stops] == [1, 2] and [edit.hit for edit in log.edits] == [1, 2]
+    assert fingerprint(play(program, ONE_HOUR, log)) == fingerprint(record)
+    # Played again, the session waits at the log's last stop with its edits made, as it did.
+    replay = Session(program, ONE_HOUR, log=log)
+    checkpoint = replay.advance()
+    assert checkpoint.stop == log.stops[-1]
+    assert checkpoint.edits == log.edits and replay.stops == list(log.stops)
+    assert finished(replay) == record
+
+
+@pytest.mark.parametrize('seed', [2, 17])
+def test_the_log_of_a_sampled_run_plays_its_draws_again(seed):
+    """The engine's `ordering` case: at 1 h a stage draws a demand from uniform(1 L, 3 L), then stops
+    before it queues a child and before it notes the demand. Given 10 orders at the first stop and a
+    demand of 2 L at the second, the stage counts 11 orders and notes 2, and the child adds one at
+    2 h. The draw is made once, with the value that the stops showed, and the log plays the same run."""
+    case = SCENARIOS['ordering']()
+    configuration = replace(case.configuration, seed=seed)
+    session = Session(case.program, configuration, case.breakpoints)
+    session.advance()
+    (shown,) = session.view().drawn
+    session.edit('depot.orders', 10)
+    session.advance()
+    assert session.view().drawn == (shown,)
+    session.edit('depot.demand', 2)
+    record = finished(session)
+    (drawn,) = record.entries('draw')
+    assert drawn == shown and 1 <= drawn.detail('value') <= 3
+    assert record.entries('edit')[1].detail('old') == drawn.detail('value')
+    assert values_at(record, case.program, 'depot.orders', [3]) == (11,)
+    assert values_at(record, case.program, 'depot.noted', [1, 2]) == (2, 3)
+    assert fingerprint(play(case.program, configuration, session.log)) == fingerprint(record)
+
+
+def test_a_replayed_log_goes_on_to_the_stops_after_it():
+    """A log of the first of three stops passes it with its edit (ticks 10 at 1 h, 11 after the
+    stage) and waits there; the session then stops at 2 h and 3 h, and ends with 13 ticks."""
+    program, configuration, breakpoints = clock()
+    session = Session(program, configuration, breakpoints)
+    session.advance()
+    session.edit('clock.ticks', 10)
+    replay = Session(program, configuration, log=session.log)
+    assert replay.advance().stop.t == 1
+    assert [replay.advance().stop.t, replay.advance().stop.t] == [2, 3]
+    assert replay.advance() is None
+    assert values_at(replay.record, program, 'clock.ticks', [1, 2, 3, 4]) == (11, 12, 13, 13)
+
+
+def test_a_log_of_another_run_is_refused_by_name_and_plays_no_further():
+    program, configuration, breakpoints = clock()
+    session = Session(program, configuration, breakpoints)
+    session.advance()
+    session.edit('clock.ticks', 10)
+    session.advance()
+    log = session.log
+    moved = replace(log, stops=(log.stops[0], replace(log.stops[1], t=2.5)))
+    replay = Session(program, configuration, log=moved)
+    with pytest.raises(CheckpointError, match='the log does not play again: its stop 2 is before'):
+        replay.advance()
+    with pytest.raises(CheckpointError, match='the log does not play again'):
+        replay.advance()
+    # Within the tolerance in time of a crossing, a stop is the same stop.
+    near = replace(log, stops=(log.stops[0], replace(log.stops[1], t=2 + 1e-9)))
+    assert play(program, configuration, near) == play(program, configuration, log)
+    other = replace(log, breakpoints=(breakpoints[1], breakpoints[2]))
+    with pytest.raises(CheckpointError, match=re.escape('its stop 1 is before clock.tick.step[0] in')):
+        play(program, configuration, other)
+    late = replace(log, stops=log.stops[:1], edits=(Edit(2, 'clock.ticks', 3.0),))
+    with pytest.raises(CheckpointError, match='after its last stop'):
+        Session(program, configuration, log=late)
+
+
+def test_a_stop_of_the_log_after_the_horizon_need_not_come_and_one_before_it_must():
+    """The log stops at 1 h and at 2 h, with 10 ticks given at 1 h. A run to 1.5 h reaches only the
+    first stop: 11 ticks at 1.5 h. A log that holds a third stop at 2 h, which the run does not make,
+    is refused."""
+    program, configuration, breakpoints = clock()
+    session = Session(program, configuration, breakpoints)
+    session.advance()
+    session.edit('clock.ticks', 10)
+    session.advance()
+    shorter = Configuration(Request(1.5))
+    record = play(program, shorter, session.log)
+    assert values_at(record, program, 'clock.ticks', [1.5]) == (11,)
+    stops = session.log.stops
+    one_more = replace(session.log, stops=(*stops, replace(stops[1], hit=3)))
+    with pytest.raises(CheckpointError, match='the run ends before its stop 3'):
+        play(program, Configuration(Request(2.5)), replace(one_more, breakpoints=breakpoints[:2]))
+
+
+# ---- edits and views ----------------------------------------------------------------------------
+
+
+def test_an_edit_that_does_not_hold_is_refused_by_name_and_changes_nothing():
+    """No fallback: a member that is not one of the enum's, a number below its range, a formula, a
+    built-in field (which its start gives, as an input) and a number for a text are refused, and the
+    run goes on as the unattended one."""
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR, [BEFORE_SWITCH])
+    session.advance()
+    refused = {
+        (ORDER, 'HOLD'): 'takes a member of SEND, WAIT',
+        ('depot.spares', -1): 'outside its range',
+        ('sent', 2): 'no value of the state',
+        (f'{DISPATCH}.started', 0.5): 'a value of kind input',
+        (ORDER, 3): 'holds a text',
+    }
+    for (path, given), message in refused.items():
+        with pytest.raises(CheckpointError, match=message):
+            session.edit(path, given)
+    assert session.checkpoint.edits == ()
+    assert finished(session) == run(program, ONE_HOUR)
+
+
+def test_a_value_of_a_finished_occurrence_is_frozen():
+    """Sent, the request finishes in the round of its switch, before the send's stage: its order is
+    shown, and no edit changes it."""
+    session = Session(pump_dispatch(), ONE_HOUR, [BEFORE_SWITCH, Breakpoint('depot.send_pump.step[0]')])
+    session.advance()
+    session.edit(ORDER, 'SEND')
+    assert session.advance().stop.at == 'depot.send_pump.step[0]'
+    (order,) = session.view([ORDER]).values
+    assert (order.value, order.editable) == ('SEND', False)
+    with pytest.raises(CheckpointError, match=f'finished occurrence {re.escape(DISPATCH)}, which is frozen'):
+        session.edit(ORDER, 'WAIT')
+
+
+def test_a_view_gives_each_value_in_its_declared_unit_with_its_label_and_an_edit_takes_that_unit():
+    """At the recharge's stage, 1 h: 2 - 1 = 1 kWh, a share of 0.1, the parameter 3 kWh. Edited to
+    5 kWh, the stage adds 3 kWh: 8 kWh at 1 h, then 1 kW less each hour, 5 kWh at 4 h."""
+    model = battery()
+    session = Session(model.program, model.configuration, [Breakpoint(RECHARGE)], table=model.table)
+    session.advance()
+    view = session.view()
+    assert (view.where.kind, view.where.line) == ('stage', 12)
+    shown = {item.path: item for item in view.values}
+    assert list(shown) == [
+        'battery.charge',
+        'battery.share',
+        'battery.reserve',
+        'battery.recharge#0.amount',
+        'battery.recharge#0.mode',
     ]
-    # The report is the session's, as `napkin run --json` would write it, checked for the run only.
-    session = live_session(model, run, control, POLICIES['first'])
-    assert session.advance() is None
-    assert result['report'] == common.compact(session.result(), admitted=model.admission_runs)
-    assert result['report']['admitted_runs'] == [run]
+    charge, share, reserve = shown['battery.charge'], shown['battery.share'], shown['battery.reserve']
+    assert (charge.value, charge.unit, charge.label, charge.editable) == (
+        pytest.approx(1),
+        'kWh',
+        'Charge of the battery',
+        True,
+    )
+    assert (share.value, share.label, share.editable) == (pytest.approx(0.1), 'Share of a full charge', False)
+    assert (reserve.value, reserve.unit, reserve.editable) == (1, 'kWh', False)
+    amount, mode = shown['battery.recharge#0.amount'], shown['battery.recharge#0.mode']
+    assert (amount.value, amount.unit, amount.editable) == (3, 'kWh', False)
+    assert (mode.value, mode.choices, mode.label, mode.editable) == (
+        'SLOW',
+        ('SLOW', 'FAST'),
+        'Mode of the recharge',
+        True,
+    )
+    with pytest.raises(CheckpointError, match='parameter'):
+        session.edit('battery.recharge#0.amount', 4)
+    with pytest.raises(CheckpointError, match='a value of kind input'):
+        session.edit('battery.reserve', 2)
+    session.edit('battery.charge', 5)
+    record = finished(session)
+    assert values_at(record, model.program, 'battery.charge', [1, 2, 4]) == pytest.approx((8, 7, 5))
+    (edit,) = record.entries('edit')
+    # The trace holds the edit in canonical units: Wh.
+    assert (edit.detail('old'), edit.detail('new')) == (pytest.approx(1000), 5000)
 
 
-def test_play_at_the_terminal_exits_3_when_the_input_ends_and_saves_the_log(reservoir, tmp_path):
-    model, run, control = reservoir
-    (actor,) = control
-    path = tmp_path / 'log.json'
-    child = napkin(
-        'play',
-        RESERVOIR,
-        '--control',
-        actor,
-        '--save',
-        path,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    _, err = child.communicate('', timeout=120)
-    assert child.returncode == 3, err
-    paused = Session.load(path, model, run, control=control)
-    assert paused.picks == []
-    decision = paused.advance()
-    # The log goes on at the terminal: the number 1 picks the first outcome that can happen.
-    child = napkin(
-        'play',
-        RESERVOIR,
-        '--control',
-        actor,
-        '--picks',
-        path,
-        '--save',
-        path,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    _, err = child.communicate('1\nthe first\n', timeout=120)
-    assert child.returncode == 0, err
-    done = Session.load(path, model, run, control=control)
-    assert done.picks[:1] == [
-        {
-            'event': decision['event'],
-            'outcome': available(decision)[0],
-            't': decision['t'],
-            'by': 'reader',
-            'reason': 'the first',
-        }
-    ]
-    assert done.advance() is None
+def test_a_stop_in_the_setup_shows_the_values_of_the_root_and_runs_the_setup_next():
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR, [Breakpoint('setup[0]')])
+    session.advance()
+    view = session.view()
+    assert (view.stop.owner, view.stop.next, view.next) == ('', 'setup', (('', 'setup'),))
+    assert [(item.path, item.value) for item in view.values] == [('sent', 0)]
+    # The request has not started: its order has no value yet, and takes no edit.
+    (order,) = session.view([ORDER]).values
+    assert isinstance(order.value, Unavailable) and not order.editable
+    with pytest.raises(CheckpointError, match='no value of the state'):
+        session.edit(ORDER, 'SEND')
+
+
+# ---- saving and going on --------------------------------------------------------------------------
+
+
+def test_a_saved_stop_goes_on_only_with_its_program_its_engine_and_its_run(tmp_path, monkeypatch):
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR, [BEFORE_SWITCH])
+    session.advance()
+    path = tmp_path / 'stop.checkpoint'
+    session.save(path)
+    with pytest.raises(CheckpointError, match='of another program'):
+        Session.load(path, pump_dispatch(spares=2))
+    with pytest.raises(CheckpointError, match='another run: it differs in its request'):
+        Session.load(path, program, configuration=Configuration(Request(2)))
+    (tmp_path / 'other').write_bytes(b'napkin program 2\n')
+    with pytest.raises(CheckpointError, match='not a napkin checkpoint'):
+        Session.load(tmp_path / 'other', program)
+    monkeypatch.setattr(session_module, 'engine_version', lambda: '0' * 64)
+    with pytest.raises(CheckpointError, match='another version of the engine'):
+        Session.load(path, program)
+
+
+def test_a_save_writes_the_whole_file_or_none_and_the_session_still_waits(tmp_path):
+    program = pump_dispatch()
+    session = Session(program, ONE_HOUR, [BEFORE_SWITCH])
+    with pytest.raises(CheckpointError, match='waits at no stop'):
+        session.save(tmp_path / 'early.checkpoint')
+    session.advance()
+    with pytest.raises(OSError):
+        session.save(tmp_path / 'missing' / 'stop.checkpoint')
+    session.save(tmp_path / 'stop.checkpoint')
+    assert sorted(path.name for path in tmp_path.iterdir()) == ['stop.checkpoint']
+    assert (tmp_path / 'stop.checkpoint').read_bytes() == dumps(session.checkpoint)
+    assert finished(session) == run(program, ONE_HOUR)
+    with pytest.raises(CheckpointError, match='reached its end'):
+        session.advance()
+
+
+def test_a_location_where_a_run_cannot_stop_is_refused_when_the_session_is_made():
+    with pytest.raises(CheckpointError, match='no event, stage or statement'):
+        Session(pump_dispatch(), ONE_HOUR, [Breakpoint('depot.request_pump.step[7]')])
+    with pytest.raises(ValueError, match='breakpoints of the log'):
+        Session(pump_dispatch(), ONE_HOUR, [BEFORE_SWITCH], log=Log())

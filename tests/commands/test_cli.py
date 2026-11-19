@@ -1,5 +1,5 @@
-"""The `napkin` command: its help and version, which load no compiler and no engine, and the commands
-that a later stage of the rewrite brings back, which are listed and refused with their stage."""
+"""The `napkin` command: its help and version, which load no compiler and no engine, and its list of
+commands."""
 
 from __future__ import annotations
 
@@ -8,24 +8,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 import napkin as package
-from napkin.commands import LATER, NAMES
+from napkin.commands import NAMES, modules
 from tests.commands.call import napkin
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_help_lists_each_command_and_marks_those_that_come_later(capsys):
+def test_help_lists_each_command_with_its_summary(capsys):
     found = napkin(capsys, '--help')
     assert found.code == 0
     listed = found.out.split('commands:\n', 1)[1]
-    for name in NAMES:
-        assert f'\n  {name} ' in f'\n{listed}'
-    for name in LATER:
+    for name, module in modules().items():
         line = next(row for row in listed.splitlines() if row.split()[:1] == [name])
-        assert line.endswith('(a later stage brings it back)')
+        assert line.endswith(module.SUMMARY)
+    assert NAMES == ('compile', 'run', 'sample', 'play', 'fmt', 'draw', 'new')
 
 
 def test_version_is_the_version_of_the_package(capsys):
@@ -53,21 +50,6 @@ def test_help_and_version_load_no_compiler_and_no_engine():
     assert loaded, done.stdout
     for prefix in ('napkin.engine', 'napkin.model', 'napkin.program', 'napkin.core'):
         assert not [name for name in loaded if name.startswith(prefix)], loaded
-
-
-@pytest.mark.parametrize('name', sorted(LATER))
-@pytest.mark.parametrize('rest', [(), ('--help',), ('examples/piano_tuners', '--json')])
-def test_a_command_that_a_later_stage_brings_back_exits_with_status_2(capsys, name, rest):
-    """`napkin play` waits for the checkpoints of S7 (PLAN, change 15)."""
-    found = napkin(capsys, name, *rest)
-    assert found.code == 2
-    stage = LATER[name][1]
-    assert (
-        found.err
-        == f'napkin {name} comes back in a later stage of the rewrite of the language (stage {stage})\n'
-    )
-    assert found.out == ''
-    assert LATER['play'][1] == 'S7'
 
 
 def test_an_unknown_argument_of_a_command_is_a_usage_error(capsys):

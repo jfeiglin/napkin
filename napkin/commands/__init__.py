@@ -10,18 +10,14 @@ Each command is a module of this package with three names:
 A command module imports only the standard library and `common` when it is imported, so
 `napkin --help` loads no compiler and no engine. Its `main` imports them.
 
-The commands of `LATER` come back in a later stage of the rewrite: `napkin --help` lists them, and
-each refuses to run with exit 2, naming its stage. `napkin play` becomes a client of the checkpoints
-of slice S7 (breakpoints, checkpoints and edits replace the player's picks: scratch/rewrite/PLAN.md,
-change 15). Its module (`play.py`) reads the old compiled form, and nothing imports it until then.
+`napkin play` is a client of the engine's checkpoints (`napkin/session.py`): breakpoints, checkpoints
+and edits replace the player's picks (scratch/rewrite/PLAN.md, change 15).
 """
 
 import importlib
 
 # The command modules, in order.
-NAMES = ('compile', 'run', 'sample', 'fmt', 'draw', 'new')
-# The commands that a later stage brings back: {name: (its line in `napkin --help`, the stage)}.
-LATER = {'play': ('run one run step by step from its checkpoints', 'S7')}
+NAMES = ('compile', 'run', 'sample', 'play', 'fmt', 'draw', 'new')
 
 
 def modules():
