@@ -57,7 +57,7 @@ from napkin.model.language.problems import LanguageError, SyntaxProblem
 from napkin.model.language.tables import in_folder
 from napkin.model.library import load_library
 from napkin.model.lowering import lower
-from napkin.program.proofs import Part, Proofs
+from napkin.program.proofs import Proofs
 
 # The kinds of a record, in the order in which a summary counts them.
 KINDS = ('source', 'source_transfer', 'assumption', 'convention', 'identity')
@@ -215,9 +215,7 @@ def entities(declared):
     for entity in declared.entities:
         found[entity.path] = [use for path, ev in _parts(entity) for use in _used(declared, path, ev)]
     for member in declared.members:
-        found[member.template] += [
-            use for path, ev in _member(member) for use in _used(declared, path, ev)
-        ]
+        found[member.template] += [use for path, ev in _member(member) for use in _used(declared, path, ev)]
     for table in declared.tables:
         found[table.template] += [use for path, ev in _table(table) for use in _used(declared, path, ev)]
     return {path: summary(each) for path, each in found.items()}
@@ -237,7 +235,9 @@ def part_uses(declared, part, options=None):
     if isinstance(found, s.DeclaredStatus):
         places = [(case.path, case.evidence) for case in found.cases]
     elif isinstance(found, s.DeclaredStage):
-        places += [(item.path, item.evidence) for item in s.statements_of(found.body) if hasattr(item, 'evidence')]
+        places += [
+            (item.path, item.evidence) for item in s.statements_of(found.body) if hasattr(item, 'evidence')
+        ]
     elif isinstance(found, s.DeclaredTrigger):
         places += [(item.path, item.evidence) for item in found.captures]
     elif isinstance(found, s.DeclaredSolver):
@@ -343,7 +343,9 @@ def disclosures(found):
     """One line for each claim that is not verified and each assumption that is not confirmed, of the
     parts that the run exercised (`Evidence.reached`)."""
     lines = [
-        f'the claim {name} is {status}' for name, status in found.reached.claims.items() if status != 'verified'
+        f'the claim {name} is {status}'
+        for name, status in found.reached.claims.items()
+        if status != 'verified'
     ]
     lines += [
         f'the assumption {name} is {status}'
@@ -375,7 +377,9 @@ def package_tree(path):
     tree, problems = merged(trees)
     if problems:
         place = s.Files(tuple(files)).place
-        raise LanguageError([replace(item, file=place(item.line)[0], line=place(item.line)[1]) for item in problems])
+        raise LanguageError(
+            [replace(item, file=place(item.line)[0], line=place(item.line)[1]) for item in problems]
+        )
     return tree, tuple(files), found.package
 
 
@@ -420,7 +424,9 @@ def lines_of(found):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument('model', type=Path, help='The main file or a variant of a package')
     parser.add_argument('paths', nargs='+', metavar='PATH', help='A value to report, as napkin run reads it')
     parser.add_argument('--run', help='A named run of the model (default: its default run)')

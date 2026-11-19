@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from napkin.model.compile import load_scenario
 from tests.commands.call import TANK, UNITS, napkin, package
 
 
@@ -30,7 +31,8 @@ def test_compile_summarizes_the_program_of_the_tank(tmp_path, capsys):
     model = package(tmp_path / 'tank', TANK, UNITS)
     found = napkin(capsys, 'compile', model)
     assert found.code == 0, found.err
-    assert found.out.splitlines() == [
+    lines = found.out.splitlines()
+    assert lines[:-1] == [
         f'{model / "model.scn"}: Tank',
         '  run:           median, to 4 h, steps of at most 1 h',
         '  entities:      tank, clinic',
@@ -38,7 +40,10 @@ def test_compile_summarizes_the_program_of_the_tank(tmp_path, capsys):
         '  flows:         clinic.delivery: tank.water -> SINK',
         '  units:         L, L/h',
     ]
+    # The hash that an edit document names: the model's own.
+    assert lines[-1] == f'  model hash:    {load_scenario(model / "model.scn").model_hash}'
     doc = napkin(capsys, 'compile', model, '--json').doc
+    assert (doc['model_hash'], doc['runs']) == (load_scenario(model / 'model.scn').model_hash, [])
     assert doc['stores'] == [{'path': 'tank.water', 'unit': 'L'}]
     assert doc['flows'] == [
         {'path': 'clinic.delivery', 'source': 'tank.water', 'sink': 'SINK', 'unit': 'L/h'}

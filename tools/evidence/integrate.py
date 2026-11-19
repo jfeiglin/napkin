@@ -33,12 +33,11 @@ matches for every source and claim. Run it by hand with the acquired source cach
 extraction environment the records name (see scenarios/docs/evidence/README.md); no automatic check runs it.
 
 --coverage prints the read-only evidence coverage report. It answers questions that
-`tools.check` deliberately does not fail on: what each entity and each outcome rests on, which
-library claims no scenario reaches, which claims stand behind each initiation, and which machine
-red-team judgements the scenarios use. The model builder validates every claim and assumption
-reference, the review included, and builds the evidence index (`Model.index`): each use of a basis
-with the part of the file that it supports and its line. The report only reads built models; it
-detects nothing.
+`tools.check` deliberately does not fail on: what each entity and template rests on, which claims
+of a folder its model does not reach, and which machine red-team judgements the scenarios use. It
+reads the uses of the records of each declared model (`trail.py`); the front end checks every
+reference. What a value rests on is the caller's question, since the caller selects the values that
+a report reads (D10): `python -m tools.evidence.trail MODEL PATH...` answers it for one run.
 
 Each mode refuses the options of the other modes.
 """
@@ -50,34 +49,28 @@ import json
 import re
 import subprocess
 import sys
-from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
-from napkin.engine.report import evidence_parts
 from napkin.model import load_json
 from napkin.model.evidence import basis_errors, claim_digest, dependencies, library_checks
-from napkin.model.ir import thaw
 from napkin.model.library import (
     catalogue_root,
     folder_records,
     library_folders,
     load_library,
-    model_document,
     shared_library,
 )
 from napkin.model.load import schema_document
-from napkin.model.model import build_model
-from napkin.model.semantic import path_text
 
 from .. import catalogue
 from ..catalogue import ROOT
-from ..publish.brief import brief_of
 from .fetch import CACHE, extract_bytes
 from .normalize import NORMALIZATION, match_quotes
+from .trail import built, entities, package_document, summary, uses
 
 # Pack integration.
 
@@ -701,149 +694,37 @@ def retrieval_coverage(library, rows):
 
 # The evidence coverage report (--coverage).
 
-KINDS = ('source', 'source_transfer', 'assumption', 'convention', 'identity')
-# The collections of a structure whose members carry a basis and the path of the file that
-# writes them (engine.report.evidence_parts).
-PARTS = ('parameters', 'quantities', 'computed', 'labels', 'flows', 'modes', 'rules')
-
-
-def summary(uses):
-    """Basis kinds counted by use, and the claims and assumptions those uses cite."""
-    kinds = Counter(use['kind'] for use in uses)
-    return {
-        'kinds': {kind: kinds[kind] for kind in KINDS if kinds[kind]},
-        'claims': sorted({claim for use in uses for claim in use['claims']}),
-        'assumptions': sorted({use['assumption'] for use in uses if use['assumption']}),
-    }
-
-
-def entity_view(model):
-    """Each entity's evidence: every basis use written in its template or in its own entity line. A
-    set of copies is one entity line, so its copies never count as separate evidence."""
-    places = {entity.entry: entity.places for entity in model.scenario.entities}
-    found = {}
-    for use in model.index['uses']:
-        steps = tuple(use['part'].split('/'))
-        for entry, prefixes in places.items():
-            if any(steps[: len(prefix)] == prefix for prefix in prefixes):
-                found.setdefault(entry, []).append(use)
-    return {entry: summary(uses) for entry, uses in sorted(found.items())}
-
-
-def output_paths(model):
-    """{outcome: the places of the file that write it}: its line in the template or the entity, or its
-    output line at the top level."""
-    return {
-        oid: {path_text(place) for place in model.scenario.output(key).places}
-        for key, oid in model.outputs.items()
-    }
-
-
-def option_paths(model):
-    """{input: the places of the file where an option gives it a value}."""
-    out = {}
-    for name, item in model.inputs.items():
-        value = model.scenario.entity(model.entities[item['entity']]).value(item['field'])
-        out[name] = {path_text(place) for setting in value.settings for place in setting.places}
-    return out
-
-
-def outcome_view(model):
-    """Each outcome's evidence: the bases of its definition, lag and additivity, and of every part it
-    can depend on in any run, by the dependency rule of the run report's evidence trail. The trail
-    reads every part of a run's structure, also the parts that the run leaves out (`model.whole`),
-    and an input rests on the options that give it values too."""
-    under = {}
-    for use in model.index['uses']:
-        steps = use['part'].split('/')
-        for n in range(1, len(steps) + 1):
-            under.setdefault('/'.join(steps[:n]), []).append(use)
-    homes, options = output_paths(model), option_paths(model)
-    locations = {}
-    for structure in model.whole.values():
-        parts, depends, starts = evidence_parts(structure)
-        paths = {
-            name: item.path
-            for collection in PARTS
-            for name, item in structure.section(collection).items()
-            if item.path
-        }
-        for oid in structure.outcomes:
-            reached, pending = set(), list(starts[oid])
-            while pending:
-                part = pending.pop()
-                if part in parts and part not in reached:
-                    reached.add(part)
-                    pending.extend(depends.get(part, ()))
-            found = locations.setdefault(oid, set())
-            found.update(homes.get(oid, ()))
-            found.update(paths[part] for part in reached if part in paths)
-            found.update(path for part in reached for path in options.get(part, ()))
-    return {
-        oid: summary(list({id(use): use for path in found for use in under.get(path, ())}.values()))
-        for oid, found in sorted(locations.items())
-    }
-
-
-def start_claims(model):
-    """The claims that the records of the first move cite, each once, in the order of its records: the
-    event `start` and its outcome."""
-    event = model.scenario.start_event()
-    cited = []
-    for written in [event.records, *(outcome.records for outcome in event.outcomes)] if event else []:
-        basis = thaw(written)
-        for item in basis if isinstance(basis, list) else [basis]:
-            cited += [link['claim'] for link in (item or {}).get('links', [])]
-    return list(dict.fromkeys(cited))
-
-
-def initiation_line(model, claims):
-    """One line on a catalogue case's cyber initiation: whether the start changes the systems (an
-    incident) or only starts the operation's clocks (an operation), the effect of the attack, the
-    start's rule and its event, and the claims of the first move with their status."""
-    start = model.scenario.start
-    if start is None:
-        return 'initiation none'
-    effect = model.initiation['effect']
-    event = model.scenario.start_event()
-    origin = 'incident' if event is not None and any(o.lines for o in event.outcomes) else 'operation'
-    action = model.initiation['rule']
-    found = ', '.join(f'{claim} ({claims[claim]["verification"]["status"]})' for claim in start_claims(model))
-    # The name of the attack is the pages': brief.toml beside the model's file.
-    doc = brief_of(model).attack or 'cyber attack'
-    return f'initiation cyber ({origin}): {doc}; {action} -> {effect}; claims {found or "none"}'
-
 
 def _line(name, found):
     kinds = ', '.join(f'{kind} {count}' for kind, count in found['kinds'].items())
     return (
-        f'{name}: {kinds}; claims {", ".join(found["claims"]) or "none"}; '
+        f'{name}: {kinds or "no record"}; claims {", ".join(found["claims"]) or "none"}; '
         f'assumptions {", ".join(found["assumptions"]) or "none"}'
     )
 
 
 def coverage_report(root=ROOT):
+    """The evidence coverage report of the catalogue at `root`: for each owner that runs as a model of
+    its own, the summary of its uses of records, the number of claims that its records reach, the
+    summary of each entity and template (`trail.entities`), the claims of its own folder that it does not
+    reach and the machine red-team records of its folder. A model is read with every record of its
+    folder, cited or not (`allow_unused`)."""
     root = Path(root)
     lines = ['Evidence coverage by scenario and record ID']
-    snapshots = catalogue.records(root, allow_unused=True)
     for sid, path in catalogue.entries(root).items():
-        entry = snapshots[sid]
-        model = build_model(path, entry['library'])
-        claims = {item['id']: item for item in model.library['claims']}
-        lines.append(f'  {_line(sid, summary(model.index["uses"]))}')
-        lines.append(
-            f'      claims reached {len(model.evidence["claims"])}; {initiation_line(model, claims)}'
-        )
+        found = package_document(path)
+        library = load_library(path, document=found, allow_unused=True)
+        declared, _ = built(path, library)
+        reached = dependencies(found, library)
+        owned = catalogue.locate(sid, root).collections()
+        lines.append(f'  {_line(sid, summary(uses(declared)))}')
+        lines.append(f'      claims reached {len(reached["claims"])}')
         lines.append('      entities')
-        lines += [f'        {_line(name, found)}' for name, found in entity_view(model).items()]
-        lines.append('      outcomes')
-        lines += [f'        {_line(name, found)}' for name, found in outcome_view(model).items()]
-        orphans = sorted(
-            {record['id'] for record in entry['owned']['claims']} - set(model.evidence['claims'])
-        )
+        lines += [f'        {_line(name, each)}' for name, each in entities(declared).items()]
+        orphans = sorted({record['id'] for record in owned['claims']} - set(reached['claims']))
         if orphans:
             lines.append('      unused claims: ' + ', '.join(orphans))
-        for assumption in entry['owned']['assumptions']:
+        for assumption in owned['assumptions']:
             if assumption.get('origin') == 'model_redteam':
                 lines.append(f'      machine red-team record: {sid}:{assumption["id"]}')
     return '\n'.join(lines)
@@ -915,7 +796,7 @@ def pack_mode(a):
         missing = [
             f'{name}: {problem["path"]}: {problem["message"]}'
             for name, path in zip(names, readers)
-            for problem in basis_errors(model_document(path), {**lib, **every})
+            for problem in basis_errors(package_document(path), {**lib, **every})
         ]
         if missing:
             raise IntegrationError(
@@ -923,7 +804,7 @@ def pack_mode(a):
             )
         reached = {kind: set() for kind in ('sources', 'claims', 'assumptions')}
         for path in readers:
-            for kind, ids in dependencies(model_document(path), every).items():
+            for kind, ids in dependencies(package_document(path), every).items():
                 if kind in reached:
                     reached[kind] |= set(ids)
         report['scenario'] = owner
@@ -1007,7 +888,11 @@ def check_mode(a, p):
 
 def coverage_mode():
     """--coverage: print the evidence coverage report of this checkout."""
-    print(coverage_report(ROOT))
+    try:
+        print(coverage_report(ROOT))
+    except (ValueError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     return 0
 
 

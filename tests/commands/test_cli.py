@@ -1,5 +1,5 @@
 """The `napkin` command: its help and version, which load no compiler and no engine, and the commands
-that a later stage of the rewrite brings back, which are listed and refused."""
+that a later stage of the rewrite brings back, which are listed and refused with their stage."""
 
 from __future__ import annotations
 
@@ -58,12 +58,13 @@ def test_help_and_version_load_no_compiler_and_no_engine():
 @pytest.mark.parametrize('name', sorted(LATER))
 @pytest.mark.parametrize('rest', [(), ('--help',), ('examples/piano_tuners', '--json')])
 def test_a_command_that_a_later_stage_brings_back_exits_with_status_2(capsys, name, rest):
+    """`napkin play` waits for the checkpoints of S7 (PLAN, change 15)."""
     found = napkin(capsys, name, *rest)
     assert found.code == 2
-    assert (
-        found.err == f'napkin {name} comes back in a later stage of the rewrite of the language (stage C)\n'
-    )
+    stage = LATER[name][1]
+    assert found.err == f'napkin {name} comes back in a later stage of the rewrite of the language (stage {stage})\n'
     assert found.out == ''
+    assert LATER['play'][1] == 'S7'
 
 
 def test_an_unknown_argument_of_a_command_is_a_usage_error(capsys):

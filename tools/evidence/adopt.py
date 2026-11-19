@@ -1,17 +1,25 @@
-"""Copy a record and its evidence dependencies between independent scenario, variant or family folders."""
+"""Copy a record and its evidence dependencies between independent scenario, variant or family folders.
+
+A copy takes the record's dependency closure (`napkin.model.evidence.dependencies`) and the units that
+the copied records name: the unit of each datum, and each declared unit that a composed one is made of
+(`tunings/tuner*year` reaches tunings, tuner and year). A record or a unit that the destination holds
+with another meaning is a conflict that the author resolves by hand.
+"""
 
 import argparse
 import copy
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
+from napkin.expressions import ExpressionError, UnitSystem
 from napkin.model.evidence import dependencies
-from napkin.model.identity import declared_units, unit_names
 from napkin.model.library import load_library
 
 from .. import catalogue
 from ..catalogue import ROOT
 from .integrate import IntegrationError, write_owned
+from .trail import package_document
 
 
 def adopt(source, destination, identifier):
@@ -50,6 +58,30 @@ def adopt(source, destination, identifier):
     return result
 
 
+def unit_names(value):
+    """The unit names that records name: each text of a `unit` key, at any depth."""
+    if isinstance(value, Mapping):
+        found = {value['unit']} if isinstance(value.get('unit'), str) else set()
+        return found.union(*(unit_names(child) for child in value.values()))
+    if isinstance(value, (list, tuple)):
+        return set().union(*(unit_names(child) for child in value))
+    return set()
+
+
+def declared_units(units, names):
+    """{name: definition} of the declared units of `units` that the unit names `names` reach, sorted by
+    name: a declared name itself, and each declared unit that a composed name is made of
+    (`UnitSystem.factors`). A name that is no unit reaches none."""
+    registry = UnitSystem(units)
+    found = set()
+    for name in names:
+        try:
+            found.update(part for part, _ in registry.factors(name))
+        except ExpressionError:
+            continue
+    return {name: copy.deepcopy(units[name]) for name in sorted(found)}
+
+
 def _meaning(definition):
     """What a unit means: its definition without its description, which the destination keeps."""
     return {key: value for key, value in definition.items() if key != 'description'}
@@ -79,7 +111,10 @@ def main(argv=None):
     try:
         src = reader_path(args.root, args.source)
         dst = reader_path(args.root, args.destination)
-        copied = adopt(load_library(src, allow_unused=True), load_library(dst, allow_unused=True), args.id)
+        source, destination = (
+            load_library(path, document=package_document(path), allow_unused=True) for path in (src, dst)
+        )
+        copied = adopt(source, destination, args.id)
         if args.write:
             write_owned(dst, copied, folder=catalogue.locate(args.destination, args.root).folder)
         print(f'{args.id}: {args.source} -> {args.destination}; {"written" if args.write else "dry run"}')
