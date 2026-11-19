@@ -721,8 +721,8 @@ class Layout:
 def subtitle(picture):
     """The lines of the subtitle of a picture (D-59), from its `facts`: its name and its run with its
     label (and its options, when the label does not name them), or the number of runs that it joins;
-    then the run that the run is compared with, how long a run lasts, and the things that `[layout]
-    hide` leaves out. A picture without facts has its name only."""
+    then how long a run lasts, and the things that `[layout] hide` leaves out. A picture without facts
+    has its name only."""
     facts = picture.get('facts') or {}
     run = facts.get('run')
     first = str(picture.get('name') or '')
@@ -734,8 +734,6 @@ def subtitle(picture):
     elif int(facts.get('runs') or 0) > 1:
         first += f' · all {facts["runs"]} runs'
     second = []
-    if run and run.get('versus'):
-        second.append(f'compared with {run["versus"]}')
     if facts.get('horizon'):
         second.append(f'a run lasts {facts["horizon"]}')
     if facts.get('hidden'):

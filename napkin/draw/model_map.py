@@ -274,11 +274,6 @@ class Walk:
 # ---- the picture: what `napkin draw` draws ---------------------------------------------------------
 
 
-def card_title(card):
-    """The title of a card (`things.Card.title`)."""
-    return card.title
-
-
 def picture(model, style=None, run=None):
     """What `napkin draw` draws of a model (a `Compiled`): a plain dict that JSON writes, the same for
     the same model, picture and run. `style` is the picture (`style.Style`), by default the model's own
@@ -707,16 +702,18 @@ def _transitions(found, events, shown):
 
 def _started(found):
     """The paths of the events that a statement or the setup starts."""
-    out = {start.event.type.event for start in found.declared.setup}
+    from .triggers import event_of
+
+    out = {event_of(start.event) for start in found.declared.setup}
     for card in found.cards.values():
         for event in found.events(card.id):
             for step in event.steps:
                 for statement in s.statements_of(step.body) if isinstance(step, s.DeclaredStage) else ():
                     if isinstance(statement, s.DeclaredStart):
-                        out.add(statement.event.type.event)
+                        out.add(event_of(statement.event))
             for trigger in event.triggers:
                 out.update(
-                    start.event.type.event for start in trigger.starts if start.event.type.event != event.path
+                    event_of(start.event) for start in trigger.starts if event_of(start.event) != event.path
                 )
     return out
 
@@ -860,7 +857,6 @@ __all__ = [
     'Walk',
     'actor_name',
     'arrow_kind',
-    'card_title',
     'label',
     'picture',
     'settings_of',

@@ -20,9 +20,9 @@ The lines of a block, in this order of kinds (`KINDS`), each in written order:
   capacity, its ends and the allocations of its endpoints can give it less (below). A flow with no
   request asks for nothing of its own (spec: "request … defaults to zero").
 - `formula`: each formula of the member that the requests and capacities reach within `depth` hops
-  of names, defined once, in the order of a breadth-first search (`hop` is its number of hops). The
-  search goes through the formulas of the member only; anything else is a name in the line (the
-  Symbols table lists it).
+  of names, defined once, in the order of a breadth-first search (`hop` is its number of hops), with
+  the member's own formula where it gives one. The search goes through the formulas of the member
+  only; anything else is a name in the line (the Symbols table lists it).
 - `bound`: for each capacity of a flow, `f ≤ c` (`|f| ≤ c` for a route); for each stock, tally and
   number state with a range, `lo ≤ S ≤ hi`. Where a flow moves S, the words say that the engine limits
   the flows at a bound (spec: "At its lower bound, total withdrawals can use simultaneous inflow");
@@ -283,6 +283,13 @@ class Equations:
         """The declared value `name` of a member's template, or None."""
         return self.found.part(self.found.template_of[member], name)
 
+    def init(self, member, value):
+        """The initializer of a value for a member: the member's own (its formula, its value), else
+        its template's."""
+        declared = self.found.declared.part(member)
+        own = next((given for given in getattr(declared, 'values', ()) if given.name == value.name), None)
+        return value.init if own is None else own.init
+
     # ---- a block
 
     def block(self, member, *, depth=1, checks=False):
@@ -367,7 +374,7 @@ class Equations:
                     if not isinstance(value, s.DeclaredValue) or value.kind != s.FORMULA or key in defined:
                         continue
                     defined.add(key)
-                    tree = notation.build(value.init, keys)
+                    tree = notation.build(self.init(member, value), keys)
                     relation = '⇔' if value.type == s.BOOL else '='
                     out.append(
                         Line(

@@ -1,9 +1,9 @@
 """The layout of a picture (napkin/draw/layout.py), by its properties: on the frozen picture of the
 contract (tests/draw/picture.json), on pictures that Hypothesis makes, on small counterexamples, and on
-the picture of every catalogue model.
+the pictures of the water works (`tests/draw/models.py`) for each of its runs and joined.
 
 `check(picture, found)` holds every property that a layout keeps; the SVG tests and the catalogue test
-use it too. No test pins a coordinate: each property is geometry (boxes that do not overlap, segments
+(`test_catalogue.py`) use it too. No test pins a coordinate: each property is geometry (boxes that do not overlap, segments
 that are horizontal or vertical, points on borders) or a rule of the brief (at most `cards_per_column`
 cards to a column, at most `stocks` stocks to a card, a card at least `card_width` wide, the rows of
 `[stocks]` in its order, a machine inside when it is small).
@@ -29,7 +29,7 @@ from napkin.draw.defaults import ARROW_LOOKS
 from napkin.draw.layout import KINDS, MARKS, layout
 from napkin.draw.model_map import picture
 from napkin.draw.references import LEFT_OUT_WORDS
-from tests.helpers import SCENARIO_IDS, catalogue_model
+from tests.draw.models import WORKS_STYLE, works
 
 FIXTURE = Path(__file__).with_name('picture.json')
 PICTURE = json.loads(FIXTURE.read_text(encoding='utf-8'))
@@ -1747,23 +1747,19 @@ def test_a_bundle_of_one_arrow_is_that_arrow(picture):
     assert layout(picture) == layout(bundling(picture, []))
 
 
-# ---- every catalogue model --------------------------------------------------------------------------
+# ---- a model ------------------------------------------------------------------------------------------
 
 
-def catalogue_picture(scenario_id):
-    """A catalogue model and its picture."""
-    model = catalogue_model(scenario_id)
-    return model, picture(model)
+@pytest.mark.parametrize('run', [None, 'base', 'attack'])
+def test_the_layout_of_the_water_works_holds_every_property(run):
+    from napkin.draw import style
 
-
-@pytest.mark.parametrize('scenario_id', SCENARIO_IDS)
-@pytest.mark.scenario_contract
-def test_the_layout_of_every_scenario_holds_every_property(scenario_id):
-    _, picture = catalogue_picture(scenario_id)
+    model = works()
+    found = picture(model, style.read(WORKS_STYLE), run=run)
     start = time.perf_counter()
-    found = layout(picture)
+    placed = layout(found)
     took = time.perf_counter() - start
-    check(picture, found)
+    check(found, placed)
     assert took < 5.0, took
 
 

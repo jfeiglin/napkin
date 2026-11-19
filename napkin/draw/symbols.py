@@ -250,7 +250,8 @@ def copies(found, card):
     return [(member, k + 1) for k, member in enumerate(card.members)]
 
 
-def _base(name, kind):
+def base_of(name, kind):
+    """The base of the symbol of a member with the class `kind` (see the module's text)."""
     initial = words(name)[0][0]
     if kind == 'upper':
         return initial.upper()
@@ -430,7 +431,7 @@ def symbols(found, sheet=None, cards=None, keys=None):
             if wanted is None or any(key in wanted for key in names):
                 items.append((name, kind, names))
         first = {
-            name: Symbol(_base(name, kind), False, ','.join(_head(name, kind, tag[card]))).text()
+            name: Symbol(base_of(name, kind), False, ','.join(_head(name, kind, tag[card]))).text()
             for name, kind, names in items
             if names[0] not in fixed
         }
@@ -443,7 +444,9 @@ def symbols(found, sheet=None, cards=None, keys=None):
             for parts in _candidates(name, kind, tag[card], clash):
                 each = [
                     Symbol(
-                        _base(name, kind), False, ','.join(parts if number is None else [*parts, str(number)])
+                        base_of(name, kind),
+                        False,
+                        ','.join(parts if number is None else [*parts, str(number)]),
                     )
                     for _, number in rows
                 ]
@@ -485,6 +488,7 @@ __all__ = [
     'LONGEST_TAG',
     'TIME',
     'Symbol',
+    'base_of',
     'clashes',
     'copies',
     'given',

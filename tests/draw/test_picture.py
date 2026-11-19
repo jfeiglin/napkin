@@ -4,7 +4,8 @@ the arrows between them, and the groups. The legend is the layout's (tests/draw/
 Each model of these tests writes its things in its own lines, so each expectation follows from the text
 of the test and from the rule that the test names. `picture_problems` checks a picture against the
 contract between `picture` and the layout and SVG (layout.py, svg.py), from the document alone: the
-frozen example `picture.json` passes it, and so does each picture of these tests and of the catalogue.
+frozen example `picture.json` passes it, and so does each picture of these tests and of the catalogue
+(`test_catalogue.py`).
 """
 
 from __future__ import annotations
@@ -17,31 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from napkin import paths
-from napkin.draw import layout as layouts
 from napkin.draw import notation, style
-from napkin.draw.layout import layout
-from napkin.draw.model_map import card_title, picture
-from tests.build import (
-    block,
-    compiled,
-    document,
-    entity,
-    event,
-    flow,
-    named,
-    named_event,
-    option,
-    options,
-    parameter,
-    runs,
-    share,
-    start,
-    stock,
-    template,
-)
-from tests.draw.test_model_map import FIXTURE_STYLE, fixture_model
-from tests.helpers import SCENARIO_IDS, catalogue_model
+from napkin.draw.model_map import picture
+from tests.draw.models import WORKS, WORKS_STYLE, compiled, package, works
 
 ROOT = Path(__file__).resolve().parents[2]
 FROZEN = Path(__file__).with_name('picture.json')
@@ -80,7 +59,7 @@ ARROW = ('from', 'to', 'kind', 'count', 'values', 'how')
 ROLES = ('adversary', 'operator', 'responder', 'environment', 'clinician', 'community')
 KINDS = ('reads', 'follows', 'changes', 'fires', 'moves')
 # The words of the relations of a changes arrow (D-50).
-CHANGE_WORDS = ('sets', 'adds', 'takes', 'shares')
+CHANGE_WORDS = ('sets', 'adds', 'takes', 'shares', 'solves')
 MACHINE_PLACES = ('inside', 'beside', 'hidden')
 # What a card shows of its events (D-56): the levels of `[triggers]`, the keys of a card's `triggers` and
 # of each of its events, and the most rows of an event's line.
@@ -133,7 +112,7 @@ ROW = (
     'range_marks',
     'records',
 )
-ROW_KINDS = ('input', 'fixed', 'stock', 'tally', 'state', 'formula', 'flow', 'event', 'text', 'output')
+ROW_KINDS = ('input', 'fixed', 'stock', 'tally', 'state', 'formula', 'flow', 'event', 'text')
 SYMBOL = ('base', 'prime', 'sub', 'text', 'latex')
 ENTRY = ('number', 'kind', 'label', 'text', 'url', 'link_text', 'hover', 'record')
 REFERENCE_KINDS = ('source', 'source_transfer', 'identity', 'convention', 'assumption')
@@ -174,7 +153,7 @@ def picture_problems(doc):
     facts = doc['facts']
     if keys(facts, FACTS, 'facts'):
         run = facts['run']
-        if run is not None and keys(run, ('name', 'label', 'options', 'versus'), 'facts.run'):
+        if run is not None and keys(run, ('name', 'label', 'options'), 'facts.run'):
             need(run['name'] == doc['run'], 'facts.run.name', 'is the run of the picture')
             need(_text(run['label']), 'facts.run.label', 'is a text')
             options = run['options']
@@ -183,7 +162,6 @@ def picture_problems(doc):
                 'facts.run.options',
                 'is a list of options',
             )
-            need(run['versus'] is None or _text(run['versus']), 'facts.run.versus', 'is a text or null')
         need((run is None) == (doc['run'] is None), 'facts.run', 'is there for a picture of one run')
         need(
             _whole(facts['runs']) and (doc['run'] is None or facts['runs'] == 1), 'facts.runs', 'is 1 or more'
@@ -779,7 +757,7 @@ def triggers_problems(card, where, need, keys):
         (lambda doc: doc['cards'][0]['triggers'].update(lines=5), 'cards[0].triggers.lines'),
         (lambda doc: doc['cards'][0]['triggers'].update(more=1), 'cards[0].triggers.more'),
         (
-            lambda doc: doc['cards'][0]['triggers']['events'][0].update(event='plant.strike'),
+            lambda doc: doc['cards'][0]['triggers']['events'][0].update(event='plant.alarm'),
             'cards[0].triggers.events[0].event',
         ),
         (
@@ -796,26 +774,27 @@ def test_the_contract_check_finds_each_broken_part(change, found):
     assert any(found in problem for problem in picture_problems(doc))
 
 
+CONTRACT_STYLE = WORKS_STYLE + (
+    '\n[place]\nattacker = { column = 1, row = 1 }\nplant = { column = 2, row = 1 }\n'
+    '\n[group]\n"Site" = ["plant", "crews"]\n'
+    '\n[state.plant]\nmode = "beside"\n'
+    '\n[triggers]\nrules = ["attacker"]\ncount = ["crews"]\n'
+)
+
+
 def contract_picture():
-    """The picture of the system map's fixture model, with a stylesheet that places, groups and moves a
-    state machine."""
-    sheet = style.read(
-        FIXTURE_STYLE
-        + '\n[place]\nattacker = { column = 1, row = 1 }\nplant = { column = 2, row = 1 }\n'
-        + '\n[group]\n"Site" = ["plant", "operators"]\n'
-        + '\n[state.plant]\nvalve = "beside"\n'
-        + '\n[triggers]\nrules = ["attacker"]\ncount = ["operators"]\n'
-    )
-    model = fixture_model()
+    """The picture of the water works, with a stylesheet that places, groups and moves a state
+    machine."""
+    sheet = style.read(CONTRACT_STYLE)
+    model = works()
     assert style.check(sheet, model) == []
     return picture(model, sheet)
 
 
-def test_the_picture_of_the_fixture_model_keeps_the_contract():
-    doc = contract_picture()
-    assert picture_problems(doc) == []
-    for run in fixture_model().runs:
-        assert picture_problems(picture(fixture_model(), run=run)) == []
+def test_the_picture_of_the_water_works_keeps_the_contract():
+    assert picture_problems(contract_picture()) == []
+    for run in (None, 'base', 'attack'):
+        assert picture_problems(picture(works(), style.Style(), run=run)) == []
 
 
 def test_the_frozen_example_keeps_the_contract():
@@ -827,287 +806,149 @@ def test_the_frozen_example_keeps_the_contract():
 # ---- the parts of a card ----------------------------------------------------------------------------
 
 
-def world(*declarations, option_groups=None, run_lines=None):
-    groups = option_groups or (options('Response', option('Default', 'The defaults.')),)
-    return compiled(document('Picture fixture', *declarations, option_groups=groups, run_lines=run_lines))
-
-
 def card_of(doc, card):
     return next(item for item in doc['cards'] if item['id'] == card)
 
 
 def arrows_of(doc):
-    return {(a['from'], a['to'], a['kind']): a['values'] for a in doc['arrows']}
-
-
-PLANT = entity(
-    'plant',
-    stock('store', 100),
-    stock('spare', 50),
-    stock('released', kind='tally'),
-    stock('vented'),
-    parameter('level', 3, 'people', 0, 9),
-    flow('escape', 'store -> released', '0.5 per_h * store'),
-    flow('leak', 'store -> released', '0.1 per_h * store'),
-    flow('vent', 'store ->', '0.2 per_h * store'),
-    flow('refill', '-> spare', '1 people/h'),
-    flow('mark', ['store -> vented', '-> released'], '0.01 per_h * store'),
-    share('store', '1000 people/h'),
-    role='operator',
-)
+    return {(arrow['from'], arrow['to'], arrow['kind']): arrow for arrow in doc['arrows']}
 
 
 def test_each_stock_and_pipe_of_a_card_and_each_moves_arrow():
-    model = world(
-        PLANT,
-        entity(
-            'town',
-            stock('shelter'),
-            flow('evacuate', 'plant.spare -> shelter', '0.1 per_h * plant.spare'),
-            flow('take', ['plant.store -> shelter', 'outside -> plant.released'], '1 people/h'),
-            role='community',
-        ),
-    )
-    doc = picture(model, style.Style())
-    plant, town = card_of(doc, 'plant'), card_of(doc, 'town')
-    # Each stock and tally of the file, in its order: the input is neither.
-    assert [(s['key'], s['kind']) for s in plant['stocks']] == [
-        ('plant.store', 'stock'),
-        ('plant.spare', 'stock'),
-        ('plant.released', 'tally'),
-        ('plant.vented', 'tally'),
+    doc = picture(works(), style.Style())
+    plant = card_of(doc, 'plant')
+    # Raw water: the treatment takes from it; treated water: the supplies take from it; the water
+    # treated: a flow only fills it, so it is a tally (by use).
+    stocks = [(item['key'], item['kind']) for item in plant['stocks']]
+    assert stocks == [('plant.raw', 'stock'), ('plant.treated', 'stock'), ('plant.treated_total', 'tally')]
+    pipes = [(pipe['from'], pipe['to'], pipe['flows'], pipe['label']) for pipe in plant['pipes']]
+    assert pipes == [
+        (None, 'plant.raw', ['plant.intake'], 'Intake'),
+        ('plant.raw', 'plant.treated', ['plant.treat'], 'Treatment'),
+        (None, 'plant.treated_total', ['plant.count'], 'Count'),
     ]
-    # Two flows between the same two stocks are one pipe; a pair to or from outside has one stock; each
-    # pair of a flow of two pairs is a pipe of its own.
-    assert [(p['from'], p['to'], p['flows']) for p in plant['pipes']] == [
-        ('plant.store', 'plant.released', ['plant.escape', 'plant.leak']),
-        ('plant.store', None, ['plant.vent']),
-        (None, 'plant.spare', ['plant.refill']),
-        ('plant.store', 'plant.vented', ['plant.mark']),
-        (None, 'plant.released', ['plant.mark']),
-    ]
-    # The town's flows move the plant's stocks: arrows of kind moves, and no pipe.
-    assert [s['key'] for s in town['stocks']] == ['town.shelter'] and town['pipes'] == []
-    assert arrows_of(doc) == {
-        ('town', 'plant', 'moves'): ['plant.released', 'plant.spare', 'plant.store'],
-        ('plant', 'town', 'reads'): ['plant.spare'],
+    # The supplies of the town and of the hospital take from the plant's treated water: arrows of the
+    # kind "moves", and no pipe; each zone fills from the town.
+    arrows = arrows_of(doc)
+    assert arrows[('town', 'plant', 'moves')]['values'] == ['plant.treated']
+    assert arrows[('hospital', 'plant', 'moves')]['values'] == ['plant.treated']
+    assert arrows[('north', 'town', 'moves')]['values'] == ['town.stored']
+    assert card_of(doc, 'town')['pipes'] == []
+    assert [item['key'] for item in card_of(doc, 'town')['stocks']] == ['town.stored']
+
+
+def test_a_hidden_thing_is_absent_with_its_arrows():
+    doc = picture(works(), style.read(WORKS_STYLE))
+    assert 'hospital' not in [card['id'] for card in doc['cards']]
+    assert not [arrow for arrow in doc['arrows'] if 'hospital' in (arrow['from'], arrow['to'])]
+    assert doc['facts']['hidden'] == ['Hospital']
+    assert picture_problems(doc) == []
+
+
+def test_a_run_leaves_out_the_events_that_it_cannot_start():
+    model = works()
+    base, attack, joined = (picture(model, style.Style(), run=run) for run in ('base', 'attack', None))
+    # Without the AI the attacker cannot break in, so it never gains access, holds it or takes over
+    # (the reachability of the run's configuration, D16).
+    transitions = {
+        name: [item['event'] for item in card_of(doc, 'attacker')['machines'][0]['transitions']]
+        for name, doc in (('base', base), ('attack', attack), ('joined', joined))
     }
-    assert {a['count'] for a in doc['arrows']} == {3, 1}
-    assert picture_problems(doc) == []
-
-
-def test_a_hidden_thing_is_absent_with_its_arrows_and_transitions():
-    model = world(
-        entity(
-            'plant', named('valve', 'closed', 'open', records='@fixture'), stock('store', 10), role='operator'
-        ),
-        entity(
-            'operators',
-            event('isolate', 'plant.valve is "open"', 'plant.valve = "closed"', do_records='@fixture'),
-            role='responder',
-        ),
-        entity(
-            'attacker',
-            event('strike', 't >= 1 h', 'plant.valve = "open"', do_records='@fixture'),
-            role='adversary',
-        ),
-    )
-    shown, hidden = (
-        picture(model, style.Style()),
-        picture(model, style.read('[layout]\nhide = ["operators"]\n')),
-    )
-    (valve,) = card_of(shown, 'plant')['machines']
-    assert {t['by'] for t in valve['transitions']} == {'operators', 'attacker'}
-    # Hidden: no card, no arrow to or from it, and no transition of its events.
-    assert [card['id'] for card in hidden['cards']] == ['plant', 'attacker']
-    assert all('operators' not in (a['from'], a['to']) for a in hidden['arrows'])
-    (valve,) = card_of(hidden, 'plant')['machines']
-    assert [(t['event'], t['to']) for t in valve['transitions']] == [('attacker.strike', 'open')]
-    # Only the subtitle's facts name it (D-59): nothing else of the picture does.
-    assert 'operators' not in json.dumps({key: value for key, value in hidden.items() if key != 'facts'})
-    assert hidden['facts']['hidden'] == [card_of(shown, 'operators')['title']]
-    assert picture_problems(hidden) == []
-
-
-ACCESS = options(
-    'Access',
-    option('None', 'No access.'),
-    option('Kept', 'Kept access.', 'attacker.access = "kept"  @fixture'),
-)
-
-
-def access_model(run_lines=None):
-    """An attacker that gets in when its access is "none" and then opens the plant's valve: a run that
-    starts with the access kept (`b`) never gets in."""
-    return world(
-        entity(
-            'plant',
-            named('valve', 'closed', 'open', records='@fixture'),
-            stock('store', 100),
-            stock('released', kind='tally'),
-            flow('escape', 'store -> released', '0.5 per_h * store', condition='valve is "open"'),
-            role='operator',
-        ),
-        entity(
-            'attacker',
-            named('access', 'none', 'kept', records='@fixture'),
-            event(
-                'get_in', 'access is "none"', 'access = "kept"', 'plant.valve = "open"', do_records='@fixture'
-            ),
-            role='adversary',
-        ),
-        option_groups=(ACCESS,),
-        run_lines=run_lines or runs(a=['None'], b=['Kept']),
-    )
-
-
-def test_a_run_leaves_out_what_cannot_act_in_it():
-    model = access_model()
-    a, b = picture(model, run='a'), picture(model, run='b')
-    assert (a['run'], b['run']) == ('a', 'b')
-    # In b, the access starts kept, so the attacker never gets in and never opens the valve.
-    assert ('attacker', 'plant', 'changes') in arrows_of(a)
-    assert ('attacker', 'plant', 'changes') not in arrows_of(b)
-    events = lambda doc: {  # noqa: E731
-        t['event'] for card in doc['cards'] for m in card['machines'] for t in m['transitions']
+    assert transitions == {
+        'base': [],
+        'attack': ['attacker.break_in', 'attacker.hold'],
+        'joined': ['attacker.break_in', 'attacker.hold'],
     }
-    assert events(a) == {'attacker.get_in'} and events(b) == set()
-    # Then nothing changes or reads the access: it has no machine in b.
-    assert [m['var'] for m in card_of(a, 'attacker')['machines']] == ['attacker.access']
-    assert card_of(b, 'attacker')['machines'] == []
-    for doc in (a, b):
-        assert picture_problems(doc) == []
-    with pytest.raises(ValueError, match='not a run'):
-        picture(model, run='c')
-
-
-def joined(pictures):
-    """The parts of the pictures of each run, joined: what the picture without a run draws. A part is
-    drawn when one run draws it; an arrow's values are the values of each run, its count the largest,
-    and a transition is from any state when one run has it so."""
-    cards, arrows = {}, {}
-    for doc in pictures:
-        for card in doc['cards']:
-            found = cards.setdefault(card['id'], {'stocks': set(), 'pipes': {}, 'machines': {}})
-            found['stocks'].update(s['key'] for s in card['stocks'])
-            for pipe in card['pipes']:
-                found['pipes'].setdefault((pipe['from'], pipe['to']), set()).update(pipe['flows'])
-            for machine in card['machines']:
-                moves = found['machines'].setdefault(machine['var'], {})
-                for t in machine['transitions']:
-                    key = (t['event'], t['to'], t['by'])
-                    before = moves.get(key, set())
-                    moves[key] = None if t['from'] is None or before is None else before | set(t['from'])
-        for a in doc['arrows']:
-            item = arrows.setdefault((a['from'], a['to'], a['kind']), [0, set()])
-            item[0] = max(item[0], a['count'])
-            item[1].update(a['values'])
-    return cards, arrows
-
-
-def parts_of(doc):
-    """The parts of one picture, in the form of `joined`."""
-    return joined([doc])
-
-
-def test_the_picture_without_a_run_joins_the_pictures_of_every_run():
-    for model in (access_model(), fixture_model()):
-        whole = picture(model, style.Style())
-        each = [picture(model, style.Style(), run) for run in model.runs]
-        assert parts_of(whole) == joined(each)
-        assert [card['id'] for card in whole['cards']] == [card['id'] for card in each[0]['cards']]
-
-
-# ---- the kinds of the arrows (D-50) -----------------------------------------------------------------
-
-
-def kinds_model(*lines_of_a, reads_of_b=None):
-    """`a` acts on `b`: its event `go` has the lines `lines_of_a`. `b` has a named state `mode`, an event
-    `f` that only a line fires, and, with `reads_of_b`, an event `see` whose condition reads `a`. `b` is
-    first in the file, so that the order of the file never puts `a` before it."""
-    b = [named('mode', 'off', 'on', records='@fixture'), named_event('f', 'mode = "on"')]
-    if reads_of_b is not None:
-        b.append(event('see', reads_of_b))
-    return world(
-        entity('b', *b, role='operator'),
-        entity(
-            'a',
-            parameter('level', 3, 'people', 0, 9),
-            event('go', 't >= 1 h', *lines_of_a, do_records='@fixture'),
-            role='operator',
-        ),
+    assert ('attacker', 'plant', 'changes') not in arrows_of(base)
+    assert arrows_of(attack)[('attacker', 'plant', 'changes')]['values'] == ['plant.mode']
+    # Joined, an event is drawn when one run can start it; the count is the largest of the runs.
+    assert (
+        arrows_of(joined)[('attacker', 'plant', 'changes')]
+        == arrows_of(attack)[('attacker', 'plant', 'changes')]
     )
+    assert (joined['facts']['runs'], base['facts']['runs']) == (2, 1)
 
 
-def test_a_line_that_fires_another_card_s_event_is_a_fires_arrow():
-    doc = picture(kinds_model('b.f'))
-    assert arrows_of(doc) == {('a', 'b', 'fires'): ['b.f']}
-    assert [a['how'] for a in doc['arrows']] == [[]]
-    assert picture_problems(doc) == []
+def test_a_statement_that_starts_an_event_of_another_card_is_a_fires_arrow():
+    arrows = arrows_of(picture(works(), style.Style()))
+    assert arrows[('plant', 'crews', 'fires')]['values'] == ['crews.repair']
+    assert arrows[('plant', 'crews', 'fires')]['how'] == []
 
 
-def test_a_read_of_when_another_card_s_event_happened_is_a_follows_arrow():
-    # since() and count() read the times of a's event: the arrow goes from a to b, which reads.
-    for condition in ('since(a.go) >= 2 h', 'count(a.go) > 0'):
-        doc = picture(kinds_model(reads_of_b=condition))
-        assert arrows_of(doc) == {('a', 'b', 'follows'): ['a.go']}, condition
-        assert picture_problems(doc) == []
+def test_a_read_of_when_another_card_s_event_started_is_a_follows_arrow():
+    model = compiled(
+        """
+        a:
+            go = event():
+                after 0 h
+        b:
+            waited = formula(since(a.go))
+            starts = formula(count(a.go.occurrences))
+            level: L = 0 L
+        c:
+            seen = formula(b.level)
+
+        a.go.start()
+        """
+    )
+    arrows = arrows_of(picture(model, style.Style()))
+    assert arrows[('a', 'b', 'follows')]['values'] == ['a.go']
+    assert arrows[('b', 'c', 'reads')]['values'] == ['b.level']
+    assert ('a', 'b', 'reads') not in arrows
 
 
-def test_a_read_of_another_card_s_value_stays_a_reads_arrow():
-    doc = picture(kinds_model(reads_of_b='a.level > 4 people'))
-    assert arrows_of(doc) == {('a', 'b', 'reads'): ['a.level']}
-
-
-def test_a_line_that_fires_and_a_line_that_sets_give_two_arrows():
-    # A counterexample to one arrow for each pair: firing b's event and setting b's state are other kinds.
-    doc = picture(kinds_model('b.f', 'b.mode = "on"'))
-    assert arrows_of(doc) == {('a', 'b', 'fires'): ['b.f'], ('a', 'b', 'changes'): ['b.mode']}
-    changes = next(a for a in doc['arrows'] if a['kind'] == 'changes')
-    assert changes['how'] == ['sets']
-    assert picture_problems(doc) == []
-
-
-def test_a_fires_arrow_ranks_its_cards_and_a_follows_arrow_does_not():
-    def columns(doc):
-        return {card.id: card.column for card in layout(doc).cards}
-
-    # a fires b's event, so b goes in a later column than a, although b is first in the file.
-    fired = columns(picture(kinds_model('b.f')))
-    assert fired['a'] < fired['b']
-    # b follows a's event: that ranks nothing, so neither card goes after the other.
-    followed = columns(picture(kinds_model(reads_of_b='since(a.go) >= 2 h')))
-    assert followed['a'] == followed['b']
+def test_a_change_names_how_it_changes():
+    arrows = arrows_of(picture(works(), style.Style()))
+    # The crews set the mode of the plant; the plant's treated water shares out the supplies by its
+    # allocation, and the take over of the attacker sets the mode too.
+    assert arrows[('crews', 'plant', 'changes')]['how'] == ['sets']
+    assert arrows[('plant', 'town', 'changes')] == {
+        'from': 'plant',
+        'to': 'town',
+        'kind': 'changes',
+        'count': 1,
+        'values': ['town.supply'],
+        'how': ['shares'],
+    }
 
 
 def test_a_card_names_its_template_copies_role_and_actor():
-    model = world(
-        template('Ward', stock('people'), flow('arrive', '-> people', '1 people/h'), role='community'),
-        entity('wards', template='Ward', copies=3),
-        entity('north', template='Ward'),
-        entity('crew', stock('x'), role='crew'),
-        entity('meter', stock('y'), role=None),
-        '\n'.join(
-            [
-                'operator:  @fixture',
-                '    "An operator who decides."',
-                '    role operator',
-                '    sees meter.y',
-                '    event decide once when meter.y >= 1 people:  @fixture',
-                '        choice',
-                '        act 0.5:',
-                '            "It acts."',
-                '        wait else:',
-                '            "It waits."',
-            ]
-        ),
+    model = compiled(
+        """
+        Ward:
+            role community
+            people: people = 0 people
+            flow arrive: SOURCE -> this.people
+                request = 1 people/h
+        wards: Ward from "wards.csv"
+        north: Ward
+        crew:
+            role crew
+            x: people = 0 people
+        meter:
+            y: people = 0 people
+        operator:
+            role operator
+            sees meter.y
+            forecast = categorical(ACT: 0.5, WAIT: 0.5)
+            decide = event():
+                after 0 h:
+                    switch operator.choose(operator.forecast):
+                        ACT:
+                            meter.y += 1 people
+                        WAIT:
+                            meter.y -= 1 people
+
+        operator.decide.start()
+        """,
+        tables={'wards.csv': 'id\na\nb\nc\n'},
     )
     doc = picture(model, style.Style())
     found = {
         card['id']: (card['template'], card['copies'], card['role'], card['actor']) for card in doc['cards']
     }
-    # A role that names a thing, and no role, are no role of the six; only a thing that sees and has a
-    # choice is an actor.
+    # A role that is none of the six, and no role, are no role; only a thing with a choice is an
+    # actor.
     assert found == {
         'wards': ('Ward', 3, 'community', False),
         'north': ('Ward', 1, 'community', False),
@@ -1115,311 +956,220 @@ def test_a_card_names_its_template_copies_role_and_actor():
         'meter': (None, 1, None, False),
         'operator': (None, 1, 'operator', True),
     }
-    # The copies of one line share its card, its stocks and its pipes.
+    # The rows of one table share its card, its stocks and its pipes.
     wards = card_of(doc, 'wards')
-    assert [s['key'] for s in wards['stocks']] == ['wards.people']
-    assert [p['flows'] for p in wards['pipes']] == [['wards.arrive']]
+    assert [item['key'] for item in wards['stocks']] == ['wards.people']
+    assert [pipe['flows'] for pipe in wards['pipes']] == [['wards.arrive']]
     assert picture_problems(doc) == []
 
 
 # ---- the state machines ----------------------------------------------------------------------------
 
-STATES = entity(
-    'plant',
-    named('x', 'a', 'b', 'c', records='@fixture'),
-    named('y', 'b', 'a', records='@fixture'),
-    'input plan: "c" | "a" = "c"  @fixture',
-    # From the states that each `when` gives, the state that the line gives left out.
-    event('to_b', 'x is "a"', 'x = "b"', do_records='@fixture'),
-    event('to_c', 'x is not "c"', 'x = "c"', do_records='@fixture'),
-    event('back', 'x is "a" or x is "b"', 'x = "a"', do_records='@fixture'),
-    event('later', 'x is "b" and t >= 1 h', 'x = "c"', do_records='@fixture'),
-    event('loose', 'x is "c" or y is "a"', 'x = "a"', do_records='@fixture'),
-    event('either', 'not (x is "a")', 'x = "b" if t > 3 h else "a"', do_records='@fixture'),
-    event('vague', 'not (x is "a" and y is "a")', 'x = "b"', do_records='@fixture'),
-    event('stays', 'x is "b"', 'x = "b"', do_records='@fixture'),
-    # A line that gives another named state, or a named input, gives each of its states.
-    event('mirror', 't >= 4 h', 'x = y', do_records='@fixture'),
-    event('planned', 't >= 5 h', 'x = plan', do_records='@fixture'),
-    # The chance of an outcome that is a condition, and the condition of an outcome.
-    event('checked', 't >= 6 h', 'x = "a"', condition='x is "c"', do_records='@fixture'),
-    '\n'.join(
-        [
-            'event offered once when t >= 7 h:  @fixture',
-            '    up 0.5 when x is "b":',
-            '        x = "c"',
-            '    stay else:',
-        ]
-    ),
-    role='operator',
-)
+STATES = """
+plant:
+    role operator
+    x: enum[A, B, C] = A
+    y: enum[A, B, C] = B
+    input plan: enum[A, B, C] = C
+    z: enum[A, B, C] = this.plan
+    to_b = event():
+        when this.x == A:
+            this.to_b.start()
+        after 0 h:
+            this.x = B
+    to_c = event():
+        when this.x != C:
+            this.to_c.start()
+        after 0 h:
+            this.x = C
+    back = event():
+        when this.x == A or this.x == B:
+            this.back.start()
+        after 0 h:
+            this.x = A
+    later = event():
+        when this.x == B and t >= 1 h:
+            this.later.start()
+        after 0 h:
+            this.x = C
+    loose = event():
+        when this.x == C or this.y == A:
+            this.loose.start()
+        after 0 h:
+            this.x = A
+    either = event():
+        when not (this.x == A):
+            this.either.start()
+        after 0 h:
+            this.x = B if t > 3 h else A
+    vague = event():
+        when not (this.x == A and this.y == A):
+            this.vague.start()
+        after 0 h:
+            this.x = B
+    stays = event():
+        when this.x == B:
+            this.stays.start()
+        after 0 h:
+            this.x = B
+    mirror = event():
+        when t >= 4 h:
+            this.mirror.start()
+        after 0 h:
+            this.x = this.y
+    waits = event():
+        when this.x == A:
+            this.waits.start()
+        after 1 h:
+            this.x = C
+    guarded = event():
+        when t >= 6 h:
+            this.guarded.start()
+        after 0 h when this.x == C:
+            this.x = A
+    branched = event():
+        when t >= 7 h:
+            this.branched.start()
+        after 0 h:
+            if this.x == B:
+                this.x = C
+    switched = event():
+        when t >= 8 h:
+            this.switched.start()
+        after 0 h:
+            switch this.x:
+                A:
+                    this.x = B
+"""
 
 
-def test_each_event_that_sets_a_named_state_is_a_transition_from_the_states_where_it_can_happen():
-    model = world(
-        STATES,
-        entity(
-            'operators',
-            event('reset', 'plant.x is "c"', 'plant.x = "a"', do_records='@fixture'),
-            role='responder',
-        ),
-    )
-    doc = picture(model, style.Style())
-    (x, y) = card_of(doc, 'plant')['machines']
-    assert (x['var'], x['states'], x['initial'], x['place']) == ('plant.x', ['a', 'b', 'c'], 'a', 'inside')
-    assert [(t['event'], t['to'], t['from'], t['by']) for t in x['transitions']] == [
-        # Another thing's event that sets x.
-        ('operators.reset', 'a', ['c'], 'operators'),
-        # x is "a" or "b": to "a" from "b", and the line that keeps "a" is no transition.
-        ('plant.back', 'a', ['b'], 'plant'),
-        # The outcome's chance is the condition x is "c".
-        ('plant.checked', 'a', ['c'], 'plant'),
-        # not (x is "a"): "b" or "c"; each branch of the `if` is a state that the line gives.
-        ('plant.either', 'a', ['b', 'c'], 'plant'),
-        ('plant.either', 'b', ['c'], 'plant'),
-        # `and`: the states of its part that names x.
-        ('plant.later', 'c', ['b'], 'plant'),
-        # `or` with a part that does not name x narrows nothing: from any state.
-        ('plant.loose', 'a', None, 'plant'),
-        # y's states, in x's order; and from any state, since nothing narrows x.
-        ('plant.mirror', 'a', None, 'plant'),
-        ('plant.mirror', 'b', None, 'plant'),
-        # The condition of the outcome.
-        ('plant.offered', 'c', ['b'], 'plant'),
-        # The named input's states.
-        ('plant.planned', 'a', None, 'plant'),
-        ('plant.planned', 'c', None, 'plant'),
-        # x is "a": to "b".
-        ('plant.to_b', 'b', ['a'], 'plant'),
-        # x is not "c": "a" or "b".
-        ('plant.to_c', 'c', ['a', 'b'], 'plant'),
-        # `not` of an `and` with a part that names y: x can be any state where it holds.
-        ('plant.vague', 'b', None, 'plant'),
-    ]
-    # The event that only keeps x's state is no transition.
-    assert not any(t['event'] == 'plant.stays' for t in x['transitions'])
-    # Nothing sets y, so its machine has its states and no transition.
-    assert (y['var'], y['states'], y['initial'], y['transitions']) == ('plant.y', ['b', 'a'], 'b', [])
+def test_each_assignment_of_a_named_state_is_a_transition_from_the_states_where_it_can_run():
+    doc = picture(compiled(STATES), style.Style())
+    (x,) = [machine for machine in card_of(doc, 'plant')['machines'] if machine['var'] == 'plant.x']
+    assert (x['states'], x['initial']) == (['A', 'B', 'C'], 'A')
+    found = {(item['event'].rpartition('.')[2], item['to']): item['from'] for item in x['transitions']}
+    assert found == {
+        # The triggers of an event narrow the states when they are its only start and its first stage
+        # runs at once: `==` gives its state, `!=` the others, `or` and `and` join and meet them.
+        ('to_b', 'B'): ['A'],
+        ('to_c', 'C'): ['A', 'B'],
+        ('back', 'A'): ['B'],
+        ('later', 'C'): ['B'],
+        # A part that does not narrow the states: `or` narrows nothing, `not` of an inexact part too.
+        ('loose', 'A'): None,
+        ('vague', 'B'): None,
+        # `not` of an exact part gives the other states; each branch of a conditional is a state.
+        ('either', 'A'): ['B', 'C'],
+        ('either', 'B'): ['C'],
+        # A read of a value of the enum gives each of its members.
+        ('mirror', 'A'): None,
+        ('mirror', 'B'): None,
+        ('mirror', 'C'): None,
+        # A stage after a delay: the state may change in the meantime, so the trigger narrows nothing.
+        ('waits', 'C'): None,
+        # The guard of a stage, a branch and the case of a switch on the state narrow it.
+        ('guarded', 'A'): ['C'],
+        ('branched', 'C'): ['B'],
+        ('switched', 'B'): ['A'],
+    }
+    # A transition that only keeps its state is absent.
+    assert ('stays', 'B') not in found
+    assert all(item['by'] == 'plant' for item in x['transitions'])
     assert picture_problems(doc) == []
 
 
-def test_a_state_that_only_an_option_sets_has_its_states_and_no_transitions():
-    model = world(
-        entity(
-            'gate',
-            named('plan', 'shut', 'open', records='@fixture'),
-            named('door', 'closed', 'opened', records='@fixture'),
-            event('opens', 'plan is "open" and t >= 1 h', 'door = "opened"', do_records='@fixture'),
-            role='operator',
-        ),
-        option_groups=(
-            options(
-                'Plan',
-                option('Shut', 'Kept shut.'),
-                option('Open', 'Opened.', 'gate.plan = "open"  @fixture'),
-            ),
-        ),
-        run_lines=runs(shut=['Shut'], open=['Open']),
+def test_an_option_that_sets_the_input_of_a_start_shows_on_its_machine():
+    model = compiled(
+        'scenario "Plans"\n    horizon 10 h\n\noptions "Plan":\n    "Planned A":\n        "A."\n'
+        '        plant.plan = A\n    "Planned B":\n        "B."\n        plant.plan = B\n' + STATES
     )
-    machine = lambda doc, var: next(  # noqa: E731
-        m for m in card_of(doc, 'gate')['machines'] if m['var'] == var
-    )
-    whole, opened = picture(model, style.Style()), picture(model, style.Style(), 'open')
-    # The start value is the file's, or the run's when its option sets it.
-    assert (machine(whole, 'gate.plan')['initial'], machine(opened, 'gate.plan')['initial']) == (
-        'shut',
-        'open',
-    )
-    for doc in (whole, opened):
-        plan = machine(doc, 'gate.plan')
-        assert (plan['states'], plan['transitions']) == (['shut', 'open'], [])
-        assert [(t['event'], t['to']) for t in machine(doc, 'gate.door')['transitions']] == [
-            ('gate.opens', 'opened')
-        ]
-    # When the plan stays shut, the door never opens: neither state acts in that run.
-    assert card_of(picture(model, style.Style(), 'shut'), 'gate')['machines'] == []
+    doc = picture(model, style.Style())
+    (z,) = [machine for machine in card_of(doc, 'plant')['machines'] if machine['var'] == 'plant.z']
+    assert z['starts_by'] == [{'option': 'Planned A', 'state': 'A'}, {'option': 'Planned B', 'state': 'B'}]
+    # Its start is no member that the file writes.
+    assert z['initial'] is None and z['transitions'] == []
 
 
-# ---- the stylesheet -----------------------------------------------------------------------------------
-
-
-def styled_model():
-    return world(
-        template(
-            'Ward',
-            named('alarm', 'quiet', 'ringing', records='@fixture'),
-            stock('people', 10),
-            event('rings', 'people >= 5 people', 'alarm = "ringing"', do_records='@fixture'),
-            role='community',
-        ),
-        entity('east', template='Ward'),
-        entity('west', template='Ward'),
-        entity('south', template='Ward'),
-        entity('north', stock('z'), role='environment'),
-        entity('depot', stock('w'), role='operator'),
-    )
+# ---- the stylesheet, the facts and the start ---------------------------------------------------------
 
 
 def test_the_stylesheet_places_groups_and_marks_the_cards():
-    model = styled_model()
-    sheet = style.read(
-        '[place]\nWard = { column = 2, row = 3 }\nwest = { column = 4 }\nnorth = { column = 1 }\n'
-        '\n[group]\n"Area" = ["depot", "Ward"]\n'
-        '\n[icon]\nhouse = ["Ward"]\nshop = ["south"]\n'
-        '\n[state.Ward]\nalarm = "beside"\n\n[state.south]\nalarm = "hidden"\n'
-    )
-    assert style.check(sheet, model) == []
-    doc = picture(model, sheet)
-    cards = {card['id']: card for card in doc['cards']}
-    # A template places each of its instances on its row and the rows after it; a thing's own place, icon
-    # and machine place win over its template's.
-    assert {card: cards[card]['place'] for card in cards} == {
-        'east': {'column': 2, 'row': 3},
-        'west': {'column': 4, 'row': None},
-        'south': {'column': 2, 'row': 4},
-        'north': {'column': 1, 'row': None},
-        'depot': None,
+    doc = contract_picture()
+    attacker, plant = card_of(doc, 'attacker'), card_of(doc, 'plant')
+    assert (attacker['place'], plant['place']) == ({'column': 1, 'row': 1}, {'column': 2, 'row': 1})
+    assert doc['groups'] == [{'label': 'Site', 'members': ['plant', 'crews']}]
+    assert plant['icon'] == 'factory' and plant['machines'][0]['place'] == 'beside'
+    assert attacker['icon'] == style.ROLE_ICONS['adversary']
+    assert (attacker['triggers']['level'], card_of(doc, 'crews')['triggers']['level']) == ('rules', 'count')
+    assert [event['event'] for event in attacker['triggers']['events']] == [
+        'attacker.break_in',
+        'attacker.hold',
+        'attacker.take_over',
+    ]
+
+
+def test_the_stocks_table_gives_the_rows_of_a_card():
+    doc = picture(works(), style.read('[stocks]\nplant = ["treated_total", "raw"]\n'))
+    assert card_of(doc, 'plant')['stock_order'] == ['plant.treated_total', 'plant.raw']
+    assert card_of(doc, 'town')['stock_order'] is None
+
+
+def test_the_facts_name_the_run_its_options_and_what_is_hidden():
+    model = works()
+    doc = picture(model, style.read(WORKS_STYLE), run='attack')
+    assert doc['facts'] == {
+        'run': {'name': 'attack', 'label': 'An attack with an AI', 'options': ['Attacker AI']},
+        'runs': 1,
+        'horizon': '48 h',
+        'hidden': ['Hospital'],
     }
-    assert {card: cards[card]['icon'] for card in ('east', 'west', 'south')} == {
-        'east': 'house',
-        'west': 'house',
-        'south': 'shop',
-    }
-    assert {card: cards[card]['machines'][0]['place'] for card in ('east', 'west', 'south')} == {
-        'east': 'beside',
-        'west': 'beside',
-        'south': 'hidden',
-    }
-    # The members of a group, in the order of the cards.
-    assert doc['groups'] == [{'label': 'Area', 'members': ['east', 'west', 'south', 'depot']}]
-    assert doc['direction'] == 'left-to-right'
-    assert picture_problems(doc) == []
+    assert picture(model, style.Style(), run='base')['facts']['run']['label'] == 'base'
+    assert picture(model, style.Style())['facts'] == {'run': None, 'runs': 2, 'horizon': '48 h', 'hidden': []}
+    with pytest.raises(ValueError, match='nowhere'):
+        picture(model, style.Style(), run='nowhere')
 
 
-def test_the_stocks_table_gives_the_rows_of_a_card_and_an_instance_s_own_list_wins():
-    # D-52. In each ward, a flow takes from beds and one from sick, so both are stocks; cured is only
-    # filled, so it is a tally.
-    model = world(
-        template(
-            'Ward',
-            stock('beds', 10),
-            stock('sick'),
-            stock('cured'),
-            flow('fall', 'beds -> sick', '1 people/h'),
-            flow('cure', 'sick -> cured', '1 people/h'),
-            role='community',
-        ),
-        entity('east', template='Ward'),
-        entity('west', template='Ward'),
+def test_the_card_whose_event_the_setup_starts_has_the_start_mark(tmp_path):
+    model = package(
+        tmp_path / 'started',
+        """
+        scenario "Started"
+            horizon 10 h
+
+        a:
+            go = event():
+                after 0 h
+
+        b:
+            stay = event():
+                after 0 h
+
+        a.go.start()
+        """,
     )
-    assert all(card['stock_order'] is None for card in picture(model, style.Style())['cards'])
-    sheet = style.read(
-        '[stocks]\nWard = ["cured", "beds"]\neast = ["sick"]\n'
-        '\n[layout]\nstocks = 3\ncards_per_column = 4\ncard_width = 220\n'
-    )
-    assert style.check(sheet, model) == []
-    doc = picture(model, sheet)
-    assert picture_problems(doc) == []
-    # The numbers of [layout] are the picture's settings, for the layout.
-    numbers = ('stocks', 'cards_per_column', 'card_width')
-    assert [doc['settings'][key] for key in numbers] == [3, 4, 220]
-    assert {card['id']: card['stock_order'] for card in doc['cards']} == {
-        'east': ['east.sick'],
-        'west': ['west.cured', 'west.beds'],
-    }
-    # The layout shows the listed rows only, the stocks above the tallies, and "+n" for the others.
-    cards = {card.id: card for card in layout(doc).cards}
-    east, west = cards['east'], cards['west']
-    assert ([s.key for s in east.stocks], [m.key for m in east.meters]) == (['east.sick'], [])
-    assert sorted(east.more.keys) == ['east.beds', 'east.cured']
-    assert ([s.key for s in west.stocks], [m.key for m in west.meters]) == (['west.beds'], ['west.cured'])
-    assert list(west.more.keys) == ['west.sick']
+    doc = picture(model)
+    assert [(card['id'], card['starts'], card['file']) for card in doc['cards']] == [
+        ('a', True, 'model.scn'),
+        ('b', False, 'model.scn'),
+    ]
+    assert doc['name'] == 'started'
 
 
-def test_a_hidden_machine_leaves_no_mark_in_the_legend():
-    model = world(
-        entity(
-            'gate',
-            named('door', 'closed', 'opened', records='@fixture'),
-            event('opens', 't >= 1 h', 'door = "opened"', do_records='@fixture'),
-            role='operator',
-        ),
-    )
-
-    def marks(sheet):
-        return [mark for mark, _, _ in layout(picture(model, sheet)).legend.items]
-
-    assert marks(style.Style()) == ['state', 'transition']
-    assert marks(style.read('[state.gate]\ndoor = "hidden"\n')) == []
-
-
-def test_hiding_one_instance_hides_it_alone_with_its_arrows_and_transitions():
-    model = world(
-        entity(
-            'plant', named('valve', 'closed', 'open', records='@fixture'), stock('store', 10), role='operator'
-        ),
-        template(
-            'Crew',
-            event('open', 'plant.valve is "closed"', 'plant.valve = "open"', do_records='@fixture'),
-            role='responder',
-        ),
-        entity('east', template='Crew'),
-        entity('west', template='Crew'),
-    )
-    sheet = style.read('[layout]\nhide = ["east"]\n')
-    assert style.check(sheet, model) == []
-    shown, hidden = picture(model, style.Style()), picture(model, sheet)
-    assert [card['id'] for card in shown['cards']] == ['plant', 'east', 'west']
-    assert [card['id'] for card in hidden['cards']] == ['plant', 'west']
-    ends = lambda doc: {(a['from'], a['to'], a['kind']) for a in doc['arrows']}  # noqa: E731
-    assert ends(hidden) == {end for end in ends(shown) if 'east' not in end[:2]}
-    assert ('west', 'plant', 'changes') in ends(hidden)
-    by = lambda doc: [t['by'] for t in card_of(doc, 'plant')['machines'][0]['transitions']]  # noqa: E731
-    assert (by(shown), by(hidden)) == (['east', 'west'], ['west'])
-    # Only the subtitle's facts name it (D-59): nothing else of the picture does.
-    assert 'east' not in json.dumps({key: value for key, value in hidden.items() if key != 'facts'})
-    assert hidden['facts']['hidden'] == [card_of(shown, 'east')['title']]
-    assert picture_problems(hidden) == []
-
-
-# ---- determinism -------------------------------------------------------------------------------------
-
-SCRIPT = 'import json\nfrom tests.draw.test_picture import busy_picture\nprint(json.dumps(busy_picture()))\n'
-
-
-def busy_picture():
-    """A picture with many joined parts: transitions whose states join, arrows of several values, places,
-    groups, machine places, and the panels of every card with their references."""
-    model = world(
-        STATES,
-        entity(
-            'operators',
-            event('reset', 'plant.x is "c"', 'plant.x = "a"', do_records='@fixture'),
-            event('look', 'plant.x is "b" or plant.y is "a"', 'plant.y = "b"', do_records='@fixture'),
-            role='responder',
-        ),
-        PLANT.replace('plant', 'works', 1),
-        entity(
-            'town',
-            stock('shelter'),
-            flow('take', ['works.store -> shelter', 'outside -> works.released'], '1 people/h'),
-            role='community',
-        ),
-    )
-    sheet = style.read(
-        '[place]\nplant = { column = 1, row = 1 }\n\n[group]\n"Site" = ["works", "town"]\n'
-        '\n[state.plant]\ny = "beside"\n'
-        '\n[equations]\nthings = ["plant", "operators", "works", "town"]\n\n[references]\nshow = true\n'
-    )
-    return picture(model, sheet)
+SCRIPT = (
+    'import json, sys\n'
+    'from napkin.draw import style\n'
+    'from napkin.draw.model_map import picture\n'
+    'from tests.draw.models import works\n'
+    'sys.stdout.write(json.dumps(picture(works(), style.read(sys.argv[1])), sort_keys=True))\n'
+)
 
 
 def test_the_picture_is_the_same_for_every_hash_seed():
-    found = []
+    here = json.dumps(contract_picture(), sort_keys=True)
     for seed in ('0', '4242'):
         env = {**os.environ, 'PYTHONHASHSEED': seed, 'PYTHONPATH': str(ROOT)}
         done = subprocess.run(
-            [sys.executable, '-B', '-c', SCRIPT],
+            [sys.executable, '-B', '-c', SCRIPT, CONTRACT_STYLE],
             cwd=ROOT,
             env=env,
             capture_output=True,
@@ -1428,155 +1178,9 @@ def test_the_picture_is_the_same_for_every_hash_seed():
             check=False,
         )
         assert done.returncode == 0, done.stderr
-        found.append(done.stdout)
-    assert found[0] == found[1]
-    assert json.loads(found[0]) == busy_picture()
+        assert done.stdout == here
 
 
-# ---- every scenario ----------------------------------------------------------------------------------
-
-
-def undeclared(model, doc):
-    """The names of a picture that its model does not declare: a card that is no entity line, a stock
-    that is no stock or tally of its card, a flow or an event that no entity of its card has, a state that
-    is not one of its var's, and a value of an arrow that its card does not have."""
-    lines = {}
-    for thing in model.scenario.entities:
-        lines.setdefault(thing.entry, []).append(thing)
-    out = []
-
-    def member(key):
-        card, _, name = key.partition('.')
-        return card, name, lines.get(card, [])
-
-    for card in doc['cards']:
-        if card['id'] not in lines:
-            out.append(card['id'])
-            continue
-        first = lines[card['id']][0]
-        for item in card['stocks']:
-            _, name, _ = member(item['key'])
-            value = first.value(name)
-            if value is None or value.kind != item['kind']:
-                out.append(item['key'])
-        for pipe in card['pipes']:
-            for name in pipe['flows']:
-                _, flow_name, things = member(name)
-                if not any(f.name == flow_name for thing in things for f in thing.flows):
-                    out.append(name)
-        for machine in card['machines']:
-            _, name, _ = member(machine['var'])
-            value = first.value(name)
-            if value is None or value.kind != 'state' or list(value.type) != machine['states']:
-                out.append(machine['var'])
-            for move in machine['transitions']:
-                by, event_name, things = member(move['event'])
-                if by != move['by'] or not any(
-                    e.name == event_name for thing in things for e in thing.events
-                ):
-                    out.append(move['event'])
-                if move['to'] not in machine['states']:
-                    out.append(move['to'])
-    for arrow in doc['arrows']:
-        for key in arrow['values']:
-            _, name, things = member(key)
-            owned = {
-                part.name
-                for thing in things
-                for part in (*thing.values, *thing.flows, *thing.events, *thing.allocations)
-            }
-            if not things or member(key)[0] not in (arrow['from'], arrow['to']) or name not in owned:
-                out.append(key)
-    return out
-
-
-@pytest.mark.parametrize('scenario_id', SCENARIO_IDS)
-@pytest.mark.scenario_contract
-def test_the_picture_of_every_scenario_keeps_the_contract_and_names_what_its_model_declares(scenario_id):
-    model = catalogue_model(scenario_id)
-    sheet = style.of(model)
-    whole = picture(model, sheet)
-    assert [card['id'] for card in whole['cards']] == style.drawn(sheet, model)
-    each = [picture(model, sheet, run) for run in model.runs]
-    for doc in (whole, *each):
-        assert picture_problems(doc) == []
-        assert undeclared(model, doc) == []
-        check_facts(model, sheet, doc)
-    assert parts_of(whole) == joined(each)
-
-
-def check_facts(model, sheet, doc):
-    """The facts of a picture are the model's (D-59): its run and the run it is compared with, the
-    number of runs it joins, the horizon and the names that `[layout] hide` leaves out; exactly the card
-    of the start's thing has the start mark; each card's file is a file of the model."""
-    facts, run = doc['facts'], doc['run']
-    if run is None:
-        assert facts['run'] is None and facts['runs'] == len(model.runs)
-    else:
-        versus = model.runs[run]['comparison_of']
-        assert facts['run'] == {
-            'name': run,
-            'label': model.runs[run]['name'],
-            'options': list(model.runs[run]['options']),
-            'versus': None if versus is None else model.runs[versus]['name'],
-        }
-    horizon = model.scenario.horizon
-    assert facts['horizon'] == (None if horizon is None else horizon.written)
-    lines = style.entity_lines(model)
-    assert facts['hidden'] == sorted(
-        card_title(lines[name]) if name in lines else name for name in sheet.hide
-    )
-    begins = model.scenario.start
-    things = {
-        entity.entry: {e.name for e in model.scenario.entities if e.entry == entity.entry}
-        for entity in model.scenario.entities
-    }
-    for card in doc['cards']:
-        assert card['starts'] == (begins is not None and begins.entity in things[card['id']])
-    # The model's own file, and the files that its lines name (a model of one file names none).
-    files = {Path(path).resolve() for path in (*model.files.values(), model.origin)}
-    package = paths.package_of(model.origin)
-    for card in doc['cards']:
-        # Each card of a model of a package names a file of the model, a model of one file too.
-        if package is not None:
-            assert card['file'] is not None and (package / card['file']).resolve() in files, card['id']
-
-
-def test_the_facts_name_the_run_its_comparison_and_what_is_hidden():
-    # b is compared with a: the facts give the labels of both runs, as the model names them.
-    model = access_model(run_lines=block('runs:', 'a = "None"', 'b = "Kept" versus a'))
-    sheet = style.Style()
-    for doc in (picture(model, sheet), picture(model, sheet, 'a'), picture(model, sheet, 'b')):
-        assert picture_problems(doc) == []
-        check_facts(model, sheet, doc)
-    assert picture(model, sheet, 'b')['facts']['run']['versus'] == model.runs['a']['name']
-    hiding = style.Style(hide=('plant',))
-    assert picture(model, hiding)['facts']['hidden'] == [card_of(picture(model, sheet), 'plant')['title']]
-    # The subtitle has a line for the comparison and what is hidden, and the cards go below it.
-    for doc in (picture(model, sheet, 'b'), picture(model, hiding)):
-        found = layout(doc)
-        assert len(found.subtitle) == 2
-        assert model.runs['a']['name'] in found.subtitle[1] or 'Plant' in found.subtitle[1]
-        top = min(card.box.y for card in found.cards)
-        assert top >= layouts.MARGIN + layouts.TITLE_AREA + layouts.SUBTITLE_LINE
-
-
-def test_the_thing_of_the_start_has_the_start_mark_and_options_set_a_start():
-    model = world(
-        entity('plant', named('valve', 'closed', 'open', records='@fixture'), role='operator'),
-        entity('attacker', named('access', 'none', 'kept', records='@fixture'), role='adversary'),
-        start('attacker', 'plant.valve = "open"', do_records='@fixture'),
-        option_groups=(ACCESS,),
-        run_lines=runs(a=['None'], b=['Kept']),
-    )
-    doc = picture(model)
-    assert [card['id'] for card in doc['cards'] if card['starts']] == ['attacker']
-    # The option Kept sets the start of the attacker's access: its machine says so, in its key too.
-    (access,) = card_of(doc, 'attacker')['machines']
-    assert access['starts_by'] == [{'option': 'Kept', 'state': 'kept'}]
-    (valve,) = card_of(doc, 'plant')['machines']
-    assert valve['starts_by'] == []
-    found = layout(doc)
-    (machine,) = next(card for card in found.cards if card.id == 'attacker').machines
-    assert 'Kept (kept)' in ' '.join(text for number, text, _ in machine.key if number == '')
-    assert [card.id for card in found.cards if card.starts] == ['attacker']
+def test_the_water_works_text_is_the_fixture():
+    # The fixture of the other tests of the picture is this text.
+    assert compiled(WORKS).declared.scenario.title.startswith('A water works')

@@ -1,6 +1,6 @@
 """The SVG of a picture (napkin/draw/svg.py), by its properties: it parses, it stands alone, it themes
 for light and dark, it is the same text every time, and each `data-*` attribute names a part of the
-picture (and, for a catalogue model, a part of the model).
+picture (and, for a picture of a model, a part of the model).
 
 `check_svg(picture, found, text)` holds every property; the catalogue test and the tests of
 `napkin draw` use it too.
@@ -29,9 +29,9 @@ from napkin.draw.layout import KINDS, MARKS, TEXT_SIZE, layout
 from napkin.draw.model_map import picture, settings_of
 from napkin.draw.references import COLOUR_KIND, web_host
 from napkin.draw.svg import COLOURS, LINKS, NAMESPACE, NOT_DRAWN, XLINK, css_string, svg
+from tests.draw.models import WORKS_STYLE, works
 from tests.draw.test_layout import SHAPE, arrow, bundling, check, load, marks_drawn, picture_of, pictures
 from tests.draw.test_layout import card as sample_card
-from tests.helpers import SCENARIO_IDS, catalogue_model
 
 ROOT = Path(__file__).resolve().parents[2]
 SVG = f'{{{NAMESPACE}}}'
@@ -813,11 +813,11 @@ def test_the_five_kinds_of_arrow_differ_in_grey_and_show_on_the_page():
 
 
 def test_the_subtitle_draws_each_line_and_the_start_mark_is_on_the_card_that_starts():
-    # D-59: a picture of one run that is compared with another has a subtitle of two lines.
+    # D-59: a picture of one run with a horizon and a hidden thing has a subtitle of two lines.
     cards = [sample_card('a', starts=True), sample_card('b')]
     doc = picture_of(cards, [arrow('a', 'b')])
     doc['facts'] = {
-        'run': {'name': 'r', 'label': 'First option', 'versus': 'Second option'},
+        'run': {'name': 'r', 'label': 'First option', 'options': ['Second option']},
         'runs': 1,
         'horizon': '30 days',
         'hidden': ['c'],
@@ -829,7 +829,8 @@ def test_the_subtitle_draws_each_line_and_the_start_mark_is_on_the_card_that_sta
     root = ET.fromstring(text)
     lines = [element.text for element in root.iter(f'{SVG}text') if element.get('class') == 'subheading']
     assert lines == list(found.subtitle) and len(lines) == 2
-    assert 'First option' in lines[0] and 'Second option' in lines[1] and '30 days' in lines[1]
+    # The options that the label does not name follow it; the horizon and the hidden things are second.
+    assert 'First option (Second option)' in lines[0] and '30 days' in lines[1] and 'not drawn: c' in lines[1]
     marks = [
         card
         for kind, element, card, _ in parts(root)
@@ -967,12 +968,12 @@ def test_the_same_picture_gives_the_same_bytes_in_other_processes(tmp_path):
     same_bytes_in_other_processes(load(), tmp_path / 'picture.json')
 
 
-@pytest.mark.scenario_contract
-def test_a_catalogue_picture_gives_the_same_bytes_in_other_processes(tmp_path):
-    # One catalogue model, with its bundles and light looks: the picture is JSON, so the other processes
+def test_a_picture_of_a_model_gives_the_same_bytes_in_other_processes(tmp_path):
+    # The water works, with its bundles and light looks: the picture is JSON, so the other processes
     # draw it without compiling the model again.
-    model = catalogue_model(SCENARIO_IDS[len(SCENARIO_IDS) // 2])
-    same_bytes_in_other_processes(picture(model), tmp_path / 'picture.json')
+    from napkin.draw import style
+
+    same_bytes_in_other_processes(picture(works(), style.read(WORKS_STYLE)), tmp_path / 'picture.json')
 
 
 @SHAPE
@@ -1139,65 +1140,70 @@ def test_a_bundle_is_drawn_before_its_arrows_and_each_arrow_keeps_its_tooltip():
     assert all(len(e.findall(f'{SVG}path')) == 1 for kind, e, _, _ in parts(root) if kind == 'arrow')
 
 
-# ---- every catalogue model --------------------------------------------------------------------------
+# ---- a model ------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize('scenario_id', SCENARIO_IDS)
-@pytest.mark.scenario_contract
-def test_the_svg_of_every_scenario_holds_every_property(scenario_id):
-    from tests.draw.test_layout import catalogue_picture
+@pytest.mark.parametrize('run', [None, 'base', 'attack'])
+def test_the_svg_of_the_water_works_holds_every_property(run):
+    from napkin.draw import style
 
-    model, picture = catalogue_picture(scenario_id)
-    found, text = drawn(picture)
-    check_svg(picture, found, text)
+    model = works()
+    found = picture(model, style.read(WORKS_STYLE), run=run)
+    placed, text = drawn(found)
+    check_svg(found, placed, text)
     check_model(model, ET.fromstring(text))
 
 
 def check_model(model, root):
-    """Each `data-*` value of the SVG names a part of the model: a card is an entity line, a stock a
-    stock or tally of its card, a flow `card.flow` one of its card's flows, a machine one of its card's
-    named states, a state one of that var's states, and an event `card.event` an event of the model."""
+    """Each `data-*` value of the SVG names a part of the model (a `Compiled`): a card is a thing, a
+    stock a stock or tally of its card, a flow `card.flow` one of its card's flows (or of its events), a
+    machine one of its card's named states, a state one of that var's states, and an event
+    `card.event` an event of the model."""
     from napkin.draw import style
+    from napkin.draw.things import Things
+    from napkin.model import semantic
     from tests.draw.test_references import ids_of
 
-    check_visible(model, root)
-    known = ids_of(model)
+    found = Things(model)
+    check_visible(found, root)
+    known = ids_of(found)
     for element in root.iter():
         for name in (element.get('data-record') or '').split():
             assert name in known, name
-    lines = style.entity_lines(model)
-    events = {f'{entity.entry}.{event.name}' for entity in model.scenario.entities for event in entity.events}
+    events = {f'{card}.{event.name}' for card in found.cards for event in found.events(card)}
     for kind, element, card, machine in parts(root):
-        entity = lines.get(card) if card else None
         if kind == 'card':
-            assert element.get('data-thing') in lines
+            assert element.get('data-thing') in found.cards
         elif kind in ('stock', 'tally', 'more'):
             for key in element.get('data-stock').split():
                 owner, _, name = key.rpartition('.')
-                assert owner == card and entity.value(name).kind in ('stock', 'tally')
+                assert owner == card and name in style.stock_names(found, card)
         elif kind == 'pipe':
-            names = {f'{card}.{flow.name}' for flow in entity.flows}
+            flows = (semantic.DeclaredFlow, semantic.DeclaredLegs)
+            names = {f'{card}.{part.name}' for part in found.parts(card) if isinstance(part, flows)}
+            names |= {
+                f'{card}.{event.name}.{local.name}' for event in found.events(card) for local in event.locals
+            }
             assert set(element.get('data-flow').split()) <= names
         elif kind == 'machine':
             owner, _, name = element.get('data-var').rpartition('.')
-            assert name in style.named_states(lines[owner])
+            assert name in style.named_states(found, owner)
         elif kind == 'state' and 'data-state' in element.attrib:
             owner, _, name = machine.rpartition('.')
-            assert element.get('data-state') in style.states_of(lines[owner].value(name))
+            value = found.part(found.cards[owner].template, name)
+            assert element.get('data-state') in style.states_of(value)
         elif kind == 'transition':
             assert set(element.get('data-event').split()) <= events
         elif kind == 'trigger':
             # A row of a card's events names events of that card only.
-            found = set(element.get('data-event').split())
-            assert found <= events and all(key.rpartition('.')[0] == card for key in found), (card, found)
+            named = set(element.get('data-event').split())
+            assert named <= events and all(key.rpartition('.')[0] == card for key in named), (card, named)
 
 
-def check_visible(model, root):
+def check_visible(found, root):
     """No visible text of the SVG shows an ID of a record of the model's library (CONTRIBUTING.md, writing
     rule 15): the text of each `<text>`, searched for each ID as a whole word."""
-    from napkin.model.ir import thaw
-
-    library = thaw(model.library) or {}
+    library = found.library or {}
     ids = {
         item['id']
         for collection in ('sources', 'claims', 'assumptions', 'conventions')

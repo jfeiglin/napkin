@@ -575,7 +575,7 @@ def walk(found) -> Iterator[tuple[Place, object]]:
     flow and a leg, `request` and `capacity`; of an event, `when` (a trigger's condition), `capture`,
     `reset`, `argument`, `delay`, `guard`, `until`, `value` (of an assignment), `amount` (of a move),
     `test` (of an `if`), `selector` and `case` (a guard of a switch); `input` of a solver; `assert`;
-    and `own` of a member's own value."""
+    `own` of a member's own value; and `argument` of a start of the setup."""
     out = []
 
     def add(path, part, expression, line):
@@ -643,6 +643,8 @@ def walk(found) -> Iterator[tuple[Place, object]]:
         value(item)
     for item in found.declared.asserts:
         add(item.path, 'assert', item.test, item.line)
+    for item in found.declared.setup:
+        statement(item)
     for member in found.declared.members:
         for given in member.values:
             add(f'{member.path}.{given.name}', 'own', given.init, given.line)
@@ -670,7 +672,7 @@ def keys_of(found, place):
 
 # ---- LaTeX ----------------------------------------------------------------------------------------
 
-# The forms of the clocks: `%s` is the symbol of the event, the outcome or the named state.
+# The forms of the clocks: `%s` is the symbol of the event or of the value.
 CLOCKS = {'since': r'\tau_{%s}', 'count': r'N_{%s}', 'elapsed': r'\tau_{%s}'}
 _CMP = {'<': '<', '<=': r'\le', '>': '>', '>=': r'\ge', '==': '=', '!=': r'\ne'}
 _LOGIC_WORDS = {'and': r'\land', 'or': r'\lor'}

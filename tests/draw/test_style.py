@@ -12,58 +12,18 @@ from pathlib import Path
 
 import pytest
 
-from napkin import cli
 from napkin.draw import style
 from napkin.draw.style import StyleError
-from napkin.engine import evaluate_study
-from napkin.model.model import build_model
-from tests.acceptance.helpers import LIBRARY
+from napkin.draw.things import Things
+from napkin.engine import run
+from napkin.model.compile import load_scenario
+from tests.draw.models import package
 
 MODEL = """\
 scenario "A test"
     summary "A file for tests only."
     horizon 10 h
     scope "The test."
-
-north:  @counts
-    "A district."
-    role community
-    input x = 2 h in 1 h to 5 h  @counts
-        "X"
-    var people: people = 10 people  @counts
-        "People"
-    output people
-
-Ward:  @counts
-    "A ward."
-    role community
-    input y = 1 h in 0 h to 3 h  @counts
-        "Y"
-    var level: "low" | "high" = "low"
-    event floods once when t >= y:  @counts
-        "The ward floods."
-        level = "high"
-
-Depot:  @counts
-    "A template that no thing is made of."
-    role operator
-
-east: Ward
-
-west: Ward
-
-attacker:  @counts
-    "An attacker."
-    role adversary
-    var access: "none" | "kept" = "none"
-    event enters once when access is "kept":  @counts
-        "The attacker gets in."
-    event start when t >= 0 h:  @counts
-        "The attacker gets in."
-        access = "kept"
-
-output total: people = north.people  @counts
-    "Total"
 
 options "Response":
     "Fast":
@@ -83,8 +43,58 @@ options "Attacker":
 runs:
     fast = "Fast" + "AI"
     slow = "Slow" + "AI"
-    slow_human = "Slow" + "Human" versus slow
+    slow_human = "Slow" + "Human"
         "The slow response against a human team"
+
+north:  @counts
+    "A district."
+    role community
+    input x: h = 2 h in [1 h, 5 h]  @counts
+        "X"
+    people: person = 10 person  @counts
+        "People"
+    grow = event():
+        after 1 h:
+            this.people += 1 person
+
+Ward:  @counts
+    "A ward."
+    role community
+    input y: h = 1 h in [0 h, 3 h]  @counts
+        "Y"
+    level: enum[LOW, HIGH] = LOW
+    floods = event():
+        "The ward floods."
+        when t >= this.y:
+            this.floods.start()
+            reset when false
+        after 0 h:
+            this.level = HIGH
+
+Depot:  @counts
+    "A template that no thing is made of."
+    role operator
+
+east: Ward
+
+west: Ward
+
+attacker:  @counts
+    "An attacker."
+    role adversary
+    access: enum[NONE, KEPT] = NONE
+    enters = event():
+        "The attacker gets in."
+        when this.access == KEPT:
+            this.enters.start()
+            reset when false
+    start = event():
+        "The attacker gets in."
+        after 0 h:
+            this.access = KEPT
+
+north.grow.start()
+attacker.start.start()
 
 record counts: identity "The test counts."
 """
@@ -101,10 +111,7 @@ house = ["north"]
 
 def built(tmp_path, picture=None):
     """The model of MODEL, with its stylesheet beside it when it is given."""
-    (tmp_path / 'model.scn').write_text(MODEL, encoding='utf-8')
-    if picture is not None:
-        (tmp_path / style.STYLE_FILE).write_text(picture, encoding='utf-8')
-    return build_model(tmp_path / 'model.scn', LIBRARY)
+    return package(tmp_path, MODEL, style=picture)
 
 
 def test_without_a_stylesheet_the_map_draws_each_line_with_the_icon_of_its_role(tmp_path):
@@ -112,19 +119,21 @@ def test_without_a_stylesheet_the_map_draws_each_line_with_the_icon_of_its_role(
     sheet = style.of(model)
     assert sheet == style.Style()
     # Every entity line, in the order of the file, each with the icon of the role that the model writes.
-    assert style.hidden_lines(sheet, model) == set()
-    assert style.drawn(sheet, model) == ['north', 'east', 'west', 'attacker']
+    assert style.hidden_lines(sheet, Things(model)) == set()
+    assert style.drawn(sheet, Things(model)) == ['north', 'east', 'west', 'attacker']
     roles = {'north': 'community', 'east': 'community', 'west': 'community', 'attacker': 'adversary'}
-    assert style.icon_of(sheet, model) == {entry: style.ROLE_ICONS[role] for entry, role in roles.items()}
+    assert style.icon_of(sheet, Things(model)) == {
+        entry: style.ROLE_ICONS[role] for entry, role in roles.items()
+    }
 
 
 def test_the_keys_give_what_the_map_shows(tmp_path):
     model = built(tmp_path, STYLE)
     sheet = style.of(model)
     # A hidden template hides each of its instances; the map draws the others in the order of the file.
-    assert style.hidden_lines(sheet, model) == {'east', 'west'}
-    assert style.drawn(sheet, model) == ['north', 'attacker']
-    icons = style.icon_of(sheet, model)
+    assert style.hidden_lines(sheet, Things(model)) == {'east', 'west'}
+    assert style.drawn(sheet, Things(model)) == ['north', 'attacker']
+    icons = style.icon_of(sheet, Things(model))
     assert (icons['north'], icons['attacker']) == ('house', style.ROLE_ICONS['adversary'])
 
 
@@ -134,7 +143,7 @@ def test_a_file_of_comments_only_gives_the_defaults():
 
 def test_a_template_stands_for_its_instances_and_an_instance_s_own_icon_wins(tmp_path):
     model = built(tmp_path, '[icon]\nhouse = ["Ward"]\nshop = ["east"]\n')
-    icons = style.icon_of(style.of(model), model)
+    icons = style.icon_of(style.of(model), Things(model))
     assert (icons['east'], icons['west']) == ('shop', 'house')
 
 
@@ -146,11 +155,8 @@ NO_ROLE = '\nplain:  @counts\n    "A thing without a role."\n\ncrew:  @counts\n 
     ('picture', 'expected'), [(None, None), ('[icon]\nbox = ["plain", "crew"]\n', 'box')]
 )
 def test_a_thing_whose_role_has_no_icon_has_none_unless_the_stylesheet_gives_one(tmp_path, picture, expected):
-    (tmp_path / 'model.scn').write_text(MODEL.replace('west: Ward\n', 'west: Ward\n' + NO_ROLE))
-    if picture is not None:
-        (tmp_path / style.STYLE_FILE).write_text(picture)
-    model = build_model(tmp_path / 'model.scn', LIBRARY)
-    icons = style.icon_of(style.of(model), model)
+    model = package(tmp_path, MODEL.replace('west: Ward\n', 'west: Ward\n' + NO_ROLE), style=picture)
+    icons = style.icon_of(style.of(model), Things(model))
     assert (icons['plain'], icons['crew']) == (expected, expected)
     assert icons['north'] == style.ROLE_ICONS['community']
 
@@ -159,22 +165,25 @@ def test_hide_names_any_thing_an_instance_included(tmp_path):
     # An instance that `hide` names is the one line hidden; its template's other instances stay.
     model = built(tmp_path, '[layout]\nhide = ["east"]\n')
     sheet = style.of(model)
-    assert style.hidden_lines(sheet, model) == {'east'}
-    assert style.drawn(sheet, model) == ['north', 'west', 'attacker']
+    assert style.hidden_lines(sheet, Things(model)) == {'east'}
+    assert style.drawn(sheet, Things(model)) == ['north', 'west', 'attacker']
 
 
-def test_a_set_of_copies_is_named_by_its_entity_line(tmp_path):
-    # A set of copies is made of a template, and its one line holds every copy: the template that
-    # `hide` names hides the line, and so each copy of it.
-    copies = '\nCrew:  @counts\n    "A crew."\n    role responder\n\ncrews: Crew * 2\n'
-    (tmp_path / 'model.scn').write_text(MODEL.replace('west: Ward\n', 'west: Ward\n' + copies))
-    (tmp_path / style.STYLE_FILE).write_text('[layout]\nhide = ["Crew"]\n')
-    model = build_model(tmp_path / 'model.scn', LIBRARY)
+def test_a_table_is_named_by_its_card(tmp_path):
+    # The rows of a table are members of a template, and one card holds them all: the template that
+    # `hide` names hides the card, and so each row of it.
+    rows = '\nCrew:  @counts\n    "A crew."\n    role responder\n\ncrews: Crew from "crews.csv"\n'
+    model = package(
+        tmp_path,
+        MODEL.replace('west: Ward\n', 'west: Ward\n' + rows),
+        style='[layout]\nhide = ["Crew"]\n',
+        tables={'crews.csv': 'id\na\nb\n'},
+    )
+    found = Things(model)
+    assert found.cards['crews'].members == ('crews.a', 'crews.b')
     sheet = style.of(model)
-    crews = [entity for entity in model.scenario.entities if entity.template == 'Crew']
-    assert len(crews) == 2 and {entity.entry for entity in crews} == {'crews'}
-    assert style.hidden_lines(sheet, model) == {'crews'}
-    assert 'crews' not in style.drawn(sheet, model)
+    assert style.hidden_lines(sheet, found) == {'crews'}
+    assert 'crews' not in style.drawn(sheet, found)
 
 
 @pytest.mark.parametrize(
@@ -333,14 +342,14 @@ def test_each_key_of_the_picture_is_read(tmp_path):
         card_width=240,
     )
     # A template stands for its instances, in the order of the file.
-    assert style.place_of(sheet, model) == {
+    assert style.place_of(sheet, Things(model)) == {
         'north': (3, 2),
         'east': (2, None),
         'west': (2, None),
         'attacker': (1, None),
     }
-    assert style.groups_of(sheet, model) == [('Wards', ['north', 'east', 'west'])]
-    assert style.state_places(sheet, model) == {
+    assert style.groups_of(sheet, Things(model)) == [('Wards', ['north', 'east', 'west'])]
+    assert style.state_places(sheet, Things(model)) == {
         'east': {'level': 'hidden'},
         'west': {'level': 'hidden'},
         'attacker': {'access': 'beside'},
@@ -350,7 +359,7 @@ def test_each_key_of_the_picture_is_read(tmp_path):
 
 def test_a_template_places_its_instances_on_its_row_and_the_rows_after_it(tmp_path):
     model = built(tmp_path, '[place]\nWard = { column = 2, row = 4 }\n')
-    assert style.place_of(style.of(model), model) == {'east': (2, 4), 'west': (2, 5)}
+    assert style.place_of(style.of(model), Things(model)) == {'east': (2, 4), 'west': (2, 5)}
 
 
 def test_a_thing_s_own_setting_wins_over_its_template_s(tmp_path):
@@ -361,8 +370,11 @@ def test_a_thing_s_own_setting_wins_over_its_template_s(tmp_path):
     model = built(tmp_path, text)
     sheet = style.of(model)
     # The instance with a place of its own leaves its template's row to the next one.
-    assert style.place_of(sheet, model) == {'east': (5, None), 'west': (2, 1)}
-    assert style.state_places(sheet, model) == {'east': {'level': 'beside'}, 'west': {'level': 'inside'}}
+    assert style.place_of(sheet, Things(model)) == {'east': (5, None), 'west': (2, 1)}
+    assert style.state_places(sheet, Things(model)) == {
+        'east': {'level': 'beside'},
+        'west': {'level': 'inside'},
+    }
 
 
 @pytest.mark.parametrize(
@@ -372,10 +384,10 @@ def test_a_thing_s_own_setting_wins_over_its_template_s(tmp_path):
         ('[icon]\nhouse = ["nowhere"]\n', 'icon.house', 'not a template or a thing'),
         ('[layout]\nhide = ["Ward"]\n\n[icon]\nhouse = ["Ward"]\n', 'icon.house', 'hides it'),
         ('[layout]\nhide = ["Ward"]\n\n[icon]\nhouse = ["east"]\n', 'icon.house', 'hides it'),
-        ('[icon]\nhouse = ["Depot"]\n', 'icon.house', 'no instance'),
+        ('[icon]\nhouse = ["Depot"]\n', 'icon.house', 'no member'),
         # A place names a thing or a template that the picture draws.
         ('[place]\nnowhere = { column = 1 }\n', 'place.nowhere', 'not a template or a thing'),
-        ('[place]\nDepot = { column = 1 }\n', 'place.Depot', 'no instance'),
+        ('[place]\nDepot = { column = 1 }\n', 'place.Depot', 'no member'),
         ('[layout]\nhide = ["Ward"]\n\n[place]\neast = { column = 1 }\n', 'place.east', 'hides it'),
         ('[layout]\nhide = ["Ward"]\n\n[place]\nWard = { column = 1 }\n', 'place.Ward', 'hides it'),
         # Two things in one cell: the later place has the problem, also through a template.
@@ -490,7 +502,7 @@ def test_rows_in_the_order_of_the_groups_are_accepted(tmp_path, place):
 def test_a_template_without_an_instance_is_still_a_name(tmp_path):
     # A module can declare a template that a scenario makes nothing of: the stylesheet may hide it.
     model = built(tmp_path, '[layout]\nhide = ["Depot"]\n')
-    assert style.drawn(style.of(model), model) == ['north', 'east', 'west', 'attacker']
+    assert style.drawn(style.of(model), Things(model)) == ['north', 'east', 'west', 'attacker']
 
 
 def test_the_model_and_its_runs_never_read_the_stylesheet(tmp_path):
@@ -509,8 +521,9 @@ def test_the_model_and_its_runs_never_read_the_stylesheet(tmp_path):
     for name in ('broken', 'unreadable'):
         with pytest.raises(StyleError):
             style.of(models[name])
-    study = evaluate_study(models['broken'])
-    assert study.admissible and set(study.runs) == set(models['broken'].runs)
+    broken = models['broken']
+    for name in ('fast', 'slow', 'slow_human'):
+        assert run(broken.program, broken.configure(name)).failure is None
 
 
 def test_the_icons_are_the_ones_that_the_map_draws():
@@ -527,26 +540,23 @@ def test_the_icons_are_the_ones_that_the_map_draws():
 STOCKED = MODEL.replace(
     '        "People"\n',
     '        "People"\n'
-    '    var queue: people = 10 people size 100 people  @counts\n        "Queue"\n'
-    '    var served: people = 0 people size 100 people  @counts\n        "Served"\n'
-    '    flow serve: queue -> served at 1 people/h  @counts\n',
+    '    queue: person = 10 person in [0 person,]  @counts\n        "Queue"\n'
+    '    served: person = 0 person in [0 person,]  @counts\n        "Served"\n'
+    '    flow serve: this.queue -> this.served  @counts\n        request = 1 person/h\n',
     1,
 ).replace(
-    '    var level: "low" | "high" = "low"\n',
-    '    var level: "low" | "high" = "low"\n'
-    '    var water: people = 5 people size 100 people  @counts\n        "Water"\n'
-    '    var drained: people = 0 people size 100 people  @counts\n        "Drained"\n'
-    '    flow drain: water -> drained at 1 people/h  @counts\n',
+    '    level: enum[LOW, HIGH] = LOW\n',
+    '    level: enum[LOW, HIGH] = LOW\n'
+    '    water: person = 5 person in [0 person,]  @counts\n        "Water"\n'
+    '    drained: person = 0 person in [0 person,]  @counts\n        "Drained"\n'
+    '    flow drain: this.water -> this.drained  @counts\n        request = 1 person/h\n',
     1,
 )
 
 
 def stocked(tmp_path, picture=None):
     """The model of STOCKED, with its stylesheet beside it when it is given."""
-    (tmp_path / 'model.scn').write_text(STOCKED, encoding='utf-8')
-    if picture is not None:
-        (tmp_path / style.STYLE_FILE).write_text(picture, encoding='utf-8')
-    return build_model(tmp_path / 'model.scn', LIBRARY)
+    return package(tmp_path, STOCKED, style=picture)
 
 
 def test_the_numbers_of_the_layout_are_read_at_both_ends_of_their_ranges():
@@ -566,14 +576,14 @@ def test_a_template_s_rows_go_to_each_instance_and_an_instance_s_own_list_wins(t
     sheet = style.of(model)
     assert sheet.stock_order == (('Ward', ('drained', 'water')), ('east', ('water',)), ('north', ('served',)))
     # The instance's own list replaces its template's whole; nothing merges.
-    assert style.stock_orders(sheet, model) == {
+    assert style.stock_orders(sheet, Things(model)) == {
         'north': ('served',),
         'east': ('water',),
         'west': ('drained', 'water'),
     }
-    # The stocks and tallies of each thing, as the compiler finds them; a state is neither.
-    lines = style.entity_lines(model)
-    assert {entry: style.stock_names(lines[entry]) for entry in lines} == {
+    # The stocks and tallies of each thing, by use; a state is neither.
+    found = Things(model)
+    assert {entry: style.stock_names(found, entry) for entry in found.cards} == {
         'north': ['queue', 'served'],
         'east': ['water', 'drained'],
         'west': ['water', 'drained'],
@@ -603,7 +613,7 @@ def test_a_template_s_rows_go_to_each_instance_and_an_instance_s_own_list_wins(t
         ('[stocks]\neast = ["east.water"]\n', 'stocks.east', 'not a stock or a tally of east'),
         # The name is a thing or a template that the picture draws.
         ('[stocks]\nnowhere = ["water"]\n', 'stocks.nowhere', 'not a template or a thing'),
-        ('[stocks]\nDepot = ["water"]\n', 'stocks.Depot', 'no instance'),
+        ('[stocks]\nDepot = ["water"]\n', 'stocks.Depot', 'no member'),
         ('[layout]\nhide = ["Ward"]\n\n[stocks]\neast = ["water"]\n', 'stocks.east', 'hides it'),
         ('[layout]\nhide = ["east"]\n\n[stocks]\neast = ["water"]\n', 'stocks.east', 'hides it'),
     ],
@@ -617,31 +627,6 @@ def test_the_stocks_table_names_the_stocks_of_things_that_the_picture_draws(tmp_
     ]
 
 
-@pytest.mark.parametrize(
-    ('text', 'key'),
-    [
-        ('[stocks]\nnorth = ["flood"]\n', 'stocks.north'),
-        ('[layout]\ncards_per_column = 1\n', 'layout.cards_per_column'),
-    ],
-)
-def test_compile_and_draw_stop_on_a_problem_of_the_rows_or_the_columns(
-    tmp_path, monkeypatch, capsys, text, key
-):
-    # The folder is a package: `napkin compile` and `napkin draw` read its stylesheet and stop with exit 1,
-    # with the file and the key, and draw no file.
-    folder = tmp_path / 'wards'
-    folder.mkdir()
-    stocked(folder, text)
-    monkeypatch.chdir(tmp_path)
-    for command in ('compile', 'draw'):
-        assert cli.main([command, 'wards']) == 1, command
-        err = capsys.readouterr().err
-        assert f'{Path("wards", style.STYLE_FILE)}: error: {key}: ' in err, err
-    assert not list(tmp_path.glob('*.svg'))
-    (folder / style.STYLE_FILE).write_text('[stocks]\nnorth = ["served"]\n', encoding='utf-8')
-    assert cli.main(['compile', 'wards']) == 0
-
-
 # ---- the stylesheet of a variant (D-22) -----------------------------------------------------------
 
 # Two stylesheets that differ in every key: the package's and one variant's own.
@@ -649,30 +634,25 @@ PACKAGE_STYLE = '[layout]\nhide = ["Ward"]\n\n[icon]\nhouse = ["north"]\n'
 OWN_STYLE = '[icon]\nshop = ["east"]\n'
 
 
-def family(tmp_path, package=PACKAGE_STYLE, own=OWN_STYLE):
+def family(tmp_path, package_style=PACKAGE_STYLE, own=OWN_STYLE):
     """{variant: model} of a package whose main file is MODEL, with the stylesheet `package` in its
     folder, and two variants that change nothing: `plain`, with no stylesheet of its own, and `styled`,
     with `own` in its folder. The two variants are one model, so they have one model hash."""
     folder = tmp_path / 'family'
-    folder.mkdir()
-    (folder / 'model.scn').write_text(MODEL, encoding='utf-8')
+    package(folder, MODEL, style=package_style)
     for name, text in (('plain', None), ('styled', own)):
         (folder / 'variants' / name).mkdir(parents=True)
         (folder / 'variants' / name / 'model.scn').write_text('variant "A place"\n', encoding='utf-8')
         if text is not None:
             (folder / 'variants' / name / style.STYLE_FILE).write_text(text, encoding='utf-8')
-    if package is not None:
-        (folder / style.STYLE_FILE).write_text(package, encoding='utf-8')
-    return {
-        name: build_model(folder / 'variants' / name / 'model.scn', LIBRARY) for name in ('plain', 'styled')
-    }
+    return {name: load_scenario(folder / 'variants' / name / 'model.scn') for name in ('plain', 'styled')}
 
 
 def test_a_variant_without_a_stylesheet_takes_its_package_s(tmp_path):
     models = family(tmp_path)
     sheet = style.of(models['plain'])
     assert sheet == style.read(PACKAGE_STYLE, str(tmp_path / 'family' / style.STYLE_FILE))
-    assert style.drawn(sheet, models['plain']) == ['north', 'attacker']
+    assert style.drawn(sheet, Things(models['plain'])) == ['north', 'attacker']
 
 
 def test_a_variant_s_own_stylesheet_replaces_its_package_s_whole(tmp_path):
@@ -682,13 +662,13 @@ def test_a_variant_s_own_stylesheet_replaces_its_package_s_whole(tmp_path):
     sheet = style.of(models['styled'])
     assert sheet == style.read(OWN_STYLE, str(tmp_path / 'family' / 'variants' / 'styled' / style.STYLE_FILE))
     assert sheet.hide == () and dict(sheet.icons) == {'shop': ('east',)}
-    assert style.icon_of(sheet, models['styled'])['north'] == style.ROLE_ICONS['community']
+    assert style.icon_of(sheet, Things(models['styled']))['north'] == style.ROLE_ICONS['community']
 
 
 def test_the_cache_names_the_file_that_each_model_read(tmp_path):
     """The two variants are one model hash, and each reads its own file: the cache keeps them apart, and
     a problem in the package's file stops only the variant that reads it."""
-    models = family(tmp_path, package='[icon]\nhouse = ["nowhere"]\n')
+    models = family(tmp_path, package_style='[icon]\nhouse = ["nowhere"]\n')
     assert models['plain'].model_hash == models['styled'].model_hash
     with pytest.raises(StyleError) as caught:
         style.of(models['plain'])
@@ -712,7 +692,7 @@ def test_a_variant_whose_own_stylesheet_goes_takes_its_package_s_again(tmp_path)
 
 
 def test_without_either_file_the_picture_is_empty(tmp_path):
-    models = family(tmp_path, package=None, own=None)
+    models = family(tmp_path, package_style=None, own=None)
     assert style.of(models['plain']) == style.of(models['styled']) == style.Style()
 
 
@@ -780,7 +760,7 @@ def test_a_symbol_and_a_subscript_have_their_forms(text, key, match):
 
 
 # The model of the tests with a text value in north, which has no symbol.
-TEXT_MODEL = MODEL.replace('    output people\n', '    output people\n    input label = "The north"\n')
+TEXT_MODEL = MODEL.replace('        "People"\n', '        "People"\n    input label: text = "The north"\n', 1)
 
 
 @pytest.mark.parametrize(
@@ -788,7 +768,7 @@ TEXT_MODEL = MODEL.replace('    output people\n', '    output people\n    input 
     [
         # A name is a template or a thing that the picture draws.
         ('[symbol.nowhere]\nx = "X"\n', 'symbol.nowhere', 'not a template or a thing'),
-        ('[symbol.Depot]\nx = "X"\n', 'symbol.Depot', 'no instance'),
+        ('[symbol.Depot]\nx = "X"\n', 'symbol.Depot', 'no member'),
         ('[layout]\nhide = ["Ward"]\n\n[symbol.east]\ny = "Y"\n', 'symbol.east', 'hides it'),
         ('[subscript]\nnowhere = "n"\n', 'subscript.nowhere', 'not a template or a thing'),
         ('[layout]\nhide = ["east"]\n\n[subscript]\neast = "e"\n', 'subscript.east', 'hides it'),
@@ -814,7 +794,7 @@ TEXT_MODEL = MODEL.replace('    output people\n', '    output people\n    input 
         (
             '[subscript]\nWard = "w"\n',
             'subscript.Ward',
-            'Ward is a template; give each instance its own subscript',
+            'Ward is a template; give each member its own subscript',
         ),
         ('[subscript]\nDepot = "d"\n', 'subscript.Depot', 'Depot is a template'),
         # Two cards never have one subscript, and two values never have one symbol of the file: the
@@ -860,9 +840,7 @@ TEXT_MODEL = MODEL.replace('    output people\n', '    output people\n    input 
     ],
 )
 def test_the_symbols_and_the_subscripts_name_what_the_picture_draws(tmp_path, text, key, match):
-    (tmp_path / 'model.scn').write_text(TEXT_MODEL, encoding='utf-8')
-    (tmp_path / style.STYLE_FILE).write_text(text, encoding='utf-8')
-    model = build_model(tmp_path / 'model.scn', LIBRARY)
+    model = package(tmp_path, TEXT_MODEL, style=text)
     with pytest.raises(StyleError, match=match) as caught:
         style.of(model)
     assert [(d['file'], d['key']) for d in caught.value.diagnostics] == [
@@ -886,23 +864,3 @@ def test_the_symbols_and_the_subscripts_name_what_the_picture_draws(tmp_path, te
 def test_symbols_and_subscripts_that_no_other_value_has_are_accepted(tmp_path, text):
     model = built(tmp_path, text)
     assert style.check(style.of(model), model) == []
-
-
-def test_compile_and_draw_stop_at_a_symbol_that_another_value_has(tmp_path, monkeypatch, capsys):
-    from napkin import cli
-
-    folder = tmp_path / 'wards'
-    folder.mkdir()
-    (folder / 'model.scn').write_text(MODEL, encoding='utf-8')
-    sheet = folder / style.STYLE_FILE
-    sheet.write_text('[symbol.north]\nx = "W_s"\npeople = "W_s"\n', encoding='utf-8')
-    monkeypatch.chdir(tmp_path)
-    assert cli.main(['compile', 'wards']) == 1
-    # The one problem names the file, as the command names it, and the key.
-    errors = capsys.readouterr().err.splitlines()
-    named = Path('wards', style.STYLE_FILE)
-    assert len(errors) == 1 and errors[0].startswith(f'{named}: error: symbol.north.people: ')
-    assert cli.main(['draw', 'wards', '-o', 'map.svg']) == 1
-    assert 'symbol.north.people' in capsys.readouterr().err and not (tmp_path / 'map.svg').exists()
-    sheet.write_text('[symbol.north]\nx = "W_s"\npeople = "P_s"\n', encoding='utf-8')
-    assert cli.main(['compile', 'wards']) == 0

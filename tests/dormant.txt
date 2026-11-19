@@ -6,7 +6,7 @@
 
 # Stage S0 (2026-11-18): every test that compiles old model text or reads the catalogue.
 scenarios/
-tests/draw/
+tests/draw/test_catalogue.py
 tests/publish/
 tests/evidence/
 tests/release/

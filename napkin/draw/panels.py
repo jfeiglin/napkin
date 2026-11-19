@@ -72,7 +72,6 @@ LaTeX, `since(e)` is the symbol of e and `count(e)` the symbol of its count.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field, fields, replace
 from itertools import count
 from urllib.parse import quote
@@ -202,7 +201,9 @@ def distribution_text(node):
     """The text of a distribution as the file writes it: `uniform(1 h, 3 h)`,
     `categorical(FIXED: 0.7, FAILED: 0.3)`."""
     if node.family == 'categorical':
-        pairs = ', '.join(f'{member}: {notation_number(weight)}' for member, weight in zip(node.outcomes, node.params))
+        pairs = ', '.join(
+            f'{member}: {notation_number(weight)}' for member, weight in zip(node.outcomes, node.params)
+        )
         return f'categorical({pairs})'
     unit = getattr(node.type.of, 'unit', '')
     values = ', '.join(notation_number(value) + (f' {unit}' if unit else '') for value in node.params)
@@ -421,7 +422,7 @@ class _Panel:
         entity, name = split(key)
         if entity in self.groups:
             return [f'{member}.{name}' for member in self.groups[entity][:1]]
-        member, path, part = self.resolve(key)
+        member, path, _ = self.resolve(key)
         if member is not None and '.' in path:
             return [f'{member}.{path.split(".")[0]}']
         return [key]
@@ -485,7 +486,7 @@ class _Panel:
             if isinstance(part, (sem.DeclaredFlow, sem.DeclaredLegs)) or kind is None:
                 symbol = self.free(_numbered(parent.under(initial)), 'flow')
             else:
-                base = made.symbol_base(name, made.CLASSES.get(kind, 'lower'))
+                base = made.base_of(name, made.CLASSES.get(kind, 'lower'))
                 symbol = self.free(_numbered(Symbol(base, False, parent.sub)), kind)
         else:
             # A key that no card draws a symbol for: its initial and x, the first that is free.
@@ -531,13 +532,19 @@ class _Panel:
         entity, name = split(key)
         if entity in self.groups:
             return self.group_facts(entity, name)
-        member, path, part = self.resolve(key)
+        member, _, part = self.resolve(key)
         if isinstance(part, sem.DeclaredValue):
             return self.value_facts(member, part)
         if isinstance(part, (sem.DeclaredFlow, sem.DeclaredLegs)):
             return self.flow_facts(member, part)
         if isinstance(part, sem.DeclaredEvent):
-            return _Facts('event', part.text or in_words(part.name), HOURS, records=part.evidence, names=record_names(part.evidence))
+            return _Facts(
+                'event',
+                part.text or in_words(part.name),
+                HOURS,
+                records=part.evidence,
+                names=record_names(part.evidence),
+            )
         return _Facts(None, in_words(name))
 
     def value_facts(self, member, value):
@@ -566,14 +573,28 @@ class _Panel:
         if kind in STARTS and text is None and distribution is None and init is not None:
             tree = notation.build(init, self.equations.keys(member)) if member is not None else None
             facts.value_tree = tree if tree is not None and tree_keys(tree) else None
+            if facts.value_tree is not None:
+                # In a table too narrow for the math, the start shows as the file writes it.
+                kind_of_line, line = (
+                    ('Property', own.line) if own is not None else ('Declaration', value.line)
+                )
+                facts.value = self.found.written(kind_of_line, line, 'value')
         if kind == 'input' and member is not None:
             for option in self.found.declared.options:
                 for item in option.settings:
-                    if item.name == value.name and (item.member == member or item.instances == self.found.template_of[member]):
+                    if item.name == value.name and (
+                        item.member == member or item.instances == self.found.template_of[member]
+                    ):
                         option_text, option_distribution = shown(item.value)
-                        facts.options.append((option.name, option_text or option_distribution, item.evidence, None))
+                        facts.options.append(
+                            (option.name, option_text or option_distribution, item.evidence, None)
+                        )
                         facts.names = (*facts.names, *record_names(item.evidence))
-        if kind == 'input' and isinstance(value.type, sem.Num) and (value.lower is not None or value.upper is not None):
+        if (
+            kind == 'input'
+            and isinstance(value.type, sem.Num)
+            and (value.lower is not None or value.upper is not None)
+        ):
             facts.range = [None if edge is None else shown(edge)[0] for edge in (value.lower, value.upper)]
             facts.range_status = 'chosen'
             facts.range_records = value.evidence
@@ -581,7 +602,9 @@ class _Panel:
 
     def kind_of_value(self, member, value):
         if member is not None:
-            event = self.event_of_local(f'{member}.{value.path.split(".", 1)[1]}') if '.' in value.path else None
+            event = (
+                self.event_of_local(f'{member}.{value.path.split(".", 1)[1]}') if '.' in value.path else None
+            )
             if event is not None and value in event.params:
                 return 'input'
         return self.found.kind(value)
@@ -658,3 +681,317 @@ class _Panel:
         entity, tree = trees[0]
         return rename(tree, entity, name)
 
+    # ---- the whole
+
+    def data(self):
+        blocks = self.blocks()
+        shown_cards = []
+        for _, info, _ in blocks:
+            shown_cards += [m['card'] for m in info['members'] if m['card'] not in shown_cards]
+        line_keys = []
+        for _, _, block in blocks:
+            for line in block.lines:
+                line_keys += [key for key in line.keys if key not in line_keys]
+        tag_keys = []
+        if self.settings['tags']:
+            for card in self.cards:
+                if card['id'] in shown_cards:
+                    tag_keys += [stock['key'] for stock in card['stocks']]
+        keys = list(dict.fromkeys([*line_keys, *tag_keys]))
+        # Each value that a start's formula names has a row too, and so on, until no new key comes.
+        facts = {}
+        k = 0
+        while k < len(keys):
+            found = facts[keys[k]] = self.facts(keys[k])
+            keys += [key for tree in found.trees() for key in tree_keys(tree) if key not in keys]
+            keys = list(dict.fromkeys(keys))
+            k += 1
+        symbols = self.make_symbols(keys)
+        trees = [tree for _, _, block in blocks for line in block.lines for tree in line.trees]
+        trees += [tree for found in facts.values() for tree in found.trees()]
+        counted = {node.target for tree in trees for node in notation.nodes(tree) if isinstance(node, Count)}
+
+        def latex_of(key):
+            return symbols[key].latex()
+
+        def count_of(key):
+            return symbols[key].counted().latex()
+
+        show_rows = self.settings['symbols']
+        cited = []
+        for b, (_, _, block) in enumerate(blocks):
+            cited += [(('line', b, k), line.records) for k, line in enumerate(block.lines)]
+        if show_rows:
+            for key in keys:
+                found = facts[key]
+                if not found.marked():
+                    continue
+                cited.append((('symbol', key), found.records))
+                if len(found.options) <= OPTIONS_SHOWN:
+                    cited += [(('option', key, option), records) for option, _, records, _ in found.options]
+                if found.range is not None:
+                    cited.append((('range', key), found.range_records))
+        listed = None
+        if self.settings['references']:
+            listed = refs.references(cited, self.found, kinds=self.settings['kinds'])
+
+        def marks(place):
+            if listed is None:
+                return []
+            return [[number, kind] for number, kind in listed.marks.get(place, ())]
+
+        equations = []
+        for b, (_, info, block) in enumerate(blocks):
+            lines = []
+            for k, line in enumerate(block.lines):
+                trees = line.trees
+                lines.append(
+                    {
+                        'kind': line.kind,
+                        'lhs': None if line.lhs is None else notation.as_dict(line.lhs),
+                        'rhs': None if line.rhs is None else notation.as_dict(line.rhs),
+                        'math': [notation.as_dict(tree) for tree in line.math],
+                        'words': line.words,
+                        'part': line.part,
+                        'event': line.event,
+                        'outcome': line.outcome,
+                        'keys': list(line.keys),
+                        'marks': marks(('line', b, k)),
+                        'records': record_names(line.records),
+                        'relation': line.relation,
+                        'when': when_words(line.event, line.outcome),
+                        'latex': line_latex(line.kind, trees, latex_of, count_of, line.relation),
+                    }
+                )
+            equations.append({**self.subscripted(info), 'lines': lines})
+        rows = []
+        for key in keys:
+            found, symbol = facts[key], symbols[key]
+            many = len(found.options) > OPTIONS_SHOWN
+            marked = show_rows and found.marked()
+            rows.append(
+                {
+                    'key': key,
+                    'symbol': _parts(symbol),
+                    'count': _parts(symbol.counted()) if key in counted else None,
+                    'meaning': found.meaning,
+                    'kind': found.kind,
+                    'unit': found.unit,
+                    'value': found.value,
+                    'value_math': None if found.value_tree is None else notation.as_dict(found.value_tree),
+                    'options': []
+                    if many
+                    else [
+                        {
+                            'option': option,
+                            'value': text,
+                            'math': None if tree is None else notation.as_dict(tree),
+                            'marks': marks(('option', key, option)) if marked else [],
+                        }
+                        for option, text, _, tree in found.options
+                    ],
+                    'option_count': len(found.options),
+                    'instances': found.instances,
+                    'range': found.range,
+                    'range_status': found.range_status,
+                    'distribution': found.distribution,
+                    'marks': marks(('symbol', key)) if marked else [],
+                    'range_marks': marks(('range', key)) if marked and found.range is not None else [],
+                    'records': list(found.names),
+                }
+            )
+        entries = []
+        for entry in listed.entries if listed is not None else ():
+            entries.append(
+                {
+                    'number': entry.number,
+                    'kind': entry.kind,
+                    'label': entry.label,
+                    'text': entry.text,
+                    'url': entry.url,
+                    'link_text': entry.link_text,
+                    'hover': entry.hover,
+                    'record': list(entry.record),
+                }
+            )
+        ranged = show_rows and any(
+            row['range'] is not None and row['range_status'] == 'chosen' for row in rows
+        )
+        return {
+            'settings': self.settings,
+            'equations': equations,
+            'symbols': rows,
+            'references': entries,
+            'left_out': list(listed.left_out) if listed is not None else [],
+            'tags': {key: symbols[key].text() for key in tag_keys},
+            'note': NOTE if ranged else None,
+        }
+
+
+def _parts(symbol):
+    base, prime, sub = symbol.parts()
+    return {'base': base, 'prime': prime, 'sub': sub, 'text': symbol.text(), 'latex': symbol.latex()}
+
+
+# ---- the LaTeX fragment (D-57) ----------------------------------------------------------------------
+
+# The characters of an address that `\href` reads as themselves, at the top level and in the argument
+# of another command. hyperref's `\hyper@normalise` makes `&` a plain character and `_` and `~` print
+# themselves; in an argument, they only go through `\edef` and the PDF string. `&` must stay: as %26,
+# it no longer separates the parameters of a query. Every other character is written as %XX: `$`, the
+# math shift of TeX, as %24, which a server reads as `$`; `\`, `{`, `}` and `^`, which an address
+# never holds as they are. `%` and `#` stay, written `\%` and `\#`, which hyperref reads in any
+# argument. A `#` after the first is %23: hyperref splits the address at its first `#`.
+URL_SAFE = ":/?[]@!&'()*+,;=-._~%"
+# The packages that the fragment needs, in the order to load them: hyperref last, as its manual says.
+PACKAGES = ('amsmath', 'longtable', 'hyperref')
+
+
+def _escape(text):
+    return notation.escape(' '.join(str(text or '').split()))
+
+
+def _url(url):
+    """An address for `\\href`: each character outside `URL_SAFE` as %XX, the first `#` kept, then `%`
+    and `#` escaped for TeX."""
+    address, mark, fragment = url.partition('#')
+    text = quote(address, safe=URL_SAFE) + mark + quote(fragment, safe=URL_SAFE)
+    return text.replace('%', r'\%').replace('#', r'\#')
+
+
+def _marks(marks, math=False):
+    """The marks of a line or a value in the fragment: their numbers as a superscript of the text, so
+    that no mark reads as a power; in `\\text{…}` for a place in math."""
+    if not marks:
+        return ''
+    text = r'\textsuperscript{' + ','.join(str(number) for number, _ in marks) + '}'
+    return rf'\text{{{text}}}' if math else text
+
+
+def latex(picture):
+    """The LaTeX fragment of a picture's panels (`napkin draw --latex FILE`, D-57), from the picture
+    alone. It starts with comments that name the picture and the packages that it needs (`PACKAGES`).
+    Then, for each block of equations, its title in `\\paragraph` and one `align*` with a line for each
+    line of the block: an equation aligned at its `=`, any other line after the alignment point, then
+    its words in `\\text{…}` and its marks as a superscript. Each `align*` is in a group with
+    `\\allowdisplaybreaks`, so that a long block breaks across pages. Then the symbols in a `longtable`
+    (symbol, meaning, unit, value, range), which breaks across pages and repeats its header on each
+    page, with the note on a chosen range; a range has the words of the SVG (`layout.range_words`).
+    Then the references in an `enumerate`, each item its kind's words, its text and its link (`\\href`,
+    an `http` or `https` address only, `_url`). Every text is escaped (`notation.escape`). A picture
+    without panels gives a fragment of comments only, which says that the stylesheet names no thing in
+    `[equations] things`."""
+    name = str(picture.get('name') or '')
+    run = picture.get('run')
+    needed = [rf'\usepackage{{{package}}}' for package in PACKAGES]
+    head = [
+        f'% The equations, symbols and references of the picture of {name}'
+        + (f', run {run}' if run else '')
+        + ' (napkin draw --latex).',
+        '% It needs ' + ', '.join(needed[:-1]) + ' and ' + needed[-1] + ', in this order.',
+    ]
+    found = picture.get('panels')
+    if not found:
+        head.append('% The stylesheet names no thing in [equations] things, so there are no equations.')
+        return '\n'.join(head) + '\n'
+    out = [*head, '']
+    rows = {row['key']: row for row in found['symbols']}
+
+    def math(data):
+        # A start that a formula sets, with the table's symbols.
+        def symbol(key):
+            return rows[key]['symbol']['latex']
+
+        def counted(key):
+            return rows[key]['count']['latex']
+
+        return '$' + line_latex('bound', [notation.from_dict(data)], symbol, counted) + '$'
+
+    for block in found['equations']:
+        out.append(rf'\paragraph{{{_escape(block["title"])}}}')
+        if len(block['members']) > 1:
+            out.append(_escape(for_words(block)))
+        if not block['lines']:
+            out += [_escape('No equations.'), '']
+            continue
+        # A page can break between the lines of the block. `\allowdisplaybreaks` makes a local change
+        # of `\interdisplaylinepenalty`, and amsmath reads that value at each `\\` of the `align*`. So
+        # the group is sufficient: after the block, the document has its own value again. [1] makes a
+        # break the last choice (amsmath's manual).
+        out += [r'{\allowdisplaybreaks[1]', r'\begin{align*}']
+        lines = []
+        for line in block['lines']:
+            text = line['latex']
+            if line['kind'] in ('balance', 'rate', 'formula'):
+                sign = LATEX_RELATIONS[line['relation']]
+                text = text.replace(sign, ' &' + sign.lstrip(), 1)
+            else:
+                text = '& ' + text
+            notes = [rf'\text{{{_escape(line["words"])}}}'] if line['words'] else []
+            if line['when']:
+                # A jump happens when its event happens.
+                notes.append(rf'\text{{at {_escape(line["when"])}}}')
+            tail = r' \quad '.join(notes) + _marks(line['marks'], math=True)
+            lines.append(text + (f' && {tail}' if tail else ''))
+        out.append(' \\\\\n'.join(lines))
+        out += [r'\end{align*}}', '']
+    if found['settings']['symbols'] and found['symbols']:
+        # The header row is repeated at the top of each page (`\endhead`). With a short symbol and unit,
+        # the columns and the space between them fit the width of the text of an article.
+        out += [
+            r'\begin{longtable}{l p{0.25\linewidth} l p{0.2\linewidth} p{0.13\linewidth}}',
+            r'Symbol & Meaning & Unit & Value & Range \\',
+            r'\hline',
+            r'\endhead',
+        ]
+        for row in found['symbols']:
+            symbol = f'${row["symbol"]["latex"]}${_marks(row["marks"])}'
+            if row['count'] is not None:
+                symbol += f', ${row["count"]["latex"]}$'
+            meaning = row['meaning']
+            if row['kind'] == 'event':
+                # The symbol of an event is the time since it happens, and N the number of times.
+                meaning = meaning.rstrip('.') + ': the time since it happens'
+                meaning += ', and how many times' if row['count'] else ''
+            if row['value_math'] is not None:
+                values = [math(row['value_math'])]
+            else:
+                values = [_escape(row['value'] or row['distribution'] or '')]
+            for item in row['instances']:
+                if item['math'] is not None:
+                    values.append(f'{_escape(item["title"])}: {math(item["math"])}')
+                elif item['value']:
+                    values.append(_escape(f'{item["title"]}: {item["value"]}'))
+            value = '; '.join(item for item in values if item)
+            for option in row['options']:
+                if option['math'] is not None:
+                    value += f'; {_escape(option["option"])}: {math(option["math"])}'
+                    value += _marks(option['marks'])
+                elif option['value'] is not None:
+                    value += f'; {_escape(option["option"])}: {_escape(option["value"])}'
+                    value += _marks(option['marks'])
+            if not row['options'] and row['option_count']:
+                value += _escape(f'; {row["option_count"]} options set it')
+            # "chosen range lo--hi" or "range lo--hi", as the SVG writes it, with the en dash of TeX.
+            words = range_words(row)
+            span = '' if words is None else _escape(words).replace('–', '--') + _marks(row['range_marks'])
+            cells = [symbol, _escape(meaning), _escape(row['unit'] or ''), value, span]
+            out.append(' & '.join(cells) + r' \\')
+        out += [r'\end{longtable}', '']
+        if found['note']:
+            out += [r'\par\noindent ' + _escape(found['note']), '']
+    if found.get('left_out'):
+        # The kinds of record that the list leaves out ([references] kinds), said, not hidden.
+        out += [r'\par\noindent ' + _escape(refs.left_out_words(found.get('left_out'))), '']
+    if found['references']:
+        out.append(r'\begin{enumerate}')
+        for entry in found['references']:
+            item = rf'\item \textbf{{{_escape(entry["label"])}.}} {_escape(entry["text"])}'
+            if entry['url'] and refs.web_host(entry['url']):
+                item += rf' \href{{{_url(entry["url"])}}}{{{_escape(entry["link_text"] or entry["url"])}}}'
+            out.append(item)
+        out += [r'\end{enumerate}', '']
+    return '\n'.join(out)
+
+
+__all__ = ['NOTE', 'OPTIONS_SHOWN', 'PACKAGES', 'latex', 'line_latex', 'panels', 'record_names', 'shown']

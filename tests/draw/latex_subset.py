@@ -4,8 +4,8 @@ those of the expression. It shares no code with the writer. Its grammar is Pytho
 and the associativity of Python's operators, with the forms of the writer's text (the module text of
 `napkin.draw.notation`).
 
-The symbols of a test are `x_{i}` for a value and `e_{i}` for an event or an outcome: `values` maps
-each `x_{i}` to its key, and `events` each `e_{i}` to (event, ending). Anything that the writer does
+The symbols of a test are `x_{i}` for a value and `e_{i}` for an event: `values` maps each `x_{i}` to
+its key, and `events` each `e_{i}` to the key of its event. Anything that the writer does
 not write is an error (`LatexError`), so a text that the reader reads is a text of the subset: an
 unescaped special character in a text, a stray brace, a token after the end.
 """
@@ -404,9 +404,9 @@ class Reader:
             event = self.events.get(written)
             if event is None:
                 self.fail(f'{written} is not the symbol of an event')
-            return Count(*event)
+            return Count(event)
         if written in self.events:
-            return Since(*self.events[written])
+            return Since(self.events[written])
         return Elapsed(self.value_key(written))
 
     def cases(self):

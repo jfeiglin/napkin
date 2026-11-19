@@ -12,8 +12,8 @@ declared model (`napkin/model/semantic.py`) and the program.
   route or a `move` is a `stock`, and a `tally` when nothing takes from it: it is the source of no
   flow, of no `move`, and at the end of no route (a route takes from both of its ends). Any other
   stored value is a `state` when a statement assigns it or a solver solves for it, and `fixed` when
-  nothing does; a text is a `text`. An input is an `input`, a formula a `formula`, a distribution
-  that is no input is `fixed`. The kinds are those of the declared value, the same for every member
+  nothing does. A text, an input of text too, is a `text`; any other input is an `input`, a formula a
+  `formula`, a distribution that is no input is `fixed`. The kinds are those of the declared value, the same for every member
   of a template.
 - **Reads** (`reached`). A read of the typed form (`semantic.Read`) from the members of a card
   reaches parts of members: a value, a flow (its rates, its legs, its ends), an event (its
@@ -43,8 +43,6 @@ from ..program.reach import reach
 from .text import in_words
 
 ENTITY, MEMBER, TABLE = 'entity', 'member', 'table'
-# The kinds of a value (`Things.kind`).
-KINDS = ('input', 'fixed', 'state', 'stock', 'tally', 'formula', 'text', 'link', 'collection', 'unknown')
 STOCK_KINDS = ('stock', 'tally')
 FLOWS = (s.DeclaredFlow, s.DeclaredLegs)
 
@@ -266,6 +264,8 @@ class Things:
 
     def kind(self, value):
         """The kind of a declared value (see the module's text)."""
+        if value.type == s.TEXT:
+            return 'text'
         if value.kind == s.INPUT:
             return 'input'
         if value.kind == s.FORMULA:
@@ -274,8 +274,6 @@ class Things:
             return 'fixed'
         if value.kind in (s.LINK, s.COLLECTION, s.UNKNOWN):
             return value.kind
-        if value.type == s.TEXT:
-            return 'text'
         use = self.ends.get(value.path)
         if use is not None and isinstance(value.type, s.Num):
             return 'stock' if 'out' in use else 'tally'

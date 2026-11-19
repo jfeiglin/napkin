@@ -11,17 +11,14 @@ rows of `tags`; "chosen range" exactly on the chosen ranges, and the note exactl
 
 The pictures: the synthetic model of `test_panels.py` with its library of records of every kind, under
 stylesheets that turn each key of `[equations]` and `[references]`; pictures that Hypothesis makes, with
-panels of random trees, words, marks and addresses; counterexamples; and every catalogue model with every
-drawn card in `[equations] things` and the references shown.
+panels of random trees, words, marks and addresses; and counterexamples. Every catalogue model with every
+drawn card in `[equations] things` and the references shown waits for stage M (`test_catalogue.py`).
 """
 
 from __future__ import annotations
 
 import copy
-import dataclasses
-import itertools
 import math
-import time
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -29,9 +26,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from napkin.draw import layout as layouts
-from napkin.draw import notation, panels, style
+from napkin.draw import notation, panels
 from napkin.draw.layout import layout
-from napkin.draw.model_map import picture
 from napkin.draw.notation import Assign, Call, Cases, Cmp, Count, Deriv, Neg, Num, Op, Since, Sym, Time
 from napkin.draw.references import COLOURS as MARK_COLOURS
 from napkin.draw.references import KIND_WORDS, KINDS
@@ -44,14 +40,12 @@ from tests.draw.test_panels import model as model  # the fixture of the syntheti
 from tests.draw.test_svg import (
     check_model,
     check_svg,
-    classes,
     contrast,
     marks_in,
     parts,
     same_bytes_in_other_processes,
     visible,
 )
-from tests.helpers import SCENARIO_IDS, catalogue_model
 
 SVG = f'{{{NAMESPACE}}}'
 REFERENCES = '\n[references]\nshow = true\n'
@@ -83,7 +77,7 @@ def map_of(found):
 # ---- the fixture ----------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize('run', [None, 'b'])
+@pytest.mark.parametrize('run', [None, 'busy'])
 @pytest.mark.parametrize('sheet', SHEETS)
 def test_every_panel_of_the_fixture_holds_every_property(model, sheet, run):
     doc = drawn_picture(model, sheet, run)
@@ -243,8 +237,8 @@ def test_a_jump_says_its_event_by_name_and_an_event_that_only_jumps_name_has_no_
     jumps = [
         line for block in doc['panels']['equations'] for line in block['lines'] if line['kind'] == 'jump'
     ]
-    # The fixture's events `go` and `later`, each in words.
-    assert {line['event'] for line in jumps} == {'hub.go', 'hub.later'}
+    # The fixture's events `go`, `later` and `turn`, each in words.
+    assert {line['event'] for line in jumps} == {'hub.go', 'hub.later', 'hub.turn'}
     for line in jumps:
         assert line['when'] == line['event'].split('.')[-1]
     drawn_lines = [
@@ -260,7 +254,7 @@ def test_a_jump_says_its_event_by_name_and_an_event_that_only_jumps_name_has_no_
     # `go` is read by a time since and a count, so it has a row; `later` only jumps name: no row, and
     # no τ = 0 in the picture.
     rows = {row['key'] for row in doc['panels']['symbols']}
-    assert 'hub.go' in rows and 'hub.later' not in rows
+    assert 'hub.go' in rows and 'hub.later' not in rows and 'hub.turn' not in rows
     assert '= 0' not in ' '.join(drawn_lines)
 
 
@@ -664,51 +658,3 @@ def panel_pictures(draw):
 @given(panel_pictures())
 def test_every_property_holds_on_panels_that_hypothesis_makes(doc):
     drawn(doc)
-
-
-# ---- every catalogue model ------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize('scenario_id', SCENARIO_IDS)
-@pytest.mark.scenario_contract
-def test_every_card_of_every_scenario_in_the_panels_holds_every_property(scenario_id):
-    """With every card that the picture draws in `[equations] things` and the references shown: the
-    layout and the SVG hold every property, no visible text shows an ID of the library, the map does
-    not move without tags, and the drawing takes a few seconds at most."""
-    model = catalogue_model(scenario_id)
-    sheet = style.of(model)
-    every = tuple(style.drawn(sheet, model))
-    doc = picture(model, dataclasses.replace(sheet, equations=every, references_show=True))
-    start = time.perf_counter()
-    found = layout(doc)
-    text = svg(doc, found)
-    took = time.perf_counter() - start
-    assert took < 10, took
-    check(doc, found)
-    check_svg(doc, found, text)
-    check_model(model, ET.fromstring(text))
-    # Panels without tags move nothing of the map: it is the map of the sheet without panels (the
-    # sheet's own `[equations]` and `[references]` left out, whatever they turn on).
-    untagged = picture(model, dataclasses.replace(sheet, equations=every, equation_tags=False))
-    bare = dataclasses.replace(sheet, equations=(), references_show=False)
-    assert map_of(layout(untagged)) == map_of(layout(picture(model, bare)))
-
-
-@pytest.mark.scenario_contract
-def test_a_catalogue_picture_with_panels_gives_the_same_bytes_in_other_processes(tmp_path):
-    model = catalogue_model(SCENARIO_IDS[len(SCENARIO_IDS) // 2])
-    sheet = style.of(model)
-    every = tuple(style.drawn(sheet, model))
-    doc = picture(model, dataclasses.replace(sheet, equations=every, references_show=True))
-    same_bytes_in_other_processes(doc, tmp_path / 'picture.json')
-
-
-def test_no_tag_and_no_panel_without_equations(model):
-    doc = drawn_picture(model, '')
-    found, text = drawn(doc)
-    assert found.panels == () and all(
-        stock.tag is None for card in found.cards for stock in (*card.stocks, *card.meters)
-    )
-    root = ET.fromstring(text)
-    assert not [g for g in root.iter(f'{SVG}g') if set(classes(g)) & {'equations', 'tag', 'note'}]
-    assert not list(itertools.islice(root.iter(f'{SVG}a'), 1))

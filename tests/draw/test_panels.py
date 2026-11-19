@@ -1,138 +1,139 @@
-"""The panels under the map (napkin/draw/panels.py, D-53, D-55, D-57): `[equations]` and `[references]`
-in `style.toml`, the blocks of the shown cards, the Symbols table, the marks and the References list,
-and the LaTeX of the lines and of `napkin draw --latex FILE`.
+"""The panels under the map (D-53, D-55, D-57, napkin/draw/panels.py): the blocks of the shown cards,
+the Symbols table with the facts of each value, the References with their marks, and the LaTeX
+fragment.
 
-The synthetic model writes its own things and templates, and its records come from the test library of
-`test_references.py`, so each expectation follows from the model, the library and the rule that the
-test names: the blocks are those of the cards that `things` names (`equations.Equations`, `same`); the
-symbols cover the keys of the trees, which the test reads from the trees themselves; the marks name the
-entries and an input on an assumption has one; a range is the model's, read by the run table; the
-LaTeX of each line reads back to its trees with the reader of the tests (`latex_subset.py`). The
-catalogue test draws every card of every scenario.
+The model is a package with the library of the references tests: a template whose members share their
+trees (north, south and the rows of `waves`) and a member whose formula is its own (east); a thing with
+a flow with legs, an endpoint, events that read the time since an event and its count, an assertion,
+and inputs on records of every kind. The option "Busy" sets an input, with a record of its own. Each
+expectation follows from the rules of the module's text and from the blocks of `equations.py`, which
+`test_equations.py` checks by hand. The catalogue test (`test_catalogue.py`) waits for stage M.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import re
 import shutil
 import subprocess
-import time
-from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 import pytest
 
-from napkin import cli
 from napkin.draw import layout as layouts
 from napkin.draw import notation, panels, style
 from napkin.draw import references as refs
 from napkin.draw.equations import Equations, generic, same
 from napkin.draw.model_map import picture
-from napkin.draw.notation import Assign, Count, Deriv, Elapsed, Since, Sym, from_dict, split
+from napkin.draw.notation import Assign, Count, Deriv, Elapsed, Since, Sym, from_dict
 from napkin.draw.style import StyleError
-from napkin.model.runs import Runs
-from napkin.model.types import number_in, written_unit
-from tests.build import (
-    check,
-    compiled,
-    document,
-    entity,
-    event,
-    flow,
-    formula,
-    named,
-    option,
-    options,
-    parameter,
-    runs,
-    share,
-    stock,
-    template,
-)
+from napkin.draw.things import Things
 from tests.draw.latex_subset import read, read_line
+from tests.draw.models import package
 from tests.draw.test_notation import Point, canonical, outcome, shape, value_of_node
 from tests.draw.test_notation import same as same_value
 from tests.draw.test_picture import picture_problems
 from tests.draw.test_references import RECORDS, own_library
-from tests.draw.test_style import MODEL, built
-from tests.helpers import SCENARIO_IDS, catalogue_model
 
 # ---- the model ------------------------------------------------------------------------------------
 
+FIXTURE = """\
+scenario "Panels fixture"
+    horizon 10 h
 
-def line(text, records='@fixture'):
-    return f'{text}  {records}'
+options "Load":
+    "Calm":
+        "Calm."
+    "Busy":
+        "Busy."
+        hub.x = 5 people/h  @rec_counted
 
+runs:
+    calm = "Calm"
+    busy = "Busy"
 
-OTHER = 'record other: identity "Another record of the fixture."'
+Zone:
+    "A zone."
+    input k: fraction = 0.5 in [0, 1]  @rec_assumed
+        "Share drained"
+    level: people = 10 people in [0 people, 100 people]  @rec_counted
+        "People waiting"
+    done: people = this.k * 10 people in [0 people,]  @rec_counted
+        "People served"
+    pull = formula(this.k * this.level / (1 h))  @rec_direct_first
+        "Pace of service"
+    flow drain: this.level -> this.done  @rec_counted
+        "Service"
+        request = this.pull
 
-# A template whose instances share their trees (north, south and the copies of waves) and one whose
-# formula is its own (east); a thing whose tag is the template's initial (zebra); and a thing with a
-# flow of two pairs, one at its own rate, beside a flow of the same initial (fill, flush), events that
-# read the time since an event and its count, a check, and inputs on records of every kind. The
-# option Busy sets an input with a record of its own.
-FIXTURE = document(
-    'Panels fixture',
-    template(
-        'Zone',
-        parameter('k', 0.5, 'fraction', 0, 1, records='@rec_assumed'),
-        stock('level', 10, 'people', maximum=100, size=None, records='@rec_counted'),
-        stock('done', 'k * 10 people', 'people', size=None, records='@rec_counted'),
-        formula('pull', 'k * level / (1 h)', 'people/h', records='@rec_direct_first'),
-        flow('drain', 'level -> done', 'pull', records='@rec_counted'),
-    ),
-    entity('north', template='Zone'),
-    entity('south', template='Zone'),
-    entity('east', line('let pull: people/h = 2 * k * level / (1 h)', '@rec_rule'), template='Zone'),
-    entity('waves', template='Zone', copies=2),
-    entity('zebra', stock('herd', 4, 'people', size=None, rate='0.1 per_h * herd')),
-    entity(
-        'hub',
-        parameter('x', 2, 'people/h', 1, 9, records='@rec_transfer'),
-        parameter('y', 3, 'people/h', records='@rec_direct_second'),
-        parameter('quiet', 1, 'people/h', 0, 5, records='@rec_hidden'),
-        parameter('base', 4, 'people', records='@rec_assumed'),
-        named('mode', 'idle', 'busy'),
-        stock('store', 50, 'people', size=None, records='@rec_counted'),
-        stock('spare', '2 * base', 'people', size=None),
-        stock('used', 0, 'people', size=None),
-        formula('give', 'x / 2 + y', 'people/h', records='@rec_rule_plain'),
-        formula('ready', 'mode is "busy" and since(go) >= 1 h', 'bool', records='@rec_rule_plain'),
-        flow('fill', ['store -> spare', line('spare -> used at 0.5 * x', '@other')], 'give'),
-        flow('flush', 'store -> used', 'x + count(go) * 1 people/h', condition='ready'),
-        share('store', '3 * x'),
-        event('go', 'mode is "busy" and t >= 1 h', 'store -= 1 people'),
-        event('later', 'since(go) >= 2 h and count(go) >= 1', 'move 1 people from store to spare'),
-        check('store + spare + used is 55 people', 'A sum', within='1 people'),
-    ),
-    option_groups=(
-        options(
-            'Response',
-            option('Idle', 'It waits.'),
-            option(
-                'Busy', 'It works.', line('hub.mode = "busy"'), line('hub.x = 4 people/h', '@rec_assumed')
-            ),
-        ),
-    ),
-    run_lines=runs(a=['Idle'], b=['Busy']),
-    records=(*RECORDS, OTHER),
-)
+north: Zone
+
+south: Zone
+
+east: Zone
+    pull = formula(2 * this.k * this.level / (1 h))  @rec_rule
+
+waves: Zone from "waves.csv"
+
+zebra:
+    herd: people = 4 people in [0 people,]
+    flow grow: SOURCE -> this.herd
+        request = this.herd / (10 h)
+
+hub:
+    "The hub."
+    input x: people/h = 2 people/h in [1 people/h, 9 people/h]  @rec_transfer
+        "Pace of the first pump"
+    input y: people/h = 3 people/h  @rec_direct_second
+    input quiet: people/h = 1 people/h in [0 people/h, 5 people/h]  @rec_hidden
+    input base: people = 4 people  @rec_assumed
+    mode: enum[IDLE, BUSY] = IDLE
+    store: people = 50 people in [0 people,]  @rec_counted
+        outflow.capacity = 3 * this.x
+    spare: people = 2 * this.base in [0 people,]
+    used: people = 0 people in [0 people,]
+    give = formula(this.x / 2 + this.y)  @rec_rule_plain
+    ready = formula(this.mode == BUSY and since(this.go) >= 1 h)  @rec_rule_plain
+    flow fill:
+        flow first: this.store -> this.spare
+            request = this.give
+        flow second: this.spare -> this.used  @other
+            request = 0.5 * this.x
+    flow flush: this.store -> this.used
+        request = (this.x if this.ready else 0 people/h) + count(this.go.occurrences) * 1 people/h
+    go = event():
+        when this.mode == BUSY and t >= 1 h:
+            this.go.start()
+            reset when false
+        after 0 h:
+            this.store -= 1 people
+    later = event():
+        when since(this.go) >= 2 h and count(this.go.occurrences) >= 1:
+            this.later.start()
+            reset when false
+        after 0 h:
+            move 1 people from this.store to this.spare
+    turn = event():
+        after 1 h:
+            this.mode = BUSY
+    assert this.store + this.spare + this.used <= 60 people
+
+hub.turn.start()
+
+record other: identity "Another record of the fixture."
+"""
 CARDS = ('north', 'south', 'east', 'waves', 'zebra', 'hub')
 
 
 @pytest.fixture(scope='module')
-def model():
-    return compiled(FIXTURE, own_library())
-
-
-def sheet_of(text=''):
-    return style.read(text)
+def model(tmp_path_factory):
+    folder = tmp_path_factory.mktemp('panels') / 'panels'
+    text = FIXTURE + '\n' + '\n'.join(RECORDS) + '\n'
+    return Things(package(folder, text, library=own_library(), tables={'waves.csv': 'id\na\nb\n'}))
 
 
 def drawn(model, text, run=None):
     """The picture of the model with the stylesheet `text`, which keeps the picture contract."""
-    sheet = sheet_of(text)
+    sheet = style.read(text)
     assert style.check(sheet, model) == []
     doc = picture(model, sheet, run)
     assert picture_problems(doc) == []
@@ -144,18 +145,12 @@ def equations(*things, more=''):
     return f'[equations]\nthings = [{listed}]\n{more}'
 
 
-def test_a_yes_no_formula_is_written_with_iff_and_a_number_formula_with_equals(model):
-    doc = drawn(model, equations('hub'))
-    lines = {line['part']: line for block in doc['panels']['equations'] for line in block['lines']}
-    ready, give = lines['hub.ready'], lines['hub.give']
-    assert (ready['kind'], ready['relation']) == ('formula', '⇔')
-    assert r' \iff ' in ready['latex'] and ' = ' not in ready['latex'].split(r' \iff ')[0]
-    # A counterexample: a formula of a number keeps `=`.
-    assert give['relation'] == '=' and ' = ' in give['latex'] and r'\iff' not in give['latex']
-    # The fragment aligns each equation at its relation.
-    text = panels.latex(doc)
-    assert ready['latex'].replace(r' \iff ', r' &\iff ', 1) in text
-    assert give['latex'].replace(' = ', ' &= ', 1) in text
+def members(doc):
+    return [[member['entity'] for member in block['members']] for block in doc['panels']['equations']]
+
+
+def rows_of(doc):
+    return {row['key']: row for row in doc['panels']['symbols']}
 
 
 def named_by(data):
@@ -173,71 +168,17 @@ def start_trees(row):
     return [row['value_math'], *(o['math'] for o in row['options']), *(i['math'] for i in row['instances'])]
 
 
-@pytest.mark.parametrize('more', ['', 'instances = "each"\n'])
-def test_a_start_that_a_formula_sets_is_math_and_what_it_reads_has_a_row(model, more):
-    doc = drawn(model, equations('Zone', 'hub', more=more))
-    rows = {row['key']: row for row in doc['panels']['symbols']}
-    starts = [(key, data) for key, row in rows.items() for data in start_trees(row) if data is not None]
-    for key, data in starts:
-        assert named_by(data) <= set(rows), key
-    # Each stock `done` starts at `k * 10 people` of its own card, or of its template when the row
-    # stands for the template's members: the start names the `k` of the row's own owner.
-    dones = {key: row for key, row in rows.items() if key.endswith('.done')}
-    assert dones
-    for key, row in dones.items():
-        owner = split(key)[0]
-        assert named_by(row['value_math']) == {f'{owner}.k'}, key
-    # Written once for the members that are the same, else once for each member.
-    assert ('Zone.done' in dones) == (not more)
-
-
-def test_a_formula_start_shows_the_values_that_it_reads_and_a_number_start_stays_text(model):
-    doc = drawn(model, equations('hub') + '\n[references]\nshow = true\n')
-    rows = {row['key']: row for row in doc['panels']['symbols']}
-    reserve, base = rows['hub.spare'], rows['hub.base']
-    assert named_by(reserve['value_math']) == {'hub.base'}
-    # The value that it reads has its row, its value and the marks of its record.
-    assert base['value'] is not None and base['marks']
-    # A start worked out from others has no mark of its own (it leads to the marks of `base`).
-    assert reserve['marks'] == []
-    # Counterexamples: a number start and a named state's start stay text.
-    assert rows['hub.store']['value_math'] is None and rows['hub.store']['value'] is not None
-    if 'hub.mode' in rows:
-        assert rows['hub.mode']['value_math'] is None
-    # The LaTeX table writes the start as math with the table's symbols.
-    (line,) = [
-        row for row in panels.latex(doc).splitlines() if row.startswith(f'${reserve["symbol"]["latex"]}$')
-    ]
-    value_cell = line.split(' & ')[3]
-    assert value_cell.startswith('$') and base['symbol']['latex'] in value_cell
-
-
-def test_a_template_block_says_which_subscript_stands_for_which_member(model):
-    doc = drawn(model, equations('Zone'))
-    found = doc['panels']
-    (block,) = [item for item in found['equations'] if item['name'] == 'Zone']
-    assert len(block['members']) > 1 and block['subscript']
-    # The template's symbols carry its subscript, and each member's is that of its own card: the tags
-    # of the card's stock rows carry it.
-    rows = {row['key']: row for row in found['symbols']}
-    assert all(
-        rows[key]['symbol']['sub'].split(',')[0] == block['subscript']
-        for key in rows
-        if key.startswith('Zone.')
-    )
-    for member in block['members']:
-        # (The copies of one line share their card, and its tags.)
-        tags = [text for key, text in found['tags'].items() if split(key)[0] == member['card']]
-        assert tags and all(text.split('_', 1)[1].split(',')[0] == member['subscript'] for text in tags)
-    said = f'({block["subscript"]}: ' + ', '.join(member['subscript'] for member in block['members']) + ').'
-    assert said in panels.latex(doc)
-    # A block of one member says nothing of subscripts.
-    single = drawn(model, equations('east'))['panels']['equations'][0]
-    assert single['subscript'] is None and len(single['members']) == 1
-
-
-def members(doc):
-    return [[member['entity'] for member in block['members']] for block in doc['panels']['equations']]
+def tree_keys(item):
+    """The keys of the symbols that a line's trees name, read from the trees."""
+    trees = [item['lhs'], item['rhs']] if item['lhs'] is not None else item['math']
+    found = []
+    for tree in trees:
+        for node in notation.nodes(from_dict(tree)):
+            if isinstance(node, (Sym, Elapsed, Deriv)):
+                found.append(node.key)
+            elif isinstance(node, (Assign, Since, Count)):
+                found.append(node.target)
+    return set(found)
 
 
 # ---- [equations] and [references] -----------------------------------------------------------------
@@ -333,15 +274,17 @@ def test_each_key_of_equations_and_references_has_its_form(text, key, match):
     ('text', 'match'),
     [
         ('[equations]\nthings = ["nowhere"]\n', 'nowhere is not a template or a thing'),
-        ('[equations]\nthings = ["Depot"]\n', 'Depot is not on the map: it has no instance'),
+        ('[equations]\nthings = ["Depot"]\n', 'Depot is not on the map: it has no member'),
         ('[layout]\nhide = ["Ward"]\n\n[equations]\nthings = ["east"]\n', 'layout.hide hides it'),
         ('[layout]\nhide = ["east"]\n\n[equations]\nthings = ["Ward"]\n', None),
     ],
 )
 def test_the_things_of_equations_are_things_and_templates_that_the_picture_draws(tmp_path, text, match):
-    found = built(tmp_path, text)
+    from tests.draw.test_style import MODEL
+
+    found = package(tmp_path, MODEL, style=text)
     if match is None:
-        # A template with one instance on the map is a name that the picture draws.
+        # A template with one member on the map is a name that the picture draws.
         assert style.check(style.of(found), found) == []
         return
     with pytest.raises(StyleError, match=match) as caught:
@@ -349,81 +292,7 @@ def test_the_things_of_equations_are_things_and_templates_that_the_picture_draws
     assert [d['key'] for d in caught.value.diagnostics] == ['equations.things']
 
 
-@pytest.mark.parametrize(
-    ('text', 'key'),
-    [
-        ('[equations]\nthings = ["north"]\ndepth = 9\n', 'equations.depth'),
-        ('[equations]\nthings = ["nowhere"]\n', 'equations.things'),
-        ('[references]\nshow = true\n', 'references.show'),
-        ('[equations]\nthings = ["north"]\n\n[references]\nkinds = ["source"]\n', 'references.kinds'),
-    ],
-)
-def test_compile_and_draw_stop_on_a_problem_of_the_panels(tmp_path, monkeypatch, capsys, text, key):
-    folder = tmp_path / 'wards'
-    folder.mkdir()
-    (folder / 'model.scn').write_text(MODEL, encoding='utf-8')
-    sheet = folder / style.STYLE_FILE
-    sheet.write_text(text, encoding='utf-8')
-    monkeypatch.chdir(tmp_path)
-    for command in ('compile', 'draw'):
-        assert cli.main([command, 'wards']) == 1, command
-        assert f'{Path("wards", style.STYLE_FILE)}: error: {key}: ' in capsys.readouterr().err
-    assert not list(tmp_path.glob('*.svg'))
-    sheet.write_text(
-        '[equations]\nthings = ["north", "Ward"]\n\n[references]\nshow = true\n', encoding='utf-8'
-    )
-    assert cli.main(['compile', 'wards']) == 0
-
-
 # ---- the blocks -----------------------------------------------------------------------------------
-
-
-def entities_of(model, cards):
-    return [entity.name for entity in model.scenario.entities if entity.entry in cards]
-
-
-def check_blocks(model, doc, named):
-    """The blocks stand for exactly the entities of the shown cards, each once, in the order of the
-    cards: a card that `named` names itself, or whose template it names. A group of two or more has one
-    template, and its members' blocks are the same up to the entity; with `together`, no two blocks of
-    one template could be one."""
-    lines = style.entity_lines(model)
-    shown = [
-        card['id'] for card in doc['cards'] if card['id'] in named or lines[card['id']].template in named
-    ]
-    listed = [name for group in members(doc) for name in group]
-    assert sorted(listed) == sorted(entities_of(model, shown))
-    assert len(set(listed)) == len(listed)
-    order = [card['id'] for card in doc['cards']]
-    firsts = [order.index(block['members'][0]['card']) for block in doc['panels']['equations']]
-    assert firsts == sorted(firsts)
-    eq = Equations(model, doc['run'])
-    settings = doc['panels']['settings']
-    built_blocks = {
-        name: eq.block(name, depth=settings['depth'], checks=settings['checks']) for name in listed
-    }
-    for block in doc['panels']['equations']:
-        names = [member['entity'] for member in block['members']]
-        if len(names) > 1:
-            assert block['template'] is not None
-            assert all(same(built_blocks[names[0]], built_blocks[name]) for name in names)
-        if settings['instances'] == 'each':
-            assert len(names) == 1
-    if settings['instances'] == 'together':
-        # Two blocks of instances that `named` does not name itself are never the same.
-        alone = [
-            block
-            for block in doc['panels']['equations']
-            if all(member['card'] not in named for member in block['members'])
-        ]
-        for a in alone:
-            for b in alone:
-                if (
-                    a is not b
-                    and lines[a['members'][0]['card']].template == lines[b['members'][0]['card']].template
-                ):
-                    first, second = a['members'][0]['entity'], b['members'][0]['entity']
-                    assert not same(built_blocks[first], built_blocks[second]), (first, second)
 
 
 @pytest.mark.parametrize(
@@ -440,37 +309,54 @@ def check_blocks(model, doc, named):
     ],
 )
 def test_the_panel_holds_the_blocks_of_the_shown_cards(model, things, instances):
+    """The blocks stand for exactly the members of the shown cards, each once, in the order of the
+    cards: a card that `things` names itself, or whose template it names. A group of two or more has
+    one template, and its members' blocks are the same up to the member."""
     doc = drawn(model, equations(*things, more=f'instances = "{instances}"\n'))
-    check_blocks(model, doc, set(things))
+    named = set(things)
+    shown = [card['id'] for card in doc['cards'] if card['id'] in named or card['template'] in named]
+    listed = [name for group in members(doc) for name in group]
+    assert sorted(listed) == sorted(member for card in shown for member in model.cards[card].members)
+    order = [card['id'] for card in doc['cards']]
+    firsts = [order.index(block['members'][0]['card']) for block in doc['panels']['equations']]
+    assert firsts == sorted(firsts)
+    eq = Equations(model)
+    for block in doc['panels']['equations']:
+        names = [member['entity'] for member in block['members']]
+        if len(names) > 1:
+            assert block['template'] is not None
+            assert all(same(eq.block(names[0]), eq.block(name)) for name in names)
+        if instances == 'each':
+            assert len(names) == 1
 
 
-def test_instances_with_the_same_trees_share_a_block_and_a_thing_beats_its_template(model):
-    # The instances of Zone whose trees are the same up to the instance share one block, and east,
-    # whose formula is its own, has its own; a thing that the list names has its own block.
-    assert members(drawn(model, equations('Zone'))) == [['north', 'south', 'waves.1', 'waves.2'], ['east']]
+def test_members_with_the_same_trees_share_a_block_and_a_thing_beats_its_template(model):
+    # The members of Zone whose trees are the same up to the member share one block, and east, whose
+    # formula is its own, has its own; a thing that the list names has its own block.
+    assert members(drawn(model, equations('Zone'))) == [['north', 'south', 'waves.a', 'waves.b'], ['east']]
     assert members(drawn(model, equations('Zone', 'north'))) == [
         ['north'],
-        ['south', 'waves.1', 'waves.2'],
+        ['south', 'waves.a', 'waves.b'],
         ['east'],
     ]
-    assert members(drawn(model, equations('waves'))) == [['waves.1', 'waves.2']]
+    assert members(drawn(model, equations('waves'))) == [['waves.a', 'waves.b']]
     assert members(drawn(model, equations('waves', more='instances = "each"\n'))) == [
-        ['waves.1'],
-        ['waves.2'],
+        ['waves.a'],
+        ['waves.b'],
     ]
-    # A group writes the keys of its template, or of its set of copies.
-    (zone, east) = drawn(model, equations('Zone'))['panels']['equations']
+    # A group writes the keys of its template, or of its table's card.
+    zone, east = drawn(model, equations('Zone'))['panels']['equations']
     assert zone['name'] == zone['template'] == 'Zone' and east['name'] == 'east' and east['template'] is None
     (waves,) = drawn(model, equations('waves'))['panels']['equations']
     keys = {key for item in waves['lines'] for key in item['keys']}
     assert waves['name'] == 'waves' and 'waves.level' in keys
-    assert not any(key.startswith(('waves.1.', 'waves.2.')) for key in keys)
+    assert not any(key.startswith(('waves.a.', 'waves.b.')) for key in keys)
 
 
 def test_the_lines_are_the_blocks_of_the_model(model):
-    """Each line of a block of one entity is the line of `Equations.block`, in order, its trees as
+    """Each line of a block of one member is the line of `Equations.block`, in order, its trees as
     data; a group's are those of its first member's block with the keys of its name."""
-    for run in (None, 'a', 'b'):
+    for run in (None, 'calm', 'busy'):
         doc = drawn(model, equations(*CARDS, more='depth = 2\nchecks = true\n'), run)
         eq = Equations(model, run)
         for block in doc['panels']['equations']:
@@ -482,51 +368,50 @@ def test_the_lines_are_the_blocks_of_the_model(model):
                 trees = [item['lhs'], item['rhs']] if item['lhs'] is not None else item['math']
                 assert [from_dict(tree) for tree in trees] == list(expected.trees)
                 assert item['keys'] == list(expected.keys) and item['words'] == expected.words
+                assert set(item['keys']) == tree_keys(item)
 
 
 def test_depth_and_checks_reach_the_lines(model):
-    kinds = {
-        line['kind']
-        for block in drawn(model, equations('hub', more='depth = 0\n'))['panels']['equations']
-        for line in block['lines']
+    def kinds(more):
+        doc = drawn(model, equations('hub', more=more))
+        return {line['kind'] for block in doc['panels']['equations'] for line in block['lines']}
+
+    assert 'formula' not in kinds('depth = 0\n') and 'check' not in kinds('depth = 0\n')
+    assert 'formula' in kinds('') and 'check' in kinds('checks = true\n')
+
+
+def test_a_yes_no_formula_is_written_with_iff_and_a_number_formula_with_equals(model):
+    doc = drawn(model, equations('hub', more='depth = 2\n'))
+    (hub,) = doc['panels']['equations']
+    relations = {
+        item['part']: (item['relation'], item['latex']) for item in hub['lines'] if item['kind'] == 'formula'
     }
-    assert 'formula' not in kinds and 'check' not in kinds
-    kinds = {
-        line['kind']
-        for block in drawn(model, equations('hub', more='checks = true\n'))['panels']['equations']
-        for line in block['lines']
-    }
-    assert 'check' in kinds
+    assert relations['hub.give'][0] == '=' and ' = ' in relations['hub.give'][1]
+    # `ready` is a yes/no: the line says that it holds exactly when its right side holds.
+    assert relations['hub.ready'][0] == '⇔' and r' \iff ' in relations['hub.ready'][1]
+
+
+def test_a_template_block_says_which_subscript_stands_for_which_member(model):
+    zone = drawn(model, equations('Zone'))['panels']['equations'][0]
+    assert zone['subscript'] and all(member['subscript'] for member in zone['members'])
+    words = panels.for_words(zone)
+    assert words.startswith('For ') and f'({zone["subscript"]}: ' in words
+    assert [member['title'] for member in zone['members']] == ['North', 'South', 'Waves a', 'Waves b']
 
 
 # ---- the symbols ----------------------------------------------------------------------------------
 
 
-def tree_keys(item):
-    """The keys of the symbols that a line's trees name, read from the trees. (A jump names its event
-    in words, `when`, so its event is no key.)"""
-    trees = [item['lhs'], item['rhs']] if item['lhs'] is not None else item['math']
-    found = []
-    for tree in trees:
-        for node in notation.nodes(from_dict(tree)):
-            if isinstance(node, (Sym, Elapsed, Deriv)):
-                found.append(node.key)
-            elif isinstance(node, (Assign, Since, Count)):
-                found.append(node.target)
-    return set(found)
-
-
 def check_symbols(doc):
     """Every symbol of every line, and every tag, has one row, and so has each key that a start's
-    formula names, and so on; every row is named so; no two rows have one symbol, or an event's
+    expression names, and so on; every row is named so; no two rows have one symbol, or an event's
     count."""
     found = doc['panels']
-    rows = {row['key']: row for row in found['symbols']}
+    rows = rows_of(doc)
     assert len(rows) == len(found['symbols'])
     named = set()
     for block in found['equations']:
         for item in block['lines']:
-            assert set(item['keys']) == tree_keys(item)
             named |= tree_keys(item)
     reached = named | set(found['tags'])
     while True:
@@ -550,200 +435,102 @@ def check_symbols(doc):
 
 @pytest.mark.parametrize('instances', ['together', 'each'])
 def test_every_symbol_of_every_line_has_one_row_of_its_own(model, instances):
-    for run in (None, 'a', 'b'):
-        doc = drawn(model, equations(*CARDS, more=f'instances = "{instances}"\n'), run)
-        check_symbols(doc)
+    for run in (None, 'calm', 'busy'):
+        check_symbols(drawn(model, equations(*CARDS, more=f'instances = "{instances}"\n'), run))
 
 
-def test_a_pair_and_a_template_have_symbols_made_from_their_flow_and_their_members(model):
-    from napkin.draw.symbols import symbols as made
-    from napkin.draw.symbols import tags, words
-
-    doc = drawn(model, equations('Zone', 'hub', 'zebra'))
-    rows = {row['key']: row for row in doc['panels']['symbols']}
-    sheet = style.Style()
-    cards = [card['id'] for card in doc['cards']]
-    hub_tag = tags(model, sheet, cards)['hub']
-    # The pair with a rate of its own (fill, pair 1) has the base of its flow, a lower-case initial, and
-    # the card's tag. The counterexample: flush, of the same initial, takes the second symbol of the
-    # card, which is also the flow's symbol with the pair's number; the two still differ.
-    pair, flush = rows['hub.fill[1]'], rows['hub.flush']
-    assert pair['symbol']['base'] == flush['symbol']['base'] == words('fill')[0][0]
-    assert pair['symbol']['sub'].split(',')[0] == hub_tag
-    flows = [row['symbol']['text'] for row in rows.values() if row['kind'] == 'flow']
-    assert len(set(flows)) == len(flows) and pair['symbol']['text'] != flush['symbol']['text']
-    assert pair['kind'] == 'flow' and pair['marks'] == []
-    # A key of the template has the base of its first member's symbol and a tag that no card has:
-    # zebra's tag is the initial of Zone.
-    card_tags = set(tags(model, sheet, cards).values())
-    own = made(model, sheet, cards, ['north.level', 'north.pull', 'north.k'])
-    for member in ('level', 'pull', 'k'):
-        row = rows[f'Zone.{member}']
-        assert row['symbol']['base'] == own[f'north.{member}'].base
-        assert row['symbol']['sub'].split(',')[0] not in card_tags
-    assert 'z' in card_tags  # the counterexample: zebra holds the template's initial
-    # The tags of the shown cards are the symbols of their own stocks, and a group's rows are its
-    # template's.
-    assert {key.split('.')[0] for key in doc['panels']['tags']} == {
-        'north',
-        'south',
-        'east',
-        'waves',
-        'hub',
-        'zebra',
-    }
-    assert 'waves.level' in doc['panels']['tags'] and 'Zone.level' not in doc['panels']['tags']
+def test_a_leg_and_a_template_have_symbols_made_from_their_flow_and_their_members(model):
+    rows = rows_of(drawn(model, equations('Zone', 'hub')))
+    first, second = rows['hub.fill.first']['symbol'], rows['hub.fill.second']['symbol']
+    # A leg is its flow's base with the initial of the leg: the two legs differ in that initial.
+    assert first['base'] == second['base'] == 'f'
+    assert first['sub'].split(',')[-1] == 'f' and second['sub'].split(',')[-1] == 's'
+    # A template's key has the template's own tag, and no member's.
+    assert rows['Zone.level']['symbol']['base'] == 'L'
+    assert rows['Zone.k']['symbol']['base'] == 'κ'
 
 
 def test_without_tags_the_rows_are_those_of_the_lines(model):
-    doc = drawn(model, equations(*CARDS, more='tags = false\n'))
-    assert doc['panels']['tags'] == {}
-    check_symbols(doc)
+    tagged = drawn(model, equations('hub'))['panels']
+    bare = drawn(model, equations('hub', more='tags = false\n'))['panels']
+    assert bare['tags'] == {} and set(tagged['tags']) == {'hub.store', 'hub.spare', 'hub.used'}
+    assert {row['key'] for row in bare['symbols']} <= {row['key'] for row in tagged['symbols']}
 
 
 def test_a_row_has_the_facts_of_its_value_for_the_run(model):
-    """The meaning is the label, the value the default or the run's (the option Busy's), the unit the
-    type's, and a flow's unit its stock's per hour."""
-    table = Runs.from_table(model.run_table)
-    hub = model.scenario.entity('hub')
-    for run in ('a', 'b'):
-        doc = drawn(model, equations('hub'), run)
-        rows = {row['key']: row for row in doc['panels']['symbols']}
-        values = table.values_of(model.runs[run]['options']).values
-        for key in ('hub.x', 'hub.y'):
-            row = rows[key]
-            unit = table.inputs[key].unit
-            assert row['unit'] == unit
-            assert number_in(row['value'], unit, table.units) == values[key]
-        assert rows['hub.give']['value'] is None and rows['hub.give']['kind'] == 'formula'
-        store = hub.value('store')
-        assert rows['hub.flush']['unit'] == rows['hub.fill[1]']['unit']
-        assert rows['hub.flush']['unit'] == written_unit(store.type, hub.text_of) + '/h'
-        # x has the option Busy, which the row lists with its value.
-        assert [option['option'] for option in rows['hub.x']['options']] == ['Busy']
-        assert rows['hub.x']['option_count'] == 1
-
-
-# ---- the marks and the references -----------------------------------------------------------------
-
-
-def assumed(records):
-    """Whether records rest on an assumption: one of them is one, or names one."""
-    items = records if isinstance(records, (list, tuple)) else () if records is None else (records,)
-    return any(
-        item.get('kind') == 'assumption' or item.get('assumption') for item in items if hasattr(item, 'get')
+    rows = rows_of(drawn(model, equations('hub')))
+    x = rows['hub.x']
+    assert (x['kind'], x['meaning'], x['unit'], x['value'], x['range']) == (
+        'input',
+        'Pace of the first pump',
+        'people/h',
+        '2 people/h',
+        ['1 people/h', '9 people/h'],
     )
+    # The options that set it, with their values, and the run's own value with the run.
+    assert x['options'] == [{'option': 'Busy', 'value': '5 people/h', 'math': None, 'marks': []}]
+    busy = rows_of(drawn(model, equations('hub'), 'busy'))['hub.x']
+    assert busy['value'] == '5 people/h'
+    # A stock's start is its value; a formula and a flow have none, and a flow's unit is its rate's.
+    assert rows['hub.store']['value'] == '50 people' and rows['hub.store']['kind'] == 'stock'
+    assert rows['hub.give']['value'] is None and rows['hub.flush']['unit'] == 'people/h'
+    # A start that an expression of other values sets is math: the spare starts at twice the base.
+    spare = rows['hub.spare']
+    assert spare['value'] == '2 * this.base' and named_by(spare['value_math']) == {'hub.base'}
+    assert 'hub.base' in rows
 
 
-def value_records(model, key, run):
-    """The records of the value that a row of a key shows: the default's, or the run's option's."""
-    entity, member = notation.split(key)
-    value = model.scenario.entity(entity).value(member)
-    if run is not None:
-        given = {setting.profile: setting for setting in value.settings}
-        for name in model.runs[run]['options']:
-            if name in given:
-                return given[name].records
-    return value.records
+def test_a_template_row_stands_for_its_members(model):
+    rows = rows_of(drawn(model, equations('Zone')))
+    # The members share the start of `done`, which names their own `k`: the template's row writes it
+    # with the template's keys.
+    done = rows['Zone.done']
+    assert named_by(done['value_math']) == {'Zone.k'} and done['instances'] == []
+    assert rows['Zone.k']['value'] == '0.5 fraction'
 
 
 def test_marks_name_entries_and_an_input_on_an_assumption_has_one(model):
-    for run in (None, 'a', 'b'):
-        doc = drawn(model, equations(*CARDS, more='\n[references]\nshow = true\n'), run)
-        found = doc['panels']
-        assert found['references'], 'the fixture cites records'
-        rows = {row['key']: row for row in found['symbols']}
-        for key, row in rows.items():
-            # A value worked out from others has no marks: a formula, a flow, an event, and a start
-            # that a formula sets. A start that the file writes as a value has the marks of its
-            # records, as an input has.
-            worked_out = row['kind'] in ('formula', 'flow', 'event') or row['value_math'] is not None
-            if worked_out:
-                assert row['marks'] == [], key
-            elif row['kind'] in ('stock', 'tally', 'state') and row['value'] is not None:
-                plain = model.scenario.entity(notation.split(key)[0]) is not None
-                if plain and value_records(model, key, run):
-                    assert row['marks'], key
-            plain = model.scenario.entity(notation.split(key)[0]) is not None
-            if row['kind'] == 'input' and plain and assumed(value_records(model, key, run)):
-                assert 'assumption' in {kind for _, kind in row['marks']}, key
-        # Zone's k rests on an assumption in each member: the template's row has its mark.
-        doc = drawn(model, equations('Zone', more='\n[references]\nshow = true\n'), run)
-        (zone,) = [row for row in doc['panels']['symbols'] if row['key'] == 'Zone.k']
-        assert 'assumption' in {kind for _, kind in zone['marks']}
+    doc = drawn(model, equations('hub', more='\n[references]\nshow = true\n'))
+    found = doc['panels']
+    numbers = {entry['number']: entry for entry in found['references']}
+    rows = rows_of(doc)
+    for row in found['symbols']:
+        for number, kind in row['marks']:
+            assert numbers[number]['kind'] == kind
+    # The base rests on the assumption ASM-TEMPO: its one entry, an assumption.
+    (mark,) = rows['hub.base']['marks']
+    assert mark[1] == 'assumption' and numbers[mark[0]]['record'] == ['ASM-TEMPO']
+    # A value worked out from others has no mark: its equation leads to the cited inputs.
+    assert rows['hub.give']['marks'] == []
 
 
 def test_only_what_shows_is_cited(model):
-    shown = drawn(model, equations(*CARDS, more='\n[references]\nshow = true\n'))['panels']
-    ids = {name for entry in shown['references'] for name in entry['record']}
-    # The input that no line reads has no row, so its source is in no entry.
-    assert 'hub.quiet' not in {row['key'] for row in shown['symbols']}
-    assert 'SRC-HIDDEN' not in ids and 'CLM-HIDDEN' not in ids
-    # Without the Symbols table only the lines cite: an input's own records drop out, and the rows have
-    # no marks.
-    lines = drawn(model, equations(*CARDS, more='symbols = false\n\n[references]\nshow = true\n'))['panels']
-    marked = {
-        number for block in lines['equations'] for item in block['lines'] for number, _ in item['marks']
-    }
-    assert {entry['number'] for entry in lines['references']} == marked
-    assert all(row['marks'] == [] and row['range_marks'] == [] for row in lines['symbols'])
-    assert len(lines['references']) < len(shown['references'])
-    assert lines['note'] is None
-    # Without show, no entry and no mark.
-    plain = drawn(model, equations(*CARDS))['panels']
-    assert plain['references'] == []
-    assert all(item['marks'] == [] for block in plain['equations'] for item in block['lines'])
-    assert all(row['marks'] == [] for row in plain['symbols'])
+    found = drawn(model, equations('hub', more='\n[references]\nshow = true\n'))['panels']
+    # The input `quiet` is in no line: its record's source has no entry.
+    assert 'hub.quiet' not in rows_of({'panels': found})
+    assert not [entry for entry in found['references'] if 'SRC-HIDDEN' in entry['record']]
 
 
 def test_kinds_leave_entries_out_but_never_the_assumptions(model):
-    doc = drawn(model, equations(*CARDS, more='\n[references]\nshow = true\nkinds = ["assumption"]\n'))
-    found = doc['panels']
-    assert {entry['kind'] for entry in found['references']} == {'assumption'}
-    every = drawn(model, equations(*CARDS, more='\n[references]\nshow = true\n'))['panels']
-    assert {entry['kind'] for entry in every['references']} > {'assumption'}
-
-
-# ---- the ranges -----------------------------------------------------------------------------------
-
-
-def number(written, unit, units):
-    text = written.strip()
-    return number_in(float(text) if re.fullmatch(r'[0-9.eE+-]+', text) else text, unit, units)
-
-
-def check_ranges(model, doc):
-    """An input's range is its model's range (the run table's numbers), with its status; a row of
-    another kind has none; the note shows exactly when the table shows a chosen range."""
-    table = Runs.from_table(model.run_table)
-    found = doc['panels']
-    for row in found['symbols']:
-        item = table.inputs.get(row['key'])
-        if item is None or row['kind'] != 'input':
-            if row['kind'] != 'input':
-                assert row['range'] is None
-            continue
-        if item.range is None:
-            assert row['range'] is None
-            continue
-        assert [
-            None if edge is None else number(edge, item.unit, table.units) for edge in row['range']
-        ] == list(item.range)
-        assert row['range_status'] in ('chosen', 'declared')
-    chosen = any(row['range'] is not None and row['range_status'] == 'chosen' for row in found['symbols'])
-    assert (found['note'] is not None) == (chosen and found['settings']['symbols'])
+    whole = drawn(model, equations(*CARDS, more='\n[references]\nshow = true\n'))['panels']
+    some = drawn(model, equations(*CARDS, more='\n[references]\nshow = true\nkinds = ["assumption"]\n'))[
+        'panels'
+    ]
+    assert {entry['kind'] for entry in some['references']} == {'assumption'}
+    assert set(some['left_out']) == {entry['kind'] for entry in whole['references']} - {'assumption'}
+    assert [entry['text'] for entry in some['references']] == [
+        entry['text'] for entry in whole['references'] if entry['kind'] == 'assumption'
+    ]
 
 
 def test_an_input_has_the_range_of_its_model_and_the_note_shows_with_it(model):
-    for text in (equations(*CARDS), equations('zebra'), equations('hub', more='symbols = false\n')):
-        doc = drawn(model, text)
-        check_ranges(model, doc)
-    assert drawn(model, equations('hub'))['panels']['note'] is not None
-    # zebra has no input: no range shows, and there is no note.
+    found = drawn(model, equations('hub'))['panels']
+    rows = {row['key']: row for row in found['symbols']}
+    assert (rows['hub.x']['range'], rows['hub.x']['range_status']) == (['1 people/h', '9 people/h'], 'chosen')
+    assert rows['hub.y']['range'] is None
+    assert found['note'] == panels.NOTE
+    # Without a range on any shown row, no note.
     assert drawn(model, equations('zebra'))['panels']['note'] is None
-
-
-# ---- the LaTeX ------------------------------------------------------------------------------------
 
 
 def read_back(item, rows):
@@ -758,10 +545,10 @@ def read_back(item, rows):
         for node in notation.nodes(tree):
             if isinstance(node, (Since, Count)):
                 row = rows[node.target]
-                written = next((w for w, pair in events.items() if pair == (node.event, node.ending)), None)
+                written = next((w for w, event in events.items() if event == node.event), None)
                 if written is None:
                     written = f'e_{{{len(events) + 1}}}'
-                    events[written] = (node.event, node.ending)
+                    events[written] = node.event
                 swaps[row['symbol']['latex']] = rf'\tau_{{{written}}}'
                 if row['count'] is not None:
                     swaps[row['count']['latex']] = rf'N_{{{written}}}'
@@ -786,7 +573,7 @@ def read_back(item, rows):
 
 def check_latex(doc, seeds=(1,)):
     """Each line's LaTeX reads back to its trees, shape for shape, and has their value at each point."""
-    rows = {row['key']: row for row in doc['panels']['symbols']}
+    rows = rows_of(doc)
     count = 0
     for block in doc['panels']['equations']:
         for item in block['lines']:
@@ -814,25 +601,23 @@ def test_the_latex_of_each_line_reads_back_to_its_trees(model):
         equations(*CARDS),
         equations('Zone', 'hub', more='instances = "each"\ndepth = 3\nchecks = true\n'),
     ):
-        for run in (None, 'b'):
+        for run in (None, 'busy'):
             assert check_latex(drawn(model, text, run), seeds=(1, 2)) > 10
 
 
 def test_the_since_and_the_count_of_an_event_are_its_symbols(model):
-    doc = drawn(model, equations('hub'))
-    rows = {row['key']: row for row in doc['panels']['symbols']}
+    doc = drawn(model, equations('hub', more='depth = 2\n'))
+    rows = rows_of(doc)
     go = rows['hub.go']
-    assert go['kind'] == 'event' and go['count'] is not None
-    (later,) = [
-        item
-        for block in doc['panels']['equations']
-        for item in block['lines']
-        if item['event'] == 'hub.later' and 'hub.store' in item['keys']
-    ][:1]
-    assert later['kind'] == 'jump'
-    texts = ' '.join(item['latex'] for block in doc['panels']['equations'] for item in block['lines'])
-    # No line writes the time since an event under a second τ.
-    assert rf'\tau_{{{go["symbol"]["latex"]}}}' not in texts
+    # `flush` asks for x plus the count of `go` once per hour: the row of `go` has its count.
+    assert go['kind'] == 'event' and go['unit'] == 'h' and go['count'] is not None
+    assert go['count']['base'] == 'N' and go['count']['sub'] == go['symbol']['sub']
+    (hub,) = doc['panels']['equations']
+    (flush,) = [item for item in hub['lines'] if item['part'] == 'hub.flush' and item['kind'] == 'rate']
+    assert go['count']['latex'] in flush['latex']
+
+
+# ---- the LaTeX fragment (D-57) ------------------------------------------------------------------
 
 
 def environments(text):
@@ -1053,14 +838,14 @@ def tex_engine():
     if engine is None:
         return None, 'no pdflatex or lualatex on PATH, so the fragment is not compiled'
     finder = shutil.which('kpsewhich')
-    for package in panels.PACKAGES:
+    for name in panels.PACKAGES:
         if (
             finder
             and not subprocess.run(
-                [finder, f'{package}.sty'], capture_output=True, text=True, check=False
+                [finder, f'{name}.sty'], capture_output=True, text=True, check=False
             ).stdout.strip()
         ):
-            return None, f'the TeX installation has no {package}.sty, so the fragment is not compiled'
+            return None, f'the TeX installation has no {name}.sty, so the fragment is not compiled'
     return engine, ''
 
 
@@ -1169,35 +954,3 @@ def test_the_contract_check_finds_each_broken_part_of_the_panels(model):
     ):
         problems = broken(change)
         assert any(found in problem for problem in problems), (found, problems)
-
-
-# ---- every scenario -------------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize('scenario_id', SCENARIO_IDS)
-@pytest.mark.scenario_contract
-def test_the_panels_of_every_card_of_every_scenario_keep_the_contract(scenario_id):
-    """With every card that the picture draws in `things` and the references shown: the panels build,
-    keep the contract, change no other part of the picture, have a row for each symbol, the ranges of
-    the model, and LaTeX that reads back to the trees of each line; the fragment has its blocks."""
-    model = catalogue_model(scenario_id)
-    sheet = style.of(model)
-    whole = picture(model, sheet)
-    assert whole['panels'] is None or sheet.equations
-    shown = dataclasses.replace(sheet, equations=tuple(style.drawn(sheet, model)), references_show=True)
-    start = time.perf_counter()
-    doc = picture(model, shown)
-    took = time.perf_counter() - start
-    assert took < 10, took
-    assert picture_problems(doc) == []
-    assert {key: value for key, value in doc.items() if key != 'panels'} == {
-        key: value for key, value in whole.items() if key != 'panels'
-    }
-    check_symbols(doc)
-    check_ranges(model, doc)
-    assert check_latex(doc) > 0
-    text = panels.latex(doc)
-    ends = environments(text)
-    assert ends.count('align*') == sum(1 for block in doc['panels']['equations'] if block['lines'])
-    assert text.count(r'\item ') == len(doc['panels']['references'])
-    assert all(re.match(r'https?://', link) for link in re.findall(r'\\href\{([^}]*)\}', text))

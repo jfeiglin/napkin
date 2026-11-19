@@ -1,12 +1,13 @@
 """The notation of the Equations panel (napkin/draw/notation.py): each node is the model's expression,
 node for node, and its LaTeX says the same.
 
-- Round trip: `to_node(build(e))` is the typed node of each expression (the same object: two typed
-  nodes with the same parts are one), for every expression of every catalogue model and of synthetic
-  models that write every construct of the language.
-- Value: an evaluator of the typed nodes of the semantic model and an evaluator of the notation's
-  nodes, both written here (neither is the engine's), give the same value at seeded random points: a
-  random value for each name, a random positive scale for each unit, a random time since each event.
+- Build: each construct of the typed form of the declared model gives the node that the module's text
+  names, worked out by hand; the reads of a member give the keys of the picture (`notation.Keys`).
+- Value: an evaluator of the typed form and an evaluator of the notation's nodes, both written here
+  (neither is the engine's), give the same value at seeded random points: a random value for each
+  name, a random positive scale for each unit, a random time since each event and count of it. This
+  holds for every expression of a model that writes every construct of the language, and of random
+  expressions.
 - LaTeX: `latex_subset.py` reads the LaTeX back into a node, which has the shape of the node and the
   value of the expression at the same points. Counterexamples show the parentheses that a naive
   writer leaves out.
@@ -21,14 +22,12 @@ import math
 import operator
 import random
 import string
-from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from napkin.core import expr as typed
 from napkin.draw import notation
 from napkin.draw.notation import (
     Assign,
@@ -38,6 +37,7 @@ from napkin.draw.notation import (
     Count,
     Deriv,
     Elapsed,
+    Keys,
     Logic,
     Neg,
     Not,
@@ -50,74 +50,112 @@ from napkin.draw.notation import (
     Text,
     Time,
 )
-from napkin.model import resolved, semantic
-from napkin.model.ir import DRAWN, thaw
-from napkin.model.language.expressions import FUNCTIONS
-from napkin.model.semantic import EventRef, Problem, Ref, Terms
-from tests.acceptance.helpers import LIBRARY, fixture
-from tests.build import (
-    BASIS,
-    check,
-    compiled,
-    document,
-    entity,
-    event,
-    flow,
-    formula,
-    named,
-    option,
-    options,
-    output,
-    parameter,
-    runs,
-    status,
-    stock,
-    template,
-)
+from napkin.draw.things import Things
+from napkin.model import semantic as s
 from tests.draw.latex_subset import LatexError, read, read_line
-from tests.helpers import SCENARIO_IDS, catalogue_model
+from tests.draw.models import compiled
 
-# ---- typed nodes ----------------------------------------------------------------------------------
+# ---- the typed form of a Python text --------------------------------------------------------------
+
+NUMBER = s.Num()
+HOURS = s.Num('h', (('time', 1),))
+BINARY = {ast.Add: 'add', ast.Sub: 'sub', ast.Mult: 'mul', ast.Div: 'div', ast.Pow: 'pow'}
+COMPARE = {ast.Lt: '<', ast.LtE: '<=', ast.Gt: '>', ast.GtE: '>=', ast.Eq: '==', ast.NotEq: '!='}
+CALLS = ('min', 'max', 'clip', 'abs', 'exp', 'expm1', 'ln', 'log1p', 'sqrt', 'erf')
+REDUCTIONS = ('sum', 'count', 'any', 'all')
+# The names of a text that are yes/no values, and those that are events.
+BOOLS = frozenset('pqr')
+EVENTS = frozenset({'go', 'stop'})
 
 
-def key(ref):
-    return ref.member if ref.entity is None else f'{ref.entity}.{ref.member}'
+def read_of(name):
+    """The read of the value `name` of the member `s`."""
+    kind = s.BOOL if name in BOOLS else s.EventOf(f's.{name}') if name in EVENTS else NUMBER
+    return s.Read(('this',), (name,), kind)
 
 
-def node_of(text, entity='s'):
-    """The typed nodes of a Python text, as the front end gives them: each name a `Ref` of `entity`,
-    `true` and `false` `Word`s, and the function names and `t` as they are."""
+def node_of(text):
+    """The typed form of a Python text, as the declared model gives it: each name a value of the
+    member `s` (`read_of`; `p`, `q` and `r` are yes/no, `go` and `stop` events), `t` the time,
+    `q(x, 'unit')` a number with a unit, `since(e)` and `elapsed(x)` history, `sum`, `count`, `any`,
+    `all`, and `min` and `max` of one list `[a, b]` reductions of a literal collection, and the other
+    functions calls."""
 
-    def named(node):
-        if isinstance(node, typed.Ref):
-            if node.name == 't':
-                return node
-            if node.name in ('true', 'false'):
-                return resolved.word(node.name == 'true', None)
-            return resolved.ref(entity, node.name, node.name)
-        if isinstance(node, typed.Unary):
-            return typed.unary(node.op, named(node.operand))
-        if isinstance(node, typed.Binary):
-            return typed.binary(node.op, named(node.left), named(node.right))
-        if isinstance(node, typed.Compare):
-            return typed.compare(node.ops, map(named, node.operands))
-        if isinstance(node, typed.BoolOp):
-            return typed.boolean(node.op, map(named, node.values))
-        if isinstance(node, typed.IfElse):
-            return typed.if_else(named(node.test), named(node.body), named(node.orelse))
-        if isinstance(node, typed.Call):
-            return typed.call(node.function, map(named, node.args))
-        assert isinstance(node, typed.Const), node
-        return node
+    def of(node):
+        if isinstance(node, ast.Name):
+            if node.id == 't':
+                return s.Read(('time',), (), HOURS)
+            if node.id in ('true', 'false'):
+                return s.Const(node.id == 'true', s.BOOL)
+            return read_of(node.id)
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, bool):
+                return s.Const(node.value, s.BOOL)
+            if isinstance(node.value, str):
+                return s.Const(node.value, s.TEXT)
+            return s.Const(node.value, NUMBER)
+        if isinstance(node, ast.BinOp):
+            return s.Apply(BINARY[type(node.op)], (of(node.left), of(node.right)), NUMBER)
+        if isinstance(node, ast.UnaryOp):
+            if isinstance(node.op, ast.UAdd):
+                return of(node.operand)
+            return s.Apply('not' if isinstance(node.op, ast.Not) else 'neg', (of(node.operand),), NUMBER)
+        if isinstance(node, ast.BoolOp):
+            return s.Apply(
+                'and' if isinstance(node.op, ast.And) else 'or', tuple(map(of, node.values)), s.BOOL
+            )
+        if isinstance(node, ast.Compare):
+            items = (of(node.left), *map(of, node.comparators))
+            return s.Apply('compare', items, s.BOOL, tuple(COMPARE[type(op)] for op in node.ops))
+        if isinstance(node, ast.IfExp):
+            return s.Apply('if', (of(node.test), of(node.body), of(node.orelse)), NUMBER)
+        if isinstance(node, ast.Call):
+            name, args = node.func.id, node.args
+            if name == 'q':
+                unit = args[1].value
+                return s.Const(args[0].value, s.Num(unit, ((unit, 1),)))
+            if name in ('since', 'elapsed'):
+                return s.History(name, of(args[0]), HOURS)
+            if name in REDUCTIONS or (name in ('min', 'max') and isinstance(args[0], ast.List)):
+                items = tuple(s.Read(('named', f'm{k}'), (), s.Ent('M')) for k in range(len(args[0].elts)))
+                field = args[0].elts[0].id if args[0].elts else 'x'
+                source = s.Read(('literal', items), (field,), s.Many(NUMBER))
+                return s.Reduced(name, source, NUMBER)
+            return s.Apply('call', tuple(map(of, args)), NUMBER, name)
+        raise AssertionError(ast.dump(node))
 
-    return named(typed.parse(text, functions=FUNCTIONS))
+    return of(ast.parse(text, mode='eval').body)
+
+
+class TestKeys:
+    """The keys of a test's reads: `s.<name>` for a value of `s`, `m<k>.<field>` for a member of a
+    literal collection."""
+
+    def __call__(self, read):
+        if read.start == ('time',):
+            return Time()
+        return Sym(f's.{read.steps[-1]}')
+
+    def reduced(self, node):
+        if node.op == 'count' and isinstance(node.source.type.of, s.Occ):
+            return Count(f's.{node.source.steps[0]}')
+        field = node.source.steps[-1]
+        return Sum(node.op, tuple(Sym(f'{item.start[1]}.{field}') for item in node.source.start[1]))
+
+
+KEYS = TestKeys()
+
+
+def built(text):
+    """The node of a Python text (`node_of`)."""
+    return notation.build(node_of(text), KEYS)
 
 
 def shape(value):
     """The meaning of a node, to compare: its class and fields, without how the file writes its names
-    (`written`, `problem`), and with the type of each number."""
+    (`written`), and with the type of each number."""
     if is_dataclass(value):
-        kept = [f for f in fields(value) if f.name not in ('written', 'problem')]
+        kept = [f for f in fields(value) if f.name != 'written']
         return (type(value).__name__, *(shape(getattr(value, f.name)) for f in kept))
     if isinstance(value, tuple):
         return tuple(shape(item) for item in value)
@@ -127,8 +165,8 @@ def shape(value):
 
 
 def canonical(node):
-    """A node with the lists of `min` and `max` written as their members, as LaTeX writes them, and a
-    line `x += v` as `x = x + v`, its semantic tree."""
+    """A node with the lists of `min` and `max` written as their members, as LaTeX writes them, and an
+    assignment `x += v` as `x = x + v`."""
     if isinstance(node, Sum) and node.fn in ('min', 'max'):
         return Call(node.fn, node.terms)
     if isinstance(node, Call) and node.name in ('min', 'max'):
@@ -140,11 +178,7 @@ def canonical(node):
         return Assign(node.target, '=', Op(node.op[0], Sym(node.target), canonical(node.value)))
     if not is_dataclass(node):
         return node
-    changed = {}
-    for f in fields(node):
-        value = getattr(node, f.name)
-        changed[f.name] = _canonical(value)
-    return type(node)(**changed)
+    return type(node)(**{f.name: _canonical(getattr(node, f.name)) for f in fields(node)})
 
 
 def _canonical(value):
@@ -157,17 +191,7 @@ def _canonical(value):
 
 # ---- the two evaluators ---------------------------------------------------------------------------
 
-
-def stand_in(name, args, keywords):
-    """The value that the tests give a distribution or `delayed`: it reads each parameter by its
-    place, so a parameter in the wrong place or under the wrong name changes it."""
-    if name == 'delayed':
-        return 0.5 * args[0] + args[1]
-    given = dict(zip(DRAWN[name], args)) | dict(keywords)
-    return len(name) + sum((i + 1) * given[p] for i, p in enumerate(DRAWN[name]) if p in given)
-
-
-FUNCTIONS_OF_TESTS = {
+FUNCTIONS = {
     'min': min,
     'max': max,
     'clip': lambda x, low, high: min(max(x, low), high),
@@ -179,27 +203,25 @@ FUNCTIONS_OF_TESTS = {
     'sqrt': math.sqrt,
     'erf': math.erf,
 }
-BINARY = {
-    'add': operator.add,
-    'sub': operator.sub,
-    'mul': operator.mul,
-    'div': operator.truediv,
-    'pow': operator.pow,
-}
-ORDER = {
-    'lt': operator.lt,
-    'le': operator.le,
-    'gt': operator.gt,
-    'ge': operator.ge,
-    'eq': operator.eq,
-    'ne': operator.ne,
-}
+ARITHMETIC_OPS = {'add': operator.add, 'sub': operator.sub, 'mul': operator.mul, 'div': operator.truediv}
+ARITHMETIC_OPS['pow'] = operator.pow
+ORDER = {'<': operator.lt, '<=': operator.le, '>': operator.gt, '>=': operator.ge, '==': operator.eq}
+ORDER['!='] = operator.ne
+
+
+def stand_in(name, args, keywords):
+    """The value that the tests give a distribution, a draw, a choice and the reads of a flow or a
+    store that are calls (`notation.STEPS`): it reads each argument by its place, so an argument in the
+    wrong place or under the wrong name changes it."""
+    given = [*args, *(value for _, value in keywords)]
+    names = ''.join(key for key, _ in keywords)
+    return len(name) + len(names) + sum((i + 1) * value for i, value in enumerate(given))
 
 
 class Point:
-    """A seeded random point: a value for each name (of the type that `kinds` gives it), a positive
-    scale for each unit, the time, and for each event or outcome the time since it and its count.
-    Each value depends on the seed and the name only, so the order of the reads does not matter."""
+    """A seeded random point: a value for each key (yes/no for `BOOLS`), a positive scale for each
+    unit, the time, and for each event the time since it and its count. Each value depends on the seed
+    and the name only, so the order of the reads does not matter."""
 
     def __init__(self, seed, kinds=None):
         self.seed, self.kinds = seed, kinds or {}
@@ -208,95 +230,92 @@ class Point:
     def rng(self, *name):
         return random.Random(':'.join(map(str, (self.seed, *name))))
 
-    def value(self, name):
-        rng = self.rng('value', name)
-        kind = self.kinds.get(name, 'copy' if name.endswith('.copy') else 'number')
+    def value(self, key):
+        rng = self.rng('value', key)
+        kind = self.kinds.get(key, 'bool' if key.rpartition('.')[2] in BOOLS else 'number')
         if kind == 'bool':
             return rng.random() < 0.5
         if isinstance(kind, tuple):
             return rng.choice(kind)
         if kind == 'text':
             return rng.choice(('a', 'b'))
-        if kind == 'copy':
-            return rng.randint(1, 5)
         return rng.uniform(0.25, 4.0)
 
     def scale(self, unit):
         return self.rng('unit', unit).uniform(0.5, 2.0)
 
-    def since(self, target):
-        return self.rng('since', target).uniform(0, 5)
+    def since(self, key):
+        return self.rng('since', key).uniform(0, 5)
 
-    def count(self, target):
-        return self.rng('count', target).randint(0, 3)
+    def count(self, key):
+        return self.rng('count', key).randint(0, 3)
 
-    def elapsed(self, name):
-        return self.rng('elapsed', name).uniform(0, 5)
+    def elapsed(self, key):
+        return self.rng('elapsed', key).uniform(0, 5)
 
 
-def value_of_resolved(node, point):
-    """The value of the typed nodes of an expression of the semantic model, by Python's rules."""
+def value_of_typed(expression, point, keys):
+    """The value of an expression of the typed form, by Python's rules; `keys(read)` gives the key of
+    each read, and `keys.reduced` the members of a reduction."""
 
     def of(node):
-        if isinstance(node, resolved.Ref):
-            return point.value(key(node))
-        if isinstance(node, resolved.Word):
-            return node.value
-        if isinstance(node, resolved.Terms):
-            raise AssertionError('a list is the argument of a function')
-        if isinstance(node, typed.Const):
-            return node.value
-        if isinstance(node, typed.Ref):
-            assert node.name == 't'
-            return point.time
-        if isinstance(node, typed.Binary):
-            return BINARY[node.op](of(node.left), of(node.right))
-        if isinstance(node, typed.Unary):
-            x = of(node.operand)
-            return {'neg': operator.neg, 'pos': operator.pos, 'not': operator.not_}[node.op](x)
-        if isinstance(node, typed.BoolOp):
+        if isinstance(node, s.Const):
+            value = node.value
+            unit = getattr(node.type, 'unit', '')
+            return value * point.scale(unit) if unit and not isinstance(value, (bool, str)) else value
+        if isinstance(node, s.Read):
+            found = keys(node)
+            return point.time if isinstance(found, Time) else value_of_node(found, point)
+        if isinstance(node, s.Retain):
+            return of(node.body)
+        if isinstance(node, s.Reduced):
+            members = keys.reduced(node)
+            if isinstance(members, Count):
+                return point.count(members.event)
+            values = [point.value(term.key) for term in members.terms]
+            if node.op == 'count':
+                return sum(1 for value in values if value)
+            return {'sum': sum, 'any': any, 'all': all, 'min': min, 'max': max}[node.op](values)
+        if isinstance(node, s.History):
+            key = keys(node.source).key
+            return point.since(key) if node.op == 'since' else point.elapsed(key)
+        if isinstance(node, s.Distribution):
+            if node.family == 'categorical':
+                return stand_in('categorical', [], list(zip(node.outcomes, node.params)))
+            unit = getattr(node.type.of, 'unit', '')
+            scale = point.scale(unit) if unit else 1
+            return stand_in(node.family, [value * scale for value in node.params], [])
+        if isinstance(node, s.Drawn):
+            return stand_in('draw', [of(node.source)], [])
+        if isinstance(node, s.Chosen):
+            return stand_in('choose', [of(node.source)], [])
+        assert isinstance(node, s.Apply), node
+        op, args = node.op, node.args
+        if op in ARITHMETIC_OPS:
+            return ARITHMETIC_OPS[op](of(args[0]), of(args[1]))
+        if op == 'neg':
+            return -of(args[0])
+        if op == 'not':
+            return not of(args[0])
+        if op in ('and', 'or'):
             result = None
-            for item in node.values:
-                result = of(item)
-                if (node.op == 'and') != bool(result):
+            for arg in args:
+                result = of(arg)
+                if (op == 'and') != bool(result):
                     return result
             return result
-        if isinstance(node, typed.Compare):
-            left = of(node.operands[0])
-            for op, item in zip(node.ops, node.operands[1:]):
-                right = of(item)
-                if not ORDER[op](left, right):
+        if op == 'compare':
+            values = [of(args[0])]
+            for written, arg in zip(node.detail, args[1:]):
+                values.append(of(arg))
+                if not ORDER[written](values[-2], values[-1]):
                     return False
-                left = right
             return True
-        if isinstance(node, typed.IfElse):
-            return of(node.body) if of(node.test) else of(node.orelse)
-        if isinstance(node, resolved.Named):
-            name, given, named = node.function, node.args, node.named
-        else:
-            assert isinstance(node, typed.Call), node
-            name, given, named = node.function, node.args, ()
-        if name == 'q':
-            return given[0].value * point.scale(given[1].value)
-        if name in ('since', 'count') and isinstance(given[0], resolved.EventRef):
-            ref = given[0]
-            target = ref.key if ref.ending is None else f'{ref.key}.{ref.ending}'
-            return point.since(target) if name == 'since' else point.count(target)
-        if name == 'elapsed':
-            return point.elapsed(key(given[0]))
-        args = []
-        for arg in given:
-            listed = isinstance(arg, resolved.Terms)
-            args += [point.value(key(ref)) for ref in arg.refs] if listed else [of(arg)]
-        if name in ('sum', 'any', 'all', 'count'):
-            return {'sum': sum, 'any': any, 'all': all, 'count': lambda xs: sum(1 for x in xs if x)}[name](
-                args
-            )
-        if name in DRAWN or name == 'delayed':
-            return stand_in(name, args, [(k, of(v)) for k, v in named])
-        return FUNCTIONS_OF_TESTS[name](*args)
+        if op == 'if':
+            return of(args[1]) if of(args[0]) else of(args[2])
+        return FUNCTIONS[node.detail](*map(of, args))
 
-    return of(node)
+    return of(expression)
 
 
 def value_of_node(node, point):
@@ -328,12 +347,10 @@ def value_of_node(node, point):
                     return result
             return result
         if isinstance(node, Cmp):
-            tests = {'<': operator.lt, '<=': operator.le, '>': operator.gt, '>=': operator.ge}
-            tests |= {'==': operator.eq, '!=': operator.ne}
             values = [of(node.items[0])]
             for op, item in zip(node.ops, node.items[1:]):
                 values.append(of(item))
-                if not tests[op](values[-2], values[-1]):
+                if not ORDER[op](values[-2], values[-1]):
                     return False
             return True
         if isinstance(node, Cases):
@@ -350,13 +367,13 @@ def value_of_node(node, point):
             for arg in node.args:
                 list_of = isinstance(arg, Sum) and arg.fn == node.name
                 args += [of(term) for term in arg.terms] if list_of else [of(arg)]
-            if node.name in DRAWN or node.name == 'delayed':
-                return stand_in(node.name, args, [(k, of(v)) for k, v in node.keywords])
-            return FUNCTIONS_OF_TESTS[node.name](*args)
+            if node.name in FUNCTIONS:
+                return FUNCTIONS[node.name](*args)
+            return stand_in(node.name, args, [(k, of(v)) for k, v in node.keywords])
         if isinstance(node, Since):
-            return point.since(node.event if node.ending is None else f'{node.event}.{node.ending}')
+            return point.since(node.event)
         if isinstance(node, Count):
-            return point.count(node.event if node.ending is None else f'{node.event}.{node.ending}')
+            return point.count(node.event)
         if isinstance(node, Elapsed):
             return point.elapsed(node.key)
         if isinstance(node, Assign):
@@ -393,7 +410,7 @@ def same(a, b):
 
 def symbols(node):
     """(symbol, the values by symbol, the events by symbol) of a node: `x_{i}` for each value it
-    names and `e_{i}` for each event or outcome."""
+    names and `e_{i}` for each event."""
     values, events = {}, {}
     for part in notation.nodes(node):
         if isinstance(part, (Sym, Elapsed, Deriv)):
@@ -401,14 +418,11 @@ def symbols(node):
         elif isinstance(part, Assign):
             values.setdefault(part.target, f'x_{{{len(values) + 1}}}')
         elif isinstance(part, (Since, Count)):
-            events.setdefault((part.event, part.ending), f'e_{{{len(events) + 1}}}')
-    by_key = dict(values)
-    for (name, ending), written in events.items():
-        by_key[name if ending is None else f'{name}.{ending}'] = written
+            events.setdefault(part.event, f'e_{{{len(events) + 1}}}')
     return (
-        by_key.__getitem__,
+        {**values, **events}.__getitem__,
         {written: name for name, written in values.items()},
-        {written: pair for pair, written in events.items()},
+        {written: name for name, written in events.items()},
     )
 
 
@@ -420,246 +434,289 @@ def latex_back(node):
     return text, found
 
 
-# ---- what a model's checks share ------------------------------------------------------------------
+# ---- each construct -------------------------------------------------------------------------------
 
 
-def value_kinds(scenario):
-    """{key: 'bool', 'text', the named values (a tuple) or 'number'} of each value of a model."""
-    kinds = {}
-    for item in scenario.entities:
-        for value in item.values:
-            written = thaw(value.type)
-            if written in ('bool', 'text'):
-                kind = written
-            elif isinstance(written, list):
-                kind = tuple(written)
-            else:
-                kind = 'number'
-            kinds[f'{item.name}.{value.name}'] = kind
-    return kinds
-
-
-def lines_of(scenario):
-    """Each line of an event that sets a value (a semantic `Assign`)."""
-    for item in scenario.entities:
-        for found in item.events:
-            for result in found.outcomes:
-                for line in result.lines:
-                    if isinstance(line, semantic.Assign):
-                        yield line
-
-
-def reachable(value, seen=None):
-    """Every `Expression`, `Assign` and `Move` that the dataclasses of a semantic model hold, by a
-    search of all their fields: what `walk` must give."""
-    seen = set() if seen is None else seen
-    if id(value) in seen or isinstance(value, (str, int, float)) or value is None:
-        return
-    seen.add(id(value))
-    if isinstance(value, (semantic.Expression, semantic.Assign, semantic.Move)):
-        yield value
-        if isinstance(value, semantic.Expression):
-            return
-    if is_dataclass(value):
-        for f in fields(value):
-            yield from reachable(getattr(value, f.name), seen)
-    elif isinstance(value, Mapping):
-        for item in value.values():
-            yield from reachable(item, seen)
-    elif isinstance(value, (tuple, list)):
-        for item in value:
-            yield from reachable(item, seen)
-
-
-def check_round_trip(model):
-    """Each expression and each line of a model: its node gives its typed node back. `walk` gives every
-    expression and every line once. The number of expressions."""
-    found = list(notation.walk(model))
-    given = {id(e) for _, e in found}
-    assert len(given) == len(found)
-    nodes = {e.node for _, e in found}
-    for part in reachable(model.scenario):
-        if isinstance(part, semantic.Expression):
-            assert id(part) in given, part.where
-        else:
-            assert (part.value if isinstance(part, semantic.Assign) else part.amount) in nodes, part.where
-    for place, expression in found:
-        node = notation.build(expression)
-        if notation.literal(expression):
-            # A bare yes/no or number with no tree of its own: the word or the number as written.
-            written = thaw(expression.written)
-            assert isinstance(written, (bool, int, float)), place
-            assert same(outcome(value_of_node, node, Point(0)), ('value', written)), place
-            continue
-        assert not isinstance(expression.node, resolved.Problem), place
-        assert notation.to_node(node) is expression.node, place
-        again = notation.build(notation.to_node(node))
-        assert again == node and shape(again) == shape(node), place
-    for line in lines_of(model.scenario):
-        node = notation.assignment(line)
-        assert notation.to_node(node) is line.value, line.where
-    return len(found)
-
-
-def check_values(model, seeds=(1, 2, 3)):
-    """At each point, each expression and each line has the value of its typed nodes as a node and as the
-    LaTeX of the node, which also reads back to the node's shape."""
-    kinds = value_kinds(model.scenario)
-    points = [Point(seed, kinds) for seed in seeds]
-    items = [(place, notation.build(e), e) for place, e in notation.walk(model)]
-    items += [(line.where, notation.assignment(line), line.value) for line in lines_of(model.scenario)]
-    for place, node, item in items:
-        text, back = latex_back(node)
-        assert shape(canonical(back)) == shape(canonical(node)), (place, text)
-        for point in points:
-            if isinstance(item, semantic.Expression) and notation.literal(item):
-                expected = ('value', thaw(item.written))
-            else:
-                given = item.node if isinstance(item, semantic.Expression) else item
-                expected = outcome(value_of_resolved, given, point)
-            assert same(outcome(value_of_node, node, point), expected), (place, point.seed)
-            assert same(outcome(value_of_node, back, point), expected), (place, text, point.seed)
-
-
-# ---- synthetic models -----------------------------------------------------------------------------
-
-
-def line(text):
-    return f'{text}  {BASIS}'
-
-
-# One model that writes each construct of the expressions: every function, the lists, the clocks,
-# a chain of comparisons and of cases, the signs, the units, yes/no words and named values.
-EVERY_CONSTRUCT = document(
-    'Notation fixture',
-    template(
-        'Zone',
-        stock('level', 10, 'people', maximum=100, size=None),
-        parameter('flag', True, 'bool', True, True),
-        formula('weight', '0.5 * level / (1 people)', 'fraction'),
-    ),
-    template('Wave', formula('order', 'copy / 10', 'fraction')),
-    template('Spare', stock('stock', 1, 'people', maximum=10, size=None)),
-    entity('north', template='Zone'),
-    entity('south', template='Zone'),
-    entity('waves', template='Wave', copies=2),
-    entity(
-        's',
-        parameter('x', 2, 'h', 1, 9),
-        parameter('k', 0.3, 'fraction', 0, 1),
-        parameter('y', 'uniform(1 h, x)', 'h', 1, 9),
-        parameter('on', True, 'bool', True, True),
-        named('mode', 'idle', 'busy', 'done'),
-        stock('held', 5, 'people', maximum=1000, size=None),
-        line('let zones = [north, south]'),
-        formula('f1', 'min(k, 0.5) + max(k, 0.1) + clip(k, 0.2, 0.8) + abs(k - 0.5)', 'fraction'),
-        formula('f2', 'exp(k) + expm1(k) + ln(1 + k) + log1p(k) + sqrt(k) + erf(k / sqrt(2))', 'fraction'),
-        formula(
-            'f3',
-            'sum(zones.level) + max(zones.level) + min(zones.level, 3 people) + max(Zone.level, held)'
-            ' + sum(Spare.stock)',
-            'people',
+@pytest.mark.parametrize(
+    ('text', 'node'),
+    [
+        ('a - (b - c)', Op('-', Sym('s.a'), Op('-', Sym('s.b'), Sym('s.c')))),
+        ('-a ** 2', Neg(Op('**', Sym('s.a'), Num(2)))),
+        ('+a', Sym('s.a')),
+        ('q(2, "h") * a', Op('*', Num(2, 'h'), Sym('s.a'))),
+        ('-2.5', Neg(Num(2.5))),
+        ('a < b <= c', Cmp(('<', '<='), (Sym('s.a'), Sym('s.b'), Sym('s.c')))),
+        ('p and q and r', Logic('and', (Sym('s.p'), Sym('s.q'), Sym('s.r')))),
+        ('not p or q', Logic('or', (Not(Sym('s.p')), Sym('s.q')))),
+        (
+            'a if p else (b if q else c)',
+            Cases(((Sym('s.p'), Sym('s.a')), (Sym('s.q'), Sym('s.b'))), Sym('s.c')),
         ),
-        formula('f4', 'count(zones.flag) / 2 if any(zones.flag) and not all(zones.flag) else 0', 'fraction'),
-        formula('f5', '1 if 0 h < x <= 5 h else (0.5 if x >= 5 h or not on else 0)', 'fraction'),
-        formula('f6', '1 if mode is "busy" and on is true or mode is not "done" else 0', 'fraction'),
-        formula(
-            'f7', '(k + 1) ** 2 - -k ** 2 + (-k) ** 2 + k ** k ** 2 + k - (k - 1) + k / (k * 2)', 'fraction'
+        (
+            '(a if p else b) if q else c',
+            Cases(((Sym('s.q'), Cases(((Sym('s.p'), Sym('s.a')),), Sym('s.b'))),), Sym('s.c')),
         ),
-        formula('f8', 'x * 2 / 3 + 1.5e-3 h - +x + 2.5e-7 h * (1e20 / 1e20)', 'h'),
-        formula('f9', 'sum(waves.order) + waves.1.order + (k if on is false else 1 - k)', 'fraction'),
-        flow('drain', 'held ->', 'k * 1 people/h', condition='mode is "busy"'),
-        flow('shift', ['north.level -> south.level', 'south.level -> at 0.5 people/h * k'], 'k * 1 people/h'),
-        event('go', 't >= 1 h', 'mode = "busy"', 'held += 2 people'),
-        event(
-            'later',
-            'since(go) >= x and count(go) > 0 and since(mode) >= 1 h',
-            'held -= uniform(1 people, 2 people)',
-        ),
-        event('echo', 'count(later) > 0', 'held = delayed(held, 1 h)'),
-        line('event pick once when t >= 2 h:') + '\n    yes k:\n        mode = "done"\n    no else:',
-        event('after_pick', 'count(pick.yes) > 0 and since(pick.no) >= 0 h', 'held = 0 people'),
-        status(('failed', 'held <= 0 people', 'Empty'), ('ok', None, 'Fine')),
-        check('0 <= k <= 1', 'A share from 0 to 1'),
-    ),
-    output('total', 'max(s.held, north.level)', 'people', 'level'),
-    output('double', 'total * 2', 'people', 'level'),
-    option_groups=(
-        options(
-            'Response',
-            option('Default', 'The defaults.'),
-            option('More', 'More people.', line('s.held = 2 * 4 people')),
-        ),
-    ),
-    run_lines=runs(a=['Default'], b=['More']),
+        ('clip(a, 0, 1)', Call('clip', (Sym('s.a'), Num(0), Num(1)))),
+        ('max(a, b)', Call('max', (Sym('s.a'), Sym('s.b')))),
+        ('sum([w, w])', Sum('sum', (Sym('m0.w'), Sym('m1.w')))),
+        ('any([p])', Sum('any', (Sym('m0.p'),))),
+        ('since(go) >= q(3, "h")', Cmp(('>=',), (Since('s.go'), Num(3, 'h')))),
+        ('elapsed(a)', Elapsed('s.a')),
+        ('t >= 2', Cmp(('>=',), (Time(), Num(2)))),
+        ('true', Text(True)),
+        ('"a text"', Text('a text')),
+    ],
+)
+def test_each_construct_of_the_typed_form_is_its_node(text, node):
+    found = built(text)
+    assert shape(found) == shape(node), found
+
+
+def test_a_distribution_a_draw_and_a_choice_are_calls():
+    uniform = s.Distribution('uniform', (1, 3), s.Dist(HOURS))
+    assert notation.build(uniform, KEYS) == Call('uniform', (Num(1, 'h'), Num(3, 'h')))
+    assert notation.build(s.Drawn(uniform, HOURS), KEYS) == Call(
+        'draw', (Call('uniform', (Num(1, 'h'), Num(3, 'h'))),)
+    )
+    kinds = s.EnumOf(('FIXED', 'FAILED'))
+    categorical = s.Distribution('categorical', (0.7, 0.3), s.Dist(kinds), ('FIXED', 'FAILED'))
+    assert notation.build(categorical, KEYS) == Call(
+        'categorical', (), (('FIXED', Num(0.7)), ('FAILED', Num(0.3)))
+    )
+    choice = s.Chosen(s.Read(('named', 'boss'), (), s.Ent('boss')), categorical, kinds)
+    assert notation.build(choice, KEYS) == Call('choose', (notation.build(categorical, KEYS),))
+    assert notation.build(s.Const('OPEN', s.EnumOf(('OPEN', 'SHUT'))), KEYS) == Text('OPEN')
+
+
+def test_a_constant_is_its_number_or_its_word():
+    assert notation.constant(3) == Num(3)
+    assert shape(notation.constant(-2.5)) == shape(Neg(Num(2.5)))
+    assert notation.constant(2, s.Num('L')) == Num(2, 'L')
+    assert notation.constant(True) == Text(True)
+    assert notation.constant('OPEN') == Text('OPEN')
+    with pytest.raises(ValueError):
+        notation.constant(None)
+    with pytest.raises(ValueError):
+        notation.constant(float('inf'))
+
+
+def test_a_part_outside_the_notation_is_an_error_that_names_it():
+    with pytest.raises(ValueError, match='object'):
+        notation.build(object(), KEYS)
+    with pytest.raises(ValueError, match='modulo'):
+        notation.build(s.Apply('modulo', (s.Const(1, NUMBER), s.Const(2, NUMBER)), NUMBER), KEYS)
+
+
+def test_an_assignment_is_its_target_its_operator_and_its_value():
+    target = read_of('a')
+    for op in ('=', '+=', '-='):
+        line = s.DeclaredAssign('s.e.step[0].do[0]', target, op, node_of('b * 2'))
+        assert notation.assignment(line, KEYS) == Assign('s.a', op, Op('*', Sym('s.b'), Num(2)))
+    # The setting of a flow is no value of the notation.
+    setting = s.DeclaredAssign('x', s.Read(('this',), ('pipe', 'request'), NUMBER), '=', node_of('b'))
+
+    class FlowKeys(TestKeys):
+        def __call__(self, read):
+            return (
+                Call('request', (Sym('s.pipe'),)) if read.steps[-1] == 'request' else super().__call__(read)
+            )
+
+    with pytest.raises(ValueError):
+        notation.assignment(setting, FlowKeys())
+
+
+# ---- the keys of a model -------------------------------------------------------------------------
+
+# A model whose reads take every way of `notation.Keys`: a link, a route's leg, an endpoint, a flow's
+# request, a parameter, the occurrences of an event, the time since it, a solver's result, a keyed
+# collection and a reduction over a template's members.
+KEYED = """\
+Place:
+    input need: L = 1 L in [0 L,]
+    big = formula(this.need >= 2 L)
+
+a: Place
+    need = 1 L
+
+b: Place
+    need = 3 L
+
+Pump:
+    home: Place
+    home_need = formula(this.home.need)
+
+pump: Pump
+    home = b
+
+west:
+    water: L = 10 L in [0 L, 20 L]
+        outflow.capacity = 4 L/h
+
+east:
+    water: L = 10 L in [0 L, 20 L]
+
+channel:
+    flow link: west.water <-> east.water
+        request = -3 L/h
+    backward = formula(this.link.backward.actual_rate)
+    wanted = formula(this.link.request)
+    limit = formula(west.water.outflow.capacity)
+
+grinder:
+    beans: g = 8
+    refill = event(amount: g):
+        after 0.5 h:
+            this.beans += amount
+    last = formula(since(this.refill))
+    refills = formula(count(this.refill.occurrences))
+
+clinic:
+    hours: h = 100 h
+    staffing = solver:
+        inputs:
+            available = this.hours
+        solve_for:
+            care: h in [0 h, available]
+        constraints:
+            care <= available
+        objective:
+            maximize(care)
+    care = formula(this.staffing.care)
+
+total = sum(Place.instances.need)
+largest = Place.instances.by(need).at(3 L).big
+
+grinder.refill.start(50 g)
+"""
+
+
+@pytest.fixture(scope='module')
+def keyed():
+    return Things(compiled(KEYED))
+
+
+@pytest.mark.parametrize(
+    ('path', 'member', 'node'),
+    [
+        ('Pump.home_need', 'pump', Sym('b.need')),
+        ('channel.backward', 'channel', Sym('channel.link.backward')),
+        ('channel.wanted', 'channel', Call('request', (Sym('channel.link'),))),
+        ('channel.limit', 'channel', Call('capacity', (Call('outflow', (Sym('west.water'),)),))),
+        ('grinder.last', 'grinder', Since('grinder.refill')),
+        ('grinder.refills', 'grinder', Count('grinder.refill')),
+        ('clinic.care', 'clinic', Sym('clinic.staffing.care')),
+        ('Place.big', 'a', Cmp(('>=',), (Sym('a.need'), Num(2, 'L')))),
+        ('total', None, Sum('sum', (Sym('a.need'), Sym('b.need')))),
+    ],
+)
+def test_the_reads_of_a_member_are_the_keys_of_the_picture(keyed, path, member, node):
+    value = keyed.declared.part(path)
+    assert notation.build(value.init, Keys(keyed, member)) == node
+
+
+def test_a_parameter_is_a_key_of_its_event_and_a_keyed_read_is_its_words(keyed):
+    (stage,) = keyed.declared.part('grinder.refill').steps
+    (line,) = stage.body
+    assert notation.assignment(line, Keys(keyed, 'grinder')) == Assign(
+        'grinder.beans', '+=', Sym('grinder.refill.amount')
+    )
+    # Which member `.at(3 L)` reads only a run knows: the words of the read.
+    found = notation.build(keyed.declared.part('largest').init, Keys(keyed, None))
+    assert isinstance(found, Text) and 'big' in found.word and 'need' in found.word
+
+
+# ---- every construct of the language --------------------------------------------------------------
+
+EVERY_CONSTRUCT = (
+    KEYED
+    + """\
+lab:
+    input rate: L/h = 2 L/h in [0 L/h, 10 L/h]
+    input repair: h = uniform(1 h, 3 h).draw() in [0 h,]
+    input spread = uniform(1 h, 5 h)
+    on: bool = true
+    mode: enum[CALM, BUSY] = CALM
+    level: L = 0 L in [0 L, 100 L]
+    flow fill: SOURCE -> this.level
+        request = this.rate
+    low = formula(this.level < 5 L and this.on or not this.on)
+    chain = formula(1 L < this.level <= 50 L)
+    pick = formula(this.rate if this.on else (2 * this.rate if this.level > 1 L else this.rate / 2))
+    shaped = formula(clip(this.level, 1 L, 6 L) + max(this.level - 5 L, 0 L) + abs(-this.level))
+    grown = formula(exp(ln(2)) * sqrt(16) - (this.level / (1 L)) ** 2)
+    calm = formula(elapsed(this.mode))
+    every = formula(all(Place.instances.big) or any(Place.instances.big))
+    many = formula(count(Place.instances.big) + min(Place.instances.need) / max(Place.instances.need))
+    clock = formula(t >= 2 h)
+    mean = this.spread.mean
+    check = event():
+        after 1 h:
+            switch categorical(FIXED: 0.7, FAILED: 0.3).draw():
+                FIXED:
+                    this.mode = BUSY
+                FAILED:
+                    this.level -= 1 L
+"""
 )
 
 
 @pytest.fixture(scope='module')
-def synthetic():
-    """The synthetic models: the one above, and F5 of the acceptance tests, which writes each
-    construct of the language once."""
-    return {'every construct': compiled(EVERY_CONSTRUCT), 'F5': compiled(fixture('F5'), LIBRARY)}
+def every():
+    return Things(compiled(EVERY_CONSTRUCT))
 
 
-def test_the_synthetic_models_write_every_node_and_function(synthetic):
-    built = [notation.build(e) for model in synthetic.values() for _, e in notation.walk(model)]
-    parts = [part for node in built for part in notation.nodes(node)]
-    kinds = {type(part) for part in parts}
-    assert kinds == set(notation.NODES.values()) - {Deriv, Assign}
-    called = {part.name for part in parts if isinstance(part, Call)}
-    assert called >= set(notation.ARITY) | {'uniform'}
-    assert {part.fn for part in parts if isinstance(part, Sum)} == set(notation.LISTS)
-    assert any(isinstance(part, Cmp) and len(part.ops) > 1 for part in parts)
-    assert any(isinstance(part, Cases) and len(part.pairs) > 1 for part in parts)
-    assert any(isinstance(part, (Since, Count)) and part.ending is not None for part in parts)
-    assert {part.word for part in parts if isinstance(part, Text)} >= {True, False}
-    assert any(isinstance(part, Num) and part.unit is not None for part in parts)
-    assert any(isinstance(part, Num) and 'e' in repr(part.value) for part in parts)
-    assert any(isinstance(part, Sym) and part.key.endswith('.copy') for part in parts)
-    assert any(isinstance(part, Sym) and '.' not in part.key for part in parts)
-    assert any(isinstance(part, Sum) and not part.terms for part in parts)
-    assert any(isinstance(part, Call) and any(isinstance(arg, Sum) for arg in part.args) for part in parts)
-    # Each kind of place that `walk` gives, except the own rate of a value, which the front end never
-    # sets (`Value.rate` is None: a flow gives the rate).
-    places = {place.part for model in synthetic.values() for place, _ in notation.walk(model)}
-    assert places >= {'start', 'formula', 'minimum', 'maximum', 'size', 'argument', 'output', 'lag'}
-    assert places >= {'option', 'status', 'check', 'total', 'within', 'flow', 'while', 'pair', 'limit'}
-    assert places >= {'when', 'after', 'each', 'keep', 'chance', 'available', 'set', 'move', 'timescale'}
-    assert any(notation.literal(e) for model in synthetic.values() for _, e in notation.walk(model))
+def kinds_of(found):
+    """{key: 'bool', 'text', the members of an enum or 'number'} of each value of each member."""
+    out = {}
+    for member, template in found.template_of.items():
+        for part in found.entities[template].parts:
+            if isinstance(part, s.DeclaredValue):
+                kind = part.type
+                written = 'bool' if kind == s.BOOL else 'text' if kind == s.TEXT else 'number'
+                out[f'{member}.{part.name}'] = tuple(kind.members) if isinstance(kind, s.EnumOf) else written
+    return out
 
 
-def test_each_expression_of_a_synthetic_model_is_its_node(synthetic):
-    for model in synthetic.values():
-        assert check_round_trip(model) > 0
+def test_every_expression_of_a_model_builds_and_the_model_writes_every_node(every):
+    found, parts = set(), set()
+    for place, expression in notation.walk(every):
+        node = notation.build(expression, notation.keys_of(every, place))
+        found |= {type(part) for part in notation.nodes(node)}
+        parts.add(place.part)
+    # The text writes an expression in each of these places.
+    assert parts == {
+        'init',
+        'lower',
+        'upper',
+        'capacity',
+        'request',
+        'delay',
+        'value',
+        'selector',
+        'input',
+        'own',
+        'argument',
+    }
+    # Every node but those that only the panel makes: a derivative, an assignment and a sign.
+    assert found >= set(notation.NODES.values()) - {Deriv, Assign, Pos}
 
 
-def test_each_expression_of_a_synthetic_model_keeps_its_value_and_its_latex_too(synthetic):
-    for model in synthetic.values():
-        check_values(model, seeds=range(1, 9))
-
-
-@pytest.mark.parametrize('scenario_id', SCENARIO_IDS)
-@pytest.mark.scenario_contract
-def test_each_expression_of_a_catalogue_model_is_its_node(scenario_id):
-    assert check_round_trip(catalogue_model(scenario_id)) > 0
-
-
-@pytest.mark.parametrize('scenario_id', SCENARIO_IDS)
-@pytest.mark.scenario_contract
-def test_each_expression_of_a_catalogue_model_keeps_its_value_and_its_latex_too(scenario_id):
-    check_values(catalogue_model(scenario_id), seeds=(1, 2))
-
-
-def test_the_notation_knows_each_function_of_the_language():
-    # The clocks, the lists and `q` have their own nodes; each other function is a `Call`.
-    own = {'q', 'since', 'count', 'elapsed', 'sum', 'any', 'all'}
-    assert set(FUNCTIONS) == set(notation.ARITY) | set(DRAWN) | own
+def test_each_expression_of_a_model_keeps_its_value_and_its_latex_too(every):
+    kinds = kinds_of(every)
+    points = [Point(seed, kinds) for seed in (1, 2, 3)]
+    for place, expression in notation.walk(every):
+        keys = notation.keys_of(every, place)
+        node = notation.build(expression, keys)
+        text, back = latex_back(node)
+        assert shape(canonical(back)) == shape(canonical(node)), (place, text)
+        for point in points:
+            expected = outcome(value_of_typed, expression, point, keys)
+            assert same(outcome(value_of_node, node, point), expected), (place, point.seed)
+            assert same(outcome(value_of_node, back, point), expected), (place, text, point.seed)
 
 
 # ---- the LaTeX of the precedences -----------------------------------------------------------------
 
-NUMBERS = {name: 'number' for name in 'abcd'} | {name: 'bool' for name in 'pqr'}
 # Pairs of texts with the same operands and operators in another grouping. A writer that leaves out the
 # parentheses of the first writes the second.
 GROUPINGS = [
@@ -686,15 +743,15 @@ GROUPINGS = [
 
 @pytest.mark.parametrize(('first', 'second'), GROUPINGS)
 def test_the_latex_keeps_the_grouping_that_the_tree_has(first, second):
-    nodes = [notation.build(node_of(text)) for text in (first, second)]
     texts = []
-    for text, node in zip((first, second), nodes):
+    for text in (first, second):
+        node = built(text)
         written, back = latex_back(node)
         texts.append(written)
         assert shape(back) == shape(node), (text, written)
         for seed in range(6):
-            point = Point(seed, {f's.{n}': kind for n, kind in NUMBERS.items()})
-            expected = outcome(value_of_resolved, node_of(text), point)
+            point = Point(seed)
+            expected = outcome(value_of_typed, node_of(text), point, KEYS)
             assert same(outcome(value_of_node, back, point), expected), (text, written)
     assert texts[0] != texts[1]
 
@@ -720,7 +777,7 @@ def test_the_latex_keeps_the_grouping_that_the_tree_has(first, second):
 )
 def test_the_latex_has_the_fewest_parentheses(text, parentheses):
     # A fraction and the braces of a power need no parentheses; each other grouping keeps one pair.
-    written, _ = latex_back(notation.build(node_of(text)))
+    written, _ = latex_back(built(text))
     assert written.count(r'\left(') == parentheses, written
 
 
@@ -731,12 +788,12 @@ def test_the_latex_has_the_fewest_parentheses(text, parentheses):
 def test_the_latex_has_parentheses_that_python_does_not_need(text, parentheses):
     # For the reader: a sign after an operator or a sign, the operand of `not` that is not an atom, and
     # an `and` inside an `or`.
-    written, _ = latex_back(notation.build(node_of(text)))
+    written, _ = latex_back(built(text))
     assert written.count(r'\left(') == parentheses, written
 
 
 def test_a_division_in_an_exponent_is_a_slash_and_elsewhere_a_fraction():
-    written, _ = latex_back(notation.build(node_of('a / b + 2 ** (a / b)')))
+    written, _ = latex_back(built('a / b + 2 ** (a / b)'))
     assert written.count(r'\frac') == 1
     assert written.count(' / ') == 1
     assert written.index(r'\frac') < written.index('^')
@@ -765,19 +822,30 @@ NUMBERS_OF_NODES = st.one_of(
     st.floats(min_value=0, allow_nan=False, allow_infinity=False).map(abs),
     st.sampled_from([0.5, 1.0, 1e-05, 2.5e-300, 1e16, 1.5e20]),
 )
-KEYS = st.sampled_from(['s.a', 's.b', 'waves.1.c', 'total', 'Zone_1.d'])
-EVENTS = st.tuples(st.sampled_from(['s.go', 'waves.2.find']), st.sampled_from([None, 'done', 'shut']))
+KEYS_OF_NODES = st.sampled_from(['s.a', 's.b', 'places.a.c', 'total', 'grinder.refill.amount'])
+EVENTS_OF_NODES = st.sampled_from(['s.go', 'places.b.find'])
 LEAVES = st.one_of(
-    KEYS.map(Sym),
+    KEYS_OF_NODES.map(Sym),
     st.builds(Num, NUMBERS_OF_NODES, st.one_of(st.none(), st.sampled_from(UNITS))),
     WORDS.map(Text),
     st.booleans().map(Text),
     st.just(Time()),
-    EVENTS.map(lambda pair: Since(*pair)),
-    EVENTS.map(lambda pair: Count(*pair)),
-    KEYS.map(Elapsed),
-    st.builds(Sum, st.sampled_from(notation.LISTS), st.lists(KEYS.map(Sym), max_size=3).map(tuple)),
+    EVENTS_OF_NODES.map(Since),
+    EVENTS_OF_NODES.map(Count),
+    KEYS_OF_NODES.map(Elapsed),
+    st.builds(Sum, st.sampled_from(notation.LISTS), st.lists(KEYS_OF_NODES.map(Sym), max_size=3).map(tuple)),
 )
+# The functions of a `Call` with the number of their arguments.
+ARITY = {
+    'clip': 3,
+    'abs': 1,
+    'exp': 1,
+    'expm1': 1,
+    'ln': 1,
+    'log1p': 1,
+    'erf': 1,
+    **dict.fromkeys(notation.STEPS, 1),
+}
 
 
 def _extend(children):
@@ -787,8 +855,7 @@ def _extend(children):
     calls = st.one_of(
         *(
             st.builds(Call, st.just(name), st.lists(children, min_size=n, max_size=n).map(tuple))
-            for name, n in notation.ARITY.items()
-            if n is not None
+            for name, n in ARITY.items()
         ),
         st.builds(
             Call,
@@ -800,7 +867,7 @@ def _extend(children):
         st.builds(
             lambda args, keywords: Call('normal', args, keywords),
             st.lists(children, max_size=2).map(tuple),
-            st.just((('max', Num(3)),)) | st.just(()),
+            st.just((('FIXED', Num(3)),)) | st.just(()),
         ),
     )
     return st.one_of(
@@ -825,26 +892,9 @@ def _extend(children):
 NODES = st.recursive(LEAVES, _extend, max_leaves=12)
 
 
-def _as_built(node):
-    """Whether a node is the one that `build` makes of its tree: a `min` or `max` of one list alone is
-    a `Sum`, and the last value of `Cases` is never a `Cases`."""
-    for part in notation.nodes(node):
-        if isinstance(part, Cases) and isinstance(part.otherwise, Cases):
-            return False
-        lone = isinstance(part, Call) and part.name in ('min', 'max') and len(part.args) == 1
-        if lone and isinstance(part.args[0], Sum) and part.args[0].fn == part.name:
-            return False
-    return True
-
-
 @settings(max_examples=300, derandomize=True, deadline=None)
 @given(NODES)
-def test_a_random_node_is_its_tree_and_its_latex(node):
-    assert _as_built(node)
-    made = notation.to_node(node)
-    again = notation.build(made)
-    assert shape(again) == shape(node)
-    assert notation.to_node(again) is made
+def test_a_random_node_reads_back_from_its_latex_and_its_json(node):
     written, back = latex_back(node)
     assert shape(canonical(back)) == shape(canonical(node)), written
     data = json.loads(notation.to_json(node))
@@ -852,111 +902,40 @@ def test_a_random_node_is_its_tree_and_its_latex(node):
     assert notation.from_dict(data) == node
 
 
-ARITHMETIC = st.recursive(
-    st.one_of(
-        st.sampled_from(['s.a', 's.b', 's.c']).map(Sym),
-        # Floats only: a power of floats that is too large fails at once, a power of whole numbers
-        # does not.
-        st.builds(Num, st.sampled_from([0.0, 1.0, 2.0, 0.5, 3.25, 1e-3]), st.one_of(st.none(), st.just('h'))),
-    ),
+# Random expressions of the typed form: arithmetic, comparisons, groups and conditionals of the
+# values of `s`, and calls.
+TYPED_TEXTS = st.recursive(
+    st.one_of(st.sampled_from(['a', 'b', 'c', 't', '2', '0.5', 'q(3, "h")', 'since(go)', 'elapsed(b)'])),
     lambda children: st.one_of(
-        st.builds(Op, st.sampled_from(sorted(notation.OPERATORS)), children, children),
-        children.map(Neg),
-        children.map(Pos),
-        st.builds(lambda xs: Call('max', xs), st.lists(children, min_size=2, max_size=3).map(tuple)),
-        st.builds(lambda x: Call('exp', (x,)), children),
+        st.builds(
+            lambda a, op, b: f'({a} {op} {b})',
+            children,
+            st.sampled_from(['+', '-', '*', '/', '**']),
+            children,
+        ),
+        children.map(lambda a: f'(-{a})'),
+        st.builds(lambda a, b: f'max({a}, {b})', children, children),
+        st.builds(lambda a, b, c: f'({a} if {b} < {c} else {c})', children, children, children),
+        children.map(lambda a: f'exp({a})'),
     ),
     max_leaves=10,
 )
 
 
 @settings(max_examples=300, derandomize=True, deadline=None)
-@given(ARITHMETIC)
-def test_a_random_sum_or_product_has_the_value_of_its_tree_and_of_its_latex(node):
-    made = notation.to_node(node)
+@given(TYPED_TEXTS)
+def test_a_random_expression_has_the_value_of_its_node_and_of_its_latex(text):
+    expression = node_of(text)
+    node = notation.build(expression, KEYS)
     _, back = latex_back(node)
     for seed in range(3):
         point = Point(seed)
-        expected = outcome(value_of_resolved, made, point)
-        assert same(outcome(value_of_node, node, point), expected)
-        assert same(outcome(value_of_node, back, point), expected)
+        expected = outcome(value_of_typed, expression, point, KEYS)
+        assert same(outcome(value_of_node, node, point), expected), text
+        assert same(outcome(value_of_node, back, point), expected), text
 
 
-# ---- nodes outside the notation -------------------------------------------------------------------
-
-A = Ref(entity='s', member='a', written='a')
-
-
-@pytest.mark.parametrize(
-    ('tree', 'named'),
-    [
-        (ast.BinOp(left=A, op=ast.Mod(), right=ast.Constant(2)), 'Mod'),
-        (ast.BinOp(left=A, op=ast.FloorDiv(), right=ast.Constant(2)), 'FloorDiv'),
-        (ast.UnaryOp(op=ast.Invert(), operand=A), 'Invert'),
-        (ast.Attribute(value=ast.Name(id='a', ctx=ast.Load()), attr='b', ctx=ast.Load()), 'Attribute'),
-        (ast.Subscript(value=A, slice=ast.Constant(0), ctx=ast.Load()), 'Subscript'),
-        (ast.Compare(left=A, ops=[ast.In()], comparators=[A]), 'Compare'),
-        (ast.Name(id='x', ctx=ast.Load()), 'Name'),
-        (ast.Constant(True), 'True'),
-        (ast.Constant(None), 'None'),
-        (ast.Constant(-1), '-1'),
-        (ast.Call(func=ast.Name(id='tan', ctx=ast.Load()), args=[A], keywords=[]), 'tan'),
-        (ast.Call(func=ast.Name(id='sqrt', ctx=ast.Load()), args=[A, A], keywords=[]), 'sqrt'),
-        (ast.Call(func=ast.Name(id='clip', ctx=ast.Load()), args=[A], keywords=[]), 'clip'),
-        (ast.Call(func=ast.Name(id='max', ctx=ast.Load()), args=[], keywords=[]), 'max'),
-        (ast.Call(func=ast.Name(id='q', ctx=ast.Load()), args=[A, ast.Constant('h')], keywords=[]), 'q'),
-        (
-            ast.Call(
-                func=ast.Name(id='min', ctx=ast.Load()), args=[A], keywords=[ast.keyword(arg='x', value=A)]
-            ),
-            'min',
-        ),
-        (
-            ast.Call(
-                func=ast.Name(id='uniform', ctx=ast.Load()),
-                args=[A, A],
-                keywords=[ast.keyword(arg='min', value=A)],
-            ),
-            'uniform',
-        ),
-        (ast.Call(func=ast.Name(id='since', ctx=ast.Load()), args=[A], keywords=[]), 'since'),
-        (ast.Call(func=ast.Name(id='sum', ctx=ast.Load()), args=[A], keywords=[]), 'sum'),
-        (Terms(refs=[A]), 'Terms'),
-        (EventRef(kind='trigger', key='s.e', ending=None, written='e'), 'EventRef'),
-        (
-            ast.Call(
-                func=ast.Name(id='count', ctx=ast.Load()),
-                args=[EventRef(kind='other', key='s.e', ending=None, written='e')],
-                keywords=[],
-            ),
-            'other',
-        ),
-        (Problem(message='no such name'), 'no such name'),
-        (ast.BinOp(left=A, op=ast.Add(), right=Problem(message='inner')), 'inner'),
-    ],
-)
-def test_a_part_outside_the_notation_is_an_error_that_names_it(tree, named):
-    with pytest.raises(ValueError) as raised:
-        notation.build(resolved.of_tree(tree))
-    assert named in str(raised.value)
-
-
-def test_an_expression_with_a_problem_is_an_error():
-    with pytest.raises(ValueError):
-        notation.build(semantic.Expression('x +', resolved.problem('invalid expression'), ('s', 'f')))
-
-
-def test_a_bare_number_or_yes_no_is_a_node():
-    assert notation.build(semantic.Expression(3, None, ())) == Num(3)
-    assert shape(notation.build(semantic.Expression(-2.5, None, ()))) == shape(Neg(Num(2.5)))
-    assert notation.build(semantic.Expression(True, None, ())) == Text(True)
-    with pytest.raises(ValueError):
-        notation.build(semantic.Expression('text', None, ()))
-
-
-def test_a_derivative_has_no_tree_and_its_latex_reads_back():
-    with pytest.raises(ValueError):
-        notation.to_node(Deriv('s.held'))
+def test_a_derivative_has_no_expression_and_its_latex_reads_back():
     node = Op('-', Deriv('s.held'), Sym('s.k'))
     written, back = latex_back(node)
     assert shape(back) == shape(node), written

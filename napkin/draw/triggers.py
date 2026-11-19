@@ -433,9 +433,9 @@ class namer:
             base = 'time' if read.start == ('time',) else words(name)
             return ('own', read.start, read.steps), base, None
         if found.what == 'member':
+            # A member reads as the file writes it: its id.
             owner = found.members[0] if len(found.members) == 1 else None
-            base = words(self.found.title_of(owner)) if owner is not None else 'members'
-            return ('member', found.members), base, owner
+            return ('member', found.members), owner if owner is not None else 'members', owner
         base = words(found.name)
         steps = [step for step in found.steps if step not in ('actual_rate', 'occurrences')]
         if found.what == 'solver' and steps:
@@ -554,11 +554,12 @@ def _statement_expressions(statement):
         return [statement.test]
     if isinstance(statement, s.DeclaredSwitch):
         selector = statement.selector
-        found = (
-            []
-            if isinstance(selector, s.Drawn) and isinstance(selector.source, s.Distribution)
-            else [selector]
-        )
+        if isinstance(selector, s.Drawn) and isinstance(selector.source, s.Distribution):
+            found = []
+        elif isinstance(selector, s.Chosen):
+            found = [selector.actor]  # the line names who chooses, and the cases
+        else:
+            found = [selector]
         return found + [case.guard for case in statement.cases if case.guard is not None]
     return []
 
@@ -579,14 +580,14 @@ class _Lines:
                             item for item in s.statements_of(step.body) if isinstance(item, s.DeclaredStart)
                         ]
                 for start in starts:
-                    target = start.event.type.event
+                    target = event_of(start.event)
                     if target == event.path:
                         continue  # a trigger starts its own event: the trigger says when
                     item = (card.id, event)
                     if item not in self.callers.setdefault(target, []):
                         self.callers[target].append(item)
         for start in found.declared.setup:
-            self.setup.add(start.event.type.event)
+            self.setup.add(event_of(start.event))
 
     def event_words(self, card, event, own):
         """An event in words: its name, after its card's title when it is of another card."""
@@ -708,7 +709,7 @@ class _Lines:
         """The event that a statement starts: "<card>: <event>", or the event of its own card; on
         each member of a collection, "<event> of <collection>"."""
         found = self.found.reached(statement.event, self.found.cards[card].members)
-        event = statement.event.type.event.rpartition('.')[2]
+        event = event_of(statement.event).rpartition('.')[2]
         if found is None or found.what != 'event' or not found.members:
             return words(event)
         cards = list(dict.fromkeys(self.found.card_of.get(m) for m in found.members))
@@ -718,6 +719,13 @@ class _Lines:
             return words(event)
         other = self.found.cards.get(cards[0])
         return f'{other.title}: {words(event)}' if other is not None else words(event)
+
+
+def event_of(read):
+    """The declared path of the event that a start reads: of one event, or of the event of each
+    member of a collection."""
+    kind = read.type
+    return kind.of.event if isinstance(kind, s.Many) else kind.event
 
 
 def _starts_with_time(node):
@@ -743,9 +751,15 @@ def _options(found, event):
         return ''
     if not held:
         return 'in no run'
-    chosen = {run: set(found.declared.run(run).options) if run is not None else set() for run in runs}
+    # An option that sets nothing switches nothing: the options of a run that set an input.
+    setting = {option.name for option in found.declared.options if option.settings}
+    chosen = {
+        run: set(found.declared.run(run).options) & setting if run is not None else set() for run in runs
+    }
     lacking = [run for run in runs if run not in held]
-    options = list(dict.fromkeys(option for run in runs for option in sorted(chosen[run])))
+    options = [
+        option.name for option in found.declared.options if any(option.name in chosen[run] for run in runs)
+    ]
     for option in options:
         if all(option in chosen[r] for r in held) and not any(option in chosen[r] for r in lacking):
             return f'only with {option}'
@@ -780,8 +794,3 @@ def card_lines(found, card):
     """The `Line` of each event of one card (`card_events`), in written order."""
     lines = _Lines(found)
     return tuple(lines.line(card, event) for event in card_events(found, card))
-
-
-def event_line(found, card, event):
-    """The `Line` of one event of a card."""
-    return _Lines(found).line(card, event)

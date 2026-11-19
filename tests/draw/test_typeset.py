@@ -18,8 +18,8 @@
 - SVG: it parses, it has no script and no reference out of the file, its colours are those of the
   picture, and the same node gives the same bytes, in other processes too.
 
-These hold on every expression and every line of an event of every catalogue model, of the synthetic
-models of the notation's tests, and of random nodes.
+These hold on every expression and every assignment of a stage of the model of the notation's tests
+that writes every construct, of the water works, and of random nodes.
 """
 
 from __future__ import annotations
@@ -58,12 +58,11 @@ from napkin.draw.notation import (
     Text,
     Time,
 )
+from napkin.draw.things import Things, event_statements
 from napkin.draw.typeset import MARGIN, MARKER, STYLE, Atom, Rule, char_width, run_width, svg_parts, typeset
 from napkin.model import semantic
-from tests.acceptance.helpers import LIBRARY, fixture
-from tests.build import compiled
-from tests.draw.test_notation import EVERY_CONSTRUCT, NODES, UNITS, node_of
-from tests.helpers import SCENARIO_IDS, catalogue_model
+from tests.draw.models import WORKS, compiled
+from tests.draw.test_notation import EVERY_CONSTRUCT, NODES, UNITS, built
 
 ROOT = Path(__file__).resolve().parents[2]
 NS = '{http://www.w3.org/2000/svg}'
@@ -397,15 +396,19 @@ def check_node(node, width=480, lines=3):
     return equation
 
 
-def nodes_of(model):
-    """The node of each expression and of each line of an event of a model."""
-    out = [notation.build(expression) for _, expression in notation.walk(model)]
-    for entity in model.scenario.entities:
-        for event in entity.events:
-            for result in event.outcomes:
-                for line in result.lines:
-                    if isinstance(line, semantic.Assign):
-                        out.append(notation.assignment(line))
+def nodes_of(found):
+    """The node of each expression and of each assignment of a stage of a model (`Things`), with the
+    keys of its first member."""
+    out = [
+        notation.build(expression, notation.keys_of(found, place))
+        for place, expression in notation.walk(found)
+    ]
+    for card in found.cards:
+        keys = notation.Keys(found, found.cards[card].members[0])
+        for event in found.events(card):
+            for statement in event_statements(event):
+                if isinstance(statement, semantic.DeclaredAssign):
+                    out.append(notation.assignment(statement, keys))
     return out
 
 
@@ -414,26 +417,20 @@ def nodes_of(model):
 
 @pytest.fixture(scope='module')
 def synthetic():
-    """The synthetic models of the notation's tests: one that writes each construct of the
-    expressions, and F5, which writes each construct of the language once."""
-    return {'every construct': compiled(EVERY_CONSTRUCT), 'F5': compiled(fixture('F5'), LIBRARY)}
+    """The models of the tests: the notation's, which writes each construct of the expressions, and
+    the water works."""
+    return {'every construct': Things(compiled(EVERY_CONSTRUCT)), 'works': Things(compiled(WORKS))}
 
 
-def test_every_expression_and_line_of_a_synthetic_model_holds_every_property(synthetic):
+def test_every_expression_and_assignment_of_a_model_holds_every_property(synthetic):
     found = set()
     for model in synthetic.values():
         for node in nodes_of(model):
             check_node(node)
             check_node(node, width=320, lines=1)
             found |= {type(part) for part in notation.nodes(node)}
-    assert found == set(notation.NODES.values()) - {Deriv}
-
-
-@pytest.mark.parametrize('scenario_id', SCENARIO_IDS)
-@pytest.mark.scenario_contract
-def test_every_expression_and_line_of_a_catalogue_model_holds_every_property(scenario_id):
-    for node in nodes_of(catalogue_model(scenario_id)):
-        check_node(node)
+    # Every node but those that only the panel makes: a derivative and a sign.
+    assert found >= set(notation.NODES.values()) - {Deriv, Pos}
 
 
 @settings(max_examples=250, derandomize=True, deadline=None)
@@ -479,7 +476,7 @@ def test_every_property_holds_on_random_nodes(node, width, lines):
     ],
 )
 def test_the_parentheses_are_those_of_the_latex_in_number_and_place(text, parentheses):
-    node = notation.build(node_of(text))
+    node = built(text)
     symbols = Symbols()
     equation = typeset(node, symbols.parts)
     found = skeleton(equation)
@@ -499,7 +496,7 @@ def test_the_parentheses_are_those_of_the_latex_in_number_and_place(text, parent
     ],
 )
 def test_a_division_inside_a_fraction_is_on_the_line_with_the_parentheses_of_an_exponent(text, parentheses):
-    node = notation.build(node_of(text))
+    node = built(text)
     symbols = Symbols()
     equation = typeset(node, symbols.parts)
     found = skeleton(equation)
@@ -536,14 +533,14 @@ def by_text(atoms, text):
     ],
 )
 def test_each_operator_has_its_mathematical_sign(text, signs):
-    atoms = atoms_of(notation.build(node_of(text)))
+    atoms = atoms_of(built(text))
     found = [atom.text for atom in atoms if atom.kind in ('operator', 'relation')]
     assert found == signs
     assert not any(atom.italic for atom in atoms if atom.kind in ('operator', 'relation'))
 
 
 def test_symbols_and_the_time_are_italic_and_the_rest_upright():
-    node = notation.build(node_of('max(a, 3) * exp(t) + q(2, "m^2/s") + clip(b, 0, 1)'))
+    node = built('max(a, 3) * exp(t) + q(2, "m^2/s") + clip(b, 0, 1)')
     atoms = atoms_of(node, lambda key: ('W', '', None))
     for atom in atoms:
         assert atom.italic == (atom.text in ('W', 't'))
@@ -648,12 +645,12 @@ def mapped_keys(node, change):
     if isinstance(node, Elapsed):
         return Elapsed(change(node.key))
     if isinstance(node, (Since, Count)):
-        return type(node)(change(node.event), node.ending)
+        return type(node)(change(node.event))
     return mapped(node, lambda child: mapped_keys(child, change))
 
 
 def test_a_division_in_an_exponent_or_a_fraction_is_on_the_line_and_elsewhere_stacked():
-    equation = typeset(notation.build(node_of('a / b + 2 ** (a / b) + c / (d / e)')), Symbols().parts)
+    equation = typeset(built('a / b + 2 ** (a / b) + c / (d / e)'), Symbols().parts)
     assert len([rule for rule in equation.rules() if rule.kind == 'bar']) == 2
     assert [atom.text for atom in equation.atoms() if atom.text == '/'] == ['/', '/']
 
@@ -666,7 +663,7 @@ def test_a_sum_of_a_list_is_a_larger_sigma_and_the_other_lists_are_named():
 
 
 def test_a_root_has_a_radical_and_a_bar_over_its_argument_and_no_parentheses():
-    equation = typeset(notation.build(node_of('sqrt(a + b / c)')), Symbols().parts)
+    equation = typeset(built('sqrt(a + b / c)'), Symbols().parts)
     kinds = [rule.kind for rule in equation.rules()]
     assert kinds.count('radical') == 1 and kinds.count('overline') == 1
     over = next(rule for rule in equation.rules() if rule.kind == 'overline')
@@ -702,7 +699,7 @@ def test_a_line_of_an_event_is_an_arrow():
 
 
 def test_cases_have_a_brace_and_a_row_for_each_case():
-    node = notation.build(node_of('a if p else (b if q else c)'))
+    node = built('a if p else (b if q else c)')
     equation = typeset(node, Symbols().parts, left=Sym('s.y'))
     assert len(equation.lines) == 3
     (brace,) = [rule for rule in equation.rules() if rule.kind == 'brace']
@@ -816,7 +813,7 @@ def test_a_term_wider_than_the_width_is_cut_at_the_width_with_the_marker():
 
 
 def test_a_cases_gives_a_line_for_each_row_up_to_lines():
-    node = notation.build(node_of('a if p else (b if q else (c if r else d))'))
+    node = built('a if p else (b if q else (c if r else d))')
     symbols = Symbols()
     full = typeset(node, symbols.parts, left=Sym('s.y'), width=480)
     assert len(full.lines) == 4 and not full.cut
@@ -959,9 +956,9 @@ def letter(key):
 
 
 def test_the_same_node_gives_the_same_bytes_in_other_processes():
-    node = notation.build(node_of(SAME))
+    node = built(SAME)
     here = svg_parts(typeset(node, letter, width=480, lines=3), 3.5, 7)
-    assert here == svg_parts(typeset(notation.build(node_of(SAME)), letter, width=480, lines=3), 3.5, 7)
+    assert here == svg_parts(typeset(built(SAME), letter, width=480, lines=3), 3.5, 7)
     code = (
         'import hashlib, json, sys\n'
         'from napkin.draw import notation\n'

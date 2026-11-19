@@ -1,17 +1,16 @@
-"""The References list of a picture (docs/draw.md, D-55): its entries, their kinds and numbers, and
-the marks of the cited places (`napkin/draw/references.py`).
+"""The References list (napkin/draw/references.py, D-55), by its properties: each mark names one entry,
+the numbers follow the first use, one entry joins the claims of one source, an assumption always shows,
+the kinds that `[references] kinds` leaves out are left out, no visible text shows an ID, and the links
+go only to http and https addresses.
 
-The synthetic model cites a test library of its own, with records of every kind: sources with and
-without a DOI, an author or a link, claims, assumptions of each review status, with and without a
-title, and conventions. Each input of the model rests on other records, so each expectation follows
-from the records that the test reads back from the model and the library. The IDs and the names of
-the records are distinctive, so that a search of the visible text finds any of them. The catalogue
-test builds the list of the inputs of each scenario and checks the same properties.
+The model is a package with its own library (`tests/draw/models.py`): one thing whose inputs cite the
+records of the model, which rest on the library's sources, claims, assumptions and conventions. Each
+expected entry comes from the records that the test reads back from the model and the library. The IDs
+and the names of the records are distinctive, so that a search of the visible text finds any of them.
 """
 
 from __future__ import annotations
 
-import functools
 import re
 from urllib.parse import unquote, urlsplit
 
@@ -24,21 +23,21 @@ from napkin.draw.references import (
     KINDS,
     PLACE_ROOM,
     REVIEW_WORDS,
+    content,
     first_sentence,
     link_of,
     references,
     shorten,
 )
-from napkin.model.ir import thaw
-from tests.build import block, compiled, document, entity, fixture_claim, in_place, library, parameter, quote
-from tests.helpers import SCENARIO_IDS, catalogue_model
+from napkin.draw.things import Things
+from napkin.model.language import nodes as n
+from tests.draw.models import fixture_claim, package
 
 SOURCE_KINDS = ('source', 'source_transfer')
 VISIBLE = ('label', 'text', 'link_text', 'hover')
 
+
 # ---- the test library and the model ---------------------------------------------------------------
-
-
 def source(identifier, title, **fields):
     return {
         'id': identifier,
@@ -70,8 +69,9 @@ def assumption(identifier, statement, rationale, status='unreviewed', title=None
 
 
 def own_library(statuses=()):
-    """The test library; `statuses` gives other review statuses: ((assumption ID, status), …)."""
-    lib = library()
+    """The records of the test library; `statuses` gives other review statuses: ((assumption ID,
+    status), …)."""
+    lib = {}
     lib['sources'] = [
         source(
             'SRC-MANY-AUTHORS',
@@ -163,9 +163,18 @@ def own_library(statuses=()):
 
 
 def record(name, kind, explanation, *claims, identifier=None):
-    """A named record for the end of the file, with the ID that it names and its claims."""
-    head = f'record {name}: {kind}' + (f' {identifier}' if identifier else '') + f' {quote(explanation)}'
-    return block(head, block('claims:', *claims) if claims else None)
+    """A named record for the end of the file, with the ID that it rests on and its claims."""
+    lines = [f'record {name}: {kind} "{explanation}"']
+    if identifier:
+        lines.append(f'    {"convention" if kind == "convention" else "assumption"} {identifier}')
+    if claims:
+        lines += ['    claims:', *(f'        {item}' for item in claims)]
+    return '\n'.join(lines)
+
+
+def in_place(kind, explanation):
+    """A record written in place under a line, without an ID."""
+    return f'@{kind} "{explanation}"'
 
 
 # The records of the model, cited by name.
@@ -211,31 +220,43 @@ UNSHOWN = 'unshown'
 
 def text():
     """The model: one thing whose inputs rest on the records above."""
-    values = [
-        parameter(name, 2, 'h', 1, 4, doc=f'Input {k}', records=cited, under=(placed,) if placed else ())
-        for k, (name, cited, placed) in enumerate(INPUTS)
-    ]
-    return document('References fixture', entity('plant', *values, doc='A plant.'), records=RECORDS)
+    lines = ['scenario "References fixture"', '    horizon 10 h', '', 'plant:', '    "A plant."']
+    for k, (name, cited, placed) in enumerate(INPUTS):
+        lines.append(f'    input {name}: h = 2 h in [1 h, 4 h]' + (f'  {cited}' if cited else ''))
+        lines.append(f'        "Input {k}"')
+        if placed:
+            lines.append(f'        {placed}')
+    return '\n'.join([*lines, '', *RECORDS, ''])
 
 
-@functools.cache
-def model(statuses=()):
-    return compiled(text(), own_library(statuses))
+@pytest.fixture(scope='module')
+def model(tmp_path_factory):
+    """The model of `text()` with the test library (`Things`), `statuses` its other review statuses:
+    a package for each, made once; `again` makes a second package of the same text."""
+    made = {}
+
+    def of(statuses=(), again=False):
+        key = (statuses, again)
+        if key not in made:
+            folder = tmp_path_factory.mktemp('references')
+            made[key] = Things(package(folder / 'plant', text(), library=own_library(statuses)))
+        return made[key]
+
+    return of
 
 
 def places(found, *, every=False):
     """The places of the inputs of a model, in reading order: (thing, input) with the input's
-    records. The input `unshown` is left out unless `every`."""
+    evidence. The input `unshown` is left out unless `every`."""
     return [
-        ((thing.name, value.name), value.records)
-        for thing in found.scenario.entities
-        for value in thing.values
+        (('plant', value.name), value.evidence)
+        for value in found.values('plant')
         if value.kind == 'input' and (every or value.name != UNSHOWN)
     ]
 
 
 def by_id(found, collection):
-    return {item['id']: item for item in thaw(found.library).get(collection, [])}
+    return {item['id']: item for item in found.library.get(collection, [])}
 
 
 def marked(refs, place):
@@ -246,19 +267,19 @@ def marked(refs, place):
 # ---- the properties of every list ----------------------------------------------------------------
 
 
-def records_of(records):
-    """The records of a basis, plain: one record, a list of them, or None; without range notes."""
-    found = thaw(records)
-    items = found if isinstance(found, list) else [] if found is None else [found]
+def records_of(found, records):
+    """The records of a part's evidence as their contents (`references.content`)."""
+    named = {record.name: record for record in found.declared.records}
+    items = [content(item, named) for item in records or ()]
     return [item for item in items if isinstance(item, dict) and 'kind' in item]
 
 
-def unnamed_records(cited):
+def unnamed_records(found, cited):
     """{kind: the explanations of the records without an ID of the library that the places cite}:
     the identities, and the assumptions and conventions that name none."""
     out = {}
     for _, records in cited:
-        for item in records_of(records):
+        for item in records_of(found, records):
             if item['kind'] == 'identity' or (
                 item['kind'] in ('assumption', 'convention') and not item.get(item['kind'])
             ):
@@ -274,7 +295,7 @@ def expected_entries(found, cited):
     claims = by_id(found, 'claims')
     named = set()
     for _, records in cited:
-        for item in records_of(records):
+        for item in records_of(found, records):
             kind = item['kind']
             if kind in SOURCE_KINDS:
                 named |= {(kind, claims[link['claim']]['source']) for link in item.get('links', [])}
@@ -282,7 +303,7 @@ def expected_entries(found, cited):
                 named.add(('assumption', item['assumption']))
             if item.get('convention'):
                 named.add(('convention', item['convention']))
-    return named, {kind: len(texts) for kind, texts in unnamed_records(cited).items()}
+    return named, {kind: len(texts) for kind, texts in unnamed_records(found, cited).items()}
 
 
 def given_entries(found, refs):
@@ -351,14 +372,14 @@ def assert_links(found, refs):
 
 
 def ids_of(found):
-    """Every ID of the library of a model, and the name of each named record of the model."""
-    lib = thaw(found.library)
+    """Every ID of the library of a model (`Things`), and the name of each named record of the model."""
+    lib = found.library
     ids = {
         item['id']
         for collection in ('sources', 'claims', 'assumptions', 'conventions')
         for item in lib.get(collection, [])
     }
-    return ids | {item.name for item in found.scenario.records}
+    return ids | {item.name for item in found.declared.records}
 
 
 def leaks(refs, ids):
@@ -385,10 +406,10 @@ def entries_of(refs, kind, source_id):
     return [entry for entry in refs.entries if entry.kind == kind and entry.record[0] == source_id]
 
 
-# ---- the synthetic model -------------------------------------------------------------------------
+# ---- the model -------------------------------------------------------------------------
 
 
-def test_every_mark_names_one_entry_and_the_numbers_follow_first_use():
+def test_every_mark_names_one_entry_and_the_numbers_follow_first_use(model):
     found = model()
     cited = places(found)
     refs = references(cited, found)
@@ -398,7 +419,7 @@ def test_every_mark_names_one_entry_and_the_numbers_follow_first_use():
     assert all(refs.marks[place] for place, _ in cited)
     # The entry of a record without an ID of the library shows the record's explanation.
     known = by_id(found, 'assumptions') | by_id(found, 'conventions')
-    unnamed = unnamed_records(cited)
+    unnamed = unnamed_records(found, cited)
     own = [
         entry
         for entry in refs.entries
@@ -410,7 +431,7 @@ def test_every_mark_names_one_entry_and_the_numbers_follow_first_use():
     assert all(entry.hover in unnamed[entry.kind] for entry in own)
 
 
-def test_an_id_in_the_words_of_a_record_shows_as_the_name_of_its_record():
+def test_an_id_in_the_words_of_a_record_shows_as_the_name_of_its_record(model):
     """The words of a claim and of an assumption name other records by their IDs: the entries show
     the names of those records instead."""
     found = model()
@@ -441,15 +462,17 @@ def test_an_id_in_the_words_of_a_record_shows_as_the_name_of_its_record():
             assert assumptions[other]['title'] in entry.hover
 
 
-def test_one_entry_joins_the_claims_of_one_source():
+def test_one_entry_joins_the_claims_of_one_source(model):
     found = model()
     refs = references(places(found), found)
     claims = by_id(found, 'claims')
-    plant = found.scenario.entity('plant')
+    values = {value.name: value for value in found.values('plant')}
     # The places `first` and `second` cite two different claims of one source, each as a source.
     cited = {
         name: [
-            claims[link['claim']] for item in records_of(plant.value(name).records) for link in item['links']
+            claims[link['claim']]
+            for item in records_of(found, values[name].evidence)
+            for link in item['links']
         ]
         for name in ('first', 'second')
     }
@@ -469,7 +492,7 @@ def test_one_entry_joins_the_claims_of_one_source():
     assert entry.text.count(' — ') == 1
 
 
-def test_a_source_applied_here_has_its_own_entry():
+def test_a_source_applied_here_has_its_own_entry(model):
     """A source that one place cites as a source and another applies here has an entry of each kind,
     so that neither label says more than its records."""
     found = model()
@@ -482,7 +505,7 @@ def test_a_source_applied_here_has_its_own_entry():
 
 
 @pytest.mark.parametrize('status', ['unreviewed', 'confirmed', 'replaced'])
-def test_an_input_that_rests_on_an_assumption_has_only_its_assumption_entry(status):
+def test_an_input_that_rests_on_an_assumption_has_only_its_assumption_entry(model, status):
     found = model((('ASM-TEMPO', status),))
     refs = references(places(found), found)
     (entry,) = marked(refs, ('plant', 'third'))
@@ -496,7 +519,7 @@ def test_an_input_that_rests_on_an_assumption_has_only_its_assumption_entry(stat
     assert own.kind == 'assumption' and own.label == REVIEW_WORDS['unreviewed']
 
 
-def test_the_review_status_changes_the_label():
+def test_the_review_status_changes_the_label(model):
     """Counterexample: a confirmed assumption is not "not reviewed", and a replaced one is neither."""
     labels = {}
     for status in ('unreviewed', 'confirmed', 'replaced'):
@@ -513,9 +536,10 @@ def test_the_review_status_changes_the_label():
     assert entry.label == REVIEW_WORDS[by_id(found, 'assumptions')[entry.record[0]]['review']['status']]
 
 
-def test_a_source_transfer_cites_its_sources_and_its_assumption():
+def test_a_source_transfer_cites_its_sources_and_its_assumption(model):
     found = model()
-    (item,) = records_of(found.scenario.entity('plant').value('fourth').records)
+    values = {value.name: value for value in found.values('plant')}
+    (item,) = records_of(found, values['fourth'].evidence)
     assert item['kind'] == 'source_transfer' and item['assumption']
     claims = by_id(found, 'claims')
     for kinds in (KINDS, ('source', 'assumption'), ('assumption',)):
@@ -531,7 +555,7 @@ def test_a_source_transfer_cites_its_sources_and_its_assumption():
         )
 
 
-def test_no_visible_text_shows_an_id():
+def test_no_visible_text_shows_an_id(model):
     found = model()
     refs = references(places(found, every=True), found)
     ids = ids_of(found)
@@ -540,7 +564,7 @@ def test_no_visible_text_shows_an_id():
     assert {name for entry in refs.entries for name in entry.record} & ids
 
 
-def test_links_go_to_the_doi_or_the_url():
+def test_links_go_to_the_doi_or_the_url(model):
     found = model()
     refs = references(places(found), found)
     assert_links(found, refs)
@@ -571,7 +595,7 @@ def test_a_link_is_an_http_address_only(fields, url):
         assert urlsplit(found).scheme in ('http', 'https')
 
 
-def test_entries_are_the_records_of_the_cited_places_only():
+def test_entries_are_the_records_of_the_cited_places_only(model):
     found = model()
     shown = places(found)
     every = places(found, every=True)
@@ -587,7 +611,7 @@ def test_entries_are_the_records_of_the_cited_places_only():
     assert hidden_sources <= given_entries(found, references(every, found))[0]
 
 
-def test_kinds_leave_entries_out_but_never_the_assumptions():
+def test_kinds_leave_entries_out_but_never_the_assumptions(model):
     found = model()
     cited = places(found)
     whole = references(cited, found)
@@ -603,12 +627,12 @@ def test_kinds_leave_entries_out_but_never_the_assumptions():
         references(cited, found, kinds=('assumption', 'sources'))
 
 
-def test_the_list_is_the_same_for_the_same_input():
+def test_the_list_is_the_same_for_the_same_input(model):
     found = model()
     cited = places(found)
     refs = references(cited, found)
     assert references(cited, found) == refs
-    again = compiled(text(), own_library())
+    again = model(again=True)
     assert references(places(again), again) == refs
     # Another reading order numbers the same entries by their first use there.
     backwards = references(cited[::-1], found)
@@ -618,9 +642,11 @@ def test_the_list_is_the_same_for_the_same_input():
     }
 
 
-def test_a_place_without_records_has_no_marks_and_a_name_is_its_record():
+def test_a_place_without_records_has_no_marks_and_a_name_is_its_record(model):
     found = model()
-    refs = references([('empty', None), ('named', ('rec_assumed',)), ('note', {'status': 'chosen'})], found)
+    refs = references(
+        [('empty', None), ('named', (n.Cite('rec_assumed'),)), ('note', ({'status': 'chosen'},))], found
+    )
     assert refs.marks['empty'] == () and refs.marks['note'] == ()
     (entry,) = marked(refs, 'named')
     assert entry.record == ('ASM-TEMPO',)
@@ -652,19 +678,3 @@ def test_a_shortened_text_fits_its_room(room):
 )
 def test_the_first_sentence_ends_at_its_stop(written, first):
     assert first_sentence(written) == first
-
-
-# ---- every scenario ------------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize('scenario_id', SCENARIO_IDS)
-@pytest.mark.scenario_contract
-def test_the_references_of_every_scenario_hold_their_properties(scenario_id):
-    """The References list of all the inputs of a scenario, as if the picture showed each one."""
-    found = catalogue_model(scenario_id)
-    cited = places(found, every=True)
-    refs = references(cited, found)
-    assert refs.entries
-    assert_holds(found, cited, refs)
-    assert not leaks(refs, ids_of(found) - {item.name for item in found.scenario.records})
-    assert references(cited, found) == refs
