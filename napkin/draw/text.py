@@ -1,8 +1,28 @@
-"""Texts that fit a width: the one way of the picture to cut a text into lines, which the layout and
-the words of the events (`triggers`) share. This module imports nothing of the model.
+"""The words of the picture that no part of it owns: a name of the model in words (`in_words`), and
+the one way to cut a text into lines that fit a width (`shorten`), which the layout and the words of
+the events (`triggers`) share. This module imports nothing of the model.
 """
 
+import re
+
 ELLIPSIS = '…'
+# The words of a name: an acronym before a capitalised word, a word with its capital, an acronym, a
+# number.
+_WORD = re.compile(r'[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+')
+
+
+def in_words(name):
+    """A name of the model in words: `RepairCrews` reads "Repair crews", `AIAgent` "AI agent" and
+    `first_batch` "First batch". An acronym keeps its capitals; every other word after the first is in
+    lower case."""
+    parts = [w for chunk in name.split('_') for w in (_WORD.findall(chunk) or [chunk]) if w]
+
+    def word(w, first):
+        if len(w) > 1 and w.isupper():
+            return w
+        return w[:1].upper() + w[1:].lower() if first else w.lower()
+
+    return ' '.join(word(w, i == 0) for i, w in enumerate(parts))
 
 
 def shorten(text, width, lines, measure):
