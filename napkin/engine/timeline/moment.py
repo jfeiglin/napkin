@@ -8,20 +8,26 @@ At a time, rounds. One round is:
    run in order and each sees the writes before it (`Tx`): `=`, `+=` and `-=` on a writable value (of
    the receiver, through a link or an entity parameter, of an occurrence of the stage or of a live
    occurrence that `.occurrences.at(t)` names; a finished occurrence is frozen, and a write to it
-   fails); `move`, which debits and credits two stores together or fails whole; `.start(...)`,
-   whose arguments are evaluated at the caller left to right when the statement runs, on one event
-   or on each member of a collection in the order of its keys; `if`/`else`; and `switch` on an enum
-   value, whose case guards are read before the selector. A value that misses a bound by less than
-   its tolerance is put on the bound; one that misses it by more fails the run, and so does a move
-   that does not fit. A commit publishes the stage's writes and registers the occurrences that it
-   queued, in order; a failure discards the stage and stops the run.
+   fails), `=` of a distribution on a distribution-valued value, which the draws after it read,
+   and of an allocation on an endpoint, by which it shares its flows from the settling on;
+   `move`, which debits and credits two stores together or fails whole; `.start(...)`, whose
+   arguments are evaluated at the caller left to right when the statement runs, on one event or on
+   each member of a collection in the order of its keys; `if`/`else`; and `switch` on an enum value,
+   whose case guards are read before the selector: a draw or a choice as the selector picks among
+   the eligible outcomes (`chance.py`). A value that misses a bound by less than its tolerance is
+   put on the bound; one that misses it by more fails the run, and so does a move that does not fit.
+   A commit publishes the stage's writes, traces its choices and registers the occurrences that it
+   queued, in order; a failure discards the stage and stops the run. A player's choice that no pick
+   answers pauses the run before the stage commits: the stage and those after it in its round are
+   held (`held`), and `resume` runs them again from the paused one.
 2. **Settle.** The connected sets that the round touched are built again from the state there
    (`ways.py`): those that hold a store that a commit wrote, or read a value that changed (a written
    value, a collection of occurrences or of flows whose members changed, a rate of a set built
    again, a keyed read at its key time), and those that a flow joins or leaves. A store that no
    flow meets any more holds its value.
 3. **Conditions** (`triggers.py`): triggers, resets and gates are read on the settled state; then
-   the firings start their events, and the released gates go on.
+   the firings start their events, and the released gates go on. Then each assertion over state
+   must hold, and once the rounds of the time are done, just after it as well.
 
 Another round follows at the same time while a stage is due there or a condition acted. The setup is
 round zero: its statements commit as one stage, the sets start, and the triggers get their first
@@ -33,20 +39,29 @@ from __future__ import annotations
 import math
 from collections import Counter
 
+from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...program import parts as p
+from ...program.refs import Distribution
 from ..errors import SimulationError
+
+_SETUP = 'setup'  # what a pause in the setup holds
 
 
 class Tx:
-    """The uncommitted work of one stage: its writes (engine name -> value, in order), its moves and
-    the starts that it queued."""
+    """The uncommitted work of one stage: its writes (engine name -> value, in order), its moves, the
+    starts that it queued and the choices that it made. `stage` says whether a prompt may pause it (a
+    stage or the setup, not a firing); `origin` is the statement that runs."""
 
-    def __init__(self, owner):
-        self.owner = owner  # the occurrence that runs the stage, or '' for the setup
+    def __init__(self, owner, stage=True):
+        self.owner = owner  # the occurrence that runs the stage, '' for the setup, or a trigger's member
+        self.stage = stage
+        self.origin = ''
         self.writes = {}
         self.moves = []  # (source, destination, amount, origin)
         self.starts = []  # (member, event, arguments)
+        self.choices = []  # (site, owner, details) of the trace entry of each choice
+        self.allocations = []  # (store, side, allocation, scope, origin) of each new allocation
 
 
 class _Moving:
@@ -68,22 +83,40 @@ class Moment:
         self.phase = 'between'  # 'stages', 'settle', 'conditions' or 'between'
         self.again = False
         self.round = 0
+        # Where a pause stopped: _SETUP, or (the stages of its round, the place of the paused one).
+        self.held = None
         self._paths = {}
 
     # ---- rounds -----------------------------------------------------------------------------------
 
     def setup(self):
         """Round zero at time 0, then the rounds of time 0."""
-        run = self.run
         self._round(0)
+        self.held = _SETUP
+        self._setup()
+
+    def _setup(self):
+        run = self.run
         self.phase = 'stages'
         tx = Tx('')
-        self.execute(self.plan.program.setup, tx, None)
+        run.chance.made = []
+        self.execute(self.plan.program.setup, tx, None)  # a pause stops here and holds the setup
+        self.held, run.chance.kept = None, set()
         self.commit(tx)
         self.settle()
         self.phase = 'conditions'
         run.triggers.conditions()
+        run.triggers.check()
         self.rounds(0.0)
+
+    def resume(self):
+        """Go on where a pause stopped (`chance.py`): the paused stage again, with the draws that it
+        made, then the rest of its round and of its moment."""
+        held = self.held
+        if held is _SETUP:
+            self._setup()
+        else:
+            self.rounds(self.run.now, held)
 
     def at(self, t, changed):
         """The moment at time t; `changed` holds what the ways changed there."""
@@ -98,26 +131,35 @@ class Moment:
         self.round = number
         self.run.recorder.round = number
 
-    def rounds(self, t):
-        """Round after round at time t while work is due there."""
+    def rounds(self, t, held=None):
+        """Round after round at time t while work is due there; `held` holds the stages of a round
+        that a pause stopped, and the place of the paused one."""
         run = self.run
         limit = self.plan.configuration.limits.max_rounds
         while True:
-            self._round(self.round + 1)
-            if self.round > limit:
-                raise SimulationError(self._round_limit(t, limit))
-            self.again = False
+            if held is None:
+                self._round(self.round + 1)
+                if self.round > limit:
+                    raise SimulationError(self._round_limit(t, limit))
+                self.again = False
+                queue = run.occurrences.due(t)
+            else:
+                queue, held = held[0][held[1] :], None
             self.phase = 'stages'
-            for live in run.occurrences.due(t):
+            for k, live in enumerate(queue):
+                self.held = (queue, k)  # a pause in this stage holds it and the stages after it
                 self.stage(live)
+            self.held = None
             self.settle()
             self.phase = 'conditions'
             run.triggers.conditions()
+            run.triggers.check()
             if not self.again and run.occurrences.next_due() != t:
                 break
         self.phase = 'between'
         run.limit = run.discrete()
         run.triggers.predict_all()
+        run.triggers.check(after=True)
 
     def _round_limit(self, t, limit):
         started = Counter(
@@ -137,6 +179,8 @@ class Moment:
         made = live.plan
         step = made.event.steps[live.step]
         tx = Tx(made.id)
+        tx.origin = step.origin
+        run.chance.made = []
         ran = step.guard is None or bool(self.truth(step.guard, made.scope, step.origin, tx))
         if ran:
             try:
@@ -146,6 +190,7 @@ class Moment:
                     f'{problem} [stage {live.step + 1} of {made.id}, t = {run.now:g} h]'
                 ) from None
             run.recorder.entry(run.now, 'commit', step.origin, made.id)
+        run.chance.kept = set()  # a resumed stage has traced the draws that it kept
         self.commit(tx)
         run.occurrences.reach(live, live.step + 1)
 
@@ -156,6 +201,7 @@ class Moment:
     def execute(self, statements, tx, scope):
         """Run statements in order (see the module)."""
         for statement in statements:
+            tx.origin = statement.origin
             if isinstance(statement, p.Assign):
                 self.assign(statement, tx, scope)
             elif isinstance(statement, p.Move):
@@ -223,7 +269,17 @@ class Moment:
     def assign(self, statement, tx, scope):
         """`=`, `+=` or `-=`."""
         run = self.run
+        if isinstance(statement.value, p.Priority | p.Proportional):
+            point = self.resolved(statement.target, scope, statement.origin)
+            if point[0] != 'allocation':
+                raise SimulationError(f'{statement.origin}: an allocation is the allocation of an endpoint')
+            tx.allocations.append((point[1], point[2], statement.value, scope, statement.origin))
+            return
         name = self.target(statement.target, scope, statement.origin)
+        if isinstance(statement.value, Distribution):
+            # A new distribution for the draws to come; what was drawn stays as it is.
+            tx.writes[name] = statement.value
+            return
         value = self.truth(statement.value, scope, statement.origin, tx)
         if statement.op != '=':
             current = run.value(name, tx=tx)
@@ -297,12 +353,25 @@ class Moment:
 
     def select(self, statement, tx, scope):
         """The body that a `switch` runs: the guards are read once, before the selector; the case of
-        the selector's value runs if it is eligible, else the `else` body."""
+        the selector's value runs if it is eligible, else the `else` body. A draw or a choice as the
+        selector picks among the eligible outcomes (D1, `chance.py`): those that no false guard bars.
+        With none eligible, the `else` body runs and nothing is drawn."""
+        run, plan = self.run, self.plan
         eligible = [
             case.guard is None or bool(self.truth(case.guard, scope, case.origin, tx))
             for case in statement.cases
         ]
-        chosen = self.truth(statement.selector, scope, statement.origin, tx)
+        tx.origin = statement.origin
+        node = run.occurrences.node(statement.selector, scope, statement.origin)
+        producer = node.name if isinstance(node, nodes.Ref) else None
+        if producer in plan.draws or producer in plan.choices:
+            barred = {case.member for case, ok in zip(statement.cases, eligible) if not ok}
+            allowed = [member for member in run.chance.outcomes(producer) if member not in barred]
+            if not allowed:
+                return statement.orelse
+            chosen = run.chance.produce(producer, allowed, tx)
+        else:
+            chosen = run.truth(node, tx)
         for case, ok in zip(statement.cases, eligible):
             if ok and case.member == chosen:
                 return case.body
@@ -317,6 +386,12 @@ class Moment:
             )
             for end in (source, destination):
                 run.occurrences.met(end)
+        for site, owner, details in tx.choices:  # a choice is in the trace once its stage commits
+            run.recorder.entry(run.now, 'choice', site, owner, **details)
+        for store, side, allocation, scope, origin in tx.allocations:
+            # The endpoint shares its flows by its new rule once its set settles again.
+            self.plan.allocate(store, side, allocation, scope, origin)
+            run.changed.add(store)
         for name, value in tx.writes.items():
             run.write(name, value)
         for member, event, args in tx.starts:

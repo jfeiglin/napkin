@@ -13,7 +13,15 @@ and gate on the settled state:
 - a gate (`until C`) releases its occurrence when C holds.
 
 Then the firings act, by receiver and declaration, and the released gates go on, in the order in
-which their occurrences were made. A manual start of the event consumes nothing of its trigger.
+which their occurrences were made. A manual start of the event consumes nothing of its trigger. A
+draw of a firing (in a capture, in the start's arguments, in `reset after D`) is keyed by the
+firing's number (`chance.py`).
+
+**An assertion over state** (spec, "Assertions and their timing"; R-A2-15) must hold after every
+round, within the tolerance of what it reads, and just after every moment (`check`): a value that
+leaves its asserted interval at a moment fails there. Between moments it is watched as a condition
+is, so a contact with its boundary is a moment, just after which it fails; a strict comparison is
+watched too, since the first instant at which an assertion fails exists for either form.
 
 **Reading a condition.** A comparison whose sides read what moves between moments (a store of a set,
 an actual rate, the time) holds within the tolerance of what it reads (spec: a crossing counts as
@@ -23,8 +31,9 @@ formula is read through its expression, so its comparisons are read the same way
 
 **When an answer can change.** What holds between moments changes at the commits and settlings of
 the moments, and every condition is read in every round. Between moments, each watched condition
-(the condition of every trigger, the reset of a disarmed trigger, the gate of a waiting occurrence)
-gives the first time after now at which one of its comparisons on moving values can change its
+(the condition of every trigger, the reset of a disarmed trigger, the gate of a waiting occurrence,
+each assertion over state) gives the first time after now at which one of its comparisons on moving
+values can change its
 answer (`predict`): on lines, where a comparison is affine in what it reads, the root of a line
 (of a clock, the time that its other side gives; of one store on its line, its start plus its
 distance over its rate: their closed forms; the time since a start moves as the time does); else,
@@ -35,7 +44,8 @@ tolerance; any other comparison on a curve has no first contact that the engine 
 run stops with a diagnostic. That time is a moment, and so is an event of a way that changes what a
 watched condition reads (a rate that jumps). The prediction holds within the window of the ways that
 it reads and is made again after it. A strict comparison whose difference moves has no first
-instant: the run stops with a diagnostic when such a condition is watched, never polling.
+instant: the run stops with a diagnostic when such a condition is watched, never polling. So does a
+comparison that reads the past of a moving value (`delayed`), whose contact the run cannot find.
 """
 
 from __future__ import annotations
@@ -146,7 +156,8 @@ class Triggers:
             if name == 't' or name in self.plan.dynamic:
                 found = max(found, self.plan.numerics.crossing)
             else:
-                found = max(found, tolerance.get(name, 0.0))
+                read = self.plan.delays[name][0] if name in self.plan.delays else name
+                found = max(found, tolerance.get(read, 0.0))
         return found
 
     def moving_reads(self, *parts):
@@ -164,6 +175,8 @@ class Triggers:
                     found.add(name)
                 elif name in plan.dynamic and plan.dynamic[name].op == 'since':
                     found.add(name)  # the time since a start moves as the time does
+                elif name in plan.delays and plan.delay_moves(name):
+                    found.add(name)  # the past of a value that moves
         return found
 
     # ---- the conditions of a round ------------------------------------------------------------------
@@ -200,12 +213,14 @@ class Triggers:
                 run.occurrences.reach(live, live.step + 1)
 
     def fire(self, state):
-        """A firing: the captures in written order, the start of the event, the reset."""
+        """A firing: the captures in written order, the start of the event, the reset. A draw of the
+        firing is keyed by its number (`chance.py`)."""
         run, moment = self.run, self.run.moment
         trigger = state.plan
+        run.chance.firing[trigger.key] = state.firings + 1
         for name, node in trigger.captures:
             run.env[name] = run.truth(node)
-        tx = Tx(trigger.member)
+        tx = Tx(trigger.member, stage=False)
         moment.execute(trigger.body, tx, trigger.scope)
         state.armed, state.firings = False, state.firings + 1
         if trigger.reset is not None and trigger.reset[0] == 'after':
@@ -213,9 +228,25 @@ class Triggers:
             if isinstance(duration, bool) or not isinstance(duration, int | float) or duration < 0:
                 raise SimulationError(f'{trigger.origin}: reset after {duration!r}, which is no duration')
             state.rearm_at = run.now + float(duration)
+        del run.chance.firing[trigger.key]
         run.recorder.entry(run.now, 'fire', trigger.origin, trigger.member)
         moment.again = True
         moment.commit(tx)
+
+    def check(self, after=False):
+        """The assertions over state on the settled state (spec, "Assertions and their timing"):
+        after a round, each must hold within the tolerance of what it reads; just after a moment,
+        each must hold an instant later (as a trigger is read just after, with no band), so a value
+        that leaves its asserted interval at a moment fails there."""
+        t = self.run.now
+        for origin, member, node in self.plan.checks:
+            if after:
+                holds, when = self.holds(node, t + AFTER, band=False), f'just after t = {t:g} h'
+            else:
+                holds, when = self.holds(node), f'at t = {t:g} h'
+            if not holds:
+                owner = f' for {member}' if member else ''
+                raise SimulationError(f'{origin}: the assertion does not hold{owner} {when}')
 
     def next_timer(self):
         """The earliest time after now at which a disarmed trigger rearms, or None."""
@@ -239,6 +270,8 @@ class Triggers:
         for live in run.occurrences.waiting():
             step = live.plan.event.steps[live.step]
             found.append((('gate', live.id), run.occurrences.node(step.test, live.plan.scope, step.origin)))
+        for index, (_, _, node) in enumerate(self.plan.checks):
+            found.append((('assert', index), node))
         return found
 
     def reads_any(self, names):
@@ -277,7 +310,7 @@ class Triggers:
         reads = self.plan.reads_now(self.plan.expansion(node))
         for name in set(reads.leaves) | set(reads.formulas):
             self.readers.setdefault(name, set()).add(key)
-        at, until = self._next(node)
+        at, until = self._next(node, strict=key[0] != 'assert')
         if math.isfinite(at):
             heapq.heappush(self.contacts, (at, key, version))
         elif math.isfinite(until):
@@ -309,15 +342,24 @@ class Triggers:
             atoms += self._atoms(child, positive)
         return atoms
 
-    def _next(self, node):
+    def _next(self, node, strict=True):
         """The first time after now at which a comparison of the condition on moving values can change
-        its answer (inf for none), and the end of the window in which that holds."""
+        its answer (inf for none), and the end of the window in which that holds. A strict threshold
+        on a moving value has no first instant at which it holds (`strict`); an assertion fails at the
+        first instant at which it does not, which either form has."""
         run = self.run
         now, earliest, window = run.now, math.inf, math.inf
         for left, op, right, positive in self._atoms(node):
             moving = self.moving_reads(left, right)
             if not moving:
                 continue
+            past = sorted(name for name in moving if name in self.plan.delays)
+            if past:
+                raise SimulationError(
+                    f'{nodes.text(left)} {_SPELLING[op]} {nodes.text(right)} reads {past[0]}, the past of a '
+                    'value that moves between moments, which a condition cannot watch: read it in a stage, '
+                    'or delay a value that holds between moments'
+                )
             until = self._window(moving)
             window = min(window, until)
             if until <= now:
@@ -334,7 +376,7 @@ class Triggers:
             )
             if linear and start == end:
                 continue
-            if (op in _CLOSED) != positive:
+            if strict and (op in _CLOSED) != positive:
                 raise SimulationError(
                     f'a strict threshold on a value that changes continuously: '
                     f'{nodes.text(left)} {_SPELLING[op]} {nodes.text(right)} has no first instant; use an '

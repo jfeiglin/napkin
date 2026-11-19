@@ -3,10 +3,9 @@
 1. **The start** evaluates each input, draw, link, stored value and captured request or capacity once,
    in the order of what it reads, across members (a formula, a reduction or a keyed read that one of
    them reads is evaluated there and then, at time 0). The order is found as the values are asked,
-   with no recursion, so a chain through the rows of a large table is no limit. A draw is the median
-   of its distribution in a median run, and in a sampled run the quantile of a uniform number from
-   the stream of its site and its member under the seed; each draw is an entry of the trace. An
-   input that the configuration sets must lie in its admitted range. The entries that each `where`
+   with no recursion, so a chain through the rows of a large table is no limit. A draw and a choice
+   are executed there, keyed by their site and their member (`chance.py`); each is an entry of the
+   trace. An input that the configuration sets must lie in its admitted range. The entries that each `where`
    keeps are found from fixed values, once (`kept_of`), and so is the sorted index of the keys of
    each keyed read (`stepped_of`). Then each assertion over inputs is checked once; one that does not
    hold fails the run at the start, as an error of the setup that the plan found does.
@@ -18,8 +17,10 @@
    stages, the settling of the sets that the round touched (`ways.py`), and the conditions
    (`triggers.py`). Occurrences are in `occurrences.py`.
 4. **Between moments** each instance of a way runs its sets (`ways.py`). The next moment is the
-   earliest of a stage that is due, a reset timer, a key time of a keyed read by the time, the
-   horizon (`limit`) and the first contact of a watched condition (a contact within the crossing
+   earliest of a stage that is due, a reset timer, a key time of a keyed read by the time, a time at
+   which a `delayed` read of a value that holds between moments changes (a commit that changed the
+   value, plus the delay), the horizon (`limit`) and the first contact of a watched condition or
+   assertion (a contact within the crossing
    tolerance before a known moment is in that moment); an event inside an instance
    (a store that reaches a bound, the end of a segment) before it is committed first, and is itself
    a moment when it changes what a watched condition or another set's setting reads. An event at
@@ -32,53 +33,57 @@ The present (`value`): the value of an engine name now, or at a time inside the 
 the ways (`t`): a store of a set from its instance, one written by this moment's commits from what
 was written, an actual rate or a served fraction from the instance of its flow (zero for a flow that
 is in no set), a formula from what it reads (a formula of a finished occurrence keeps its frozen
-value), a reduction, a keyed read and a dynamic read of a collection from their members, and any
-other value from what the run holds between moments (`env`). A stage reads its own writes first.
+value), a reduction, a keyed read and a dynamic read of a collection from their members, the time
+of the last change of a stored value at a commit (`changed_at`), the past of a stored value from the
+pieces that the run recorded (`delayed`), and any other value from what the run holds between
+moments (`env`). A stage reads its own writes first. A draw or a choice is executed when an
+expression of a stage, an entry, a delay or a firing reads it (`truth`), which reads each name as
+its evaluation asks for it.
 
 A run that fails stops there: its record holds the failure, as the last entry of its trace, and the
-histories to the time at which it stopped.
+histories to the time at which it stopped. A run that a player's choice pauses stops there too, with
+a `pause` entry, and `resume` goes on in place (`chance.py`).
 """
 
 from __future__ import annotations
 
+import heapq
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 import numpy as np
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
-from ...distributions import FAMILIES, quantile
 from ...expressions import evaluate
-from ...program.config import MEDIAN, ConfigurationError
-from ...program.record import Unavailable
-from .. import sampling
+from ...program.config import ConfigurationError
+from ...program.record import Curve, Unavailable
 from ..continuous.system import run_settings, step_cap
 from ..errors import SimulationError
+from .chance import Chance, Paused
 from .collections import dynamic_value, index_of, kept, looked_up, reduced
 from .moment import Moment
 from .occurrences import Occurrences
-from .plan import DYNAMIC, FORMULA, LEGS, LOOKUP, RATE, REDUCE, STARTS, STATE, Outside
+from .plan import (
+    CHANGED,
+    DELAYED,
+    DESCRIBED,
+    DYNAMIC,
+    FORMULA,
+    LEGS,
+    LOOKUP,
+    RATE,
+    REDUCE,
+    STARTS,
+    STATE,
+    Outside,
+)
 from .record import Recorder, remember
 from .triggers import Triggers
 from .ways import Ways
 
-
-def drawn(distribution, units, mode, seed, key):
-    """One draw of a distribution in canonical units: its median in a median run, else the quantile
-    of the first uniform number of the stream `key` under the seed (`sampling.stream`)."""
-    family = FAMILIES[distribution.family]
-    scale = units.scale(distribution.unit) if distribution.unit else 1.0
-    args = {
-        name: float(value) * (1.0 if name in family.dimensionless else scale)
-        for name, value in zip(family.parameters, distribution.params)
-    }
-    if 'min' in family.parameters and 'min' not in args:
-        # The unbounded forms of `normal` and `lognormal`.
-        args.update(min=0.0 if family.name == 'lognormal' else -math.inf, max=math.inf)
-    u = 0.5 if mode == MEDIAN else float(sampling._open(sampling.stream(seed, key), 1)[0])
-    with np.errstate(divide='ignore'):
-        return float(quantile(family.name, args, u))
+_MISSING = object()
 
 
 def _literal(node, units):
@@ -135,6 +140,10 @@ class Run:
         self._keyed = None  # {key time: the keyed reads by the time that change there}
         self.changed = set()  # what a commit or an event of the ways changed: names and sources
         self.joined, self.left = [], []  # the flows that join and that leave at this moment
+        self.changes = {}  # a stored value -> the times of the commits that changed it (`elapsed`)
+        self.delayed_at = []  # (time, delayed read): when a `delayed` of a held value changes
+        self.pause = None  # the `pause` entry of a paused run, until `resume`
+        self.chance = Chance(self)
         self.ways = Ways(self)
         self.occurrences = Occurrences(self)
         self.triggers = Triggers(self)
@@ -147,11 +156,13 @@ class Run:
         its members' values, and of a keyed read the keys of its kept entries and its key, then the
         value of the entry that it finds."""
         plan, env = self.plan, self.env
-        if name in plan.draws:
+        if name in plan.draws or name in plan.choices:
             return []
         value = plan.values[name]
-        if value.kind == DYNAMIC:
-            return []  # no occurrence has started, and no flow of one is present
+        if value.kind in (DYNAMIC, CHANGED, DESCRIBED):
+            return []  # no occurrence has started, and no flow of one is present; nothing changed
+        if value.kind == DELAYED:
+            return sorted(read for read in plan.reads(name) if read not in env)
         if value.kind == RATE:
             raise Outside(f'{name}: a starting value that reads an actual rate (S2)')
         if value.kind in (REDUCE, LOOKUP):
@@ -186,16 +197,18 @@ class Run:
 
     def _compute(self, name):
         """The value of a name whose reads are known."""
-        plan, configuration, env = self.plan, self.plan.configuration, self.env
-        if name in plan.draws:
-            found = plan.draws[name]
-            key = f'{found.site}|{found.member}'
-            value = drawn(found.distribution, plan.units, configuration.mode, configuration.seed, key)
-            self.recorder.entry(0.0, 'draw', found.site, found.member, value=value)
-            return value
+        plan, env = self.plan, self.env
+        if name in plan.draws or name in plan.choices:
+            return self.chance.produce(name)
         kind = plan.values[name].kind
         if kind == DYNAMIC:
             return self.value(name)
+        if kind == CHANGED:
+            return 0.0
+        if kind == DESCRIBED:
+            return self.chance.described(name)
+        if kind == DELAYED:
+            return env[plan.delays[name][0]]  # at the start, the value at the start
         found = _literal(plan.values[name].node, plan.units)
         if found is not None:
             return found
@@ -306,6 +319,8 @@ class Run:
 
         self.bounds, self.scales = {}, {}
         for name, value in plan.values.items():
+            if value.kind == DESCRIBED:
+                self.value_of(name)  # recorded from its value at the start
             if value.kind not in STARTS:
                 continue
             found = self.value_of(name)
@@ -382,8 +397,16 @@ class Run:
         plan = self.plan
         found = plan.values.get(name)
         kind = found.kind if found is not None else None
+        if kind is None and (name in plan.draws or name in plan.choices):
+            return self.chance.produce(name, None, tx)  # executed: a node of a stage reads it once
         if kind == RATE:
             return self.ways.rate(name, t)
+        if kind == CHANGED:
+            return self.changed_at(name, tx)
+        if kind == DELAYED:
+            return self.delayed(name, t)
+        if kind == DESCRIBED:
+            return self.chance.described(name)
         if kind == FORMULA:
             frozen = self.frozen.get(name)
             if frozen is not None:
@@ -426,10 +449,52 @@ class Run:
         return self.value(name)
 
     def truth(self, node, tx=None):
-        """The value of a node over engine names now, through a stage's own writes."""
-        env = {read: _known(self.value(read, tx=tx)) for read in nodes.names(node) if read != 't'}
-        env['t'] = float(self.now)
-        return evaluate(node, env, self.plan.units)
+        """The value of a node over engine names now, through a stage's own writes. Each name is read
+        when the evaluation asks for it, so a branch that is not taken executes no draw (`_Reads`)."""
+        return evaluate(node, _Reads(self, nodes.names(node), tx), self.plan.units)
+
+    def changed_at(self, name, tx=None):
+        """The time at which a stored value last changed at a commit: of a write of this stage that
+        differs from the committed value, now (R-A2-08); else of its last change, or its start."""
+        stored = self.plan.changed[name]
+        if tx is not None and stored in tx.writes and tx.writes[stored] != self.value(stored):
+            return float(self.now)
+        found = self.changes.get(stored)
+        return found[-1] if found else self.changed_start(stored)
+
+    def changed_start(self, stored):
+        """The time from which a stored value exists: 0, or the start of its occurrence."""
+        owner = self.plan.occurrence_of(stored)
+        return 0.0 if owner is None else float(self.env[f'{owner}.started'])
+
+    def delayed(self, name, t):
+        """`delayed(x, d)` at time t: the committed value of x at t - d, from 0 (R-A2-09: with d = 0
+        the committed value, never a stage's own write)."""
+        stored, delay = self.plan.delays[name]
+        env = {read: _known(self.value(read, t)) for read in nodes.names(delay) if read != 't'}
+        env['t'] = t
+        d = evaluate(delay, env, self.plan.units)
+        if isinstance(d, bool) or not isinstance(d, int | float) or not d >= 0:
+            raise ExpressionError(f'{name}: the delay must be a duration that is not negative, not {d!r}')
+        at = max(t - float(d), 0.0)
+        if at >= self.now:
+            return self.value(stored, at)
+        return self.past(stored, at)
+
+    def past(self, name, at):
+        """The committed value of a stored value at a time before now, from what the run recorded: the
+        last piece at or before it."""
+        pieces = self.recorder.pieces.get(name, ())
+        for t, value, rate in reversed(pieces):
+            if t <= at:
+                if isinstance(value, bool | str) or rate == 0:
+                    return value
+                if isinstance(rate, Curve):
+                    return value + rate.increase(at - t)
+                return value + rate * (at - t)
+        if name in self.recorder.constants:
+            return self.recorder.constants[name]
+        raise ExpressionError(f'{name} has no value at {at:g} h')
 
     # ---- what a moment changes ---------------------------------------------------------------------
 
@@ -438,11 +503,25 @@ class Run:
         it from now on."""
         plan = self.plan
         if name in self.ways.set_of:
+            old = self.value(name)
             self.written[name] = value
         else:
+            old = self.env.get(name, _MISSING)
             self.env[name] = value
             self.recorder.add(name, self.now, value, 0.0)
         self.changed.add(name)
+        for described in plan.described_of.get(name, ()):
+            # A distribution that a stage replaced has a new mean and standard deviation.
+            self.recorder.add(described, self.now, self.chance.described(described), 0.0)
+            self.changed.add(described)
+        if old != value:
+            # `elapsed` restarts at a commit that changes the value, and a `delayed` read of it
+            # changes when its delay has passed.
+            self.changes.setdefault(name, []).append(self.now)
+            if name in plan.changed_of:
+                self.changed.add(plan.changed_of[name])
+            for delayed in plan.delays_of.get(name, ()):
+                self._delayed_change(delayed)
         found = plan.values.get(name)
         owner = found.key.owner if found is not None and found.key is not None else ''
         if '#' in owner:
@@ -450,6 +529,16 @@ class Run:
             self.changed.add(('occurrences', receiver, event))
         for end in plan.setting_ends(name):
             self.changed.add(('flows', *end))
+
+    def _delayed_change(self, name):
+        """A `delayed` read of a value that a commit changed changes when its delay has passed: that
+        time is a moment of the run (a delay that is not fixed has no such time)."""
+        delay = self.plan.delays[name][1]
+        if not self.plan.fixed_node(delay):
+            return
+        d = self.truth(delay)
+        if not isinstance(d, bool) and isinstance(d, int | float) and d > 0:
+            heapq.heappush(self.delayed_at, (self.now + float(d), name))
 
     def hold(self, store, value):
         """A store that no flow meets any more holds its value."""
@@ -537,7 +626,7 @@ class Run:
             self.recorder.tolerance[name] = factor * size
         for flow in plan.flows.values():
             self.tolerate(flow)
-        self.started = True
+        self.started = plan.started = True
         self.ways.build(plan.sets, self.env, 0.0)
         return values, self.sizes, list(self.ways.instances)
 
@@ -553,11 +642,37 @@ class Run:
         self.recorder.tolerance[f'{flow.name}.actual_rate'] = factor * size
 
     def run(self):
-        """The record of the run."""
+        """The record of the run: to the horizon, to the failure that stopped it, or to the pause of
+        a player's choice that no pick answers (`chance.py`)."""
+        return self._go(self._start)
+
+    def resume(self, *picks):
+        """Answer the choice that a paused run waits for with picks (`config.Pick`) and go on in place:
+        the paused stage runs again with the draws that it made, and commits once. The record is the
+        one that a run with these picks in its configuration gives."""
+        if self.pause is None:
+            raise SimulationError('the run waits for no choice')
+        for pick in picks:
+            self.chance.picks[(pick.site, pick.occurrence)] = pick.value
+        self.pause = None
+        return self._go(self._resume)
+
+    def _start(self):
+        self.prepare()
+        self.moment.setup()
+
+    def _resume(self):
+        self.moment.resume()
+
+    def _go(self, begin):
         try:
-            self.prepare()
-            self.moment.setup()
+            begin()
             self.loop()
+        except Paused as paused:
+            # The draws that the paused stage made are in the trace: a resumed stage keeps them.
+            self.chance.kept = {(site, owner) for site, owner, _ in self.chance.made}
+            self.pause = self.recorder.pause(self.now, paused)
+            return self.recorder.record(self.now, pause=self.pause)
         except (SimulationError, ExpressionError, ArithmeticError) as problem:
             return self.recorder.record(self.now, self.recorder.failure(self.now, str(problem)))
         return self.recorder.record(self.plan.horizon)
@@ -571,10 +686,11 @@ class Run:
         self.ways.finish(horizon)
 
     def discrete(self):
-        """The next time after now at which a stage is due, a trigger rearms or a keyed read by the
-        time changes, or the horizon."""
+        """The next time after now at which a stage is due, a trigger rearms, a keyed read by the
+        time changes or a `delayed` read of a held value does, or the horizon."""
         found = [self.plan.horizon, self.occurrences.next_due(), self.triggers.next_timer()]
         found += [at for at in self.key_times() if at > self.now]
+        found += [at for at, _ in self.delayed_at[:1] if at > self.now]
         return min(at for at in found if at is not None)
 
     def key_times(self):
@@ -582,8 +698,11 @@ class Run:
         return sorted(self._keyed_at())
 
     def keyed_changes(self, t):
-        """The keyed reads by the time whose value changes at time t, a key time."""
-        return self._keyed_at().get(t, ())
+        """The keyed reads by the time, and the `delayed` reads, whose value changes at time t."""
+        found = list(self._keyed_at().get(t, ()))
+        while self.delayed_at and self.delayed_at[0][0] <= t:
+            found.append(heapq.heappop(self.delayed_at)[1])
+        return found
 
     def _keyed_at(self):
         """{key time inside the run: the keyed reads by the time that change there}, made once."""
@@ -634,3 +753,32 @@ def _known(value):
     if isinstance(value, Unavailable):
         raise ExpressionError(value.reason)
     return value
+
+
+class _Reads(Mapping):
+    """The names of a node as an evaluation reads them: each is read from the run when the evaluation
+    first asks for it (the code of a node reads the branch of `a if c else b`, and of `and` and `or`,
+    that it takes), then kept."""
+
+    __slots__ = ('found', 'names', 'run', 'tx')
+
+    def __init__(self, run, names, tx):
+        self.run, self.names, self.tx = run, names, tx
+        self.found = {'t': float(run.now)}
+
+    def __getitem__(self, name):
+        found = self.found.get(name, _MISSING)
+        if found is _MISSING:
+            if name not in self.names:
+                raise KeyError(name)
+            found = self.found[name] = _known(self.run.value(name, tx=self.tx))
+        return found
+
+    def __contains__(self, name):
+        return name == 't' or name in self.names
+
+    def __iter__(self):
+        return iter({'t', *self.names})
+
+    def __len__(self):
+        return len({'t', *self.names})

@@ -6,8 +6,9 @@ it, or at a firing of a trigger (`moment.py`). The plan gives it its values and 
 Its entry gives them values in written order (D14): its parameters take the arguments, which the
 caller evaluated (each within its parameter's entry bounds), `started` the time, `done` false and
 `active` true, then each local and each plain setting of its flows its initializer, which reads what
-is above it. A stored number of an occurrence takes its size there, and its bounds. Its flows join
-the network at the settling of the round (`ways.py`).
+is above it; a draw there is the occurrence's (`chance.py`), and a local distribution is its own. A
+stored number of an occurrence takes its size there, and its bounds. Its flows join the network at
+the settling of the round (`ways.py`).
 
 Then it goes through its steps in order (spec, "Time, waiting and completion"):
 
@@ -114,6 +115,9 @@ class Occurrences:
     def _enter(self, name, made):
         """One value of an occurrence takes its value at the entry, in written order."""
         run, plan = self.run, self.plan
+        if name in plan.distributions:
+            run.env[name] = plan.distributions[name]  # a distribution of the occurrence, to draw from
+            return
         value = plan.values[name]
         number = run.truth(value.node)
         if not value.boolean and isinstance(number, int | float) and not isinstance(number, bool):

@@ -113,7 +113,7 @@ def outputs_from(defs, reader, units, registry, times, names=None):
     for it. `reader`
     gives what the rows read of the run: `end`, the end that it reached; `moments()`, the times of
     its events; and `number(expression, t, value, name)`, the value of an expression at a time
-    (`_OfTrajectory`; `timeline/reports.py` has the reader of a run of a model with a table)."""
+    (`_OfTrajectory`)."""
     end = reader.end
 
     def scale_of(unit):

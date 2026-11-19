@@ -29,6 +29,10 @@ pieces of each value of a run:
 - **A dynamic read** (the occurrences of an event, the flows present at an endpoint) has its pieces
   from the histories of what its members project and of the fields that say when each is a member:
   an occurrence is a member from its start, a flow of an occurrence while it is active.
+- **The time of a change** that `elapsed` reads has a piece at the start of its value and at each
+  commit that changed it; **a `delayed` read** with a fixed delay has the pieces of what it reads,
+  the delay later (before the delay, of a value of a member, the value at the start). Neither has a
+  key in the record: the reader finds them from the history of the value that they read.
 - **A formula, and a request or a capacity written as one,** is made after the run from the
   histories of what it reads (a formula of an occurrence from its start, and from its finish the
   frozen value that the run gave it, D7): between two times at which one of them has a piece, it is one piece
@@ -38,13 +42,14 @@ pieces of each value of a run:
   `Unavailable` with the reason. A record that keeps only some values keeps what their formulas read
   too.
 
-Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of
-each path. It evaluates a formula, a reduction, a keyed read and a dynamic read at each time that it
-is asked from the recorded values of what it reads (a formula of a finished occurrence reads its
-frozen piece), and never reads a formula's fitted pieces: a fit is checked at a few points of each
-piece only, so it could lose a kink between two of them, or a yes/no that changes and changes back.
-It reads a record with the plan of the run that made it, or makes the record's occurrences again
-from the starts of its trace (`Plan.replay`).
+Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of each
+path. It evaluates a formula, a reduction, a keyed read and a dynamic read at each time that it is
+asked from the recorded values of what it reads (a formula of a finished occurrence reads its frozen
+piece; the time of the last change of a value is its last piece that differs from the one before;
+`delayed(x, d)` is x at t - d), and never reads a formula's fitted pieces: a fit is checked at a few
+points of each piece only, so it could lose a kink between two of them, or a yes/no that changes and
+changes back. It reads a record with the plan of the run that made it, or makes the record's
+occurrences again from the starts of its trace (`Plan.replay`).
 """
 
 from __future__ import annotations
@@ -60,11 +65,12 @@ from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import evaluate
 from ...program.config import Configuration, Request
+from ...program.parts import DistributionType
 from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Record, Unavailable
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
-from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE, Plan, name_of
+from .plan import CHANGED, DELAYED, DYNAMIC, FORMULA, LOOKUP, REDUCE, Plan, name_of
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
 FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError)
@@ -163,6 +169,10 @@ class Recorder:
         """The entry of the failure that stopped a run at time t."""
         return Entry(t, self.round, 'failure', '', '', (('message', message),))
 
+    def pause(self, t, paused):
+        """The entry of the pause of a run at time t (`chance.Paused`)."""
+        return Entry(t, self.round, 'pause', paused.part, paused.owner, tuple(paused.details))
+
     def segment(self, component, segment, stores, flows):
         """The pieces of the stores and the flows of a component over one of its segments."""
         start, end, solution = segment.start, segment.end, segment.solution
@@ -236,9 +246,9 @@ class Recorder:
 
     # ---- after the run ----------------------------------------------------------------------------
 
-    def record(self, end, failure=None):
+    def record(self, end, failure=None, pause=None):
         """The record of the run, to the time `end` at which it stopped (the horizon, or the time of
-        its failure)."""
+        its failure or of its pause, whose entry ends the trace)."""
         plan, run = self.plan, self.run
         request = plan.configuration.request
         needed = None if request.everything else self._needed(request.keys)
@@ -246,7 +256,7 @@ class Recorder:
         for name, value in plan.values.items():
             if needed is not None and name not in needed:
                 continue
-            if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC):
+            if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED, DELAYED):
                 continue
             # The value at the start, then the pieces that the run gave it: a store's lines and
             # curves, a value that a commit wrote, an occurrence's values from its start.
@@ -256,6 +266,16 @@ class Recorder:
         for name in plan.keyed:
             if needed is None or name in needed:
                 histories[name] = self._history(None, self._keyed(name, end))
+        for name, stored in plan.changed.items():
+            if stored in histories:
+                # The time of the last change at a commit: a constant piece at the start and at each.
+                times = [run.changed_start(stored), *run.changes.get(stored, ())]
+                histories[name] = self._history(None, [(at, at, 0.0) for at in times if at <= end])
+        for name, (stored, delay) in plan.delays.items():
+            if stored in histories:
+                histories[name] = self._history(
+                    None, self._delayed(name, stored, histories[stored], delay, end)
+                )
         calculated = {
             name
             for name, value in plan.values.items()
@@ -301,7 +321,8 @@ class Recorder:
             if history.key is not None and history.pieces and (request.everything or history.key in keys)
         ]
         manifest = Manifest(request.horizon, request.everything, request.keys)
-        trace = tuple(self.trace) + ((failure,) if failure is not None else ())
+        last = failure if failure is not None else pause
+        trace = tuple(self.trace) + ((last,) if last is not None else ())
         return Record(manifest, tuple(kept), trace, failure)
 
     def _needed(self, keys):
@@ -318,6 +339,8 @@ class Recorder:
             if kind in (FORMULA, REDUCE):
                 reads = plan.expanded(name)
                 pending += [*reads.leaves, *reads.formulas, *reads.stepped]
+            elif kind in (CHANGED, DELAYED):
+                pending += sorted(plan.reads(name))  # the value that it follows, and the delay
             elif kind == DYNAMIC:
                 pending += sorted(plan.dynamic_reads(name))  # what its members project, and when
             owner = plan.occurrence_of(name)
@@ -338,6 +361,21 @@ class Recorder:
                 for t, value, rate in _compact(pieces)
             ),
         )
+
+    def _delayed(self, name, stored, history, delay, end):
+        """The pieces of `delayed(x, d)`: the pieces of x, d later; before d, of a value of a member,
+        x at the start. A delay that is not fixed has no such pieces."""
+        if not self.plan.fixed_node(delay):
+            return [(0.0, Unavailable(f'{name}: a delay that changes in a run'), 0.0)]
+        d = float(self.run.truth(delay))
+        pieces = []
+        if self.plan.occurrence_of(stored) is None:
+            pieces.append((0.0, history.at(0.0), 0.0))
+        for piece in history.pieces:
+            if piece.t + d <= end:
+                rate = piece.curve if piece.curve is not None else piece.rate
+                pieces.append((piece.t + d, piece.value, rate))
+        return pieces
 
     def _keyed(self, name, end):
         """The pieces of a keyed read: at the start and at each key time of a read by the time."""
@@ -576,7 +614,13 @@ def unit_of(program, key):
     if getattr(part, 'legs', ()) and len(key.steps) >= 3:
         # A field of a leg is in the leg's unit; the parent's `served_fraction` is a plain number.
         part = next((leg for leg in part.legs if leg.name == key.steps[1]), part)
-    unit = part.unit if hasattr(part, 'unit') else getattr(part.type, 'unit', '')  # a flow has a unit
+    value_type = getattr(part, 'type', None)
+    if hasattr(part, 'unit'):  # a flow has a unit
+        unit = part.unit
+    elif isinstance(value_type, DistributionType):  # `.mean` and `.std` are in its numbers' unit
+        unit = getattr(value_type.of, 'unit', '')
+    else:
+        unit = getattr(value_type, 'unit', '')
     scale = 1.0 if unit == '' else float(program.unit(unit).scale)
     if len(key.steps) >= 3 and key.steps[1] in ('outflow', 'inflow'):
         return (f'{unit}/h' if unit else '1/h'), scale
@@ -635,6 +679,10 @@ class _Values:
             found = self._derived(name, t)
         elif value.kind == DYNAMIC:
             found = self._dynamic(name, t)
+        elif value.kind == CHANGED:
+            found = self._changed(name, t)
+        elif value.kind == DELAYED:
+            found = self._delayed(name, t)
         elif value.kind != FORMULA or (owner is not None and self._finished(owner, t)):
             # A value, or a formula of a finished occurrence, which keeps its value (D7).
             history = self.histories.get(value.key)
@@ -654,6 +702,46 @@ class _Values:
                 found = Unavailable(str(problem))
         self.done[name, t] = found
         return found
+
+    def _stored(self, name):
+        history = self.histories.get(self.plan.values[name].key)
+        if history is None:
+            raise LookupError(f'the record holds no value of {name}')
+        return history
+
+    def _changed(self, name, t):
+        """The time at which a stored value last changed at a commit, at time t: of the last piece of
+        its history at or before t that differs from the value before it (a value that holds between
+        moments has a piece at each commit that changes it; one that moves, beyond its tolerance), or
+        the time of its first piece."""
+        pieces = self._stored(self.plan.changed[name]).pieces
+        last = bisect_right([piece.t for piece in pieces], t) - 1
+        if last < 0:
+            raise LookupError(f'{name} has no value at {t} h')
+        for k in range(last, 0, -1):
+            before, piece = pieces[k - 1].at(pieces[k].t), pieces[k].value
+            if isinstance(piece, bool | str) or isinstance(before, bool | str):
+                if piece != before:
+                    return pieces[k].t
+            elif abs(float(piece) - float(before)) > 1e-12 * max(1.0, abs(float(before))):
+                return pieces[k].t
+        return pieces[0].t
+
+    def _delayed(self, name, t):
+        """`delayed(x, d)` at time t: x at max(t - d, 0), from its history."""
+        stored, delay = self.plan.delays[name]
+        env = {read: self.at(read, t) for read in sorted(set(nodes.names(delay)) - {'t'})}
+        env['t'] = float(t)
+        try:
+            for item in env.values():
+                if isinstance(item, Unavailable):
+                    raise ExpressionError(item.reason)
+            d = evaluate(delay, env, self.plan.units)
+            if isinstance(d, bool) or not d >= 0:
+                raise ExpressionError(f'{name}: the delay must be a duration that is not negative')
+            return self._stored(stored).at(max(float(t) - float(d), 0.0))
+        except FAILURES as problem:
+            return Unavailable(str(problem))
 
     def _finished(self, owner, t):
         """Whether an occurrence has finished at time t."""

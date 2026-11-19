@@ -1,124 +1,171 @@
-"""A run with given outcomes (`timeline.Run(outcomes=…)`, docs/engine.md, "The outcomes of a run,
-given"): the firings that go by chance take the outcomes that a caller gives, and the run keeps
-each such firing with its chances.
+"""The outcomes of categorical draws and the picks of a run (D1; `chance.py`).
 
-The oracles are the rule in words (a sample takes the first outcome whose running total of the
-chances is above its uniform number), written again here with exact fractions, and the closed form
-of a small model: a clock that ticks each hour and adds to a total with one outcome.
+A sampled draw takes the outcome whose share of (0, 1), in declared order, holds its uniform number:
+the share of each outcome is the part of the uniform numbers that takes it, which exact fractions
+give. A run takes the given picks for the choices that they answer and pauses at the first that none
+answers; a pick for a choice that the run never makes changes nothing; a run whose actors nobody plays
+is the median run. The expected values are exact fractions and the rules themselves.
 """
 
+from __future__ import annotations
+
 from fractions import Fraction
-from itertools import pairwise
 
 import pytest
 
-from napkin.engine.timeline.run import shares
-from napkin.engine.uncertainty import run_sample
-from tests.build import block, compiled, document, entity, output, parameter, stock
+from napkin.engine import read, run
+from napkin.engine.timeline import paused
+from napkin.engine.timeline.chance import outcome
+from napkin.program.build import (
+    Builder,
+    add,
+    after,
+    case,
+    categorical,
+    choose,
+    dist_of,
+    event,
+    named,
+    q,
+    reset_after,
+    start,
+    switch,
+    t,
+    this,
+    value,
+    when,
+)
+from napkin.program.config import FORECAST, PLAYER, Configuration, Controller, Pick, Request
+from napkin.program.refs import Distribution
 
-
-def taken_by_a_sample(chances, u):
-    """The place that a sample with the uniform number u takes: the first outcome with a chance
-    whose running total is above u, and the last outcome with a chance when no total is."""
-    total, last = Fraction(0), None
-    for place, chance in enumerate(chances):
-        if chance <= 0:
-            continue
-        total, last = total + chance, place
-        if u < total:
-            return place
-    return last
+UNITS = {'h': {'time': 1}}
 
 
 @pytest.mark.parametrize(
-    'chances',
+    'weights',
     [
-        (Fraction(3, 10), Fraction(7, 10)),
-        (Fraction(1, 4), Fraction(0), Fraction(1, 2), Fraction(1, 4)),
-        # The chances add up to 1 within a tolerance only: a little less, and a little more.
-        (Fraction(1, 3), Fraction(1, 3), Fraction(1, 3) - Fraction(1, 10**10)),
-        (Fraction(1, 2), Fraction(1, 2) + Fraction(1, 10**10), Fraction(0)),
-        (Fraction(1), Fraction(1, 10**10)),
-        (Fraction(0), Fraction(1)),
+        {'A': Fraction(1, 2), 'B': Fraction(1, 2)},
+        {'A': Fraction(1, 4), 'B': Fraction(1, 2), 'C': Fraction(1, 4)},
+        {'A': Fraction(1, 8), 'B': Fraction(5, 8), 'C': Fraction(2, 8)},
     ],
 )
-def test_the_share_of_each_outcome_is_the_part_of_the_uniform_numbers_that_takes_it(chances):
-    """The uniform number of a sample is anywhere from 0 to 1. The part of that range in which
-    the rule takes an outcome is found here from the ends of the pieces: between two ends the rule
-    takes one place. `shares` gives the same parts, and they add up to 1."""
-    ends = sorted(
-        {Fraction(0), Fraction(1), *(min(Fraction(1), sum(chances[: k + 1])) for k in range(len(chances)))}
-    )
-    exact = [Fraction(0)] * len(chances)
-    for low, high in pairwise(ends):
-        exact[taken_by_a_sample(chances, (low + high) / 2)] += high - low
-    found = shares([float(chance) for chance in chances])
-    assert found == pytest.approx([float(part) for part in exact], abs=1e-15)
-    assert sum(found) == pytest.approx(1.0, abs=1e-15)
+def test_the_share_of_each_outcome_is_the_part_of_the_uniform_numbers_that_takes_it(weights):
+    """At the midpoints (k + 1/2) / 512 of (0, 1), each outcome takes 512 times its weight of them."""
+    names = tuple(weights)
+    d = Distribution('categorical', tuple(float(w) for w in weights.values()), enum='E', outcomes=names)
+    points = 512
+    taken = [outcome(d, None, (k + 0.5) / points) for k in range(points)]
+    assert {name: taken.count(name) for name in names} == {name: points * w for name, w in weights.items()}
+    # The outcomes come in their declared order along (0, 1).
+    assert taken == sorted(taken, key=names.index)
 
 
-def ticks(odds='odds', hit=('next += 1 h', 'total += gain'), horizon=6):
-    """A clock that ticks at each hour from 1 h: with the chance `odds` a tick is a hit, which
-    adds `gain` (2 people) to the total."""
-    return document(
-        'Ticks',
-        entity(
-            'shop',
-            parameter('odds', 0.3, 'fraction', 0, 1),
-            parameter('gain', 2, 'people', 0, 10),
-            stock('next', 1, 'h', minimum=None, maximum=50, size=None, kind='state'),
-            stock('total', 0, 'people', size=1000),
-            block(
-                'event tick when t >= next:  @fixture',
-                '"A tick."',
-                block(f'hit {odds}:', *hit),
-                block('miss else:', 'next += 1 h'),
-            ),
+def test_barred_outcomes_give_their_share_to_the_others_in_proportion():
+    """With A barred, B and C share (0, 1) as 5 to 2."""
+    d = Distribution('categorical', (0.125, 0.625, 0.25), enum='E', outcomes=('A', 'B', 'C'))
+    taken = [outcome(d, ('B', 'C'), (k + 0.5) / 700) for k in range(700)]
+    assert (taken.count('B'), taken.count('C')) == (500, 200)
+
+
+def clock():
+    """A clock whose trigger starts `decide` each hour from 1 h; each asks the operator whether to
+    shut, which the forecast does one time in four."""
+    b = Builder(UNITS)
+    action = b.enum('enum[SHUT, WAIT]', 'SHUT', 'WAIT')
+    b.entity(
+        'operator',
+        value('forecast', dist_of(action), categorical(action, SHUT=0.25, WAIT=0.75)),
+        value('shut', '', 0),
+        event(
+            'decide',
+            after(q(0, 'h'), switch(choose(this, this.forecast), case(action.SHUT, add(this.shut, 1)))),
+            when(t >= q(1, 'h'), start(this.decide), reset=reset_after(q(1, 'h'))),
         ),
-        output('total', 'shop.total', 'people'),
-        horizon=horizon,
+    )
+    return b.finish()
+
+
+SITE = 'operator.decide.step[0].do[0].choice[0]'
+
+
+def played(*shut, by=PLAYER, horizon=3):
+    picks = tuple(Pick(SITE, f'operator.decide#{k}', 'SHUT' if yes else 'WAIT') for k, yes in enumerate(shut))
+    return Configuration(Request(horizon), controllers=(Controller('operator', by),), picks=picks)
+
+
+def shut(record, program, at=3):
+    return read(record, program, ['operator.shut'], [at])[0].values[0]
+
+
+@pytest.mark.parametrize('answers', [(True,), (True, False), (False, True)])
+def test_a_run_takes_the_given_picks_and_pauses_at_the_first_choice_that_none_answers(answers):
+    """The clock decides at 1, 2 and 3 h."""
+    program = clock()
+    record = run(program, played(*answers))
+    entry = paused(record)
+    assert (entry.t, entry.owner) == (1 + len(answers), f'operator.decide#{len(answers)}')
+    assert shut(record, program, len(answers)) == sum(answers)
+
+
+def test_more_picks_than_choices_change_nothing():
+    program = clock()
+    exact = run(program, played(True, False, True))
+    extra = run(program, played(True, False, True, True, True))
+    assert paused(exact) is None and exact == extra and shut(exact, program) == 2
+
+
+def test_a_run_that_nobody_plays_is_the_median_run():
+    program = clock()
+    alone = run(program, Configuration(Request(3)))
+    forecast = run(program, played(True, True, True, by=FORECAST))
+    assert alone == forecast and shut(alone, program) == 0  # the forecast waits: 3/4 against 1/4
+    assert [entry.detail('by') for entry in alone.entries('choice')] == ['forecast'] * 3
+
+
+def test_a_pick_outside_the_enum_stops_the_run():
+    program = clock()
+    record = run(
+        program,
+        Configuration(
+            Request(3),
+            controllers=(Controller('operator', PLAYER),),
+            picks=(Pick(SITE, 'operator.decide#0', 'OPEN'),),
+        ),
+    )
+    assert record.failure.t == 1 and 'the pick OPEN of operator.decide#0 is not available' in (
+        record.failure.detail('message')
     )
 
 
-def total_of(model, places):
-    found = run_sample(model, 'a', {}, None, [6.0], None, outcomes=places)
-    assert not found['failures'], found['failures']
-    return found['rows'][0]['values']['total'], found['firings']
-
-
-@pytest.mark.parametrize('places', [(), (0,), (1, 0, 0), (0, 1, 0, 1, 0, 0), (0, 0, 0, 0, 0, 0)])
-def test_a_run_takes_the_given_outcomes_and_then_the_likeliest(places):
-    """The clock ticks six times to the horizon of 6 h. A tick whose outcome is given takes it
-    (place 0 is a hit); a later tick takes the likelier outcome, a miss with the chance 0.7. So
-    the total is 2 people for each hit among the given places. The run keeps each of the six
-    firings: its event, the chances 0.3 and 0.7, and the place that it took."""
-    total, firings = total_of(compiled(ticks()), places)
-    assert total == 2 * places.count(0)
-    assert [name for name, _, _ in firings] == ['shop.tick'] * 6
-    assert [place for _, _, place in firings] == [*places, *[1] * (6 - len(places))]
-    for _, chances, _ in firings:
-        assert chances == pytest.approx((0.3, 0.7), abs=1e-15)
-
-
-def test_more_given_outcomes_than_firings_change_nothing():
-    total, firings = total_of(compiled(ticks()), (0, 0, 0, 0, 0, 0, 1, 0))
-    assert total == 12 and len(firings) == 6
-
-
-@pytest.mark.parametrize(('odds', 'places'), [('0', (0,)), ('1', (1,)), ('odds', (2,)), ('odds', (-1,))])
-def test_a_given_outcome_that_no_sample_takes_stops_the_run(odds, places):
-    """A hit with the chance 0, a miss with the chance 0 (`else` of 1), and a place that the event
-    has not: no sample takes such an outcome, so no path of the outcomes has it."""
-    with pytest.raises(ValueError, match='no sample takes the outcome'):
-        run_sample(compiled(ticks(odds)), 'a', {}, None, [6.0], None, outcomes=places)
-
-
-def test_a_run_with_no_given_outcomes_keeps_no_firing_and_is_the_central_run():
-    """`outcomes=None` is a run as before: the central run, which keeps no firing. With `()` the
-    run takes the likeliest outcome of each firing too, and keeps the firings."""
-    model = compiled(ticks())
-    plain = run_sample(model, 'a', {}, None, [6.0], None)
-    given = run_sample(model, 'a', {}, None, [6.0], None, outcomes=())
-    assert 'firings' not in plain and len(given['firings']) == 6
-    assert plain['rows'] == given['rows']
-    assert plain['events'] == given['events'] == {'shop.tick': {'hit': 0, 'miss': 6}}
+def test_each_member_of_a_template_is_its_own_actor():
+    """Two operators of one template decide at 1 h; the player controls the first only, and the
+    second takes its forecast."""
+    b = Builder(UNITS)
+    action = b.enum('enum[SHUT, WAIT]', 'SHUT', 'WAIT')
+    b.template(
+        'Operator',
+        value('forecast', dist_of(action), categorical(action, SHUT=0.25, WAIT=0.75)),
+        value('shut', '', 0),
+        event(
+            'decide',
+            after(q(1, 'h'), switch(choose(this, this.forecast), case(action.SHUT, add(this.shut, 1)))),
+        ),
+    )
+    b.member('Operator', 'north')
+    b.member('Operator', 'south')
+    b.setup(start(named('north').decide), start(named('south').decide))
+    program = b.finish()
+    site = 'Operator.decide.step[0].do[0].choice[0]'
+    configuration = Configuration(
+        Request(2),
+        controllers=(Controller('north', PLAYER),),
+        picks=(Pick(site, 'north.decide#0', 'SHUT'),),
+    )
+    record = run(program, configuration)
+    assert paused(record) is None
+    assert [reading.values[0] for reading in read(record, program, ['north.shut', 'south.shut'], [2])] == [
+        1,
+        0,
+    ]
+    choices = {entry.owner: entry.detail('by') for entry in record.entries('choice')}
+    assert choices == {'north.decide#0': 'player', 'south.decide#0': 'forecast'}

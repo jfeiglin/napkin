@@ -23,10 +23,16 @@ continuous engine and the record read these names; nothing reads the spelling of
   order of what it reads. A formula, a reduction, a keyed read, and a request or a capacity written
   as a formula, is evaluated at each read. A request left out is zero; a capacity left out sets no
   limit and has no value.
-- **Draws.** A draw in an initializer is executed once at the start, keyed by its site and by the
-  member that executes it. A draw of a path reads the distribution of a distribution-valued value of
-  that member: the configuration's, or its default. An input that the configuration sets skips the
-  draws of its default (D2).
+- **Draws and choices** (`Drawn`, `Chosen`, `chance.py`) are named by their owner and their site
+  (`machine.check#0|machine.check.step[0].do[0].draw[0]`): the member, the occurrence or the trigger
+  that executes them (`''` for the root and the setup). A draw of a path reads the present
+  distribution of a distribution-valued value: the configuration's, its default, or what a stage
+  assigned it since. An input that the configuration sets skips the draws of its default (D2).
+- **`elapsed` and `delayed`.** `elapsed(x)` is the node `t - x|changed`, where `x|changed` (kind
+  CHANGED) is the time at which the stored value x last changed at a commit, or its start, so it
+  moves as the time does. `delayed(x, d)` (kind DELAYED, `delays`) is the committed value of x at d
+  before the read, from 0. Each reads a stored value: an input, a stored value, a link or a captured
+  setting, of a member, of the root or of an occurrence.
 - **Keyed reads.** `.at(x)` with an x that reads only fixed values is fixed for the run; with x the
   time `t`, it changes only at the keys of its collection, its key times, which go on the timeline
   of the run (`stepped`).
@@ -72,14 +78,15 @@ continuous engine and the record read these names; nothing reads the spelling of
   occurrences of an event (`count(this.refill.occurrences)`, `.occurrences.at(t)`, `since(e)`) and,
   when events own flows, the flows of an endpoint and its actual rate. `members` gives the members
   now, `members_at` at a time of a record, and `project` the value that a member projects.
-- **Assertions** over inputs are checked once, at the start of the run. Enum members and texts are
-  values that compare with `==` and `!=`.
+- **Assertions** over inputs (`asserts`) are checked once, at the start of the run; an assertion that
+  reads anything else is over state (`checks`), and the run checks it after every round, just after
+  every moment and between moments (`triggers.py`). Enum members and texts are values that compare
+  with `==` and `!=`.
 
-What a later slice runs is refused by name (`Outside`), with the slice that brings it: draws in
-events, choices, `elapsed`, `delayed`, the assignment of a formula, a distribution, a collection or
-an allocation, controllers, and assertions over state (S4, its second part); a key of `.at(...)`
-that moves or is a function of the time other than `t`, and a keyed read of a value that moves
-(S4); solvers (S5).
+What a later slice runs is refused by name (`Outside`), with the slice that brings it: the
+assignment of a formula or a collection in a stage, a key of `.at(...)` that moves or is a function
+of the time other than `t`, and a keyed read of a value that moves (S4); solvers (S5). A
+configuration's controllers name members, and its picks the sites of choices.
 """
 
 from __future__ import annotations
@@ -117,6 +124,7 @@ from ...program.refs import (
     Where,
     spelled,
 )
+from ..errors import SimulationError
 from .collections import Dynamic, Entries, Keyed, Reduction
 from .pools import pools_of
 
@@ -130,6 +138,9 @@ LINK = 'link'  # fixed: the id of the member that a link names, a text
 REDUCE = 'reduce'  # a reduction of a collection (`Plan.reductions`), evaluated at each read
 LOOKUP = 'lookup'  # a keyed read `.at(x)` (`Plan.keyed`)
 DYNAMIC = 'dynamic'  # a read of a collection whose members change in a run (`Plan.dynamic`)
+CHANGED = 'changed'  # the time at which a stored value last changed at a commit (`elapsed`)
+DELAYED = 'delayed'  # `delayed(x, d)`: the committed value of x at d before the read (`Plan.delays`)
+DESCRIBED = 'described'  # `.mean` or `.std` of a distribution-valued value (`Plan.described`)
 STARTS = (INPUT, STATE, CAPTURE, LINK)  # the kinds that the start of a run evaluates once
 FIXED = (INPUT, LINK)  # what an assertion over inputs may read
 BUILTINS = ('started', 'done', 'active')  # the fields of every occurrence
@@ -179,13 +190,27 @@ class Value:
 
 @dataclass(frozen=True)
 class Drawn:
-    """A draw that the start of a run executes: its distribution, its site and the member that
-    executes it (`''` for the root)."""
+    """A draw (`chance.py`): its engine name (`owner|site`), what it draws (a `Distribution`, or the
+    engine name of a distribution-valued value, whose present distribution a run reads when it
+    draws), its site, and its owner: the member, the occurrence or the trigger that executes it
+    (`''` for the root and the setup)."""
 
     name: str
-    distribution: Distribution
+    source: Distribution | str
     site: str
-    member: str
+    owner: str
+
+
+@dataclass(frozen=True)
+class Chosen:
+    """An actor's choice (`chance.py`): its engine name (`owner|site`), the actor (a member's id),
+    its forecast (as `Drawn.source`), its site and its owner."""
+
+    name: str
+    actor: str
+    source: Distribution | str
+    site: str
+    owner: str
 
 
 @dataclass(frozen=True)
@@ -340,6 +365,8 @@ def _uses(item, start):
         return _uses(item.source, start)
     if isinstance(item, Since):
         return _uses(item.event, start)
+    if isinstance(item, Delayed):
+        return _uses(item.value, start) or any(_uses(read, start) for _, read in item.delay.reads)
     return False
 
 
@@ -404,6 +431,13 @@ class Plan:
         )
         self.pools = pools_of(program)
         self.values, self.draws, self.flows, self.distributions = {}, {}, {}, {}
+        self.choices = {}  # engine name -> `Chosen`
+        self.changed = {}  # the engine name of a CHANGED value -> the stored value that it follows
+        self.changed_of = {}  # a stored value -> the engine name of its CHANGED value
+        self.delays = {}  # the engine name of a DELAYED value -> (the value that it reads, the delay)
+        self.delays_of = {}  # a stored value -> the engine names of the DELAYED values that read it
+        self.described = {}  # `d.mean` or `d.std` -> (the distribution-valued value, `mean` or `std`)
+        self.described_of = {}  # a distribution-valued value -> the engine names of its `.mean`, `.std`
         self.reductions, self.keyed = {}, {}
         self.ends, self.rankings = {}, {}  # (store, side) -> End; -> the items of a priority(...)
         self.connections = {}  # the engine name of each connection -> its `Connection`
@@ -412,12 +446,16 @@ class Plan:
         # connection of a route or of a flow with legs.
         self._parts = {}
         self._numbers = {}  # the creation number of each flow and connection, from 1 (its key)
-        self.asserts = []  # (origin, the member that it belongs to, its node)
+        # (origin, the member that it belongs to, its node): over inputs, checked once; over state
+        # (`checks`), checked after every round and moment and watched between moments.
+        self.asserts, self.checks = [], []
         self.failures = []  # the errors of the setup that the plan finds: the run fails with them
+        self.started = False  # once the run has started, an error that the plan finds stops it
         self._derived = {}  # (owner, read) -> the engine name of a reduction or a keyed read
         self._expanded = {}
         self._places = {}  # the place of each value in `values`, for `ordered`
         self._given = {(item.member, item.name): item for item in configuration.inputs}
+        self._copies = []  # (distribution-valued value, the value whose distribution it copies, origin)
         self._refuse_parts()
         self.dynamic = {}  # engine name -> `Dynamic`: a read of a collection that changes in a run
         self.events = {}  # (member id, event name) -> (template, row, member, Event)
@@ -457,13 +495,14 @@ class Plan:
         unused = sorted(f'{member}.{name}'.lstrip('.') for member, name in self._given)
         if unused:
             raise ConfigurationError(f'no input of the program has these names: {", ".join(unused)}')
+        self._copied()
         for make in self._declared:
             make()
         for check in program.asserts:
-            self.asserts.append((check.origin, '', self.node(check.test, None, check.origin)))
+            self._assertion(check, None)
         for scope in members:
             for check in scope[0].asserts:
-                self.asserts.append((check.origin, scope[2].id, self.node(check.test, scope, check.origin)))
+                self._assertion(check, scope)
         self.triggers = [
             self._trigger(scope, event, index)
             for scope in members
@@ -481,29 +520,55 @@ class Plan:
     # ---- what this slice refuses ----------------------------------------------------------------
 
     def _refuse_parts(self):
-        """Solvers (S5), status displays (C), and what the second part of S4 brings: a draw in an
-        event, an actor's choice, `elapsed` and `delayed`, an assignment of a formula, a
-        distribution, a collection or an allocation, and controllers of actors."""
+        """Solvers (S5), status displays (C), and the assignment of a formula or a collection in a
+        stage (S4). The controllers and the picks of the configuration must name members and the
+        sites of choices."""
         program = self.program
         for template in program.templates:
             if template.solvers:
                 raise Outside(f'{template.solvers[0].origin}: a solver (S5)')
             if template.status is not None:
                 raise Outside(f'{template.status.origin or template.name}: a status display (C)')
-        if self.configuration.controllers or self.configuration.picks:
-            raise Outside('the controllers and picks of actors (S4)')
-        for origin, expression, in_event in _program_expressions(program):
-            for _, read in expression.reads:
-                if isinstance(read, (Choice, Elapsed, Delayed)) or (isinstance(read, Draw) and in_event):
-                    raise Outside(f'{origin}: {spelled(read)}, which the second part of S4 runs (S4)')
         for origin, statement in _program_statements(program):
-            if isinstance(statement, p.Assign) and not isinstance(statement.value, Expr):
+            allowed = Expr | Distribution | p.Priority | p.Proportional
+            if isinstance(statement, p.Assign) and not isinstance(statement.value, allowed):
                 raise Outside(
                     f'{origin}: an assignment of a {type(statement.value).__name__.lower()} in a stage (S4)'
                 )
+        for controller in self.configuration.controllers:
+            try:
+                program.member(controller.actor)
+            except KeyError:
+                raise ConfigurationError(
+                    f'{controller.actor}: a controller decides for an actor, which is a member'
+                ) from None
+        sites = {
+            read.site
+            for _, expression, _ in _program_expressions(program)
+            for _, read in expression.reads
+            if isinstance(read, Choice)
+        }
+        for pick in self.configuration.picks:
+            if pick.site not in sites:
+                raise ConfigurationError(f'{pick.site}: a pick answers a choice, and no choice has this site')
+
+    def _assertion(self, check, scope):
+        """An assertion of the root (`scope` None) or of a member, in `asserts` until the connected
+        sets are known (`_refuse_reads` moves each that is over state to `checks`)."""
+        member = scope[2].id if scope is not None else ''
+        node = self.node(check.test, scope, check.origin)
+        self.asserts.append((check.origin, member, node))
+
+    def fail(self, message):
+        """An error of the setup that the plan finds: the run fails with it at its start, or now when
+        the run has started (a part of an occurrence is planned when the occurrence starts)."""
+        if self.started:
+            raise SimulationError(message)
+        self.failures.append(message)
 
     def _refuse_reads(self):
-        """A keyed read of what moves, and an assertion over state, are refused (S4)."""
+        """A keyed read of what moves is refused (S4). An assertion that reads what is not fixed by the
+        inputs is over state (`checks`)."""
         moving = self.moving
         for keyed in self.keyed.values():
             found = Expanded.union(self.expanded(read) for read in keyed.reads())
@@ -515,9 +580,20 @@ class Plan:
                 raise Outside(
                     f'{keyed.spelled}: `.at(...)` of a value or with a key that changes between moments (S4)'
                 )
-        for origin, _, node in self.asserts:
-            if not self._fixed(self.expansion(node)):
-                raise Outside(f'{origin}: an assertion over state, which is checked at each moment (S4)')
+        fixed = []
+        for check in self.asserts:
+            (fixed if self._fixed(self.expansion(check[2])) else self.checks).append(check)
+        self.asserts = fixed
+
+    def delay_moves(self, name):
+        """Whether a `delayed` read moves between moments: it reads the past of a value that a flow
+        meets, or its delay is not fixed by the inputs."""
+        stored, delay = self.delays[name]
+        return stored in self.moving or not self.fixed_node(delay)
+
+    def fixed_node(self, node):
+        """Whether a node reads only what the inputs fix."""
+        return self._fixed(self.expansion(node))
 
     def _fixed(self, found):
         """Whether what an expansion reads is fixed by the inputs: inputs, links, and keyed reads
@@ -572,7 +648,7 @@ class Plan:
         own = member.value(value.name) if member is not None and not local else None
         init = own if own is not None else value.init
         if isinstance(value.type, p.DistributionType):
-            self._declare_distribution(value, member, name, init)
+            self._declare_distribution(value, scope, name, init)
             return
         if not isinstance(value.type, (p.Number, p.Bool, p.EnumType, p.Text)):
             raise Outside(f'{value.origin}: a value of type {type(value.type).__name__} (a later slice)')
@@ -603,19 +679,39 @@ class Plan:
         self._add(Value(name, key, kind, None, unit, boolean))
         self._declared.append(make)
 
-    def _declare_distribution(self, value, member, name, init):
-        """A distribution-valued value: the configuration's distribution, or its default."""
-        owner = member.id if member is not None else ''
-        given = self._given.pop((owner, value.name), None)
+    def _declare_distribution(self, value, scope, name, init):
+        """A distribution-valued value: the configuration's distribution, or its default, written in
+        place or, through a path, the distribution of another such value at the start."""
+        given = self._given.pop((self.owner_of(scope), value.name), None)
         if given is not None:
             if value.kind != p.INPUT:
                 raise ConfigurationError(f'{name} is no input: a configuration sets only inputs')
             if not isinstance(given.value, Distribution):
                 raise ConfigurationError(f'{name} is distribution-valued: it takes a distribution')
             init = given.value
+        if isinstance(init, Path):
+            point = self.resolve(init, scope, value.origin)
+            if point[0] != 'value':
+                raise Outside(f'{value.origin}: {spelled(init)} holds no distribution (a type error)')
+            self._copies.append((name, point[1], value.origin))
+            return
         if not isinstance(init, Distribution):
-            raise Outside(f'{value.origin}: a distribution-valued value that is no distribution (S4)')
+            raise Outside(
+                f'{value.origin}: a distribution-valued value that is no distribution (a type error)'
+            )
         self.distributions[name] = init
+
+    def _copied(self):
+        """The distributions that paths name, once those that they name are known."""
+        pending, self._copies = self._copies, []
+        while pending:
+            left = [item for item in pending if item[1] not in self.distributions]
+            for name, target, _ in pending:
+                if target in self.distributions:
+                    self.distributions[name] = self.distributions[target]
+            if len(left) == len(pending):
+                raise Outside(f'{left[0][2]}: {left[0][1]} holds no distribution (a type error)')
+            pending = left
 
     def _given_node(self, given, name, unit, boolean, value_type=None):
         """The node of the value that a configuration gives an input, in canonical units (D2). Its
@@ -852,11 +948,18 @@ class Plan:
             for flow in named:
                 if flow not in mine:
                     whole = self._parts[flow][0] in (ROUTE, LEGS)
-                    self.failures.append(
+                    self.fail(
                         f'{origin}: priority(...) at {store}.{side} names {flow}, which is not a flow of '
                         f'that endpoint{"; name its leg of that direction" if whole else ""}'
                     )
         self.rankings[(store, side)] = tuple(items)
+
+    def allocate(self, store, side, allocation, scope, origin):
+        """A stage gives an endpoint a new allocation: its priority items, or `proportional()`."""
+        if isinstance(allocation, p.Priority):
+            self._ranking(store, side, allocation, scope, origin)
+        else:
+            self.rankings.pop((store, side), None)
 
     # ---- events -------------------------------------------------------------------------------
 
@@ -924,6 +1027,31 @@ class Plan:
             if isinstance(part, p.Flow):
                 self._declare_flow(part, scope)
                 flows.append(name_of(Key(occ, (part.name,))))
+        for name in flows:
+            if name in self.flows:
+                for connection in self.flows[name].connections:
+                    self.connections[connection.name] = connection
+        for part in event.locals:
+            # The endpoint settings of a store of the occurrence, which its own flows meet.
+            if isinstance(part, p.Value) and (part.outflow is not None or part.inflow is not None):
+                store = name_of(Key(occ, (part.name,)))
+                found = self.values.get(store)
+                if found is None or found.kind != STATE or found.boolean:
+                    raise Outside(
+                        f'{part.origin}: an endpoint of a value that is no stored number (a type error)'
+                    )
+                self._stores[store] = (part, scope)
+                for side in SIDES:
+                    if getattr(part, side) is not None:
+                        incident = tuple(
+                            connection.name
+                            for name in flows
+                            if name in self.flows
+                            for connection in self.flows[name].connections
+                            if store == (connection.source if side == 'outflow' else connection.sink)
+                        )
+                        self._declare_end(store, part, scope, side, getattr(part, side), incident)
+        self._copied()
         makers, self._declared = self._declared[first:], self._declared[:first]
         for make in makers:
             make()
@@ -932,6 +1060,11 @@ class Plan:
             name = name_of(Key(occ, (part.name,)))
             if isinstance(part, p.Value):
                 initial.append(name)
+                for side in SIDES:
+                    end = self.ends.get((name, side))
+                    for setting in (end.request, end.capacity) if end is not None else ():
+                        if setting is not None:
+                            (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
                 value = self.values.get(name)
                 if value is None:
                     continue  # a distribution or a collection
@@ -943,10 +1076,6 @@ class Plan:
                 continue
             for setting in self._flow_settings(name):
                 (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
-        for name in flows:
-            if name in self.flows:
-                for connection in self.flows[name].connections:
-                    self.connections[connection.name] = connection
         self.frames[occ] = scope
         self.occurrences[(member, event_name)].append(occ)
         flows = tuple(name for name in flows if name in self.flows)
@@ -1011,11 +1140,21 @@ class Plan:
                 names[name] = nodes.ref(found)
                 if binding is not None:
                     binding[name] = found
-            elif isinstance(read, Draw):
-                found = self._draw(read, scope, origin)
+            elif isinstance(read, Draw | Choice):
+                found = (
+                    self._draw(read, scope, origin)
+                    if isinstance(read, Draw)
+                    else self._choice(read, scope, origin)
+                )
                 names[name] = nodes.ref(found)
                 if binding is not None:
                     binding[name] = found
+            elif isinstance(read, Elapsed):
+                # The time since the value last changed at a commit: the time less that of the change.
+                changed = self._changed(read, scope, origin, item)
+                names[name], binding = nodes.binary('sub', nodes.ref('t'), nodes.ref(changed)), None
+            elif isinstance(read, Delayed):
+                names[name], binding = nodes.ref(self._delayed(read, scope, origin, item)), None
             elif isinstance(read, EnumValue):
                 names[name] = nodes.const(read.member)
             elif isinstance(read, Since):
@@ -1131,6 +1270,8 @@ class Plan:
         if kind == 'value' and name in SIDES and point[1] in self._stores:
             self.end_of(point[1], name, origin)
             return ('end', point[1], name)
+        if kind == 'value' and name in ('mean', 'std') and point[1] in self.distributions:
+            return ('value', self._described(point[1], name, origin))
         if kind == 'end':
             end = self.ends[(point[1], point[2])]
             if name == 'flows' and self.dynamic_ends:
@@ -1139,6 +1280,8 @@ class Plan:
                 points = tuple(('flow', flow) for flow in end.flows)
                 keys = tuple(self._numbers[flow] for flow in end.flows)
                 return ('many', Entries(None, points, (None,) * len(points), keys))
+            if name == 'allocation':
+                return ('allocation', point[1], point[2])
             found = {'request': end.request, 'capacity': end.capacity, 'actual_rate': end.actual_rate}
             if name not in found:
                 raise Outside(
@@ -1360,23 +1503,103 @@ class Plan:
         value = self.values.get(name)
         return value.unit if value is not None else ''
 
+    def _source(self, source, scope, origin):
+        """What a draw or a choice draws: a distribution written in place, or the engine name of a
+        distribution-valued value."""
+        if isinstance(source, Distribution):
+            return source
+        point = self.resolve(source, scope, origin)
+        if point[0] != 'value' or point[1] not in self.distributions:
+            raise Outside(
+                f'{origin}: a draw of {spelled(source)}, which holds no distribution (a type error)'
+            )
+        return point[1]
+
     def _draw(self, read, scope, origin):
-        """The engine name of a draw that an initializer executes, with its distribution."""
-        member = scope[2].id if scope is not None else ''
-        if isinstance(read.source, Distribution):
-            distribution = read.source
-        else:
-            point = self.resolve(read.source, scope, origin)
-            if point[0] != 'value' or point[1] not in self.distributions:
-                raise Outside(
-                    f'{origin}: a draw of {spelled(read.source)}, which is no distribution of this slice'
-                )
-            distribution = self.distributions[point[1]]
-        if distribution.family == 'categorical':
-            raise Outside(f'{origin}: a draw of a categorical distribution (S4)')
-        name = f'{member}|{read.site}'
-        self.draws.setdefault(name, Drawn(name, distribution, read.site, member))
+        """The engine name of a draw (`Drawn`), keyed by its owner and its site."""
+        owner = self.owner_of(scope)
+        name = f'{owner}|{read.site}'
+        if name not in self.draws:
+            self.draws[name] = Drawn(name, self._source(read.source, scope, origin), read.site, owner)
         return name
+
+    def _choice(self, read, scope, origin):
+        """The engine name of an actor's choice (`Chosen`), keyed by its owner and its site."""
+        owner = self.owner_of(scope)
+        name = f'{owner}|{read.site}'
+        if name not in self.choices:
+            actor = self.resolve(read.actor, scope, origin)
+            if actor[0] != 'member':
+                raise Outside(
+                    f'{origin}: {spelled(read.actor)}.choose(...), which is no actor (a type error)'
+                )
+            source = self._source(read.source, scope, origin)
+            self.choices[name] = Chosen(name, actor[1], source, read.site, owner)
+        return name
+
+    def _stored(self, read, path, scope, origin, item):
+        """The engine name of the stored value that `elapsed` or `delayed` reads: a value that a run
+        holds (an input, a stored value, a link or a captured setting), of a member, of the root or of
+        an occurrence."""
+        point = self.resolve(path, scope, origin, item)
+        found = self.values.get(point[1]) if point[0] == 'value' else None
+        if found is None or found.kind not in STARTS:
+            self.fail(f'{origin}: {spelled(read)} reads a stored value, and {spelled(path)} is none')
+            return None
+        return point[1]
+
+    def _changed(self, read, scope, origin, item):
+        """The engine name of the time at which the value that `elapsed` reads last changed at a
+        commit (a value of kind CHANGED)."""
+        stored = self._stored(read, read.value, scope, origin, item)
+        if stored is None:
+            return 't'  # the run fails at its start
+        name = f'{stored}|changed'
+        if name not in self.values:
+            self._add(Value(name, None, CHANGED, None, ''))
+            self.changed[name], self.changed_of[stored] = stored, name
+        return name
+
+    def _delayed(self, read, scope, origin, item):
+        """The engine name of `delayed(x, d)` (a value of kind DELAYED), with what it reads."""
+        stored = self._stored(read, read.value, scope, origin, item)
+        delay = self.node(read.delay, scope, origin, item)
+        key, name = self._derived_name(read, scope, item)
+        if key in self._derived:
+            return name
+        self._derived[key] = name
+        if stored is None:
+            return name
+        found = self.values[stored]
+        self._add(Value(name, None, DELAYED, None, found.unit, found.boolean))
+        self.delays[name] = (stored, delay)
+        self.delays_of.setdefault(stored, []).append(name)
+        return name
+
+    def _described(self, distribution, which, origin):
+        """The engine name of the mean or the standard deviation of a distribution-valued value (a
+        value of kind DESCRIBED, recorded under its path: it reads no draw, and changes when a stage
+        replaces the distribution)."""
+        name = f'{distribution}.{which}'
+        if name not in self.values:
+            found = self.distributions[distribution]
+            if found.family == 'categorical':
+                raise Outside(f'{origin}: the {which} of a categorical distribution (a type error)')
+            owner, _, field = distribution.rpartition('.') if '.' in distribution else ('', '', distribution)
+            self._add(Value(name, Key(owner, (field, which)), DESCRIBED, None, found.unit))
+            self.described[name] = (distribution, which)
+            self.described_of.setdefault(distribution, []).append(name)
+        return name
+
+    def observed(self, path, scope):
+        """The engine names of what a path of `sees` names on an actor: a value, or each value of a
+        projection."""
+        point = self.resolve(path, scope, spelled(path))
+        if point[0] == 'value':
+            return [point[1]]
+        if point[0] == 'many' and all(each[0] == 'value' for each in point[1].points):
+            return [each[1] for each in point[1].points]
+        raise Outside(f'sees {spelled(path)}: an observation that is no value (a type error)')
 
     # ---- what a value reads --------------------------------------------------------------------------
 
@@ -1389,6 +1612,11 @@ class Plan:
             return self.keyed[name].reads()
         if name in self.dynamic:
             return self.dynamic_reads(name)
+        if name in self.changed:
+            return {self.changed[name]}
+        if name in self.delays:
+            stored, delay = self.delays[name]
+            return {stored} | (set(nodes.names(delay)) - {'t'})
         node = self.values[name].node
         return set() if node is None else set(nodes.names(node)) - {'t'}
 
@@ -1620,6 +1848,12 @@ class Plan:
             }
             for flow in members:
                 own |= {f'{c.name}.actual_rate' for c in self.flows[flow].connections}
+            for leaf in sorted(found.leaves):
+                if leaf in self.delays and self.delay_moves(leaf):
+                    self.fail(
+                        f'{members[0]}: a request or a capacity that reads {leaf}, the past of a value '
+                        'that moves between moments or with a delay that is not fixed (a delay equation)'
+                    )
             rates = {leaf for leaf in found.leaves if self._is_rate(leaf)}
             rates |= {
                 leaf

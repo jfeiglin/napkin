@@ -32,12 +32,16 @@ from napkin.program.build import (
     Builder,
     add,
     after,
+    assign,
     endpoint,
     event,
     flow,
+    formula,
     local,
     move,
     named,
+    priority,
+    proportional,
     q,
     reset_after,
     reset_when,
@@ -272,3 +276,73 @@ def test_a_record_of_some_keys_keeps_what_their_occurrences_and_collections_need
     assert len(some.histories) < len(whole.histories)
     found = [reading.values for reading in read(some, example.program, list(keys), times)]
     assert found == [reading.values for reading in read(whole, example.program, list(keys), times)]
+
+
+def test_an_endpoint_of_an_occurrences_own_store_limits_and_ranks_its_flows():
+    """A delivery moves 6 L into its own batch, whose outflow is capped at 3 L/h and ranks `second`
+    first; two pipes each ask 2 L/h: `second` takes 2 and `first` the 1 left, so the batch is empty at
+    2 h, with 2 L in a and 4 L in b."""
+    b = Builder(UNITS)
+    tank = b.entity(
+        'tank',
+        value('water', 'L', 10, lower=0),
+        value('a', 'L', 0),
+        value('b', 'L', 0),
+        event(
+            'deliver',
+            value(
+                'batch',
+                'L',
+                0,
+                lower=0,
+                outflow=endpoint(capacity=q(3, 'L/h'), allocation=priority(local.second)),
+            ),
+            flow('first', local.batch, this.a, request=q(2, 'L/h')),
+            flow('second', local.batch, this.b, request=q(2, 'L/h')),
+            value('total', 'L/h', formula(local.batch.outflow.actual_rate)),
+            after(q(0, 'h'), move(q(6, 'L'), this.water, local.batch)),
+            until(local.batch <= q(0, 'L')),
+        ),
+    )
+    b.setup(start(tank.deliver))
+    source = b.finish()
+    record = run(source, Configuration(Request(3)))
+    assert record.failure is None
+    paths = [
+        'tank.deliver#0.batch',
+        'tank.deliver#0.first.actual_rate',
+        'tank.deliver#0.second.actual_rate',
+        'tank.deliver#0.total',
+        'tank.a',
+        'tank.b',
+    ]
+    found = [reading.values for reading in read(record, source, paths, [1, 3])]
+    assert found == [(3, 0), (1, 0), (2, 0), (3, 0), (1, 2), (2, 4)]
+    assert [entry.t for entry in record.entries('finish')] == [2]
+
+
+def test_a_stage_gives_an_endpoint_a_new_allocation():
+    """A reservoir capped at 10 L/h serves a (8 L/h) first; at 1 h a stage ranks b (12 L/h) first, and
+    at 2 h shares proportionally: a gets 8, 0 and 4 L/h in turn, b 2, 10 and 6. The oracle agrees."""
+    b = Builder(UNITS)
+    a_pipe, b_pipe = named('a').pipe, named('b').pipe
+    reservoir = b.entity(
+        'reservoir',
+        value(
+            'water', 'L', 100, lower=0, outflow=endpoint(capacity=q(10, 'L/h'), allocation=priority(a_pipe))
+        ),
+        event('swap', after(q(1, 'h'), assign(this.water.outflow.allocation, priority(b_pipe)))),
+        event('even', after(q(2, 'h'), assign(this.water.outflow.allocation, proportional()))),
+    )
+    b.entity('a', value('got', 'L', 0), flow('pipe', reservoir.water, this.got, request=q(8, 'L/h')))
+    b.entity('b', value('got', 'L', 0), flow('pipe', reservoir.water, this.got, request=q(12, 'L/h')))
+    b.setup(start(reservoir.swap), start(reservoir.even))
+    source = b.finish()
+    configuration = Configuration(Request(3))
+    record = run(source, configuration)
+    paths = ['a.pipe.actual_rate', 'b.pipe.actual_rate', 'a.got', 'b.got']
+    found = [reading.values for reading in read(record, source, paths, [0.5, 1.5, 2.5, 3])]
+    assert found == [(8, 0, 4, 4), (2, 10, 6, 6), (4, 8, 10, 12), (1, 7, 15, 18)]
+    oracle, failed = run_of(source, configuration)
+    assert failed is None
+    assert [value_at(oracle, source, Key(name, ('got',)), 3) for name in ('a', 'b')] == [12, 18]

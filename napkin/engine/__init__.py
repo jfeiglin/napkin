@@ -1,4 +1,5 @@
-"""Run programs: the timeline engine and its solvers (`run`, and `read` of the record of a run),
+"""Run programs: the timeline engine and its solvers (`run`, `read` of the record of a run, and
+`paused`, the pause that ends the record of a run that waits for a player's pick),
 and, until a later stage replaces them, the studies of runs under edits, Monte Carlo studies of
 uncertain values, and reports of the old compiled form.
 
@@ -18,6 +19,7 @@ _EXPORTS = {
     'edits_for': 'study',
     'evaluate_study': 'study',
     'evaluate_uncertainty': 'uncertainty',
+    'paused': 'timeline',
     'read': 'timeline',
     'resolve_edits': 'study',
     'run': 'timeline',

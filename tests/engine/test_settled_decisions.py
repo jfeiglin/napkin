@@ -1,174 +1,160 @@
-"""Opt-in windows settle independent present work, never an unanswered consequence."""
+"""What a pause settles (R-A2-14; spec, "A prompt pauses one atomic stage"; `chance.py`).
 
-from dataclasses import replace
+The stages of a moment commit one after another (D5). A pause stops the run in its stage: the stages
+of its round before it have committed and are kept; the stage itself and the stages after it, in its
+round and in the rounds after, wait for the answer, and nothing of the future happens. A run with the
+picks, and a chain of runs that each answer one more choice, replay the same trajectory from the same
+keyed draws. The expected values are worked by hand from these rules.
+"""
+
+from __future__ import annotations
 
 import pytest
 
-from napkin.engine.runtime import simulate
-from tests.build import block, compiled, document, entity
-from tests.engine.test_pause import nested_model, played, timed_model
+from napkin.engine import read, run
+from napkin.engine.timeline import Plan, Run, paused
+from napkin.program.build import (
+    Builder,
+    add,
+    after,
+    assign,
+    case,
+    categorical,
+    choose,
+    dist_of,
+    draw,
+    event,
+    named,
+    q,
+    start,
+    switch,
+    t,
+    this,
+    uniform,
+    value,
+    when,
+)
+from napkin.program.config import PLAYER, SAMPLED, Configuration, Controller, Pick, Request
+
+UNITS = {'h': {'time': 1}}
+DECIDE = 'actor.decide.step[0].do[0].choice[0]'
+NEXT = 'actor.next_choice.step[0].do[0].choice[0]'
 
 
-@pytest.mark.parametrize('at', [0, 2, 4])
-def test_settled_window_receives_later_same_time_report_but_not_future(at):
-    model = timed_model(at)
-    ordinary = played(model, pause_at_decision=True)
-    settled = played(model, pause_at_decision=True, settled_decisions=True)
-    assert ordinary.env_at(at)['actor.later'] == 0
-    assert settled.paused and settled.end_time == at
-    state = settled.env_at(at)
-    assert state['actor.later'] == 1
-    assert state['actor.chosen'] == state['actor.decide__count'] == 0
-    assert not any(row['rule'] == 'actor.future' for row in settled.trace)
-
-
-def test_delayed_control_trigger_is_bookkeeping_but_its_outcome_waits():
-    model = timed_model(delayed=True)
-    result = played(model, pause_at_decision=True, settled_decisions=True)
-    assert result.end_time == 2
-    state = result.env_at(2)
-    assert state['actor.decide__count'] == 1
-    assert state['actor.chosen'] == 0
-    assert state['actor.later'] == 1
-
-
-def test_nested_control_preserves_parent_and_earlier_siblings_without_later_sibling():
-    result = played(nested_model(), pause_at_decision=True, settled_decisions=True)
-    assert result.paused and result.end_time == 1
-    assert result.env_at(1)['actor.value'] == 3
-    assert result.env_at(1)['actor.chosen'] == 0
-    assert [row['rule'] for row in result.trace if row['rule'].startswith('actor.')] == [
-        'actor.parent',
-        'actor.first_child',
-    ]
-    completed = played(
-        nested_model(),
-        [{'event': 'actor.decide', 'outcome': 'yes'}],
-        pause_at_decision=True,
-        settled_decisions=True,
+def cascade():
+    """At 1 h an actor draws a number, reports twice, asks the player twice: `decide` and then
+    `next_choice` start in the commit of `outer`, and each answer starts a report of its own."""
+    b = Builder(UNITS)
+    plan = b.enum('enum[YES, NO]', 'YES', 'NO')
+    decision = (
+        choose(this, this.forecast),
+        case(plan.YES, add(this.chosen, 1), start(this.answered)),
+        case(plan.NO, add(this.chosen, 10), start(this.answered)),
     )
-    assert not completed.paused
-    assert completed.env_at(2)['actor.value'] == 4
-
-
-def cascade_model():
-    return compiled(cascade_text())
-
-
-def cascade_text():
-    return document(
-        'Causal decision windows',
-        entity(
-            'actor',
-            'sees report, outcome_report, chosen, sibling, random',
-            'var report: fraction = 0  @fixture',
-            'var outcome_report: fraction = 0  @fixture',
-            'var chosen: fraction = 0  @fixture',
-            'var sibling: fraction = 0  @fixture',
-            'var random: fraction = 0  @fixture',
-            block('event outer once when t >= 1 h:  @fixture', 'middle', 'sibling_report'),
-            block('event middle:  @fixture', 'decide', 'dependent'),
-            block(
-                'event decide:  @fixture',
-                'choice',
-                block('yes 0.5:', 'chosen = 1'),
-                block('no else:', 'chosen = 2'),
-            ),
-            block('event dependent:  @fixture', 'outcome_report = chosen'),
-            block('event sibling_report:  @fixture', 'sibling = 1'),
-            block('event independent once when t >= 1 h:  @fixture', 'report = 2'),
-            block(
-                'event cascade once when report > 0:  @fixture',
-                block('heads 0.5:', 'random = 1'),
-                block('tails else:', 'random = 2'),
-            ),
-            block('event after_choice once when chosen > 0:  @fixture', 'report = 3'),
-            block(
-                'event next_choice once when chosen > 0:  @fixture',
-                'choice',
-                block('yes 0.5:', 'chosen = 3'),
-                block('no else:', 'chosen = 4'),
-            ),
-            role='operator',
+    b.entity(
+        'actor',
+        value('forecast', dist_of(plan), categorical(plan, YES=0.5, NO=0.5)),
+        value('random', '', 0),
+        value('report', '', 0),
+        value('chosen', '', 0),
+        value('answers', '', 0),
+        event('roll', after(q(1, 'h'), assign(this.random, draw(uniform(1, 2))))),
+        event('report_once', after(q(1, 'h'), add(this.report, 1))),
+        event(
+            'outer', after(q(1, 'h'), start(this.decide), start(this.next_choice), start(this.report_late))
         ),
-        horizon=2,
+        event('decide', after(q(0, 'h'), switch(*decision))),
+        event('next_choice', after(q(0, 'h'), switch(*decision))),
+        event('report_late', after(q(0, 'h'), add(this.report, 1))),
+        event('answered', after(q(0, 'h'), add(this.answers, 1))),
     )
+    actor = named('actor')
+    b.setup(start(actor.roll), start(actor.report_once), start(actor.outer))
+    return b.finish()
 
 
-def run_cascade(picks=(), *, seed=17, pause=True, model=None):
-    model = model or cascade_model()
-    resolved = replace(model.resolve('a'), luck={'seed': seed, 'sample': 0})
-    return simulate(
-        resolved,
-        model.library,
-        play={'control': {'actor': 'reader'}, 'picks': list(picks)},
-        settled_decisions=True,
-        pause_at_decision=pause,
-        decision_events={'actor.decide', 'actor.next_choice'},
+def played(*picks, seed=None):
+    mode = {'mode': SAMPLED, 'seed': seed} if seed is not None else {}
+    return Configuration(Request(2), controllers=(Controller('actor', PLAYER),), picks=picks, **mode)
+
+
+def state(record, program, at=1):
+    names = ['random', 'report', 'chosen', 'answers']
+    return dict(zip(names, (r.values[0] for r in read(record, program, [f'actor.{n}' for n in names], [at]))))
+
+
+def test_the_stages_before_a_pause_commit_and_those_after_it_wait():
+    """At 1 h: `roll`, `report_once` and `outer` commit in round 1; in round 2 `decide` asks first, so
+    `next_choice` and `report_late`, after it in the round, wait with it."""
+    program = cascade()
+    record = run(program, played())
+    entry = paused(record)
+    assert (entry.t, entry.round, entry.owner) == (1, 2, 'actor.decide#0')
+    found = state(record, program)
+    assert (found['report'], found['chosen'], found['answers']) == (1, 0, 0)
+    assert 1 <= found['random'] <= 2
+    assert [e.part for e in record.entries('commit')] == [
+        'actor.roll.step[0]',
+        'actor.report_once.step[0]',
+        'actor.outer.step[0]',
+    ]
+
+
+def test_each_answer_goes_on_to_the_next_choice_of_the_same_moment():
+    program = cascade()
+    first = run(program, played(Pick(DECIDE, 'actor.decide#0', 'YES')))
+    entry = paused(first)
+    assert (entry.t, entry.owner, entry.detail('site')) == (1, 'actor.next_choice#0', NEXT)
+    assert state(first, program)['chosen'] == 1
+    both = run(
+        program, played(Pick(DECIDE, 'actor.decide#0', 'YES'), Pick(NEXT, 'actor.next_choice#0', 'NO'))
     )
-
-
-def test_independent_cascades_settle_but_nested_dependent_work_stays_behind_choice():
-    first = run_cascade()
-    state = first.env_at(1)
-    assert state['actor.report'] == 2
-    assert state['actor.random'] in (1, 2)
-    assert state['actor.outcome_report'] == state['actor.sibling'] == state['actor.chosen'] == 0
-    assert first.decision['event'] == 'actor.decide'
-    second = run_cascade([{'event': 'actor.decide', 'outcome': 'yes'}])
-    assert second.decision['event'] == 'actor.next_choice'
-    state = second.env_at(1)
-    assert state['actor.report'] == 3
-    assert state['actor.sibling'] == state['actor.outcome_report'] == 1
-
-
-def test_a_decision_that_a_line_names_and_that_is_also_due_by_its_own_condition_is_taken_once():
-    """The decision has a condition of its own that holds at the time at which the line of `middle`
-    names it. It is one decision of that moment: it is taken as the line named it, so the rest of
-    the line (`dependent`, then the sibling of `middle`) comes after it, and the next decision that
-    waits is the other one."""
-    text = cascade_text().replace('event decide:  @fixture', 'event decide when t >= 1 h:  @fixture')
-    assert text != cascade_text()
-    model = compiled(text)
-    first = run_cascade(model=model)
-    assert first.decision['event'] == 'actor.decide'
-    second = run_cascade([{'event': 'actor.decide', 'outcome': 'yes'}], model=model)
-    rules = [row['rule'] for row in second.trace]
-    assert rules.count('actor.decide') == 1
-    at = rules.index('actor.decide')
-    assert rules[at + 1 : at + 3] == ['actor.dependent', 'actor.sibling_report']
-    assert second.paused and second.decision['event'] == 'actor.next_choice'
-    assert second.env_at(1)['actor.outcome_report'] == second.env_at(1)['actor.chosen'] == 1
+    assert paused(both) is None
+    found = state(both, program, 2)
+    assert (found['report'], found['chosen'], found['answers']) == (2, 11, 2)
 
 
 @pytest.mark.parametrize('seed', [2, 17, 91])
-def test_seeded_prefix_replay_matches_full_answered_settled_execution(seed):
-    picks = [{'event': 'actor.decide', 'outcome': 'yes'}, {'event': 'actor.next_choice', 'outcome': 'no'}]
-    prefix = run_cascade(picks[:1], seed=seed)
-    resumed = run_cascade(picks, seed=seed)
-    full = run_cascade(picks, seed=seed, pause=False)
-    assert resumed.trace == full.trace
-    assert resumed.env_at(2) == full.env_at(2)
-    assert prefix.env_at(1)['actor.random'] == full.env_at(2)['actor.random']
+def test_a_chain_of_answers_replays_the_run_with_every_pick(seed):
+    """The draw at 1 h is the same in each record of the chain; the last record of the chain, answered
+    in place, is the record of a run with both picks."""
+    program = cascade()
+    picks = (Pick(DECIDE, 'actor.decide#0', 'YES'), Pick(NEXT, 'actor.next_choice#0', 'NO'))
+    running = Run(Plan.of(program, played(seed=seed)))
+    records = [running.run()]
+    for pick in picks:
+        records.append(running.resume(pick))
+    full = run(program, played(*picks, seed=seed))
+    assert records[-1] == full
+    assert [paused(record) is None for record in records] == [False, False, True]
+    assert len({state(record, program)['random'] for record in records}) == 1
+    assert [state(record, program)['random'] for record in records[:2]] == [
+        state(full, program, 2)['random']
+    ] * 2
 
 
-def test_a_second_line_that_names_a_decision_that_happens_once_does_not_hide_the_lines_after_it():
-    """The decision happens once in a run. The line of `middle` names it, and the line of `outer`
-    names it again before the sibling of `middle`. After the pick, the second naming has nothing
-    left to do: it is dropped, and the sibling after it still happens, once."""
-    text = (
-        cascade_text()
-        .replace('event decide:  @fixture', 'event decide once:  @fixture')
-        .replace(
-            block('event outer once when t >= 1 h:  @fixture', 'middle', 'sibling_report'),
-            block('event outer once when t >= 1 h:  @fixture', 'middle', 'decide', 'sibling_report'),
-        )
+def test_a_trigger_and_a_manual_start_of_a_decision_are_two_choices():
+    """A decision that a trigger starts and a manual start starts at the same time is two occurrences,
+    each with its own pick."""
+    b = Builder(UNITS)
+    plan = b.enum('enum[YES, NO]', 'YES', 'NO')
+    b.entity(
+        'actor',
+        value('forecast', dist_of(plan), categorical(plan, YES=0.5, NO=0.5)),
+        value('chosen', '', 0),
+        event(
+            'decide',
+            after(q(0, 'h'), switch(choose(this, this.forecast), case(plan.YES, add(this.chosen, 1)))),
+            when(t >= q(1, 'h'), start(this.decide)),
+        ),
+        event('ask', after(q(1, 'h'), start(this.decide))),
     )
-    assert text.count('once') == cascade_text().count('once') + 1 and 'decide\n' in text
-    model = compiled(text)
-    assert run_cascade(model=model).decision['event'] == 'actor.decide'
-    answered = run_cascade([{'event': 'actor.decide', 'outcome': 'yes'}], model=model)
-    rules = [row['rule'] for row in answered.trace]
-    assert rules.count('actor.decide') == 1 and rules.count('actor.sibling_report') == 1
-    assert rules.index('actor.decide') < rules.index('actor.dependent') < rules.index('actor.sibling_report')
-    assert answered.paused and answered.decision['event'] == 'actor.next_choice'
+    b.setup(start(named('actor').ask))
+    program = b.finish()
+    site = 'actor.decide.step[0].do[0].choice[0]'
+    first = paused(run(program, played()))
+    assert (first.t, first.owner) == (1, 'actor.decide#0')
+    second = paused(run(program, played(Pick(site, 'actor.decide#0', 'YES'))))
+    assert (second.t, second.owner) == (1, 'actor.decide#1')
+    both = run(program, played(Pick(site, 'actor.decide#0', 'YES'), Pick(site, 'actor.decide#1', 'YES')))
+    assert read(both, program, ['actor.chosen'], [2])[0].values == (2,)

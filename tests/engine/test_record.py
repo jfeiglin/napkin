@@ -20,10 +20,8 @@ from napkin.program.build import (
     SOURCE,
     Builder,
     after,
-    assertion,
     assign,
     draw,
-    elapsed,
     event,
     flow,
     formula,
@@ -264,9 +262,14 @@ def test_a_negative_request_stops_the_run():
 @pytest.mark.parametrize(
     'parts, slice_, links',
     [
-        ((event('refill', after(q(1, 'h'), assign(this.water, draw(uniform(1, 2, 'L'))))),), 'S4', None),
-        ((value('quiet', 'h', formula(elapsed(this.water))),), 'S4', None),
-        ((assertion(this.water >= q(0, 'L')),), 'S4', None),
+        (
+            (
+                value('low', BOOL, formula(this.water <= q(1, 'L'))),
+                event('alarm', after(q(1, 'h'), assign(this.low, formula(this.water <= q(2, 'L'))))),
+            ),
+            'S4',
+            None,
+        ),
         (
             (flow('echo', SOURCE, this.water, request=formula(named('clinic').delivery.actual_rate)),),
             'S5',

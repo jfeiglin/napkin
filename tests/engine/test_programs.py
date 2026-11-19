@@ -24,8 +24,18 @@ from tests.reference.from_program import run_of, value_at
 # directed flows with a request and a capacity (S0); templates, tables, collections and keyed reads
 # (S1); endpoints, local sharing, junctions and flows across members (S2); reversible routes and flows
 # with legs (S3); events, occurrences, stages, triggers, gates, moves and retirement (the first part
-# of S4). The other examples need a later slice: draws and choices (S4) and solvers (S5).
+# of S4); draws, choices and inputs that are distributions (the second part of S4). The other
+# examples need solvers (S5).
 SUBSET = {
+    'median_categorical',
+    'median_categorical_guarded',
+    'dispatcher_forecast',
+    'dispatcher_player_sends',
+    'dispatcher_player_no_spare',
+    'dispatcher_forecast_no_spare',
+    'distribution_input',
+    'scalar_input_override',
+    'scalar_input_default',
     'grinder_refill',
     'grinder_trigger_and_manual',
     'deliveries_current_flows',

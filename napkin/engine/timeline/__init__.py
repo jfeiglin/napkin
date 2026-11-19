@@ -3,7 +3,9 @@
 It reads a program (`napkin/program`) under a run configuration and gives the record of the run
 (`napkin/program/record.py`): the history of each value as pieces, and the trace.
 
-- `run(program, configuration)`: one run to the horizon, as its `Record`.
+- `run(program, configuration)`: one run to the horizon, as its `Record`. A run that a player's
+  choice pauses gives the record to the pause, whose entry ends its trace (`paused`); a run of the
+  configuration with the pick replays it, and `Run(plan).run()` then `.resume(pick)` goes on in place.
 - `Plan.of(program, configuration)`: what the run reads of the program (`plan.py`), and `Outside`,
   the refusal of a part that a later slice runs.
 - `read(record, program, paths, times)`: the values of named paths at chosen times, each in its
@@ -19,7 +21,10 @@ of what they read across members (S1); endpoints with their capacities, requests
 local sharing across junctions and stores at their bounds, and flows across members (S2); reversible
 routes with one signed rate and their legs, and flows with legs at one served fraction (S3); events
 with their occurrences, stages, triggers, gates, moves and the retirement of an occurrence's stores
-(S4, its first part). The members of each template are rows of a pool (`pools.py`); collections and
+(S4, its first part); draws in stages and in events under the modes `median` and `sampled`, inputs
+that are distributions, actors' choices with their controllers, picks and the pause of one stage,
+assertions over state, `elapsed` and `delayed` (S4, its second part, `chance.py`). The members of
+each template are rows of a pool (`pools.py`); collections and
 reductions are in `collections.py`. The flows and the stores are one network (`network.py`), whose
 local sharing at an instant is a closed form or the selection order (`selection.py`). A connected
 set of one directed flow whose rate reads nothing that moves runs with every other such set on
@@ -33,11 +38,12 @@ answers can change (`triggers.py`).
 
 from __future__ import annotations
 
+from .chance import paused
 from .plan import Outside, Plan
 from .record import Reading, read
 from .run import Run
 
-__all__ = ['Outside', 'Plan', 'Reading', 'Run', 'read', 'run']
+__all__ = ['Outside', 'Plan', 'Reading', 'Run', 'paused', 'read', 'run']
 
 
 def run(program, configuration):
