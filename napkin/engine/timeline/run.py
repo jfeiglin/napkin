@@ -5,9 +5,8 @@
    them reads is evaluated there and then, at time 0). The order is found as the values are asked,
    with no recursion, so a chain through the rows of a large table is no limit: an evaluation that
    asks for a read that is not known yet waits while that read is computed (`_Unknown`), so a side
-   that its evaluation does not take is never read (`reads.py`). A draw and a choice
-   are executed there, keyed by their site and their member (`chance.py`); each is an entry of the
-   trace. An input that the configuration sets must lie in its admitted range. The entries that each `where`
+   that its evaluation does not take is never read (`reads.py`). A draw is executed there,
+   keyed by its site and its member (`chance.py`); each is an entry of the trace. An input that the configuration sets must lie in its admitted range. The entries that each `where`
    keeps are found from fixed values, once (`kept_of`), and so is the sorted index of the keys of
    each keyed read (`stepped_of`). Then each assertion over inputs is checked once; one that does not
    hold fails the run at the start, as an error of the setup that the plan found does.
@@ -35,14 +34,13 @@ was written, an actual rate or a served fraction from the instance of its flow (
 is in no set), a formula from what it reads (a formula of a finished occurrence keeps its frozen
 value), a reduction, a keyed read and a dynamic read of a collection from their members, the time
 of the last change of a stored value at a commit (`changed_at`), and any other value from what the
-run holds between moments (`env`). A stage reads its own writes first. A draw or a choice is executed
-when an expression of a stage, an entry, a delay or a firing reads it (`truth`), which reads each
-name as its evaluation asks for it.
+run holds between moments (`env`). A stage reads its own writes first. A draw is executed when an
+expression of a stage, an entry, a delay or a firing reads it (`truth`), which reads each name as its
+evaluation asks for it.
 
 A run that fails stops there: its record holds the failure, as the last entry of its trace, and the
-histories to the time at which it stopped. A run that a player's choice pauses stops there too, with
-a `pause` entry, and `resume` goes on in place (`chance.py`); so does a run that a breakpoint stops,
-which gives its checkpoint (`checkpoints.py`).
+histories to the time at which it stopped. A run that a breakpoint stops gives its checkpoint, whose
+record so far ends with a `pause` entry, and `resume` goes on in place (`checkpoints.py`).
 """
 
 from __future__ import annotations
@@ -61,7 +59,7 @@ from ...program.config import ConfigurationError
 from ...program.record import Unavailable
 from ..continuous.system import run_settings, step_cap
 from ..errors import SimulationError
-from .chance import Chance, Paused
+from .chance import Chance
 from .checkpoints import Breaks, Stopped
 from .collections import dynamic_value, index_of, kept, looked_up, reduced
 from .moment import Defined, Moment
@@ -154,7 +152,6 @@ class Run:
         # read their rates or results; and what they give.
         self.waiting, self.waiting_names = [], set()
         self.changes = {}  # a stored value -> the times of the commits that changed it (`elapsed`)
-        self.pause = None  # the `pause` entry of a paused run, until `resume`
         self.checkpoint = None  # the checkpoint of a run stopped at a breakpoint, until `resume`
         self.breaks = Breaks(self, breakpoints, expected.stop.hit if expected else 0, expected)
         self.chance = Chance(self)
@@ -172,7 +169,7 @@ class Run:
         its expression is evaluated (`_compute`): a branch that is not taken reads nothing, and a read
         that is not known yet stops the evaluation (`_Unknown`)."""
         plan, env = self.plan, self.env
-        if name in plan.draws or name in plan.choices:
+        if name in plan.draws:
             return []
         value = plan.values[name]
         if value.kind == RATE:
@@ -218,8 +215,8 @@ class Run:
         """The value of a name at the start, from the values known so far; `_Unknown` names a read
         that its evaluation asks for and that is not known yet."""
         plan, env = self.plan, self.env
-        if name in plan.draws or name in plan.choices:
-            return self.chance.produce(name)
+        if name in plan.draws:
+            return self.chance.draw(name)
         kind = plan.values[name].kind
         if kind == DYNAMIC:
             return self.value(name)
@@ -443,8 +440,8 @@ class Run:
         plan = self.plan
         found = plan.values.get(name)
         kind = found.kind if found is not None else None
-        if kind is None and (name in plan.draws or name in plan.choices):
-            return self.chance.produce(name, None, tx)  # executed: a node of a stage reads it once
+        if kind is None and name in plan.draws:
+            return self.chance.draw(name)  # executed: a node of a stage reads it once
         if kind == RATE:
             if self.moment.phase == 'stages':
                 self.ways.fresh(name, tx)
@@ -691,24 +688,18 @@ class Run:
         self.recorder.tolerance[f'{flow.name}.actual_rate'] = factor * size
 
     def run(self):
-        """The record of the run: to the horizon, to the failure that stopped it, or to the pause of
-        a player's choice that no pick answers (`chance.py`); or the checkpoint of a breakpoint that
-        stopped it (`checkpoints.py`), which holds the record so far."""
+        """The record of the run: to the horizon, or to the failure that stopped it; or the checkpoint
+        of a breakpoint that stopped it (`checkpoints.py`), which holds the record so far."""
         return self._go(self._start)
 
-    def resume(self, *picks):
-        """Go on in place: past the breakpoint that stopped the run (no picks), or answering the
-        choice that a paused run waits for with picks (`config.Pick`). The stage that stopped runs
-        again from its start with the draws that it made, and commits once. The record is the one of
-        the run straight through, or of a run with these picks in its configuration."""
-        if self.checkpoint is not None and not picks:
-            self.breaks.passing, self.checkpoint = self.checkpoint.stop.hit, None
-            return self._go(self._resume)
-        if self.pause is None:
-            raise SimulationError('the run waits for no choice')
-        for pick in picks:
-            self.chance.picks[(pick.site, pick.occurrence)] = pick.value
-        self.pause = None
+    def resume(self):
+        """Go on in place past the breakpoint that stopped the run: the stage that stopped runs again
+        from its start with the draws that it made, and the edits made at its stops, and commits once
+        (`checkpoints.py`). The record is the one of the run straight through, or of the run with the
+        edits; or the checkpoint of the next stop."""
+        if self.checkpoint is None:
+            raise CheckpointError('the run waits at no stop')
+        self.breaks.passing, self.checkpoint = self.checkpoint.stop.hit, None
         return self._go(self._resume)
 
     def edit(self, target, value):
@@ -732,12 +723,8 @@ class Run:
         try:
             begin()
             self.loop()
-        except Paused as paused:
-            # The draws that the paused stage made are in the trace: a resumed stage keeps them.
-            self.chance.kept = {(site, owner) for site, owner, _ in self.chance.made}
-            self.pause = self.recorder.pause(self.now, paused)
-            return self.recorder.record(self.now, pause=self.pause)
         except Stopped as stopped:
+            # The draws that the stopped stage made are in the trace: the stage that runs again keeps them.
             self.chance.kept = {(site, owner) for site, owner, _ in self.chance.made}
             self.checkpoint = self.breaks.checkpoint(stopped.stop)
             return self.checkpoint

@@ -4,9 +4,9 @@ A breakpoint at a stage or a statement stops a run with a checkpoint, and the ru
 gives the same recorded values, draws, event times and event order as the run straight through. Each
 case runs three ways: with no breakpoint; stopped and resumed in place in one process, at each stop;
 and each checkpoint saved, loaded and resumed in a fresh process (a subprocess under another hash
-seed), which must give the next checkpoint of the run in one process, or its final record, equal in
-every bit. The subprocess builds the program from the same Python code of this module, until the
-loadable program of S7-F replaces that.
+seed, which loads the program from its artifact, `napkin.program.artifact`, and runs no code of
+this module), which must give the next checkpoint of the run in one process, or its final record,
+equal in every bit.
 
 The cases: a continuously changing value near a trigger threshold, on the continuous engine and on the
 sparse integrator (a tank that drains at 2 sqrt(water / 1 L) L/h from 100 L holds (10 - t)^2 L, so it
@@ -31,6 +31,7 @@ import pytest
 
 from napkin.engine.timeline import Plan, Run, paused, read, resume, run
 from napkin.engine.timeline.plan import COMPONENT, DECLARED, FAMILY, LINES, SPARSE
+from napkin.program.artifact import Artifact
 from napkin.program.build import (
     SINK,
     SOURCE,
@@ -38,6 +39,7 @@ from napkin.program.build import (
     add,
     after,
     assign,
+    categorical,
     constraint,
     draw,
     endpoint,
@@ -55,11 +57,13 @@ from napkin.program.build import (
     solver,
     sqrt,
     start,
+    switch,
     this,
     uniform,
     value,
     when,
 )
+from napkin.program.build import case as on
 from napkin.program.checkpoint import (
     Breakpoint,
     Checkpoint,
@@ -299,14 +303,14 @@ SCENARIOS = {
     )
 }
 
-# A fresh process: it builds the scenario's program and resumes each checkpoint that it is given.
+# A fresh process: it loads a program from its artifact and resumes each checkpoint that it is given.
 FRESH = """
 import sys
 from napkin.engine.timeline import resume
+from napkin.program.artifact import load
 from napkin.program.checkpoint import encode, loads
-from tests.engine.test_checkpoints import SCENARIOS
 
-program = SCENARIOS[sys.argv[1]]().program
+program = load(sys.argv[1]).program
 for path in sys.argv[2:]:
     with open(path, 'rb') as file:
         print(encode(resume(program, loads(file.read()))))
@@ -323,16 +327,18 @@ def in_one_process(case):
     return stops, found, made
 
 
-def in_a_fresh_process(name, stops, folder):
-    """What a fresh process gives for each checkpoint: the next checkpoint, or the final record."""
-    paths = []
+def in_a_fresh_process(program, stops, folder):
+    """What a fresh process gives for each checkpoint of a run of `program`, which it loads from its
+    artifact: the next checkpoint, or the final record."""
+    Artifact(program).save(folder / 'program')
+    paths = [str(folder / 'program')]
     for k, checkpoint in enumerate(stops):
         path = folder / f'{k}.checkpoint'
         path.write_bytes(dumps(checkpoint))
         paths.append(str(path))
     environment = {**os.environ, 'PYTHONHASHSEED': '4321', 'NAPKIN_STORE': 'off'}
     done = subprocess.run(
-        [sys.executable, '-c', FRESH, name, *paths],
+        [sys.executable, '-c', FRESH, *paths],
         cwd=ROOT,
         env=environment,
         capture_output=True,
@@ -359,7 +365,7 @@ def test_a_resumed_run_is_the_run_straight_through_three_ways(name, tmp_path):
         assert checkpoint.record.trace[:-1] == straight.trace[: len(checkpoint.record.trace) - 1]
         assert paused(checkpoint.record).detail('hit') == checkpoint.stop.hit
         assert loads(dumps(checkpoint)) == checkpoint
-    assert in_a_fresh_process(name, stops, tmp_path) == [*stops[1:], final]
+    assert in_a_fresh_process(case.program, stops, tmp_path) == [*stops[1:], final]
 
 
 def starts(record, part):
@@ -446,6 +452,61 @@ def test_a_moving_solver_between_two_trial_states():
     first, second = read(final, case.program, ['tank0.water', 'tank1.water'], [1, 1.5])
     assert first.values == pytest.approx([4, 5], rel=1e-6)
     assert second.values == pytest.approx([4, 10 - 5 * math.exp(-0.25)], rel=1e-6)
+
+
+def boundary(at):
+    """An actor whose events all come due at `at` (h): `prior` sets a value, then `decide` switches on
+    a draw of a forecast (NO is likelier) and sets `chosen`, then `following` sets `later`; `future`
+    is due an hour after. A tally fills at 1 h an hour. A breakpoint before the switch."""
+    b = Builder({'h': {'time': 1}})
+    plan = b.enum('enum[YES, NO]', 'YES', 'NO')
+    b.entity(
+        'actor',
+        value('value', '', 0),
+        value('chosen', '', 0),
+        value('later', '', 0),
+        value('accumulated', 'h', 0),
+        flow('accumulate', SOURCE, this.accumulated, request=q(1, 'h/h')),
+        event('prior', after(q(at, 'h'), assign(this.value, 7))),
+        event(
+            'decide',
+            after(
+                q(at, 'h'),
+                switch(
+                    draw(categorical(plan, YES=0.4, NO=0.6)),
+                    on(plan.YES, assign(this.chosen, 1)),
+                    on(plan.NO, assign(this.chosen, 2)),
+                ),
+            ),
+        ),
+        event('following', after(q(at, 'h'), assign(this.later, 1))),
+        event('future', after(q(at + 1, 'h'), assign(this.later, 2))),
+    )
+    actor = named('actor')
+    b.setup(start(actor.prior), start(actor.decide), start(actor.following), start(actor.future))
+    return b.finish(), (Breakpoint('actor.decide.step[0].do[0]'),)
+
+
+@pytest.mark.parametrize('at', [0, 2, 4])
+def test_a_stop_keeps_what_its_moment_committed_before_the_stage_and_holds_the_rest(at):
+    """At the stop, `prior` has committed in the moment, and nothing of `decide` or of `following`,
+    which wait for it; resumed, the run is the run straight through: NO (the median) gives 2."""
+    program, breakpoints = boundary(at)
+    configuration = Configuration(Request(4))
+    straight = run(program, configuration)
+    made = Run(Plan.of(program, configuration), breakpoints)
+    checkpoint = made.run()
+    assert (checkpoint.stop.t, checkpoint.stop.owner) == (at, 'actor.decide#0')
+    assert [checkpoint.state.value(f'actor.{name}') for name in ('value', 'chosen', 'later')] == [7, 0, 0]
+    assert checkpoint.state.value('actor.accumulated') == pytest.approx(at)
+    assert {entry.part for entry in checkpoint.record.entries('commit')} == {'actor.prior.step[0]'}
+    assert checkpoint.state.pending == (
+        ('actor.decide#0', 'actor.decide.step[0]'),
+        ('actor.following#0', 'actor.following.step[0]'),
+    )
+    final = made.resume()
+    assert final == straight
+    assert [reading.values[0] for reading in read(final, program, ['actor.chosen'], [4])] == [2]
 
 
 # ---- breakpoints ---------------------------------------------------------------------------------

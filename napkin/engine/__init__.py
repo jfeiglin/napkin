@@ -1,5 +1,6 @@
-"""Run programs: the timeline engine and its solvers (`run`, `read` of the record of a run, and
-`paused`, the pause that ends the record of a run that waits for a player's pick); the studies of a
+"""Run programs: the timeline engine and its solvers (`run`, `read` of the record of a run, and the
+checkpoint of a run that a breakpoint stops: `paused`, the entry that ends its record so far, and
+`resume`, which goes on with a checkpoint in this process or another); the studies of a
 program under several configurations (`configurations`, `run_all`, `edits_for`, and the module
 `study`); Monte Carlo studies (`monte_carlo`, `SamplingSettings`); and, until a later stage replaces
 them, the numerical settings of the old compiled form.
@@ -22,6 +23,7 @@ _EXPORTS = {
     'monte_carlo': 'uncertainty',
     'paused': 'timeline',
     'read': 'timeline',
+    'resume': 'timeline',
     'run': 'timeline',
     'run_all': 'study',
 }

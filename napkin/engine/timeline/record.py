@@ -173,10 +173,6 @@ class Recorder:
         """The entry of the failure that stopped a run at time t."""
         return Entry(t, self.round, 'failure', '', '', (('message', message),))
 
-    def pause(self, t, paused):
-        """The entry of the pause of a run at time t (`chance.Paused`)."""
-        return Entry(t, self.round, 'pause', paused.part, paused.owner, tuple(paused.details))
-
     def segment(self, component, segment, stores, flows):
         """The pieces of the stores and the flows of a component over one of its segments."""
         start, end, solution = segment.start, segment.end, segment.solution
@@ -261,7 +257,7 @@ class Recorder:
 
     def record(self, end, failure=None, pause=None):
         """The record of the run, to the time `end` at which it stopped (the horizon, or the time of
-        its failure or of its pause, whose entry ends the trace)."""
+        its failure or of its stop at a breakpoint, whose entry ends the trace)."""
         plan, run = self.plan, self.run
         request = plan.configuration.request
         needed = None if request.everything else self._needed(request.keys)

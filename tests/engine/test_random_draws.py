@@ -1,17 +1,16 @@
-"""Small random programs with draws and choices, against the oracle (`tests/reference/`).
+"""Small random programs with draws, against the oracle (`tests/reference/`).
 
 Each case has a few machines, each with a level, a count and a state, a distribution of its own, and
 an event `work` that one of its triggers or the setup starts. An occurrence may draw a local, wait a
 drawn or a fixed delay, and run stages that add draws to its level, set its state to a categorical
-draw, switch on a categorical draw or on a forecast's choice of the actor `boss` with guards on its
-count, branch on its level, and start the work of another machine. A trigger on the clock passes a
+draw, switch on a categorical draw or on a draw of the forecast of the member `boss` with guards on
+its count, branch on its level, and start the work of another machine. A trigger on the clock passes a
 draw of its capture, which each firing makes again. Half the cases are sampled under their seed, the
 rest median runs.
 
 The oracle runs the same program in exact fractions and keys each draw as the engine does, by its
 seed, its site and its owner. The levels, counts and states at each half hour, the times of the
-starts and the firings, every value that a draw or a choice gave, and a failure with its time must
-agree.
+starts and the firings, every value that a draw gave, and a failure with its time must agree.
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ from napkin.program.build import (
     assign,
     case,
     categorical,
-    choose,
     dist_of,
     draw,
     event,
@@ -94,7 +92,7 @@ def program(seed):
                 selector = (
                     draw(categorical(state, **_weights(rng, ('A', 'B', 'C'))))
                     if rng.random() < 0.6
-                    else choose(boss, boss.forecast)
+                    else draw(boss.forecast)
                 )
                 cases = [
                     case(state.A, add(this.count, 1), when=this.count < rng.randint(0, 3)),
@@ -168,11 +166,10 @@ def compare(seed):
             found = [entry.t for entry in record.entries(kind, part) if entry.t < horizon]
             expected = [float(at) for at, _ in traced(oracle, kind, part) if at < horizon]
             assert found == pytest.approx(expected), (seed, kind, part)
-    # Every value that a draw or a choice of the engine gave, by its key: the oracle's.
+    # Every value that a draw of the engine gave, by its key: the oracle's.
     given = {key: value for key, value in oracle.draws}
-    given.update({f'{d["site"]}|{d["owner"]}': d['value'] for d in oracle.decisions})
     for entry in record.trace:
-        if entry.kind in ('draw', 'choice') and entry.t < horizon:
+        if entry.kind == 'draw' and entry.t < horizon:
             expected = given[f'{entry.part}|{entry.owner}']
             found = entry.detail('value')
             if isinstance(found, str):

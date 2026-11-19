@@ -16,10 +16,10 @@ import pytest
 from napkin.engine import run
 from napkin.engine.report import Lag, Shown, report
 from napkin.model.compile import compile_text
+from napkin.program.checkpoint import Breakpoint
 from napkin.program.config import Configuration, InputValue, Request
 from napkin.program.record import Unavailable
-from tests.engine.test_pause import played
-from tests.engine.test_pause import program as paused_program
+from tests.engine.test_checkpoints import SCENARIOS
 from tests.program.examples import EXAMPLES, UNITS
 
 
@@ -192,15 +192,17 @@ def test_a_status_display_reads_the_rating_and_the_text_of_its_case():
     assert north.lag is None and 'a lag averages a number' in north.note
 
 
-def test_a_paused_run_reads_up_to_its_pause_and_says_so():
-    """The actor's tally fills at 1 h an hour and the run pauses at 2 h for a pick: the report reads 1 h
-    and 2 h, and a time after the pause is unavailable with the reason."""
-    program = paused_program(2)
-    configuration = played()
-    found = report(run(program, configuration), program, configuration, ['actor.accumulated'], [1, 2, 3])
-    assert found.end == 2 and 'paused at 2 h' in found.stopped and 'waits for a pick' in found.stopped
+def test_a_stopped_run_reads_up_to_its_stop_and_says_so():
+    """A tank of 10 L drains at 2 L/h and the run stops at a breakpoint at 2 h: the report of its record
+    so far reads 8 L and 6 L at 1 h and 2 h, and a time after the stop is unavailable with the reason."""
+    case = SCENARIOS['family']()
+    stopped = run(case.program, case.configuration, (Breakpoint('tank.tick.step[1]'),))
+    found = report(stopped.record, case.program, case.configuration, ['tank.water'], [1, 2, 3])
+    assert found.end == 2 and found.stopped.startswith(
+        'the run stopped at 2 h at the breakpoint tank.tick.step[1]'
+    )
     one, two, three = found.values[0].values
-    assert (one, two) == pytest.approx((1, 2))
+    assert (one, two) == pytest.approx((8, 6))
     assert isinstance(three, Unavailable) and three.reason == found.stopped
 
 

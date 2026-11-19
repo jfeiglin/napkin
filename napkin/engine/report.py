@@ -30,7 +30,7 @@ model has no report of its own: any named value can be reported, and the caller 
 - **Near-ties** (change 10): each firing or commit that the engine decided within tolerance of its
   boundary (`Record.near_ties`), with a message ("this trigger fired within tolerance of its
   threshold"). The report lists them and computes nothing more precisely.
-- **A run that stopped**: a failure or a pause ends the record. The report reads up to that time,
+- **A run that stopped**: a failure, or the stop at a breakpoint, ends the record. The report reads up to that time,
   each time after it is `Unavailable` with the reason, and `stopped` says when and why.
 """
 
@@ -208,16 +208,10 @@ def _end(record, horizon):
         message = record.failure.detail('message') or 'the run failed'
         return float(record.failure.t), f'the run failed at {float(record.failure.t):g} h: {message}'
     pause = paused(record)
-    if pause is not None and pause.detail('breakpoint') is not None:
+    if pause is not None:
         return float(pause.t), (
             f'the run stopped at {float(pause.t):g} h at the breakpoint {pause.detail("breakpoint")}, '
             f'before {pause.part}: the report reads it up to its stop'
-        )
-    if pause is not None:
-        site = pause.detail('site') or pause.part
-        return float(pause.t), (
-            f'the run paused at {float(pause.t):g} h, where {pause.owner} waits for a pick at {site}: '
-            'the report reads it up to its pause'
         )
     return horizon, None
 

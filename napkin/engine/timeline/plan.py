@@ -27,7 +27,7 @@ continuous engine and the record read these names; nothing reads the spelling of
   whose value is the text `case[k]` of the case that applies: the first whose condition holds, else
   the last. The run reads it nowhere; the record follows it, and a report reads the rating and the
   text of its case.
-- **Draws and choices** (`Drawn`, `Chosen`, `chance.py`) are named by their owner and their site
+- **Draws** (`Drawn`, `chance.py`) are named by their owner and their site
   (`machine.check#0|machine.check.step[0].do[0].draw[0]`): the member, the occurrence or the trigger
   that executes them (`''` for the root and the setup). A draw of a path reads the present
   distribution of a distribution-valued value: the configuration's, its default, or what a stage
@@ -109,7 +109,7 @@ continuous engine and the record read these names; nothing reads the spelling of
 
 A part that the engine does not run is refused by name (`Outside`) with its reason: an assignment
 of a collection in a stage (links are fixed for the run), and the type errors that the program's
-check lets through. A configuration's controllers name members, and its picks the sites of choices.
+check lets through.
 """
 
 from __future__ import annotations
@@ -124,7 +124,6 @@ from ...program.config import ConfigurationError, Quantity
 from ...program.record import Key
 from ...program.refs import (
     By,
-    Choice,
     Distribution,
     Draw,
     Elapsed,
@@ -218,18 +217,6 @@ class Drawn:
     (`''` for the root and the setup)."""
 
     name: str
-    source: Distribution | str
-    site: str
-    owner: str
-
-
-@dataclass(frozen=True)
-class Chosen:
-    """An actor's choice (`chance.py`): its engine name (`owner|site`), the actor (a member's id),
-    its forecast (as `Drawn.source`), its site and its owner."""
-
-    name: str
-    actor: str
     source: Distribution | str
     site: str
     owner: str
@@ -485,7 +472,6 @@ class Plan:
         )
         self.pools = pools_of(program)
         self.values, self.draws, self.flows, self.distributions = {}, {}, {}, {}
-        self.choices = {}  # engine name -> `Chosen`
         self.changed = {}  # the engine name of a CHANGED value -> the stored value that it follows
         self.changed_of = {}  # a stored value -> the engine name of its CHANGED value
         self.described = {}  # `d.mean` or `d.std` -> (the distribution-valued value, `mean` or `std`)
@@ -588,8 +574,7 @@ class Plan:
 
     def _refuse_parts(self):
         """The assignment of a collection in a stage, which the language does not have: a
-        collection's members are links to them, fixed for the run. The controllers and the picks of
-        the configuration must name members and the sites of choices."""
+        collection's members are links to them, fixed for the run."""
         program = self.program
         for origin, statement in _program_statements(program):
             if isinstance(statement, p.Assign) and isinstance(statement.value, Path):
@@ -598,22 +583,6 @@ class Plan:
                     'its members, and links are fixed for the run (spec: "A link is set by its '
                     'initializer, by a table or by a `change`, and no stage assigns one")'
                 )
-        for controller in self.configuration.controllers:
-            try:
-                program.member(controller.actor)
-            except KeyError:
-                raise ConfigurationError(
-                    f'{controller.actor}: a controller decides for an actor, which is a member'
-                ) from None
-        sites = {
-            read.site
-            for _, expression, _ in _program_expressions(program)
-            for _, read in expression.reads
-            if isinstance(read, Choice)
-        }
-        for pick in self.configuration.picks:
-            if pick.site not in sites:
-                raise ConfigurationError(f'{pick.site}: a pick answers a choice, and no choice has this site')
 
     def _assertion(self, check, scope):
         """An assertion of the root (`scope` None) or of a member, in `asserts` until the connected
@@ -1436,12 +1405,8 @@ class Plan:
                 names[name] = nodes.ref(found)
                 if binding is not None:
                     binding[name] = found
-            elif isinstance(read, Draw | Choice):
-                found = (
-                    self._draw(read, scope, origin)
-                    if isinstance(read, Draw)
-                    else self._choice(read, scope, origin)
-                )
+            elif isinstance(read, Draw):
+                found = self._draw(read, scope, origin)
                 names[name] = nodes.ref(found)
                 if binding is not None:
                     binding[name] = found
@@ -1459,7 +1424,11 @@ class Plan:
                 found = self._dynamic(read, 'latest', ('occurrences', point[1], point[2]), (), scope, item)
                 names[name], binding = nodes.binary('sub', nodes.ref('t'), nodes.ref(found)), None
             else:
-                raise Outside(f'{origin}: the read {spelled(read)}, which no expression has (a type error)')
+                raise Outside(
+                    f'{origin}: the read {spelled(read)}, which no expression of the language has (a type '
+                    'error; `choose(...)` left it with change 15: store the value in a field and branch on '
+                    'it, and a breakpoint stops the run before the branch)'
+                )
         node = _renamed(expression.node, names)
         return node, (None if binding is None else tuple(sorted(binding.items())))
 
@@ -1826,7 +1795,7 @@ class Plan:
         return value.unit if value is not None else ''
 
     def _source(self, source, scope, origin):
-        """What a draw or a choice draws: a distribution written in place, or the engine name of a
+        """What a draw draws: a distribution written in place, or the engine name of a
         distribution-valued value."""
         if isinstance(source, Distribution):
             return source
@@ -1843,20 +1812,6 @@ class Plan:
         name = f'{owner}|{read.site}'
         if name not in self.draws:
             self.draws[name] = Drawn(name, self._source(read.source, scope, origin), read.site, owner)
-        return name
-
-    def _choice(self, read, scope, origin):
-        """The engine name of an actor's choice (`Chosen`), keyed by its owner and its site."""
-        owner = self.owner_of(scope)
-        name = f'{owner}|{read.site}'
-        if name not in self.choices:
-            actor = self.resolve(read.actor, scope, origin)
-            if actor[0] != 'member':
-                raise Outside(
-                    f'{origin}: {spelled(read.actor)}.choose(...), which is no actor (a type error)'
-                )
-            source = self._source(read.source, scope, origin)
-            self.choices[name] = Chosen(name, actor[1], source, read.site, owner)
         return name
 
     def _stored(self, read, path, scope, origin, item):
@@ -1896,16 +1851,6 @@ class Plan:
             self.described[name] = (distribution, which)
             self.described_of.setdefault(distribution, []).append(name)
         return name
-
-    def observed(self, path, scope):
-        """The engine names of what a path of `sees` names on an actor: a value, or each value of a
-        projection."""
-        point = self.resolve(path, scope, spelled(path))
-        if point[0] == 'value':
-            return [point[1]]
-        if point[0] == 'many' and all(each[0] == 'value' for each in point[1].points):
-            return [each[1] for each in point[1].points]
-        raise Outside(f'sees {spelled(path)}: an observation that is no value (a type error)')
 
     # ---- what a value reads --------------------------------------------------------------------------
 

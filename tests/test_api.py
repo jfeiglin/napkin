@@ -84,6 +84,7 @@ CLOSURE = (
     'engine/timeline/ways.py',
     'expressions.py',
     'program/__init__.py',
+    'program/artifact.py',
     'program/canonical.py',
     'program/checkpoint.py',
     'program/config.py',

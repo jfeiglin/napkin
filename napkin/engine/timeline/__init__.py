@@ -3,13 +3,12 @@
 It reads a program (`napkin/program`) under a run configuration and gives the record of the run
 (`napkin/program/record.py`): the history of each value as pieces, and the trace.
 
-- `run(program, configuration)`: one run to the horizon, as its `Record`. A run that a player's
-  choice pauses gives the record to the pause, whose entry ends its trace (`paused`); a run of the
-  configuration with the pick replays it, and `Run(plan).run()` then `.resume(pick)` goes on in place.
+- `run(program, configuration)`: one run to the horizon, as its `Record`.
 - `run(program, configuration, breakpoints)`: a run that a breakpoint stops gives its `Checkpoint`
-  (`napkin/program/checkpoint.py`), which holds the record so far; `Run(plan, breakpoints).run()`
-  then `.resume()` goes on in place, and `resume(program, checkpoint)` goes on in a fresh process
-  (`checkpoints.py`). Either gives the record of the run straight through, or the next checkpoint.
+  (`napkin/program/checkpoint.py`), which holds the record so far, whose last entry is the stop's
+  (`paused`); `Run(plan, breakpoints).run()` then `.edit(...)` and `.resume()` goes on in place, and
+  `resume(program, checkpoint)` goes on in a fresh process (`checkpoints.py`). Either gives the
+  record of the run straight through (or of the run with its edits), or the next checkpoint.
 - `Plan.of(program, configuration)`: what the run reads of the program (`plan.py`), and `Outside`,
   the refusal of a part that the engine does not run, with its reason.
 - `read(record, program, paths, times)`: the values of named paths at chosen times, each in its
@@ -26,8 +25,8 @@ their capacities, requests and allocations, local sharing across junctions and s
 bounds, and flows across members; reversible routes with one signed rate and their legs, and flows
 with legs at one served fraction; events with their occurrences, stages, triggers, gates, moves and
 the retirement of an occurrence's stores; draws in stages and in events under the modes `median`
-and `sampled`, inputs that are distributions, actors' choices with their controllers, picks and the
-pause of one stage, assertions over state and `elapsed` (`chance.py`); declared solvers
+and `sampled`, inputs that are distributions, assertions over state and `elapsed` (`chance.py`);
+breakpoints, checkpoints and edits (`checkpoints.py`); declared solvers
 (`declared.py`); the definitions that stages give formulas, requests and capacities; and status
 displays, whose record is the case that applies (`plan.py`). A firing or a test of a stage decided
 within tolerance of its boundary is marked in its trace entry as a near-tie (`triggers.py`). The

@@ -3,12 +3,11 @@
 **Breakpoints.** A run with breakpoints (`Run(plan, breakpoints)`) counts each hit: a stage that comes
 due whose step a breakpoint names, or whose event when it is the occurrence's first step, before its
 guard is read, and a statement of a stage or of the setup that a breakpoint names, before it runs,
-each for the breakpoint's member or occurrence.
-The first hit after the `passing` ones stops the run (`Stopped`) with a checkpoint (`Breaks.checkpoint`):
-the stage and the stages after it in its round are held, as the pause of a choice holds them
-(`moment.py`), and nothing of the stage is visible, since a stage commits only at its end. A firing
-belongs to the conditions of a round, so a breakpoint in a trigger's body is refused by name, and so
-is a location that the program does not have.
+each for the breakpoint's member or occurrence. The first hit after the `passing` ones stops the run
+(`Stopped`) with a checkpoint (`Breaks.checkpoint`): the stage and the stages after it in its round
+are held (`moment.Moment.held`), and nothing of the stage is visible, since a stage commits only at
+its end. A firing belongs to the conditions of a round, so a breakpoint in a trigger's body is
+refused by name, and so is a location that the program does not have.
 
 **Resume in place.** `Run.resume()` passes the stop and runs the held stage again from its start,
 then the rest of the run: its hits are counted again from the stage's start, so a hit before the stop
@@ -52,7 +51,7 @@ import math
 from pathlib import Path
 
 from ...program import parts as p
-from ...program.canonical import program_bytes
+from ...program.artifact import Artifact
 from ...program.checkpoint import (
     Breakpoint,
     Checkpoint,
@@ -75,7 +74,8 @@ def _engine_version():
     the modules of expressions and distributions, as they are when the engine is imported."""
     root = Path(__file__).resolve().parents[2]
     files = sorted(
-        [path for folder in _SOURCES for path in (root / folder).rglob('*.py')] + [root / name for name in _FILES]
+        [path for folder in _SOURCES for path in (root / folder).rglob('*.py')]
+        + [root / name for name in _FILES]
     )
     digest = hashlib.sha256()
     for path in files:
@@ -93,8 +93,9 @@ def engine_version():
 
 
 def program_digest(program):
-    """The SHA-256 of the canonical bytes of a program."""
-    return hashlib.sha256(program_bytes(program)).hexdigest()
+    """The identity of a program, which a checkpoint names: its artifact's digest, the SHA-256 of its
+    canonical bytes (`napkin/program/artifact.py`)."""
+    return Artifact(program).digest
 
 
 class Stopped(Exception):

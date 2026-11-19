@@ -16,16 +16,15 @@ At a time, rounds. One round is:
    `move`, which debits and credits two stores together or fails whole; `.start(...)`, whose
    arguments are evaluated at the caller left to right when the statement runs, on one event or on
    each member of a collection in the order of its keys; `if`/`else`; and `switch` on an enum value,
-   whose case guards are read before the selector: a draw or a choice as the selector picks among
-   the eligible outcomes (`chance.py`). A guard, an `if` and the guard of a case that were decided
+   whose case guards are read before the selector: a draw as the selector picks among the eligible
+   outcomes (`chance.py`). A guard, an `if` and the guard of a case that were decided
    within tolerance of their boundary are marked in the entry of the commit (`near`, triggers.py).
    A value that misses a bound by less than its tolerance is
    put on the bound; one that misses it by more fails the run, and so does a move that does not fit.
-   A commit publishes the stage's writes, traces its choices and registers the occurrences that it
-   queued, in order; a failure discards the stage and stops the run. A player's choice that no pick
-   answers pauses the run before the stage commits, and a breakpoint stops it before a stage or a
-   statement (`checkpoints.py`): the stage and those after it in its round are held (`held`), and
-   `resume` runs them again from the paused one.
+   A commit publishes the stage's writes, traces its edits and its moves and registers the
+   occurrences that it queued, in order; a failure discards the stage and stops the run. A breakpoint
+   stops the run before a stage or a statement (`checkpoints.py`): the stage and those after it in its
+   round are held (`held`), and `resume` runs them again from the stopped one.
 2. **Settle.** The connected sets that the round touched are built again from the state there
    (`ways.py`): those that hold a store that a commit wrote, or read a value that changed (a written
    value, a collection of occurrences or of flows whose members changed, a rate or a result of a set
@@ -69,7 +68,7 @@ _EXACT = {
     'ne': lambda d: d != 0,
 }
 
-_SETUP = 'setup'  # what a pause in the setup holds
+_SETUP = 'setup'  # what a stop in the setup holds
 
 
 @dataclass(frozen=True)
@@ -82,8 +81,8 @@ class Defined:
 
 class Tx:
     """The uncommitted work of one stage: its writes (engine name -> value, in order), its moves, the
-    starts that it queued and the choices that it made. `stage` says whether a prompt may pause it (a
-    stage or the setup, not a firing); `origin` is the statement that runs."""
+    starts that it queued and the edits made at its stops. `stage` says whether a breakpoint may stop
+    it (a stage or the setup, not a firing); `origin` is the statement that runs."""
 
     def __init__(self, owner, stage=True):
         self.owner = owner  # the occurrence that runs the stage, '' for the setup, or a trigger's member
@@ -92,7 +91,6 @@ class Tx:
         self.writes = {}
         self.moves = []  # (source, destination, amount, origin)
         self.starts = []  # (member, event, arguments)
-        self.choices = []  # (site, owner, details) of the trace entry of each choice
         self.allocations = []  # (store, side, allocation, scope, origin) of each new allocation
         # A value that the stage gives a definition -> the statement that gives it its last: a
         # formula, or a captured number in place of a request's or a capacity's formula.
@@ -126,7 +124,8 @@ class Moment:
         self.phase = 'between'  # 'stages', 'settle', 'conditions' or 'between'
         self.again = False
         self.round = 0
-        # Where a pause stopped: _SETUP, or (the stages of its round, the place of the paused one).
+        # Where a breakpoint stopped the run: _SETUP, or (the stages of its round, the place of the
+        # stopped one).
         self.held = None
         self._paths = {}
 
@@ -144,7 +143,7 @@ class Moment:
         tx = Tx('')
         run.chance.made = []
         run.breaks.setup()
-        self.execute(self.plan.program.setup, tx, None)  # a pause stops here and holds the setup
+        self.execute(self.plan.program.setup, tx, None)  # a stop here holds the setup
         self.held, run.chance.kept = None, set()
         if tx.defined:
             # The definitions of the setup are in its trace, as those of a stage, for a reader.
@@ -158,8 +157,8 @@ class Moment:
         self.rounds(0.0)
 
     def resume(self):
-        """Go on where a pause stopped (`chance.py`): the paused stage again, with the draws that it
-        made, then the rest of its round and of its moment."""
+        """Go on where a breakpoint stopped the run (`checkpoints.py`): the stopped stage again, with
+        the draws that it made, then the rest of its round and of its moment."""
         held = self.held
         if held is _SETUP:
             self._setup()
@@ -181,7 +180,7 @@ class Moment:
 
     def rounds(self, t, held=None):
         """Round after round at time t while work is due there; `held` holds the stages of a round
-        that a pause stopped, and the place of the paused one."""
+        that a breakpoint stopped, and the place of the stopped one."""
         run = self.run
         limit = self.plan.configuration.limits.max_rounds
         while True:
@@ -195,7 +194,7 @@ class Moment:
                 queue, held = held[0][held[1] :], None
             self.phase = 'stages'
             for k, live in enumerate(queue):
-                self.held = (queue, k)  # a pause in this stage holds it and the stages after it
+                self.held = (queue, k)  # a stop in this stage holds it and the stages after it
                 self.stage(live)
             self.held = None
             self.settle()
@@ -454,8 +453,8 @@ class Moment:
 
     def select(self, statement, tx, scope):
         """The body that a `switch` runs: the guards are read once, before the selector; the case of
-        the selector's value runs if it is eligible, else the `else` body. A draw or a choice as the
-        selector picks among the eligible outcomes (D1, `chance.py`): those that no false guard bars.
+        the selector's value runs if it is eligible, else the `else` body. A draw as the selector picks
+        among the eligible outcomes (D1, `chance.py`): those that no false guard bars.
         With none eligible, the `else` body runs and nothing is drawn."""
         run, plan = self.run, self.plan
         eligible = [
@@ -464,12 +463,12 @@ class Moment:
         tx.origin = statement.origin
         node = run.occurrences.node(statement.selector, scope, statement.origin)
         producer = node.name if isinstance(node, nodes.Ref) else None
-        if producer in plan.draws or producer in plan.choices:
+        if producer in plan.draws:
             barred = {case.member for case, ok in zip(statement.cases, eligible) if not ok}
             allowed = [member for member in run.chance.outcomes(producer) if member not in barred]
             if not allowed:
                 return statement.orelse
-            chosen = run.chance.produce(producer, allowed, tx)
+            chosen = run.chance.draw(producer, allowed)
         else:
             chosen = run.truth(node, tx)
         for case, ok in zip(statement.cases, eligible):
@@ -489,8 +488,6 @@ class Moment:
             )
             for end in (source, destination):
                 run.occurrences.met(end)
-        for site, owner, details in tx.choices:  # a choice is in the trace once its stage commits
-            run.recorder.entry(run.now, 'choice', site, owner, **details)
         for store, side, allocation, scope, origin in tx.allocations:
             # The endpoint shares its flows by its new rule once its set settles again.
             self.plan.allocate(store, side, allocation, scope, origin)

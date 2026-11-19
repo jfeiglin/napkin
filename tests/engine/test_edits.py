@@ -4,8 +4,7 @@ An edit gives a live stored value a new value at a stop: at a stop before a stag
 and at a stop before a statement it joins the writes of the stage, which sees it, and commits with
 the stage. Each edit is one entry `edit` of the trace; a stage that runs again from its start takes
 the edits made at its stops again, at their places, and commits each once. An edited run goes on the
-same way in place and in a fresh process (a subprocess, which builds the program from the Python code
-of `test_checkpoints.py`). The acceptance example of change 15: the dispatch, resumed untouched and
+same way in place and in a fresh process (a subprocess, which loads the program from its artifact). The acceptance example of change 15: the dispatch, resumed untouched and
 resumed with its order changed from WAIT to SEND. The expected values are worked by hand.
 """
 
@@ -66,7 +65,7 @@ def test_an_edit_at_a_stop_before_a_stage_commits_at_once(tmp_path):
     assert [entry.t for entry in final.entries('start', 'tank.alarm')] == [pytest.approx(5, abs=1e-12)]
     (water,) = read(final, case.program, ['tank.water'], [2, 3, 5, 6.5, 7])
     assert water.values == pytest.approx([9, 7, 3, 0, 0], abs=1e-12)
-    assert in_a_fresh_process('family', made, tmp_path) == [*stopped[1:], final]
+    assert in_a_fresh_process(case.program, made, tmp_path) == [*stopped[1:], final]
 
 
 def test_edits_in_a_stage_join_its_writes_and_commit_once_across_two_stops(tmp_path):
@@ -93,7 +92,7 @@ def test_edits_in_a_stage_join_its_writes_and_commit_once_across_two_stops(tmp_p
     assert kinds.index('commit') < kinds.index('edit')
     orders, noted, demand = read(final, case.program, ['depot.orders', 'depot.noted', 'depot.demand'], [1, 2])
     assert (orders.values, noted.values, demand.values) == ((11, 11), (2, 3), (2, 2))
-    assert in_a_fresh_process('ordering', made, tmp_path) == [*stopped[1:], final]
+    assert in_a_fresh_process(case.program, made, tmp_path) == [*stopped[1:], final]
 
 
 def held(record, program, item):
@@ -144,8 +143,7 @@ def test_the_acceptance_example_of_change_15(name, tmp_path):
     assert [(entry.detail('old'), entry.detail('new')) for entry in edits] == [
         ('WAIT', 'SEND') for stop in stops if stop.edits and stop.at == DISPATCH_SWITCH
     ]
-    fresh = 'dispatch' if spares else 'dispatch_no_spare'
-    assert in_a_fresh_process(fresh, edits_made, tmp_path) == [*stopped[1:], found]
+    assert in_a_fresh_process(program, edits_made, tmp_path) == [*stopped[1:], found]
 
 
 def test_an_edit_that_breaks_a_rule_of_the_run_is_refused_by_name():
