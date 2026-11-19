@@ -49,7 +49,7 @@ from .collections import index_of, kept, looked_up, node_of, reduced
 from .component import Component, NetFlow, Network
 from .family import Family
 from .lines import Lines
-from .plan import COMPONENT, FAMILY, LINES, LOOKUP, RATE, REDUCE, SPARSE, STARTS, STATE, Outside
+from .plan import COMPONENT, FAMILY, LEGS, LINES, LOOKUP, RATE, REDUCE, SPARSE, STARTS, STATE, Outside
 from .record import Recorder, remember
 from .sparse import Sparse
 
@@ -181,7 +181,10 @@ class Run:
         if kind == LOOKUP:
             index = (self._index(name), self.kept_of(name))
             return looked_up(plan.keyed[name], env.__getitem__, plan.units, 0.0, index)
-        return evaluate(plan.values[name].node, env, plan.units)
+        node = plan.values[name].node
+        if isinstance(node, nodes.Ref):
+            return env[node.name]  # a value that names another: no expression to compile
+        return evaluate(node, env, plan.units)
 
     def value_of(self, name):
         """The value of an engine name at the start, evaluated once, after what it reads."""
@@ -313,9 +316,9 @@ class Run:
                 name = parent[name]
             return name
 
-        for flow in plan.flows.values():
-            if flow.source is not None and flow.sink is not None:
-                parent[root(flow.source)] = root(flow.sink)
+        for connection in plan.connections.values():
+            if connection.source is not None and connection.sink is not None:
+                parent[root(connection.source)] = root(connection.sink)
         largest = {}
         for name in plan.moving:
             largest[root(name)] = max(largest.get(root(name), 0.0), abs(values[name]))
@@ -337,8 +340,8 @@ class Run:
     def kinds(self):
         """The kind of each store as the continuous engine reads it (`component.Network`)."""
         plan = self.plan
-        sources = {flow.source for flow in plan.flows.values()}
-        sinks = {flow.sink for flow in plan.flows.values()}
+        sources = {connection.source for connection in plan.connections.values()}
+        sinks = {connection.sink for connection in plan.connections.values()}
         found = {}
         for name in plan.moving:
             if name in sinks and name not in sources:
@@ -458,6 +461,10 @@ class Run:
         for name in plan.moving:
             self.recorder.tolerance[name] = factor * sizes[name]
         for flow in plan.flows.values():
+            if flow.kind == LEGS:
+                # A served fraction is a number from zero to one.
+                self.recorder.tolerance[f'{flow.name}.served_fraction'] = factor
+                continue
             # A rate's error over an hour moves what a store's tolerance allows.
             size = max(sizes[end] for end in (flow.source, flow.sink) if end is not None)
             self.recorder.tolerance[f'{flow.name}.actual_rate'] = factor * size

@@ -154,20 +154,14 @@ class Allocation:
         # Capacity restriction of any member constrains its entire production
         # transaction, preserving the authored cross-unit material ratios.
         if coupled:
-            # Whether each transaction asks for every one of its flows together follows from the
-            # signs of the requests alone: it is found once for each pattern of signs.
+            # The flows of each transaction that ask anything follow from the signs of the requests
+            # alone: they are found once for each pattern of signs. A flow that asks nothing moves
+            # nothing at any fraction, so it does not bound the fraction of the others.
             pattern = (unconstrained > 0).tobytes()
             asking = self._asking.get(pattern)
             if asking is None:
-                asking = []
-                for members in coupled:
-                    positive = sum(asked[j] > 0 for j in members)
-                    if positive and positive != len(members):
-                        raise SimulationError(
-                            'A coupled transaction must request every material flow together'
-                        )
-                    if positive:
-                        asking.append(members)
+                asking = [[j for j in members if asked[j] > 0] for members in coupled]
+                asking = [members for members in asking if members]
                 self._asking[pattern] = asking
             if rates != asked:
                 # A transaction none of whose flows has another rate than it asks keeps its rates:

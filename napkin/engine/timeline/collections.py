@@ -41,8 +41,9 @@ from .trees import Pairwise
 @dataclass(frozen=True)
 class Entries:
     """A collection while a plan resolves a path. For each entry: the point that its path has
-    reached (`('member', id)`, `('flow', id, flow)` or `('value', engine name)`: a link step moves
-    an entry to the linked member, a value step projects it), its where tests and its key."""
+    reached (`('member', id)`, `('flow', engine name)` of a flow or a connection, or `('value',
+    engine name)`: a link step moves an entry to the linked member, a value step projects it), its
+    where tests and its key."""
 
     template: str | None
     points: tuple

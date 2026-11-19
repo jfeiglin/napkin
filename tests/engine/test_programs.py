@@ -22,9 +22,13 @@ from tests.reference.from_program import run_of, value_at
 
 # The examples of the subsets of the slices so far: inputs, stored values with bounds, formulas and
 # directed flows with a request and a capacity (S0); templates, tables, collections and keyed reads
-# (S1); endpoints, local sharing, junctions and flows across members (S2). The other examples need a
-# later slice: events, legs and routes, solvers.
+# (S1); endpoints, local sharing, junctions and flows across members (S2); reversible routes and flows
+# with legs (S3). The other examples need a later slice: events and solvers.
 SUBSET = {
+    'reversible_route',
+    'legs_half_service',
+    'legs_zero_leg',
+    'legs_all_zero',
     'tank_delivery',
     'unit_division',
     'unit_product',

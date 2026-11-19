@@ -17,11 +17,8 @@ tests/engine/test_ai_layer.py
 tests/engine/test_availability.py
 tests/engine/test_binary_controls.py
 tests/engine/test_chance.py
-tests/engine/test_chattering.py
-tests/engine/test_closed_form_short.py
 tests/engine/test_combinations.py
 tests/engine/test_continuous_domains.py
-tests/engine/test_coupled_queue_boundaries.py
 tests/engine/test_decision_resolver.py
 tests/engine/test_distributions_deep.py
 tests/engine/test_erf.py
@@ -42,7 +39,6 @@ tests/engine/test_play.py
 tests/engine/test_public_engine.py
 tests/engine/test_rearm.py
 tests/engine/test_reporting.py
-tests/engine/test_roundoff_properties.py
 tests/engine/test_run_evidence.py
 tests/engine/test_runtime.py
 tests/engine/test_settled_decisions.py

@@ -14,8 +14,20 @@ The flags of a part are the state at the moment, as the oracle reads them: a sto
 away from the bound leaves it; its part is solved again at the next moment of the run (the horizon
 is one), from where it is then, as the oracle settles every part at each of its moments.
 
-The recorder takes a piece of each store at each change of its line, and a piece of each actual rate
-at each change of its rate: all are exact.
+**Downstream only.** Where every flow of the sets is directed and rigid (it never carries more than
+its request: `Plan.rigid`) and no endpoint has a capacity or a request, every part has the closed
+form of groups in supply order (`network.Instant._groups`) while no store rests on its upper bound
+with inflows: the outflows of a store at its lower bound share what flows in, every other flow
+carries its request within its capacity. A flow's rate then depends only on what is upstream of it.
+So when a store meets or leaves its bound, only the outflows of that store, and of the stores at
+their lower bound downstream of it, change; a moment solves those groups alone, upstream first,
+with the same arithmetic (`Instant.fill`), and every other rate is the one that the whole part would
+give again. This holds while every solve of the sets has been of a closed form: once the selection
+order solves a part, or a store rests on its upper bound with inflows, moments solve whole parts.
+
+The recorder takes a piece of each store at each change of its line, and a piece of what the network
+gives of each flow (`Flows`: an actual rate, a route's signed rate, a served fraction) at each change
+of it: all are exact.
 """
 
 from __future__ import annotations
@@ -27,7 +39,7 @@ import numpy as np
 
 from ..errors import SimulationError
 from .family import Columns
-from .network import IN, OUT, SIDES, Asked, Instant, Network
+from .network import BACKWARD, FORWARD, IN, OUT, SIDES, Asked, Instant, network_of
 
 
 class Lines:
@@ -36,23 +48,13 @@ class Lines:
     def __init__(self, run, sets, values):
         plan = self.plan = run.plan
         self.run, self.recorder, self.columns = run, run.recorder, Columns(run)
-        flows = [name for connected in sets for name in connected.flows]
         stores = [name for connected in sets for name in connected.stores]
         place = {name: k for k, name in enumerate(stores)}
-        number = {name: k for k, name in enumerate(flows)}
-        source = [place[plan.flows[f].source] if plan.flows[f].source else -1 for f in flows]
-        sink = [place[plan.flows[f].sink] if plan.flows[f].sink else -1 for f in flows]
-        flow_sets = [k for k, connected in enumerate(sets) for _ in connected.flows]
-        store_sets = [k for k, connected in enumerate(sets) for _ in connected.stores]
-        classes = {}
-        for (store, side), items in plan.rankings.items():
-            if store in place:
-                classes[(SIDES.index(side), place[store])] = run.classes_of(store, side, items, number)
-        self.net = Network(flows, stores, source, sink, classes, flow_sets, store_sets)
-        self.flows, self.stores = flows, stores
-        self.requests = [plan.flows[f].request for f in flows]
-        self.capped = [k for k, f in enumerate(flows) if plan.flows[f].capacity is not None]
-        self.capacities = [plan.flows[flows[k]].capacity for k in self.capped]
+        self.net, connections, self.recorded = network_of(run, sets, stores)
+        self.flows, self.stores = self.net.flows, stores
+        self.requests = [connection.request for connection in connections]
+        self.capped = [k for k, connection in enumerate(connections) if connection.capacity is not None]
+        self.capacities = [connections[k].capacity for k in self.capped]
         self.end_settings = []  # (side, store, which, engine name)
         for (store, side), end in plan.ends.items():
             if store in place:
@@ -65,12 +67,20 @@ class Lines:
         self.slope = np.zeros(len(stores))
         self.lower = np.array([run.bounds[name][0] for name in stores])
         self.upper = np.array([run.bounds[name][1] for name in stores])
-        self.rate = np.zeros(len(flows))
+        self.value = np.zeros(len(self.flows))  # what the network gives of each flow
+        self.rate = np.zeros(len(connections))  # the rate of each connection
         self.version = np.zeros(len(stores), dtype=np.int64)
         self.due = []  # (time, store, version): a line that reaches a bound
         self.stale = set()  # the stores that left a bound since their part was solved
         self.asked = None
         self.instant = None
+        # Whether a moment may solve downstream only (see the module).
+        self.closed = (
+            self.net.plain
+            and all(plan.rigid(plan.flows[flow]) for flow in self.flows)
+            and not any(plan.settled(end) for (store, _), end in plan.ends.items() if store in place)
+        )
+        self.selected = False  # whether the selection order has solved a part of the sets
 
     def __len__(self):
         return len(self.flows)
@@ -78,10 +88,10 @@ class Lines:
     # ---- what is asked --------------------------------------------------------------------------
 
     def _asked(self, t):
-        """What the flows and the endpoints ask at time t."""
+        """What the connections and the endpoints ask at time t."""
         columns, count = self.columns, len(self.stores)
-        request = np.array(columns.at(self.requests, t), dtype=float)
-        capacity = np.full(len(self.flows), math.inf)
+        request = asked_of(self.net, np.array(columns.at(self.requests, t), dtype=float), t)
+        capacity = np.full(len(self.rate), math.inf)
         if self.capped:
             capacity[self.capped] = columns.at(self.capacities, t)
         end_request, end_capacity = np.zeros((2, count)), np.full((2, count), math.inf)
@@ -90,7 +100,6 @@ class Lines:
             for (side, s, which, _), number in zip(self.end_settings, found):
                 (end_request if which == 'request' else end_capacity)[side, s] = number
         for what, numbers, finite in (
-            ('request', request, True),
             ('capacity', capacity, False),
             ('outflow or inflow request', end_request, True),
             ('outflow or inflow capacity', end_capacity, False),
@@ -99,7 +108,7 @@ class Lines:
             if bad.any():
                 where = np.argwhere(bad)[0]
                 part = (
-                    self.flows[where[0]]
+                    self.net.connections[where[0]]
                     if numbers.ndim == 1
                     else f'{self.stores[where[1]]}.{SIDES[where[0]]}'
                 )
@@ -123,28 +132,45 @@ class Lines:
         instant, net = self.instant, self.net
         touched, done = set(), set()
         pending = [int(f) for f in seeds]
+
+        def ends(flows):
+            return {
+                int(s)
+                for g in flows
+                for c in ([g] if net.plain else net.conns.of(g).tolist())
+                for s in (net.source[c], net.sink[c])
+                if s >= 0
+            }
+
         while pending:
             f = pending.pop()
             if f in done:
                 continue
             # The flags of the stores of the part are the state at t; a change of a flag can widen or
-            # narrow the part, so the part is found again until its flags hold.
+            # narrow the part, so the part is found again until its flags hold. The seed's own ends
+            # are in its part: their flags are set first.
+            self._flags(ends([f]), t)
             while True:
                 part = instant.part(f)
-                stores = {int(s) for g in part for s in (net.source[g], net.sink[g]) if s >= 0}
+                stores = ends(part)
                 before = [(bool(instant.lower[s]), bool(instant.upper[s])) for s in stores]
                 self._flags(stores, t)
                 if before == [(bool(instant.lower[s]), bool(instant.upper[s])) for s in stores]:
                     break
-            rates = instant.solve(part)
+            found = instant.solve(part)
             done.update(part)
-            for g, rate in zip(part, rates.tolist()):
-                if rate != self.rate[g]:
-                    self.rate[g] = rate
-                    self.recorder.add(f'{self.flows[g]}.actual_rate', t, rate, 0.0)
-                    for s in (net.source[g], net.sink[g]):
-                        if s >= 0:
-                            touched.add(int(s))
+            for g, value in zip(part, found.tolist()):
+                if value != self.value[g]:
+                    self.value[g] = value
+                    self.recorder.add(self.recorded[g], t, value, 0.0)
+            # A leg's rate follows its request too, which can change while its fraction holds.
+            mine = np.concatenate([net.conns.of(g) for g in part]) if not net.plain else np.array(part)
+            rates = net.carried(self.value, self.asked, mine)
+            for c in mine[rates != self.rate[mine]].tolist():
+                for s in (net.source[c], net.sink[c]):
+                    if s >= 0:
+                        touched.add(int(s))
+            self.rate[mine] = rates
             for s in stores:
                 self.stale.discard(s)
         return touched
@@ -193,35 +219,86 @@ class Lines:
         count = len(self.stores)
         self.instant = Instant(self.net, self.asked, np.zeros(count, dtype=bool), np.zeros(count, dtype=bool))
         self._flags(range(count), t)
-        self.rate = self.instant.rates()
-        for k, name in enumerate(self.flows):
-            self.recorder.add(f'{name}.actual_rate', t, float(self.rate[k]), 0.0)
+        self.value = self.instant.values()
+        self.selected = bool(self.instant.selected)
+        self.rate = self.net.carried(self.value, self.asked)
+        for k, name in enumerate(self.recorded):
+            self.recorder.add(name, t, float(self.value[k]), 0.0)
         self._lines(t, (), forced=range(count))
 
     def refresh(self, t):
-        """At a key time: the parts of the flows and endpoints whose settings changed are solved again."""
+        """At a key time: the parts of the flows and endpoints whose settings changed are solved again,
+        whole."""
         asked = self._asked(t)
         old = self.asked
-        changed = set(
-            np.flatnonzero((asked.request != old.request) | (asked.capacity != old.capacity)).tolist()
-        )
         net = self.net
+        changed = set(
+            net.of[np.flatnonzero((asked.request != old.request) | (asked.capacity != old.capacity))].tolist()
+        )
         ends = np.argwhere((asked.end_request != old.end_request) | (asked.end_capacity != old.end_capacity))
         for side, s in ends.tolist():
-            changed.update(net.ends[side].of(s).tolist())
+            changed.update(net.of[net.ends[side].of(s)].tolist())
         self.asked = asked
         self.instant = Instant(net, asked, self.instant.lower, self.instant.upper)
         self._moment(t, changed)
 
     def _moment(self, t, seeds, forced=()):
-        """Solve again the parts of the flows `seeds` and of the stores that left a bound."""
+        """Solve again the parts of the flows `seeds` and of the stores that left a bound, or, where
+        a moment may, the groups downstream of the stores `forced` and of those (see the module)."""
         net = self.net
-        seeds = set(seeds)
-        for s in self.stale:
-            seeds.update(net.ends[OUT].of(s).tolist())
-            seeds.update(net.ends[IN].of(s).tolist())
-        touched = self._solve(t, sorted(seeds)) if seeds else set()
+        touched = None
+        if self.closed and not self.selected and not seeds:
+            touched = self._downstream(t, set(forced) | self.stale)
+        if touched is None:
+            seeds = set(seeds)
+            for s in set(self.stale) | set(forced):
+                seeds.update(net.of[net.ends[OUT].of(s)].tolist())
+                seeds.update(net.of[net.ends[IN].of(s)].tolist())
+            touched = self._solve(t, sorted(seeds)) if seeds else set()
+            self.selected = self.selected or bool(self.instant.selected)
         self._lines(t, touched, forced)
+
+    def _downstream(self, t, changed):
+        """The groups downstream of the stores `changed`, whose flags are set again at t, upstream
+        first (see the module); gives the stores whose flows changed. The stores that the groups
+        reach are flagged at t as a part's stores are. None, with no rate changed, where a store rests
+        on its upper bound with inflows: the whole parts are solved then."""
+        instant, net, asked = self.instant, self.net, self.asked
+        lower, upper, request = instant.lower, instant.upper, asked.request
+        self._flags(changed, t)
+        flagged = set(changed)
+        region = set(changed)
+        stack = list(region)
+        while stack:
+            for d in net.sink[net.ends[OUT].of(stack.pop())].tolist():
+                if d >= 0 and d not in flagged:
+                    flagged.add(d)
+                    self._flags((d,), t)
+                    if lower[d]:
+                        region.add(d)
+                        stack.append(d)
+        if (upper & (net.counts[IN] > 0)).any():
+            return None
+        depth = instant.depths()
+        order = []
+        for s in region:
+            outs = net.ends[OUT].of(s)
+            claimed = bool(lower[s] and len(outs) and (request[outs] > 0).any())
+            order.append((depth(s) if claimed else 0, s))
+        touched = set()
+        for _, s in sorted(order):
+            outs = net.ends[OUT].of(s).tolist()
+            if lower[s]:
+                found = instant.fill(outs, OUT, s, self.value.__getitem__, net.ends[IN].of(s).tolist())
+            else:
+                found = {f: float(min(request[f], instant.capacity[f])) for f in outs}
+            for f, rate in found.items():
+                if rate != self.value[f]:
+                    self.value[f] = self.rate[f] = rate
+                    self.recorder.add(self.recorded[f], t, rate, 0.0)
+                    touched.update(int(e) for e in (net.source[f], net.sink[f]) if e >= 0)
+        self.stale -= flagged
+        return touched
 
     def finish(self, t):
         """At the horizon, as at any moment: the parts of the stores that left a bound are solved
@@ -231,7 +308,6 @@ class Lines:
     def advance(self, until):
         """Each line that reaches its bound at or before `until`, in time order: the store is put on
         its bound, and the parts of its flows are solved again."""
-        net = self.net
         while self.due and self.due[0][0] <= until:
             reach, s, version = heapq.heappop(self.due)
             if version != self.version[s]:
@@ -239,6 +315,26 @@ class Lines:
             # The store is put on its bound exactly, and holds there until its part is solved.
             bound = self.lower[s] if self.slope[s] < 0 else self.upper[s]
             self.y[s], self.since[s], self.slope[s] = bound, reach, 0.0
-            seeds = net.ends[OUT].of(s).tolist() + net.ends[IN].of(s).tolist()
             self.run.now = reach
-            self._moment(reach, seeds, forced=(s,))
+            self._moment(reach, (), forced=(s,))
+
+
+def asked_of(net, raw, t):
+    """The requests of the connections from the values of their request names at time t: a leg of a
+    route reads the positive part of the route's signed request in its direction (the request that
+    the route's sign names may cross zero), and any other request must be a number not below zero."""
+    request = raw.copy()
+    if not net.plain:
+        forward, backward = net.roles == FORWARD, net.roles == BACKWARD
+        request[forward] = np.maximum(raw[forward], 0.0)
+        request[backward] = np.maximum(-raw[backward], 0.0)
+        signed = forward | backward
+    else:
+        signed = np.zeros(len(raw), dtype=bool)
+    if not np.isfinite(raw).all():
+        k = int(np.flatnonzero(~np.isfinite(raw))[0])
+        raise SimulationError(f'{net.connections[k]}: a request that is {raw[k]:g} at {t:g} h')
+    if ((raw < 0) & ~signed).any():
+        k = int(np.flatnonzero((raw < 0) & ~signed)[0])
+        raise SimulationError(f'Negative flow rates: {net.connections[k]} asks {raw[k]:g} at {t:g} h')
+    return request

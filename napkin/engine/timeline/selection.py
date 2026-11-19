@@ -18,13 +18,19 @@ selection order with no objective (spec, "Local allocation"; the oracle's `tests
    distance.
 
 Ranks 2 and 3 are linear programs of HiGHS (`continuous/highs.py`); a positive part takes one more
-unknown of the program, at least the part and zero. HiGHS holds a row to an absolute tolerance, so a
-part is solved in units of its size (`size_of`), and the rows of a claim are written in served
-fractions, so that the tolerance is relative to what it asks. Rank 4 is the projection of the targets
-onto the rows that the earlier ranks leave, by the dual active-set method of Goldfarb and Idnani: it
-starts from the targets, needs no feasible point (a row of a linear program holds only to HiGHS's
-tolerance), adds the row that the point breaks most, relative to the size of its terms, and ends in a
-finite number of steps, exact but for roundoff. A row with positive parts joins it through its
+unknown of the program, at least the part and zero. HiGHS holds a row to an absolute tolerance, so
+its programs are in units of the part (each rate in units of the part's size, a fraction as it is),
+the rows of a claim are written in served fractions, so that the tolerance is relative to what it
+asks, and a level is the optimum value of its program, which no point of it lies past.
+
+Rank 4 is the projection of the targets onto the rows that the earlier ranks leave. From the point of
+the last program, where that point holds every row, by the primal active-set method: where the point
+is the answer it stays as it is, with the numbers of its vertex (an event time that follows from the
+rates is then exact). Otherwise (a row of a program holds only to HiGHS's tolerance, and the primal
+method can keep that or cycle at a degenerate vertex), or where the primal method does not settle,
+by the dual active-set method of Goldfarb and Idnani: it starts from the targets, needs no feasible
+point, adds the row that the point breaks most, each row held to the size of its own terms, and ends
+in a finite number of steps, exact but for roundoff. A row with positive parts joins it through its
 linear piece at the point. A part that does not settle stops the run (`SimulationError`) and never
 gets another answer.
 """
@@ -41,6 +47,7 @@ from ..errors import SimulationError
 TIGHT = 1e-9  # a claim can rise above its level only by more than this part of it (the oracle's)
 FEASIBLE = 1e-9  # a row holds to this part of the size of its terms
 BREAKS = 1e-12  # rank 4 takes a row that the point breaks by more than this part of its terms
+NOISE = 1e-2  # the roundoff of a term, as a part of BREAKS times the largest unknown of the part
 STEPS = 50  # the most steps of rank 4, for each unknown and row of the part
 
 
@@ -63,14 +70,6 @@ class Rows:
     def with_parts(self, a, parts, b):
         """`a.x` plus the positive part of `s * x_j` for each (j, s) of `parts`, at most b."""
         self.convex.append((np.asarray(a, dtype=float), tuple(parts), float(b)))
-
-    def scaled(self, size):
-        """The same rows in units of `size`."""
-        found = Rows(self.n)
-        found.upper = [(a, b / size) for a, b in self.upper]
-        found.equal = [(a, b / size) for a, b in self.equal]
-        found.convex = [(a, parts, b / size) for a, parts, b in self.convex]
-        return found
 
 
 def _program(rows, limits, cost, upper=(), equal=()):
@@ -130,7 +129,8 @@ def _share(rows, limits, claims):
         found = _program(rows, [*limits, (-math.inf, 1.0)], cost, floor)
         if not found.success:
             _failed(found, 'the fair level of a tier')
-        level = min(1.0, float(found.x[-1]))
+        # The level is the optimum of the program: its value, which no point of it can lie past.
+        level = min(1.0, -float(found.fun))
         if level >= 1.0 - 1e-12:
             for f in pending:
                 rows.at_least(f, 1.0)
@@ -163,36 +163,143 @@ def _prefer(rows, limits, a, amount):
     found = _program(rows, [*limits, (-math.inf, 1.0)], cost, [(np.concatenate([-share, [1.0]]), 0.0)])
     if not found.success:
         _failed(found, 'a preferred route')
-    rows.at_least(share, float(found.x[-1]))
+    rows.at_least(share, min(1.0, -float(found.fun)))
+    return found.x[:n]
 
 
-def nearest(rows, lower, upper, target):
-    """Rank 4: the point of the rows and bounds nearest `target`, by the dual active-set method of
-    Goldfarb and Idnani (see the module). The active rows are kept independent: a row in their span
-    makes a dual step, which drops the row whose multiplier would turn negative first."""
+def _plain(rows, lower, upper):
+    """The rows of a part without positive parts, with the bounds of its unknowns, as (a, b,
+    equality)."""
     n = rows.n
     eye = np.eye(n)
     plain = [(a, b, True) for a, b in rows.equal] + [(a, b, False) for a, b in rows.upper]
     plain += [(eye[j], float(upper[j]), False) for j in range(n) if math.isfinite(upper[j])]
     plain += [(-eye[j], -float(lower[j]), False) for j in range(n) if math.isfinite(lower[j])]
+    return plain
+
+
+def _size(a, b, x, target):
+    """The size of the terms of a row at x, and of the roundoff that the largest unknown leaves in
+    each of its terms: a row of small unknowns is held to its own size, down to that."""
+    scale = max(float(np.abs(x).max(initial=0.0)), float(np.abs(target).max(initial=0.0)))
+    return abs(b) + np.abs(a) @ (np.abs(x) + np.abs(target)) + NOISE * float(np.abs(a).sum()) * scale
+
+
+def _holds(rows, plain, x, target):
+    """Whether x holds every row of a part, each to `FEASIBLE` of its size."""
+    for a, b, is_equal in plain:
+        gap = a @ x - b
+        if (abs(gap) if is_equal else gap) > FEASIBLE * _size(a, b, x, target):
+            return False
+    for a, parts, b in rows.convex:
+        gap = a @ x + sum(max(sign * x[j], 0.0) for j, sign in parts) - b
+        if gap > FEASIBLE * (_size(a, b, x, target) + sum(abs(x[j]) for j, _ in parts)):
+            return False
+    return True
+
+
+def nearest(rows, lower, upper, target, start, size):
+    """Rank 4: the point of the rows and bounds nearest `target`. From the point `start` of the
+    linear programs, when it holds every row and no row has positive parts, by the primal
+    active-set method, in units of the part's `size` (its tolerances are absolute): where that
+    point is the answer it stays as it is, with the numbers of its vertex. Otherwise, or where the
+    primal method does not settle, by the dual method, which needs no feasible start (see the
+    module)."""
     target = np.asarray(target, dtype=float)
+    plain = _plain(rows, lower, upper)
+    start = np.clip(np.asarray(start, dtype=float), lower, upper)
+    if not rows.convex and _holds(rows, plain, start, target):
+        # The same distance in any unit of all the unknowns: the rows scale with them.
+        scaled = Rows(rows.n)
+        scaled.upper = [(a, b / size) for a, b in rows.upper]
+        scaled.equal = [(a, b / size) for a, b in rows.equal]
+        try:
+            return size * _primal(scaled, lower / size, upper / size, target / size, start / size)
+        except SimulationError:
+            pass
+    return _dual(rows, plain, lower, upper, target)
+
+
+def _primal(rows, lower, upper, target, start):
+    """The primal active-set method from the feasible point `start`."""
+    n = rows.n
+    plain = [(a, b) for a, b, is_equal in _plain(rows, lower, upper) if not is_equal]
+    G = np.array([a for a, _ in plain], dtype=float).reshape(len(plain), n)
+    g = np.array([b for _, b in plain], dtype=float)
+    E = np.array([a for a, _ in rows.equal], dtype=float).reshape(len(rows.equal), n)
+    e = np.array([b for _, b in rows.equal], dtype=float)
+    E, e = _independent(E, e)
+    x = start
+    size = 1.0 + np.abs(g) + np.abs(G) @ (np.abs(x) + np.abs(target))
+    working = []
+    for i in np.flatnonzero(g - G @ x <= FEASIBLE * size).tolist():
+        trial = np.vstack([E, G[[*working, i]]])
+        if np.linalg.matrix_rank(trial, tol=1e-12 * max(1.0, np.abs(trial).max())) == len(trial):
+            working.append(i)
+    scale = 1.0 + float(np.abs(target).max(initial=0.0)) + float(np.abs(x).max(initial=0.0))
+    for _ in range(STEPS * (n + len(g) + 1)):
+        A = np.vstack([E, G[working]])
+        d = target - x
+        if len(A):
+            coefficients = np.linalg.lstsq(A.T, d, rcond=None)[0]
+            p = d - A.T @ coefficients
+        else:
+            coefficients, p = np.zeros(0), d
+        if np.abs(p).max(initial=0.0) <= 1e-13 * scale:
+            multipliers = coefficients[len(E) :]
+            if not len(multipliers) or multipliers.min() >= -1e-12 * scale:
+                break
+            working.pop(int(np.argmin(multipliers)))
+            continue
+        moved = G @ p
+        slack = np.maximum(g - G @ x, 0.0)
+        step, blocking = 1.0, None
+        for i in np.flatnonzero(moved > 1e-15 * scale).tolist():
+            if i not in working and slack[i] / moved[i] < step:
+                step, blocking = slack[i] / moved[i], i
+        x = x + step * p
+        if blocking is not None:
+            working.append(blocking)
+    else:
+        raise SimulationError('local sharing: the rates nearest their requests did not settle')
+    x = np.clip(x, lower, upper)
+    if not _holds(rows, _plain(rows, lower, upper), x, target):
+        raise SimulationError('local sharing: the rates nearest their requests break a hard row')
+    return x
+
+
+def _independent(matrix, values):
+    """The rows of `matrix` that add to the rank of those before them, with their values."""
+    kept = []
+    for i in range(len(matrix)):
+        trial = matrix[[*kept, i]]
+        if np.linalg.matrix_rank(trial, tol=1e-12 * max(1.0, np.abs(trial).max())) == len(kept) + 1:
+            kept.append(i)
+    return matrix[kept], values[kept]
+
+
+def _dual(rows, plain, lower, upper, target):
+    """The dual active-set method of Goldfarb and Idnani (see the module). The active rows are kept
+    independent: a row in their span makes a dual step, which drops the row whose multiplier would
+    turn negative first."""
+    n = rows.n
     x = target.copy()
-    normals, values, equal, multipliers = [], [], [], []  # the active rows
+    normals, equal, multipliers = [], [], []  # the active rows
 
     def size(a, b):
-        return abs(b) + np.abs(a) @ (np.abs(x) + np.abs(target))
+        return _size(a, b, x, target)
 
     def broken():
         """The row that x breaks most, by its distance, as (a, b, equality), or None."""
         worst, found = 0.0, None
         for a, b, is_equal in plain:
-            gap = a @ x - b
-            if is_equal and gap < 0:
-                a, b, gap = -a, -b, -gap
+            # An equality that x breaks below is the row `-a.x <= -b`.
+            sign = -1.0 if is_equal and a @ x < b else 1.0
+            gap = sign * (a @ x - b)
             if gap > BREAKS * size(a, b):
                 distance = gap / max(float(np.linalg.norm(a)), 1e-300)
                 if distance > worst:
-                    worst, found = distance, (a, b, is_equal)
+                    worst, found = distance, (sign * a, sign * b, is_equal)
         for a, parts, b in rows.convex:
             # The linear piece of the row at x: each part whose argument is positive there.
             piece = a.copy()
@@ -221,15 +328,16 @@ def nearest(rows, lower, upper, target):
                 r, z = np.zeros(0), -a
             # The longest step before the multiplier of an active row turns negative.
             partial, leaving = math.inf, None
+            largest = float(np.abs(r).max(initial=0.0))
             for k, (value, is_eq) in enumerate(zip(multipliers, equal)):
-                if not is_eq and r[k] > 1e-14 * max(1.0, float(np.abs(r).max())):
-                    if value / r[k] < partial:
-                        partial, leaving = value / r[k], k
+                if not is_eq and r[k] > 1e-12 * largest and value / r[k] < partial:
+                    partial, leaving = value / r[k], k
+            # The chosen row is in the span of the active rows when the step of x is no step.
             room = float(z @ z)
             gap = a @ x - b
-            full = gap / room if room > 1e-28 * max(1.0, float(a @ a)) else math.inf
+            full = gap / room if room > 1e-20 * float(a @ a) else math.inf
             if math.isinf(full) and math.isinf(partial):
-                raise SimulationError('local sharing: the rows of the rates nearest their requests have no answer')
+                raise SimulationError('local sharing: the rows of the nearest rates have no answer')
             step = min(full, partial)
             if not math.isinf(full):
                 x = x + step * z
@@ -237,32 +345,22 @@ def nearest(rows, lower, upper, target):
             added += step
             if step == full:
                 normals.append(a)
-                values.append(b)
                 equal.append(is_equal)
                 multipliers.append(added)
                 break
-            for found in (normals, values, equal, multipliers):
+            for found in (normals, equal, multipliers):
                 found.pop(leaving)
     else:
         raise SimulationError('local sharing: the rates nearest their requests did not settle')
     x = np.clip(x, lower, upper)
-    for a, b, is_equal in plain:
-        gap = a @ x - b
-        if (abs(gap) if is_equal else gap) > FEASIBLE * (1.0 + size(a, b)):
-            raise SimulationError('local sharing: the rates nearest their requests break a hard row')
-    for a, parts, b in rows.convex:
-        gap = a @ x + sum(max(sign * x[j], 0.0) for j, sign in parts) - b
-        if gap > FEASIBLE * (1.0 + size(a, b) + sum(abs(x[j]) for j, _ in parts)):
-            raise SimulationError('local sharing: the rates nearest their requests break a hard row')
+    if not _holds(rows, plain, x, target):
+        raise SimulationError('local sharing: the rates nearest their requests break a hard row')
     return x
 
 
 def size_of(rows, upper, tiers, prefs, target):
-    """The size of a part: its largest request or preferred amount, else its largest finite
-    capacity or row, else one. The tolerances of HiGHS and of the ranks are absolute, so a part is
-    solved in units of its size: then they are relative to what it asks. The selection order gives
-    the same answer in any unit (a served fraction is a ratio, the rows and the distance scale
-    with the rates), so the change of unit is exact but for roundoff."""
+    """The size of a part whose unknowns are all rates: its largest request or preferred amount,
+    else its largest finite capacity or row, else one."""
     asked = [abs(float(r)) for claims in tiers for _, r in claims]
     asked += [abs(float(amount)) for _, amount in prefs]
     asked += np.abs(np.asarray(target, dtype=float)).tolist()
@@ -276,29 +374,59 @@ def size_of(rows, upper, tiers, prefs, target):
     return found if found > 0.0 else 1.0
 
 
-def select(rows, lower, upper, tiers, prefs, target):
-    """The unknowns of one coupled part: `rows` (`Rows`), the bounds of each unknown (-inf and inf
-    for none), the tiers of claims in order (each a list of (a, request)), the preferred routes in
-    order (each (a, amount)) and the target of each unknown (rank 4). The part is solved in units of
-    its size (`size_of`)."""
-    size = size_of(rows, upper, tiers, prefs, target)
-    lower = np.asarray(lower, dtype=float)
-    upper = np.asarray(upper, dtype=float)
-    scaled = rows.scaled(size)
-    limits = [(float(lo) / size, float(hi) / size) for lo, hi in zip(lower, upper)]
-    found = _program(scaled, limits, np.zeros(rows.n))
+def select(rows, lower, upper, tiers, prefs, target, units=None):
+    """The unknowns of one coupled part: `rows` (`Rows`, in the units of the rates), the bounds of
+    each unknown (-inf and inf for none), the tiers of claims in order (each a list of (a,
+    request)), the preferred routes in order (each (a, amount)) and the target of each unknown
+    (rank 4).
+
+    HiGHS holds a row to an absolute tolerance, so its programs are in units of the part: each
+    unknown in its own unit (`units`: the size of the part for a rate, one for a served fraction;
+    all rates in the units of `size_of` when it is None), and each row over the size of the part.
+    The selection order gives the same answer in any unit (a served fraction is a ratio, and the
+    rows scale with the rates), so the change is exact but for roundoff. Rank 4 is in the units of
+    the rates, as the distance is: its tolerances are relative to each row."""
+    n = rows.n
+    lower, upper = np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)
+    target = np.asarray(target, dtype=float)
+    if units is None:
+        units = np.full(n, size_of(rows, upper, tiers, prefs, target))
+    units = np.asarray(units, dtype=float)
+    size = float(units.max(initial=1.0))
+    # The programs read z = x / units, and each row over the size of the part.
+    scaled = Rows(n)
+    scaled.upper = [(a * units / size, b / size) for a, b in rows.upper]
+    scaled.equal = [(a * units / size, b / size) for a, b in rows.equal]
+    scaled.convex = [
+        (a * units / size, tuple((j, s * units[j] / size) for j, s in parts), b / size)
+        for a, parts, b in rows.convex
+    ]
+    limits = [(float(lo / u), float(hi / u)) for lo, hi, u in zip(lower, upper, units)]
+    found = _program(scaled, limits, np.zeros(n))
     if not found.success:
         _failed(found, 'the hard rows')
+    start = found.x
+    made = len(scaled.upper), len(scaled.equal)
     for claims in tiers:
-        _share(scaled, limits, [(a, r / size) for a, r in claims])
+        _share(scaled, limits, [(np.asarray(a, dtype=float) * units / size, r / size) for a, r in claims])
     for a, amount in prefs:
-        _prefer(scaled, limits, a, amount / size)
-    found = nearest(scaled, lower / size, upper / size, np.asarray(target, dtype=float) / size) * size
+        start = _prefer(scaled, limits, np.asarray(a, dtype=float) * units / size, amount / size)
+    if tiers and not prefs:
+        found = _program(scaled, limits, np.zeros(n))
+        if not found.success:
+            _failed(found, 'the rows of fair sharing')
+        start = found.x
+    # The rows of the ranks, back in the units of the rates: f.z = f.(x / units).
+    final = Rows(n)
+    final.upper = rows.upper + [(f / units, b) for f, b in scaled.upper[made[0] :]]
+    final.equal = rows.equal + [(f / units, b) for f, b in scaled.equal[made[1] :]]
+    final.convex = rows.convex
+    found = nearest(final, lower, upper, target, start * units, size)
     # The roundoff of the linear algebra is no rate: an unknown within it of zero or of a bound is
     # put there, so that a junction or a store at its bound is held exactly.
-    found[np.abs(found) <= 1e-12 * size] = 0.0
+    found[np.abs(found) <= 1e-12 * units] = 0.0
     for bound in (lower, upper):
         with np.errstate(invalid='ignore'):
-            near = np.isfinite(bound) & (np.abs(found - bound) <= 1e-12 * (size + np.abs(bound)))
+            near = np.isfinite(bound) & (np.abs(found - bound) <= 1e-12 * (units + np.abs(bound)))
         found[near] = bound[near]
     return found

@@ -1,55 +1,82 @@
-"""The short path of the closed form of the bound allocation (`Allocation.served_in_full`).
+"""The closed form of local sharing is a short path of the selection order (`network.Instant._groups`).
 
-A stock that rests at a bound with an inflow that equals its outflows but for roundoff sends each
-evaluation of the field to the closed form of the bound allocation, which then serves every unit in
-full and gives the request back. `served_in_full` finds that with less work. Its claim is checked
-call by call against the closed form with all of its work, and the runs are compared bit for bit.
+Where a store rests at its lower bound and its inflows carry no more than they ask, its outflows
+share what flows in by their allocation, and groups in supply order give that in closed form
+(water-filling, R-A3-09). Everywhere else, and wherever the form does not hold, the selection order
+gives the rates (`selection.select`). The closed form must give what the selection order gives: the
+runs are compared with it and without it, and with what the model says in closed form.
 
-The model is a tank with one inflow and two outflows that share it. The rates rise with time, so no
-segment is exact: the solver asks for the field many times. The inflow is 1.1 times the first
-outflow, or 1.05 times; the outflows together are 1.1 times the first outflow.
+The model is a tank with one inflow and two outflows that share it, on the sparse integrator: the
+rates rise with time, so the solver asks for the rates many times. The inflow is 1.1 times the first
+outflow, or 1.05 times; the outflows together are 1.1 times the first outflow. The inflow carries no
+more than it asks (a capacity at its request), else a claim of the outflows would raise it (D15).
 
-- Full (it starts at its upper bound of 100) with the inflow of 1.1: the tank stays full, and the
-  inflow is served in full but for the evaluations where roundoff leaves an excess.
+- Full (it starts at its upper bound of 100) with the inflow of 1.1: the tank stays full, and each
+  outflow gets what it asks; the selection order gives that, since a full store with inflows has no
+  closed form.
 - Empty (it starts at 0) with the inflow of 1.05: the outflows get what comes in, by the policy of
-  the share. Every call cuts a unit.
+  the tank's outflow.
+- Full with the inflow of 1.05: the tank drains, empties, and shares from then on.
 """
 
 import pytest
 
-from napkin import store
-from napkin.engine.allocation import Allocation
-from napkin.engine.runtime import simulate
-from tests import build as b
+from napkin.engine import read, run
+from napkin.engine.timeline.network import Instant
+from napkin.program.build import (
+    SOURCE,
+    Builder,
+    endpoint,
+    flow,
+    formula,
+    input_,
+    priority,
+    proportional,
+    q,
+    t,
+    this,
+    value,
+)
+from napkin.program.config import Configuration, Request
+from napkin.program.record import Key
 
+UNITS = {'h': {'time': 1}, 'people': {'people': 1}}
 HORIZON = 40
 # The integral of 1 + 0.01 t over the run: what the first outflow moves for a demand of 1.
 MOVED = HORIZON + 0.005 * HORIZON**2
 DEMANDS = (10304732.104954248, 1e7 / 3)
-ORDERS = ('proportional', ['deliver', 'leak'], ['leak', 'deliver'])
+ORDERS = ('proportional', ('deliver', 'leak'), ('leak', 'deliver'))
 
 
 def tank(demand, start, order, fill):
-    rate = 'demand * (1 + 0.01 * t / 1 h)'
-    text = b.system(
-        b.parameter('demand', demand, 'people/h', 0, 1e9),
-        b.stock('tank', start, maximum=100),
-        b.stock('used', 0, kind='tally', size=None),
-        b.stock('lost', 0, kind='tally', size=None),
-        b.flow('fill', b.move(None, 'tank'), f'({rate}) * {fill}'),
-        b.flow('deliver', b.move('tank', 'used'), rate),
-        b.flow('leak', b.move('tank', 'lost'), f'({rate}) / 10'),
-        b.share('tank', '1e12 people/h', order),
-        horizon=HORIZON,
-        outputs=(b.output('used', 's.used', 'people'),),
+    rate = this.demand * (1 + q(0.01, '1/h') * t)
+    allocation = (
+        proportional() if order == 'proportional' else priority(*(getattr(this, name) for name in order))
     )
-    model = b.compiled(text)
-    return model.resolve(next(iter(model.runs))), model.library
+    b = Builder(UNITS)
+    b.entity(
+        's',
+        input_('demand', 'people/h', demand, lower=0, upper=1e9),
+        value(
+            'tank',
+            'people',
+            start,
+            lower=0,
+            upper=100,
+            outflow=endpoint(capacity=q(1e12, 'people/h'), allocation=allocation),
+        ),
+        value('used', 'people', 0, lower=0),
+        value('lost', 'people', 0, lower=0),
+        flow('fill', SOURCE, this.tank, request=formula(rate * fill), capacity=formula(rate * fill)),
+        flow('deliver', this.tank, this.used, request=formula(rate)),
+        flow('leak', this.tank, this.lost, request=formula(rate / 10)),
+    )
+    return b.finish()
 
 
 def moved(order, fill):
     """(what the first outflow moves, what the second moves) for a demand of 1, from an empty tank:
-    all that comes in goes out, by the policy of the share."""
+    all that comes in goes out, by the policy of the tank's outflow."""
     if fill >= 1.1:
         return MOVED, MOVED / 10
     if order == 'proportional':
@@ -67,60 +94,25 @@ CASES = [
 ]
 
 
-@pytest.fixture
-def claims(monkeypatch):
-    """The closed form with all of its work for each call, and what the short path said of the same
-    call: [(the claim, whether the closed form gave the request back in each bit)]."""
-    quick, closed, found, said = Allocation.served_in_full, Allocation.closed_form, [], []
-
-    def recorded(self, *args):
-        said.append(quick(self, *args))
-        return False
-
-    def full(self, a, bound, requested, adjustable):
-        del said[:]
-        out = closed(self, a, bound, requested, adjustable)
-        if out is not None and said:
-            found.append((said[0], out.tobytes() == requested.tobytes()))
-        return out
-
-    monkeypatch.setattr(Allocation, 'served_in_full', recorded)
-    monkeypatch.setattr(Allocation, 'closed_form', full)
-    return found
-
-
-def test_each_claim_of_a_full_service_is_what_the_closed_form_gives(claims):
-    """Whenever the short path says that every unit is served in full, the closed form gives the
-    request back in each bit. The cases have many calls of each kind, with a proportional share and
-    with the two orders of a priority share."""
-    for demand, start, order, fill in CASES:
-        simulate(*tank(demand, start, order, fill))
-    wrong = [(claim, same) for claim, same in claims if claim and not same]
-    assert wrong == []
-    in_full = sum(claim for claim, _ in claims)
-    cut = sum(not same for _, same in claims)
-    # How many calls there are of each kind follows the steps of the solver: each kind has many.
-    assert in_full > 100 and cut > 1000
-    # The short path misses no full service of these models: each call that it leaves to the closed
-    # form cuts a unit.
-    assert all(claim or not same for claim, same in claims)
+def ends(program):
+    record = run(program, Configuration(Request(HORIZON)))
+    assert record.failure is None, record.failure.detail('message')
+    keys = [Key('s', (name,)) for name in ('used', 'lost', 'tank')]
+    return [reading.values[0] for reading in read(record, program, keys, [float(HORIZON)])]
 
 
 @pytest.mark.parametrize(('demand', 'start', 'order', 'fill'), CASES)
-def test_a_run_is_the_same_in_each_bit_with_the_short_path_and_without(
-    demand, start, order, fill, monkeypatch
-):
-    """The trajectory with the short path is the trajectory of the closed form with all of its
-    work, bit for bit. From a full tank that stays full, and from an empty one, the two outflows
-    moved what the model says in closed form."""
-    rs, library = tank(demand, start, order, fill)
-    short = simulate(rs, library)
-    monkeypatch.setattr(Allocation, 'served_in_full', lambda self, *args: False)
-    whole = simulate(rs, library)
-    assert store.fingerprint(short) == store.fingerprint(whole)
-    end = short.env_at(float(HORIZON))
+def test_a_run_is_the_same_with_the_closed_form_and_without(demand, start, order, fill, monkeypatch):
+    """The run with the closed form is the run of the selection order alone, within the tolerance of
+    the solver. From a full tank that stays full, and from an empty one, the two outflows moved what
+    the model says in closed form."""
+    program = tank(demand, start, order, fill)
+    short = ends(program)
+    monkeypatch.setattr(Instant, '_groups', lambda self, part: None)
+    whole = ends(program)
+    assert short == pytest.approx(whole, rel=1e-9, abs=1e-6)
     if (start, fill) != (100, 1.05):
         used, lost = moved(order, fill)
-        assert end['s.used'] == pytest.approx(used * demand, rel=1e-7)
-        assert end['s.lost'] == pytest.approx(lost * demand, rel=1e-7)
-        assert end['s.tank'] == pytest.approx(start, abs=1e-6)
+        assert short[0] == pytest.approx(used * demand, rel=1e-7)
+        assert short[1] == pytest.approx(lost * demand, rel=1e-7)
+        assert short[2] == pytest.approx(start, abs=1e-6)

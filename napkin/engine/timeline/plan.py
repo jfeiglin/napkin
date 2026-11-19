@@ -30,28 +30,43 @@ continuous engine and the record read these names; nothing reads the spelling of
 - **Keyed reads.** `.at(x)` with an x that reads only fixed values is fixed for the run; with x the
   time `t`, it changes only at the keys of its collection, its key times, which go on the timeline
   of the run (`stepped`).
-- **Endpoints.** A stored number that supplies a flow has `outflow`, one that receives has `inflow`
-  (`End`): a request (zero when left out), a capacity (none when left out), the actual rate (the sum
-  of its flows' actual rates, a formula) and `flows`, the collection of its flows keyed by their
-  creation numbers. A `priority(...)` allocation is kept as its items (`rankings`): a flow, or a
-  projection of a keyed collection of flows, whose keys the run reads at its start.
-- **Connected sets.** A flow joins its two ends, and a request or a capacity, of a flow or of an
-  endpoint at its ends, that reads a store, through formulas, reductions or directly, joins that
-  store to the flow's set: what a rate reads that moves is in its own set. Each set has its way
-  (`Connected.way`): a set of one flow with no endpoint settings whose rates read nothing that moves
-  runs on arrays with every other such set (`family.py`); any other set whose rates read nothing that
-  moves runs on lines (`lines.py`), at any size; a set whose rates move runs as one component of the
-  continuous engine (`component.py`) when each store meets at most one flow on each side, it has no
-  endpoint settings and at most `LIMIT` stores, and on the sparse integrator otherwise (`sparse.py`). A stored value that no
-  flow touches does not move in this slice, since no stage writes it. A flow with no store at either
-  end moves nothing, and its actual rate is the formula `min(request, capacity)`.
+- **Flows** (`Flow`) are of three kinds, and meet the stores by their connections (`Connection`):
+  a directed flow is its one connection, with its actual rate; a reversible route
+  (`west.water <-> east.water`) has one signed actual rate, positive from its first end to its
+  second, within its capacity on the magnitude, and a signed request, and its legs `forward` and
+  `backward` are its two connections, whose actual rates and requests are the formulas
+  `max(x, 0)` and `max(-x, 0)` of the route's; a flow with legs has one `served_fraction` and its
+  legs are its connections, each with its own request, capacity and unit, and the actual rate
+  `served_fraction * request`, a formula. `.source` and `.sink` of a directed flow, a leg of a
+  route or a leg of a flow with legs name the store at that end (at SOURCE or SINK they hold no
+  value: a type error). A route ends at stores only; a store is a tally only by its use, when no
+  flow takes from it, and the route takes from both of its ends, so no end of a route is one.
+- **Endpoints.** A stored number that supplies a connection has `outflow`, one that receives has
+  `inflow` (`End`): a request (zero when left out), a capacity (none when left out), the actual rate
+  (the sum of its connections' actual rates, a formula) and `flows`, the collection of its
+  connections keyed by their creation numbers (from one: a flow, then each of its legs, as the
+  oracle numbers them). A `priority(...)` allocation is kept as its items (`rankings`): a connection
+  (a directed flow or a leg), or a projection of a keyed collection of flows, whose keys the run
+  reads at its start; a route or a flow with legs named whole is an error of the setup.
+- **Connected sets.** A flow joins the ends of its connections, and a request or a capacity, of a
+  connection or of an endpoint at its ends, that reads a store, through formulas, reductions or
+  directly, joins that store to the flow's set: what a rate reads that moves is in its own set.
+  Each set has its way (`Connected.way`): a set of one directed flow with no endpoint settings whose
+  rates read nothing that moves runs on arrays with every other such set (`family.py`); any other
+  set whose rates read nothing that moves runs on lines (`lines.py`), at any size; a set whose rates
+  move runs as one component of the continuous engine (`component.py`) when its flows are directed,
+  each store meets at most one flow on each side, it has no endpoint settings and at most `LIMIT`
+  stores, and on the sparse integrator otherwise (`sparse.py`). A stored value that no flow touches
+  does not move in this slice, since no stage writes it. A directed flow with no store at either end
+  moves nothing, and its actual rate is the formula `min(request, capacity)`.
 - **Assertions** over inputs are checked once, at the start of the run.
 
 What a later slice runs is refused by name (`Outside`), with the slice that brings it: events,
 triggers, the starts of the setup and assertions over state (S4); a key of `.at(...)` that moves or
-is a function of the time other than `t`, and a keyed read of a value that moves (S4); a request or a capacity that reads an actual rate, which needs the rates of other flows settled
-first (S4); reversible routes and flows with legs (S3); solvers (S5). Enums and texts are refused
-too: a value of this slice is a number or a yes/no.
+is a function of the time other than `t`, and a keyed read of a value that moves (S4); a request or
+a capacity that reads an actual rate or a served fraction, which needs the rates of other flows
+settled first (S4); solvers (S5). Enums and texts are refused too: a value of this slice is a
+number or a yes/no.
 """
 
 from __future__ import annotations
@@ -101,6 +116,9 @@ FIXED = (INPUT, LINK)  # what an assertion over inputs may read
 SIDES = ('outflow', 'inflow')  # the endpoints of a stored number
 # The ways of a connected set (`Connected.way`).
 FAMILY, LINES, COMPONENT, SPARSE = 'family', 'lines', 'component', 'sparse'
+# The kinds of a flow (`Flow.kind`), and the roles of a connection (`Connection.role`).
+DIRECTED, ROUTE, LEGS = 'directed', 'route', 'legs'
+DIRECT, FORWARD, BACKWARD, LEG = 'direct', 'forward', 'backward', 'leg'
 LIMIT = 150  # the most stores of a component of the continuous engine (R-A4a-04)
 
 
@@ -151,9 +169,12 @@ class Drawn:
 
 
 @dataclass(frozen=True)
-class Flow:
-    """A directed flow: its engine id, the engine names of its ends (None for SOURCE or SINK), of its
-    request and of its capacity (None when it has none), and its unit."""
+class Connection:
+    """What meets the stores of a flow (`network.py`): a directed flow itself, a leg of a route
+    (`forward` from its first end to its second, `backward` the other way) or a leg of a flow with
+    legs. Its engine name, the engine names of its ends (None for SOURCE or SINK), of its request and
+    of its capacity (None when it has none; a leg of a route reads the route's signed request and its
+    capacity on the magnitude), its unit and its role."""
 
     name: str
     source: str | None
@@ -161,10 +182,43 @@ class Flow:
     request: str
     capacity: str | None
     unit: str
+    role: str = DIRECT
+
+
+@dataclass(frozen=True)
+class Flow:
+    """A flow: its engine id, its kind (`DIRECTED`, `ROUTE` or `LEGS`) and its connections. A
+    directed flow and a route have the engine names of their ends (a route's first and second, None
+    for SOURCE or SINK), of their request (a route's is signed) and of their capacity (None when it
+    has none), and their unit; a flow with legs has its legs, each a connection."""
+
+    name: str
+    source: str | None
+    sink: str | None
+    request: str | None
+    capacity: str | None
+    unit: str
+    kind: str = DIRECTED
+    legs: tuple[Connection, ...] = ()
+
+    @property
+    def connections(self):
+        """Its connections, in their order of creation: one for a directed flow, `forward` and
+        `backward` for a route, and the legs of a flow with legs."""
+        if self.kind == DIRECTED:
+            return (Connection(self.name, self.source, self.sink, self.request, self.capacity, self.unit),)
+        if self.kind == ROUTE:
+            ends = ((FORWARD, self.source, self.sink), (BACKWARD, self.sink, self.source))
+            return tuple(
+                Connection(f'{self.name}.{role}', a, b, self.request, self.capacity, self.unit, role)
+                for role, a, b in ends
+            )
+        return self.legs
 
     @property
     def rate(self):
-        """The rate that the flow asks of the continuous engine: its request, within its capacity."""
+        """The rate that a directed flow asks of the continuous engine: its request, within its
+        capacity."""
         request = nodes.ref(self.request)
         if self.capacity is None:
             return request
@@ -280,7 +334,12 @@ class Plan:
         self.values, self.draws, self.flows, self.distributions = {}, {}, {}, {}
         self.reductions, self.keyed = {}, {}
         self.ends, self.rankings = {}, {}  # (store, side) -> End; -> the items of a priority(...)
-        self._flow_parts = {}  # the engine id of each flow -> (its member's id, the flow)
+        self.connections = {}  # the engine name of each connection -> its `Connection`
+        # The engine name of each flow and of each connection -> (what it is, its Flow or
+        # Connection): `directed`, `route` and `legs` name a flow, `forward`, `backward` and `leg` a
+        # connection of a route or of a flow with legs.
+        self._parts = {}
+        self._numbers = {}  # the creation number of each flow and connection, from 1 (its key)
         self.asserts = []  # (origin, the member that it belongs to, its node)
         self.failures = []  # the errors of the setup that the plan finds: the run fails with them
         self._derived = {}  # (owner, read) -> the engine name of a reduction or a keyed read
@@ -470,22 +529,73 @@ class Plan:
         return nodes.const(float(found.number) * float(written.scale))
 
     def _declare_flow(self, flow, scope):
-        """A flow of one member: its ends, its request and capacity, and its actual rate."""
+        """A flow of one member: its ends, its requests and capacities, and what the run gives of it:
+        the actual rate of a directed flow and the signed actual rate of a route, which the network
+        gives, and the served fraction of a flow with legs. The rates of the legs are formulas of
+        these: `max(rate, 0)` forward and `max(-rate, 0)` backward on a route (and so are their
+        requests, of the route's signed request), and the fraction times the leg's request on a flow
+        with legs."""
         member = scope[2]
-        if flow.kind != p.DIRECTED:
-            raise Outside(
-                f'{flow.origin}: a {"reversible route" if flow.kind == p.REVERSIBLE else "flow with legs"} (S3)'
-            )
         name = name_of(Key(member.id, (flow.name,)))
-        self._flow_parts[name] = (member.id, flow)
+        self._numbers[name] = len(self._numbers) + 1
+        if flow.kind == p.LEGS:
+            fraction = name_of(Key(member.id, (flow.name, 'served_fraction')))
+            self._add(Value(fraction, Key(member.id, (flow.name, 'served_fraction')), RATE, None, ''))
+            legs = []
+            for leg in flow.legs:
+                steps, origin = (flow.name, leg.name), leg.origin or flow.origin
+                ends = [self._end(end, scope, origin) for end in (leg.source, leg.sink)]
+                request, capacity = self._settings(leg, steps, scope, origin)
+                made = Connection(name_of(Key(member.id, steps)), *ends, request, capacity, leg.unit, LEG)
+                rate = Key(member.id, (*steps, 'actual_rate'))
+                node = nodes.binary('mul', nodes.ref(fraction), nodes.ref(request))
+                self._add(Value(name_of(rate), rate, FORMULA, node, leg.unit))
+                self._parts[made.name] = (LEG, made)
+                self._numbers[made.name] = len(self._numbers) + 1
+                legs.append(made)
+            made = Flow(name, None, None, None, None, '', LEGS, tuple(legs))
+            self._parts[name] = (LEGS, made)
+            self.flows[name] = made
+            return
         ends = [self._end(end, scope, flow.origin) for end in (flow.source, flow.sink)]
-        properties = {}
+        request, capacity = self._settings(flow, (flow.name,), scope, flow.origin)
+        rate = Key(member.id, (flow.name, 'actual_rate'))
+        if flow.kind == p.REVERSIBLE:
+            if None in ends:
+                raise Outside(f'{flow.origin}: a reversible route that ends at SOURCE or SINK (a type error)')
+            made = Flow(name, *ends, request, capacity, flow.unit, ROUTE)
+            self._add(Value(name_of(rate), rate, RATE, None, flow.unit))
+            for leg in made.connections:
+                for which, signed in (('actual_rate', name_of(rate)), ('request', request)):
+                    part = nodes.ref(signed) if leg.role == FORWARD else nodes.unary('neg', nodes.ref(signed))
+                    key = Key(member.id, (flow.name, leg.role, which))
+                    node = nodes.call('max', [part, nodes.const(0.0)])
+                    self._add(Value(name_of(key), key, FORMULA, node, flow.unit))
+                self._parts[leg.name] = (leg.role, leg)
+                self._numbers[leg.name] = len(self._numbers) + 1
+            self._parts[name] = (ROUTE, made)
+            self.flows[name] = made
+            return
+        made = Flow(name, *ends, request, capacity, flow.unit)
+        self._parts[name] = (DIRECTED, made)
+        if made.source is None and made.sink is None:
+            # Nothing to move: the actual rate is what the flow asks.
+            self._add(Value(name_of(rate), rate, FORMULA, made.rate, flow.unit))
+        else:
+            self._add(Value(name_of(rate), rate, RATE, None, flow.unit))
+            self.flows[name] = made
+
+    def _settings(self, flow, steps, scope, origin):
+        """The engine names of the request (zero when left out) and of the capacity (None when left
+        out) of a flow or a leg, declared as values under the key steps `steps`."""
+        member = scope[2]
+        names = {}
         for which in ('request', 'capacity'):
             setting = getattr(flow, which)
-            key = Key(member.id, (flow.name, which))
             if setting is None and which == 'capacity':
                 continue
-            properties[which] = name_of(key)
+            key = Key(member.id, (*steps, which))
+            names[which] = name_of(key)
             kind = FORMULA if isinstance(setting, Formula) else CAPTURE
             self._add(Value(name_of(key), key, kind, None, flow.unit))
 
@@ -495,21 +605,14 @@ class Plan:
                     node = nodes.const(0)  # a request left out is zero
                 else:
                     expression = setting.expr if isinstance(setting, Formula) else setting
-                    node, binding = self._bound(expression, scope, flow.origin)
+                    node, binding = self._bound(expression, scope, origin)
                     shape = expression.node if binding is not None else None
                 self.values[name_of(key)] = Value(
                     name_of(key), key, kind, node, flow.unit, shape=shape, binding=binding or ()
                 )
 
             self._declared.append(make)
-        made = Flow(name, *ends, properties['request'], properties.get('capacity'), flow.unit)
-        rate = Key(member.id, (flow.name, 'actual_rate'))
-        if made.source is None and made.sink is None:
-            # Nothing to move: the actual rate is what the flow asks.
-            self._add(Value(name_of(rate), rate, FORMULA, made.rate, flow.unit))
-        else:
-            self._add(Value(name_of(rate), rate, RATE, None, flow.unit))
-            self.flows[name] = made
+        return names['request'], names.get('capacity')
 
     def _end(self, end, scope, origin):
         """The engine name of a stored number at an end of a flow, or None for SOURCE and SINK."""
@@ -526,9 +629,11 @@ class Plan:
         reads it (`end_of`)."""
         self._incident, self._stores = {}, {}
         for flow in self.flows.values():
-            for side, end in zip(SIDES, (flow.source, flow.sink)):
-                if end is not None:
-                    self._incident.setdefault((end, side), []).append(flow.name)
+            for connection in flow.connections:
+                self.connections[connection.name] = connection
+                for side, end in zip(SIDES, (connection.source, connection.sink)):
+                    if end is not None:
+                        self._incident.setdefault((end, side), []).append(connection.name)
         scopes = [(value, None) for value in self.program.root]
         scopes += [(value, scope) for scope in members for value in scope[0].values]
         for value, scope in scopes:
@@ -555,7 +660,7 @@ class Plan:
 
     def _declare_end(self, store, value, scope, side, setting, flows):
         owner = scope[2].id if scope is not None else ''
-        unit = self.flows[flows[0]].unit if flows else ''
+        unit = self.connections[flows[0]].unit if flows else ''
         origin = setting.origin or value.origin
         names = {}
         for which in ('request', 'capacity'):
@@ -593,17 +698,16 @@ class Plan:
             self._declared.append(lambda: self._ranking(store, side, setting.allocation, scope, origin))
 
     def _ranking(self, store, side, allocation, scope, origin):
-        """The items of a `priority(...)`: ('one', flow) or ('keyed', ((key, flow), ...)), where a
-        key is the engine name of a value or a creation number."""
+        """The items of a `priority(...)`, which name connections: ('one', connection) or ('keyed',
+        ((key, connection), ...)), where a key is the engine name of a value or a creation number."""
         items = []
         for path in allocation.items:
             point = self._resolve(path, scope, origin)
             if point[0] == 'flow':
-                items.append(('one', f'{point[1]}.{point[2].name}'))
+                items.append(('one', point[1]))
             elif point[0] == 'many' and all(each[0] == 'flow' for each in point[1].points):
                 entries = point[1]
-                flows = tuple(f'{each[1]}.{each[2].name}' for each in entries.points)
-                items.append(('keyed', tuple(zip(entries.keys, flows))))
+                items.append(('keyed', tuple(zip(entries.keys, (each[1] for each in entries.points)))))
             else:
                 raise Outside(f'{origin}: priority({spelled(path)}), which names no flow (a type error)')
         mine = set(self.ends[(store, side)].flows)
@@ -611,9 +715,10 @@ class Plan:
             named = [item[1]] if item[0] == 'one' else [flow for _, flow in item[1]]
             for flow in named:
                 if flow not in mine:
+                    whole = self._parts[flow][0] in (ROUTE, LEGS)
                     self.failures.append(
                         f'{origin}: priority(...) at {store}.{side} names {flow}, which is not a flow of '
-                        'that endpoint'
+                        f'that endpoint{"; name its leg of that direction" if whole else ""}'
                     )
         self.rankings[(store, side)] = tuple(items)
 
@@ -660,8 +765,8 @@ class Plan:
 
     def _resolve(self, path, scope, origin, item=None):
         """What a path names, for a member's (`scope` = (template, row, member)) or the root's
-        expression: `('value', engine name)`, `('member', id)`, `('flow', id, flow)` or
-        `('many', Entries)`."""
+        expression: `('value', engine name)`, `('member', id)`, `('flow', engine name)` of a flow or
+        a connection, or `('many', Entries)`."""
         if isinstance(path.start, Lookup):
             return ('value', self._keyed(path, scope, origin, item))
         point = self._start(path.start, scope, origin, item)
@@ -727,17 +832,10 @@ class Plan:
                     return self._resolve(member.value(name) or part.init, (template, row, member), origin)
                 return ('value', f'{point[1]}.{name}')
             if isinstance(part, p.Flow):
-                if part.kind != p.DIRECTED:
-                    raise Outside(f'{origin}: the flow {point[1]}.{name} (S3)')
-                return ('flow', point[1], part)
+                return ('flow', f'{point[1]}.{name}')
             raise Outside(f'{origin}: {point[1]}.{name} names an event or a solver (S4, S5)')
         if kind == 'flow':
-            _, owner, flow = point
-            if name not in ('actual_rate', 'request', 'capacity'):
-                raise Outside(f'{origin}: the {name} of a flow (S2)')
-            if name == 'capacity' and flow.capacity is None:
-                raise Outside(f'{origin}: {owner}.{flow.name}.capacity, a capacity left out, has no value')
-            return ('value', f'{owner}.{flow.name}.{name}')
+            return self._flow_step(point[1], name, origin)
         if kind == 'many':
             entries = point[1]
             points = tuple(self._step(each, name, origin) for each in entries.points)
@@ -750,8 +848,8 @@ class Plan:
         if kind == 'end':
             end = self.ends[(point[1], point[2])]
             if name == 'flows':
-                points = tuple(('flow', *self._flow_parts[flow]) for flow in end.flows)
-                keys = tuple(list(self.flows).index(flow) for flow in end.flows)
+                points = tuple(('flow', flow) for flow in end.flows)
+                keys = tuple(self._numbers[flow] for flow in end.flows)
                 return ('many', Entries(None, points, (None,) * len(points), keys))
             found = {'request': end.request, 'capacity': end.capacity, 'actual_rate': end.actual_rate}
             if name not in found:
@@ -762,6 +860,41 @@ class Plan:
                 raise Outside(f'{origin}: {point[1]}.{point[2]}.capacity, a capacity left out, has no value')
             return ('value', found[name])
         raise Outside(f'{origin}: the step {name} of a value, which names nothing of it (a type error)')
+
+    def _flow_step(self, name, step, origin):
+        """The point that a step from a flow or a connection names: a leg of a route or of a flow with
+        legs, a value of it, or the store at one of its ends (`.source`, `.sink`)."""
+        what, found = self._parts[name]
+        if what == ROUTE and step in (FORWARD, BACKWARD):
+            return ('flow', f'{name}.{step}')
+        if what == LEGS:
+            if step == 'served_fraction':
+                return ('value', f'{name}.served_fraction')
+            if f'{name}.{step}' in self._parts:
+                return ('flow', f'{name}.{step}')
+            raise Outside(
+                f'{origin}: {name} is a flow with legs, which has no {step}: read a leg (a type error)'
+            )
+        steps = {
+            DIRECTED: ('actual_rate', 'request', 'capacity', 'source', 'sink'),
+            LEG: ('actual_rate', 'request', 'capacity', 'source', 'sink'),
+            ROUTE: ('actual_rate', 'request', 'capacity'),
+            FORWARD: ('actual_rate', 'request', 'source', 'sink'),
+            BACKWARD: ('actual_rate', 'request', 'source', 'sink'),
+        }[what]
+        if step not in steps:
+            raise Outside(f'{origin}: the {step} of {name}, which it does not have (a type error)')
+        if step in ('source', 'sink'):
+            end = found.source if step == 'source' else found.sink
+            if end is None:
+                outside = 'SOURCE' if step == 'source' else 'SINK'
+                raise Outside(f'{origin}: {name}.{step} is {outside}, which holds no value (a type error)')
+            return ('value', end)
+        if step == 'capacity':
+            if found.capacity is None:
+                raise Outside(f'{origin}: {name}.capacity, a capacity left out, has no value')
+            return ('value', found.capacity)
+        return ('value', f'{name}.{step}')
 
     def _many(self, path, scope, origin, item):
         point = self._resolve(path, scope, origin, item)
@@ -990,16 +1123,18 @@ class Plan:
     # ---- the connected sets ---------------------------------------------------------------------
 
     def settings_of(self, flow):
-        """The engine names of what a flow's rate reads: its request and capacity, and the request and
-        capacity of the endpoints at its two ends."""
-        names = [flow.request] + ([flow.capacity] if flow.capacity is not None else [])
-        for side, store in zip(SIDES, (flow.source, flow.sink)):
-            end = self.ends.get((store, side)) if store is not None else None
-            if end is not None:
-                names += [end.request] + ([end.capacity] if end.capacity is not None else [])
-        return names
+        """The engine names of what a flow's value reads: the request and capacity of each of its
+        connections, and the request and capacity of the endpoints at their ends."""
+        names = []
+        for connection in flow.connections:
+            names += [connection.request] + ([connection.capacity] if connection.capacity is not None else [])
+            for side, store in zip(SIDES, (connection.source, connection.sink)):
+                end = self.ends.get((store, side)) if store is not None else None
+                if end is not None:
+                    names += [end.request] + ([end.capacity] if end.capacity is not None else [])
+        return list(dict.fromkeys(names))
 
-    def _settled(self, end):
+    def settled(self, end):
         """Whether an endpoint has a capacity or a request that is not left out."""
         request = self.values[end.request]
         return end.capacity is not None or not (
@@ -1020,14 +1155,21 @@ class Plan:
         def join(a, b):
             parent[root(a)] = root(b)
 
-        moving = {end for flow in self.flows.values() for end in (flow.source, flow.sink) if end}
+        moving = {
+            end
+            for flow in self.flows.values()
+            for connection in flow.connections
+            for end in (connection.source, connection.sink)
+            if end
+        }
         self.moving = frozenset(moving)
         reads = {}
         for flow in self.flows.values():
             root(flow.name)
-            for end in (flow.source, flow.sink):
-                if end is not None:
-                    join(('store', end), flow.name)
+            for connection in flow.connections:
+                for end in (connection.source, connection.sink):
+                    if end is not None:
+                        join(('store', end), flow.name)
             found = reads[flow.name] = self.expansion_of(self.settings_of(flow))
             for name in found.leaves:
                 if self._is_rate(name):
@@ -1044,8 +1186,8 @@ class Plan:
             if name in moving:
                 sets[root(('store', name))][0].append(name)
         meets = {}
-        for flow in self.flows.values():
-            for side, end in zip(SIDES, (flow.source, flow.sink)):
+        for connection in self.connections.values():
+            for side, end in zip(SIDES, (connection.source, connection.sink)):
                 if end is not None:
                     meets[end, side] = meets.get((end, side), 0) + 1
         made = []
@@ -1053,15 +1195,18 @@ class Plan:
             found = Expanded.union(reads[flow] for flow in flows)
             moves = found.time or bool(found.leaves & moving)
             settled = any(
-                self._settled(self.ends[(store, side)])
+                self.settled(self.ends[(store, side)])
                 for store in stores
                 for side in SIDES
                 if (store, side) in self.ends
             )
+            # A route and a flow with legs are unknowns of the network: lines or the sparse integrator.
+            directed = all(self.flows[flow].kind == DIRECTED for flow in flows)
             if not moves:
-                way = FAMILY if len(flows) == 1 and not settled else LINES
+                way = FAMILY if len(flows) == 1 and not settled and directed else LINES
             elif (
-                not settled
+                directed
+                and not settled
                 and len(stores) <= LIMIT
                 and all(count == 1 for (store, _), count in meets.items() if store in stores)
             ):

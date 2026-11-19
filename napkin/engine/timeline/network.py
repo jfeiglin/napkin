@@ -1,41 +1,64 @@
 """The flow network of connected sets, and local sharing at an instant.
 
-`Network` holds the flows and the stores of one or more connected sets as arrays: the two ends of
-each flow (a store, or -1 for SOURCE and SINK), the incident flows of each store by side (`Csr`), and
-the priority classes of the endpoints (`store.outflow`, `store.inflow`) that rank their flows. What
-the flows and the endpoints ask at an instant is an `Asked`; the stores that rest on a bound are two
-arrays of flags. `Instant` gives the rates that follow.
+`Network` holds the flows and the stores of one or more connected sets as arrays. A flow is one
+unknown of local sharing, of one of three kinds (`kinds`): a directed flow has its rate, a
+reversible route its one signed rate (positive from its first end to its second), and a flow with
+legs its one served fraction. What meets the stores are the flows' **connections**: a directed flow
+is one; a route has two, its legs `forward` (from its first end to its second) and `backward`, each
+of which carries the positive part of the signed rate in its direction; a flow with legs has one for
+each leg, which carries the fraction times the leg's request. Each connection has its two ends (a
+store, or -1 for SOURCE and SINK); the incident connections of each store by side are a `Csr`, and
+an endpoint (`store.outflow`, `store.inflow`) that ranks its connections has its priority classes.
+What the connections and the endpoints ask at an instant is an `Asked`: each connection's request
+and capacity, both nonnegative (a route's signed request is its forward leg's request less its
+backward leg's, and its capacity, on the magnitude, is the capacity of both legs). The stores that
+rest on a bound are two arrays of flags. `Instant` gives the value of each flow that follows, and
+`carried` the rate of each connection.
 
-**Local sharing** (G0; spec, "Local allocation"). Each endpoint shares among its own flows by its own
-rule, and the rates follow the selection order without objectives (`selection.py`): the hard rows
-(each flow's capacity, each endpoint's capacity, and the row of each store that rests on a bound:
-what leaves a store at its lower bound must also arrive, what arrives at a store at its upper bound
-must also leave), then fair sharing of the claims tier by tier, then the preferred routes of a
-priority endpoint that has a request, then the rates nearest their requests. A claim is a positive
-request: of a flow on its rate, of an endpoint on its total. Its tier is (its level, its layer):
+**Local sharing** (G0; spec, "Local allocation"). Each endpoint shares among its own connections by
+its own rule, and the flows follow the selection order without objectives (`selection.py`): the
+hard rows (each flow's bounds: a rate within [0, its capacity], a route's within [-capacity,
+capacity], a fraction within [0, 1] and each leg within its own capacity; each endpoint's capacity;
+and the row of each store that rests on a bound: what leaves a store at its lower bound must also
+arrive, what arrives at a store at its upper bound must also leave), then fair sharing of the claims
+tier by tier, then the preferred routes of a priority endpoint that has a request, then the values
+nearest their targets. A claim is a positive request: of a directed flow on its rate, of a route on
+its rate in the direction of its request, of a flow with legs on its fraction (as a request of one,
+when a leg asks anything; when none does, the fraction is zero), and of an endpoint on its total.
+Its tier is (its level, its layer):
 
-- the **level** is the supply depth of the stores that it draws from, so that claims are settled in
-  the direction of supply: 0 for SOURCE or a store that holds stock, and for a store at its lower
-  bound one more than the deepest store that feeds it. A junction shares what reaches it, after its
-  feeders decided;
-- the **layer** orders the flows that some endpoint ranks (`priority(a, b)`): a flow comes after
-  every flow ranked ahead of it, and flows whose ranks contradict each other share a layer. The claim
-  of an endpoint is in the first layer.
+- the **level** is the supply depth of the stores that its connections draw from, so that claims
+  are settled in the direction of supply: 0 for SOURCE or a store that holds stock, and for a store
+  at its lower bound one more than the deepest store that feeds it. A junction shares what reaches
+  it, after its feeders decided;
+- the **layer** orders the flows that some endpoint ranks (`priority(a, b)`, which names
+  connections: a leg ranks its flow): a flow comes after every flow ranked ahead of it, and flows
+  whose ranks contradict each other share a layer (R-A2-12). The claim of an endpoint is in the
+  first layer.
 
-The rates of flows that share no row and no claim are independent, so an instant cuts the flows into
+The capacity of an endpoint that a leg of a route meets holds the positive part of the route's rate
+(`Rows.convex`). The request of such an endpoint has no answer of local sharing (fair sharing would
+maximize a convex function, and the oracle does not settle it either): the run stops with a failure
+that names the endpoint.
+
+The flows that share no row and no claim are independent, so an instant cuts the flows into
 **coupled parts**: a store at its lower bound with outflows, or at its upper bound with inflows,
-couples its incident flows, and so does an endpoint of two flows or more that has a capacity or a
-request. A part is solved alone, by a closed form where one holds, else by `selection.select`:
+couples the flows of its connections, and so does an endpoint of two connections or more that has a
+capacity or a request. A part is solved alone, by a closed form where one holds, else by
+`selection.select`:
 
-- **one flow**: its request within its capacities, raised to the largest request of an endpoint that
-  it alone serves (a request is soft);
-- **groups in supply order** (R-A3-09: a proportional group alone and a priority order are exact
-  closed forms). A group is the outflow of a store at its lower bound, which shares what flows in, or
-  an endpoint of two flows or more with a capacity. The form holds when each flow is in one group at
-  most, no store of the part rests on its upper bound with inflows, no endpoint of two flows makes a
-  request, and every flow into a store at its lower bound is rigid (its capacity at most its
-  request), so that nothing later raises it. The groups go upstream first, and each fills its claims
-  tier by tier within what it has: equal served fractions within the capacities (water-filling).
+- **one flow**: a directed flow's request within its capacities, raised to the largest request of
+  an endpoint that it alone serves (a request is soft); a route's signed request within the
+  capacities of its legs; a flow with legs at the largest fraction, up to one, that its legs'
+  capacities allow;
+- **groups in supply order**, for a part of directed flows (R-A3-09: a proportional group alone and
+  a priority order are exact closed forms). A group is the outflow of a store at its lower bound,
+  which shares what flows in, or an endpoint of two flows or more with a capacity. The form holds
+  when each flow is in one group at most, no store of the part rests on its upper bound with
+  inflows, no endpoint of two flows makes a request, and every flow into a store at its lower bound
+  is rigid (its capacity at most its request), so that nothing later raises it. The groups go
+  upstream first, and each fills its claims tier by tier within what it has: equal served
+  fractions within the capacities (water-filling).
 
 Where local sharing has no answer that the oracle defines, the run stops with a failure that names
 the stores (`SimulationError`): a ring of stores at their lower bound that feed one another, and room
@@ -50,17 +73,21 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..errors import SimulationError
+from . import plan as plans
 from .pools import Csr
 from .selection import Rows, select
 
 OUT, IN = 0, 1  # the two sides of a store: its outflow and its inflow
 SIDES = ('outflow', 'inflow')
+DIRECTED, ROUTE, LEGS = 0, 1, 2  # the kinds of a flow
+DIRECT, FORWARD, BACKWARD, LEG = 0, 1, 2, 3  # the roles of a connection
 
 
 @dataclass(frozen=True)
 class Asked:
-    """What the flows and the endpoints ask at an instant: each flow's request and capacity (inf
-    for none), and each endpoint's request (0 for none) and capacity, by side and store."""
+    """What the connections and the endpoints ask at an instant: each connection's request and
+    capacity (inf for none), and each endpoint's request (0 for none) and capacity, by side and
+    store."""
 
     request: np.ndarray
     capacity: np.ndarray
@@ -127,15 +154,43 @@ def water(requests, capacities, available):
 
 
 class Network:
-    """The flows and stores of connected sets as arrays (see the module). `sets` gives the connected
-    set of each flow and of each store; `classes` the priority classes of each ranking endpoint,
-    {(side, store): classes of flow numbers, first to last, with its unranked flows last}."""
+    """The flows and stores of connected sets as arrays (see the module). `flows` are the names of
+    the flows. `source`, `sink` and `flow_sets` are of the connections, each in the connected set
+    `flow_sets` gives; `store_sets` gives the set of each store; `classes` the priority classes of
+    each ranking endpoint, {(side, store): classes of connection numbers, first to last, with its
+    unranked connections last}. Without `of`, each flow is directed and is its one connection;
+    else `of`, `roles` and `connections` give the flow, the role and the name of each connection,
+    and `kinds` the kind of each flow, whose connections are in the order of their numbers."""
 
-    def __init__(self, flows, stores, source, sink, classes, flow_sets, store_sets):
+    def __init__(
+        self,
+        flows,
+        stores,
+        source,
+        sink,
+        classes,
+        flow_sets,
+        store_sets,
+        *,
+        of=None,
+        roles=None,
+        kinds=None,
+        connections=None,
+    ):
         self.flows, self.stores = tuple(flows), tuple(stores)
         count = len(self.stores)
         self.source = np.asarray(source, dtype=np.int64).reshape(-1)
         self.sink = np.asarray(sink, dtype=np.int64).reshape(-1)
+        size = len(self.source)
+        self.plain = of is None
+        self.of = np.arange(size, dtype=np.int64) if of is None else np.asarray(of, dtype=np.int64)
+        self.roles = np.full(size, DIRECT, dtype=np.int64) if roles is None else np.asarray(roles)
+        self.kinds = (
+            np.full(len(self.flows), DIRECTED, dtype=np.int64) if kinds is None else np.asarray(kinds)
+        )
+        self.connections = self.flows if connections is None else tuple(connections)
+        self.conns = Csr(self.of, len(self.flows))  # the connections of each flow
+        self.first = self.conns.items[self.conns.start[:-1]] if size else np.zeros(0, dtype=np.int64)
         self.ends = (Csr(self.source, count), Csr(self.sink, count))
         self.counts = np.stack(
             [
@@ -144,23 +199,82 @@ class Network:
             ]
         )
         self.classes = dict(classes)
-        self.layer = layers(len(self.flows), self.classes.values())
+        rankings = [
+            [{int(self.of[c]) for c in members} for members in found] for found in self.classes.values()
+        ]
+        self.layer = layers(len(self.flows), rankings)
         self.flow_sets = np.asarray(flow_sets, dtype=np.int64)
         self.store_sets = np.asarray(store_sets, dtype=np.int64)
 
+    def carried(self, values, asked, which=None):
+        """The rate of each connection (or of the connections `which`) from the value of each flow:
+        a directed flow's rate, the positive part of a route's rate in the direction of each leg, and
+        each leg of a flow with legs at its fraction of its request."""
+        which = np.arange(len(self.source)) if which is None else np.asarray(which, dtype=np.int64)
+        if self.plain:
+            return np.array(values[which], dtype=float)
+        found, roles = values[self.of[which]], self.roles[which]
+        found = np.where(roles == FORWARD, np.maximum(found, 0.0), found)
+        found = np.where(roles == BACKWARD, np.maximum(-found, 0.0), found)
+        return np.where(roles == LEG, found * asked.request[which], found)
+
+
+KINDS = {plans.DIRECTED: DIRECTED, plans.ROUTE: ROUTE, plans.LEGS: LEGS}
+ROLES = {plans.DIRECT: DIRECT, plans.FORWARD: FORWARD, plans.BACKWARD: BACKWARD, plans.LEG: LEG}
+
+
+def network_of(run, sets, stores):
+    """The network of connected sets of a run's plan (`plan.Connected`), its stores in the order of
+    `stores`: (the `Network`, the plan's `Connection` of each of its connections, and the engine name
+    under which the run records what the network gives of each flow: its actual rate, or its served
+    fraction)."""
+    plan = run.plan
+    flows = [name for connected in sets for name in connected.flows]
+    place = {name: k for k, name in enumerate(stores)}
+    connections = [connection for flow in flows for connection in plan.flows[flow].connections]
+    number = {connection.name: k for k, connection in enumerate(connections)}
+    source = [place[connection.source] if connection.source else -1 for connection in connections]
+    sink = [place[connection.sink] if connection.sink else -1 for connection in connections]
+    flow_sets = [
+        k
+        for k, connected in enumerate(sets)
+        for flow in connected.flows
+        for _ in plan.flows[flow].connections
+    ]
+    store_sets = [k for k, connected in enumerate(sets) for _ in connected.stores]
+    classes = {}
+    for (store, side), items in plan.rankings.items():
+        if store in place:
+            classes[(SIDES.index(side), place[store])] = run.classes_of(store, side, items, number)
+    extra = {}
+    if any(plan.flows[flow].kind != plans.DIRECTED for flow in flows):
+        extra = {
+            'of': [k for k, flow in enumerate(flows) for _ in plan.flows[flow].connections],
+            'roles': [ROLES[connection.role] for connection in connections],
+            'kinds': [KINDS[plan.flows[flow].kind] for flow in flows],
+            'connections': [connection.name for connection in connections],
+        }
+    network = Network(flows, stores, source, sink, classes, flow_sets, store_sets, **extra)
+    recorded = [
+        f'{flow}.served_fraction' if plan.flows[flow].kind == plans.LEGS else f'{flow}.actual_rate'
+        for flow in flows
+    ]
+    return network, connections, recorded
+
 
 class Instant:
-    """The rates of a network at one instant: what is asked, and the stores at their lower and upper
-    bounds (flags, which the caller may change between calls of `parts` and `solve`)."""
+    """The values of the flows of a network at one instant: what is asked, and the stores at their
+    lower and upper bounds (flags, which the caller may change between calls of `parts` and
+    `solve`)."""
 
     def __init__(self, network, asked, lower, upper):
         self.net, self.asked = network, asked
         self.lower, self.upper = lower, upper
         net = network
-        # A flow's capacity within those of the endpoints that it alone serves, and the largest
-        # request of those endpoints.
+        # A connection's capacity within those of the endpoints that it alone serves, and the
+        # largest request of those endpoints.
         self.capacity = asked.capacity.astype(float)
-        self.extra = np.zeros(len(net.flows))
+        self.extra = np.zeros(len(net.source))
         for side, ends in ((OUT, net.source), (IN, net.sink)):
             alone = np.flatnonzero((ends >= 0) & (net.counts[side][np.maximum(ends, 0)] == 1))
             self.capacity[alone] = np.minimum(self.capacity[alone], asked.end_capacity[side][ends[alone]])
@@ -171,49 +285,59 @@ class Instant:
         for side in (OUT, IN):
             claimed[net.store_sets[asked.end_request[side] > 0]] = True
         self.claimed = claimed  # the connected sets that have a claim
+        self.selected = 0  # the parts that the selection order solved, not a closed form
 
     # ---- the coupled parts ----------------------------------------------------------------------
 
     def couples(self, s):
-        """Whether store s couples all of its flows: it rests on a bound that they meet."""
+        """Whether store s couples all of its connections: it rests on a bound that they meet."""
         counts = self.net.counts
         return bool((self.lower[s] and counts[OUT][s]) or (self.upper[s] and counts[IN][s]))
 
     def end_couples(self, side, s):
-        """Whether an endpoint couples its flows: two or more, with a capacity or a request."""
+        """Whether an endpoint couples its connections: two or more, with a capacity or a request."""
         asked = self.asked
         return bool(
             self.net.counts[side][s] >= 2
             and (math.isfinite(asked.end_capacity[side][s]) or asked.end_request[side][s] > 0)
         )
 
+    def _connections(self, f):
+        net = self.net
+        return [int(f)] if net.plain else net.conns.of(f).tolist()
+
     def coupled(self, f):
         """Whether flow f shares a row or a claim with another flow, or meets a store at its bound."""
         net = self.net
-        for side, s in ((OUT, net.source[f]), (IN, net.sink[f])):
-            if s >= 0 and (self.couples(s) or self.end_couples(side, s)):
-                return True
+        for c in self._connections(f):
+            for side, s in ((OUT, net.source[c]), (IN, net.sink[c])):
+                if s >= 0 and (self.couples(s) or self.end_couples(side, s)):
+                    return True
         return False
 
     def part(self, seed):
-        """The coupled part that holds flow `seed`, as sorted flow numbers."""
+        """The coupled part that holds flow `seed`, as sorted flow numbers. Each store that couples
+        its connections, and each endpoint that couples its own, is gone through once."""
         net = self.net
-        seen, stack = {int(seed)}, [int(seed)]
+        seen, stack, through = {int(seed)}, [int(seed)], set()
         while stack:
             f = stack.pop()
-            for side, s in ((OUT, net.source[f]), (IN, net.sink[f])):
-                if s < 0:
-                    continue
-                if self.couples(s):
-                    near = np.concatenate([net.ends[OUT].of(s), net.ends[IN].of(s)])
-                elif self.end_couples(side, s):
-                    near = net.ends[side].of(s)
-                else:
-                    continue
-                for g in near.tolist():
-                    if g not in seen:
-                        seen.add(g)
-                        stack.append(g)
+            for c in self._connections(f):
+                for side, s in ((OUT, int(net.source[c])), (IN, int(net.sink[c]))):
+                    if s < 0 or (2, s) in through or (side, s) in through:
+                        continue
+                    if self.couples(s):
+                        through.add((2, s))
+                        near = np.concatenate([net.ends[OUT].of(s), net.ends[IN].of(s)])
+                    elif self.end_couples(side, s):
+                        through.add((side, s))
+                        near = net.ends[side].of(s)
+                    else:
+                        continue
+                    for g in (near if net.plain else net.of[near]).tolist():
+                        if g not in seen:
+                            seen.add(g)
+                            stack.append(g)
         return sorted(seen)
 
     def parts(self, seeds):
@@ -227,33 +351,77 @@ class Instant:
         return found
 
     def alone(self, flows):
-        """The rates of flows that are in no coupled part."""
-        flows = np.asarray(flows, dtype=np.int64)
-        return np.minimum(self.capacity[flows], np.maximum(self.asked.request[flows], self.extra[flows]))
-
-    def rates(self):
-        """The rate of every flow."""
+        """The values of flows that are in no coupled part."""
         net, asked = self.net, self.asked
-        rates = self.alone(np.arange(len(net.flows)))
+        flows = np.asarray(flows, dtype=np.int64)
+        first = flows if net.plain else net.first[flows]
+        values = np.minimum(self.capacity[first], np.maximum(asked.request[first], self.extra[first]))
+        if net.plain:
+            return values
+        for k in np.flatnonzero(net.kinds[flows] != DIRECTED).tolist():
+            f = int(flows[k])
+            mine = net.conns.of(f)
+            if net.kinds[f] == ROUTE:
+                forward, backward = mine.tolist()
+                self._refuse_request(f)
+                signed = asked.request[forward] - asked.request[backward]
+                values[k] = min(max(signed, -self.capacity[backward]), self.capacity[forward])
+            else:
+                values[k] = self._fraction(mine)
+        return values
+
+    def _fraction(self, legs):
+        """The served fraction of a flow with legs that no other flow couples: the largest, up to
+        one, that the capacities of its legs allow; zero when no leg asks anything."""
+        request, capacity = self.asked.request[legs], self.capacity[legs]
+        asking = request > 0
+        if not asking.any():
+            return 0.0
+        return float(min(1.0, (capacity[asking] / request[asking]).min()))
+
+    def _refuse_request(self, f):
+        """A route at an endpoint that makes a request: local sharing has no answer."""
+        net, asked = self.net, self.asked
+        for c in net.conns.of(f).tolist():
+            for side, s in ((OUT, net.source[c]), (IN, net.sink[c])):
+                if s >= 0 and asked.end_request[side][s] > 0:
+                    self._no_request(side, s, f)
+
+    def _no_request(self, side, s, f):
+        raise SimulationError(
+            f'{self._name(s)}.{SIDES[side]}: a request at an endpoint that the route {self.net.flows[f]} '
+            'meets; local sharing has no answer for the positive part of a signed rate in a claim'
+        )
+
+    def values(self):
+        """The value of every flow: a rate, a signed rate or a served fraction."""
+        net, asked = self.net, self.asked
+        values = self.alone(np.arange(len(net.flows)))
         stores = np.flatnonzero((self.lower & (net.counts[OUT] > 0)) | (self.upper & (net.counts[IN] > 0)))
         ends = (net.counts >= 2) & (np.isfinite(asked.end_capacity) | (asked.end_request > 0))
         if not len(stores) and not ends.any():
-            return rates  # no flow meets a bound or shares an endpoint
-        seeds = [int(f) for s in stores.tolist() for side in (OUT, IN) for f in net.ends[side].of(s)[:1]]
+            return values  # no flow meets a bound or shares an endpoint
+        seeds = [
+            int(net.of[c]) for s in stores.tolist() for side in (OUT, IN) for c in net.ends[side].of(s)[:1]
+        ]
         for side, s in np.argwhere(ends).tolist():
-            seeds.append(int(net.ends[side].of(s)[0]))
+            seeds.append(int(net.of[net.ends[side].of(s)[0]]))
         for part in self.parts(seeds):
-            rates[part] = self.solve(part)
-        return rates
+            values[part] = self.solve(part)
+        return values
+
+    def rates(self):
+        """The rate of every connection."""
+        return self.net.carried(self.values(), self.asked)
 
     # ---- one part ----------------------------------------------------------------------------------
 
     def solve(self, part):
-        """The rates of the flows of one coupled part, in its order."""
+        """The values of the flows of one coupled part, in its order."""
         if len(part) == 1 and not self.coupled(part[0]):
             return self.alone(part)
         self._check_full(part)
-        found = self._groups(part)
+        found = self._groups(part) if (self.net.kinds[part] == DIRECTED).all() else None
         return found if found is not None else self._general(part)
 
     def _name(self, s):
@@ -263,19 +431,20 @@ class Instant:
         """Room passed upstream through two full stores has no answer of local sharing."""
         net, lower, upper = self.net, self.lower, self.upper
         for f in part:
-            s, d = net.source[f], net.sink[f]
-            if (
-                s >= 0
-                and d >= 0
-                and upper[s]
-                and not lower[s]
-                and upper[d]
-                and self.claimed[net.flow_sets[f]]
-            ):
-                raise SimulationError(
-                    f'{self._name(s)} and {self._name(d)}: room passed upstream through two full stores; '
-                    'local sharing settles in the direction of supply and has no answer here'
-                )
+            for c in self._connections(f):
+                s, d = net.source[c], net.sink[c]
+                if (
+                    s >= 0
+                    and d >= 0
+                    and upper[s]
+                    and not lower[s]
+                    and upper[d]
+                    and self.claimed[net.flow_sets[c]]
+                ):
+                    raise SimulationError(
+                        f'{self._name(s)} and {self._name(d)}: room passed upstream through two full '
+                        'stores; local sharing settles in the direction of supply and has no answer here'
+                    )
 
     def depths(self):
         """A function: the supply depth of a store (0 for -1, which is SOURCE), found as asked."""
@@ -321,10 +490,11 @@ class Instant:
         return depth
 
     def _groups(self, part):
-        """The rates of a part by groups in supply order (see the module), or None where that form
-        does not hold."""
+        """The rates of a part of directed flows by groups in supply order (see the module), or None
+        where that form does not hold. It reads connections: each flow of the part is one."""
         net, asked, lower, upper = self.net, self.asked, self.lower, self.upper
         request, capacity = asked.request, self.capacity
+        part = [int(c) for c in (part if net.plain else net.first[part])]
         if (self.extra[part] > 0).any():
             return None  # a flow with a claim of its own endpoint beside its own claim
         stores = sorted({int(s) for f in part for s in (net.source[f], net.sink[f]) if s >= 0})
@@ -360,77 +530,147 @@ class Instant:
             kind, s, members = groups[k]
             members = members.tolist()
             for f in members:
-                rates[f] = 0.0
-            claims = [f for f in members if request[f] > 0]
-            if not claims:
-                continue  # nothing asks: what flows in does not matter
-            side = IN if kind == 'in' else OUT
-            available = float(asked.end_capacity[side][s])
-            if kind == 'supply':
-                available = min(available, sum(rates[g] for g in net.ends[IN].of(s).tolist()))
-            for layer in sorted({int(net.layer[f]) for f in claims}):
-                tier = np.array([f for f in claims if net.layer[f] == layer], dtype=np.int64)
-                given = water(request[tier], capacity[tier], available)
-                for f, rate in zip(tier.tolist(), given.tolist()):
-                    rates[f] = rate
-                available = max(0.0, available - float(given.sum()))
+                rates[f] = 0.0  # a member that flows into its own store brings nothing
+            supplied = net.ends[IN].of(s).tolist() if kind == 'supply' else None
+            rates.update(self.fill(members, IN if kind == 'in' else OUT, s, rates.__getitem__, supplied))
         return np.array([rates[f] for f in part])
 
+    def fill(self, members, side, s, rate_of, supplied=None):
+        """The rates of the connections `members` of one group at the endpoint (side, s): its claims
+        tier by tier by layer within what the endpoint's capacity allows and, for the outflow of a
+        store at its lower bound, within what its inflows `supplied` bring (`rate_of` gives their
+        rates), each tier by equal served fractions within the capacities (water-filling). A member
+        that asks nothing gets nothing; when none asks, what flows in does not matter."""
+        net, asked = self.net, self.asked
+        request, capacity = asked.request, self.capacity
+        rates = dict.fromkeys(members, 0.0)
+        claims = [f for f in members if request[f] > 0]
+        if not claims:
+            return rates
+        available = float(asked.end_capacity[side][s])
+        if supplied is not None:
+            available = min(available, sum(rate_of(g) for g in supplied))
+        for layer in sorted({int(net.layer[net.of[f]]) for f in claims}):
+            tier = np.array([f for f in claims if net.layer[net.of[f]] == layer], dtype=np.int64)
+            given = water(request[tier], capacity[tier], available)
+            for f, rate in zip(tier.tolist(), given.tolist()):
+                rates[f] = rate
+            available = max(0.0, available - float(given.sum()))
+        return rates
+
     def _general(self, part):
-        """The rates of a part by the selection order (`selection.select`)."""
+        """The values of a part by the selection order (`selection.select`)."""
+        self.selected += 1
         net, asked, lower, upper = self.net, self.asked, self.lower, self.upper
+        request = asked.request
         place = {f: k for k, f in enumerate(part)}
         n = len(part)
         rows = Rows(n)
         depth = self.depths()
+        mine = {f: self._connections(f) for f in part}
+        stores = sorted(
+            {int(s) for f in part for c in mine[f] for s in (net.source[c], net.sink[c]) if s >= 0}
+        )
 
-        def vector(flows):
+        def term(connections):
+            """The total rate of connections: its linear part over the part's flows, and the
+            positive parts of the routes' rates, as (flow's place, sign)."""
+            a, parts = np.zeros(n), []
+            for c in connections:
+                k, role = place[int(net.of[c])], net.roles[c]
+                if role == DIRECT:
+                    a[k] += 1.0
+                elif role == LEG:
+                    a[k] += request[c]
+                else:
+                    parts.append((k, 1.0 if role == FORWARD else -1.0))
+            return a, parts
+
+        def signed(connections):
+            """The same total with the sign of a route kept: a route counts once, on its forward leg."""
             a = np.zeros(n)
-            a[[place[f] for f in flows]] = 1.0
+            for c in connections:
+                k, role = place[int(net.of[c])], net.roles[c]
+                a[k] += {DIRECT: 1.0, FORWARD: 1.0, BACKWARD: 0.0, LEG: request[c]}[int(role)]
             return a
 
         claims, prefs = [], []
-        stores = sorted({int(s) for f in part for s in (net.source[f], net.sink[f]) if s >= 0})
         for s in stores:
             outs, ins = net.ends[OUT].of(s).tolist(), net.ends[IN].of(s).tolist()
             if (lower[s] and outs) or (upper[s] and ins):
-                net_in = vector(ins) - vector(outs)
+                net_in = signed(ins) - signed(outs)
                 if lower[s]:
                     rows.at_least(net_in, 0.0)  # what leaves must also arrive
                 if upper[s]:
                     rows.at_most(net_in, 0.0)  # what arrives must also leave
             for side, here in ((OUT, outs), (IN, ins)):
-                if not here or any(f not in place for f in here):
+                if not here or any(int(net.of[c]) not in place for c in here):
                     continue
-                total = vector(here)
+                total, parts = term(here)
                 if math.isfinite(asked.end_capacity[side][s]):
-                    rows.at_most(total, asked.end_capacity[side][s])
+                    if parts:
+                        rows.with_parts(total, parts, asked.end_capacity[side][s])
+                    else:
+                        rows.at_most(total, asked.end_capacity[side][s])
                 wanted = float(asked.end_request[side][s])
                 if wanted > 0:
-                    level = max(depth(int(net.source[f])) for f in here)
+                    if parts:
+                        route = next(c for c in here if net.roles[c] in (FORWARD, BACKWARD))
+                        self._no_request(side, s, int(net.of[route]))
+                    level = max(depth(int(net.source[c])) for c in here)
                     claims.append(((level, 1), total, wanted))
                     ranked = net.classes.get((side, s))
                     if ranked:
                         carried = np.zeros(n)
                         for members in ranked[:-1]:
-                            carried = carried + vector(members)
+                            carried = carried + term(members)[0]
                             prefs.append((carried, wanted))
+        low, high, target = np.zeros(n), np.full(n, math.inf), np.zeros(n)
+        units = np.ones(n)
+        rates = [k for k, f in enumerate(part) if net.kinds[f] != LEGS]
         for f in part:
-            if asked.request[f] > 0:
-                claims.append(
-                    ((depth(int(net.source[f])), int(net.layer[f])), vector([f]), float(asked.request[f]))
-                )
+            k, cs = place[f], mine[f]
+            kind = int(net.kinds[f])
+            one = np.zeros(n)
+            one[k] = 1.0
+
+            def claim(served, wanted, cs=cs, f=f):
+                # The level of a claim is found only for a claim, as the oracle finds it.
+                level = max(depth(int(net.source[c])) for c in cs)
+                claims.append(((level, int(net.layer[f])), served, wanted))
+
+            if kind == DIRECTED:
+                c = cs[0]
+                high[k], target[k] = asked.capacity[c], request[c]
+                if request[c] > 0:
+                    claim(one, float(request[c]))
+            elif kind == ROUTE:
+                forward, backward = cs
+                signed_request = float(request[forward] - request[backward])
+                low[k], high[k], target[k] = -asked.capacity[forward], asked.capacity[forward], signed_request
+                if signed_request != 0:  # its sign names the direction of its one claim
+                    claim(math.copysign(1.0, signed_request) * one, abs(signed_request))
+            else:
+                asking = [c for c in cs if request[c] > 0]
+                high[k] = 1.0 if asking else 0.0  # every leg asks nothing: the fraction is zero
+                target[k] = high[k]
+                for c in asking:
+                    if math.isfinite(asked.capacity[c]):
+                        rows.at_most(request[c] * one, asked.capacity[c])
+                if asking:
+                    claim(one, 1.0)
+        # The programs read each rate in units of the part's size, and a fraction as it is.
+        sizes = [float(x) for x in request[[c for f in part for c in mine[f]]] if x > 0]
+        sizes += [
+            float(x) for x in asked.capacity[[c for f in part for c in mine[f]]] if math.isfinite(x) and x > 0
+        ]
+        sizes += [float(x) for x in asked.end_request[:, stores].ravel() if x > 0]
+        units[rates] = max(sizes, default=1.0)
         tiers = {}
         for tier, a, wanted in claims:
             tiers.setdefault(tier, []).append((a, wanted))
         try:
-            return select(
-                rows,
-                asked.capacity[part],
-                [tiers[key] for key in sorted(tiers)],
-                prefs,
-                asked.request[part],
-            )
+            return select(rows, low, high, [tiers[key] for key in sorted(tiers)], prefs, target, units)
         except SimulationError as problem:
             raise SimulationError(
                 f'{problem}; the part: the stores {", ".join(self._name(s) for s in stores)} and the '

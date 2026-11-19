@@ -28,7 +28,6 @@ from napkin.program.build import (
     input_,
     named,
     q,
-    route,
     this,
     triangular,
     uniform,
@@ -238,7 +237,6 @@ def test_a_negative_request_stops_the_run():
     [
         ((event('refill', after(q(1, 'h'))),), 'S4', None),
         ((assertion(this.water >= q(0, 'L')),), 'S4', None),
-        ((value('level', 'L', 0), route('mix', this.water, this.level)), 'S3', None),
         (
             (flow('echo', SOURCE, this.water, request=formula(named('clinic').delivery.actual_rate)),),
             'S4',

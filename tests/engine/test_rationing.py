@@ -1,5 +1,6 @@
 """Sharing at an endpoint under the rules of local sharing (`engine/timeline/network.py`), and the
-coupled transactions of `engine/allocation.Allocation.ration`, which a flow with legs reuses (S3).
+coupled transactions of the continuous engine (`engine/allocation.Allocation.ration`), where a flow
+that asks nothing moves nothing and does not bound the fraction of the others (S3).
 
 An endpoint with a capacity shares it among its flows by its allocation: `proportional()` gives equal
 served fractions within the flows' own capacities (water-filling, the exact max-min of one sum row
@@ -20,7 +21,6 @@ import numpy as np
 import pytest
 
 from napkin.engine.allocation import Allocation
-from napkin.engine.errors import SimulationError
 from napkin.engine.timeline.network import IN, OUT, Asked, Instant, Network, water
 
 INF = math.inf
@@ -154,12 +154,16 @@ def test_a_coupled_transaction_moves_by_the_least_fraction_of_its_flows():
     plan = system([('priority', [0])], 3, coupled=[(0, 1)])
     got, rationing = Allocation(plan).ration(np.array([4.0, 6.0, 5.0]), np.array([4.0, 6.0, 5.0]), [2.0])
     assert got.tolist() == [2.0, 3.0, 5.0] and rationing == [0]
-    # A transaction that asks nothing moves nothing, and one that asks for a part of its flows only
-    # is an error of the run.
+    # A transaction that asks nothing moves nothing. A flow of a transaction that asks nothing moves
+    # nothing at any fraction (spec, "Shared resources and competing invocations"): the others move
+    # by their own least fraction, whole when nothing cuts them.
     got, _ = Allocation(plan).ration(np.array([0.0, 0.0, 5.0]), np.array([0.0, 0.0, 5.0]), [2.0])
     assert got.tolist() == [0.0, 0.0, 5.0]
-    with pytest.raises(SimulationError, match='every material flow together'):
-        Allocation(plan).ration(np.array([4.0, 0.0, 5.0]), np.array([4.0, 0.0, 5.0]), [9.0])
+    got, _ = Allocation(plan).ration(np.array([4.0, 0.0, 5.0]), np.array([4.0, 0.0, 5.0]), [9.0])
+    assert got.tolist() == [4.0, 0.0, 5.0]
+    plan = system([('priority', [1])], 3, coupled=[(0, 1)])
+    got, _ = Allocation(plan).ration(np.array([0.0, 6.0, 5.0]), np.array([0.0, 6.0, 5.0]), [3.0])
+    assert got.tolist() == [0.0, 3.0, 5.0]
 
 
 def by_definition(groups, coupled, rates, asked, capacities):
@@ -181,9 +185,10 @@ def by_definition(groups, coupled, rates, asked, capacities):
             left -= rates[j]
     for members in coupled:
         if any(asked[j] > 0 for j in members):
-            fraction = min(rates[j] / asked[j] for j in members)
+            fraction = min(rates[j] / asked[j] for j in members if asked[j] > 0)
             for j in members:
-                rates[j] = asked[j] * fraction
+                if asked[j] > 0:
+                    rates[j] = asked[j] * fraction
     return rates
 
 
@@ -216,16 +221,20 @@ def test_each_coupled_transaction_has_the_rates_of_the_definition_bit_for_bit(se
     assert kinds == {True, False}
 
 
-def test_a_transaction_that_asks_for_a_part_of_its_flows_is_an_error_each_time():
-    """Whether a transaction asks for every flow together is kept for each pattern of the signs of
-    the requests. A pattern that is an error stays one, also after a pattern that is none and with
-    other numbers."""
+def test_the_flows_of_a_transaction_that_ask_are_kept_for_each_pattern_of_signs():
+    """Which flows of a transaction ask anything is kept for each pattern of the signs of the
+    requests. A transaction that asks for a part of its flows moves the others by nothing, also
+    after a pattern where every flow asks, and with other numbers; a cut of its asking flow cuts
+    only what asks."""
     plan = Allocation(system([('priority', [0])], 3, coupled=[(0, 1)]))
     whole, part = np.array([4.0, 6.0, 5.0]), np.array([4.0, 0.0, 5.0])
-    for requests in (whole, part, 2 * whole, 3 * part, part, whole):
-        if requests[1] == 0:
-            with pytest.raises(SimulationError, match='every material flow together'):
-                plan.ration(requests.copy(), requests.copy(), [9.0])
-        else:
-            got, _ = plan.ration(requests.copy(), requests.copy(), [9.0])
-            assert got.tolist() == requests.tolist()
+    for requests, capacity, expected in (
+        (whole, 9.0, [4.0, 6.0, 5.0]),
+        (part, 9.0, [4.0, 0.0, 5.0]),
+        (2 * whole, 4.0, [4.0, 6.0, 10.0]),
+        (3 * part, 6.0, [6.0, 0.0, 15.0]),
+        (part, 2.0, [2.0, 0.0, 5.0]),
+        (whole, 9.0, [4.0, 6.0, 5.0]),
+    ):
+        got, _ = plan.ration(requests.copy(), requests.copy(), [capacity])
+        assert got.tolist() == expected
