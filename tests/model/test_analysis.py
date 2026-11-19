@@ -91,7 +91,9 @@ def levels(upper='this.cap', edits=None, times=(3, 10, 20)):
     model = compile_text(BOUNDED.format(upper=upper), UNITS)
     configuration = model.configuration
     if edits is not None:
-        configuration = model.configure(edits={'schema_version': SCHEMA_VERSION, 'model_hash': model.model_hash, **edits})
+        configuration = model.configure(
+            edits={'schema_version': SCHEMA_VERSION, 'model_hash': model.model_hash, **edits}
+        )
     record = run(model.program, configuration)
     return record, model, times
 

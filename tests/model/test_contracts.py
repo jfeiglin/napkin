@@ -373,7 +373,10 @@ def test_a_name_is_declared_once_in_its_entity(first, second):
 
 def test_a_rate_that_reads_its_own_store_is_no_circle():
     """The level decays at half of itself an hour: level(t) = exp(-t / 2)."""
-    text = TANK + '    level = 1.0 in [0,]\n    flow decay: this.level -> SINK\n        request = formula(this.level / 2 h)\n'
+    text = (
+        TANK
+        + '    level = 1.0 in [0,]\n    flow decay: this.level -> SINK\n        request = formula(this.level / 2 h)\n'
+    )
     model = compile_text(text, UNITS)
     (level,) = read(run(model.program, model.configuration), model.program, ['tank.level'], [1, 2, 4])
     assert level.values == pytest.approx([math.exp(-t / 2) for t in (1, 2, 4)], rel=1e-7)

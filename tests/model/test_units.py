@@ -91,7 +91,13 @@ def test_the_prelude_is_a_valid_units_file_of_times_people_and_ratios():
     that it names, a day is 24 hours and a week seven days."""
     units = prelude_units()
     assert schema_errors(json.loads(PRELUDE.read_text(encoding='utf-8')), 'scenario-units') == []
-    for alias, unit in (('hour', 'h'), ('hours', 'h'), ('day', 'days'), ('month', 'months'), ('year', 'years')):
+    for alias, unit in (
+        ('hour', 'h'),
+        ('hours', 'h'),
+        ('day', 'days'),
+        ('month', 'months'),
+        ('year', 'years'),
+    ):
         assert units[alias] == units[unit], alias
     assert units['person'] == units['people'] and units['weeks'] == units['week']
     found = Units(library_units(empty_library()))

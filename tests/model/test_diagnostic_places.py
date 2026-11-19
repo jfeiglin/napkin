@@ -80,7 +80,11 @@ def test_a_problem_of_a_module_gives_the_file_line_and_column_of_the_module(tmp_
     with pytest.raises(LanguageError) as raised:
         load_scenario(tmp_path / 'model.scn')
     (problem,) = raised.value.problems
-    assert (problem.code, problem.file, problem.line) == ('unknown_name', (tmp_path / 'crew.scn').as_posix(), 3)
+    assert (problem.code, problem.file, problem.line) == (
+        'unknown_name',
+        (tmp_path / 'crew.scn').as_posix(),
+        3,
+    )
     assert crew.split('\n')[2][problem.column - 1 :].startswith('.removal_tim')
     assert problem.message.endswith('did you mean removal?')
 

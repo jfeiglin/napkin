@@ -42,7 +42,10 @@ FORMS = {
     'a sum from the right': (lambda n: 'this.rate + (' * n + 'this.rate' + ')' * n, lambda n: 3 * (n + 1)),
     'signs': (lambda n: ' '.join(['-'] * (2 * (n // 2))) + ' this.rate', lambda n: 3),
     'calls': (lambda n: 'min(' * n + 'this.rate' + ', this.rate)' * n, lambda n: 3),
-    'choices': (lambda n: '(this.rate if this.rate > 0 person/h else ' * n + 'this.rate' + ')' * n, lambda n: 3),
+    'choices': (
+        lambda n: '(this.rate if this.rate > 0 person/h else ' * n + 'this.rate' + ')' * n,
+        lambda n: 3,
+    ),
     'brackets': (lambda n: '(' * n + 'this.rate' + ')' * n, lambda n: 3),
 }
 
@@ -173,7 +176,9 @@ def test_a_chain_of_formulas_has_its_value_however_deep_it_is_written_out(count,
     `3 (terms + (count - 1) (terms - 1))`."""
     rows = ['    f1 = formula(' + ' + '.join(['this.rate'] * terms) + ')']
     for k in range(2, count + 1):
-        rows.append(f'    f{k} = formula(' + ' + '.join([f'this.f{k - 1}', *['this.rate'] * (terms - 1)]) + ')')
+        rows.append(
+            f'    f{k} = formula(' + ' + '.join([f'this.f{k - 1}', *['this.rate'] * (terms - 1)]) + ')'
+        )
     model = compile_text(HEAD + '\n'.join(rows) + '\n', UNITS)
     (found,) = read(run(model.program, model.configuration), model.program, [f's.f{count}'], [4])
     assert found.values == (3 * (terms + (count - 1) * (terms - 1)),)
@@ -188,25 +193,37 @@ def deep(n):
 # 4 h when the rate is 3: the flows fill a store at 300 people an hour; the trigger fires at once and
 # sets the level to 1 person; the stage at 1 h sets it to 300 people.
 PARTS = {
-    'a flow request': (lambda n: f'    flow extra: SOURCE -> this.served\n        request = formula({deep(n)})\n', 's.served', 1200),
+    'a flow request': (
+        lambda n: f'    flow extra: SOURCE -> this.served\n        request = formula({deep(n)})\n',
+        's.served',
+        1200,
+    ),
     'a flow capacity': (
-        lambda n: f'    flow extra: SOURCE -> this.served\n        request = 1000 person/h\n        capacity = formula({deep(n)})\n',
+        lambda n: (
+            f'    flow extra: SOURCE -> this.served\n        request = 1000 person/h\n        capacity = formula({deep(n)})\n'
+        ),
         's.served',
         1200,
     ),
     'an endpoint setting': (
-        lambda n: f'    got: person = 0 person\n        inflow.capacity = formula({deep(n)})\n'
-        '    flow extra: SOURCE -> this.got\n        request = 1000 person/h\n',
+        lambda n: (
+            f'    got: person = 0 person\n        inflow.capacity = formula({deep(n)})\n'
+            '    flow extra: SOURCE -> this.got\n        request = 1000 person/h\n'
+        ),
         's.got',
         1200,
     ),
     'a trigger condition': (
-        lambda n: f'    seen = event():\n        when {deep(n)} >= 300 person/h:\n            this.seen.start()\n            reset when false\n        after 0 h:\n            this.level = 1 person\n',
+        lambda n: (
+            f'    seen = event():\n        when {deep(n)} >= 300 person/h:\n            this.seen.start()\n            reset when false\n        after 0 h:\n            this.level = 1 person\n'
+        ),
         's.level',
         1,
     ),
     'a stage assignment': (
-        lambda n: f'    refill = event():\n        after 1 h:\n            this.level = ({deep(n)}) * 1 h\ns.refill.start()\n',
+        lambda n: (
+            f'    refill = event():\n        after 1 h:\n            this.level = ({deep(n)}) * 1 h\ns.refill.start()\n'
+        ),
         's.level',
         300,
     ),

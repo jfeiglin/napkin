@@ -45,7 +45,11 @@ CASES = {
     # The parser: a flow names both of its ends.
     'syntax': ('    flow fill: SOURCE -> this.spare', '    flow fill: -> this.spare', 'syntax'),
     # The declared model: a name that names nothing, ...
-    'unknown_name': ('        request = 1 L/h\n    flow fill', '        request = this.rate\n    flow fill', 'unknown_name'),
+    'unknown_name': (
+        '        request = 1 L/h\n    flow fill',
+        '        request = this.rate\n    flow fill',
+        'unknown_name',
+    ),
     # ... a range whose ends are in the wrong order, ...
     'range': ('    water: L = 8 L in [0 L, 20 L]', '    water: L = 8 L in [20 L, 0 L]', 'range'),
     # ... a condition that is a number, ...
@@ -69,7 +73,9 @@ def test_each_stage_refuses_its_fault_with_its_code_file_and_line(name):
     with pytest.raises(LanguageError) as raised:
         compile_text(text, UNITS, 'tank.scn')
     (problem,) = raised.value.problems
-    line = next(number for number, row in enumerate(text.split('\n'), 1) if row.startswith(new.split('\n')[0]))
+    line = next(
+        number for number, row in enumerate(text.split('\n'), 1) if row.startswith(new.split('\n')[0])
+    )
     assert (problem.code, problem.file, problem.line) == (code, 'tank.scn', line)
     assert str(raised.value).startswith(f'tank.scn:{line}:')
 

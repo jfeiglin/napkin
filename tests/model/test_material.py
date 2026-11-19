@@ -141,7 +141,11 @@ SECOND = '    flow take_b: this.stock -> this.to_b\n        request = 2 person/h
 
 
 def shared(limit, order=None, second=SECOND, times=None):
-    allocation = '' if order is None else '\n        outflow.allocation = priority(' + ', '.join(f'this.{name}' for name in order) + ')'
+    allocation = (
+        ''
+        if order is None
+        else '\n        outflow.allocation = priority(' + ', '.join(f'this.{name}' for name in order) + ')'
+    )
     text = STORE.format(limit=limit, allocation=allocation, second=second)
     model = compile_text(text, UNITS)
     record = run(model.program, model.configuration)

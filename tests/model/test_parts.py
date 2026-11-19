@@ -74,7 +74,11 @@ def run_of(text, run_name=None, edits=None, units=UNITS):
     model = compile_text(text, units)
     configuration = model.configuration
     if run_name is not None or edits is not None:
-        document = None if edits is None else {'schema_version': SCHEMA_VERSION, 'model_hash': model.model_hash, **edits}
+        document = (
+            None
+            if edits is None
+            else {'schema_version': SCHEMA_VERSION, 'model_hash': model.model_hash, **edits}
+        )
         configuration = model.configure(run_name, document)
     record = run(model.program, configuration)
     assert record.failure is None, record.failure.detail('message')

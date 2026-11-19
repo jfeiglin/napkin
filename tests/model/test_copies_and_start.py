@@ -110,12 +110,12 @@ def with_timescales(written):
 
 
 def test_the_time_scales_of_the_scenario_line_are_times_in_hours():
-    model = compile_text(with_timescales('2 h, 3 days, 30 h / 4'), {**UNITS, 'days': ({'time': 1}, 24)})
-    assert model.declared.scenario.timescales == (2, 72, 7.5)
+    model = compile_text(with_timescales('2 h, 3 days, 0.5 h'), {**UNITS, 'days': ({'time': 1}, 24)})
+    assert model.declared.scenario.timescales == (2, 72, 0.5)
 
 
-@pytest.mark.parametrize('written', ['service.repair', '3 person'])
-def test_a_time_scale_is_a_time_written_on_the_scenario_line(written):
+@pytest.mark.parametrize('written', ['service.repair', '3 person', '30 h / 4'])
+def test_a_time_scale_is_a_time_written_as_a_number_on_the_scenario_line(written):
     with pytest.raises(LanguageError) as raised:
         compile_text(with_timescales(written), UNITS)
     (problem,) = raised.value.problems

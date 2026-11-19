@@ -57,7 +57,9 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize(('old', 'new', 'code'), CASES, ids=[case[2] + ':' + case[1].strip() for case in CASES])
+@pytest.mark.parametrize(
+    ('old', 'new', 'code'), CASES, ids=[case[2] + ':' + case[1].strip() for case in CASES]
+)
 def test_each_place_refuses_a_value_of_another_kind_at_its_line(old, new, code):
     text = TANK.replace(old, new)
     with pytest.raises(LanguageError) as raised:
@@ -85,7 +87,9 @@ def test_the_fixture_runs_as_written():
     ids=['two', 'three', 'itself'],
 )
 def test_formulas_on_a_circle_are_refused_at_a_formula_on_it(formulas):
-    text = 's:\n    x = 1\n' + ''.join(f'    {row}\n' for row in formulas) + '    apart = formula(this.x + 1)\n'
+    text = (
+        's:\n    x = 1\n' + ''.join(f'    {row}\n' for row in formulas) + '    apart = formula(this.x + 1)\n'
+    )
     with pytest.raises(LanguageError) as raised:
         compile_text(text, UNITS)
     (problem,) = raised.value.problems

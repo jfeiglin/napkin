@@ -70,7 +70,9 @@ def test_a_note_of_any_key_and_shape_changes_neither_the_program_nor_the_hash(no
 
 
 def test_the_records_of_a_note_at_any_depth_are_records_of_the_model():
-    deep = 'checks:\n    first:\n        by: "A reviewer"  @fixture\n        @identity "A reviewer\'s source."'
+    deep = (
+        'checks:\n    first:\n        by: "A reviewer"  @fixture\n        @identity "A reviewer\'s source."'
+    )
     (checks,) = compiled(with_notes(deep)).declared.notes
     (first,) = checks.notes
     (by,) = first.notes
@@ -84,13 +86,17 @@ def test_the_records_of_a_note_at_any_depth_are_records_of_the_model():
     reason='bug: a note that cites no record of the model is accepted (napkin/model/semantic.py checks '
     'the citations of declarations only, and napkin/model/evidence.basis_errors no named record)',
 )
-@pytest.mark.parametrize('note', ['checks: "Checked."  @missing', 'checks:\n    first: "By a reviewer."  @missing'])
+@pytest.mark.parametrize(
+    'note', ['checks: "Checked."  @missing', 'checks:\n    first: "By a reviewer."  @missing']
+)
 def test_a_note_that_cites_no_record_is_refused_at_its_line(note):
     text = with_notes(note)
     try:
         compiled(text)
     except LanguageError as error:
-        assert [(item.code, item.line) for item in error.problems] == [('unknown_record', line_of(text, '@missing'))]
+        assert [(item.code, item.line) for item in error.problems] == [
+            ('unknown_record', line_of(text, '@missing'))
+        ]
     else:
         raise AssertionError('the model was accepted')
 
