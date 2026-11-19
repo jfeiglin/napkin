@@ -41,19 +41,31 @@ residual) with every row met to FEASIBLE, they count as met to that precision, a
 rule of the proximal method. (At 1,000 places with shortage, the first proximal problem cycled at a
 residual of 1.9e-7 for 900 steps before it reached 4e-12.)
 
-Budget: the Newton steps of one stage. A stage whose method does not converge within them, or whose
-line search finds no maximum of the dual, goes to the QP of HiGHS, the exact fallback, with a budget
-of QP iterations; a QP that does not finish within them stops the solve with 'distance budget
-exceeded'. (A3: on the face that fair sharing leaves at 3,000 places the method did not converge in
-1,200 Newton steps; the QP took 38 s and 20,561 iterations.) The fallback is not a sure answer: on
-that face at 3,000 places it now ends with an error of HiGHS (a numerical failure), and on the fair
-face of the spec's worked network, three places, it cycles to its iteration limit. At 300 and 1,000
-places it finishes and agrees with the method to 6.4e-7 (`scratch/rewrite/b1/solve/bench.py verify`).
+The Newton system [[D, E'], [E, -delta I]] has D > 0 and delta > 0: it is quasi-definite, so it has
+an LDL' factorization in any symmetric order. Its pattern stays over a stage and only its diagonal
+follows the free set, so `qdldl` (OSQP's LDL', Apache-2.0) orders it and analyses its pattern once a
+stage, and each new diagonal is a numeric factorization alone, where SuperLU orders and pivots
+afresh each time; each solve is refined REFINE times against the system, since LDL' does not pivot.
+At 30,000 places the method then takes its 447 steps in 75 s instead of 342 s, with answers within
+6e-7 of SuperLU's (prototype P1, `scratch/rewrite/p1/`). Without pivoting LDL' can be less accurate
+than SuperLU's LU, so a stage whose method does not converge with it runs the method again with
+SuperLU, within its own budget of Newton steps, before the QP.
+
+Budget: the Newton steps of one stage, for each factorization. A stage whose method does not
+converge within them, or whose line search finds no maximum of the dual, goes to the QP of HiGHS,
+the exact fallback, with a budget of QP iterations; a QP that does not finish within them stops the
+solve with 'distance budget exceeded'. (A3: on the face that fair sharing leaves at 3,000 places the
+method did not converge in 1,200 Newton steps; the QP took 38 s and 20,561 iterations.) The fallback
+is not a sure answer: on that face at 3,000 places it now ends with an error of HiGHS (a numerical
+failure), and on the fair face of the spec's worked network, three places, it cycles to its
+iteration limit. At 300 and 1,000 places it finishes and agrees with the method to 6.4e-7
+(`scratch/rewrite/b1/solve/bench.py verify`).
 """
 
 from __future__ import annotations
 
 import numpy as np
+import qdldl
 import scipy.sparse as sp
 from scipy.sparse.linalg import splu
 
@@ -70,6 +82,7 @@ STALL = 10  # Newton steps that do not halve the largest residual make a stall
 LOOSE = 1e-6  # a row of fixed columns alone holds to this times (1 + its size): the ranks met it
 RHO = 1e8  # a coordinate at a bound weighs (1 + RHO) times more in the Newton system
 DELTA = 1e-14  # the regularization of the Newton system
+REFINE = 2  # the steps of iterative refinement of a solve by LDL'
 
 
 class Unconverged(Exception):
@@ -95,16 +108,21 @@ def select(face, w, budget, work):
 
 
 def stage(A, row_lower, row_upper, lower, upper, target, weight, budget, work, what):
-    """One distance stage: the method within its budget, else the QP of HiGHS within its own."""
+    """One distance stage: the method within its budget, by LDL' and then, if it does not converge,
+    by SuperLU; else the QP of HiGHS within its own budget."""
     step = f'distance of {what}'
-    try:
-        x, steps = nearest(A, row_lower, row_upper, lower, upper, target, weight, budget.newton_steps, work)
-        work.newton.append(steps)
-        work.methods.append('newton')
-        return x
-    except Unconverged as stopped:
-        work.newton.append(stopped.steps)
-        newton, residual = stopped.steps, stopped.residual
+    for superlu in (False, True):
+        try:
+            x, steps = nearest(
+                A, row_lower, row_upper, lower, upper, target, weight, budget.newton_steps, work, superlu
+            )
+            work.newton.append(steps)
+            work.methods.append('newton')
+            work.superlu += superlu
+            return x
+        except Unconverged as stopped:
+            work.newton.append(stopped.steps)
+            newton, residual = stopped.steps, stopped.residual
     status, x, taken = quadratic(A, row_lower, row_upper, lower, upper, target, weight, budget.qp_iterations)
     work.qp.append(taken)
     work.methods.append('qp')
@@ -124,9 +142,9 @@ def stage(A, row_lower, row_upper, lower, upper, target, weight, budget, work, w
     raise SolveFailure(NUMERICAL, step, f'the QP of HiGHS ended with the status {reached["status"]}', reached)
 
 
-def nearest(A, row_lower, row_upper, lower, upper, target, weight, steps, work):
-    """The method of the module text within `steps` Newton steps; gives (x, the steps taken), or
-    raises `Unconverged`."""
+def nearest(A, row_lower, row_upper, lower, upper, target, weight, steps, work, superlu=False):
+    """The method of the module text within `steps` Newton steps, its systems factorized by LDL' or,
+    with `superlu`, by SuperLU's LU; gives (x, the steps taken), or raises `Unconverged`."""
     A = sp.csr_array(A)
     m = A.shape[0]
     if np.any(lower > upper + TOL * (1.0 + np.abs(lower))):
@@ -163,7 +181,7 @@ def nearest(A, row_lower, row_upper, lower, upper, target, weight, steps, work):
     c[:nf][prox[:nf]] = cx[prox[:nf]]
     c[nf:] = np.clip(B[loose] @ cx, zl[nf:], zu[nf:])
     tolerance = TOL * (1.0 + np.abs(e) + abs(B) @ np.abs(cx))
-    dual = _Dual(E, e, zl, zu, w)
+    dual = _Dual(E, e, zl, zu, w, superlu)
     y = np.zeros(mk)
     taken = outer = 0
     try:
@@ -208,12 +226,15 @@ def _attempt(dual, c, y, tolerance, steps):
 
 
 class _Dual:
-    """The dual of one proximal problem of `nearest` and its Newton steps."""
+    """The dual of one proximal problem of `nearest` and its Newton steps, its systems factorized by
+    LDL' (`_LDL`, one analysis of the pattern for the stage) or, with `superlu`, by SuperLU's LU."""
 
-    def __init__(self, E, e, zl, zu, w):
+    def __init__(self, E, e, zl, zu, w, superlu=False):
         self.E, self.ET, self.e, self.zl, self.zu, self.w = E, E.T.tocsr(), e, zl, zu, w
         self.m, self.N = E.shape
         self.lm = False
+        self.superlu = superlu
+        self.ldl = None  # the LDL' of the stage's pattern, made at its first factorization
         self.factor = None
         self.factorizations = 0
         if self.m:
@@ -261,7 +282,7 @@ class _Dual:
                 self.K.data[self.diagonal] = np.r_[
                     np.where(free, self.w, self.w * (1.0 + RHO)), np.full(self.m, -delta)
                 ]
-                self.factor = (key, splu(self.K, permc_spec='MMD_AT_PLUS_A'))
+                self.factor = (key, self._factorized())
                 self.factorizations += 1
             step = self.factor[1].solve(np.r_[np.zeros(self.N), -r])[self.N :]
             # dual ascent: the gradient of the dual is r, and the step solves (E D E' + delta) step = r
@@ -275,6 +296,16 @@ class _Dual:
             z, r = self.point(c, y)
         met = TOL if np.all(np.abs(r) <= tolerance) else None
         return z, y, float(np.abs(r).max()), max(steps, 0), met
+
+    def _factorized(self):
+        """K with its present diagonal, factorized: by SuperLU, or by LDL' on the stage's analysis."""
+        if self.superlu:
+            return splu(self.K, permc_spec='MMD_AT_PLUS_A')
+        if self.ldl is None:
+            self.ldl = _LDL(self.K)
+        else:
+            self.ldl.update()
+        return self.ldl
 
     def search(self, c, y, step, slope):
         """The exact step along `step`: the derivative of the dual along it is piecewise linear and
@@ -309,3 +340,25 @@ class _Dual:
         before = slope if k == 0 else float(values[k - 1])
         left = 0.0 if k == 0 else float(alphas[k - 1])
         return left + before / -slopes[k] if slopes[k] < 0 else left
+
+
+class _LDL:
+    """The LDL' factorization of the quasi-definite Newton system K by qdldl: its order and the
+    analysis of its pattern are made once (`__init__`), and `update` factorizes the values that K
+    holds now, the pattern unchanged. A solve is refined REFINE times against K."""
+
+    def __init__(self, K):
+        self.K = K
+        self.solver = qdldl.Solver(sp.csc_matrix(K))
+
+    def update(self):
+        self.solver.update(sp.csc_matrix(self.K))
+
+    def solve(self, rhs):
+        x = self.solver.solve(rhs)
+        for _ in range(REFINE):
+            x = x + self.solver.solve(rhs - self.K @ x)
+        if not np.all(np.isfinite(x)):
+            # a pivot of LDL' at zero: the step does not converge, as a singular LU's does not
+            raise RuntimeError("the Newton system is singular to LDL'")
+        return x

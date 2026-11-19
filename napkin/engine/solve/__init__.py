@@ -3,7 +3,8 @@
 A declared solver chooses an answer by the spec's selection order: the hard constraints, the written
 objectives in order, fair sharing of the claims in each priority tier, the flows nearest their
 requests, then the other unknowns nearest their references. This package does that on arrays, with
-numpy, scipy and the HiGHS solver that SciPy bundles; the engine forms the problems from programs.
+numpy, scipy, the HiGHS solver that SciPy bundles and the LDL' factorization of `qdldl`; the engine
+forms the problems from programs.
 
 - `Problem` (`problem`): unknowns, affine rows, ranked objectives and claims, in author units.
 - `Solver` (`solver`): the selection order on one HiGHS instance that a run keeps (`kept`), in

@@ -16,8 +16,9 @@ solve library (`napkin/engine/solve/`):
   initializer, which the run evaluates at its first solve, or an unknown's own initializer, zero
   without one), and as its scale its declared scale, else its finite width, else one canonical unit;
 - **rows**: each store that rests on a bound (what leaves a store at its lower bound must also
-  arrive, what arrives at a store at its upper bound must also leave, so a store held at [0, 0]
-  balances), each endpoint's capacity, and each relation of `constraints`;
+  arrive, what arrives at a store at its upper bound must also leave, and a store at both bounds,
+  such as one held at [0, 0], balances: one row `==`), each endpoint's capacity, and each relation
+  of `constraints`;
 - **objectives**, in written order, maximized ones negated;
 - **claims**: each positive request of a flow (a route's in the direction of its sign, a flow with
   legs' on its fraction, as a request of one) and of an endpoint. A declared solver shares across all
@@ -275,9 +276,14 @@ class Former:
                 balance = balance.plus(self._signed(c))
             for c in net.ends[OUT].of(s).tolist():
                 balance = balance.plus(self._signed(c), -1.0)
-            if lower[s]:
+            if lower[s] and upper[s]:
+                # A store held at both bounds balances: one equality, not two rows of one sign each,
+                # which leave the distance step a slack on a row that the other row repeats (at
+                # 30,000 places a Newton system of 316k unknowns instead of 233k, P1)
+                self._relation(balance, '==', ('store', store, 'held'))
+            elif lower[s]:
                 self._relation(balance.times(-1.0), '<=', ('store', store, 'lower'))
-            if upper[s]:
+            else:
                 self._relation(balance, '<=', ('store', store, 'upper'))
         for origin, node in declared.constraints:
             seen = {}

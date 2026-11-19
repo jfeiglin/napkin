@@ -299,13 +299,15 @@ class Kept:
         basis.alien = True  # HiGHS checks the basis and mends it where its matrix is singular
         self.s.setBasis(basis)
 
-    def start_at_upper(self, column):
-        """Make `column` rest on its upper bound in the basis, where it is not basic."""
+    def start_at_upper(self, columns):
+        """Make each of `columns` rest on its upper bound in the basis, where it is not basic."""
         basis = self.s.getBasis()
         if basis.valid:
             cols = list(basis.col_status)
-            if cols[column] != BASIC:
+            moved = [column for column in np.atleast_1d(columns).tolist() if cols[column] != BASIC]
+            for column in moved:
                 cols[column] = AT_UPPER
+            if moved:
                 self._set_basis(cols, list(basis.row_status))
 
     @contextmanager

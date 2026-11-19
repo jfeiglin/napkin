@@ -27,6 +27,15 @@ from the rows by up to 3.4e-5 of their size, t* came out 3.4e-7 high, and the cl
 the face (`kept`). So the programs of a tier refactorize every UPDATES updates: the drift was then at
 most 5.1e-8, at no measured cost. `kept.Kept.run` checks each answer against its program as well.
 
+The claims of a tier often fall into parts that share no row: claims and rows join only through
+columns that the face leaves free, and a column that the earlier ranks fixed joins nothing (a route
+that is down splits a network of places). Each part gets its own t, and one program maximizes their
+sum: it is the programs of the parts side by side, so each t* is its part's level, the duals of a
+part's claims sum to one, and each part holds its own claims by the rule above. A round of programs
+advances every part, and the number of programs is that of the part with the most levels, not the
+sum over the parts (prototype P1, 30,000 places with 1,000 routes down: 22 programs instead of 693,
+67 s instead of 174 s, the same levels to 5e-11). A connected face is one part, as before.
+
 After the first program of a tier only bounds change, and the last answer stays feasible, so the
 later programs run the primal simplex from the last basis (A3: 5 to 40 iterations each at 3,000
 places). The duals decide which claims are held, so a program whose duals have the wrong sign beyond
@@ -43,6 +52,7 @@ from contextlib import ExitStack
 
 import numpy as np
 import scipy.sparse as sp
+from scipy.sparse.csgraph import connected_components
 
 from . import ranked
 from .failures import FAIR_BUDGET, NUMERICAL, SolveFailure
@@ -65,7 +75,8 @@ def share(kept, face, w, budget, work):
 
 
 def _tier(kept, face, F, tier, budget, work):
-    """The max-min levels of the claims F of one tier, which the face then holds."""
+    """The max-min levels of the claims F of one tier, which the face then holds: one program a round
+    for all the parts of the tier (`_parts`), each with its own t."""
     K, width = F.shape
     levels = np.full(K, np.nan)
     fixed = face.lower == face.upper
@@ -76,17 +87,22 @@ def _tier(kept, face, F, tier, budget, work):
     if not pending.any():
         return levels
     step = f'fair sharing, tier {tier}'
+    part = _parts(kept, F, pending, ~fixed)
+    count = int(part.max()) + 1
     scale = 1.0 / np.maximum(1.0, row_max(F))  # no entry of a claim row above one
     single = np.diff(F.indptr) == 1
-    t = kept.add_cols([-INF], [1.0], sp.csc_array((kept.m, 1)))[0]
+    t = kept.add_cols(np.full(count, -INF), np.ones(count), sp.csc_array((kept.m, count)))
     cost = np.zeros(kept.n)
     cost[t] = -1.0
     kept.set_cost(cost)
-    rows = sp.hstack([sp.diags_array(scale) @ F, sp.csr_array(-scale.reshape(-1, 1))]).tocsr()
+    claims = np.flatnonzero(pending)
+    own = sp.csr_array((-scale[claims], (claims, part[claims])), shape=(K, count))  # -t of its part
+    rows = sp.hstack([sp.diags_array(scale) @ F, sp.csr_array((K, kept.n - width - count)), own]).tocsr()
     first = kept.add_rows(np.where(pending, 0.0, -INF), np.full(K, INF), rows)
-    # t starts at its upper bound: with no shortage the first program needs no iteration
+    # each t starts at its upper bound: with no shortage the first program needs no iteration
     kept.start_at_upper(t)
-    reached = []  # t* of each program
+    reached = [[] for _ in range(count)]  # t* of each program, part by part
+    programs = 0
     try:
         with (
             ExitStack() as primal,
@@ -95,52 +111,77 @@ def _tier(kept, face, F, tier, budget, work):
         ):
             while pending.any():
                 if work.fair_programs >= budget.fair_programs:
-                    raise _exceeded(step, reached, levels, pending, budget)
+                    raise _exceeded(step, reached, programs, levels, pending, budget)
                 run = ranked.solve(kept, step)
                 work.programs += 1
                 work.fair_programs += 1
+                programs += 1
                 run = ranked.exact(kept, run, work, step)
-                if len(reached) == 0:
+                if programs == 1:
                     primal.enter_context(kept.option('simplex_strategy', PRIMAL_SIMPLEX))
-                level = float(run.x[t])
-                if level >= 1.0 - FULL:
-                    held, level = pending.copy(), 1.0
-                else:
-                    held = pending & (run.y[first] > TAU)
-                    if not held.any():
-                        raise SolveFailure(
-                            NUMERICAL, step, 'no claim has a dual', {'programs': len(reached) + 1}
-                        )
-                reached.append(level)
+                found = run.x[t]  # t* of each part
+                full = found >= 1.0 - FULL
+                for p in np.unique(part[pending]).tolist():
+                    reached[p].append(1.0 if full[p] else float(found[p]))
+                served = pending & full[part]
+                held = served | (pending & ~full[part] & (run.y[first] > TAU))
+                # the duals of a part's claim rows sum to one (the cost of its t): each part holds one
+                short = np.unique(part[pending & ~full[part]])
+                if not np.isin(short, part[held]).all():
+                    raise SolveFailure(NUMERICAL, step, 'no claim has a dual', {'programs': programs})
                 index = np.flatnonzero(held)
+                level = np.where(served, 1.0, found[part])[index]
                 levels[index] = level
                 pending[index] = False
                 _hold(kept, face, F, scale, first, index, single, level, width)
     finally:
         kept.delete_rows(first)
-        kept.delete_cols([t])
+        kept.delete_cols(t)
         kept.set_cost(np.zeros(kept.n))
-    work.levels += _distinct(reached)
+    work.levels += sum(_distinct(each) for each in reached)
     return levels
 
 
+def _parts(kept, F, pending, free):
+    """The part of each pending claim (-1 for the others), numbered from zero in the order of their
+    first claims: two claims are in one part when rows of the face (the program of the kept
+    instance) and pending claims join them through columns that the face leaves free. Parts share no
+    row, so one program with a t for each part solves each part as if it were alone."""
+    width = F.shape[1]
+    joined = sp.csr_array(
+        sp.vstack([sp.csr_array(kept.A[:, :width]), F[pending]]) @ sp.diags_array(free * 1.0)
+    )
+    joined.eliminate_zeros()
+    graph = sp.block_array([[None, joined], [joined.T, None]]).tocsr()  # rows and claims, then columns
+    _, label = connected_components(graph, directed=False)
+    own = label[kept.A.shape[0] : joined.shape[0]]  # the pending claims' labels
+    _, first, inverse = np.unique(own, return_index=True, return_inverse=True)
+    rank = np.empty(len(first), dtype=np.int64)
+    rank[np.argsort(first, kind='stable')] = np.arange(len(first))
+    part = np.full(F.shape[0], -1, dtype=np.int64)
+    part[pending] = rank[inverse]
+    return part
+
+
 def _hold(kept, face, F, scale, first, index, single, level, width):
-    """F_i . x >= level - FIX for the claims `index`: a bound for a claim of one column, else a row."""
+    """F_i . x >= level_i - FIX for the claims `index` at their levels: a bound for a claim of one
+    column, else a row."""
     kept.set_row_bounds(first[index], np.full(len(index), -INF), np.full(len(index), INF))
-    floor = min(level, 1.0) - FIX
-    one = index[single[index]]
-    if len(one):
-        columns = F.indices[F.indptr[one]]
-        a = F.data[F.indptr[one]]
+    floor = np.minimum(level, 1.0) - FIX
+    one = single[index]
+    if one.any():
+        claims = index[one]
+        columns = F.indices[F.indptr[claims]]
+        a = F.data[F.indptr[claims]]
         rising = a > 0
         # two claims can read one column (a flow and its endpoint): the larger floor wins
-        np.maximum.at(face.lower, columns[rising], floor / a[rising])
-        np.minimum.at(face.upper, columns[~rising], floor / a[~rising])
+        np.maximum.at(face.lower, columns[rising], floor[one][rising] / a[rising])
+        np.minimum.at(face.upper, columns[~rising], floor[one][~rising] / a[~rising])
         kept.set_bounds(columns, face.lower[columns], face.upper[columns])
-    many = index[~single[index]]
+    many = index[~one]
     if len(many):
         rows = sp.csr_array(sp.diags_array(scale[many]) @ F[many])
-        lower = scale[many] * floor
+        lower = scale[many] * floor[~one]
         kept.add_rows(
             lower, np.full(len(many), INF), sp.hstack([rows, sp.csr_array((len(many), kept.n - width))])
         )
@@ -148,17 +189,17 @@ def _hold(kept, face, F, scale, first, index, single, level, width):
 
 
 def _distinct(reached):
-    """The number of distinct levels among the t* of the programs (t* rises or stays)."""
+    """The number of distinct levels among the t* of a part's programs (t* rises or stays)."""
     return int(sum(1 for k, level in enumerate(reached) if k == 0 or level > reached[k - 1] + FIX))
 
 
-def _exceeded(step, reached, levels, pending, budget):
-    count = _distinct(reached)
+def _exceeded(step, reached, programs, levels, pending, budget):
+    count = sum(_distinct(each) for each in reached)
     held = int(np.count_nonzero(~np.isnan(levels)))
     return SolveFailure(
         FAIR_BUDGET,
         step,
-        f'{count} levels in {len(reached)} programs, {int(pending.sum())} claims pending '
+        f'{count} levels in {programs} programs, {int(pending.sum())} claims pending '
         f'(budget: {budget.fair_programs} programs)',
-        {'levels': count, 'programs': len(reached), 'held': held, 'pending': int(pending.sum())},
+        {'levels': count, 'programs': programs, 'held': held, 'pending': int(pending.sum())},
     )

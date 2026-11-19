@@ -69,8 +69,9 @@ class Work:
     renewals: int = 0  # fresh instances that took the kept one's place (`kept.Kept.run`)
     fair_programs: int = 0
     levels: int = 0  # distinct fair levels, over all tiers
-    newton: list = field(default_factory=list)  # Newton steps of each distance stage
+    newton: list = field(default_factory=list)  # Newton steps of each distance stage and attempt
     factorizations: int = 0
+    superlu: int = 0  # distance stages that the method answered by SuperLU after LDL' did not converge
     qp: list = field(default_factory=list)  # iterations of each QP fallback
     methods: list = field(default_factory=list)  # 'newton' or 'qp', for each distance stage
 
