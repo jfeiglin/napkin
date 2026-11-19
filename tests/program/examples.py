@@ -1475,6 +1475,99 @@ def dispatcher_player_no_spare():
     return _dispatcher('dispatcher_player_no_spare', 0, ('SEND',), [Fails('SEND', 0)])
 
 
+DISPATCH_SWITCH = 'depot.request_pump.step[0].do[1]'
+DISPATCH = 'depot.request_pump#0'
+
+
+@dataclass(frozen=True)
+class Stop:
+    """A breakpoint at the part of the origin `at`, for one occurrence (None: any), and the edits
+    made there before the run resumes, each a key of a stored value and its new value in the value's
+    declared unit (an enum member by its name)."""
+
+    at: str
+    occurrence: str | None = None
+    edits: tuple = ()
+
+
+def pump_dispatch(spares=1):
+    """Item 15 of the plan's changes after G0, the acceptance example: a depot asks for a pump at
+    0 h. The dispatcher's forecast, which never sends (SEND 0, WAIT 1), is drawn into the
+    occurrence's field `order`, and a `switch` on it sends a spare pump, which needs a spare (the
+    eligibility of SEND is its case's guard), or counts a wait. Unattended it waits once."""
+    b = Builder(UNITS)
+    action = b.enum('enum[SEND, WAIT]', 'SEND', 'WAIT')
+    dispatcher = b.entity('dispatcher', value('forecast', dist_of(action), categorical(action, SEND=0, WAIT=1)))
+    depot = b.entity(
+        'depot',
+        value('spares', '', spares, lower=0),
+        value('waits', '', 0),
+        event(
+            'request_pump',
+            value('order', action, action.WAIT),
+            after(
+                q(0, 'h'),
+                assign(local.order, draw(dispatcher.forecast)),
+                switch(
+                    local.order,
+                    case(action.SEND, start(this.send_pump), when=this.spares >= 1),
+                    case(action.WAIT, add(this.waits, 1)),
+                ),
+            ),
+        ),
+        event('send_pump', after(q(0, 'h'), subtract(this.spares, 1))),
+    )
+    b.setup(start(depot.request_pump))
+    b.root(value('sent', '', formula(count(depot.send_pump.occurrences))))
+    return b.finish()
+
+
+# The acceptance example's stops, each with its results (worked from item 15): untouched, the run is
+# the unattended one; with `order` edited from WAIT to SEND before the switch, the send branch runs
+# once, at 0 h, and the drawn WAIT stays in the history; with no spare, SEND is not eligible and
+# nothing runs; with two stops in the stage, the first edit is neither lost nor made twice.
+DISPATCH_DRAW = Traced('draw', 'depot.request_pump.step[0].do[0].draw[0]', (0,))
+PAUSES = {
+    'untouched': (
+        1,
+        (Stop(DISPATCH_SWITCH, DISPATCH),),
+        [At(0, key('depot', 'waits'), 1), At(0, key('', 'sent'), 0), DISPATCH_DRAW],
+    ),
+    'sends': (
+        1,
+        (Stop(DISPATCH_SWITCH, DISPATCH, ((key(DISPATCH, 'order'), 'SEND'),)),),
+        [
+            At(0, key('depot', 'waits'), 0),
+            At(0, key('depot', 'spares'), 0),
+            At(0, key('', 'sent'), 1),
+            DISPATCH_DRAW,
+            Traced('start', 'depot.send_pump', (0,)),
+            Traced('edit', DISPATCH_SWITCH, (0,)),
+        ],
+    ),
+    'no_spare': (
+        0,
+        (Stop(DISPATCH_SWITCH, DISPATCH, ((key(DISPATCH, 'order'), 'SEND'),)),),
+        [At(0, key('depot', 'waits'), 0), At(0, key('', 'sent'), 0), Traced('start', 'depot.send_pump', ())],
+    ),
+    'two_stops': (
+        1,
+        (
+            Stop('depot.request_pump.step[0].do[0]', DISPATCH, ((key('depot', 'waits'), 5),)),
+            Stop(DISPATCH_SWITCH, DISPATCH, ((key(DISPATCH, 'order'), 'SEND'),)),
+        ),
+        [At(0, key('depot', 'waits'), 5), At(0, key('', 'sent'), 1), DISPATCH_DRAW],
+    ),
+}
+
+
+@example
+def pump_dispatch_unattended():
+    """The acceptance example of item 15 run unattended: the forecast waits, nothing is sent."""
+    expected = [At(0, key('depot', 'waits'), 1), At(0, key('', 'sent'), 0), DISPATCH_DRAW]
+    return Example('pump_dispatch_unattended', pump_dispatch(), run(1), tuple(expected))
+
+
 @example
 def dispatcher_forecast_no_spare():
     """Spec, "Actor decisions and observations": with no spare, sending is unavailable to the

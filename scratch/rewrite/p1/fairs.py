@@ -417,7 +417,7 @@ def run(tag, variant, tol, fix, repeat, after_distance):
 
                 fair.TIGHT, fair.FIX, fair.UPDATES = tol, fix, UPDATES
                 problem = lab.scenario_problem(*_scenario(tag)) if tag.startswith('bench') else lab.engine_problem(int(tag.split('-')[1]))
-                done = lab.prefix(problem)
+                done = lab.prefix(problem, budget=Budget(fair_programs=5000))
                 levels, face, work = done['levels'], done['face'], done['work']
                 seconds = done['times']['fair']
             else:

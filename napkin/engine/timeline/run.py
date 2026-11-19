@@ -41,7 +41,8 @@ name as its evaluation asks for it.
 
 A run that fails stops there: its record holds the failure, as the last entry of its trace, and the
 histories to the time at which it stopped. A run that a player's choice pauses stops there too, with
-a `pause` entry, and `resume` goes on in place (`chance.py`).
+a `pause` entry, and `resume` goes on in place (`chance.py`); so does a run that a breakpoint stops,
+which gives its checkpoint (`checkpoints.py`).
 """
 
 from __future__ import annotations
@@ -60,6 +61,7 @@ from ...program.record import Unavailable
 from ..continuous.system import run_settings, step_cap
 from ..errors import SimulationError
 from .chance import Chance, Paused
+from .checkpoints import Breaks, Stopped
 from .collections import dynamic_value, index_of, kept, looked_up, reduced
 from .moment import Defined, Moment
 from .occurrences import Occurrences
@@ -125,9 +127,10 @@ class Stepped:
 
 
 class Run:
-    """See the module."""
+    """See the module. `breakpoints` stop the run (`checkpoints.py`); `expected` is the checkpoint
+    that a run of its program resumes, which it checks at the stop and passes."""
 
-    def __init__(self, plan):
+    def __init__(self, plan, breakpoints=(), expected=None):
         self.plan = plan
         self.cap = step_cap(plan.numerics)
         self.settings = run_settings(plan.numerics, self.cap)
@@ -151,6 +154,8 @@ class Run:
         self.waiting, self.waiting_names = [], set()
         self.changes = {}  # a stored value -> the times of the commits that changed it (`elapsed`)
         self.pause = None  # the `pause` entry of a paused run, until `resume`
+        self.checkpoint = None  # the checkpoint of a run stopped at a breakpoint, until `resume`
+        self.breaks = Breaks(self, breakpoints, expected.stop.hit if expected else 0, expected)
         self.chance = Chance(self)
         self.ways = Ways(self)
         self.occurrences = Occurrences(self)
@@ -686,13 +691,18 @@ class Run:
 
     def run(self):
         """The record of the run: to the horizon, to the failure that stopped it, or to the pause of
-        a player's choice that no pick answers (`chance.py`)."""
+        a player's choice that no pick answers (`chance.py`); or the checkpoint of a breakpoint that
+        stopped it (`checkpoints.py`), which holds the record so far."""
         return self._go(self._start)
 
     def resume(self, *picks):
-        """Answer the choice that a paused run waits for with picks (`config.Pick`) and go on in place:
-        the paused stage runs again with the draws that it made, and commits once. The record is the
-        one that a run with these picks in its configuration gives."""
+        """Go on in place: past the breakpoint that stopped the run (no picks), or answering the
+        choice that a paused run waits for with picks (`config.Pick`). The stage that stopped runs
+        again from its start with the draws that it made, and commits once. The record is the one of
+        the run straight through, or of a run with these picks in its configuration."""
+        if self.checkpoint is not None and not picks:
+            self.breaks.passing, self.checkpoint = self.checkpoint.stop.hit, None
+            return self._go(self._resume)
         if self.pause is None:
             raise SimulationError('the run waits for no choice')
         for pick in picks:
@@ -716,6 +726,10 @@ class Run:
             self.chance.kept = {(site, owner) for site, owner, _ in self.chance.made}
             self.pause = self.recorder.pause(self.now, paused)
             return self.recorder.record(self.now, pause=self.pause)
+        except Stopped as stopped:
+            self.chance.kept = {(site, owner) for site, owner, _ in self.chance.made}
+            self.checkpoint = self.breaks.checkpoint(stopped.stop)
+            return self.checkpoint
         except (SimulationError, ExpressionError, ArithmeticError) as problem:
             return self.recorder.record(self.now, self.recorder.failure(self.now, str(problem)))
         return self.recorder.record(self.plan.horizon)

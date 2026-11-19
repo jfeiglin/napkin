@@ -4,12 +4,15 @@
    schemas, the `napkin` script and the three libraries of the engine. No catalogue, library, tool,
    publisher, evidence or workbench ships.
 2. `napkin new`, then `napkin run`: the plain starter, and a starter with the variants `east` and
-   `west`, which `run` lists without `--variant` (exit 2) and runs with it.
+   `west`, whose main file and each variant run (a variant is the MODEL of its own folder).
 3. The examples, copied from the checkout's `examples/`: `napkin compile`, `run`, `sample` and `draw`
-   each one, and `napkin play` each one that has an actor.
+   each one. (`napkin play` comes back as a client of the checkpoints of slice S7.)
 4. `napkin fmt --check` on the starters, the examples and each catalogue package of the checkout.
-5. `napkin compile` each catalogue package of the checkout, which finds the library through its own
-   `library "../library"` line.
+5. `napkin compile` each model of each catalogue package of the checkout (its main file, or each
+   variant), which finds the library through its own `library "../library"` line.
+
+Steps 3 to 5 read the examples and the catalogue in the language of the rewrite: they pass once
+stage M has migrated them (`examples/reservoir` and `scenarios/`).
 
     python -I tests/release/wheel_smoke.py CHECKOUT
 
@@ -29,7 +32,6 @@ import subprocess
 import sys
 import sysconfig
 import tempfile
-import threading
 import time
 import xml.etree.ElementTree as ET
 from importlib import metadata, util
@@ -90,24 +92,20 @@ def expect(done, code=0):
 
 
 def json_of(*argv, cwd):
-    """The JSON document that `napkin ARGV` writes, after a check that it exits 0 with schema 1."""
-    doc = json.loads(expect(napkin_command(*argv, cwd=cwd)).stdout)
-    assert doc['schema_version'] == '0.0.1', (argv, doc.get('schema_version'))
-    return doc
+    """The JSON document that `napkin ARGV` writes, after a check that it exits 0."""
+    return json.loads(expect(napkin_command(*argv, cwd=cwd)).stdout)
 
 
 def admissible(report, name):
-    """Check a report of `napkin run --json`: admitted with no error, with runs, and each estimated
-    value finite."""
-    errors = [item for item in report['diagnostics'] if item.get('severity', 'error') == 'error']
-    assert report['admissible'] is True and not errors, (name, report['diagnostics'])
-    assert report['runs'], name
-    for run, shown in report['runs'].items():
-        for point, row in shown['reporting_points'].items():
-            assert set(row['statuses']) == set(shown['outcomes']), (name, run, point)
-            for key, status in row['statuses'].items():
-                if status == 'estimated':
-                    assert math.isfinite(row['values'][key]), (name, run, point, key)
+    """Check a report of `napkin run --json`: no diagnostic, a run to its horizon, values at its
+    times, and each number finite."""
+    assert report['diagnostics'] == [] and report['stopped'] is None, (name, report['diagnostics'])
+    assert report['values'] and report['times'], name
+    for path, value in report['values'].items():
+        assert len(value['values']) == len(report['times']), (name, path)
+        for item in value['values']:
+            if isinstance(item, float):
+                assert math.isfinite(item), (name, path)
 
 
 def timed(title, step, *args):
@@ -214,43 +212,45 @@ def starters(folder):
     assert expect(napkin_command('run', 'plain', cwd=folder)).stdout
     report = json_of('run', '--json', 'plain', cwd=folder)
     admissible(report, 'plain')
-    assert report['variant'] is None
+    assert report['run'] is None
     expect(napkin_command('new', 'regions', '--variants', ','.join(VARIANTS), cwd=folder))
     assert (folder / 'regions' / ENTRY).is_file()
     assert all((folder / 'regions' / 'variants' / name / ENTRY).is_file() for name in VARIANTS)
-    # Without --variant, run lists the variants, each by its name, and stops.
-    done = expect(napkin_command('run', 'regions', cwd=folder), 2)
-    words = set(re.findall(r'[A-Za-z0-9_]+', done.stdout + done.stderr))
-    assert set(VARIANTS) <= words, (VARIANTS, done.stderr)
+    admissible(json_of('run', '--json', 'regions', cwd=folder), 'regions')
     for name in VARIANTS:
-        report = json_of('run', '--json', 'regions', '--variant', name, cwd=folder)
+        report = json_of('run', '--json', f'regions/variants/{name}', cwd=folder)
         admissible(report, f'regions:{name}')
-        assert report['variant'] == name, report['variant']
+        assert report['title'].endswith(f': {name}'), report['title']
 
 
 # --- 3. The examples ------------------------------------------------------------------------------
 
 
 def sampled(doc, name):
-    """The number of runs of a `napkin sample --json` document that have samples, after a check of
-    each one: SAMPLES samples, and each summary in order (min ≤ p5 ≤ … ≤ p95 ≤ max, the mean between
-    min and max)."""
-    for run, record in doc['runs'].items():
-        assert record['settings']['samples'] == SAMPLES and len(record['samples']) == SAMPLES, (name, run)
-        for key, summary in record['summary'].items():
-            if summary['estimated']:
-                order = [summary[q] for q in ('min', 'p5', 'p25', 'p50', 'p75', 'p95', 'max')]
-                assert order == sorted(order), (name, run, key, order)
-                assert summary['min'] <= summary['mean'] <= summary['max'], (name, run, key)
-    return len(doc['runs'])
+    """1 when a `napkin sample --json` document has a spread, else 0, after a check of it: SAMPLES
+    samples, and each summary in order (least <= p5 <= ... <= p95 <= greatest, the mean between the
+    least and the greatest)."""
+    assert doc['samples'] == SAMPLES and len(doc['draws']) == SAMPLES, name
+    for path, value in doc['values'].items():
+        if value['estimated']:
+            order = [
+                value['least'],
+                *(value['percentiles'][f'p{p}'] for p in (5, 25, 50, 75, 95)),
+                value['greatest'],
+            ]
+            assert order == sorted(order), (name, path, order)
+            assert value['least'] <= value['mean']['value'] <= value['greatest'], (name, path)
+    return 1 if doc['drawn'] else 0
 
 
 def drawn(path, model):
     """Check the SVG of `napkin draw`: it parses, its root is an SVG element, each thing that it draws
     is a thing of the model, and each part and each arrow belongs to a drawn thing."""
+    from napkin.draw.things import Things
+
     root = ET.parse(path).getroot()
     assert root.tag == f'{SVG}svg', root.tag
-    things = {entity.name for entity in model.scenario.entities}
+    things = set(Things(model).cards)
     cards = {element.get('data-thing') for element in root.iter() if element.get('data-thing')}
     assert cards and cards <= things, (cards, things)
     for element in root.iter():
@@ -262,76 +262,25 @@ def drawn(path, model):
                 assert element.get(part) in cards, (part, element.get(part))
 
 
-def played(folder, scratch, control):
-    """`napkin play --json --control CONTROL` on `folder`, which picks the first outcome that can
-    happen at each decision: the result line, after a check that the run is finished."""
-    errors = scratch / f'{folder.name}.play.err'
-    with errors.open('w', encoding='utf-8') as stderr:
-        process = subprocess.Popen(
-            [str(SCRIPT), 'play', '--json', '--control', control, folder],
-            cwd=scratch,
-            env=ENVIRONMENT,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=stderr,
-            text=True,
-            encoding='utf-8',
-        )
-        watchdog = threading.Timer(TIMEOUT, process.kill)
-        watchdog.start()
-        picks, result = [], None
-        try:
-            while result is None:
-                text = process.stdout.readline()
-                if not text:
-                    break
-                line = json.loads(text)
-                assert line['schema_version'] == '0.0.1', line
-                assert line['type'] in ('decision', 'result'), (line, errors.read_text('utf-8'))
-                if line['type'] == 'result':
-                    result = line
-                    continue
-                pick = next(item['name'] for item in line['outcomes'] if item['available'])
-                picks.append((line['event'], pick))
-                process.stdin.write(json.dumps({'pick': pick, 'reason': None}) + '\n')
-                process.stdin.flush()
-            process.stdin.close()
-            code = process.wait()
-        finally:
-            watchdog.cancel()
-            process.kill()
-    assert result is not None, ('no result line', errors.read_text('utf-8'))
-    assert code == 0 and result['finished'] is True, (code, result, errors.read_text('utf-8'))
-    assert picks, f'{control} decided nothing in {folder.name}'
-    assert [(item['event'], item['outcome']) for item in result['picks']] == picks
-    admissible(result['report'], f'{folder.name} played')
-    return len(picks)
-
-
 def examples(checkout, folder, scratch):
     shutil.copytree(checkout / 'examples', folder, ignore=shutil.ignore_patterns('__pycache__', '.*'))
     found = sorted(path for path in folder.iterdir() if (path / ENTRY).is_file())
     assert found, 'no example'
     pictures = scratch / 'pictures'
     pictures.mkdir()
-    sampled_runs = plays = 0
+    sampled_runs = 0
     for example in found:
         start = time.perf_counter()
         doc = json_of('compile', '--json', example, cwd=scratch)
-        models = doc['models'].values()
-        assert models and all(item['admissible'] for item in models), doc['diagnostics']
-        actors = [actor['name'] for item in models for actor in item['actors']]
+        assert doc['diagnostics'] == [], doc['diagnostics']
         admissible(json_of('run', '--json', example, cwd=scratch), example.name)
         doc = json_of('sample', '--samples', SAMPLES, '--jobs', JOBS, '--json', example, cwd=scratch)
         sampled_runs += sampled(doc, example.name)
         picture = pictures / f'{example.name}.svg'
         expect(napkin_command('draw', example, '-o', picture, cwd=scratch))
         drawn(picture, napkin.load_scenario(example / ENTRY))
-        if actors:
-            plays += played(example, scratch, actors[0])
         print(f'  {example.name}: {time.perf_counter() - start:.1f} s', flush=True)
     assert sampled_runs, 'no example has an input with a distribution'
-    assert plays, 'no example has an actor'
     return len(found)
 
 
@@ -373,12 +322,12 @@ def compiled(checkout, scratch, packages):
     assert packages, 'no catalogue package'
     for name, variants in packages.items():
         start = time.perf_counter()
-        doc = json_of('compile', '--json', checkout / 'scenarios' / name, cwd=scratch)
-        assert doc['package'] == name, doc['package']
-        expected = [f'{name}:{variant}' for variant in variants] or [name]
-        assert sorted(doc['models']) == expected, sorted(doc['models'])
-        assert all(item['admissible'] for item in doc['models'].values()), doc['diagnostics']
-        print(f'  {name} ({len(expected)} models): {time.perf_counter() - start:.1f} s', flush=True)
+        folder = checkout / 'scenarios' / name
+        entries = [folder / 'variants' / variant for variant in variants] or [folder]
+        for entry in entries:
+            doc = json_of('compile', '--json', entry, cwd=scratch)
+            assert doc['diagnostics'] == [], (entry, doc['diagnostics'])
+        print(f'  {name} ({len(entries)} models): {time.perf_counter() - start:.1f} s', flush=True)
     return len(packages)
 
 

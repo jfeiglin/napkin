@@ -1,19 +1,22 @@
 """The synthetic families of the benchmark: models made as text, one for each size.
 
 A family is a function `text(n)` that gives the main file of a model of size `n` (1 or more), in the
-scenario language (docs/language.md). Each family stresses one part of the compiler or of the engine,
-and the docstring of its function says which. The names are generic (`Cell`, `tank`, `chain`): no
-family is a model of the catalogue, and none reads a library. Every value rests on one record, `shape`,
-an assumption that says that the model is synthetic.
+language of the rewrite (docs/language.md), which the front end lowers to a program. Each family
+stresses one part of the compiler or of the engine, and the docstring of its function says which. The
+names are generic (`Cell`, `tank`, `chain`): no family is a model of the catalogue, and none reads a
+library. Every value rests on one record, `shape`, an assumption that says that the model is
+synthetic.
 
 `write(family, n, folder)` writes `<folder>/<family>_<n>/model.scn`, with a `units.json` beside it when
-the family needs a unit that the prelude lacks. The harness writes the models into a temporary folder:
-no file of a family is kept in the checkout.
+the family needs a unit that the prelude lacks, and the table of a family whose members are the rows
+of a table. The harness writes the models into a temporary folder: no file of a family is kept in the
+checkout.
 
-A run lasts ten days, or two days for `rationing` and `priority`. In a family with events, each event has a time of
-its own, so the number of moments grows with `n`. An event that watches a quantity watches a tally,
-which only rises: the language allows a crossing of no other moving quantity
-(docs/language.md, §2.6, "What a `when` may be").
+A run lasts ten days, or two days for `rationing` and `priority`. The copies of a family are members
+written by hand (`c1: Cell`, each with its own value), or the rows of a table in the families
+`table_...`. In a family with events, each event has a time of its own, so the number of moments grows
+with `n`. An event that watches a moving quantity watches a tally, which only rises: a contact on a
+curve is certified for a store that only rises or only falls.
 """
 
 from __future__ import annotations
@@ -27,7 +30,8 @@ RECORD = 'record shape: assumption "A synthetic model of the benchmark, with no 
 
 
 def _file(title, summary, horizon, *blocks):
-    """The text of a main file: the scenario line, the blocks of its things and outputs, the record."""
+    """The text of a main file: the scenario line, the blocks of its entities and values, the
+    record."""
     head = (
         f'scenario "{title}"',
         f'    summary "{summary}"',
@@ -37,119 +41,148 @@ def _file(title, summary, horizon, *blocks):
     return '\n\n'.join('\n'.join(block) for block in (head, *blocks, (RECORD,))) + '\n'
 
 
-def _cell(n):
-    """The template of the families of instances: a stock with three flows, a tally that fills at a
-    constant rate, and two events. The first event watches the tally, so each copy opens its gate at
-    a time of its own (`level` reads `copy`); the second shuts the gate two days later."""
+def _copies(n, name, value):
+    """`n` members of the template `Cell`, `c1` to `cn`, each with its own `name`: `value(k)`."""
+    return tuple(line for k in range(1, n + 1) for line in (f'c{k}: Cell', f'    {name} = {value(k)} @shape'))
+
+
+def _cell(level):
+    """The template of the families of copies: a stock with three flows out of it or into it, a tally
+    that fills at a constant rate, and two events. The first event watches the tally, so each copy
+    opens its gate at a time of its own (its `level`); the second shuts the gate two days later. The
+    stock's outflow is capped at 10 fractions a day. The gate is a yes/no: the sparse integrator does
+    not read an enum in a moving rate yet (`engine/timeline/sparse.py`, `compiled`)."""
     return (
-        'Cell:  @shape',
+        'Cell:',
         '    "One cell."',
-        '    input inflow: fraction/day = 0.06 fraction/day in 0 fraction/day to 0.08 fraction/day  @shape',
-        '    input leak: ratio/day = 0.02 ratio/day in 0 ratio/day to 1 ratio/day  @shape',
-        '    input spillway: fraction/day = 0.15 fraction/day in 0.05 fraction/day to 0.3 fraction/day  @shape',
-        f'    let level: fraction = 0.02 + 0.3 * copy / {n}  @shape',
-        '    var water: fraction = 0.6 size 1  @shape',
-        '    var gate: "closed" | "open" = "closed"',
-        '    var spilled: fraction = 0 size 1  @shape',
-        '    var seeped: fraction = 0 size 1  @shape',
-        '    var arrived: fraction = 0 size 1  @shape',
-        '    flow arrive: -> arrived at inflow',
-        '    flow storm: -> water at inflow',
-        '    flow seep: water -> seeped at leak * water',
-        '    flow spill: water -> spilled at spillway while gate is "open"',
-        '    share water limit 10 fraction/day',
-        '    event open once when arrived >= level:  @shape',
+        '    input inflow: fraction/day = 0.06 fraction/day in [0 fraction/day, 0.08 fraction/day] @shape',
+        '    input leak: ratio/day = 0.02 ratio/day in [0 ratio/day, 1 ratio/day] @shape',
+        '    input spillway: fraction/day = 0.15 fraction/day in [0.05 fraction/day, 0.3 fraction/day] @shape',
+        f'    level: fraction = {level} @shape',
+        '    water: fraction = 0.6 in [0,] scale 1 @shape',
+        '        outflow.capacity = 10 fraction/day',
+        '    gate_open: bool = false',
+        '    spilled: fraction = 0 in [0,] scale 1 @shape',
+        '    seeped: fraction = 0 in [0,] scale 1 @shape',
+        '    arrived: fraction = 0 in [0,] scale 1 @shape',
+        '    flow arrive: SOURCE -> this.arrived',
+        '        request = this.inflow',
+        '    flow storm: SOURCE -> this.water',
+        '        request = this.inflow',
+        '    flow seep: this.water -> this.seeped',
+        '        request = formula(this.leak * this.water)',
+        '    flow spill: this.water -> this.spilled',
+        '        request = formula(this.spillway if this.gate_open else 0 fraction/day)',
+        '    open = event():',
         '        "The gate opens."',
-        '        gate = "open"',
-        '    event shut once after 2 days when count(open) > 0:  @shape',
+        '        when this.arrived >= this.level:',
+        '            this.open.start()',
+        '        after 0 h:',
+        '            this.gate_open = true',
+        '            this.shut.start()',
+        '    shut = event():',
         '        "The gate shuts."',
-        '        gate = "closed"',
+        '        after 2 days:',
+        '            this.gate_open = false',
     )
 
 
-_CELL_OUTPUTS = (
-    ('output spilled_total: fraction = sum(Cell.spilled)  @shape', '    "Water that all cells spill"'),
-    ('output seeped_total: fraction = sum(Cell.seeped)  @shape', '    "Water that seeps from all cells"'),
+_CELL_VALUES = (
+    ('spilled_total = formula(sum(Cell.instances.spilled)) @shape', '    "Water that all cells spill"'),
+    ('seeped_total = formula(sum(Cell.instances.seeped)) @shape', '    "Water that seeps from all cells"'),
 )
+
+
+def _level(n):
+    return lambda k: f'{0.02 + 0.3 * k / n!r}'
 
 
 def instances(n):
     """`n` independent copies of one template. Each copy has a stock, four flows, a tally and two
-    events at times of its own, and no copy reads another. Two outputs add a tally of every copy.
+    events at times of its own, and no copy reads another. Two values of the top level add a tally of
+    every copy.
 
-    It stresses how the cost of the compiler and of a run grows with the number of instances when
+    It stresses how the cost of the compiler and of a run grows with the number of members when
     nothing joins them: the work that a moment of one copy makes for the other copies is waste."""
     return _file(
         'Independent instances',
         f'{n} cells of one template, each with a gate that opens and shuts at a time of its own.',
         '10 days',
-        _cell(n),
-        (f'cells: Cell * {n}',),
-        *_CELL_OUTPUTS,
+        _cell(0.02),
+        _copies(n, 'level', _level(n)),
+        *_CELL_VALUES,
     )
 
 
 def aggregate_output(n):
-    """The cells of `instances`, and one formula of a separate thing that adds the water of every
-    copy. Only an output reads the formula: no rate, no event and no check does.
+    """The cells of `instances`, and one formula of a separate entity that adds the water of every
+    copy. Only a value of the top level reads the formula: no rate, no event and no check does.
 
     It stresses an aggregate that the run itself never needs: an engine that calculates every formula
     at each evaluation pays for it, and an engine that calculates only what is read does not."""
     return _file(
-        'An aggregate that only an output reads',
-        f'{n} cells of one template, and the water that they hold together, which only an output reads.',
+        'An aggregate that only a value of the top level reads',
+        f'{n} cells of one template, and the water that they hold together, which only one value reads.',
         '10 days',
-        _cell(n),
-        (f'cells: Cell * {n}',),
+        _cell(0.02),
+        _copies(n, 'level', _level(n)),
         (
-            'pool:  @shape',
+            'pool:',
             '    "What the cells hold together."',
-            '    let held: fraction = sum(Cell.water)  @shape',
+            '    held = formula(sum(Cell.instances.water)) @shape',
         ),
-        *_CELL_OUTPUTS,
-        ('output held: fraction = pool.held  @shape', '    "Water in all cells"', '    level'),
+        *_CELL_VALUES,
+        ('held = formula(pool.held) @shape', '    "Water in all cells"'),
     )
 
 
 def aggregate_guard(n):
-    """`n` copies with a yes/no state each, which the copy's own event sets at a time of its own, and
-    one event of a separate thing whose `when` counts the states of all copies. The count reaches its
+    """`n` copies with a yes/no each, which the copy's own event sets at a time of its own, and one
+    event of a separate entity whose trigger counts the flags of all copies. The count reaches its
     threshold only with the last copy, so the condition is read again after each of the `n` events.
 
     It stresses a guard over an aggregate: each moment changes one member, and an engine that reads
-    the whole list again at each moment makes the cost of a run grow with the square of `n`."""
+    the whole collection again at each moment makes the cost of a run grow with the square of `n`."""
     return _file(
         'An aggregate that a guard reads',
         f'{n} cells raise a flag one after the other, and a watcher counts the flags.',
         '10 days',
         (
-            'Cell:  @shape',
+            'Cell:',
             '    "One cell."',
-            '    input pace: fraction/day = 0.05 fraction/day in 0 fraction/day to 0.1 fraction/day  @shape',
-            f'    let due: h = 9 days * copy / {n}  @shape',
-            '    var flag = false  @shape',
-            '    var filled: fraction = 0 size 1  @shape',
-            '    flow fill: -> filled at pace while not flag',
-            '    event raise_flag once when t >= due:  @shape',
+            '    input pace: fraction/day = 0.05 fraction/day in [0 fraction/day, 0.1 fraction/day] @shape',
+            '    due: h = 9 days @shape',
+            '    flag: bool = false @shape',
+            '    filled: fraction = 0 in [0,] scale 1 @shape',
+            '    flow fill: SOURCE -> this.filled',
+            '        request = formula(0 fraction/day if this.flag else this.pace)',
+            '    raise_flag = event():',
             '        "The cell raises its flag."',
-            '        flag = true',
+            '        when t >= this.due:',
+            '            this.raise_flag.start()',
+            '        after 0 h:',
+            '            this.flag = true',
         ),
-        (f'cells: Cell * {n}',),
+        _copies(n, 'due', lambda k: f'{9 * 24 * k / n!r} h'),
         (
-            'watch:  @shape',
+            'watch:',
             '    "The watcher of the cells."',
-            '    var alarm: "off" | "on" = "off"',
-            f'    event sound once when count(Cell.flag) >= {n}:  @shape',
+            '    alarm: enum[OFF, ON] = OFF',
+            '    sound = event():',
             '        "Every cell has its flag up."',
-            '        alarm = "on"',
+            f'        when count(Cell.instances.flag) >= {n}:',
+            '            this.sound.start()',
+            '        after 0 h:',
+            '            this.alarm = ON',
         ),
-        ('output filled_total: fraction = sum(Cell.filled)  @shape', '    "Content of all cells"'),
+        ('filled_total = formula(sum(Cell.instances.filled)) @shape', '    "Content of all cells"'),
     )
 
 
 def aggregate_feedback(n):
-    """`n` copies whose one flow reads a formula of a separate thing, the mean level of all copies. So
-    the rate of each copy depends on the level of every copy. The copies start at different levels.
+    """`n` copies whose one flow reads a formula of a separate entity, the mean level of all copies.
+    So the rate of each copy depends on the level of every copy. The copies start at different
+    levels.
 
     It stresses a dense coupling: the Jacobian of the rates has no zero entry, and no copy can be
     solved alone."""
@@ -158,41 +191,41 @@ def aggregate_feedback(n):
         f'{n} cells grow together until their mean level reaches 1.',
         '10 days',
         (
-            'pool:  @shape',
+            'pool:',
             '    "What the cells hold together."',
-            f'    let mean: fraction = sum(Cell.level) / {n}  @shape',
+            f'    mean = formula(sum(Cell.instances.level) / {n}) @shape',
         ),
         (
-            'Cell:  @shape',
+            'Cell:',
             '    "One cell."',
-            '    input gain: ratio/day = 0.5 ratio/day in 0 ratio/day to 2 ratio/day  @shape',
-            f'    let start: fraction = 0.05 + 0.4 * copy / {n}  @shape',
-            '    var level: fraction = start size 1  @shape',
-            '    flow grow: -> level at gain * level * max(0, 1 - pool.mean)',
+            '    input gain: ratio/day = 0.5 ratio/day in [0 ratio/day, 2 ratio/day] @shape',
+            '    input start: fraction = 0.05 in [0, 1] @shape',
+            '    level: fraction = this.start in [0,] scale 1 @shape',
+            '    flow grow: SOURCE -> this.level',
+            '        request = formula(this.gain * this.level * max(0, 1 - pool.mean))',
         ),
-        (f'cells: Cell * {n}',),
-        ('output level_total: fraction = sum(Cell.level)  @shape', '    "Level of all cells"'),
+        _copies(n, 'start', lambda k: f'{0.05 + 0.4 * k / n!r}'),
+        ('level_total = formula(sum(Cell.instances.level)) @shape', '    "Level of all cells"'),
     )
 
 
 def _chain(n, rate):
-    """The vars and the flows of a chain of `n` compartments, `c1` to `cn`, that ends in the tally
-    `out`, an output: `rate(k)` is the rate of the flow out of compartment `k`. Only the first
-    compartment holds something at the start."""
-    lines = ['    var c1: fraction = 1 size 1  @shape']
-    lines += [f'    var c{k}: fraction = 0 size 1  @shape' for k in range(2, n + 1)]
-    lines += [
-        '    var out: fraction = 0 size 1  @shape',
-        '        "Content that left the chain"',
-        '    output out',
-    ]
+    """The stores and the flows of a chain of `n` compartments, `c1` to `cn`, that ends in the tally
+    `out`: `rate(k)` is the request of the flow out of compartment `k`. Only the first compartment
+    holds something at the start."""
+    lines = ['    c1: fraction = 1 in [0,] scale 1 @shape']
+    lines += [f'    c{k}: fraction = 0 in [0,] scale 1 @shape' for k in range(2, n + 1)]
+    lines += ['    out: fraction = 0 in [0,] scale 1 @shape', '        "Content that left the chain"']
     for k in range(1, n + 1):
-        lines.append(f'    flow f{k}: c{k} -> {f"c{k + 1}" if k < n else "out"} at {rate(k)}')
+        lines += [
+            f'    flow f{k}: this.c{k} -> this.{f"c{k + 1}" if k < n else "out"}',
+            f'        request = formula({rate(k)})',
+        ]
     return lines
 
 
 def stiff(n):
-    """A chain of `n` compartments in one thing. The flow out of each compartment saturates with its
+    """A chain of `n` compartments in one entity. The flow out of each compartment saturates with its
     content, so no flow is linear, and the flows out of the odd compartments are `stiffness` times as
     fast as those out of the even ones: 1000 times, an input.
 
@@ -203,19 +236,22 @@ def stiff(n):
         f'A chain of {n} compartments, by turns fast and slow.',
         '10 days',
         (
-            'chain:  @shape',
+            'chain:',
             '    "The chain."',
-            '    input slow: ratio/h = 0.02 ratio/h in 0.001 ratio/h to 1 ratio/h  @shape',
-            '    input stiffness: ratio = 1000 in 1 to 1000000  @shape',
-            '    input half: fraction = 0.5 in 0.1 to 10  @shape',
-            *_chain(n, lambda k: f'slow * {"stiffness * " if k % 2 else ""}c{k} / (half + c{k})'),
+            '    input slow: ratio/h = 0.02 ratio/h in [0.001 ratio/h, 1 ratio/h] @shape',
+            '    input stiffness: ratio = 1000 in [1, 1000000] @shape',
+            '    input half: fraction = 0.5 in [0.1, 10] @shape',
+            *_chain(
+                n,
+                lambda k: f'this.slow * {"this.stiffness * " if k % 2 else ""}this.c{k} / (this.half + this.c{k})',
+            ),
         ),
     )
 
 
 def events(n):
-    """A small model whose one event fires `n` times, at equal steps over the run. Each firing sets the
-    time of the next one and switches a lamp, which starts or stops a flow.
+    """A small model whose one event starts `n` times, at equal steps over the run. Each start sets
+    the time of the next one and switches a lamp, which starts or stops a flow.
 
     It stresses the density of events: the model keeps its size, and the number of moments, and of
     segments between them, grows with `n`."""
@@ -224,19 +260,23 @@ def events(n):
         f'A clock rings {n} times, and each ring switches a lamp.',
         '10 days',
         (
-            'clock:  @shape',
+            'clock:',
             '    "The clock."',
-            f'    let period: h = 240 h / {n + 0.5}  @shape',
-            '    var next: h = period in 0 h to 500 h  @shape',
-            '    var lamp: "off" | "on" = "off"',
-            '    var lit: h = 0 h size 240 h  @shape',
+            f'    period: h = {240 / (n + 0.5)!r} h @shape',
+            '    next: h = this.period in [0 h, 500 h] @shape',
+            '    lamp: enum[OFF, ON] = OFF',
+            '    lit: h = 0 h in [0 h,] scale 240 h @shape',
             '        "Time with the lamp on"',
-            '    output lit',
-            '    flow glow: -> lit at 1 while lamp is "on"',
-            '    event ring when t >= next:  @shape',
+            '    flow glow: SOURCE -> this.lit',
+            '        request = formula(1 if this.lamp == ON else 0)',
+            '    ring = event():',
             '        "The clock rings."',
-            '        next += period',
-            '        lamp = "off" if lamp is "on" else "on"',
+            '        when t >= this.next:',
+            '            this.ring.start()',
+            '            reset when false',
+            '        after 0 h:',
+            '            this.next += this.period',
+            '            this.lamp = OFF if this.lamp == ON else ON',
         ),
     )
 
@@ -248,78 +288,84 @@ RATIONING_UNITS = {'L': {'dimensions': {'volume': 1}, 'scale': 1, 'description':
 def _tank(n, title, ordered):
     """The model of `rationing` and of `priority`: `n` flows out of one tank. The first asks 20 L/h at
     the start, the second 40 L/h, and so on, and each asks more as its user has taken more, up to twice
-    as much. A `share` caps their total at 80% of what they ask at the start; `ordered` says whether it
-    serves them in order or in proportion. The tank fills at a quarter of what they ask at the start,
-    so it is empty after about 14 of the 48 hours, and from then the flows share the inflow."""
-    pairs = n * (n + 1)  # the flows ask 10 × pairs L/h together at the start
-    order = f' order {", ".join(f"use_{k}" for k in range(1, n + 1))}' if ordered else ''
+    as much. The tank's outflow is capped at 80% of what they ask at the start; `ordered` says whether
+    it serves them in order (`priority`) or in proportion (the default). The tank fills at a quarter of
+    what they ask at the start, so it is empty after about 14 of the 48 hours, and from then the flows
+    share the inflow."""
+    pairs = n * (n + 1)  # the flows ask 10 x pairs L/h together at the start
+    order = f'priority({", ".join(f"this.use_{k}" for k in range(1, n + 1))})'
     return _file(
         title,
         f'{n} users drain a tank that fills more slowly than they ask.',
         '48 h',
         (
-            'tank:  @shape',
+            'tank:',
             '    "The tank."',
-            f'    input inflow = {5 * pairs // 2} L/h in 0 L/h to {10 * pairs} L/h  @shape',
-            f'    input habit: L = {200 * n} L in 1 L to {100000 * n} L  @shape',
-            f'    var water: L = {80 * pairs} L size {80 * pairs} L  @shape',
-            *(f'    var used_{k}: L = 0 L size {2000 * n} L  @shape' for k in range(1, n + 1)),
-            '    flow fill: -> water at inflow',
+            f'    input inflow: L/h = {5 * pairs // 2} L/h in [0 L/h, {10 * pairs} L/h] @shape',
+            f'    input habit: L = {200 * n} L in [1 L, {100000 * n} L] @shape',
+            f'    water: L = {80 * pairs} L in [0 L,] scale {80 * pairs} L @shape',
+            f'        outflow.capacity = {8 * pairs} L/h',
+            *((f'        outflow.allocation = {order}',) if ordered else ()),
+            *(f'    used_{k}: L = 0 L in [0 L,] scale {2000 * n} L @shape' for k in range(1, n + 1)),
+            '    flow fill: SOURCE -> this.water',
+            '        request = this.inflow',
             *(
-                f'    flow use_{k}: water -> used_{k} at {20 * k} L/h * (1 + used_{k} / (habit + used_{k}))'
+                line
                 for k in range(1, n + 1)
+                for line in (
+                    f'    flow use_{k}: this.water -> this.used_{k}',
+                    f'        request = formula({20 * k} L/h * (1 + this.used_{k} / (this.habit + this.used_{k})))',
+                )
             ),
-            f'    share water limit {8 * pairs} L/h{order}',
         ),
         (
-            f'output used: L = {" + ".join(f"tank.used_{k}" for k in range(1, n + 1))}  @shape',
+            f'used = formula({" + ".join(f"tank.used_{k}" for k in range(1, n + 1))}) @shape',
             '    "Water that the users take"',
         ),
     )
 
 
 def rationing(n):
-    """`n` flows out of one tank, which a `share` serves in proportion to what they ask. Each flow asks
-    more as its user has taken more, the share caps their total, and the tank fills more slowly than
-    they ask: it is empty after about 14 of the 48 hours, and from then the flows share the inflow.
+    """`n` flows out of one tank, whose outflow serves them in proportion to what they ask. Each flow
+    asks more as its user has taken more, the outflow's capacity caps their total, and the tank fills
+    more slowly than they ask: it is empty after about 14 of the 48 hours, and from then the flows
+    share the inflow.
 
-    It stresses the allocation: each evaluation of the rates applies the cap, and the stock rests on its
-    bound, where the flows are limited to what comes in. The rates read the state, so the segments are
-    numerical."""
+    It stresses local sharing: each change of the rates applies the cap, and the stock rests on its
+    bound, where the flows are limited to what comes in. The rates read the state, so they move."""
     return _tank(n, 'Rationing at a bound', ordered=False)
 
 
 def priority(n):
-    """The tank of `rationing`, with a `share` that serves the flows in order: the first flows get all
-    that they ask, one flow gets what is left, and the flows after it get nothing. The flow at which
-    the share cuts changes as the users ask more.
+    """The tank of `rationing`, whose outflow serves the flows in order (`priority`): the first flows
+    get all that they ask, one flow gets what is left, and the flows after it get nothing. The flow at
+    which the cap cuts changes as the users ask more.
 
     It stresses the allocation in order, at the cap and at the bound of the stock, with requests that
-    change at each evaluation of the rates."""
+    move."""
     return _tank(n, 'Priority at a bound', ordered=True)
 
 
 def compartments(n):
-    """A chain of `n` compartments in one thing. The rate of each flow is proportional to the content
+    """A chain of `n` compartments in one entity. The rate of each flow is proportional to the content
     of its compartment, with one of three coefficients.
 
-    It stresses the exact solution of a linear system of compartments, which today's engine finds from
-    the structure and solves by a matrix exponential, with no numerical step."""
+    It stresses a linear system of compartments, whose rates read the state."""
     return _file(
         'A linear chain of compartments',
         f'A chain of {n} compartments, each of which drains in proportion to its content.',
         '10 days',
         (
-            'chain:  @shape',
+            'chain:',
             '    "The chain."',
-            '    input pace: ratio/h = 0.05 ratio/h in 0.001 ratio/h to 1 ratio/h  @shape',
-            *_chain(n, lambda k: f'pace * {1 + k % 3} * c{k}'),
+            '    input pace: ratio/h = 0.05 ratio/h in [0.001 ratio/h, 1 ratio/h] @shape',
+            *_chain(n, lambda k: f'this.pace * {1 + k % 3} * this.c{k}'),
         ),
     )
 
 
 def formulas(n):
-    """A chain of `n` formulas in one thing: the first reads a stock, and each other one reads the
+    """A chain of `n` formulas in one entity: the first reads a stock, and each other one reads the
     formula before it, once, and the stock. Three flows read the last formula, the middle one and the
     first.
 
@@ -330,29 +376,30 @@ def formulas(n):
         f'A tank whose flows read a chain of {n} formulas.',
         '10 days',
         (
-            'tank:  @shape',
+            'tank:',
             '    "The tank."',
-            '    input pace: ratio/h = 0.02 ratio/h in 0 ratio/h to 1 ratio/h  @shape',
-            '    var level: fraction = 1 size 1  @shape',
-            '    var passed: fraction = 0 size 1  @shape',
+            '    input pace: ratio/h = 0.02 ratio/h in [0 ratio/h, 1 ratio/h] @shape',
+            '    level: fraction = 1 in [0,] scale 1 @shape',
+            '    passed: fraction = 0 in [0,] scale 1 @shape',
             '        "Content that left the tank"',
-            '    output passed',
-            '    var seen: fraction = 0 size 10  @shape',
-            '    var noted: fraction = 0 size 10  @shape',
-            '    let f1: fraction = level / (1 + level)  @shape',
-            *(f'    let f{k}: fraction = (f{k - 1} + level) / (1 + level)  @shape' for k in range(2, n + 1)),
-            f'    flow drain: level -> passed at pace * f{n}',
-            f'    flow see: -> seen at pace * f{max(1, n // 2)}',
-            '    flow note: -> noted at pace * f1',
+            '    seen: fraction = 0 in [0,] scale 10 @shape',
+            '    noted: fraction = 0 in [0,] scale 10 @shape',
+            '    f1 = formula(this.level / (1 + this.level)) @shape',
+            *(f'    f{k} = formula((this.f{k - 1} + this.level) / (1 + this.level)) @shape' for k in range(2, n + 1)),
+            '    flow drain: this.level -> this.passed',
+            f'        request = formula(this.pace * this.f{n})',
+            '    flow see: SOURCE -> this.seen',
+            f'        request = formula(this.pace * this.f{max(1, n // 2)})',
+            '    flow note: SOURCE -> this.noted',
+            '        request = formula(this.pace * this.f1)',
         ),
     )
 
 
-# ---- the families whose instances are the rows of a table (docs/language.md, §2.3) --------------------
+# ---- the families whose members are the rows of a table (docs/language.md) ----------------------------
 #
-# The four families of instances again, each with its cells from a table: the value that a copy took
-# from its number (`copy`) is a column. A table can have 100,000 rows; the flat structure of such a
-# model is not made, and the harness measures the hybrid core of it (`napkin/model/hybrid.py`).
+# The four families of copies again, each with its cells from a table: the value that each copy wrote
+# by hand is a column of the table.
 
 
 def _table(n, header, value):
@@ -360,56 +407,51 @@ def _table(n, header, value):
     return '\n'.join([header, *(repr(value(k)) for k in range(1, n + 1))]) + '\n'
 
 
-def _from_table(text, n, old, new):
-    """The text of a family of copies with its cells from the table `cells.csv`, and one line of its
-    template changed: the value that read the number of the copy is a value that the table gives."""
-    if text.count(old) != 1 or text.count(f'cells: Cell * {n}') != 1:
-        raise ValueError(f'the family has no line {old!r}')
-    return text.replace(old, new).replace(f'cells: Cell * {n}', 'cells: Cell from "cells.csv"')
+def _from_table(text, n):
+    """The text of a family of copies with its cells from the table `cells.csv` in place of the
+    members written by hand."""
+    first, last = text.index('c1: Cell'), text.index('\n\n', text.index(f'c{n}: Cell'))
+    return text[:first] + 'cells: Cell from "cells.csv"' + text[last:]
 
 
 def table_instances(n):
     """`instances` with its `n` cells from a table: the level at which each gate opens is a column.
 
-    It stresses the compile of many rows of one shape, with no list over them but two outputs."""
-    old = f'    let level: fraction = 0.02 + 0.3 * copy / {n}  @shape'
-    return _from_table(instances(n), n, old, '    let level: fraction = 0.02  @shape')
+    It stresses the compile of many rows of one shape, with no collection over them but two sums."""
+    return _from_table(instances(n), n)
 
 
 def table_aggregate_output(n):
     """`aggregate_output` with its `n` cells from a table.
 
-    It stresses a sum over every row that only an output reads: one node of the hybrid core."""
-    old = f'    let level: fraction = 0.02 + 0.3 * copy / {n}  @shape'
-    return _from_table(aggregate_output(n), n, old, '    let level: fraction = 0.02  @shape')
+    It stresses a sum over every row that only a value of the top level reads."""
+    return _from_table(aggregate_output(n), n)
 
 
 def table_aggregate_guard(n):
     """`aggregate_guard` with its `n` cells from a table: the time of each flag is a column.
 
     It stresses a guard over every row while each event changes one row."""
-    old = f'    let due: h = 9 days * copy / {n}  @shape'
-    return _from_table(aggregate_guard(n), n, old, '    let due: h = 9 days  @shape')
+    return _from_table(aggregate_guard(n), n)
 
 
 def table_aggregate_feedback(n):
     """`aggregate_feedback` with its `n` cells from a table: the start level of each cell is a column.
 
     It stresses a sum over every row that feeds the rate of every row."""
-    old = f'    let start: fraction = 0.05 + 0.4 * copy / {n}  @shape'
-    return _from_table(aggregate_feedback(n), n, old, '    let start: fraction = 0.05  @shape')
+    return _from_table(aggregate_feedback(n), n)
 
 
 def _levels(n):
-    return {'cells.csv': _table(n, 'level: fraction @shape', lambda k: 0.02 + 0.3 * k / n)}
+    return {'cells.csv': _table(n, 'level: fraction', lambda k: 0.02 + 0.3 * k / n)}
 
 
 def _dues(n):
-    return {'cells.csv': _table(n, 'due: h @shape', lambda k: 9 * 24 * k / n)}
+    return {'cells.csv': _table(n, 'due: h', lambda k: 9 * 24 * k / n)}
 
 
 def _starts(n):
-    return {'cells.csv': _table(n, 'start: fraction @shape', lambda k: 0.05 + 0.4 * k / n)}
+    return {'cells.csv': _table(n, 'start: fraction', lambda k: 0.05 + 0.4 * k / n)}
 
 
 @dataclass(frozen=True)

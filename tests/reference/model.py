@@ -14,9 +14,9 @@ checks no dimension: that is the compiler's work.
 There is no `none`: a field declared without a value fails when it is read (decision D4).
 
 A model that `from_program.py` makes from a program of `napkin.program` also keeps the origin of
-each event, step, trigger, solver and move, the declared unit of each field, the program's table of
-units and the site of each draw and choice, so that the trace and the messages of a run name the
-parts of the program.
+each event, step, trigger, solver and statement, the declared unit of each field, the program's table
+of units and the site of each draw and choice, so that the trace and the messages of a run name the
+parts of the program, and a breakpoint names the place where a run stops (`Config.breakpoints`).
 """
 
 from dataclasses import dataclass, field
@@ -404,6 +404,7 @@ class Assign:
     target: E
     op: str  # '=', '+=' or '-='
     value: E
+    origin: str = ''
 
 
 @dataclass
@@ -412,6 +413,7 @@ class Start:
 
     event: E
     args: tuple = ()
+    origin: str = ''
 
 
 @dataclass
@@ -431,6 +433,7 @@ class Branch:
     condition: E
     then: list
     other: list = field(default_factory=list)
+    origin: str = ''
 
 
 @dataclass
@@ -449,6 +452,7 @@ class Switch:
     selector: E
     cases: list
     default: list = None
+    origin: str = ''
 
 
 def set_(target, expr):
@@ -669,11 +673,15 @@ class Model:
 
 @dataclass
 class Config:
-    """One execution: the mode, the seed, the overrides, the controllers, the choices, the limits.
+    """One execution: the mode, the seed, the overrides, the controllers, the choices, the limits
+    and the breakpoints.
 
     `controllers` names the actors that a person controls in this run; the choices of any other
     actor come from its forecast. `choices` maps the key of a decision (or an actor's name, for all
-    of its decisions) to the chosen value. The three limits protect a run (decision D6)."""
+    of its decisions) to the chosen value. The three limits protect a run (decision D6). Each
+    breakpoint is (origin, occurrence): the run stops before the part of that origin (a statement
+    in a stage, a stage, or an event, at the first stage of each of its occurrences) runs for that
+    occurrence, or for any with None (`Run.resume`)."""
 
     mode: str = 'median'  # 'median' | 'sampled'
     seed: int = 0
@@ -684,3 +692,4 @@ class Config:
     max_occurrences: int = 1_000_000  # starts of one bound event over the run
     max_active: int = 100_000  # occurrences of one bound event alive at once
     max_rounds: int = 1_000  # rounds at one time
+    breakpoints: list = field(default_factory=list)  # (origin, occurrence or None)

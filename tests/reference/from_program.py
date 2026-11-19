@@ -11,6 +11,8 @@ of napkin: no `napkin.core.evaluation`, no `napkin.expressions`, nothing of `nap
 - `config_of(program, configuration)` gives the oracle's `Config`: the inputs, the mode and the
   seed, the actors that a player controls, the picks (keyed by site and occurrence, as the oracle
   keys a choice) and the limits. Budgets and numerical settings do not apply to exact arithmetic.
+- `run_of(program, configuration, stops)` runs it, and stops at each breakpoint of `stops` in turn,
+  makes its edits and resumes (item 15 of the plan's changes after G0).
 - `value_at(run, program, key, t)` reads the value at a key of the record (`record.Key`) at a time,
   stated in the declared unit of that value, and `traced(run, kind, part)` gives the times and the
   rounds of the trace entries of a kind (`commit`, `finish`, ...) for a part named by its origin.
@@ -81,6 +83,7 @@ KINDS = {  # a kind of the record's trace -> the kind of the oracle's trace
     'draw': 'draw',
     'choice': 'choice',
     'move': 'move',
+    'edit': 'edit',
 }
 FIELD_KINDS = {
     p.INPUT: 'input',
@@ -334,16 +337,16 @@ class _Translation:
                 value = proportional()
             else:
                 value = self.expr(s.value)
-            return Assign(self.path(s.target), s.op, value)
+            return Assign(self.path(s.target), s.op, value, s.origin)
         if isinstance(s, p.Move):
             return Move(self.expr(s.amount), self.path(s.source), self.path(s.destination), s.origin)
         if isinstance(s, p.Start):
-            return Start(self.path(s.event), tuple(self.expr(arg) for arg in s.args))
+            return Start(self.path(s.event), tuple(self.expr(arg) for arg in s.args), s.origin)
         if isinstance(s, p.If):
-            return Branch(self.expr(s.test), self.statements(s.then), self.statements(s.orelse))
+            return Branch(self.expr(s.test), self.statements(s.then), self.statements(s.orelse), s.origin)
         if isinstance(s, p.Switch):
             cases = [Case(c.member, self.statements(c.body), self.expr(c.guard)) for c in s.cases]
-            return Switch(self.expr(s.selector), cases, self.statements(s.orelse) or None)
+            return Switch(self.expr(s.selector), cases, self.statements(s.orelse) or None, s.origin)
         raise NotCovered(f'no statement of a program: {s!r}')
 
     def step(self, step):
@@ -454,14 +457,28 @@ def config_of(program, configuration):
     )
 
 
-def run_of(program, configuration):
-    """Run a program on the oracle: the run, and the failure that stopped it, or None."""
+def run_of(program, configuration, stops=()):
+    """Run a program on the oracle: the run, and the failure that stopped it, or None. Each stop is
+    (origin, occurrence or None, edits): the run stops at that breakpoint (`Config.breakpoints`),
+    which then leaves the list, makes each edit, a `record.Key` of a stored value of a member or an
+    occurrence and its new value in the value's declared unit, and resumes. A stop that the run
+    never reaches is a RunFailed."""
     try:
         run = Run(model_of(program), config_of(program, configuration))
     except RunFailed as e:
         return None, e
+    run.breakpoints = [(origin, occurrence) for origin, occurrence, _ in stops]
     try:
         run.run()
+        for origin, occurrence, edits in stops:
+            if run.paused is None or run.paused.get('why') != 'breakpoint':
+                raise RunFailed(f'the run never stops at {origin}')
+            run.breakpoints.remove((origin, occurrence))
+            for key, value in edits:
+                (name,) = key.steps
+                exact = _exact(value) * scale_at(program, key) if isinstance(value, int | float | Fraction) else value
+                run.edit(key.owner, name, exact)
+            run.resume()
     except RunFailed as e:
         return run, e
     return run, None

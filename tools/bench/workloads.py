@@ -19,8 +19,7 @@ from .families import FAMILIES
 # The value of `Workload.run` that asks for every run of the model. No run has this name: a name is
 # a word of letters, digits and `_`.
 ALL = '*'
-# The folder of the examples in the checkout; the owner of an example is `examples.<name>`, as in a
-# comparison (`tools/compare.py`).
+# The folder of the examples in the checkout; the owner of an example is `examples.<name>`.
 EXAMPLES = 'examples'
 RUNS = ('first', 'all')
 

@@ -2,11 +2,11 @@
 `tools/bench/__init__.py`).
 
 Three tasks measure one workload, each in a process of its own (`isolated`): `compile_task` the cold
-compile, `first_task` the time to the first result, and `warm_task` the warm runs, the study of the
-run with its report, where the time of that goes and, when samples are asked, a Monte Carlo study. A task is a plain mapping and gives a plain
-mapping back, so it crosses the process boundary as JSON. A task that raises gives `{'failed': …}`
-(`perform`), and so does a process that ends without a result or that passes its time limit: no
-workload stops the harness.
+compile, `first_task` the time to the first result, and `warm_task` the warm runs, the report of a run,
+where the time of a run and its report goes and, when samples are asked, a Monte Carlo study. A task is
+a plain mapping and gives a plain mapping back, so it crosses the process boundary as JSON. A task that
+raises gives `{'failed': ...}` (`perform`), and so does a process that ends without a result or that
+passes its time limit: no workload stops the harness.
 
 `bench` measures a list of workloads and `document` adds the revision, the machine and the settings.
 `attribution` is a pure function of a profile's statistics: a test gives it made-up statistics.
@@ -35,14 +35,15 @@ from .workloads import ALL
 # in this revision: a function is of the first group that names its file. A change that moves code
 # between files changes `FILES` with it, and the document of each run holds the `FILES` that made it,
 # so two documents compare by role. The roles:
-# - `analysis`: what the compiler and the checks find out about a model, a run or a segment;
-# - `expressions`: the evaluation of the model's expressions and of the programs made from them;
-# - `field`: the rates of the flows, with the rationing and the allocation at the bounds;
-# - `solver`: the steps of the numerical segments and the search for the roots;
+# - `analysis`: what the compiler, the program's checker and its proofs find out about a model;
+# - `expressions`: the evaluation of the model's expressions, of its collections and of its reads;
+# - `field`: the rates of the flows: local sharing, the network, the declared solvers and the solve
+#   library;
+# - `solver`: the steps of the integrators and the search for the roots;
 # - `linear_algebra`: factorizations, solves and matrix exponentials, wherever they are called from;
-# - `scheduler`: the timeline: the loop of a run, the moments and their rules, the record of the
-#   trajectory;
-# - `reporting`: the outcomes, the health, the evidence trail and the peaks of a report;
+# - `scheduler`: the timeline: the loop of a run, the moments and their rounds, the occurrences, the
+#   triggers and the record;
+# - `reporting`: the report of a record;
 # - `other`: the time that no function of a group calls for.
 GROUPS = ('analysis', 'expressions', 'field', 'solver', 'linear_algebra', 'scheduler', 'reporting', 'other')
 EXPRESSIONS = 'napkin/expressions.py'
@@ -63,27 +64,40 @@ FILES = (
         'analysis',
         (
             'napkin/model/',
+            'napkin/program/',
             *(f'napkin/core/{name}.py' for name in ('expr', 'ops', 'units', 'intervals', 'faces')),
         ),
     ),
-    ('expressions', ('napkin/core/evaluation.py', 'napkin/core/arrays.py')),
+    (
+        'expressions',
+        (
+            'napkin/core/evaluation.py',
+            'napkin/core/arrays.py',
+            'napkin/engine/timeline/reads.py',
+            'napkin/engine/timeline/collections.py',
+        ),
+    ),
     (
         'field',
         (
             'napkin/engine/allocation.py',
+            'napkin/engine/solve/',
+            *(f'napkin/engine/timeline/{name}.py' for name in ('network', 'selection', 'declared')),
             *(
                 f'napkin/engine/continuous/{name}.py'
                 for name in ('fields', 'kernels', 'bounds', 'system', 'highs')
             ),
         ),
     ),
-    ('solver', ('napkin/engine/continuous/integrate.py', 'scipy/integrate/')),
+    (
+        'solver',
+        ('napkin/engine/continuous/integrate.py', 'napkin/engine/timeline/sparse.py', 'scipy/integrate/'),
+    ),
     ('linear_algebra', ('scipy/sparse/', 'scipy/linalg/', 'numpy/linalg/')),
     (
         'scheduler',
         (
             'napkin/engine/timeline/',
-            'napkin/engine/runtime.py',
             # The step of a component between two moments.
             'napkin/engine/continuous/segment.py',
         ),
@@ -100,13 +114,6 @@ LINEAR = ('SuperLU', '_superlu', '_umath_linalg', 'lapack', 'blas')
 LONGEST = 300
 SHOWN = 120
 STUDY_SEED = 0
-# The slot of the shape classes of a compile, for a workload with no table: the rows of a table are
-# what the compiler groups in classes (`napkin/model/hybrid.py`), so such a workload has none to build.
-NO_SHAPE_CLASSES = {'available': False}
-# The most rows of a table for which the harness asks for the flat structure (the compile, the first
-# result and the warm process): a flat structure writes each row out, and a list over more rows than
-# a few hundred is over the limit of the size of an expression.
-FLAT_ROWS = 300
 
 
 # --- What one process measures ----------------------------------------------------------------------
@@ -147,30 +154,38 @@ def failure(exc):
     return {'failed': f'{type(exc).__name__}: {shortened(exc, LONGEST)}'}
 
 
-def size(rs, trajectory):
-    """The size of one run: the parts of its resolved structure and the work of its trajectory. `rates`
-    are the flows from outside into a tally, which the structure keeps apart from `flows`;
-    `segment_kinds` counts the segments by the kind of their solution (a closed form or a numerical
-    one)."""
-
-    kinds = Counter(type(segment.solution).__name__ for segment in trajectory._segments)
+def size(program, record):
+    """The size of one run: the parts of its program (templates, members, values, flows and events,
+    each counted once for its template) and the work of its record: its histories, their pieces, and
+    the entries of its trace, in all and by kind."""
+    templates = program.templates
+    kinds = Counter(entry.kind for entry in record.trace)
     return {
-        'quantities': len(rs.quantities),
-        'rules': len(rs.rules),
-        'flows': len(rs.flows),
-        'rates': len(rs.rates),
-        'formulas': len(rs.computed),
-        'evaluations': trajectory.evaluations,
-        'trace': len(trajectory.trace),
-        'segments': len(trajectory._segments),
-        'segment_kinds': dict(sorted(kinds.items())),
+        'templates': len(templates),
+        'members': sum(len(template.members) for template in templates),
+        'values': sum(len(template.values) for template in templates) + len(program.root),
+        'flows': sum(len(template.flows) for template in templates),
+        'events': sum(len(template.events) for template in templates),
+        'histories': len(record.histories),
+        'pieces': sum(len(history.pieces) for history in record.histories),
+        'trace': len(record.trace),
+        'trace_kinds': dict(sorted(kinds.items())),
     }
 
 
+def runs_of(model):
+    """The runs of a compiled model: the names of its named runs, else [None] for its default run."""
+    return [run.name for run in model.declared.runs] or [None]
+
+
+def configured(model, run):
+    """The configuration of a run of a compiled model (None for its default run)."""
+    return model.configuration if run is None else model.configure(run)
+
+
 def compile_task(task, save=None):
-    """The cold compile of the model file `task['path']`: the seconds of `napkin.load_scenario`, the
-    seconds that loading the compiler's modules took before it, the peak memory of the process, and
-    the names of the model's runs in their order."""
+    """The cold compile of `task['path']`: the seconds of `napkin.load_scenario` and of the imports
+    before it, the peak memory, and the model's runs."""
     began = time.perf_counter()
     import napkin
 
@@ -181,51 +196,23 @@ def compile_task(task, save=None):
         'seconds': time.perf_counter() - imported,
         'import_seconds': imported - began,
         'peak_mb': peak_mb(),
-        'runs': list(model.runs),
+        'runs': runs_of(model),
     }
-
-
-def classes_task(task, save=None):
-    """The hybrid core of the model file `task['path']` (`napkin.model.hybrid.compile`): the seconds
-    of the classes of its tables, of the compile of one instance for each class and of the values of
-    each row; the seconds that loading the modules took before; the peak memory of the process; and
-    the number of classes, of instances in them and of things that the compiler lowered."""
-    began = time.perf_counter()
-    from napkin.model import hybrid
-
-    compile_core = hybrid.compile
-    imported = time.perf_counter()
-    core = compile_core(task['path'])
-    return {
-        'available': True,
-        'seconds': time.perf_counter() - imported,
-        'import_seconds': imported - began,
-        'peak_mb': peak_mb(),
-        'classes': len(core.families),
-        'instances': sum(len(family) for family in core.families),
-        'things_lowered': len(core.model.entities),
-    }
-
-
-def _first_run(model, task):
-    return task.get('run') or next(iter(model.runs))
 
 
 def first_task(task, save=None):
     """The time to the first result: the seconds from `task['started']`, the wall-clock time at which
-    the harness started this process, to the end of the first run of `task['run']` (or of the model's
-    first run). `parts` splits them: the start of the process, the imports, the compile, the run."""
+    the harness started this process, to the end of the run `task['run']` (None: the default run).
+    `parts` splits them: the start of the process, the imports, the compile, the run."""
     began = time.perf_counter()
     import napkin
-    from napkin.engine.runtime import simulate
-    from napkin.model.ir import thaw
 
     load = napkin.load_scenario
     imported = time.perf_counter()
     model = load(task['path'])
     compiled = time.perf_counter()
-    run = _first_run(model, task)
-    simulate(model.resolve(run), thaw(model.library))
+    run = task.get('run')
+    napkin.run(model.program, configured(model, run))
     done = time.perf_counter()
     seconds = time.time() - task['started']
     return {
@@ -252,16 +239,15 @@ def _part(make):
 def warm_task(task, save):
     """The warm measurements of `task['run']` in one process, after the compile.
 
-    - `warm`: the seconds of each of `task['repeats']` repeats of resolve and simulate in their order,
-      their median and their minimum, the peak memory of the process after them, and the size of the
-      run. This is the engine alone.
-    - `report`: what one run costs a user, once: the seconds of the study of the run
-      (`evaluate_study`: the resolution, the checks, the run and the checks of its outcomes) and the
-      seconds of its report (`sample_result`).
-    - `where`: one more study and report under cProfile, by group (`attribution`).
-    - `every_run`: with `task['survey']`, the seconds of one resolve and simulate of each run of the
-      model, in the model's order, with its evaluations and its trace entries, and the name of the
-      slowest. A run that fails is a failure record, and the survey goes on.
+    - `warm`: the seconds of each of `task['repeats']` repeats of the run (`napkin.run`) in their
+      order, their median and their minimum, the peak memory of the process after them, and the size
+      of the run. This is the engine alone.
+    - `report`: what a report of a run costs, once: the seconds of the report of every named value of
+      the run at its start and its horizon (`napkin.report`), with its evidence trails and near-ties.
+    - `where`: one more run and report under cProfile, by group (`attribution`).
+    - `every_run`: with `task['survey']`, the seconds of one run of each run of the model, in the
+      model's order, with its histories and its trace entries, and the name of the slowest. A run that
+      fails is a failure record, and the survey goes on.
     - `batch`: the Monte Carlo study of `task['samples']` samples on `task['jobs']` processes, when
       samples are asked (`study`). It samples the run of the task, or, with a survey, the slowest run
       that the survey found.
@@ -269,47 +255,40 @@ def warm_task(task, save):
     `save` gets the result so far after each measurement, so a slow profile or study cannot lose the
     measurements before it."""
     import napkin
-    from napkin.engine import evaluate_study, sample_result
-    from napkin.engine.runtime import simulate
-    from napkin.model.ir import thaw
+    from napkin.commands.run import named
 
     model = napkin.load_scenario(task['path'])
-    run = _first_run(model, task)
-    library = thaw(model.library)
+    run = task.get('run')
+    configuration = configured(model, run)
 
     def once():
-        rs = model.resolve(run)
-        return rs, simulate(rs, library)
-
-    def studied():
-        study = evaluate_study(model, runs=[run])
-        if not study.admissible:
-            raise RuntimeError(f'the study is rejected: {_first_error(study.diagnostics)}')
-        return study
+        return napkin.run(model.program, configuration)
 
     seconds = []
     for _ in range(task['repeats']):
         started = time.perf_counter()
-        rs, trajectory = once()
+        record = once()
         seconds.append(time.perf_counter() - started)
+    if record.failure is not None:
+        raise RuntimeError(f'the run stops: {record.failure.detail("message")}')
     warm = {
         'median_seconds': statistics.median(seconds),
         'min_seconds': min(seconds),
         'seconds': seconds,
         'repeats': len(seconds),
         'peak_mb': peak_mb(),
-        'size': size(rs, trajectory),
+        'size': size(model.program, record),
     }
+    paths = named(model, record)
+    times = (0, configuration.request.horizon)
+
+    def reported(found):
+        return napkin.report(found, model.program, configuration, paths, times, model=model.declared)
 
     def report():
         started = time.perf_counter()
-        study = studied()
-        between = time.perf_counter()
-        found = sample_result(study)
-        done = time.perf_counter()
-        if found.get('status') == 'reporting_failure':
-            raise RuntimeError(f'the report failed: {_first_error(found.get("diagnostics"))}')
-        return {'study_seconds': between - started, 'report_seconds': done - between, 'peak_mb': peak_mb()}
+        reported(record)
+        return {'report_seconds': time.perf_counter() - started, 'values': len(paths), 'peak_mb': peak_mb()}
 
     def where():
         from napkin import expressions
@@ -317,7 +296,7 @@ def warm_task(task, save):
         profile = cProfile.Profile()
         profile.enable()
         try:
-            sample_result(studied())
+            reported(once())
         finally:
             profile.disable()
         spans = analysis_spans(Path(expressions.__file__).read_text(encoding='utf-8'))
@@ -332,18 +311,20 @@ def warm_task(task, save):
 
     def survey():
         runs = {}
-        for name in model.runs:
+        for name in runs_of(model):
             started = time.perf_counter()
             try:
-                trajectory = simulate(model.resolve(name), library)
+                done = napkin.run(model.program, configured(model, name))
             except Exception as exc:
-                runs[name] = failure(exc)
+                runs[str(name)] = failure(exc)
                 continue
-            seconds = time.perf_counter() - started
-            runs[name] = {
-                'seconds': seconds,
-                'evaluations': trajectory.evaluations,
-                'trace': len(trajectory.trace),
+            if done.failure is not None:
+                runs[str(name)] = {'failed': f'the run stops: {done.failure.detail("message")}'}
+                continue
+            runs[str(name)] = {
+                'seconds': time.perf_counter() - started,
+                'histories': len(done.histories),
+                'trace': len(done.trace),
             }
         timed = {name: item['seconds'] for name, item in runs.items() if 'seconds' in item}
         return {'runs': runs, 'slowest': max(timed, key=timed.get) if timed else None}
@@ -353,76 +334,55 @@ def warm_task(task, save):
     samples = task.get('samples')
     if samples:
         # With a survey, the study is of the model's slowest run: a target names the heaviest run.
-        sampled = found['every_run'].get('slowest') or run
+        slowest = found['every_run'].get('slowest')
+        sampled = run if slowest in (None, 'None') else slowest
         found['batch'] = _part(lambda: study(model, sampled, samples, task.get('jobs') or 1))
     else:
         found['batch'] = {'skipped': 'no samples asked'}
     return found
 
 
-def _first_error(diagnostics):
-    errors = [item for item in diagnostics or () if item.get('severity', 'error') == 'error']
-    first = errors[0] if errors else {}
-    return f'{first.get("code")}: {first.get("message")}'
-
-
 def study(model, run, samples, jobs=1):
-    """The throughput of a Monte Carlo study of one run, `napkin.spread.spread` with `samples` random
-    samples on `jobs` processes.
+    """The throughput of a Monte Carlo study of one run (`napkin.spread.spread`) with `samples`
+    samples on `jobs` processes, of the values that the run names at its horizon.
 
-    `seconds` is the whole study, and its three parts are apart: `central_seconds` (the central run
-    with its checks, in this process), `check_seconds` (each sample resolved and checked) and
-    `run_seconds` (each sample run, and the summaries). `samples_per_second` is the samples over the
-    last two: the central run is paid once, whatever the number of samples.
+    `seconds` is the whole study; `samples_per_second` the samples over it, the central run included,
+    which is paid once. With more than one process, the study runs twice and the numbers are of the
+    second: the first starts the processes of the pool (`first_seconds`). The peak memory is that of
+    this process, without the processes of the pool. A run that draws nothing has no spread: it is
+    skipped."""
+    import napkin
+    from napkin.commands.run import named
 
-    With more than one process, the study runs twice, and the numbers are of the second. A pool starts
-    a process when a task finds none idle, and each process compiles the model for its first task: the
-    first study pays for that (`first_seconds`), and it gives the pool more tasks at once than it has
-    processes, so the second study starts none (`processes` is the pool's size between the two).
-
-    The peak memory is that of this process, without the processes of the pool. A run that the study
-    does not sample has no uncertain input: it is skipped."""
-    from napkin import spread as spreads
+    configuration = configured(model, run)
+    paths = named(model, napkin.run(model.program, configuration))
 
     def sampled():
-        marks = {}
         started = time.perf_counter()
-        found = spreads.spread(
-            model,
-            [run],
-            samples=samples,
-            seed=STUDY_SEED,
-            method='random',
-            jobs=jobs,
-            progress=lambda phase, done, total: marks.setdefault(phase, time.perf_counter()),
-        )
-        return found, started, marks, time.perf_counter()
+        found = napkin.spread.spread(model, paths, run=run, samples=samples, seed=STUDY_SEED, jobs=jobs)
+        return found, time.perf_counter() - started
 
-    found, started, marks, ended = sampled()
+    found, seconds = sampled()
     first = None
-    if jobs > 1 and found['status'] == 'completed' and found['result'].samples.get(run):
-        first = {'first_seconds': ended - started, 'processes': len(spreads._pool(jobs)._processes)}
-        found, started, marks, ended = sampled()
-    if found['status'] != 'completed':
-        return failure(RuntimeError(f'the study is {found["status"]}: {_first_error(found["diagnostics"])}'))
-    if not found['result'].samples.get(run):
-        return {'skipped': 'no uncertain input'}
-    checking, running = marks.get('checking', ended), marks.get('running', ended)
+    if jobs > 1 and found.refused is None:
+        first = {'first_seconds': seconds}
+        found, seconds = sampled()
+    if found.refused is not None:
+        return failure(RuntimeError(f'the study is refused: {found.refused}'))
+    if not any(sample.draws for sample in found.samples):
+        return {'skipped': 'no draw'}
     return {
         'run': run,
         'samples': samples,
         'jobs': jobs,
-        'seconds': ended - started,
-        'central_seconds': checking - started,
-        'check_seconds': running - checking,
-        'run_seconds': ended - running,
-        'samples_per_second': samples / (ended - checking),
+        'seconds': seconds,
+        'samples_per_second': samples / seconds,
         **(first or {}),
         'peak_mb': peak_mb(),
     }
 
 
-TASKS = {'compile': compile_task, 'first': first_task, 'warm': warm_task, 'classes': classes_task}
+TASKS = {'compile': compile_task, 'first': first_task, 'warm': warm_task}
 
 
 def perform(task, save=None):
@@ -711,20 +671,16 @@ def _shown(workload, root):
         return path.as_posix()
 
 
-def record(workload, run, compiled, first, warmed, root=ROOT, classes=None):
+def record(workload, run, compiled, first, warmed, root=ROOT):
     """The record of one workload and run in the document. One run and a batch are apart (`one_run`,
-    `batch`), and cold and warm are apart. `classes` is what the hybrid core of a workload with a
-    table took (`classes_task`)."""
+    `batch`), and cold and warm are apart."""
     return {
         'kind': workload.kind,
         'name': workload.name,
         'path': _shown(workload, root),
         'run': run,
         **({'family': workload.family, 'size': workload.size} if workload.family else {}),
-        'compile': {
-            'cold': {key: value for key, value in compiled.items() if key != 'runs'},
-            'shape_classes': dict(NO_SHAPE_CLASSES if classes is None else classes),
-        },
+        'compile': {'cold': {key: value for key, value in compiled.items() if key != 'runs'}},
         'values': {
             'one_run': {
                 'cold': first,
@@ -762,21 +718,13 @@ def bench(
     warm process after a failed first result, and what the warm process had not yet measured when it
     failed. Its record repeats the failure and names the stage (`from`). `say(line)` gets one line
     for each record."""
-    records, compiles, cores = [], {}, {}
+    records, compiles = [], {}
     for workload in workloads:
         path = str(workload.path)
-        tabled = bool(workload.family) and families.FAMILIES[workload.family].files is not None
         if path not in compiles:
             if workload.family:
                 families.write(workload.family, workload.size, Path(workload.path).parent.parent)
-            if tabled:
-                cores[path] = run_task({'kind': 'classes', 'path': path}, timeout)
-            if tabled and workload.size > FLAT_ROWS:
-                # The flat structure of so many rows is not asked for.
-                why = f'not tried: the flat structure of a table of more than {FLAT_ROWS} rows'
-                compiles[path] = {'failed': why}
-            else:
-                compiles[path] = run_task({'kind': 'compile', 'path': path}, timeout)
+            compiles[path] = run_task({'kind': 'compile', 'path': path}, timeout)
         compiled = compiles[path]
         if 'failed' in compiled:
             runs = [None if workload.run == ALL else workload.run]
@@ -793,7 +741,7 @@ def bench(
             else:
                 task = {'kind': 'warm', 'path': path, 'run': run, 'repeats': repeats, 'survey': survey}
                 warmed = _warmed(run_task({**task, 'samples': samples, 'jobs': jobs}, timeout))
-            records.append(record(workload, run, compiled, first, warmed, root, cores.get(path)))
+            records.append(record(workload, run, compiled, first, warmed, root))
             if say is not None:
                 say(_line(records[-1]))
     return records
@@ -808,11 +756,11 @@ def _git(root, *arguments):
 
 
 def machine():
-    """The machine and the numerical libraries of this process, as the run store keys them and a
-    comparison writes them (`tools.compare.here`)."""
-    from tools import compare
+    """The machine and the numerical libraries of this process, as the run store keys them
+    (`napkin.store.ENVIRONMENT`)."""
+    from napkin.store import ENVIRONMENT
 
-    return compare.here()
+    return json.loads(json.dumps(ENVIRONMENT, ensure_ascii=False))
 
 
 def document(records, settings, root=ROOT):
@@ -910,15 +858,16 @@ def _line(item):
 
 LEGEND = (
     'compile, first: the cold compile and the time to the first result, each with the peak memory of its '
-    'process; warm, min: the median and the least of the warm runs of the engine alone; study, report: one '
-    'study of the run with its checks, and its report; quant, forms, evals, segs: quantities, formulas, '
-    'evaluations of the rates, segments; where the time goes: of the study and its report.'
+    'process; warm, min: the median and the least of the warm runs of the engine alone; report: the report '
+    'of every named value at the start and the horizon; members, values, flows: of the program; hist, '
+    'pieces, trace: the histories, their pieces and the trace entries of the record; where the time goes: '
+    'of a run and its report.'
 )
 
 
 def table(document):
     """The printed table of a result document: one row for each workload and run, with the cold
-    compile, the first result, the warm run, the study of the run and its report, the size of the run,
+    compile, the first result, the warm run, the report of the run, the size of the run,
     the Monte Carlo study's samples in a second when samples were asked, and the three largest groups
     of the time of the study and its report. A failure shows at the end of
     its row, with its stage and the start of its text; the document holds the whole text."""
@@ -933,10 +882,9 @@ def table(document):
         'warm s',
         'min s',
         'MB',
-        'study s',
         'report s',
     ]
-    heads += ['quant', 'rules', 'flows', 'forms', 'evals', 'trace', 'segs']
+    heads += ['members', 'values', 'flows', 'hist', 'pieces', 'trace']
     heads += (['samples/s'] if batch else []) + ['where the time goes']
     rows = []
     for item in document['workloads']:
@@ -952,10 +900,8 @@ def table(document):
             _seconds(_get(one, 'warm', 'median_seconds')),
             _seconds(_get(one, 'warm', 'min_seconds')),
             _whole(_get(one, 'warm', 'peak_mb')),
-            _seconds(_get(one, 'report', 'study_seconds')),
             _seconds(_get(one, 'report', 'report_seconds')),
-            *(_whole(facts.get(key)) for key in ('quantities', 'rules', 'flows', 'formulas')),
-            *(_whole(facts.get(key)) for key in ('evaluations', 'trace', 'segments')),
+            *(_whole(facts.get(key)) for key in ('members', 'values', 'flows', 'histories', 'pieces', 'trace')),
         ]
         if batch:
             row.append(_seconds(_get(item, 'values', 'batch', 'samples_per_second')))

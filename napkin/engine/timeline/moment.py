@@ -23,8 +23,9 @@ At a time, rounds. One round is:
    put on the bound; one that misses it by more fails the run, and so does a move that does not fit.
    A commit publishes the stage's writes, traces its choices and registers the occurrences that it
    queued, in order; a failure discards the stage and stops the run. A player's choice that no pick
-   answers pauses the run before the stage commits: the stage and those after it in its round are
-   held (`held`), and `resume` runs them again from the paused one.
+   answers pauses the run before the stage commits, and a breakpoint stops it before a stage or a
+   statement (`checkpoints.py`): the stage and those after it in its round are held (`held`), and
+   `resume` runs them again from the paused one.
 2. **Settle.** The connected sets that the round touched are built again from the state there
    (`ways.py`): those that hold a store that a commit wrote, or read a value that changed (a written
    value, a collection of occurrences or of flows whose members changed, a rate or a result of a set
@@ -141,6 +142,7 @@ class Moment:
         self.phase = 'stages'
         tx = Tx('')
         run.chance.made = []
+        run.breaks.setup()
         self.execute(self.plan.program.setup, tx, None)  # a pause stops here and holds the setup
         self.held, run.chance.kept = None, set()
         if tx.defined:
@@ -227,6 +229,7 @@ class Moment:
         tx = Tx(made.id)
         tx.origin = step.origin
         run.chance.made = []
+        run.breaks.stage(made, step)  # a breakpoint at the stage stops it before its guard is read
         ran = step.guard is None or self.test(step.guard, made.scope, step.origin, tx)
         if ran:
             try:
@@ -282,9 +285,12 @@ class Moment:
         return answer
 
     def execute(self, statements, tx, scope):
-        """Run statements in order (see the module)."""
+        """Run statements in order (see the module); a breakpoint at one stops before it."""
+        breaks = self.run.breaks
         for statement in statements:
             tx.origin = statement.origin
+            if breaks.statements:
+                breaks.statement(statement, tx)
             if isinstance(statement, p.Assign):
                 self.assign(statement, tx, scope)
             elif isinstance(statement, p.Move):

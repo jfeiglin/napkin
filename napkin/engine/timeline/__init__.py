@@ -6,6 +6,10 @@ It reads a program (`napkin/program`) under a run configuration and gives the re
 - `run(program, configuration)`: one run to the horizon, as its `Record`. A run that a player's
   choice pauses gives the record to the pause, whose entry ends its trace (`paused`); a run of the
   configuration with the pick replays it, and `Run(plan).run()` then `.resume(pick)` goes on in place.
+- `run(program, configuration, breakpoints)`: a run that a breakpoint stops gives its `Checkpoint`
+  (`napkin/program/checkpoint.py`), which holds the record so far; `Run(plan, breakpoints).run()`
+  then `.resume()` goes on in place, and `resume(program, checkpoint)` goes on in a fresh process
+  (`checkpoints.py`). Either gives the record of the run straight through, or the next checkpoint.
 - `Plan.of(program, configuration)`: what the run reads of the program (`plan.py`), and `Outside`,
   the refusal of a part that the engine does not run, with its reason.
 - `read(record, program, paths, times)`: the values of named paths at chosen times, each in its
@@ -42,17 +46,34 @@ moving rates; `ways.py` holds them, and builds again the sets that a moment chan
 
 from __future__ import annotations
 
+from ...program.checkpoint import CheckpointError
 from .chance import paused
+from .checkpoints import engine_version, program_digest
 from .plan import Outside, Plan
 from .record import Reading, read
 from .run import Run
 
-__all__ = ['Outside', 'Plan', 'Reading', 'Run', 'paused', 'read', 'run']
+__all__ = ['Outside', 'Plan', 'Reading', 'Run', 'paused', 'read', 'resume', 'run']
 
 
-def run(program, configuration):
+def run(program, configuration, breakpoints=()):
     """One run of a program under a configuration, to the horizon of its request: its record. A run
-    that fails gives the record to the time at which it stopped, with the failure. A part that this
-    engine does not run is refused (`Outside`), and so is a configuration that the program cannot
-    take (`napkin.program.config.ConfigurationError`)."""
-    return Run(Plan.of(program, configuration)).run()
+    that fails gives the record to the time at which it stopped, with the failure. A run that one of
+    the breakpoints stops gives its checkpoint. A part that this engine does not run is refused
+    (`Outside`), and so is a configuration that the program cannot take
+    (`napkin.program.config.ConfigurationError`)."""
+    return Run(Plan.of(program, configuration), breakpoints).run()
+
+
+def resume(program, checkpoint):
+    """Go on with a checkpoint of a run of a program, in this process or another: the program runs
+    again to the stop, which must give the checkpoint's state and record, then on (`checkpoints.py`).
+    Gives the record of the run straight through, or the checkpoint of its next stop. A checkpoint of
+    another program or of another version of the engine is refused (`CheckpointError`)."""
+    if program_digest(program) != checkpoint.program:
+        raise CheckpointError('the checkpoint is of another program: the SHA-256 of its bytes differs')
+    if engine_version() != checkpoint.engine:
+        raise CheckpointError(
+            'the checkpoint was made by another version of the engine: resume it with that version'
+        )
+    return Run(Plan.of(program, checkpoint.configuration), checkpoint.breakpoints, checkpoint).run()

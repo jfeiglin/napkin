@@ -26,6 +26,16 @@ transfer. (The oracle runs the paused stage again from its start, on the state t
 unchanged and with its kept draws, which is the same as going on in place.) Replaying the run with
 the answer in `Config.choices` gives the same record.
 
+A breakpoint (`Config.breakpoints`, item 15 of the plan's changes after G0) stops the run before a
+statement of a stage, before a stage, or before the first stage of an occurrence of an event, and
+`Run.edit` then changes live stored values: of the type and in the range of the value, never of a
+finished occurrence, each edit in `edit_log` and in the trace, and a store's edit in the books as a
+transfer from or to outside. `Run.resume` runs the paused stage again from its start with the draws
+that it made, and applies the edits of each stop of that stage at the stop, in order: an edit inside
+a stage joins that stage's writes (the stage sees it, the others when it commits), so two stops in
+one stage neither lose the first edit nor apply it twice. An edit before a stage, between two
+commits, commits at once. Untouched, the run is the run with no breakpoint.
+
 Between two moments every rate is constant, or a known polynomial in time, and each store is
 integrated exactly (`network.motion`). The next moment is the earliest of: a stage that is due,
 a reset timer, the first contact of a watched condition with its boundary, a store that meets a
@@ -74,7 +84,7 @@ BUILTIN = ('started', 'done', 'active')
 class Entry(NamedTuple):
     """One entry of the trace: its kind ('start', 'done', 'stage' for a stage that ran its body,
     'skip' for one whose guard was false, 'fire', 'solve', 'draw', 'choice', 'move', 'release',
-    'moment'), the time, the occurrence, member, trigger or solver that it is about, the step of a
+    'edit', 'moment'), the time, the occurrence, member, trigger or solver that it is about, the step of a
     stage, the round of its time (0 is the setup), and the origin of its part in a program."""
 
     kind: str
@@ -93,6 +103,7 @@ class Tx:
         self.writes = {}
         self.moves = []
         self.starts = []
+        self.edited = Counter()  # what the edits of a breakpoint added to a store, which is no write
 
 
 @dataclasses.dataclass(eq=False)
@@ -154,6 +165,12 @@ class Run:
         self.error = self.paused = None
         self.held = None  # the rest of a round that a prompt paused, its paused stage first
         self.kept_draws, self.stage_draws, self.stage_decisions = {}, {}, []
+        # Breakpoints: the live list, which a caller may change at a stop; where the run stopped,
+        # with the stage's work then (None before a stage) and the edits made there; each stop that
+        # the stage that runs again has passed, by (occurrence, step, origin), with its edits.
+        self.breakpoints = list(self.config.breakpoints)
+        self.stopped, self.stop_edits, self.passed = None, [], {}
+        self.edit_log = []
         self.phase = 'setup'
         self.rounds, self.again = 0, False
         self.round_written = set()  # what the commits of this round changed, for `check_stale`
@@ -329,7 +346,7 @@ class Run:
         that nobody gave stops the run with `self.paused` set: call `resume(answer)`."""
         horizon = self.config.horizon if until is None else number(until)
         if self.paused is not None:
-            raise RunFailed(f'the run waits for the choice {self.paused["key"]}: give it with resume(answer)')
+            raise RunFailed(f'the run waits at {self.paused["key"]}: go on with resume()')
         try:
             if self.held is not None:
                 self._moment()  # the paused moment goes on
@@ -348,13 +365,104 @@ class Run:
             raise
         return self
 
-    def resume(self, answer):
-        """Answer the choice that the run waits for, and run on: the paused stage commits once."""
+    def resume(self, answer=_MISSING):
+        """Run on from a pause: with the answer of the choice that the run waits for, or, at a
+        breakpoint, with the edits made there. The paused stage commits once."""
         if self.paused is None:
-            raise RunFailed('the run waits for no choice')
-        self.answers[self.paused['key']] = answer
+            raise RunFailed('the run waits for nothing')
+        if self.paused.get('why') == 'breakpoint':
+            if answer is not _MISSING:
+                raise RunFailed('a breakpoint takes no answer: edit a value, then resume')
+            self.passed[self.stopped[0]] = self.stop_edits
+            self.stopped, self.stop_edits = None, []
+        else:
+            self.answers[self.paused['key']] = answer
         self.paused = None
         return self.run()
+
+    def edit(self, owner, name, value):
+        """At a breakpoint, change the stored value `name` of a member (its id) or of a live
+        occurrence (its label, `depot.request_pump#0`) to `value`, in canonical units or an enum
+        member: a value of the same type, in its range. Gives the value that it replaces."""
+        if self.paused is None or self.paused.get('why') != 'breakpoint':
+            raise RunFailed('a value is edited at a breakpoint')
+        view, t = self.view, self.view.t
+        cell = self._editable(owner, name)
+        tx = self.stopped[1]
+        old = next(
+            (new for each, new in reversed(self.stop_edits) if each == cell),
+            tx.writes.get(cell, view.cells[cell]) if tx is not None else view.cells[cell],
+        )
+        value = number(value)
+        if type(value) is not type(old):
+            raise RunFailed(f'{owner}.{name}: an edit keeps the type of the value, {old!r}, and {value!r} is another')
+        lo, hi = view.bounds.get(cell, (None, None))
+        if isinstance(value, Fraction) and ((lo is not None and value < lo) or (hi is not None and value > hi)):
+            raise RunFailed(f'{owner}.{name} = {value} is outside its range [{lo}, {hi}]: an edit keeps the range')
+        self.edit_log.append(
+            {'time': t, 'breakpoint': self.paused['at'], 'owner': owner, 'name': name, 'old': old, 'new': value}
+        )
+        self._note('edit', owner, origin=self.paused['at'])
+        if cell in self.stores and isinstance(old, Fraction):
+            self.ledger.append(('edit', t, cell, value - old))  # a transfer from or to outside
+        if tx is None:  # before a stage, between two commits: the edit commits at once
+            view.cells[cell] = value
+            if old != value:
+                view.entered[cell] = t
+            self.round_written.add(cell)
+        else:
+            self.stop_edits.append((cell, value))
+        return old
+
+    def _editable(self, owner, name):
+        """The cell of a live stored value, or a refusal that says why it is none."""
+        holder = self.ents.get(owner)
+        if holder is None:
+            holder = next((o for occs in self.view.occs.values() for o in occs if o.label == owner), None)
+        if holder is None:
+            raise RunFailed(f'{owner} names no member and no occurrence of the run')
+        cell = Cell(holder, name)
+        declared = self.fields.get(cell)
+        if isinstance(holder, Occ) and not self.view.cells[Cell(holder, 'active')]:
+            raise RunFailed(f'{owner} has finished: a finished occurrence stays frozen')
+        if cell not in self.view.cells or declared is None or declared.kind != 'value':
+            what = declared.kind if declared is not None else 'no stored value'
+            raise RunFailed(f'{owner}.{name}: an edit changes a live stored value, and this is {what}')
+        return cell
+
+    def _stop(self, occ, origin, tx=None, first=False):
+        """Before the part `origin` of a stage of `occ` runs (the stage itself with `tx` None, or a
+        statement of its work `tx`): stop when a breakpoint names it, or the event at its first
+        stage (`first`), unless the stage that runs again has passed this stop, whose edits then
+        join the stage's writes."""
+        position = (occ.number, occ.step, origin)
+        if position in self.passed:
+            for cell, value in self.passed[position]:
+                old = tx.writes.get(cell, self.view.cells[cell])
+                tx.writes[cell] = value
+                if isinstance(old, Fraction) and isinstance(value, Fraction):
+                    tx.edited[cell] += value - old
+            return
+        names = (origin, occ.event.origin) if first else (origin,)
+        hit = next(
+            (at for at, who in self.breakpoints if at in names and (who is None or who == occ.label)), None
+        )
+        if hit is None:
+            return
+        self.kept_draws = dict(self.stage_draws) if tx is not None else {}  # the stage's draws so far
+        self.stopped, self.stop_edits = (position, tx), []
+        raise Paused(
+            {
+                'why': 'breakpoint',
+                'key': hit,
+                'at': hit,
+                'time': self.view.t,
+                'member': occ.ent.id,
+                'occurrence': occ.label,
+                'next': origin,
+                'inside': tx is not None,
+            }
+        )
 
     def _next_time(self, horizon):
         t = self.view.t
@@ -475,6 +583,8 @@ class Run:
     def _stage(self, occ):
         """Run one stage and commit it. A prompt in it raises `Paused` and leaves the state as it was."""
         step = occ.event.steps[occ.step]
+        if self.breakpoints or self.passed:
+            self._stop(occ, step.origin, first=occ.step == 0)
         scope = self.scope_of(occ)
         tx = Tx(occ)
         self.stage_draws, self.stage_decisions = {}, []
@@ -488,6 +598,7 @@ class Run:
                 raise type(e)(f'{e} [stage {occ.step + 1} of {occ.label}, t = {self.view.t} h]') from None
         self.scheduled.remove(occ)
         occ.due, self.kept_draws = None, {}
+        self.passed = {where: edits for where, edits in self.passed.items() if where[:2] != (occ.number, occ.step)}
         self._note('stage' if ran else 'skip', occ.label, occ.step, step.origin)
         self._commit(tx)
         self._reach(occ, occ.step + 1)
@@ -496,6 +607,8 @@ class Run:
         """Run statements in written order into `tx`. `owner` names the firing of a trigger that
         runs its body; elsewhere the scope's occurrence or member owns the draws (R-A2-17)."""
         for s in statements:
+            if tx.occ is not None and (self.breakpoints or self.passed):
+                self._stop(tx.occ, s.origin, tx)
             ev = Ev(self, self.view, scope, tx=tx, may_draw=True, owner=owner)
             if isinstance(s, Assign):
                 self._assign(s, ev, tx)
@@ -620,10 +733,10 @@ class Run:
                 cell in self.stores
                 and isinstance(old, Fraction)
                 and isinstance(value, Fraction)
-                and value - old != moved[cell]
+                and value - old != moved[cell] + tx.edited[cell]
             ):
                 self.ledger.append(
-                    ('write', t, cell, value - old - moved[cell])
+                    ('write', t, cell, value - old - moved[cell] - tx.edited[cell])
                 )  # a direct write: from or to outside
             view.cells[cell] = value
             if old != value:  # `elapsed` restarts only when the committed value differs
