@@ -269,6 +269,28 @@ class Kept:
                     cols[choice] = _resting(self.lower[choice], self.upper[choice])
             self._set_basis(cols, rows)
 
+    def fresh(self):
+        """A fresh instance with this one's program and basis, made from the arrays that it holds:
+        what a solver starts from after a moment (`solver.Solver.renew`), on every path, and what a
+        restored run makes from the same arrays and basis as data."""
+        basis = self.s.getBasis()
+        return Kept.of(
+            self.A,
+            self.row_lower,
+            self.row_upper,
+            self.lower,
+            self.upper,
+            (list(basis.col_status), list(basis.row_status)) if basis.valid else None,
+        )
+
+    @classmethod
+    def of(cls, A, row_lower, row_upper, lower, upper, basis):
+        """An instance with a program and a basis (`(column statuses, row statuses)`, or None)."""
+        made = cls(A, row_lower, row_upper, lower, upper)
+        if basis is not None:
+            made._set_basis(*basis)
+        return made
+
     def _set_basis(self, cols, rows):
         basis = highs.HighsBasis()
         basis.col_status = cols

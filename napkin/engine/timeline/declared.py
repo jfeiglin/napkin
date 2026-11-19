@@ -69,6 +69,7 @@ published.
 
 from __future__ import annotations
 
+import hashlib
 import heapq
 import math
 
@@ -699,7 +700,7 @@ class DeclaredWay:
         except ValueError as problem:
             raise SimulationError(f'the solver {declared.id} at t = {t:g} h: {problem}') from None
         arrays = problem.arrays()
-        signature = _signature(arrays)
+        signature = _signature(arrays)  # a digest: the state of a run holds it as data (`saved.py`)
         last = run.ways.last.get(declared.id)
         if last is not None and last[0] == signature:
             x = last[1]
@@ -1072,9 +1073,14 @@ class MovingDeclared(DeclaredWay):
 
     def cut(self, t):
         """The run stands at time t inside the next segment: the segment up to t is committed, and
-        the answer there is the present."""
+        the answer there is the present. A segment that starts at t is made again after the moment,
+        and the answers of trial states are forgotten, so that none crosses a moment (`saved.py`)."""
         segment = self.pending
-        if segment is None or t >= segment.end or t <= segment.start:
+        self._cache.clear()
+        if segment is not None and t <= segment.start:
+            self.pending = None
+            return
+        if segment is None or t >= segment.end:
             return
         self._commit(t)
         flows, results, _ = self._at(t, self.y)
@@ -1206,7 +1212,8 @@ def _matrix(rows, width):
 
 
 def _signature(arrays):
-    """What a problem is, to compare it with the one solved last."""
+    """What a problem is, to compare it with the one solved last: the SHA-256 of its keys and its
+    arrays, which a checkpoint holds as data."""
     parts = [
         tuple(arrays.keys),
         tuple(arrays.row_keys),
@@ -1227,4 +1234,8 @@ def _signature(arrays):
         arrays.F.indptr.tobytes(),
     ]
     parts += [(np.asarray(c).tobytes(), np.asarray(v).tobytes()) for c, v in arrays.objectives]
-    return tuple(parts)
+    digest = hashlib.sha256()
+    for part in parts:
+        found = part if isinstance(part, bytes) else repr(part).encode()
+        digest.update(b'%d:' % len(found) + found)
+    return digest.hexdigest()

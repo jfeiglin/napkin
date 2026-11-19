@@ -2,7 +2,7 @@
 
 A model error and an execution error both stop the run (`RunFailed`); a `Diagnostic` is one that a
 compiler would report before the run. `NotCovered` is the oracle's own limit: it does not guess an
-answer for a model that it cannot run exactly. `Paused` is no failure: the run waits for a choice.
+answer for a model that it cannot run exactly. `Paused` is no failure: the run stops at a breakpoint.
 """
 
 
@@ -24,8 +24,8 @@ class NotCovered(Exception):
 
 
 class Paused(Exception):
-    """The run waits for a choice that nobody has given yet. `decision` describes it."""
+    """The run stops at a breakpoint. `decision` describes the stop (`Run._stop`)."""
 
     def __init__(self, decision):
-        super().__init__(f'the run waits for the choice {decision["key"]}')
+        super().__init__(f'the run stops at {decision["key"]}')
         self.decision = decision

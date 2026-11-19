@@ -115,13 +115,11 @@ def test_a_start_follows_its_branches_and_the_guard_of_its_stage():
     assert found.events['shop.then'] == (True, 'shop.open.step[1].do[0].then[0] starts it')
 
 
-def test_a_draw_never_gives_an_outcome_of_no_weight_and_a_choice_may_give_any():
-    """D1, eligibility and probability are independent: a forecast that always waits never draws
-    SEND, but a player who is asked may send the spare pump."""
-    assert reach(EXAMPLES['dispatcher_forecast']().program).events['depot.send_pump'] == (
-        True,
-        'depot.request_pump.step[0].do[0].SEND.do[0] starts it',
-    )
+def test_a_draw_never_gives_an_outcome_of_no_weight():
+    """D1: a forecast that always waits never draws SEND, whether a switch reads the draw or the field
+    that holds it (the acceptance example of item 15 of the plan's changes after G0), so the send
+    branch cannot run. Only an edit at a breakpoint sends, and an edit is no part of a configuration."""
+    assert reach(EXAMPLES['pump_dispatch_unattended']().program).events['depot.send_pump'][0] is False
     b = Builder(UNITS)
     action = b.enum('enum[SEND, WAIT]', 'SEND', 'WAIT')
     b.entity(

@@ -94,12 +94,21 @@ class Solver:
     def __init__(self, budget=None):
         self.budget = budget or Budget()
         self._kept = None
+        self.stale = False  # the next solve starts on a fresh instance with the kept one's basis
         self._columns, self._rows = [], []  # the keys of the instance's columns and rows, in its order
         self._scale = np.zeros(0)  # the reference scale of each of its columns
         self._A = sp.csr_array((0, 0))  # its working matrix
 
+    def renew(self):
+        """The next solve starts on a fresh instance with the program and the basis of the kept one
+        (`kept.Kept.fresh`): the state of the solver between two solves is then its program and its
+        basis, which a checkpoint holds as data, and nothing else of HiGHS."""
+        self.stale = self._kept is not None
+
     def solve(self, problem):
         """The answer of the selection order for `problem` (a `Problem`)."""
+        if self.stale:
+            self._kept, self.stale = self._kept.fresh(), False
         arrays = problem.arrays()
         _check_hard(arrays)
         w = self._follow(Scaled(arrays))

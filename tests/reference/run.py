@@ -20,12 +20,6 @@ is round zero: its statements commit as one stage, then the rates settle and the
 first check. Three limits protect a run (decision D6): `max_occurrences`, `max_active` and
 `max_rounds`, each a field of `Config`.
 
-A person's choice pauses one atomic stage. The draws and the starts made before the prompt are
-kept, and `Run.resume` gives the answer and commits the stage once: one draw, one child, one
-transfer. (The oracle runs the paused stage again from its start, on the state that the pause left
-unchanged and with its kept draws, which is the same as going on in place.) Replaying the run with
-the answer in `Config.choices` gives the same record.
-
 A breakpoint (`Config.breakpoints`, item 15 of the plan's changes after G0) stops the run before a
 statement of a stage, before a stage, or before the first stage of an occurrence of an event, and
 `Run.edit` then changes live stored values: of the type and in the range of the value, never of a
@@ -34,7 +28,9 @@ transfer from or to outside. `Run.resume` runs the paused stage again from its s
 that it made, and applies the edits of each stop of that stage at the stop, in order: an edit inside
 a stage joins that stage's writes (the stage sees it, the others when it commits), so two stops in
 one stage neither lose the first edit nor apply it twice. An edit before a stage, between two
-commits, commits at once. Untouched, the run is the run with no breakpoint.
+commits, commits at once. Untouched, the run is the run with no breakpoint: one draw, one child, one
+transfer. (The oracle runs the paused stage again from its start, on the state that the stop left
+unchanged and with its kept draws, which is the same as going on in place.)
 
 Between two moments every rate is constant, or a known polynomial in time, and each store is
 integrated exactly (`network.motion`). The next moment is the earliest of: a stage that is due,
@@ -83,7 +79,7 @@ BUILTIN = ('started', 'done', 'active')
 
 class Entry(NamedTuple):
     """One entry of the trace: its kind ('start', 'done', 'stage' for a stage that ran its body,
-    'skip' for one whose guard was false, 'fire', 'solve', 'draw', 'choice', 'move', 'release',
+    'skip' for one whose guard was false, 'fire', 'solve', 'draw', 'move', 'release',
     'edit', 'moment'), the time, the occurrence, member, trigger or solver that it is about, the step of a
     stage, the round of its time (0 is the setup), and the origin of its part in a program."""
 
@@ -149,14 +145,13 @@ class Run:
         self.config = config or Config(**options)
         if self.config.horizon is not None:
             self.config.horizon = number(self.config.horizon)
-        self.answers = dict(self.config.choices)
         self.view = View()
         self.ents, self.tables = {}, set()
         self.flow_at = {}  # (owner, name) -> FlowRT, for every flow ever made
         self.fields = {}  # Cell -> its declaration
         self.stores = set()  # cells that hold stock: an end of a flow or of a move
         self.triggers, self.scheduled, self.awaiting = [], [], []
-        self.ledger, self.trace, self.frames, self.draws, self.decisions = [], [], [], [], []
+        self.ledger, self.trace, self.frames, self.draws = [], [], [], []
         self.cache = {}
         self.components, self.component_of, self.solved_cells, self.settling = [], {}, set(), None
         self.moving, self.stops = [], []
@@ -164,7 +159,7 @@ class Run:
         self.sites = _sites(model)
         self.error = self.paused = None
         self.held = None  # the rest of a round that a prompt paused, its paused stage first
-        self.kept_draws, self.stage_draws, self.stage_decisions = {}, {}, []
+        self.kept_draws, self.stage_draws = {}, {}
         # Breakpoints: the live list, which a caller may change at a stop; where the run stopped,
         # with the stage's work then (None before a stage) and the edits made there; each stop that
         # the stage that runs again has passed, by (occurrence, step, origin), with its edits.
@@ -342,8 +337,8 @@ class Run:
     # --- the run ---------------------------------------------------------------------------------
 
     def run(self, until=None):
-        """Run to the horizon (or to `until`). A failure raises; `self.error` keeps it. A choice
-        that nobody gave stops the run with `self.paused` set: call `resume(answer)`."""
+        """Run to the horizon (or to `until`). A failure raises; `self.error` keeps it. A breakpoint
+        stops the run with `self.paused` set: call `resume()`."""
         horizon = self.config.horizon if until is None else number(until)
         if self.paused is not None:
             raise RunFailed(f'the run waits at {self.paused["key"]}: go on with resume()')
@@ -365,26 +360,19 @@ class Run:
             raise
         return self
 
-    def resume(self, answer=_MISSING):
-        """Run on from a pause: with the answer of the choice that the run waits for, or, at a
-        breakpoint, with the edits made there. The paused stage commits once."""
+    def resume(self):
+        """Run on from a breakpoint, with the edits made there. The paused stage commits once."""
         if self.paused is None:
             raise RunFailed('the run waits for nothing')
-        if self.paused.get('why') == 'breakpoint':
-            if answer is not _MISSING:
-                raise RunFailed('a breakpoint takes no answer: edit a value, then resume')
-            self.passed[self.stopped[0]] = self.stop_edits
-            self.stopped, self.stop_edits = None, []
-        else:
-            self.answers[self.paused['key']] = answer
-        self.paused = None
+        self.passed[self.stopped[0]] = self.stop_edits
+        self.stopped, self.stop_edits, self.paused = None, [], None
         return self.run()
 
     def edit(self, owner, name, value):
         """At a breakpoint, change the stored value `name` of a member (its id) or of a live
         occurrence (its label, `depot.request_pump#0`) to `value`, in canonical units or an enum
         member: a value of the same type, in its range. Gives the value that it replaces."""
-        if self.paused is None or self.paused.get('why') != 'breakpoint':
+        if self.paused is None:
             raise RunFailed('a value is edited at a breakpoint')
         view, t = self.view, self.view.t
         cell = self._editable(owner, name)
@@ -600,7 +588,7 @@ class Run:
             self._stop(occ, step.origin, first=occ.step == 0)
         scope = self.scope_of(occ)
         tx = Tx(occ)
-        self.stage_draws, self.stage_decisions = {}, []
+        self.stage_draws = {}
         ran = step.guard is None or Ev(self, self.view, scope, tx=tx).truth(
             step.guard
         )  # the guard is read once, now
@@ -657,12 +645,12 @@ class Run:
 
     def _select(self, s, ev):
         """The body that a `switch` runs (decision D1). The guards are read once, before the
-        selector. A draw or a choice as the selector chooses among the eligible outcomes: those
+        selector. A draw as the selector chooses among the eligible outcomes: those
         whose case has no false guard. With none eligible, the `else` body runs and nothing is drawn."""
         eligible = [c.guard is None or ev.truth(c.guard) for c in s.cases]
         node = s.selector
-        if node._k == 'call' and node._a[1] in ('draw', 'choose'):
-            _, dist = ev.producer(node)
+        if node._k == 'call' and node._a[1] == 'draw':
+            dist = ev.producer(node)
             if dist.kind != 'categorical':
                 raise RunFailed(f'switch {show(node)}: a switch draws from a categorical distribution')
             barred = {c.value for c, ok in zip(s.cases, eligible) if not ok}
@@ -757,10 +745,6 @@ class Run:
             if old != value:  # `elapsed` restarts only when the committed value differs
                 view.entered[cell] = t
         self.round_written |= set(tx.writes)
-        for decision in self.stage_decisions:  # a choice is in the trace once its stage commits
-            self._note('choice', decision['owner'], origin=decision['site'])
-        self.decisions += self.stage_decisions
-        self.stage_decisions = []
         starts, tx.starts, tx.writes, tx.moves = tx.starts, [], {}, []
         for bound, args in starts:
             self._register(bound, args)
@@ -1031,14 +1015,14 @@ class Run:
             return view.t
         return view.entered.get(cell, Fraction(0))
 
-    # --- draws and choices ---------------------------------------------------------------------------
+    # --- draws ---------------------------------------------------------------------------------------
 
     def _site(self, node):
-        """The site of a draw or a choice: its place in the model (in a program, the program's site)."""
+        """The site of a draw: its place in the model (in a program, the program's site)."""
         return self.sites.get(id(node), show(node))
 
     def _owner(self, ev):
-        """Who executes a draw or a choice (R-A2-17): the occurrence (`pump.work#0`), the firing of
+        """Who executes a draw (R-A2-17): the occurrence (`pump.work#0`), the firing of
         a trigger (`pump.work.when[0]!1`), or the member; the setup belongs to the root, whose id
         is `''` as in a program."""
         s = ev.scope
@@ -1047,17 +1031,16 @@ class Run:
         return ev.shared.owner or (s.this.id if s.this is not None else '')
 
     def _key(self, node, ev):
-        """The key of a draw or a choice: its site and its owner, never its place in a stream."""
+        """The key of a draw: its site and its owner, never its place in a stream."""
         return f'{self._site(node)}|{self._owner(ev)}'
 
     def _uniform(self, key):
         digest = hashlib.sha256(f'{self.config.seed}|{key}'.encode()).digest()
         return Fraction(int.from_bytes(digest[:8], 'big') * 2 + 1, 2**65)
 
-    def draw(self, dist, node, ev, eligible=None, traced=True):
+    def draw(self, dist, node, ev, eligible=None):
         """An executed `.draw()`: the median in a median run, a keyed sample in a sampled run. A
-        draw that a paused stage made is kept and given again when the stage resumes. The draw of
-        a forecast is traced as its choice (`traced` false)."""
+        draw that a paused stage made is kept and given again when the stage resumes."""
         key = self._key(node, ev)
         if key in self.kept_draws:
             value = self.kept_draws[key]
@@ -1076,8 +1059,7 @@ class Run:
             else:
                 raise NotCovered(f'a sampled draw of the distribution {dist.kind}')
             self.draws.append((key, value))
-            if traced:
-                self._note('draw', self._owner(ev), origin=self._site(node))
+            self._note('draw', self._owner(ev), origin=self._site(node))
         self.stage_draws[key] = value
         return value
 
@@ -1111,44 +1093,6 @@ class Run:
             if name == 'std':
                 return dist.params[1]
         raise NotCovered(f'{name} of the distribution {dist.kind}')
-
-    def choose(self, actor, dist, node, ev, eligible=None):
-        """An actor's choice (decision D1). A person who controls the actor may pick any eligible
-        outcome, whatever its probability; with no controller the value is the forecast's draw.
-        Eligibility and probability are independent. A missing answer pauses the stage."""
-        if dist.kind != 'categorical':
-            raise RunFailed(f'{show(node)}: an actor chooses from a categorical forecast')
-        options = [m for m, _ in dist.params if eligible is None or m in eligible]
-        key = self._key(node, ev)
-        record = {
-            'time': self.view.t,
-            'key': key,
-            'site': self._site(node),
-            'owner': self._owner(ev),
-            'actor': actor.id,
-            'options': options,
-            'probabilities': dict(dist.params),
-        }
-        if actor.id not in self.config.controllers:
-            value = self.draw(dist, node, ev, eligible, traced=False)
-            self.stage_decisions.append({**record, 'by': 'forecast', 'value': value})
-            return value
-        if ev.tx is None or ev.tx.occ is None:
-            raise NotCovered(
-                f'{actor.id} chooses outside the stage of an occurrence: a prompt pauses one stage'
-            )
-        record['sees'] = {
-            show(e): plain(Ev(self, self.view, Scope(actor)).val(e)) for e in actor.template.sees
-        }
-        answer = self.answers.get(key, self.answers.get(actor.id, _MISSING))
-        if answer is _MISSING:
-            self.kept_draws = dict(self.stage_draws)  # the draws made before the prompt are kept
-            queued = [f'{b.ent.id}.{b.event.name}' for b, _ in ev.tx.starts]
-            raise Paused({**record, 'kept_draws': dict(self.kept_draws), 'queued_starts': queued})
-        if answer not in options:
-            raise RunFailed(f'the choice {key}: {answer} is not available (available: {", ".join(options)})')
-        self.stage_decisions.append({**record, 'by': 'controller', 'value': answer})
-        return answer
 
     # --- what a caller reads -------------------------------------------------------------------------
 
@@ -1254,13 +1198,13 @@ def _forward(d, later):
 
 
 def _sites(model):
-    """A stable name for each place of the model where a draw or a choice is written: the site that a
+    """A stable name for each place of the model where a draw is written: the site that a
     program gave it, or else its path in the model."""
     sites = dict(model.sites)
 
     def walk(x, path):
         if isinstance(x, E):
-            if x._k == 'call' and x._a[1] in ('draw', 'choose') and id(x) not in sites:
+            if x._k == 'call' and x._a[1] == 'draw' and id(x) not in sites:
                 sites[id(x)] = path
             for i, a in enumerate(x._a):
                 walk(a, f'{path}/{i}')

@@ -1,6 +1,7 @@
-"""Branches in a stage: `if` and `else` (decision D11), `switch` on a value, on a drawn categorical
-value with guards on its cases, and on an actor's choice (decision D1). A person's choice pauses one
-atomic stage, and resuming commits it once. The weights of a categorical are scaled by their sum."""
+"""Branches in a stage: `if` and `else` (decision D11), and `switch` on a value and on a drawn
+categorical value with guards on its cases. A breakpoint before a switch stops one atomic stage, and
+resuming commits it once (item 15 of the plan's changes after G0). The weights of a categorical are
+scaled by their sum."""
 
 from fractions import Fraction as F
 
@@ -22,7 +23,6 @@ from tests.reference.model import (
     move,
     set_,
     start,
-    sub,
     switch,
     t,
     this,
@@ -172,60 +172,6 @@ def test_a_skipped_branch_or_a_described_distribution_draws_nothing():
     assert (r.read(N.pump.x), r.read(N.pump.mean), r.draws) == (0, 5, [])
 
 
-def dispatch(spares, controlled=False, mode='median', seed=0, forecast=None):
-    """The dispatcher of `spec.md`, whose forecast always waits, unless another is given."""
-    cases = [case('SEND', [start(this.send_pump)], when=this.spares >= 1), case('WAIT', [add(this.waits, 1)])]
-    request = event(
-        'request_pump', steps=[after(0, [switch(N.dispatcher.choose(N.dispatcher.forecast), *cases)])]
-    )
-    send = event('send_pump', steps=[after(0, [sub(this.spares, 1), add(this.sent, 1)])])
-    if forecast is None:
-        forecast = categorical(SEND=0, WAIT=1)
-    m = Model()
-    m.entity('dispatcher', fields=[value('forecast', forecast)], sees=[N.depot.spares])
-    m.entity(
-        'depot',
-        fields=[value('spares', spares, 0), value('waits', 0), value('sent', 0)],
-        events=[request, send],
-    )
-    m.setup = [start(N.depot.request_pump)]
-    return Run(
-        m, Config(horizon=1, mode=mode, seed=seed, controllers={'dispatcher'} if controlled else set())
-    ).run()
-
-
-def outcome_of(r):
-    return r.read(N.depot.sent), r.read(N.depot.waits)
-
-
-def test_an_automated_dispatcher_always_waits():
-    """With no controller the value is the forecast's draw: WAIT, with or without a spare."""
-    assert outcome_of(dispatch(1)) == (0, 1)
-    assert outcome_of(dispatch(0)) == (0, 1)
-    assert {outcome_of(dispatch(1, mode='sampled', seed=s)) for s in range(20)} == {(0, 1)}
-
-
-def test_a_person_can_send_the_spare_pump():
-    """A human can send the pump although its forecast probability is zero: eligibility and
-    probability are independent. The prompt shows the alternatives and what the actor sees."""
-    r = dispatch(1, controlled=True)
-    assert r.paused['options'] == ['SEND', 'WAIT']
-    assert r.paused['probabilities'] == {'SEND': 0, 'WAIT': 1}
-    assert r.paused['sees'] == {'depot.spares': 1}
-    r.resume('SEND')
-    assert outcome_of(r) == (1, 0) and r.read(N.depot.spares) == 0
-
-
-def test_with_no_spare_neither_the_person_nor_the_forecast_can_send():
-    r = dispatch(0, controlled=True)
-    assert r.paused['options'] == ['WAIT']
-    with pytest.raises(RunFailed, match='SEND is not available'):
-        r.resume('SEND')
-    r = dispatch(0, controlled=True)
-    r.resume('WAIT')
-    assert outcome_of(r) == (0, 1)
-
-
 def verdict(weights, mode='median', seed=0):
     """A stage at 1 h that sets `state` to a draw of `categorical(**weights)`, whose site is `verdict`."""
     selector = categorical(**weights).draw()
@@ -242,8 +188,8 @@ def verdict(weights, mode='median', seed=0):
 
 def test_weights_are_scaled_by_their_sum():
     """`categorical(FIXED: 1, FAILED: 3)` is FIXED with probability 1/4: a median run takes FAILED,
-    a sampled run takes FIXED where the number of its key `verdict|machine.test#0` is below 1/4,
-    and a person who decides is shown the probabilities 1/4 and 3/4."""
+    and a sampled run takes FIXED where the number of its key `verdict|machine.test#0` is below
+    1/4."""
     weights = {'FIXED': 1, 'FAILED': 3}
     assert verdict(weights).read(N.machine.state) == 'FAILED'
     expected = [
@@ -251,49 +197,36 @@ def test_weights_are_scaled_by_their_sum():
     ]
     assert set(expected) == {'FIXED', 'FAILED'}  # these seeds tell the two scalings apart
     assert [verdict(weights, 'sampled', seed).read(N.machine.state) for seed in range(20)] == expected
-    r = dispatch(1, controlled=True, forecast=categorical(SEND=1, WAIT=3))
-    assert r.paused['probabilities'] == {'SEND': F(1, 4), 'WAIT': F(3, 4)}
 
 
 @pytest.mark.parametrize('mode', ['median', 'sampled'])
 def test_weights_that_are_all_zero_give_no_draw(mode):
     """With every weight zero there is nothing to draw in either mode, as for eligible outcomes
-    whose total is zero (D1); a person still picks any eligible outcome."""
+    whose total is zero (D1)."""
     with pytest.raises(RunFailed, match='no eligible outcome has a probability to draw'):
         verdict({'FIXED': 0, 'FAILED': 0}, mode)
-    with pytest.raises(RunFailed, match='no eligible outcome has a probability to draw'):
-        dispatch(1, mode=mode, forecast=categorical(SEND=0, WAIT=0))
-    r = dispatch(1, controlled=True, mode=mode, forecast=categorical(SEND=0, WAIT=0))
-    assert r.paused['options'] == ['SEND', 'WAIT']
-    r.resume('SEND')
-    assert outcome_of(r) == (1, 0)
 
 
-def shift(choices=None):
-    """A stage that draws a value, queues a child, moves 3 L and then asks the crew to choose."""
-    stage = after(
-        1,
-        [
-            set_(N.drawn, this.speeds.draw()),
-            start(this.child),
-            move(3, this.a, this.b),
-            switch(
-                N.crew.choose(N.crew.plan), case('REPAIR', [set_(this.x, 1)]), case('WAIT', [set_(this.x, 2)])
-            ),
-        ],
-    )
+SWITCH = 'site.work.step[0].do[3]'
+
+
+def shift(order='WAIT', stops=True):
+    """A stage that draws a value, queues a child, moves 3 L and then switches on the occurrence's
+    field `order`; with `stops`, a breakpoint stops the run before the switch."""
+    chosen = switch(N.order, case('REPAIR', [set_(this.x, 1)]), case('WAIT', [set_(this.x, 2)]))
+    chosen.origin = SWITCH
+    stage = after(1, [set_(N.drawn, this.speeds.draw()), start(this.child), move(3, this.a, this.b), chosen])
     m = Model()
-    m.entity('crew', fields=[value('plan', categorical(REPAIR=F(1, 2), WAIT=F(1, 2)))])
     m.entity(
         'site',
         fields=[value('speeds', uniform(0, 10)), value('a', 8, 0, 20), value('b', 0, 0, 4), value('x', 0)],
         events=[
             event('child', steps=[after(5, [])]),
-            event('work', locals=[value('drawn', 0)], steps=[stage]),
+            event('work', locals=[value('drawn', 0), value('order', order)], steps=[stage]),
         ],
     )
     m.setup = [start(N.site.work)]
-    config = Config(horizon=3, mode='sampled', seed=7, controllers={'crew'}, choices=choices or {})
+    config = Config(horizon=3, mode='sampled', seed=7, breakpoints=[(SWITCH, None)] if stops else [])
     return Run(m, config).run()
 
 
@@ -305,12 +238,12 @@ def record(r):
     return values, moves, list(r.draws), r.read(s.work.occurrences.at(t).drawn)
 
 
-def test_a_prompt_pauses_one_atomic_stage():
-    """The run pauses with the draw and the queued start kept, and nothing of the stage visible."""
+def test_a_breakpoint_stops_one_atomic_stage():
+    """The run stops with the draw kept and nothing of the stage visible: not the move, not the
+    queued start, not the drawn value."""
     r = shift()
-    assert r.paused['time'] == 1
-    assert r.paused['queued_starts'] == ['site.child']
-    assert list(r.paused['kept_draws'].values()) == [v for _, v in r.draws] and len(r.draws) == 1
+    assert (r.paused['time'], r.paused['next'], r.paused['inside']) == (1, SWITCH, True)
+    assert list(r.kept_draws.values()) == [v for _, v in r.draws] and len(r.draws) == 1
     assert (
         now(r, N.site.x),
         now(r, N.site.a),
@@ -320,12 +253,12 @@ def test_a_prompt_pauses_one_atomic_stage():
 
 
 def test_resuming_commits_the_stage_once():
-    """One draw, one child, one transfer: the same record as a replay with the answer."""
+    """Resumed with `order` edited to REPAIR: one draw, one child, one transfer, the same record as
+    the run whose field starts at REPAIR and that never stops."""
     r = shift()
     kept = list(r.draws)
-    key = r.paused['key']
-    r.resume('REPAIR')
+    r.edit('site.work#0', 'order', 'REPAIR')
+    r.resume()
     assert r.draws == kept
-    replay = shift(choices={key: 'REPAIR'})
-    assert record(r) == record(replay) == ((1, 5, 3, 1), [3], kept, kept[0][1])
-    assert [d['value'] for d in r.decisions] == [d['value'] for d in replay.decisions] == ['REPAIR']
+    straight = shift(order='REPAIR', stops=False)
+    assert record(r) == record(straight) == ((1, 5, 3, 1), [3], kept, kept[0][1])

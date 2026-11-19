@@ -22,7 +22,6 @@ from tests.reference.model import (
     after,
     calc,
     case,
-    categorical,
     count,
     elapsed,
     event,
@@ -238,46 +237,48 @@ def test_13_budget():
     assert run(m, 10).read(count(N.desk.ticket.occurrences)) == 11
 
 
-def shift(choices=None):
-    stage = after(
-        1,
-        [
-            start(this.child),
-            set_(this.x, 1),
-            switch(
-                N.crew.choose(N.crew.forecast),
-                case('REPAIR', [set_(this.plan, 'repair')]),
-                case('WAIT', [set_(this.plan, 'wait')]),
-            ),
-        ],
+SWITCH = 'crew.shift.step[0].do[2]'
+
+
+def shift(order='WAIT', stops=True):
+    """A stage that queues a child, sets `x` and switches on the occurrence's field `order`; with
+    `stops`, a breakpoint stops the run before the switch."""
+    chosen = switch(
+        N.order, case('REPAIR', [set_(this.plan, 'repair')]), case('WAIT', [set_(this.plan, 'wait')])
     )
+    chosen.origin = SWITCH
     m = Model()
     m.entity(
         'crew',
-        fields=[
-            value('forecast', categorical(REPAIR=F(1, 2), WAIT=F(1, 2))),
-            value('x', 0),
-            value('plan', '-'),
+        fields=[value('x', 0), value('plan', '-')],
+        events=[
+            event('child', steps=[after(5, [])]),
+            event(
+                'shift',
+                locals=[value('order', order)],
+                steps=[after(1, [start(this.child), set_(this.x, 1), chosen])],
+            ),
         ],
-        events=[event('child', steps=[after(5, [])]), event('shift', steps=[stage])],
     )
     m.setup = [start(N.crew.shift)]
-    return run(m, 3, controllers={'crew'}, choices=choices or {})
+    return run(m, 3, breakpoints=[(SWITCH, None)] if stops else [])
 
 
 def test_14_pause():
-    """G0: a prompt pauses one atomic stage. Nothing of the stage is visible while the run waits, but
-    the queued start is kept; resuming commits the stage once, with one child."""
+    """G0 had a prompt pause one atomic stage; since item 15 of the plan's changes after G0 a
+    breakpoint does. Nothing of the stage is visible while the run is stopped, but the queued start
+    is kept; resuming commits the stage once, with one child."""
     r = shift()
-    assert r.paused['time'] == 1 and r.paused['queued_starts'] == ['crew.child']
+    assert r.paused['time'] == 1 and r.paused['next'] == SWITCH
     assert (now(r, N.crew.x), now(r, count(N.crew.child.occurrences))) == (0, 0)
-    r.resume('REPAIR')
+    r.edit('crew.shift#0', 'order', 'REPAIR')
+    r.resume()
     assert (r.read(N.crew.plan), r.read(N.crew.x), r.read(count(N.crew.child.occurrences))) == (
         'repair',
         1,
         1,
     )
-    assert shift(choices={'crew': 'REPAIR'}).read(count(N.crew.child.occurrences)) == 1
+    assert shift(order='REPAIR', stops=False).read(count(N.crew.child.occurrences)) == 1
 
 
 def test_15_asserts():

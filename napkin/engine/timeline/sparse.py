@@ -628,11 +628,13 @@ class Sparse:
 
     def cut(self, t):
         """The run stands at time t inside the next step: the step up to t is committed, and the
-        solver starts again from there."""
+        solver starts again from there. It starts again at every moment, even at the end of one of its
+        steps, so that no state of the solver crosses a moment (`saved.py`)."""
+        self.solver = None
         if self.pending is None or t >= self.pending[1]:
             return
         start, _, solution, _, _ = self.pending
-        self.pending, self.solver = None, None
+        self.pending = None
         if t <= start:
             return
         self._record(solution, start, t)

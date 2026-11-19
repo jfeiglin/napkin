@@ -79,17 +79,23 @@ class Occurrences:
         self.of_event = {}  # (member, event) -> its occurrences, in order
         self.gates = {}  # id -> an occurrence that waits at a gate
         self._nodes = {}  # (id of an expression, owner) -> its node over engine names
+        self.sources = {}  # the id of such a node -> (its expression, owner, origin), for `saved.py`
         self.awaiting = []  # delays that wait for the round's settling (`delays`)
         self._delays = {}  # a delay's node -> the rates and results that it reads
 
     def node(self, expression, scope, origin):
         """The node of an expression of a scope over engine names, made once."""
-        owner = self.plan.owner_of(scope)
+        plan = self.plan
+        owner = plan.owner_of(scope)
         key = (id(expression), owner)
         found = self._nodes.get(key)
         if found is None:
+            size = plan.size()
             # The expression is kept with its node, so that its id names it while the run lasts.
-            found = self._nodes[key] = (self.plan.node(expression, scope, origin), expression)
+            found = self._nodes[key] = (plan.node(expression, scope, origin), expression)
+            self.sources[id(found[0])] = (expression, owner, origin)
+            if plan.size() != size:
+                plan.log.append(('node', expression, owner, origin))  # it named values (`saved.py`)
         return found[0]
 
     # ---- starts -----------------------------------------------------------------------------------
@@ -101,6 +107,7 @@ class Occurrences:
         found = self.of_event.setdefault((member, event), [])
         self._limits(member, event, found)
         made = plan.occurrence(member, event, len(found), args, t)
+        plan.log.append(('occurrence', member, event, len(found), tuple(args), t))
         self.made += 1
         live = Live(made, self.made, t)
         self.live[made.id] = live

@@ -15,7 +15,7 @@ There is no `none`: a field declared without a value fails when it is read (deci
 
 A model that `from_program.py` makes from a program of `napkin.program` also keeps the origin of
 each event, step, trigger, solver and statement, the declared unit of each field, the program's table
-of units and the site of each draw and choice, so that the trace and the messages of a run name the
+of units and the site of each draw, so that the trace and the messages of a run name the
 parts of the program, and a breakpoint names the place where a run stops (`Config.breakpoints`).
 """
 
@@ -617,7 +617,6 @@ class Template:
     flows: list = field(default_factory=list)
     events: list = field(default_factory=list)
     solvers: list = field(default_factory=list)
-    sees: list = field(default_factory=list)  # what a human player of this actor is shown
 
 
 @dataclass
@@ -647,13 +646,11 @@ class Model:
     setup: list = field(default_factory=list)  # statements of the setup scope: writes and starts
     asserts: list = field(default_factory=list)
     units: dict = field(default_factory=dict)  # spelling -> scale, when the model came from a program
-    sites: dict = field(default_factory=dict)  # id of a draw or choice node -> its site in a program
+    sites: dict = field(default_factory=dict)  # id of a draw node -> its site in a program
 
-    def template(self, name, fields=(), flows=(), events=(), solvers=(), sees=()):
+    def template(self, name, fields=(), flows=(), events=(), solvers=()):
         """Declare a template."""
-        self.templates[name] = Template(
-            name, list(fields), list(flows), list(events), list(solvers), list(sees)
-        )
+        self.templates[name] = Template(name, list(fields), list(flows), list(events), list(solvers))
         return self.templates[name]
 
     def instance(self, id, template, **values):
@@ -661,9 +658,9 @@ class Model:
         self.instances.append(Instance(id, template, values))
         return E('name', id)
 
-    def entity(self, name, fields=(), flows=(), events=(), solvers=(), sees=()):
+    def entity(self, name, fields=(), flows=(), events=(), solvers=()):
         """An entity written on its own: a template with one member of the same name."""
-        self.template(name, fields, flows, events, solvers, sees)
+        self.template(name, fields, flows, events, solvers)
         return self.instance(name, name)
 
     def check(self, condition, owner=None, text=''):
@@ -673,13 +670,9 @@ class Model:
 
 @dataclass
 class Config:
-    """One execution: the mode, the seed, the overrides, the controllers, the choices, the limits
-    and the breakpoints.
+    """One execution: the mode, the seed, the overrides, the limits and the breakpoints.
 
-    `controllers` names the actors that a person controls in this run; the choices of any other
-    actor come from its forecast. `choices` maps the key of a decision (or an actor's name, for all
-    of its decisions) to the chosen value. The three limits protect a run (decision D6). Each
-    breakpoint is (origin, occurrence): the run stops before the part of that origin (a statement
+    The three limits protect a run (decision D6). Each breakpoint is (origin, occurrence): the run stops before the part of that origin (a statement
     in a stage, a stage, or an event, at the first stage of each of its occurrences) runs for that
     occurrence, or for any with None (`Run.resume`)."""
 
@@ -687,8 +680,6 @@ class Config:
     seed: int = 0
     horizon: object = None
     inputs: dict = field(default_factory=dict)  # 'entity.field' -> value
-    controllers: set = field(default_factory=set)
-    choices: dict = field(default_factory=dict)
     max_occurrences: int = 1_000_000  # starts of one bound event over the run
     max_active: int = 100_000  # occurrences of one bound event alive at once
     max_rounds: int = 1_000  # rounds at one time

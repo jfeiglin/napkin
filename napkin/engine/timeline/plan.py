@@ -501,6 +501,10 @@ class Plan:
         # the collection (`_keyed`); (ids of those) -> what they read that can change (`_members_part`)
         self._collections, self._members = {}, {}
         self._statements = None  # the statements of the program by their origin (`definitions_of`)
+        # What a run changes of the plan, in order, which a restored run makes again (`saved.py`): the
+        # occurrences, the values that a first read of an expression names, the definitions and the
+        # allocations that commits give, the flows that join and leave, the stores that start to move.
+        self.log = []
         self._refuse_parts()
         self.dynamic = {}  # engine name -> `Dynamic`: a read of a collection that changes in a run
         self.events = {}  # (member id, event name) -> (template, row, member, Event)
@@ -681,6 +685,16 @@ class Plan:
         if value.name in self.values or value.name in self.flows:
             raise Outside(f'{value.name}: two values that the engine names alike')
         self.values[value.name] = value
+
+    def size(self):
+        """How much the plan has named: a read that names a value, a draw or a derived read grows it."""
+        return len(self.values), len(self.draws), len(self._derived), len(self.failures)
+
+    def statement(self, origin):
+        """The statement of the program at an origin."""
+        if self._statements is None:
+            self._statements = dict(_program_statements(self.program))
+        return self._statements[origin]
 
     @staticmethod
     def owner_of(scope):

@@ -556,6 +556,9 @@ class Run:
         it are built again and read it so; a record of some keys keeps what the new one reads."""
         plan = self.plan
         plan.define(name, node, self.now, plan.start_of(name))
+        # The source of the node, an expression of a statement that a stage read, for `saved.py`.
+        source = None if node is None else self.occurrences.sources[id(node)]
+        plan.log.append(('define', name, source, self.now, plan.start_of(name)))
         self.changed.add(name)
         self.changed.update(self.recorder.defined(name))
         owner = plan.occurrence_of(name)
@@ -582,6 +585,7 @@ class Run:
 
     def _present(self, flow, joins):
         plan = self.plan
+        plan.log.append(('present', flow, joins))
         for connection in plan.flows[flow].connections:
             for side, store in zip(('outflow', 'inflow'), (connection.source, connection.sink)):
                 if store is None:

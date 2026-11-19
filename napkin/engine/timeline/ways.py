@@ -170,6 +170,12 @@ class Ways:
         for instance in self.instances:
             instance.cut(t)
 
+    def renew(self):
+        """A round's stages begin: each declared solver's next solve starts on a fresh instance with
+        its basis (`solve.Solver.renew`)."""
+        for solver in self.kept.values():
+            solver.renew()
+
     def finish(self, t):
         """At the horizon: each instance stands there, and the lines settle what left a bound."""
         self.cut(t)

@@ -291,7 +291,7 @@ class Ev:
 
     def ref(self, e):
         """What an expression names: a cell, a flow, a collection, or a plain value."""
-        if e._k == 'call':  # a call needs its node: it is the site of a draw or a choice
+        if e._k == 'call':  # a call needs its node: it is the site of a draw
             return self._call(e, *e._a)
         return getattr(self, '_' + e._k)(*e._a)
 
@@ -708,35 +708,26 @@ class Ev:
     def _proportional(self):
         return Alloc(())
 
-    # --- the two producers of a value for a branch: a draw, and an actor's choice -----------------
+    # --- the producer of a value for a branch: a draw --------------------------------------------------
 
     def producer(self, node):
-        """The actor (None for a draw) and the distribution of `d.draw()` or `actor.choose(d)`."""
-        base, method, args = node._a
-        if method == 'draw':
-            actor, dist = None, self.val(base)
-        else:
-            actor, dist = self.val(base), self.val(args[0]) if args else None
-            if not isinstance(actor, Ent):
-                raise RunFailed(f'{show(node)}: only an actor, an entity, makes a choice')
+        """The distribution of `d.draw()`."""
+        dist = self.val(node._a[0])
         if not isinstance(dist, Dist):
             raise RunFailed(f'{show(node)} needs a distribution, and reads {dist!r}')
-        return actor, dist
+        return dist
 
     def produce(self, node, eligible=None):
-        """Execute a draw or a choice. `eligible` lists the outcomes that the guards of a `switch`
-        allow; anywhere else every outcome is eligible."""
+        """Execute a draw. `eligible` lists the outcomes that the guards of a `switch` allow; anywhere
+        else every outcome is eligible."""
         if self.shared.in_formula or not self.shared.may_draw:
-            raise Diagnostic(f'{show(node)}: a formula, a condition or a report cannot draw or choose')
-        actor, dist = self.producer(node)
-        if actor is None:
-            return self.run.draw(dist, node, self, eligible)
-        return self.run.choose(actor, dist, node, self, eligible)
+            raise Diagnostic(f'{show(node)}: a formula, a condition or a report cannot draw')
+        return self.run.draw(self.producer(node), node, self, eligible)
 
     # --- methods of a path ---------------------------------------------------------------------------
 
     def _call(self, node, base, method, args):
-        if method in ('draw', 'choose'):
+        if method == 'draw':
             return self.produce(node)
         c = self.val(base)
         if not isinstance(c, Coll):

@@ -107,10 +107,13 @@ def test_another_format_is_refused_by_name():
 
 
 def test_another_version_of_the_format_is_refused_by_name():
-    data = Artifact(grinder_refill().program).data().replace(b'napkin program 1\n', b'napkin program 2\n', 1)
-    found = refused(data)
+    here, other = (b'napkin program %d\n' % version for version in (FORMAT_VERSION, FORMAT_VERSION + 1))
+    found = refused(Artifact(grinder_refill().program).data().replace(here, other, 1))
     assert found.code == 'format_version'
-    assert "format '2'" in found.message and f'reads format {FORMAT_VERSION}' in found.message
+    assert (
+        f"format '{FORMAT_VERSION + 1}'" in found.message
+        and f'reads format {FORMAT_VERSION}' in found.message
+    )
 
 
 def test_another_version_of_the_language_is_refused_by_name():

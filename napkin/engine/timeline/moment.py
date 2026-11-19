@@ -190,6 +190,9 @@ class Moment:
                     raise SimulationError(self._round_limit(t, limit))
                 self.again = False
                 queue = run.occurrences.due(t)
+                # A run can stop in the stages of a round: each solver takes its next solve on a fresh
+                # instance with its basis, so that its state there is data (`saved.py`).
+                run.ways.renew()
             else:
                 queue, held = held[0][held[1] :], None
             self.phase = 'stages'
@@ -307,10 +310,14 @@ class Moment:
 
     def resolved(self, path, scope, origin):
         """What a path of a scope names, found once."""
-        key = (id(path), self.plan.owner_of(scope))
+        plan = self.plan
+        key = (id(path), plan.owner_of(scope))
         found = self._paths.get(key)
         if found is None:
-            found = self._paths[key] = (self.plan.resolve(path, scope, origin), path)
+            size = plan.size()
+            found = self._paths[key] = (plan.resolve(path, scope, origin), path)
+            if plan.size() != size:
+                plan.log.append(('resolve', path, key[1], origin))  # it named values (`saved.py`)
         return found[0]
 
     def target(self, path, scope, origin):
@@ -491,6 +498,7 @@ class Moment:
         for store, side, allocation, scope, origin in tx.allocations:
             # The endpoint shares its flows by its new rule once its set settles again.
             self.plan.allocate(store, side, allocation, scope, origin)
+            self.plan.log.append(('allocate', store, side, origin, self.plan.owner_of(scope)))
             run.changed.add(store)
         for name, value in tx.writes.items():
             run.write(name, value)
@@ -518,7 +526,9 @@ class Moment:
             return
         moving_before = set(ways.set_of)
         while True:
-            region = [f for key in touched for f in ways.sets[key][0].flows if f not in left]
+            # The sets in the order of their ids, so that the region is the same whatever the order in
+            # which a set of ids was made (a restored run makes its sets of ids afresh, `saved.py`).
+            region = [f for key in sorted(touched) for f in ways.sets[key][0].flows if f not in left]
             region += [f for f in joined if f not in left and f not in region]
             region += [
                 f for connected in waiting for f in connected.flows if f not in left and f not in region
@@ -554,7 +564,9 @@ class Moment:
             for store in connected.stores:
                 if store not in values:
                     values[store] = float(run.value(store))
-                plan.moving.add(store)
+                if store not in plan.moving:
+                    plan.moving.add(store)
+                    plan.log.append(('moving', store))
         stay = {store for connected in made for store in connected.stores}
         for store, value in values.items():
             if store not in stay:

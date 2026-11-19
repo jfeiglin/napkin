@@ -6,11 +6,10 @@ reads the records of a program (`napkin.program.parts`, `refs` and `config`), wa
 of napkin: no `napkin.core.evaluation`, no `napkin.expressions`, nothing of `napkin.engine`.
 
 - `model_of(program)` gives the oracle's `Model`. The run's root is a member whose id is `''`, as a
-  key of a record names it. Each event, step, trigger, solver and move keeps its origin, and each
-  draw and choice its site, so that the oracle's trace names the parts of the program.
+  key of a record names it. Each event, step, trigger, solver and statement keeps its origin, and
+  each draw its site, so that the oracle's trace names the parts of the program.
 - `config_of(program, configuration)` gives the oracle's `Config`: the inputs, the mode and the
-  seed, the actors that a player controls, the picks (keyed by site and occurrence, as the oracle
-  keys a choice) and the limits. Budgets and numerical settings do not apply to exact arithmetic.
+  seed, and the limits. Budgets and numerical settings do not apply to exact arithmetic.
 - `run_of(program, configuration, stops)` runs it, and stops at each breakpoint of `stops` in turn,
   makes its edits and resumes (item 15 of the plan's changes after G0).
 - `value_at(run, program, key, t)` reads the value at a key of the record (`record.Key`) at a time,
@@ -27,7 +26,7 @@ from fractions import Fraction
 from napkin.core import expr as nodes
 from napkin.program import parts as p
 from napkin.program import refs
-from napkin.program.config import PLAYER, Quantity
+from napkin.program.config import Quantity
 
 from .errors import NotCovered, RunFailed
 from .evaluate import ITEM
@@ -81,7 +80,6 @@ KINDS = {  # a kind of the record's trace -> the kind of the oracle's trace
     'fire': 'fire',
     'solve': 'solve',
     'draw': 'draw',
-    'choice': 'choice',
     'move': 'move',
     'edit': 'edit',
 }
@@ -211,17 +209,14 @@ class _Translation:
             return fn('since', self.path(read.event))
         if isinstance(read, refs.Elapsed):
             return fn('elapsed', self.path(read.value))
-        if isinstance(read, refs.Draw):
-            node = E('call', self.source(read.source), 'draw', ())
-        elif isinstance(read, refs.Choice):
-            node = E('call', self.path(read.actor), 'choose', (self.source(read.source),))
-        else:
+        if not isinstance(read, refs.Draw):
             raise NotCovered(f'no read of a program: {read!r}')
-        self.sites[id(node)] = read.site  # the oracle keys the draw or the choice by this site
+        node = E('call', self.source(read.source), 'draw', ())
+        self.sites[id(node)] = read.site  # the oracle keys the draw by this site
         return node
 
     def source(self, source):
-        """The distribution of a draw or a choice: written in place, or named by a path."""
+        """The distribution of a draw: written in place, or named by a path."""
         return self.distribution(source) if isinstance(source, refs.Distribution) else self.path(source)
 
     def distribution(self, d):
@@ -399,7 +394,6 @@ class _Translation:
             [self.flow(each) for each in template.flows],
             [self.event(each) for each in template.events],
             [self.solver(each) for each in template.solvers],
-            [self.path(each) for each in template.sees],
         )
 
 
@@ -449,8 +443,6 @@ def config_of(program, configuration):
         seed=c.seed or 0,
         horizon=_exact(c.request.horizon),
         inputs={f'{each.member}.{each.name}': _input(tr, each.value) for each in c.inputs},
-        controllers={each.actor for each in c.controllers if each.by == PLAYER},
-        choices={f'{each.site}|{each.occurrence}': each.value for each in c.picks},
         max_occurrences=c.limits.max_occurrences,
         max_active=c.limits.max_active,
         max_rounds=c.limits.max_rounds,
@@ -471,7 +463,7 @@ def run_of(program, configuration, stops=()):
     try:
         run.run()
         for origin, occurrence, edits in stops:
-            if run.paused is None or run.paused.get('why') != 'breakpoint':
+            if run.paused is None:
                 raise RunFailed(f'the run never stops at {origin}')
             run.breakpoints.remove((origin, occurrence))
             for key, value in edits:
