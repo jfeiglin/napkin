@@ -178,6 +178,16 @@ These override the text of this plan below, wherever the two differ. The owner's
      `order` changed from `WAIT` to `SEND`, where the send branch runs once, the original draw stays
      in the history and the edit explains the divergence. "About one slice" is provisional until
      the numerical resume case passes. A wrapper such as `napkin play` is a client of this.
+16. **Evidence (owner, 2026-11-19).** The compiler warns about each value without a record of the
+   kinds that the old compiler required one for (`docs/language.md` 2.10 at `8488047`: an input but
+   a text, a stored value, a timed event, a status, an assert, an instance value, a column of a
+   table); the report marks each in its evidence trail; `tools.check` and the publisher refuse a
+   scenario package with any. A model being explored still runs. A number, a yes/no or a
+   distribution that an option or a `change` sets needs a record, an error as now (R-A5-05).
+17. **This session stops at G2 (owner, 2026-11-19).** M, the migration of the catalogue, is a later
+   session. Everything up to G2 is done here, and M is made ready: A5's translator and check script
+   brought to the language as it now is, the steps to rebuild the old compiler's worktree
+   (`git worktree add /home/user/napkin-base 8488047`), and a handover in `briefs/m.md`.
 
 ### If the session is cut off
 
