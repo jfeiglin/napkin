@@ -26,8 +26,11 @@ value stays in its range, and a run that cannot answer stops with a named failur
 ## What was measured
 
 Prototype P1 measured other solvers and other settings for the two steps. Its scripts are in
-`scratch/rewrite/p1/` at commit `48a276c`, with its findings (`FINDINGS.md`). Its data files were
-kept outside the repository and are not part of the record; the scripts make them again.
+`scratch/rewrite/p1/` at commit `95029fb`, with its findings (`FINDINGS.md`): those of the
+measurements at `48a276c`, and the two of the adopted speedups (`adopted.py`, `engine_solves.py`)
+after it. `scratch/` is deleted before the branch merges, so read them from that commit
+(`git show 95029fb:scratch/rewrite/p1/FINDINGS.md`). Its data files were kept outside the
+repository and are not part of the record; the scripts make them again.
 
 - The library as of commit `cb6661d`, numpy 2.5.3 and scipy 1.18.1 (the lock; SciPy holds HiGHS
   1.12.0), and in a separate environment clarabel 0.11.1, piqp 0.7.0, osqp 1.1.3, qpsolvers 4.13.0,
