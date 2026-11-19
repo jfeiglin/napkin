@@ -210,7 +210,7 @@ ORDER['!='] = operator.ne
 
 
 def stand_in(name, args, keywords):
-    """The value that the tests give a distribution, a draw, a choice and the reads of a flow or a
+    """The value that the tests give a distribution, a draw and the reads of a flow or a
     store that are calls (`notation.STEPS`): it reads each argument by its place, so an argument in the
     wrong place or under the wrong name changes it."""
     given = [*args, *(value for _, value in keywords)]
@@ -287,8 +287,6 @@ def value_of_typed(expression, point, keys):
             return stand_in(node.family, [value * scale for value in node.params], [])
         if isinstance(node, s.Drawn):
             return stand_in('draw', [of(node.source)], [])
-        if isinstance(node, s.Chosen):
-            return stand_in('choose', [of(node.source)], [])
         assert isinstance(node, s.Apply), node
         op, args = node.op, node.args
         if op in ARITHMETIC_OPS:
@@ -472,7 +470,7 @@ def test_each_construct_of_the_typed_form_is_its_node(text, node):
     assert shape(found) == shape(node), found
 
 
-def test_a_distribution_a_draw_and_a_choice_are_calls():
+def test_a_distribution_and_a_draw_are_calls():
     uniform = s.Distribution('uniform', (1, 3), s.Dist(HOURS))
     assert notation.build(uniform, KEYS) == Call('uniform', (Num(1, 'h'), Num(3, 'h')))
     assert notation.build(s.Drawn(uniform, HOURS), KEYS) == Call(
@@ -483,8 +481,6 @@ def test_a_distribution_a_draw_and_a_choice_are_calls():
     assert notation.build(categorical, KEYS) == Call(
         'categorical', (), (('FIXED', Num(0.7)), ('FAILED', Num(0.3)))
     )
-    choice = s.Chosen(s.Read(('named', 'boss'), (), s.Ent('boss')), categorical, kinds)
-    assert notation.build(choice, KEYS) == Call('choose', (notation.build(categorical, KEYS),))
     assert notation.build(s.Const('OPEN', s.EnumOf(('OPEN', 'SHUT'))), KEYS) == Text('OPEN')
 
 

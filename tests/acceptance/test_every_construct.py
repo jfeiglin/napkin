@@ -2,8 +2,10 @@
 
 The package `every` has a main file with its scenario line, options, runs and notes; a module that it
 uses (`use parts`), with every kind of value, unit, range, flow, endpoint setting, route, flow with
-legs, table, member, link, collection, reduction, event, stage, guard, gate, trigger, choice, draw,
-move, solver, assertion and record; and a variant that changes a value of the module. Each value
+legs, table, member, link, collection, reduction, event, stage, guard, gate, trigger, draw (one into
+an occurrence's field that a switch reads, as a decision is written since item 15 of the plan's
+changes after G0), move, solver, assertion and record; and a variant that changes a value of the
+module. Each value
 below is worked by hand from the text: a rate times a time, a bound reached, a share of a limit, a
 median, the closed form of a solver.
 
@@ -214,15 +216,16 @@ mover:
             move amount from left.water to right.water
 
 dispatcher:
-    sees depot.spares
     forecast = categorical(SEND: 0, WAIT: 1)
 
 depot:
     spares = 1 in [0,]
     waits = 0
     request_pump = event():
+        order: enum[SEND, WAIT] = WAIT
         after 0 h:
-            switch dispatcher.choose(dispatcher.forecast):
+            order = dispatcher.forecast.draw()
+            switch order:
                 SEND when this.spares >= 1:
                     this.send_pump.start()
                 WAIT:
@@ -331,7 +334,7 @@ AT = {
     'machine.operational': (True, True),
     'left.water': (5, 5),
     'right.water': (3, 3),
-    # The dispatcher's forecast always waits.
+    # The dispatcher's forecast, drawn into `order`, always waits.
     'depot.spares': (1, 1),
     'depot.waits': (1, 1),
     # 80 h of staff with at least 30 % for outreach, care first: 56 h and 24 h.

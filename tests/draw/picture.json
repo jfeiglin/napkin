@@ -13,7 +13,7 @@
       "icon": "target",
       "template": null,
       "copies": 1,
-      "actor": true, "starts": false, "file": "model.scn",
+      "starts": false, "file": "model.scn",
       "place": {"column": 1, "row": null},
       "stocks": [],
       "stock_order": null,
@@ -51,7 +51,7 @@
       "icon": "factory",
       "template": null,
       "copies": 1,
-      "actor": false, "starts": false, "file": "model.scn",
+      "starts": false, "file": "model.scn",
       "place": null,
       "stocks": [
         {"key": "plant.raw", "name": "Raw water", "kind": "stock"},
@@ -115,7 +115,7 @@
       "icon": "wrench",
       "template": "Crew",
       "copies": 3,
-      "actor": true, "starts": false, "file": "model.scn",
+      "starts": false, "file": "model.scn",
       "place": null,
       "stocks": [
         {"key": "crews.hours", "name": "Hours worked", "kind": "tally"}
@@ -158,7 +158,7 @@
       "icon": "people",
       "template": null,
       "copies": 1,
-      "actor": false, "starts": false, "file": "model.scn",
+      "starts": false, "file": "model.scn",
       "place": null,
       "stocks": [
         {"key": "town.without", "name": "People without water", "kind": "stock"},
@@ -179,7 +179,7 @@
       "icon": "hospital",
       "template": null,
       "copies": 1,
-      "actor": false, "starts": false, "file": "model.scn",
+      "starts": false, "file": "model.scn",
       "place": {"column": 4, "row": 1},
       "stocks": [
         {"key": "hospital.patients", "name": "Patients", "kind": "stock"}
@@ -205,7 +205,7 @@
       "icon": "sun",
       "template": null,
       "copies": 1,
-      "actor": false, "starts": false, "file": "model.scn",
+      "starts": false, "file": "model.scn",
       "place": null,
       "stocks": [],
       "stock_order": null,

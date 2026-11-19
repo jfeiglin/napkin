@@ -119,8 +119,6 @@ def marks_drawn(found):
             marks.add('tally')
         if card.pipes:
             marks.add('pipe')
-        if card.actor:
-            marks.add('decides')
     if machines:
         marks.add('state')
     if any(machine.transitions for machine in machines):
@@ -982,7 +980,6 @@ def card(name, **extra):
         'icon': None,
         'template': None,
         'copies': 1,
-        'actor': False,
         'place': None,
         'stocks': [],
         'hidden_stocks': 0,
@@ -1614,7 +1611,6 @@ def pictures(draw, rows=False, groups=False, places=True, columns=4):
                 'icon': draw(st.sampled_from((None, 'target', 'sun', 'factory'))),
                 'template': None,
                 'copies': draw(st.integers(1, 3)),
-                'actor': draw(st.booleans()),
                 'place': place,
                 'stocks': stocks,
                 'stock_order': stock_order,

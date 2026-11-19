@@ -48,9 +48,9 @@ Brief: `scratch/rewrite/briefs/s7.md` (S7-F), `PLAN.md` "Changes after G0" item 
   tests/reference/test_breakpoints.py (10). examples.py: `pump_dispatch`, `PAUSES`, `Stop`,
   `pump_dispatch_unattended` (its text in tests/language/test_events.py `SOURCES`).
 - Language: `choose(...)` (code `choose`) and `sees` (code `sees`) refused by name with the hint
-  (semantic.py `CHOOSE`, `SEES`); `Chosen`, `DeclaredSees` and their lowering removed. Breaks
-  (not mine, to route): tests/acceptance/test_every_construct.py 217/225, tests/draw/test_picture.py
-  932, tests/draw/test_triggers.py 222/485, maybe tests/test_session.py, examples/reservoir.
+  (semantic.py `CHOOSE`, `SEES`); `Chosen`, `DeclaredSees` and their lowering removed. At the
+  coordinator's request: tests/draw, tests/acceptance rewritten; napkin/draw lost the choice words
+  and the actor badge (card key `actor`, legend "Decides"). examples/reservoir is old language.
 
 ## M2 to do (waits for S7-E's M3)
 

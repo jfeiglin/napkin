@@ -219,15 +219,16 @@ b:
         after 0 h
 
 boss:
-    sees a.x
     forecast = categorical(SEND: 0.25, WAIT: 0.75)
 
 depot:
     spares = 1 in [0,]
     waits = 0
     decide = event():
+        order: enum[SEND, WAIT] = WAIT
         after 0 h:
-            switch boss.choose(boss.forecast):
+            order = boss.forecast.draw()
+            switch order:
                 SEND when this.spares >= 1:
                     this.spares -= 1
                 WAIT:
@@ -482,7 +483,7 @@ def test_a_branch_and_a_switch_say_what_each_case_changes(models):
         'after 1 h: draws fixed (chance 0.7) or failed (chance 0.3), fixed: sets mode, failed: starts kick',
     )
     assert line_of(found, 'depot', 'decide').steps == (
-        'after 0 h: boss chooses send or wait, send when spares is at least 1: takes from spares, wait: adds to waits',
+        'after 0 h: sets order, by order, send when spares is at least 1: takes from spares, wait: adds to waits',
     )
 
 

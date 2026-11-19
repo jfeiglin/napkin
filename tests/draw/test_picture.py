@@ -40,7 +40,6 @@ CARD = (
     'icon',
     'template',
     'copies',
-    'actor',
     'starts',
     'file',
     'place',
@@ -209,7 +208,6 @@ def picture_problems(doc):
         need(card['icon'] is None or card['icon'] in ICONS, f'{where}.icon', 'is an icon or null')
         need(card['template'] is None or _text(card['template']), f'{where}.template', 'is a text or null')
         need(_whole(card['copies']), f'{where}.copies', 'is 1 or more')
-        need(isinstance(card['actor'], bool), f'{where}.actor', 'is true or false')
         need(isinstance(card['starts'], bool), f'{where}.starts', 'is true or false')
         need(card['file'] is None or _text(card['file']), f'{where}.file', 'is a text or null')
         place = card['place']
@@ -912,7 +910,7 @@ def test_a_change_names_how_it_changes():
     }
 
 
-def test_a_card_names_its_template_copies_role_and_actor():
+def test_a_card_names_its_template_copies_and_role():
     model = compiled(
         """
         Ward:
@@ -929,11 +927,12 @@ def test_a_card_names_its_template_copies_role_and_actor():
             y: people = 0 people
         operator:
             role operator
-            sees meter.y
             forecast = categorical(ACT: 0.5, WAIT: 0.5)
             decide = event():
+                order: enum[ACT, WAIT] = WAIT
                 after 0 h:
-                    switch operator.choose(operator.forecast):
+                    order = operator.forecast.draw()
+                    switch order:
                         ACT:
                             meter.y += 1 people
                         WAIT:
@@ -944,17 +943,14 @@ def test_a_card_names_its_template_copies_role_and_actor():
         tables={'wards.csv': 'id\na\nb\nc\n'},
     )
     doc = picture(model, style.Style())
-    found = {
-        card['id']: (card['template'], card['copies'], card['role'], card['actor']) for card in doc['cards']
-    }
-    # A role that is none of the six, and no role, are no role; only a thing with a choice is an
-    # actor.
+    found = {card['id']: (card['template'], card['copies'], card['role']) for card in doc['cards']}
+    # A role that is none of the six, and no role, are no role.
     assert found == {
-        'wards': ('Ward', 3, 'community', False),
-        'north': ('Ward', 1, 'community', False),
-        'crew': (None, 1, None, False),
-        'meter': (None, 1, None, False),
-        'operator': (None, 1, 'operator', True),
+        'wards': ('Ward', 3, 'community'),
+        'north': ('Ward', 1, 'community'),
+        'crew': (None, 1, None),
+        'meter': (None, 1, None),
+        'operator': (None, 1, 'operator'),
     }
     # The rows of one table share its card, its stocks and its pipes.
     wards = card_of(doc, 'wards')
