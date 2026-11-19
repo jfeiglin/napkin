@@ -81,8 +81,12 @@ from ...program.config import ConfigurationError, Quantity
 from ...program.record import Key
 from ...program.refs import (
     By,
+    Choice,
+    Delayed,
     Distribution,
     Draw,
+    Elapsed,
+    EnumValue,
     Expr,
     Formula,
     Instances,
@@ -94,12 +98,13 @@ from ...program.refs import (
     Path,
     Reduce,
     Root,
+    Since,
     This,
     Time,
     Where,
     spelled,
 )
-from .collections import Entries, Keyed, Reduction
+from .collections import Dynamic, Entries, Keyed, Reduction
 from .pools import pools_of
 
 # The kinds of the values of a plan.
@@ -111,8 +116,10 @@ RATE = 'rate'  # the actual rate of a flow, which the continuous engine gives
 LINK = 'link'  # fixed: the id of the member that a link names, a text
 REDUCE = 'reduce'  # a reduction of a collection (`Plan.reductions`), evaluated at each read
 LOOKUP = 'lookup'  # a keyed read `.at(x)` (`Plan.keyed`)
+DYNAMIC = 'dynamic'  # a read of a collection whose members change in a run (`Plan.dynamic`)
 STARTS = (INPUT, STATE, CAPTURE, LINK)  # the kinds that the start of a run evaluates once
 FIXED = (INPUT, LINK)  # what an assertion over inputs may read
+BUILTINS = ('started', 'done', 'active')  # the fields of every occurrence
 SIDES = ('outflow', 'inflow')  # the endpoints of a stored number
 # The ways of a connected set (`Connected.way`).
 FAMILY, LINES, COMPONENT, SPARSE = 'family', 'lines', 'component', 'sparse'
@@ -243,13 +250,18 @@ class End:
 class Connected:
     """A connected set of stores and flows, the formulas and reductions that its rates read, each
     after those that it reads, the keyed reads by the time that they read, and its way: `FAMILY`,
-    `LINES`, `COMPONENT` or `SPARSE` (see the module)."""
+    `LINES`, `COMPONENT` or `SPARSE` (see the module). `rates` are the actual rates and served
+    fractions of other sets that its settings read, so it settles after them; `reads` is every
+    engine name that its settings read, through formulas, reductions and dynamic reads, so that a
+    moment knows which writes touch it."""
 
     stores: tuple[str, ...]
     flows: tuple[str, ...]
     formulas: tuple[str, ...]
     stepped: tuple[str, ...] = ()
     way: str = COMPONENT
+    rates: frozenset = frozenset()
+    reads: frozenset = frozenset()
 
 
 @dataclass(frozen=True)
@@ -301,7 +313,7 @@ def _uses(item, start):
     """Whether a read, a path or a start reads the start of kind `start` (This or Item)."""
     if isinstance(item, Path):
         return _uses(item.start, start)
-    if isinstance(item, (This, Item)):
+    if isinstance(item, (This, Item, Local)):
         return isinstance(item, start)
     if isinstance(item, Literal):
         return any(_uses(path, start) for path in item.items)
@@ -313,7 +325,54 @@ def _uses(item, start):
         return _uses(item.source, start) or any(_uses(read, start) for _, read in item.key.reads)
     if isinstance(item, Reduce):
         return _uses(item.source, start)
+    if isinstance(item, Since):
+        return _uses(item.event, start)
     return False
+
+
+@dataclass(frozen=True)
+class Frame:
+    """The bare names of an occurrence or of a trigger: its id (`tank.receive#0`,
+    `grinder.refill.when[0]`) and the point that each name stands for (`('value', engine name)`,
+    `('flow', engine name)` or `('member', id)` of an entity parameter)."""
+
+    owner: str
+    names: dict
+
+
+@dataclass(frozen=True)
+class Trigger:
+    """A trigger of one receiver: its key (`grinder.refill.when[0]`), its origin, its receiver and
+    the event that it starts; its condition, its captures (engine name and node, in written order)
+    and its reset (`('when', node)` or `('after', node)`, or None) as nodes over engine names; its
+    body, which a firing executes in `scope` (the captures are its frame)."""
+
+    key: str
+    origin: str
+    member: str
+    event: str
+    test: nodes.Node
+    captures: tuple
+    reset: tuple | None
+    body: tuple
+    scope: tuple
+
+
+@dataclass(frozen=True)
+class Occurrence:
+    """An occurrence of an event as a plan holds it: its id, its receiver, its event and its scope;
+    the engine names of its values in the order in which its entry gives them a value (D14: its
+    parameters, its built-in fields, then its locals and the plain settings of its flows in written
+    order); its stored numbers, its flows and its formulas, which freeze at its finish."""
+
+    id: str
+    member: str
+    event: p.Event
+    scope: tuple
+    initial: tuple
+    stores: tuple
+    flows: tuple
+    formulas: tuple
 
 
 class Plan:
@@ -347,6 +406,18 @@ class Plan:
         self._places = {}  # the place of each value in `values`, for `ordered`
         self._given = {(item.member, item.name): item for item in configuration.inputs}
         self._refuse_parts()
+        self.dynamic = {}  # engine name -> `Dynamic`: a read of a collection that changes in a run
+        self.events = {}  # (member id, event name) -> (template, row, member, Event)
+        self.occurrences = {}  # (member id, event name) -> the ids of its occurrences, in order
+        self.frames = {}  # occurrence id -> its scope (template, row, member, Frame)
+        self.end_flows = {}  # (store, side) -> the connections present at a dynamic endpoint
+        # With flows of events, every endpoint's collection of flows changes in a run.
+        self.dynamic_ends = any(
+            isinstance(part, p.Flow)
+            for template in program.templates
+            for event in template.events
+            for part in event.locals
+        )
         # The values of each scope, then the flows, whose ends are values, then the expressions of
         # each: an expression may read a part that comes later.
         self._declared = []
@@ -355,6 +426,10 @@ class Plan:
             for template in program.templates
             for row, member in enumerate(template.members)
         ]
+        for template, row, member in members:
+            for event in template.events:
+                self.events[(member.id, event.name)] = (template, row, member, event)
+                self.occurrences[(member.id, event.name)] = []
         for value in program.root:
             self._declare(value, None)
         for scope in members:
@@ -374,6 +449,12 @@ class Plan:
         for scope in members:
             for check in scope[0].asserts:
                 self.asserts.append((check.origin, scope[2].id, self.node(check.test, scope, check.origin)))
+        self.triggers = [
+            self._trigger(scope, event, index)
+            for scope in members
+            for event in scope[0].events
+            for index in range(len(event.triggers))
+        ]
         self._connect()
         self._refuse_reads()
 
@@ -385,18 +466,26 @@ class Plan:
     # ---- what this slice refuses ----------------------------------------------------------------
 
     def _refuse_parts(self):
+        """Solvers (S5), status displays (C), and what the second part of S4 brings: a draw in an
+        event, an actor's choice, `elapsed` and `delayed`, an assignment of a formula, a
+        distribution, a collection or an allocation, and controllers of actors."""
         program = self.program
-        if program.setup:
-            raise Outside('the statements of the setup, which start events (S4)')
         for template in program.templates:
-            for what, found, slice_ in (
-                ('an event', template.events, 'S4'),
-                ('a solver', template.solvers, 'S5'),
-            ):
-                if found:
-                    raise Outside(f'{found[0].origin}: {what} ({slice_})')
+            if template.solvers:
+                raise Outside(f'{template.solvers[0].origin}: a solver (S5)')
             if template.status is not None:
                 raise Outside(f'{template.status.origin or template.name}: a status display (C)')
+        if self.configuration.controllers or self.configuration.picks:
+            raise Outside('the controllers and picks of actors (S4)')
+        for origin, expression, in_event in _program_expressions(program):
+            for _, read in expression.reads:
+                if isinstance(read, (Choice, Elapsed, Delayed)) or (isinstance(read, Draw) and in_event):
+                    raise Outside(f'{origin}: {spelled(read)}, which the second part of S4 runs (S4)')
+        for origin, statement in _program_statements(program):
+            if isinstance(statement, p.Assign) and not isinstance(statement.value, Expr):
+                raise Outside(
+                    f'{origin}: an assignment of a {type(statement.value).__name__.lower()} in a stage (S4)'
+                )
 
     def _refuse_reads(self):
         """A keyed read of what moves, and an assertion over state, are refused (S4)."""
@@ -442,10 +531,19 @@ class Plan:
             raise Outside(f'{value.name}: two values that the engine names alike')
         self.values[value.name] = value
 
+    @staticmethod
+    def _owner(scope):
+        """The owner of the values of a scope: an occurrence's id, a member's id, or the root's."""
+        if scope is None:
+            return ''
+        return scope[3].owner if len(scope) > 3 else scope[2].id
+
     def _declare(self, value, scope):
-        """A value of the root (`scope` None) or of one member: (template, row, member)."""
+        """A value of the root (`scope` None), of one member ((template, row, member)) or of an
+        occurrence ((template, row, member, frame))."""
         member = scope[2] if scope is not None else None
-        key = Key(member.id if member is not None else '', (value.name,))
+        local = scope is not None and len(scope) > 3
+        key = Key(self._owner(scope), (value.name,))
         name = name_of(key)
         if value.kind == p.COLLECTION:
             return  # a collection has no value of its own: a path that steps into it reads its init
@@ -456,12 +554,12 @@ class Plan:
             linked = target.members[member.link(value.name)].id
             self._add(Value(name, key, LINK, nodes.const(linked)))
             return
-        own = member.value(value.name) if member is not None else None
+        own = member.value(value.name) if member is not None and not local else None
         init = own if own is not None else value.init
         if isinstance(value.type, p.DistributionType):
             self._declare_distribution(value, member, name, init)
             return
-        if not isinstance(value.type, (p.Number, p.Bool)):
+        if not isinstance(value.type, (p.Number, p.Bool, p.EnumType, p.Text)):
             raise Outside(f'{value.origin}: a value of type {type(value.type).__name__} (a later slice)')
         unit = value.type.unit if isinstance(value.type, p.Number) else ''
         boolean = isinstance(value.type, p.Bool)
@@ -473,7 +571,7 @@ class Plan:
         def make():
             shape, binding = None, ()
             if given is not None:
-                node = self._given_node(given, name, unit, boolean)
+                node = self._given_node(given, name, unit, boolean, value.type)
             else:
                 expression = init.expr if kind == FORMULA else init
                 node, binding = self._bound(expression, scope, value.origin)
@@ -504,10 +602,20 @@ class Plan:
             raise Outside(f'{value.origin}: a distribution-valued value that is no distribution (S4)')
         self.distributions[name] = init
 
-    def _given_node(self, given, name, unit, boolean):
+    def _given_node(self, given, name, unit, boolean, value_type=None):
         """The node of the value that a configuration gives an input, in canonical units (D2). Its
-        unit is a spelling of the program's table, or a unit of the library given whole."""
+        unit is a spelling of the program's table, or a unit of the library given whole. An enum
+        input takes a member of its enum, and a text input a text."""
         found = given.value
+        if isinstance(value_type, p.EnumType):
+            members = self.program.enum(value_type.enum).members
+            if not isinstance(found, EnumValue) or found.member not in members:
+                raise ConfigurationError(f'{name} takes a member of {value_type.enum}, not {found!r}')
+            return nodes.const(found.member)
+        if isinstance(value_type, p.Text):
+            if not isinstance(found, str):
+                raise ConfigurationError(f'{name} is a text: it takes a text, not {found!r}')
+            return nodes.const(found)
         if boolean:
             if not isinstance(found, bool):
                 raise ConfigurationError(f'{name} is a yes/no: it takes true or false, not {found!r}')
@@ -535,19 +643,19 @@ class Plan:
         these: `max(rate, 0)` forward and `max(-rate, 0)` backward on a route (and so are their
         requests, of the route's signed request), and the fraction times the leg's request on a flow
         with legs."""
-        member = scope[2]
-        name = name_of(Key(member.id, (flow.name,)))
+        owner = self._owner(scope)
+        name = name_of(Key(owner, (flow.name,)))
         self._numbers[name] = len(self._numbers) + 1
         if flow.kind == p.LEGS:
-            fraction = name_of(Key(member.id, (flow.name, 'served_fraction')))
-            self._add(Value(fraction, Key(member.id, (flow.name, 'served_fraction')), RATE, None, ''))
+            fraction = name_of(Key(owner, (flow.name, 'served_fraction')))
+            self._add(Value(fraction, Key(owner, (flow.name, 'served_fraction')), RATE, None, ''))
             legs = []
             for leg in flow.legs:
                 steps, origin = (flow.name, leg.name), leg.origin or flow.origin
                 ends = [self._end(end, scope, origin) for end in (leg.source, leg.sink)]
                 request, capacity = self._settings(leg, steps, scope, origin)
-                made = Connection(name_of(Key(member.id, steps)), *ends, request, capacity, leg.unit, LEG)
-                rate = Key(member.id, (*steps, 'actual_rate'))
+                made = Connection(name_of(Key(owner, steps)), *ends, request, capacity, leg.unit, LEG)
+                rate = Key(owner, (*steps, 'actual_rate'))
                 node = nodes.binary('mul', nodes.ref(fraction), nodes.ref(request))
                 self._add(Value(name_of(rate), rate, FORMULA, node, leg.unit))
                 self._parts[made.name] = (LEG, made)
@@ -559,7 +667,7 @@ class Plan:
             return
         ends = [self._end(end, scope, flow.origin) for end in (flow.source, flow.sink)]
         request, capacity = self._settings(flow, (flow.name,), scope, flow.origin)
-        rate = Key(member.id, (flow.name, 'actual_rate'))
+        rate = Key(owner, (flow.name, 'actual_rate'))
         if flow.kind == p.REVERSIBLE:
             if None in ends:
                 raise Outside(f'{flow.origin}: a reversible route that ends at SOURCE or SINK (a type error)')
@@ -568,7 +676,7 @@ class Plan:
             for leg in made.connections:
                 for which, signed in (('actual_rate', name_of(rate)), ('request', request)):
                     part = nodes.ref(signed) if leg.role == FORWARD else nodes.unary('neg', nodes.ref(signed))
-                    key = Key(member.id, (flow.name, leg.role, which))
+                    key = Key(owner, (flow.name, leg.role, which))
                     node = nodes.call('max', [part, nodes.const(0.0)])
                     self._add(Value(name_of(key), key, FORMULA, node, flow.unit))
                 self._parts[leg.name] = (leg.role, leg)
@@ -588,13 +696,13 @@ class Plan:
     def _settings(self, flow, steps, scope, origin):
         """The engine names of the request (zero when left out) and of the capacity (None when left
         out) of a flow or a leg, declared as values under the key steps `steps`."""
-        member = scope[2]
+        owner = self._owner(scope)
         names = {}
         for which in ('request', 'capacity'):
             setting = getattr(flow, which)
             if setting is None and which == 'capacity':
                 continue
-            key = Key(member.id, (*steps, which))
+            key = Key(owner, (*steps, which))
             names[which] = name_of(key)
             kind = FORMULA if isinstance(setting, Formula) else CAPTURE
             self._add(Value(name_of(key), key, kind, None, flow.unit))
@@ -634,6 +742,8 @@ class Plan:
                 for side, end in zip(SIDES, (connection.source, connection.sink)):
                     if end is not None:
                         self._incident.setdefault((end, side), []).append(connection.name)
+        if self.dynamic_ends:
+            self.end_flows = {pair: list(flows) for pair, flows in self._incident.items()}
         scopes = [(value, None) for value in self.program.root]
         scopes += [(value, scope) for scope in members for value in scope[0].values]
         for value, scope in scopes:
@@ -650,7 +760,7 @@ class Plan:
         value, scope = self._stores[store]
         flows = tuple(self._incident.get((store, side), ()))
         setting = getattr(value, side)
-        if setting is None and not flows:
+        if setting is None and not flows and not self.dynamic_ends:
             raise Outside(f'{origin}: {store}.{side}, which no flow meets (a type error)')
         found = self.values.get(store)
         if found is None or found.kind != STATE or found.boolean:
@@ -659,8 +769,9 @@ class Plan:
         return self.ends[(store, side)]
 
     def _declare_end(self, store, value, scope, side, setting, flows):
-        owner = scope[2].id if scope is not None else ''
-        unit = self.connections[flows[0]].unit if flows else ''
+        owner = self._owner(scope)
+        # With no flow yet, the unit of the store per hour.
+        unit = self.connections[flows[0]].unit if flows else f'{getattr(value.type, "unit", "") or "1"}/h'
         origin = setting.origin or value.origin
         names = {}
         for which in ('request', 'capacity'):
@@ -686,11 +797,20 @@ class Plan:
 
             self._declared.append(make)
         rate = Key(owner, (value.name, side, 'actual_rate'))
-        total = None
-        for flow in flows:
-            part = nodes.ref(f'{flow}.actual_rate')
-            total = part if total is None else nodes.binary('add', total, part)
-        self._add(Value(name_of(rate), rate, FORMULA, total if total is not None else nodes.const(0.0), unit))
+        if self.dynamic_ends:
+            # The flows present at the endpoint change in a run: its actual rate is their sum then.
+            spelling = f'{store}.{side}.actual_rate'
+            self.dynamic[name_of(rate)] = Dynamic(
+                name_of(rate), 'sum', ('flows', store, side), ('actual_rate',), spelling
+            )
+            self._add(Value(name_of(rate), rate, DYNAMIC, None, unit))
+        else:
+            total = None
+            for flow in flows:
+                part = nodes.ref(f'{flow}.actual_rate')
+                total = part if total is None else nodes.binary('add', total, part)
+            total = total if total is not None else nodes.const(0.0)
+            self._add(Value(name_of(rate), rate, FORMULA, total, unit))
         self.ends[(store, side)] = End(
             store, side, names['request'], names.get('capacity'), name_of(rate), flows
         )
@@ -722,6 +842,115 @@ class Plan:
                     )
         self.rankings[(store, side)] = tuple(items)
 
+    # ---- events -------------------------------------------------------------------------------
+
+    def _trigger(self, scope, event, index):
+        """A trigger of an event of one receiver (`Trigger`). Its captures are named under the
+        trigger's key; each firing sets them."""
+        template, row, member = scope
+        trigger = event.triggers[index]
+        key = f'{member.id}.{event.name}.when[{index}]'
+        frame = Frame(key, {})
+        inner = (template, row, member, frame)
+        captures = []
+        for capture in trigger.captures:
+            # A capture is held by the run, which sets it at each firing: it is no value of the plan.
+            name = f'{key}.{capture.name}'
+            frame.names[capture.name] = ('value', name)
+            captures.append((name, self.node(capture.init, inner, capture.origin or trigger.origin)))
+        reset = None
+        if trigger.reset is not None:
+            reset = (trigger.reset.kind, self.node(trigger.reset.expr, inner, trigger.origin))
+        test = self.node(trigger.test, inner, trigger.origin)
+        return Trigger(
+            key, trigger.origin, member.id, event.name, test, tuple(captures), reset, trigger.body, inner
+        )
+
+    def occurrence(self, member, event_name, index, args, started):
+        """The values and flows of a new occurrence of an event on a member (`Occurrence`), the
+        `index`-th start of that event on it: its parameters take the arguments (an entity's id for
+        an entity parameter), `started` the time of its start, `done` false and `active` true."""
+        template, row, receiver, event = self.events[(member, event_name)]
+        occ = f'{member}.{event_name}#{index}'
+        frame = Frame(occ, {})
+        scope = (template, row, receiver, frame)
+        initial = []
+        for param, arg in zip(event.params, args):
+            key = Key(occ, (param.name,))
+            if isinstance(param.type, p.EntityType):
+                self._add(Value(name_of(key), key, LINK, nodes.const(arg)))
+                frame.names[param.name] = ('member', arg)
+            else:
+                bounds = [
+                    self.node(bound, scope, param.origin) if bound is not None else None
+                    for bound in (param.lower, param.upper)
+                ]
+                self._add(Value(name_of(key), key, STATE, nodes.const(arg), *_type_of(param.type), *bounds))
+                frame.names[param.name] = ('value', name_of(key))
+            initial.append(name_of(key))
+        for field, kind, value in (
+            ('started', INPUT, started),
+            ('done', STATE, False),
+            ('active', STATE, True),
+        ):
+            key = Key(occ, (field,))
+            self._add(Value(name_of(key), key, kind, nodes.const(value), '', field != 'started'))
+            initial.append(name_of(key))
+        for part in event.locals:
+            kind = 'flow' if isinstance(part, p.Flow) else 'value'
+            frame.names[part.name] = (kind, name_of(Key(occ, (part.name,))))
+        first = len(self._declared)
+        for part in event.locals:
+            if isinstance(part, p.Value):
+                self._declare(part, scope)
+        flows = []
+        for part in event.locals:
+            if isinstance(part, p.Flow):
+                self._declare_flow(part, scope)
+                flows.append(name_of(Key(occ, (part.name,))))
+        makers, self._declared = self._declared[first:], self._declared[:first]
+        for make in makers:
+            make()
+        stores, formulas = [], []
+        for part in event.locals:
+            name = name_of(Key(occ, (part.name,)))
+            if isinstance(part, p.Value):
+                initial.append(name)
+                value = self.values.get(name)
+                if value is None:
+                    continue  # a distribution or a collection
+                if value.kind == STATE and isinstance(part.type, p.Number):
+                    stores.append(name)
+                    self._stores[name] = (part, scope)
+                elif value.kind == FORMULA:
+                    formulas.append(name)
+                continue
+            for setting in self._flow_settings(name):
+                (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
+        for name in flows:
+            if name in self.flows:
+                for connection in self.flows[name].connections:
+                    self.connections[connection.name] = connection
+        self.frames[occ] = scope
+        self.occurrences[(member, event_name)].append(occ)
+        flows = tuple(name for name in flows if name in self.flows)
+        return Occurrence(occ, member, event, scope, tuple(initial), tuple(stores), flows, tuple(formulas))
+
+    def _flow_settings(self, name):
+        """The engine names of the requests and capacities of a flow (or of its legs), in order."""
+        found = []
+        for which in ('request', 'capacity'):
+            for each in (f'{name}.{which}', *(f'{leg}.{which}' for leg in self._legs_of(name))):
+                if each in self.values and each not in found:
+                    found.append(each)
+        return found
+
+    def _legs_of(self, name):
+        flow = self.flows.get(name)
+        if flow is None or flow.kind != LEGS:
+            return ()
+        return tuple(leg.name for leg in flow.legs)
+
     # ---- expressions ----------------------------------------------------------------------------
 
     def node(self, expression, scope, origin, item=None):
@@ -742,7 +971,7 @@ class Plan:
                 point = self._resolve(read, scope, origin, item)
                 if point[0] == 'value':
                     names[name], binding[name] = nodes.ref(point[1]), point[1]
-                elif point[0] == 'member':
+                elif point[0] in ('member', 'occurrence'):
                     names[name], binding = nodes.const(point[1]), None
                 else:
                     raise Outside(f'{origin}: {spelled(read)} where a value is expected (a later slice)')
@@ -756,6 +985,14 @@ class Plan:
                 names[name] = nodes.ref(found)
                 if binding is not None:
                     binding[name] = found
+            elif isinstance(read, EnumValue):
+                names[name] = nodes.const(read.member)
+            elif isinstance(read, Since):
+                point = self._resolve(read.event, scope, origin, item)
+                if point[0] != 'event':
+                    raise Outside(f'{origin}: {spelled(read)} of what is no event (a type error)')
+                found = self._dynamic(read, 'since', ('occurrences', point[1], point[2]), (), scope, item)
+                names[name], binding = nodes.ref(found), None
             else:
                 raise Outside(f'{origin}: the read {spelled(read)} (S4)')
         node = _renamed(expression.node, names)
@@ -810,7 +1047,10 @@ class Plan:
                 keys.append(found[1])
             return ('many', replace(entries, keys=tuple(keys), whole=False))
         if isinstance(start, Local):
-            raise Outside(f'{origin}: the bare name {start.name}, of an event or a solver (S4, S5)')
+            frame = scope[3] if scope is not None and len(scope) > 3 else None
+            if frame is None or start.name not in frame.names:
+                raise Outside(f'{origin}: the bare name {start.name}, of a solver (S5)')
+            return frame.names[start.name]
         raise Outside(f'{origin}: the start of a path {type(start).__name__} (a later slice)')
 
     def _step(self, point, name, origin):
@@ -833,7 +1073,22 @@ class Plan:
                 return ('value', f'{point[1]}.{name}')
             if isinstance(part, p.Flow):
                 return ('flow', f'{point[1]}.{name}')
-            raise Outside(f'{origin}: {point[1]}.{name} names an event or a solver (S4, S5)')
+            if isinstance(part, p.Event):
+                return ('event', point[1], name)
+            raise Outside(f'{origin}: {point[1]}.{name} names a solver (S5)')
+        if kind == 'event':
+            if name != 'occurrences':
+                raise Outside(f'{origin}: the {name} of the event {point[1]}.{point[2]} (a type error)')
+            return ('dynamic', ('occurrences', point[1], point[2]), ())
+        if kind == 'dynamic':
+            return ('dynamic', point[1], point[2] + (name,))
+        if kind == 'occurrence':
+            names = self.frames[point[1]][3].names
+            if name in names:
+                return names[name]
+            if name in BUILTINS:
+                return ('value', f'{point[1]}.{name}')
+            raise Outside(f'{origin}: {point[1]} has no {name} (a type error)')
         if kind == 'flow':
             return self._flow_step(point[1], name, origin)
         if kind == 'many':
@@ -847,6 +1102,8 @@ class Plan:
             return ('end', point[1], name)
         if kind == 'end':
             end = self.ends[(point[1], point[2])]
+            if name == 'flows' and self.dynamic_ends:
+                return ('dynamic', ('flows', point[1], point[2]), ())
             if name == 'flows':
                 points = tuple(('flow', flow) for flow in end.flows)
                 keys = tuple(self._numbers[flow] for flow in end.flows)
@@ -970,6 +1227,8 @@ class Plan:
         """The engine name of a reduction or a keyed read: its spelling, after the member that it
         reads through `this` and the member of a where that it reads through `item`."""
         owner = scope[2].id if scope is not None and _uses(read, This) else ''
+        if scope is not None and len(scope) > 3 and _uses(read, Local):
+            owner = scope[3].owner
         if item is not None and _uses(read, Item):
             owner = f'{owner}@{item}'
         key = (owner, read)
@@ -985,6 +1244,9 @@ class Plan:
         key, name = self._derived_name(read, scope, item)
         if key in self._derived:
             return name
+        point = self._resolve(read.source, scope, origin, item)
+        if point[0] == 'dynamic':
+            return self._dynamic(read, read.op, point[1], point[2], scope, item)
         entries = self._many(read.source, scope, origin, item)
         names = entries.names
         if names is None and (
@@ -1006,11 +1268,16 @@ class Plan:
         if key in self._derived:
             return name
         lookup = path.start
-        entries = self._many(lookup.source, scope, origin, item)
-        x = self.node(lookup.key, scope, origin, item)
         by_time = isinstance(lookup.key.node, nodes.Ref) and isinstance(
             lookup.key.read(lookup.key.node.name), Time
         )
+        source = self._resolve(lookup.source, scope, origin, item)
+        if source[0] == 'dynamic':
+            if source[1][0] != 'occurrences' or source[2] or not by_time:
+                raise Outside(f'{origin}: {spelled(path)}: occurrences are read at the time t only')
+            return self._dynamic(path, 'at', source[1], path.steps, scope, item)
+        entries = self._many(lookup.source, scope, origin, item)
+        x = self.node(lookup.key, scope, origin, item)
         if 't' in nodes.names(x) and not by_time:
             raise Outside(f'{origin}: a key of `.at(...)` that is a function of the time other than t (S4)')
         points = entries.points
@@ -1027,6 +1294,36 @@ class Plan:
         boolean = bool(names) and self.values[names[0]].boolean
         self._add(Value(name, None, LOOKUP, None, unit, boolean))
         return name
+
+    def _dynamic(self, read, op, source, steps, scope, item):
+        """The engine name of a read of a collection whose members change in a run, which the plan
+        holds in `dynamic`."""
+        key, name = self._derived_name(read, scope, item)
+        if key in self._derived:
+            return name
+        self._derived[key] = name
+        self.dynamic[name] = Dynamic(name, op, source, tuple(steps), spelled(read))
+        boolean = op in ('any', 'all') or (op == 'at' and self._projects_boolean(source, steps))
+        self._add(Value(name, None, DYNAMIC, None, '', boolean))
+        return name
+
+    def _projects_boolean(self, source, steps):
+        """Whether the steps from an occurrence of an event name a yes/no."""
+        if source[0] != 'occurrences' or len(steps) != 1:
+            return False
+        if steps[0] in ('done', 'active'):
+            return True
+        event = self.events[(source[1], source[2])][3]
+        part = next((part for part in (*event.params, *event.locals) if part.name == steps[0]), None)
+        return isinstance(part, p.Value) and isinstance(part.type, p.Bool)
+
+    def project(self, point, steps, origin=''):
+        """The engine name that the steps from a member of a dynamic collection name."""
+        for step in steps:
+            point = self._step(point, step, origin)
+        if point[0] != 'value':
+            raise Outside(f'{origin}: a member of a collection read whole, not one of its values')
+        return point[1]
 
     def _unit_of(self, name):
         value = self.values.get(name)
@@ -1142,7 +1439,48 @@ class Plan:
         )
 
     def _connect(self):
-        """The connected sets of stores and flows, and the way of each (see the module)."""
+        """The connected sets of the flows of the program, and the way of each (see the module)."""
+        self.moving = {
+            end
+            for flow in self.flows.values()
+            for connection in flow.connections
+            for end in (connection.source, connection.sink)
+            if end
+        }
+        self.sets = tuple(self.connect(list(self.flows), self.moving))
+
+    def members(self, source):
+        """The points of the members of a dynamic collection now: every occurrence of an event that
+        has started, or the connections present at an endpoint."""
+        if source[0] == 'occurrences':
+            return [('occurrence', occ) for occ in self.occurrences[(source[1], source[2])]]
+        return [('flow', connection) for connection in self.end_flows.get((source[1], source[2]), ())]
+
+    def settings_reads(self, flow):
+        """What the settings of a flow read (`Expanded`), with the projections of the members that
+        its dynamic reads have now, and the names of those dynamic reads among the leaves."""
+        found = self.expansion_of(self.settings_of(flow))
+        seen, pending = set(), [leaf for leaf in found.leaves if leaf in self.dynamic]
+        parts = [found]
+        while pending:
+            name = pending.pop()
+            if name in seen:
+                continue
+            seen.add(name)
+            dynamic = self.dynamic[name]
+            if dynamic.op == 'since' or not dynamic.steps:
+                continue
+            for point in self.members(dynamic.source):
+                inner = self.expanded(self.project(point, dynamic.steps))
+                parts.append(inner)
+                pending += [leaf for leaf in inner.leaves if leaf in self.dynamic]
+        return Expanded.union(parts)
+
+    def connect(self, flows, moving):
+        """The connected sets of some flows (`Connected`): a flow joins the stores at its ends and
+        the stores of `moving` that its settings read (through formulas, reductions and the members
+        of dynamic reads). A setting that reads an actual rate or a served fraction of another set
+        makes the set settle after that one; of its own set, it has no answer of local sharing."""
         parent = {}
 
         def root(item):
@@ -1155,44 +1493,57 @@ class Plan:
         def join(a, b):
             parent[root(a)] = root(b)
 
-        moving = {
-            end
-            for flow in self.flows.values()
-            for connection in flow.connections
-            for end in (connection.source, connection.sink)
-            if end
-        }
-        self.moving = frozenset(moving)
         reads = {}
-        for flow in self.flows.values():
-            root(flow.name)
+        for name in flows:
+            flow = self.flows[name]
+            root(name)
             for connection in flow.connections:
                 for end in (connection.source, connection.sink):
                     if end is not None:
-                        join(('store', end), flow.name)
-            found = reads[flow.name] = self.expansion_of(self.settings_of(flow))
-            for name in found.leaves:
-                if self._is_rate(name):
-                    raise Outside(
-                        f'{flow.name}: a request or a capacity that reads an actual rate, which needs the '
-                        'rates of other flows settled first (S4)'
-                    )
-                if name in moving:
-                    join(('store', name), flow.name)
-        sets = {}
-        for flow in self.flows.values():
-            sets.setdefault(root(flow.name), ([], []))[1].append(flow.name)
-        for name in self.values:
-            if name in moving:
-                sets[root(('store', name))][0].append(name)
+                        join(('store', end), name)
+            found = reads[name] = self.settings_reads(flow)
+            for leaf in found.leaves:
+                if leaf in moving:
+                    join(('store', leaf), name)
+        sets, stores_of = {}, {}
+        for name in flows:
+            sets.setdefault(root(name), ([], []))[1].append(name)
+            for connection in self.flows[name].connections:
+                for end in (connection.source, connection.sink):
+                    if end is not None:
+                        stores_of.setdefault(root(name), set()).add(end)
+            for leaf in reads[name].leaves:
+                if leaf in moving:
+                    stores_of.setdefault(root(name), set()).add(leaf)
+        place = self._place_of()
+        for key, (stores, _) in sets.items():
+            stores.extend(sorted(stores_of.get(key, ()), key=place))
         meets = {}
-        for connection in self.connections.values():
-            for side, end in zip(SIDES, (connection.source, connection.sink)):
-                if end is not None:
-                    meets[end, side] = meets.get((end, side), 0) + 1
+        for name in flows:
+            for connection in self.flows[name].connections:
+                for side, end in zip(SIDES, (connection.source, connection.sink)):
+                    if end is not None:
+                        meets[end, side] = meets.get((end, side), 0) + 1
         made = []
-        for stores, flows in sets.values():
-            found = Expanded.union(reads[flow] for flow in flows)
+        for stores, members in sets.values():
+            found = Expanded.union(reads[flow] for flow in members)
+            own = {f'{flow}.actual_rate' for flow in members} | {
+                f'{flow}.served_fraction' for flow in members
+            }
+            for flow in members:
+                own |= {f'{c.name}.actual_rate' for c in self.flows[flow].connections}
+            rates = {leaf for leaf in found.leaves if self._is_rate(leaf)}
+            rates |= {
+                leaf
+                for leaf in found.leaves
+                if leaf in self.dynamic
+                and self.dynamic[leaf].steps[-1:] in (('actual_rate',), ('served_fraction',))
+            }
+            if rates & own or any(self._rate_of_store(leaf, stores) for leaf in rates):
+                raise Outside(
+                    f'{members[0]}: a request or a capacity that reads an actual rate of its own connected '
+                    'set, which local sharing settles at once (S5: a solver)'
+                )
             moves = found.time or bool(found.leaves & moving)
             settled = any(
                 self.settled(self.ends[(store, side)])
@@ -1201,9 +1552,9 @@ class Plan:
                 if (store, side) in self.ends
             )
             # A route and a flow with legs are unknowns of the network: lines or the sparse integrator.
-            directed = all(self.flows[flow].kind == DIRECTED for flow in flows)
+            directed = all(self.flows[flow].kind == DIRECTED for flow in members)
             if not moves:
-                way = FAMILY if len(flows) == 1 and not settled and directed else LINES
+                way = FAMILY if len(members) == 1 and not settled and directed else LINES
             elif (
                 directed
                 and not settled
@@ -1216,13 +1567,38 @@ class Plan:
             made.append(
                 Connected(
                     tuple(stores),
-                    tuple(flows),
+                    tuple(members),
                     tuple(self.ordered(found.formulas)),
                     tuple(sorted(found.stepped)),
                     way,
+                    frozenset(rates),
+                    frozenset(found.leaves | found.formulas | found.stepped),
                 )
             )
-        self.sets = tuple(made)
+        return made
+
+    def rates_of_flow(self, flow):
+        """The engine names of what the network gives of a flow, which other sets may read: its
+        actual rate or its served fraction, and the actual rates of the endpoints at its ends."""
+        found = self.flows[flow]
+        names = [f'{flow}.served_fraction' if found.kind == LEGS else f'{flow}.actual_rate']
+        for connection in found.connections:
+            for side, store in zip(SIDES, (connection.source, connection.sink)):
+                end = self.ends.get((store, side)) if store is not None else None
+                if end is not None:
+                    names.append(end.actual_rate)
+        return names
+
+    def _rate_of_store(self, name, stores):
+        """Whether a dynamic read is the actual rate of an endpoint of one of `stores`."""
+        dynamic = self.dynamic.get(name)
+        return dynamic is not None and dynamic.source[0] == 'flows' and dynamic.source[1] in stores
+
+    def _place_of(self):
+        """The place of each value in `values`, as a key of a sort."""
+        if len(self._places) != len(self.values):
+            self._places = {name: place for place, name in enumerate(self.values)}
+        return self._places.__getitem__
 
     def ordered(self, formulas):
         """Formulas and reductions in an order in which each comes after those that it reads."""
@@ -1241,11 +1617,116 @@ class Plan:
             order.append(name)
 
         if formulas:
-            if len(self._places) != len(self.values):
-                self._places = {name: place for place, name in enumerate(self.values)}
-            for name in sorted(formulas, key=self._places.__getitem__):
+            for name in sorted(formulas, key=self._place_of()):
                 visit(name, frozenset())
         return order
 
 
 _VISITING = Expanded(frozenset({'<visiting>'}))
+
+
+def _type_of(value_type):
+    """(unit, boolean) of a type of a value: a number's unit, or '' for a yes/no, an enum or a text."""
+    return (value_type.unit if isinstance(value_type, p.Number) else '', isinstance(value_type, p.Bool))
+
+
+# ---- what a program holds, for the refusals ---------------------------------------------------------
+
+
+def _statements(statements):
+    """Each statement of a body, and of the bodies inside it."""
+    for statement in statements:
+        yield statement
+        if isinstance(statement, p.If):
+            yield from _statements(statement.then)
+            yield from _statements(statement.orelse)
+        elif isinstance(statement, p.Switch):
+            for case in statement.cases:
+                yield from _statements(case.body)
+            yield from _statements(statement.orelse)
+
+
+def _program_statements(program):
+    """(origin, statement) of each statement of the setup, of the stages and of the triggers."""
+    bodies = [program.setup]
+    for template in program.templates:
+        for event in template.events:
+            bodies += [step.body for step in event.steps if isinstance(step, p.After)]
+            bodies += [trigger.body for trigger in event.triggers]
+    for body in bodies:
+        for statement in _statements(body):
+            yield statement.origin, statement
+
+
+def _statement_expressions(statement):
+    """The expressions of one statement, without those of the bodies inside it."""
+    if isinstance(statement, p.Assign):
+        value = statement.value
+        if isinstance(value, Formula):
+            return [value.expr]
+        return [value] if isinstance(value, Expr) else []
+    if isinstance(statement, p.Move):
+        return [statement.amount]
+    if isinstance(statement, p.Start):
+        return list(statement.args)
+    if isinstance(statement, p.If):
+        return [statement.test]
+    if isinstance(statement, p.Switch):
+        return [statement.selector, *(case.guard for case in statement.cases if case.guard is not None)]
+    return []
+
+
+def _value_expressions(value):
+    init = value.init.expr if isinstance(value.init, Formula) else value.init
+    found = [init] if isinstance(init, Expr) else []
+    found += [bound for bound in (value.lower, value.upper, value.scale) if bound is not None]
+    for end in (value.outflow, value.inflow):
+        if end is not None:
+            found += [s.expr if isinstance(s, Formula) else s for s in (end.capacity, end.request) if s]
+    return found
+
+
+def _flow_expressions(flow):
+    found = []
+    for each in (flow, *flow.legs):
+        found += [s.expr if isinstance(s, Formula) else s for s in (each.request, each.capacity) if s]
+    return found
+
+
+def _program_expressions(program):
+    """(origin, expression, whether an event or the setup holds it) of each expression that a run
+    evaluates."""
+    for value in program.root:
+        for expression in _value_expressions(value):
+            yield value.origin, expression, False
+    for template in program.templates:
+        for value in template.values:
+            for expression in _value_expressions(value):
+                yield value.origin, expression, False
+        for member in template.members:
+            for name, init in member.values:
+                written = init.expr if isinstance(init, Formula) else init
+                if isinstance(written, Expr):
+                    yield f'{member.id}.{name}', written, False
+        for flow in template.flows:
+            for expression in _flow_expressions(flow):
+                yield flow.origin, expression, False
+        for event in template.events:
+            for part in (*event.params, *event.locals):
+                found = _flow_expressions(part) if isinstance(part, p.Flow) else _value_expressions(part)
+                for expression in found:
+                    yield part.origin, expression, True
+            for step in event.steps:
+                found = [step.test] if isinstance(step, p.Until) else [step.delay, step.guard]
+                for expression in found:
+                    if expression is not None:
+                        yield step.origin, expression, True
+            for trigger in event.triggers:
+                found = [trigger.test, *(c.init for c in trigger.captures)]
+                found += [trigger.reset.expr] if trigger.reset is not None else []
+                for expression in found:
+                    if isinstance(expression, Expr):
+                        yield trigger.origin, expression, True
+    for origin, statement in _program_statements(program):
+        for expression in _statement_expressions(statement):
+            yield origin, expression, True

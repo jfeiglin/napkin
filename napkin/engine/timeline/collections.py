@@ -97,6 +97,39 @@ class Keyed:
         return (found | set(nodes.names(self.key))) - {'t'}
 
 
+@dataclass(frozen=True)
+class Dynamic:
+    """A read of a collection whose members change during a run: the occurrences of an event
+    (`source` is `('occurrences', member, event)`, members in their order of creation), or the
+    connections present at an endpoint (`('flows', store, side)`). `op` is a reduction (`sum`,
+    `count`, `any`, `all`, `min`, `max`), `at` (`.occurrences.at(t)`: the newest occurrence that has
+    started, which is the one created last) or `since` (the time since the newest start); `steps`
+    go from each member to the value that it projects."""
+
+    name: str
+    op: str
+    source: tuple
+    steps: tuple[str, ...]
+    spelled: str
+
+
+def dynamic_value(dynamic, members, project, value, t):
+    """The value of a dynamic read at time t from its members at t (their points, in order), the
+    engine name that each projects (`project(point)`) and the values of engine names."""
+    op = dynamic.op
+    if op == 'since':
+        if not members:
+            raise ExpressionError(f'{dynamic.spelled}: the event has not started')
+        return float(t) - float(_known(value(f'{members[-1][1]}.started')))
+    if op == 'at':
+        if not members:
+            raise ExpressionError(f'{dynamic.spelled}: no occurrence has started')
+        return _known(value(project(members[-1])))
+    if not dynamic.steps:
+        return combined(op, [None] * len(members), dynamic.spelled)
+    return combined(op, [_known(value(project(member))) for member in members], dynamic.spelled)
+
+
 def _known(value):
     """A value that a reduction can take: an `Unavailable` one raises its reason (D7)."""
     if isinstance(value, Unavailable):

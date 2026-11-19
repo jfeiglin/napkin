@@ -1,6 +1,4 @@
-"""One run of a plan: the values at the start, then each connected set to the horizon, and the record.
-
-This slice has no events, so a run has one setup and the segments of its connected sets:
+"""One run of a plan: the values at the start, then moment after moment to the horizon, and the record.
 
 1. **The start** evaluates each input, draw, link, stored value and captured request or capacity once,
    in the order of what it reads, across members (a formula, a reduction or a keyed read that one of
@@ -15,15 +13,24 @@ This slice has no events, so a run has one setup and the segments of its connect
 2. **The sizes.** A store's size sets its absolute tolerance (`atol_factor` times it, D8): its
    `scale` when it declares one, else the largest of one of its unit, its start value, its finite
    bounds and the largest start value of the stores that flows connect it to. A store must start
-   within its bounds.
-3. **The sets.** The sets of one flow whose rate reads nothing that moves run together as the family
-   (`family.py`). Each other connected set is a component (`component.py`): a reduction that its
-   rates read is a formula node over the kept entries, and a keyed read by the time is an entry of
-   the component's store, which the run sets at each key time. The key times of the keyed reads by
-   the time that the sets read cut the run into windows: in each, the family takes the rows that
-   reach a bound, then each component takes its next segment, the earliest first, until it stands at
-   the window's end; at that end the keyed reads change, and the sets that read them evaluate their
-   rates again. The recorder (`record.py`) takes the pieces of each segment as it is made.
+   within its bounds. A store of an occurrence takes its size when the occurrence starts.
+3. **Moments** (`moment.py`): the setup is round zero at time 0; then, at each moment, rounds of
+   stages, the settling of the sets that the round touched (`ways.py`), and the conditions
+   (`triggers.py`). Occurrences are in `occurrences.py`.
+4. **Between moments** each instance of a way runs its sets (`ways.py`). The next moment is the
+   earliest of a stage that is due, a reset timer, a key time of a keyed read by the time, the
+   horizon (`limit`) and the first contact of a watched condition; an event inside an instance
+   (a store that reaches a bound, the end of a segment) before it is committed first, and is itself
+   a moment when it changes what a watched condition or another set's setting reads.
+5. **The horizon** is an inclusive cutoff: the work due there settles as at any moment, and the
+   record holds the state that its last round committed.
+
+The present (`value`): the value of an engine name now, or at a time inside the present window of
+the ways (`t`): a store of a set from its instance, one written by this moment's commits from what
+was written, an actual rate or a served fraction from the instance of its flow (zero for a flow that
+is in no set), a formula from what it reads (a formula of a finished occurrence keeps its frozen
+value), a reduction, a keyed read and a dynamic read of a collection from their members, and any
+other value from what the run holds between moments (`env`). A stage reads its own writes first.
 
 A run that fails stops there: its record holds the failure, as the last entry of its trace, and the
 histories to the time at which it stopped.
@@ -31,7 +38,6 @@ histories to the time at which it stopped.
 
 from __future__ import annotations
 
-import heapq
 import math
 from dataclasses import dataclass
 
@@ -42,16 +48,17 @@ from ...core.errors import ExpressionError
 from ...distributions import FAMILIES, quantile
 from ...expressions import evaluate
 from ...program.config import MEDIAN, ConfigurationError
+from ...program.record import Unavailable
 from .. import sampling
-from ..continuous.system import Context, run_settings, solver_step, step_cap
+from ..continuous.system import run_settings, step_cap
 from ..errors import SimulationError
-from .collections import index_of, kept, looked_up, node_of, reduced
-from .component import Component, NetFlow, Network
-from .family import Family
-from .lines import Lines
-from .plan import COMPONENT, FAMILY, LEGS, LINES, LOOKUP, RATE, REDUCE, SPARSE, STARTS, STATE, Outside
+from .collections import dynamic_value, index_of, kept, looked_up, reduced
+from .moment import Moment
+from .occurrences import Occurrences
+from .plan import DYNAMIC, FORMULA, LEGS, LOOKUP, RATE, REDUCE, STARTS, STATE, Outside
 from .record import Recorder, remember
-from .sparse import Sparse
+from .triggers import Triggers
+from .ways import Ways
 
 
 def drawn(distribution, units, mode, seed, key):
@@ -116,10 +123,16 @@ class Run:
         self.recorder.run = self
         remember(plan)
         self.now = 0.0  # the time that the run has reached, for a failure
-        self.env = {'t': 0.0}  # the values at the start, by engine name
+        self.env = {'t': 0.0}  # the values of the start, and later each value held between moments
         self._kept, self._stepped, self._indexes = {}, {}, {}
-        self.family = self.lines = None
-        self.sparse = []
+        self.started = False  # once true, `value_of` reads the present
+        self.written = {}  # a store of a set that a commit of this moment wrote, and its value
+        self.frozen = {}  # a formula of a finished occurrence -> its value or `Unavailable` (D7)
+        self.limit = plan.horizon  # the next moment that the run knows (`next_moment`)
+        self.ways = Ways(self)
+        self.occurrences = Occurrences(self)
+        self.triggers = Triggers(self)
+        self.moment = Moment(self)
 
     # ---- the start --------------------------------------------------------------------------------
 
@@ -131,6 +144,8 @@ class Run:
         if name in plan.draws:
             return []
         value = plan.values[name]
+        if value.kind == DYNAMIC:
+            return []  # no occurrence has started, and no flow of one is present
         if value.kind == RATE:
             raise Outside(f'{name}: a starting value that reads an actual rate (S2)')
         if value.kind in (REDUCE, LOOKUP):
@@ -173,6 +188,8 @@ class Run:
             self.recorder.entry(0.0, 'draw', found.site, found.member, value=value)
             return value
         kind = plan.values[name].kind
+        if kind == DYNAMIC:
+            return self.value(name)
         found = _literal(plan.values[name].node, plan.units)
         if found is not None:
             return found
@@ -187,7 +204,10 @@ class Run:
         return evaluate(node, env, plan.units)
 
     def value_of(self, name):
-        """The value of an engine name at the start, evaluated once, after what it reads."""
+        """The value of an engine name at the start, evaluated once, after what it reads; once the
+        run has started, its value now (`value`)."""
+        if self.started:
+            return self.value(name)
         env = self.env
         if name in env:
             return env[name]
@@ -305,7 +325,7 @@ class Run:
                     f'{origin}: the assertion does not hold{f" for {member}" if member else ""}'
                 )
 
-    def sizes(self, values):
+    def sizes_of(self, values):
         """The size of each store (see the module)."""
         plan = self.plan
         parent = {name: name for name in plan.moving}
@@ -335,200 +355,170 @@ class Run:
             found[name] = size
         return found
 
-    # ---- the components ---------------------------------------------------------------------------
 
-    def kinds(self):
-        """The kind of each store as the continuous engine reads it (`component.Network`)."""
+    # ---- the present ----------------------------------------------------------------------------------
+
+    def value(self, name, t=None, tx=None):
+        """The value of an engine name now, or at a time t inside the present window of the ways (see
+        the module); a stage's own writes (`tx`) first."""
+        if tx is not None and name in tx.writes:
+            return tx.writes[name]
+        if name == 't':
+            return self.now if t is None else float(t)
+        t = self.now if t is None else float(t)
+        if name in self.written:
+            return self.written[name]
         plan = self.plan
-        sources = {connection.source for connection in plan.connections.values()}
-        sinks = {connection.sink for connection in plan.connections.values()}
-        found = {}
-        for name in plan.moving:
-            if name in sinks and name not in sources:
-                found[name] = 'cumulative'
-            elif self.bounds[name][0] == 0:
-                found[name] = 'stock'
-            else:
-                found[name] = 'state'
-        return found
+        found = plan.values.get(name)
+        kind = found.kind if found is not None else None
+        if kind == RATE:
+            return self.ways.rate(name, t)
+        if kind == FORMULA:
+            frozen = self.frozen.get(name)
+            if frozen is not None:
+                if isinstance(frozen, Unavailable):
+                    raise ExpressionError(frozen.reason)
+                return frozen
+            node = found.node
+            if isinstance(node, nodes.Ref):
+                return self.value(node.name, t, tx)
+            env = {read: _known(self.value(read, t, tx)) for read in nodes.names(node) if read != 't'}
+            env['t'] = t
+            return evaluate(node, env, plan.units)
+        if kind == REDUCE:
+            return reduced(
+                plan.reductions[name], lambda read: self.value(read, t, tx), plan.units, self.kept_of(name)
+            )
+        if kind == LOOKUP:
+            keyed = plan.keyed[name]
+            if keyed.by_time:
+                return self.stepped_of(name).at(t)
+            return looked_up(keyed, lambda read: self.value(read, t, tx), plan.units, t)
+        if kind == DYNAMIC:
+            dynamic = plan.dynamic[name]
+            return dynamic_value(
+                dynamic,
+                plan.members(dynamic.source),
+                lambda point: plan.project(point, dynamic.steps),
+                lambda read: self.value(read, t, tx),
+                t,
+            )
+        if name in self.ways.set_of:
+            return self.ways.value(name, t)
+        try:
+            return self.env[name]
+        except KeyError:
+            raise ExpressionError(f'{name} has no value yet') from None
 
-    def component(self, connected, values, sizes, kinds):
-        """The component of a connected set, at its start."""
-        plan, numerics = self.plan, self.plan.numerics
-        stores = connected.stores
-        lower = [self.bounds[name][0] for name in stores]
-        upper = [self.bounds[name][1] for name in stores]
-        flows = {}
-        for name in connected.flows:
-            flow = plan.flows[name]
-            flows[name] = NetFlow(flow.rate, flow.source, flow.sink, None)
-        computed = {}
-        for name in connected.formulas:
-            if name in plan.reductions:
-                try:
-                    node = node_of(plan.reductions[name], self.kept_of(name))
-                except ExpressionError as problem:
-                    raise SimulationError(str(problem)) from None
-            else:
-                node = plan.values[name].node
-            computed[name] = {'expr': node}
-        leaves = set()
-        for flow in flows.values():
-            leaves |= plan.expansion(flow.rate).leaves
-        stepped = set(connected.stepped)
-        parameters = sorted(name for name in leaves if name not in stores and name not in stepped)
-        known = {**values, **{name: self.value_of(name) for name in parameters}}
-        network = Network(
-            stores[0],
-            stores,
-            kinds,
-            lower,
-            upper,
-            flows,
-            {},
-            {},
-            {},
-            computed,
-            set(stores),
-            parameters,
-            stepped,
-            (),
-            (),
-        )
-        atol = [numerics.atol_factor * sizes[name] for name in stores]
-        slack = [
-            a + (numerics.rtol * sizes[name] if kinds[name] == 'cumulative' else 0.0)
-            for a, name in zip(atol, stores)
-        ]
-        system = network.of(
-            numerics, plan.units, plan.horizon, self.cap, solver_step(numerics), atol, slack, known
-        )
-        context = Context(
-            stores,
-            {name: known[name] for name in parameters},
-            [(name, computed[name]['expr']) for name in connected.formulas],
-            plan.units,
-            system.bounds,
-            self.settings,
-        )
-        rigid = [name for name in connected.flows if plan.rigid(plan.flows[name])]
-        component = Component(system, context, [values[name] for name in stores], rigid)
-        self._set_stepped(component, connected, 0.0)
-        return component
+    def held(self, name):
+        """The value now of a name that holds between moments (an input, a parameter of a set)."""
+        return self.value(name)
 
-    def _set_stepped(self, component, connected, t):
-        """The keyed reads by the time of a component at time t, in its store. One that has no value
-        there is left out: a rate that reads it fails."""
-        store = component.state.store
-        for name in connected.stepped:
-            try:
-                store[name] = self.stepped_of(name).at(t)
-            except ExpressionError:
-                store.pop(name, None)
+    def truth(self, node, tx=None):
+        """The value of a node over engine names now, through a stage's own writes."""
+        env = {read: _known(self.value(read, tx=tx)) for read in nodes.names(node) if read != 't'}
+        env['t'] = self.now
+        return evaluate(node, env, self.plan.units)
+
+    # ---- the run ----------------------------------------------------------------------------------
 
     def prepare(self):
-        """The run at its start: the values at the start, the size of each store, and each
-        connected set that is not in the family as a component at its start, as (component, set).
-        The family is `self.family`."""
+        """The values at the start, the checks of the setup, the size and the bounds of each store,
+        and the tolerances that the record keeps."""
         plan = self.plan
         values = self.start()
         self.recorder.constants = values
         self.check()
-        sizes = self.sizes(values)
+        self.sizes = self.sizes_of(values)
         factor = plan.numerics.atol_factor
         outside = [
             name
             for name, value in plan.values.items()
             if value.kind == STATE
             and not value.boolean
-            and not self.bounds[name][0] - factor * sizes.get(name, 0.0)
+            and isinstance(values.get(name), float | int)
+            and not self.bounds[name][0] - factor * self.sizes.get(name, 0.0)
             <= values[name]
-            <= self.bounds[name][1] + factor * sizes.get(name, 0.0)
+            <= self.bounds[name][1] + factor * self.sizes.get(name, 0.0)
         ]
         if outside:
             raise SimulationError(f'State bounds violated: {outside}')
-        kinds = self.kinds()
-        ways = {
-            way: [connected for connected in plan.sets if connected.way == way]
-            for way in (FAMILY, LINES, COMPONENT, SPARSE)
-        }
-        components = [
-            (self.component(connected, values, sizes, kinds), connected) for connected in ways[COMPONENT]
-        ]
-        self.sparse = [Sparse(self, connected, values, sizes) for connected in ways[SPARSE]]
-        self.family = Family(self, ways[FAMILY], values)
-        self.lines = Lines(self, ways[LINES], values)
         for name in plan.moving:
-            self.recorder.tolerance[name] = factor * sizes[name]
+            self.recorder.tolerance[name] = factor * self.sizes[name]
         for flow in plan.flows.values():
-            if flow.kind == LEGS:
-                # A served fraction is a number from zero to one.
-                self.recorder.tolerance[f'{flow.name}.served_fraction'] = factor
-                continue
-            # A rate's error over an hour moves what a store's tolerance allows.
-            size = max(sizes[end] for end in (flow.source, flow.sink) if end is not None)
-            self.recorder.tolerance[f'{flow.name}.actual_rate'] = factor * size
-        return values, sizes, components
+            self.tolerate(flow)
+        self.started = True
+
+    def tolerate(self, flow):
+        """The tolerance of what the network gives of a flow, which the record keeps: a rate's error
+        over an hour moves what a store's tolerance allows; a served fraction is a number from zero
+        to one."""
+        factor = self.plan.numerics.atol_factor
+        if flow.kind == LEGS:
+            self.recorder.tolerance[f'{flow.name}.served_fraction'] = factor
+            return
+        size = max(self.sizes[end] for end in (flow.source, flow.sink) if end is not None)
+        self.recorder.tolerance[f'{flow.name}.actual_rate'] = factor * size
 
     def run(self):
         """The record of the run."""
         try:
-            self.advance(self.prepare()[2])
+            self.prepare()
+            self.moment.setup()
+            self.loop()
         except (SimulationError, ExpressionError, ArithmeticError) as problem:
             return self.recorder.record(self.now, self.recorder.failure(self.now, str(problem)))
         return self.recorder.record(self.plan.horizon)
 
-    def key_times(self, components):
-        """The key times inside the run of the keyed reads by the time that the sets read."""
-        names = set(self.family.stepped if self.family is not None else ())
-        names |= set(self.lines.stepped if self.lines is not None else ())
-        for _, connected in components:
-            names |= set(connected.stepped)
-        for one in self.sparse:
-            names |= set(one.stepped)
-        found = set()
-        for name in names:
-            found |= {float(t) for t in self.stepped_of(name).times if 0 < t < self.plan.horizon}
-        return sorted(found)
+    def loop(self):
+        """Moment after moment to the horizon, which is a moment too."""
+        horizon = self.plan.horizon
+        while self.now < horizon:
+            t, touched = self.next_moment()
+            self.moment.at(t, touched)
+        self.ways.finish(horizon)
 
-    def advance(self, components):
-        """The family and the components, window by window, to the horizon (see the module)."""
-        horizon, limit = self.plan.horizon, self.plan.configuration.limits.max_rounds
-        family, lines = self.family, self.lines
-        family.begin(0.0)
-        lines.begin(0.0)
-        standing = [(0.0, k) for k in range(len(components))]
-        heapq.heapify(standing)
-        still = [0] * len(components)  # the segments of no length in a row, of each component
-        for end in [*self.key_times(components), horizon]:
-            family.advance(end)
-            lines.advance(end)
-            for one in self.sparse:
-                one.advance(end)
-            while standing and standing[0][0] < end:
-                t, k = heapq.heappop(standing)
-                self.now = t
-                component, connected = components[k]
-                segment = component.next(end)
-                self.recorder.segment(
-                    component,
-                    segment,
-                    component.system.state_ids,
-                    [f'{flow}.actual_rate' for flow in component.system.flow_ids],
-                )
-                component.proceed(segment)
-                still[k] = still[k] + 1 if segment.end <= segment.start else 0
-                if still[k] > limit:
-                    raise SimulationError(f'{connected.flows[0]}: {limit} segments of no length at {t:g} h')
-                heapq.heappush(standing, (segment.end, k))
-            if end >= horizon:
-                lines.finish(horizon)
-                break
-            self.now = end
-            for component, connected in components:
-                if any(end in self.stepped_of(name).times for name in connected.stepped):
-                    self._set_stepped(component, connected, end)
-            if any(end in self.stepped_of(name).times for name in family.stepped):
-                family.refresh(end)
-            if any(end in self.stepped_of(name).times for name in lines.stepped):
-                lines.refresh(end)
+    def discrete(self):
+        """The next time after now at which a stage is due, a trigger rearms or a keyed read by the
+        time changes, or the horizon."""
+        found = [self.plan.horizon, self.occurrences.next_due(), self.triggers.next_timer()]
+        found += [at for at in self.key_times() if at > self.now]
+        return min(at for at in found if at is not None)
+
+    def key_times(self):
+        """The key times inside the run of the keyed reads by the time that the run reads."""
+        if not hasattr(self, '_key_times'):
+            found = set()
+            for name, keyed in self.plan.keyed.items():
+                if keyed.by_time:
+                    found |= {float(at) for at in self.stepped_of(name).times if 0 < at <= self.plan.horizon}
+            self._key_times = sorted(found)
+        return self._key_times
+
+    def next_moment(self):
+        """Run the ways to the next moment; gives its time and the engine names that changed in the
+        ways at that time (an event of an instance that a condition or a set reads)."""
+        limit = self.limit = self.discrete()
+        while True:
+            at, instance = self.ways.peek()
+            contact = self.triggers.next_contact()
+            if at <= limit and at <= contact:
+                self.now = at
+                stores, rates = instance.step()
+                changed = set(stores) | set(rates)
+                if self.triggers.reads_any(changed) or self.ways.touched_by(rates):
+                    self.ways.cut(at)
+                    return at, changed
+                self.triggers.predict(changed)
+                continue
+            at = min(limit, contact)
+            self.now = at
+            self.ways.cut(at)
+            return at, set()
+
+
+def _known(value):
+    """A value that an expression can read: an `Unavailable` one raises its reason (D7)."""
+    if isinstance(value, Unavailable):
+        raise ExpressionError(value.reason)
+    return value

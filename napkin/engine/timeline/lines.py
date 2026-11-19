@@ -43,10 +43,13 @@ from .network import BACKWARD, FORWARD, IN, OUT, SIDES, Asked, Instant, network_
 
 
 class Lines:
-    """The sets of one run that run on lines (see the module)."""
+    """Sets of one run that run on lines, from the time `t` on (see the module). `keys` are the
+    ids that the run gives the sets."""
 
-    def __init__(self, run, sets, values):
+    def __init__(self, run, sets, values, t=0.0, keys=None):
         plan = self.plan = run.plan
+        self.t0 = float(t)
+        keys = list(keys if keys is not None else range(len(sets)))
         self.run, self.recorder, self.columns = run, run.recorder, Columns(run)
         stores = [name for connected in sets for name in connected.stores]
         place = {name: k for k, name in enumerate(stores)}
@@ -81,6 +84,16 @@ class Lines:
             and not any(plan.settled(end) for (store, _), end in plan.ends.items() if store in place)
         )
         self.selected = False  # whether the selection order has solved a part of the sets
+        self.place = place
+        self.row = {name: k for k, name in enumerate(self.flows)}
+        # The stores of each set, by its id, and the stores whose sets left the lines.
+        self.members = {key: [place[name] for name in connected.stores] for key, connected in zip(keys, sets)}
+        self.dead = np.zeros(len(stores), dtype=bool)
+        self.dead_flows = np.zeros(len(self.flows), dtype=bool)
+        self.flows_of = {
+            key: [self.row[name] for name in connected.flows] for key, connected in zip(keys, sets)
+        }
+        self.alive = bool(len(stores))
 
     def __len__(self):
         return len(self.flows)
@@ -213,8 +226,9 @@ class Lines:
 
     # ---- moments ----------------------------------------------------------------------------------
 
-    def begin(self, t):
-        """Every set from time t."""
+    def begin(self, t=None):
+        """Every set from its start (or from time t)."""
+        t = self.t0 if t is None else t
         self.asked = self._asked(t)
         count = len(self.stores)
         self.instant = Instant(self.net, self.asked, np.zeros(count, dtype=bool), np.zeros(count, dtype=bool))
@@ -238,6 +252,7 @@ class Lines:
         ends = np.argwhere((asked.end_request != old.end_request) | (asked.end_capacity != old.end_capacity))
         for side, s in ends.tolist():
             changed.update(net.of[net.ends[side].of(s)].tolist())
+        changed = {f for f in changed if not self.dead_flows[f]}
         self.asked = asked
         self.instant = Instant(net, asked, self.instant.lower, self.instant.upper)
         self._moment(t, changed)
@@ -303,20 +318,64 @@ class Lines:
     def finish(self, t):
         """At the horizon, as at any moment: the parts of the stores that left a bound are solved
         again, so the values read at the horizon follow the state there."""
+        self.stale -= {s for s in self.stale if self.dead[s]}
         self._moment(t, ())
 
+    # ---- the interface of a way (`ways.py`) ------------------------------------------------------
+
+    def retire(self, key):
+        """The set `key` leaves the lines: its stores have no event from now on."""
+        for s in self.members.pop(key):
+            self.dead[s] = True
+            self.version[s] += 1
+            self.stale.discard(s)
+        for f in self.flows_of.pop(key):
+            self.dead_flows[f] = True
+        self.alive = bool(self.members)
+
+    def level_at(self, store, t):
+        """The value of a store at time t, on its present line."""
+        return float(self._value(self.place[store], t))
+
+    def rate_at(self, name, t):
+        """What the network gives of a flow: its actual rate, a route's signed rate, or a served
+        fraction."""
+        return float(self.value[self.row[name.rsplit('.', 1)[0]]])
+
+    def linear(self, store):
+        """The line of a store: (value, rate, since)."""
+        s = self.place[store]
+        return float(self.y[s]), float(self.slope[s]), float(self.since[s])
+
+    def peek(self):
+        """The time at which the next line reaches its bound, or inf."""
+        due = self.due
+        while due and due[0][2] != self.version[due[0][1]]:
+            heapq.heappop(due)
+        return due[0][0] if due else math.inf
+
+    def step(self):
+        """The next line that reaches its bound: the store is put on its bound, and the parts of its
+        flows are solved again. Gives the stores whose lines and the rates whose values change."""
+        reach, s, _ = heapq.heappop(self.due)
+        # The store is put on its bound exactly, and holds there until its part is solved.
+        bound = self.lower[s] if self.slope[s] < 0 else self.upper[s]
+        self.y[s], self.since[s], self.slope[s] = bound, reach, 0.0
+        self.run.now = reach
+        before = self.value.copy()
+        versions = self.version.copy()
+        self._moment(reach, (), forced=(s,))
+        stores = [self.stores[k] for k in np.flatnonzero(self.version != versions).tolist()]
+        rates = [self.recorded[g] for g in np.flatnonzero(self.value != before).tolist()]
+        return stores, rates
+
+    def cut(self, t):
+        """Nothing to commit: a line holds to its next event."""
+
     def advance(self, until):
-        """Each line that reaches its bound at or before `until`, in time order: the store is put on
-        its bound, and the parts of its flows are solved again."""
-        while self.due and self.due[0][0] <= until:
-            reach, s, version = heapq.heappop(self.due)
-            if version != self.version[s]:
-                continue
-            # The store is put on its bound exactly, and holds there until its part is solved.
-            bound = self.lower[s] if self.slope[s] < 0 else self.upper[s]
-            self.y[s], self.since[s], self.slope[s] = bound, reach, 0.0
-            self.run.now = reach
-            self._moment(reach, (), forced=(s,))
+        """Each line that reaches its bound at or before `until`, in time order."""
+        while self.peek() <= until:
+            self.step()
 
 
 def asked_of(net, raw, t):

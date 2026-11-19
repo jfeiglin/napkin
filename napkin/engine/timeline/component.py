@@ -26,16 +26,21 @@ the segments of the set one after the other.
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import dataclass
 
 import numpy as np
 
+from ...core.errors import ExpressionError
 from ..allocation import Allocation
 from ..continuous.bounds import check_bounds, correct_boundary_roundoff, refresh_bounds
 from ..continuous.fields import Field
+from ..continuous.kernels import Affine
 from ..continuous.segment import advance
+from ..continuous.system import Context, solver_step
 from ..continuous.system import Run as State
 from ..errors import SimulationError
+from .collections import node_of
 
 
 @dataclass(frozen=True)
@@ -358,3 +363,196 @@ class Component:
     def proceed(self, segment):
         """The next segment starts where this one ended."""
         self.state.time, self.state.y = segment.end, segment.last.copy()
+
+
+class ComponentWay:
+    """One connected set on the continuous engine, as a way of a run (`ways.py`), from the time `t`
+    on. Its segments come one after the other: each is made when the run first asks for its next
+    event (`peek`), as far as the next moment that the run knows (`run.limit`), and committed when
+    the run reaches its end (`step`), or cut at a moment inside it (`cut`): the state there is the
+    segment's at that time. The recorder takes the pieces of each segment as it is committed."""
+
+    def __init__(self, run, connected, values, t, key):
+        plan, numerics = run.plan, run.plan.numerics
+        self.run, self.key, self.connected = run, key, connected
+        self.stores, self.flows = list(connected.stores), list(connected.flows)
+        self.alive, self.pending, self.still = True, None, 0
+        stores = connected.stores
+        sources = {plan.flows[flow].source for flow in connected.flows}
+        sinks = {plan.flows[flow].sink for flow in connected.flows}
+        kinds = {}
+        for name in stores:
+            if name in sinks and name not in sources:
+                kinds[name] = 'cumulative'
+            elif run.bounds[name][0] == 0:
+                kinds[name] = 'stock'
+            else:
+                kinds[name] = 'state'
+        flows = {
+            name: NetFlow(plan.flows[name].rate, plan.flows[name].source, plan.flows[name].sink, None)
+            for name in connected.flows
+        }
+        computed = {}
+        for name in connected.formulas:
+            if name in plan.reductions:
+                try:
+                    node = node_of(plan.reductions[name], run.kept_of(name))
+                except ExpressionError as problem:
+                    raise SimulationError(str(problem)) from None
+            else:
+                node = plan.values[name].node
+            computed[name] = {'expr': node}
+        leaves = set()
+        for flow in flows.values():
+            leaves |= plan.expansion(flow.rate).leaves
+        stepped = set(connected.stepped)
+        parameters = sorted(name for name in leaves if name not in stores and name not in stepped)
+        known = {**{name: values[name] for name in stores}, **{name: run.held(name) for name in parameters}}
+        network = Network(
+            stores[0],
+            stores,
+            kinds,
+            [run.bounds[name][0] for name in stores],
+            [run.bounds[name][1] for name in stores],
+            flows,
+            {},
+            {},
+            {},
+            computed,
+            set(stores),
+            parameters,
+            stepped,
+            (),
+            (),
+        )
+        sizes = run.sizes
+        atol = [numerics.atol_factor * sizes[name] for name in stores]
+        slack = [
+            a + (numerics.rtol * sizes[name] if kinds[name] == 'cumulative' else 0.0)
+            for a, name in zip(atol, stores)
+        ]
+        system = network.of(
+            numerics, plan.units, plan.horizon, run.cap, solver_step(numerics), atol, slack, known
+        )
+        context = Context(
+            stores,
+            {name: known[name] for name in parameters},
+            [(name, computed[name]['expr']) for name in connected.formulas],
+            plan.units,
+            system.bounds,
+            run.settings,
+        )
+        rigid = [name for name in connected.flows if plan.rigid(plan.flows[name])]
+        self.component = Component(system, context, [values[name] for name in stores], rigid)
+        self.component.state.time = float(t)
+        self.place = {name: k for k, name in enumerate(stores)}
+        self.rates = [f'{flow}.actual_rate' for flow in system.flow_ids]
+        self.flow_place = {flow: k for k, flow in enumerate(system.flow_ids)}
+        self._stepped(float(t))
+
+    def _stepped(self, t):
+        """The keyed reads by the time of the component at time t, in its store. One that has no
+        value there is left out: a rate that reads it fails."""
+        store = self.component.state.store
+        for name in self.connected.stepped:
+            try:
+                store[name] = self.run.stepped_of(name).at(t)
+            except ExpressionError:
+                store.pop(name, None)
+
+    def begin(self):
+        """Nothing yet: the first segment is made when the run asks for it."""
+
+    def refresh(self, t):
+        """At a key time: the keyed reads by the time take their values there."""
+        self.cut(t)
+        self._stepped(t)
+
+    def retire(self, key):
+        """The set leaves the run's ways."""
+        self.alive = False
+
+    def peek(self):
+        """The end of the next segment, which is made now if it is not yet."""
+        if self.pending is None:
+            state = self.component.state
+            if state.time >= self.run.limit:
+                return math.inf
+            self.pending = self.component.next(self.run.limit)
+        return self.pending.end
+
+    def step(self):
+        """Commit the next segment: the stores and the rates of the component change there."""
+        segment, self.pending = self.pending, None
+        self._commit(segment)
+        self.still = self.still + 1 if segment.end <= segment.start else 0
+        limit = self.run.plan.configuration.limits.max_rounds
+        if self.still > limit:
+            raise SimulationError(f'{self.flows[0]}: {limit} segments of no length at {segment.start:g} h')
+        return list(self.stores), list(self.rates)
+
+    def _commit(self, segment):
+        component = self.component
+        self.run.recorder.segment(component, segment, component.system.state_ids, self.rates)
+        component.proceed(segment)
+
+    def cut(self, t):
+        """The run stands at time t inside the next segment: the segment up to t is committed."""
+        segment = self.pending
+        if segment is None or t >= segment.end:
+            return
+        self.pending = None
+        if t <= segment.start:
+            return
+        last = np.array(self._state(segment, t), dtype=float)
+        cut = Segment(segment.start, t, segment.solution, segment.first, last, _cut(segment.numerical, t))
+        self._commit(cut)
+
+    @staticmethod
+    def _state(segment, t):
+        """The state of a segment at a time inside it."""
+        return segment.last if segment.end <= segment.start else segment.solution(t)
+
+    def level_at(self, store, t):
+        """The value of a store at time t: at the present time, or inside the next segment."""
+        segment, state = self.pending, self.component.state
+        k = self.place[store]
+        if segment is None or t <= segment.start:
+            return float(state.y[k])
+        return float(self.component.context.project(self._state(segment, min(t, segment.end)))[k])
+
+    def rate_at(self, name, t):
+        """The actual rate of a flow at time t."""
+        segment, state, field = self.pending, self.component.state, self.component.field
+        k = self.flow_place[name.rsplit('.', 1)[0]]
+        evaluations = state.evaluations
+        try:
+            if segment is None or t <= segment.start or segment.end <= segment.start:
+                field.rates(state.time, state.y)
+            else:
+                at = min(t, segment.end)
+                field.rates(at, self.component.context.project(self._state(segment, at)))
+            return float(field.delivered[k])
+        finally:
+            state.evaluations = evaluations
+
+    def linear(self, store):
+        """The line of a store through the next segment, or None on a curve."""
+        segment = self.pending
+        k = self.place[store]
+        if segment is None or segment.end <= segment.start:
+            return float(self.component.state.y[k]), 0.0, float(self.component.state.time)
+        if isinstance(segment.solution, Affine):
+            return float(segment.first[k]), float(segment.solution.slope[k]), float(segment.start)
+        return None
+
+
+def _cut(numerical, t):
+    """The solver's result of a numerical segment, with its accepted steps up to t."""
+    if numerical is None:
+        return None
+    cut = copy.copy(numerical)
+    steps = [at for at in numerical.t if at < t] + [t]
+    cut.t = np.array(steps)
+    cut.y = np.array([numerical.sol(at) for at in steps]).T
+    return cut

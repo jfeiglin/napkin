@@ -147,13 +147,19 @@ class Vector:
 
 
 class Sparse:
-    """One connected set on the sparse integrator (see the module)."""
+    """One connected set on the sparse integrator from the time `t` on (see the module), a way of a
+    run (`ways.py`): each step of the solver is made when the run first asks for its end (`peek`), as
+    far as the next moment that the run knows (`run.limit`), and committed when the run reaches its
+    end (`step`), or cut at a moment inside it (`cut`)."""
 
-    def __init__(self, run, connected, values, sizes):
+    def __init__(self, run, connected, values, t, key):
         plan = self.plan = run.plan
+        sizes = run.sizes
+        self.key, self.alive = key, True
+        self.solver, self.pending = None, None
         self.run, self.recorder = run, run.recorder
         stores = list(connected.stores)
-        place = {name: k for k, name in enumerate(stores)}
+        place = self.place = {name: k for k, name in enumerate(stores)}
         self.net, connections, self.recorded = network_of(run, [connected], stores)
         self.stores, self.flows = stores, list(self.net.flows)
         self.stepped = frozenset(connected.stepped)
@@ -172,7 +178,7 @@ class Sparse:
         self.lower = np.array([run.bounds[name][0] for name in stores])
         self.upper = np.array([run.bounds[name][1] for name in stores])
         self.atol = np.array([plan.numerics.atol_factor * sizes[name] for name in stores])
-        self.t = 0.0
+        self.t = float(t)
         net = self.net
         self.incidence = sp.csr_array(
             (
@@ -367,15 +373,31 @@ class Sparse:
             'comes in'
         )
 
-    def advance(self, until):
-        """The set from its time to `until`, segment by segment."""
-        if until <= self.t:
-            return
-        numerics = self.plan.numerics
-        while self.t < until:
+    # ---- the interface of a way (`ways.py`) ------------------------------------------------------
+
+    def begin(self):
+        """Nothing yet: the first step is made when the run asks for it."""
+
+    def retire(self, key):
+        """The set leaves the run's ways."""
+        self.alive = False
+
+    def refresh(self, t):
+        """At a key time: the steps start again there."""
+        self.cut(t)
+
+    def peek(self):
+        """The end of the next step of the solver, which is made now if it is not yet: a store that
+        reaches a bound, or leaves the bound that holds it, ends it there."""
+        if self.pending is not None:
+            return self.pending[1]
+        until = self.run.limit
+        if self.t >= until:
+            return math.inf
+        if self.solver is None:
             self._flags()
-            first = self.t
-            solver = Radau(
+            numerics = self.plan.numerics
+            self.solver = Radau(
                 self.field,
                 self.t,
                 self.y.copy(),
@@ -384,38 +406,88 @@ class Sparse:
                 atol=self.atol,
                 jac_sparsity=self.pattern(),
             )
-            ended = False
-            while solver.status == 'running' and not ended:
-                self.run.now = solver.t
-                try:
-                    message = solver.step()
-                except (ExpressionError, ArithmeticError, ValueError) as problem:
-                    raise SimulationError(f'Rate evaluation failed at {solver.t:g} h: {problem}') from None
-                if solver.status == 'failed':
-                    raise SimulationError(self._failed(solver.t, f'the solver failed ({message})'))
-                start, end = solver.t_old, solver.t
-                self._count(start, end)
-                solution = solver.dense_output()
-                y = solution(end)
-                free = ~(self.lower_flags | self.upper_flags)
-                events = []
-                for k in np.flatnonzero(free & (y < self.lower)).tolist():
-                    events.append((self._crossing(solution, start, end, k, self.lower[k]), k))
-                for k in np.flatnonzero(free & (y > self.upper)).tolist():
-                    events.append((self._crossing(solution, start, end, k, self.upper[k]), k))
-                for k in np.flatnonzero(self.lower_flags & (y > self.lower + self.atol)).tolist():
-                    events.append((self._crossing(solution, start, end, k, self.lower[k] + self.atol[k]), k))
-                for k in np.flatnonzero(self.upper_flags & (y < self.upper - self.atol)).tolist():
-                    events.append((self._crossing(solution, start, end, k, self.upper[k] - self.atol[k]), k))
-                if events:
-                    end = min(at for at, _ in events)
-                    y = solution(end)
-                    ended = True
-                self._record(solution, start, end)
-                self.t, self.y = end, np.array(y, dtype=float)
-                self.run.now = end
-            if not ended and self.t <= first:
-                raise SimulationError(f'Integration made no progress at {self.t:g} h')
-            if self.t >= until:
-                break
-        self.t = until
+            self.first = self.t
+        solver = self.solver
+        self.run.now = solver.t
+        try:
+            message = solver.step()
+        except (ExpressionError, ArithmeticError, ValueError) as problem:
+            raise SimulationError(f'Rate evaluation failed at {solver.t:g} h: {problem}') from None
+        if solver.status == 'failed':
+            raise SimulationError(self._failed(solver.t, f'the solver failed ({message})'))
+        start, end = solver.t_old, solver.t
+        self._count(start, end)
+        solution = solver.dense_output()
+        y = solution(end)
+        free = ~(self.lower_flags | self.upper_flags)
+        events = []
+        for k in np.flatnonzero(free & (y < self.lower)).tolist():
+            events.append((self._crossing(solution, start, end, k, self.lower[k]), k))
+        for k in np.flatnonzero(free & (y > self.upper)).tolist():
+            events.append((self._crossing(solution, start, end, k, self.upper[k]), k))
+        for k in np.flatnonzero(self.lower_flags & (y > self.lower + self.atol)).tolist():
+            events.append((self._crossing(solution, start, end, k, self.lower[k] + self.atol[k]), k))
+        for k in np.flatnonzero(self.upper_flags & (y < self.upper - self.atol)).tolist():
+            events.append((self._crossing(solution, start, end, k, self.upper[k] - self.atol[k]), k))
+        ended = bool(events) or solver.status != 'running'
+        if events:
+            end = min(at for at, _ in events)
+            y = solution(end)
+        if ended and end <= self.first:
+            raise SimulationError(f'Integration made no progress at {end:g} h')
+        self.pending = (start, end, solution, np.array(y, dtype=float), ended)
+        return end
+
+    def step(self):
+        """Commit the next step: the stores and the rates of the set move through it."""
+        start, end, solution, y, ended = self.pending
+        self.pending = None
+        self._record(solution, start, end)
+        self.t, self.y = end, y
+        self.run.now = end
+        if ended:
+            self.solver = None
+        return list(self.stores), list(self.recorded)
+
+    def cut(self, t):
+        """The run stands at time t inside the next step: the step up to t is committed, and the
+        solver starts again from there."""
+        if self.pending is None or t >= self.pending[1]:
+            return
+        start, _, solution, _, _ = self.pending
+        self.pending, self.solver = None, None
+        if t <= start:
+            return
+        self._record(solution, start, t)
+        self.t, self.y = float(t), np.array(solution(t), dtype=float)
+
+    def level_at(self, store, t):
+        """The value of a store at time t: at the present time, or inside the next step."""
+        k = self.place[store]
+        if self.pending is None or t <= self.pending[0]:
+            return float(self.y[k])
+        return float(self.pending[2](min(t, self.pending[1]))[k])
+
+    def rate_at(self, name, t):
+        """What the network gives of a flow at time t (an actual rate, a route's signed rate or a
+        served fraction)."""
+        y = (
+            self.y
+            if self.pending is None or t <= self.pending[0]
+            else self.pending[2](min(t, self.pending[1]))
+        )
+        evaluations = self.evaluations
+        try:
+            return float(self.values(t, y)[0][self.recorded.index(name)])
+        finally:
+            self.evaluations = evaluations
+
+    def linear(self, store):
+        """A store of the sparse integrator moves on a curve."""
+        return None
+
+    def advance(self, until):
+        """The set from its time to `until`, step by step."""
+        while self.peek() <= until:
+            self.step()
+        self.cut(until)

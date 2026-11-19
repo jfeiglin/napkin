@@ -92,10 +92,13 @@ class Columns:
 
 
 class Family:
-    """The rows of the family of one run (see the module)."""
+    """Rows of the family of one run, from the time `t` on (see the module). `keys` are the ids that
+    the run gives the sets, one for each row."""
 
-    def __init__(self, run, sets, values):
+    def __init__(self, run, sets, values, t=0.0, keys=None):
         plan = self.plan = run.plan
+        self.t0 = float(t)
+        self.keys = {key: k for k, key in enumerate(keys if keys is not None else range(len(sets)))}
         self.run, self.recorder, self.columns = run, run.recorder, Columns(run)
         flows = [plan.flows[connected.flows[0]] for connected in sets]
         self.flows = [flow.name for flow in flows]
@@ -127,6 +130,10 @@ class Family:
         self.version = np.zeros(len(flows), dtype=np.int64)
         self.due = []  # (time, row, version) of the rows whose store reaches its bound
         self.settings = {}  # the formula values recorded last, by name
+        self.place = place
+        self.row = {name: k for k, name in enumerate(self.flows)}
+        self.dead = np.zeros(len(flows), dtype=bool)  # the rows of sets that left the family
+        self.alive = bool(len(flows))
 
     def __len__(self):
         return len(self.flows)
@@ -204,8 +211,9 @@ class Family:
             if reach <= self.plan.horizon:
                 heapq.heappush(self.due, (reach, k, int(self.version[k]), bounded))
 
-    def begin(self, t):
-        """Every row from time t."""
+    def begin(self, t=None):
+        """Every row from its start (or from time t)."""
+        t = self.t0 if t is None else t
         self.asked = self._asked(t)
         for k in range(len(self.flows)):
             self._start(k, t)
@@ -213,22 +221,58 @@ class Family:
     def refresh(self, t):
         """The rows whose rate changes at the key time t start again from t."""
         asked = self._asked(t)
-        changed = np.flatnonzero(asked != self.asked)
+        changed = np.flatnonzero((asked != self.asked) & ~self.dead)
         self.asked = asked
         for k in changed.tolist():
             self._start(k, t)
 
+    # ---- the interface of a way (`ways.py`) ------------------------------------------------------
+
+    def retire(self, key):
+        """The set `key` leaves the family: its row has no event and no refresh from now on."""
+        k = self.keys[key]
+        self.dead[k] = True
+        self.version[k] += 1
+        self.alive = not self.dead.all()
+
+    def level_at(self, store, t):
+        """The value of a store at time t, on its present line."""
+        return float(self._value(self.place[store], t))
+
+    def rate_at(self, name, t):
+        """The actual rate of a flow."""
+        return float(self.rate[self.row[name.rsplit('.', 1)[0]]])
+
+    def linear(self, store):
+        """The line of a store: (value, rate, since)."""
+        s = self.place[store]
+        return float(self.y[s]), float(self.slope[s]), float(self.since[s])
+
+    def peek(self):
+        """The time at which the next row reaches its bound, or inf."""
+        due = self.due
+        while due and due[0][2] != self.version[due[0][1]]:
+            heapq.heappop(due)
+        return due[0][0] if due else math.inf
+
+    def step(self):
+        """The next row that reaches its bound: the store is put on its bound, and the flow stops
+        there. Gives the stores and the rates that change."""
+        reach, k, _, bounded = heapq.heappop(self.due)
+        for end in (self.source[k], self.sink[k]):
+            if end >= 0:
+                self.y[end], self.since[end] = self._value(end, reach), reach
+        for end in bounded:
+            # The store is put on its bound, so the flow is held there from now on.
+            self.y[end] = self.lower[end] if end == self.source[k] else self.upper[end]
+        self._start(k, reach)
+        stores = [self.stores[end] for end in (self.source[k], self.sink[k]) if end >= 0]
+        return stores, [f'{self.flows[k]}.actual_rate']
+
+    def cut(self, t):
+        """Nothing to commit: a line holds to its next event."""
+
     def advance(self, until):
-        """Each row whose store reaches its bound at or before `until`, in time order: the store is
-        put on its bound, and the flow stops there."""
-        while self.due and self.due[0][0] <= until:
-            reach, k, version, bounded = heapq.heappop(self.due)
-            if version != self.version[k]:
-                continue
-            for end in (self.source[k], self.sink[k]):
-                if end >= 0:
-                    self.y[end], self.since[end] = self._value(end, reach), reach
-            for end in bounded:
-                # The store is put on its bound, so the flow is held there from now on.
-                self.y[end] = self.lower[end] if end == self.source[k] else self.upper[end]
-            self._start(k, reach)
+        """Each row whose store reaches its bound at or before `until`, in time order."""
+        while self.peek() <= until:
+            self.step()
