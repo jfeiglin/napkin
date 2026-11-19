@@ -89,6 +89,85 @@ def test_napkin_run_prints_every_named_value_in_the_order_of_the_file(capsys):
     assert rows['tuners.staff'] == ['tuner', '3', '3']
 
 
+ROUTE_AND_LEGS = """\
+scenario "Route and legs"
+    horizon 2 h
+
+west:
+    water: L = 10 in [0, 20]
+
+east:
+    water: L = 10 in [0, 20]
+
+channel:
+    flow link: west.water <-> east.water
+        request = -3 L/h
+    after_link: L = 0
+
+store:
+    water: L = 100 in [0,]
+    used: L = 0 in [0,]
+
+site:
+    store = store
+    charge: Wh = 100 in [0,]
+    flow restore:
+        flow labor: this.store.water -> this.store.used
+            request = 4 L/h
+            capacity = 2 L/h
+        flow pour: this.charge -> SINK
+            request = 8 W
+"""
+# Litres, and watts so that the two legs of `restore` are of two units.
+ROUTE_AND_LEGS_UNITS = {
+    'L': UNITS['L'],
+    'Wh': {'dimensions': {'energy': 1}, 'scale': 1, 'description': 'A watt hour.'},
+    'W': {'dimensions': {'energy': 1, 'time': -1}, 'scale': 1, 'description': 'A watt.'},
+}
+
+
+def test_napkin_run_lists_a_route_and_a_flow_with_legs_in_the_order_of_the_file(tmp_path, capsys):
+    """Spec, "Flows and algebraic solvers": a route's signed rate, request and capacity, then its
+    legs `forward` and `backward`, each the positive part in its direction (-3 L/h reads 0 forward
+    and 3 backward); a flow with legs' `served_fraction`, then each leg in its own unit (legs of 4
+    L/h and 8 W at half service carry 2 L/h and 4 W); a link prints the member it names. A route
+    or a leg with no capacity written lists none."""
+    model = package(tmp_path / 'legs', ROUTE_AND_LEGS, ROUTE_AND_LEGS_UNITS)
+    found = napkin(capsys, 'run', model)
+    assert found.code == 0, found.err
+    rows = {line.split()[0]: line.split()[1:] for line in found.out.splitlines()[2:]}
+    assert list(rows) == [
+        'west.water',
+        'east.water',
+        'channel.link.actual_rate',
+        'channel.link.request',
+        'channel.link.forward.actual_rate',
+        'channel.link.forward.request',
+        'channel.link.backward.actual_rate',
+        'channel.link.backward.request',
+        'channel.after_link',
+        'store.water',
+        'store.used',
+        'site.store',
+        'site.charge',
+        'site.restore.served_fraction',
+        'site.restore.labor.actual_rate',
+        'site.restore.labor.request',
+        'site.restore.labor.capacity',
+        'site.restore.pour.actual_rate',
+        'site.restore.pour.request',
+    ]
+    assert rows['channel.link.actual_rate'] == ['L/h', '-3', '-3']
+    assert rows['channel.link.forward.actual_rate'] == ['L/h', '0', '0']
+    assert rows['channel.link.backward.actual_rate'] == ['L/h', '3', '3']
+    assert rows['east.water'] == ['L', '10', '4']
+    assert rows['site.store'] == ['store', 'store']
+    assert rows['site.restore.served_fraction'] == ['0.5', '0.5']
+    assert rows['site.restore.labor.actual_rate'] == ['L/h', '2', '2']
+    assert rows['site.restore.pour.actual_rate'] == ['W', '4', '4']
+    assert rows['site.charge'] == ['Wh', '100', '92']
+
+
 def test_the_tank_of_the_spec_delivers_3_litres_an_hour_until_2_h_40_min(tmp_path, capsys):
     """8 L at 3 L/h: empty at 8/3 h = 2 h 40 min; the request stays 3 L/h and the capacity 5 L/h."""
     model = package(tmp_path / 'tank', TANK, UNITS)

@@ -26,6 +26,7 @@ from napkin.program.build import (
     flow,
     formula,
     input_,
+    legs,
     named,
     q,
     this,
@@ -208,6 +209,32 @@ def test_the_reader_names_each_path_by_its_member_and_gives_its_declared_unit():
     assert stored.values == pytest.approx((2000, 2000 + 2000))
     with pytest.raises(LookupError, match='no value at 3'):
         read(record, program, ['peak'], [3])
+
+
+def test_the_fields_of_a_leg_read_in_the_legs_own_unit():
+    """Legs of 4 L/h and 8 kW at half service carry 2 L/h and 4 kW, each in its own unit; the
+    served fraction is a plain number."""
+    b = Builder(UNITS)
+    b.entity(
+        'site',
+        value('water', 'L', 100, lower=0),
+        value('used', 'L', 0, lower=0),
+        value('work', 'Wh', 10_000, lower=0),
+        value('done', 'Wh', 0, lower=0),
+        legs(
+            'restore',
+            flow('labor', this.water, this.used, request=q(4, 'L/h'), capacity=q(2, 'L/h')),
+            flow('job', this.work, this.done, request=q(8, 'kW')),
+        ),
+    )
+    program = b.finish()
+    record = run(program, configured(2))
+    assert unit_of(program, Key('site', ('restore', 'job', 'request'))) == ('kW', 1000.0)
+    paths = ['site.restore.served_fraction', 'site.restore.labor.actual_rate', 'site.restore.job.actual_rate']
+    fraction, labor, job = read(record, program, paths, [0, 2])
+    assert (fraction.unit, fraction.values) == ('', pytest.approx((0.5, 0.5)))
+    assert (labor.unit, labor.values) == ('L/h', pytest.approx((2, 2)))
+    assert (job.unit, job.values) == ('kW', pytest.approx((4, 4)))
 
 
 def test_a_curved_piece_reads_the_increase_of_its_series():

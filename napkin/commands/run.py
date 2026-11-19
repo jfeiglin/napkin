@@ -5,9 +5,10 @@ The default run of a model is a median run to the horizon of its scenario line
 (`napkin.model.compile`); `napkin.engine.run` gives its record and `napkin.engine.read` the values,
 each in its declared unit. The command prints the value of each path of `--value`, or of every named
 value of the model in the order of the file (a flow's actual rate, request and capacity under its
-line), at each time of `--at`, or at the start and at the horizon. A number has six significant
-figures, a yes/no is `true` or `false`, and a value that cannot be evaluated is `unavailable`, with
-its reason under the table. `--json` prints one JSON document instead: the model, its title, the
+line, a route's then those of its legs `forward` and `backward`, a flow with legs' `served_fraction`
+then each leg's), at each time of `--at`, or at the start and at the horizon. A number has six
+significant figures, a yes/no is `true` or `false`, a link the name of the member it names, and a
+value that cannot be evaluated is `unavailable`, with its reason under the table. `--json` prints one JSON document instead: the model, its title, the
 times in hours and, for each path, its unit, its label and its values, each number in full and
 `{"unavailable": reason}` for a value that has none.
 
@@ -33,8 +34,11 @@ examples:
   napkin run examples/piano_tuners
   napkin run examples/piano_tuners --value tunings_done,tuners.due --at 0h,6months,1year"""
 
-# The fields of a flow that a run records, in the order in which they are listed.
+# The fields of a flow that a run records, in the order in which they are listed; a route records
+# them, then those of its two legs, which read the positive part of its rate and its request.
 FLOW_FIELDS = ('actual_rate', 'request', 'capacity')
+ROUTE_LEGS = ('forward', 'backward')
+ROUTE_LEG_FIELDS = ('actual_rate', 'request')
 
 
 def configure(parser):
@@ -124,7 +128,7 @@ def named(model, record):
     """The path of every named value of a model that its record holds, in the order of the file: each
     value of an entity and of the top level, and each recorded field of a flow under its line."""
     from ..engine.timeline.plan import name_of
-    from ..model.semantic import DeclaredFlow
+    from ..model.semantic import DeclaredFlow, DeclaredLegs, DeclaredRoute
 
     declared = model.declared
     parts = sorted(
@@ -133,8 +137,13 @@ def named(model, record):
     )
     written = []
     for part in parts:
-        if isinstance(part, DeclaredFlow):
+        if isinstance(part, DeclaredLegs):
+            written.append(f'{part.path}.served_fraction')
+            written += [f'{leg.path}.{field}' for leg in part.legs for field in FLOW_FIELDS]
+        elif isinstance(part, DeclaredFlow):
             written += [f'{part.path}.{field}' for field in FLOW_FIELDS]
+            if isinstance(part, DeclaredRoute):
+                written += [f'{part.path}.{leg}.{field}' for leg in ROUTE_LEGS for field in ROUTE_LEG_FIELDS]
         else:
             written.append(part.path)
     held = [name_of(history.key) for history in record.histories]
@@ -189,6 +198,8 @@ def cell(value):
     """A value as the table shows it."""
     if isinstance(value, bool):
         return 'true' if value else 'false'
+    if isinstance(value, str):  # a link: the name of the member that it names
+        return value
     return 'unavailable' if unavailable(value) else common.number(value)
 
 

@@ -33,15 +33,17 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] the engine: pools of members, the reverse index, the index of keys with its key times, the reductions; a connected set of one flow whose rate reads nothing that moves runs on arrays at any size. Benchmark: 30,000 rows, plan 4.7 s, run 7.2 s with the record of everything (`b1/s1-engine/STATE.md`)
   - [ ] for S2: the checker refuses `count(this.pumps)` (a path that ends on a collection value); a field named `start`, `draw`, `where`, `by`, `at` or `choose` cannot be read through a handle of `build.py`; per-row formulas of a large table are fitted row by row (slow); a failure inside a long numerical segment is timed at the segment's start; the setup reports for equal keys under `.at` and for coverage at a lower bound
   - [ ] contract and examples, for S5: the worked network's flows carry `W` where a source gets `Wh/h`, and its readings are fractions where a table gives floats, so its bytes differ from its source
-- [ ] S2 the flow network and sharing (`briefs/s2.md`); the carry-over of S1 is in it
+- [x] S2 the flow network and sharing (`briefs/s2.md`); the carry-over of S1 is in it
   - [x] the front end: endpoints, priority over flows and ranked projections, flows across entities, junctions; the three contract fixes; the setup reports print as warnings
   - [x] the engine (its agent stopped at a restart of the container after step 8 of 9; the main session finished it): one sparse network, local sharing settled in the direction of supply, lines for rates held between moments, a sparse integrator for moving sets; 300 random networks agree with the oracle (2,000 under `deep`)
-  - [ ] carried into S3: the moving benchmark at 30,000 places stops at 41.94 h with a failure of local sharing that names no part (3,000 places run to the end); not yet ported: `test_chattering.py`, `test_closed_form_short.py`, `test_roundoff_properties.py`
-  - [ ] performance, separate from behaviour: rates held between moments on 30,000 places run in 87 s (one set of 52,038 stores, 113,009 line starts), where the prototype's lines took 1.4 s
-- [ ] S3 reversible flows and flows with legs (`briefs/s3.md`), with the carry-over of S2
+  - [x] carried into S3 and done there: the moving benchmark at 30,000 places that stopped at 41.94 h; the ports of `test_chattering.py`, `test_closed_form_short.py`, `test_roundoff_properties.py`; the speed of lines (87 s)
+- [x] S3 reversible flows and flows with legs (`briefs/s3.md`), with the carry-over of S2. 2,979 live tests pass
   - [x] the front end: `<->` with its legs, flows with legs and one `served_fraction`, `.source` and `.sink` typed as the store at that end (`tests/language/`, 378 tests). A tally is known by use: a store at a route's end is a stock, so only `SOURCE` and `SINK` are refused there
-  - [ ] the engine, with the carry-over of S2
-  - [ ] for S4: refuse an assignment through `.source` or `.sink` (the front end writes the read as the store's own path, so a write would change the store); for the join: `napkin run` lists the fields of a flow with legs and of a route's legs last
+  - [x] the engine (`b1/s3-engine/STATE.md`): a route is one signed rate with two leg views, a flow with legs one fraction, both through local sharing; routes and legs run as lines or on the sparse integrator, never as arrays or one component; an endpoint request that a route meets stops the run by name (the oracle has no answer either). 300 random networks with routes and legs agree with the oracle (2,000 under `deep`). Ported: `test_coupled_queue_boundaries.py`, `test_chattering.py`, `test_closed_form_short.py`, `test_roundoff_properties.py` (moves, timers and stock faces dropped: S4)
+  - [x] the carry-over of S2: local sharing at scale solves each part in its own units, with claim rows as served fractions and a distance step from a feasible vertex or by the dual method; the moving benchmark at 30,000 places runs to 48 h (build 3.6 s, plan 22.2 s, run 299 s). Lines re-solve only what lies downstream of a changed store: held at 30,000 places, run 8.1 s (was 87 s); equal to the whole-part path up to roundoff (5.7e-14)
+  - [x] the join: `napkin run` lists a route's legs and a flow with legs' fields in file order, each leg in its own unit, and a link as the name of its member
+  - [ ] for S4: refuse an assignment through `.source` or `.sink` (the front end writes the read as the store's own path, so a write would change the store)
+  - [ ] performance, for later: about 3/4 of the moving benchmark's 299 s goes to 2,948 two-store components, each run and fitted alone
 - [ ] S4 occurrences and time
 - [ ] S5 solvers
 - [ ] S6 packages and configurations

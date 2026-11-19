@@ -501,8 +501,9 @@ def key_of(program, path):
 
 def unit_of(program, key):
     """The spelling of the declared unit of the value at a key and its scale: of a value, its type's
-    unit; of a flow's actual rate, request or capacity, the flow's unit; of an endpoint's, its
-    store's unit per hour (time is in hours, at scale 1); `''` for a plain number or a yes/no."""
+    unit; of a flow's actual rate, request or capacity, the flow's unit, and of a leg's, the leg's;
+    of an endpoint's, its store's unit per hour (time is in hours, at scale 1); `''` for a plain
+    number or a yes/no, such as a `served_fraction`."""
     if key.owner:
         template = program.member(key.owner)[0]
         part = template.part(key.steps[0])
@@ -510,6 +511,9 @@ def unit_of(program, key):
         part = program.root_value(key.steps[0])
     if part is None:
         raise KeyError(f'{key}: no value of the program')
+    if getattr(part, 'legs', ()) and len(key.steps) >= 3:
+        # A field of a leg is in the leg's unit; the parent's `served_fraction` is a plain number.
+        part = next((leg for leg in part.legs if leg.name == key.steps[1]), part)
     unit = part.unit if hasattr(part, 'unit') else getattr(part.type, 'unit', '')  # a flow has a unit
     scale = 1.0 if unit == '' else float(program.unit(unit).scale)
     if len(key.steps) >= 3 and key.steps[1] in ('outflow', 'inflow'):
