@@ -586,10 +586,15 @@ class Plan:
                         continue
                     self.enforced[name] = found
                     a, b = found.operands
-                    size = nodes.call('max', [nodes.const(1.0), nodes.call('abs', [a]), nodes.call('abs', [b])])
+                    size = nodes.call(
+                        'max', [nodes.const(1.0), nodes.call('abs', [a]), nodes.call('abs', [b])]
+                    )
                     tolerant = nodes.compare(
                         ['le'],
-                        [nodes.call('abs', [nodes.binary('sub', a, b)]), nodes.binary('mul', nodes.const(1e-7), size)],
+                        [
+                            nodes.call('abs', [nodes.binary('sub', a, b)]),
+                            nodes.binary('mul', nodes.const(1e-7), size),
+                        ],
                     )
                     self.values[name] = replace(value, node=tolerant, shape=None, binding=())
 

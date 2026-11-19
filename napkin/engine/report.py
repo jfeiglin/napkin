@@ -374,7 +374,9 @@ class _Trail:
             did, why = self.acted(part, found)
             if part not in reached and (part not in found.blocked or self.edited):
                 did, why = False, 'it is read only through parts that the run did not exercise'
-            used.append(Used(part.kind, part.origin, part.owner, self.cites(part.origin, part.owner), did, why))
+            used.append(
+                Used(part.kind, part.origin, part.owner, self.cites(part.origin, part.owner), did, why)
+            )
         return tuple(used)
 
     def evaluated(self, part, found):

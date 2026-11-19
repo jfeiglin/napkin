@@ -221,7 +221,10 @@ def save(run):
                 ('formulas', tuple(sorted(recorder.formulas))),
                 ('round', recorder.round),
                 ('wanted', None if recorder._wanted is None else tuple(sorted(recorder._wanted))),
-                ('transfers', tuple((name, start, tuple(moved)) for name, (start, moved) in recorder.transfers.items())),
+                (
+                    'transfers',
+                    tuple((name, start, tuple(moved)) for name, (start, moved) in recorder.transfers.items()),
+                ),
             ),
         ),
         ('draws', (('kept', tuple(sorted(run.chance.kept))),)),

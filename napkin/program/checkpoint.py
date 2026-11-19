@@ -194,7 +194,9 @@ class Checkpoint:
             raise CheckpointError(f'{name}: no value of the state at the stop has this name') from None
         for occurrence in self.state.occurrences:
             if name.startswith(f'{occurrence.id}.') and not occurrence.active:
-                raise CheckpointError(f'{name} belongs to the finished occurrence {occurrence.id}, which is frozen')
+                raise CheckpointError(
+                    f'{name} belongs to the finished occurrence {occurrence.id}, which is frozen'
+                )
         if _kind(old) != _kind(value):
             raise CheckpointError(f'{name} holds {_kind(old)}, and {value!r} is {_kind(value)}')
         if isinstance(value, int) and not isinstance(value, bool):

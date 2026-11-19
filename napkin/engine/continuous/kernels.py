@@ -20,7 +20,6 @@ from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import evaluate, names_in, stock_face_dependencies
 
-
 # The coefficients of the [13/13] Pade approximant of the exponential, and the largest 1-norm for
 # which it holds to double precision (Higham 2005, table 2.3).
 _PADE = (
