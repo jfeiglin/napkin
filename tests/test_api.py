@@ -24,10 +24,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # The files of the run store's closure, relative to the package: the files that the engine imports
 # from its timeline (`engine/timeline/`), the expressions and the distributions, with the packages
-# that hold them: the program that it runs and its record (`program/`), the solve library of the
-# declared solvers and of fair sharing (`engine/solve/`), the continuous engine and the typed core
-# that the evaluator reads (`core/`). The engine names no module of the compiler, of the report or of
-# the studies. A new module of the engine changes this list.
+# that hold them: the program that it runs, its record, its canonical bytes and its checkpoints
+# (`program/`), the solve library of the declared solvers and of fair sharing (`engine/solve/`), the
+# continuous engine and the typed core that the evaluator reads (`core/`). The engine names no module
+# of the compiler, of the report or of the studies. A new module of the engine changes this list.
 CLOSURE = (
     '__init__.py',
     'core/__init__.py',
@@ -63,6 +63,7 @@ CLOSURE = (
     'engine/solvers.py',
     'engine/timeline/__init__.py',
     'engine/timeline/chance.py',
+    'engine/timeline/checkpoints.py',
     'engine/timeline/collections.py',
     'engine/timeline/component.py',
     'engine/timeline/declared.py',
@@ -83,6 +84,8 @@ CLOSURE = (
     'engine/timeline/ways.py',
     'expressions.py',
     'program/__init__.py',
+    'program/canonical.py',
+    'program/checkpoint.py',
     'program/config.py',
     'program/parts.py',
     'program/record.py',

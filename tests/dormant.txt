@@ -36,16 +36,9 @@ tests/model/test_start_states.py
 tests/model/test_structure.py
 tests/model/test_structure_checks.py
 tests/model/test_units.py
-tests/test_bench.py
 tests/test_check.py
-tests/test_cli.py
-tests/test_cli_tables.py
-tests/test_compare.py
 tests/test_examples.py
-tests/test_nested_packages.py
-tests/test_package.py
 tests/test_session.py
-tests/test_tools_new.py
 tests/test_scenario_ownership.py
-tests/test_api.py
 tests/test_scenario_scope.py
+tests/test_tools_new_catalogue.py
