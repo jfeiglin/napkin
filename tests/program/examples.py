@@ -11,7 +11,9 @@ The expected numbers are the spec's, or worked by hand from its rules where a do
 comes from a run. A value is stated in the declared unit of the value at its key (a rate in its flow's
 unit), a time in hours, after the last round at that time. Members are named by their ids, an
 occurrence by `receiver.event#n`, its start on that receiver counted from 0, and a part of the trace by
-its origin (`build.py` gives the origins: `plant.inspect.step[1]`, `plant.inspect.when[0]`).
+its origin (`build.py` gives the origins: `plant.inspect.step[1]`, `plant.inspect.when[0]`). An enum is
+named by its spelling (`enum[FIXED, FAILED]`), as the front end names it: the language's enum is its
+members.
 """
 
 from __future__ import annotations
@@ -1028,7 +1030,9 @@ def two_writes_one_solve():
 def _inspect(name, outage, safe_at_five):
     """Spec, "Time, waiting and completion": `inspect.start(3 h)` runs its stages at hours 3 and 5;
     the guard of the second is read once, when it comes due, so a loss of safety that is over by
-    then does not matter; then the gate waits for clearance at 6 h (acceptance row 21)."""
+    then does not matter; then the gate waits for clearance at 6 h (acceptance row 21). `outage` is
+    the time at which safety is lost and how long it stays lost, as a model text writes them (a
+    decimal is a float, `4.5 h`)."""
     b = Builder(UNITS)
     plant = b.entity(
         'plant',
@@ -1048,7 +1052,7 @@ def _inspect(name, outage, safe_at_five):
             'outage',
             when(t >= q(outage[0], 'h'), start(this.outage), reset=reset_when(False)),
             after(q(0, 'h'), assign(this.safe, False)),
-            after(q(outage[1] - outage[0], 'h'), assign(this.safe, True)),
+            after(q(outage[1], 'h'), assign(this.safe, True)),
         ),
         event(
             'clear',
@@ -1072,7 +1076,7 @@ def _inspect(name, outage, safe_at_five):
 def inspect_guard_read_once():
     """Spec, "Time, waiting and completion": safety is lost from 4 h to 4.5 h and holds at
     5 h, so the equipment inspection starts at 5 h."""
-    return _inspect('inspect_guard_read_once', (4, F(9, 2)), True)
+    return _inspect('inspect_guard_read_once', (4, 0.5), True)
 
 
 @example
@@ -1080,7 +1084,7 @@ def inspect_guard_false():
     """Spec, "Time, waiting and completion": safety is lost from 4.5 h to 5.5 h, so at 5 h the
     guard is false, the body is skipped, and the invocation goes on to the gate and finishes at
     6 h."""
-    return _inspect('inspect_guard_false', (F(9, 2), F(11, 2)), False)
+    return _inspect('inspect_guard_false', (4.5, 1), False)
 
 
 @example
@@ -1132,7 +1136,7 @@ def grinder_trigger_and_manual():
     start of 50 g both refill it reaches 108 g (acceptance row 23). The manual start is the setup's,
     occurrence #0; the trigger fires at its first check, after setup, and starts #1."""
     b = Builder(UNITS)
-    states = b.enum('Refill.status', 'WEIGHING', 'ADDED')
+    states = b.enum('enum[WEIGHING, ADDED]', 'WEIGHING', 'ADDED')
     grinder = b.entity(
         'grinder',
         value('beans', 'g', 8),
@@ -1357,7 +1361,7 @@ def _categorical(name, parts, guarded, expected):
     """Spec, "Choosing actions inside a stage": `switch categorical(FIXED: 0.7, FAILED: 0.3).draw()`
     at 2 h, in a median run (acceptance row 30)."""
     b = Builder(UNITS)
-    outcome = b.enum('Outcome', 'FIXED', 'FAILED')
+    outcome = b.enum('enum[FIXED, FAILED]', 'FIXED', 'FAILED')
     machine = b.entity(
         'machine',
         value('operational', BOOL, False),
@@ -1409,7 +1413,7 @@ def _dispatcher(name, spares, picks, expected):
     """Spec, "Actor decisions and observations": a dispatcher whose forecast always waits, and a
     depot that asks it whether to send a spare pump, which needs a spare (acceptance row 31)."""
     b = Builder(UNITS)
-    action = b.enum('Action', 'SEND', 'WAIT')
+    action = b.enum('enum[SEND, WAIT]', 'SEND', 'WAIT')
     depot = named('depot')
     dispatcher = b.entity(
         'dispatcher',
@@ -1584,7 +1588,8 @@ def water_service_returns():
 
 def _pinned(name, shared, late, expected):
     """Spec, "Delivery experiments on the pinned engine": two deliveries of 20 L that request
-    10 L/h each, to customers a and b. The rewrite's local sharing gives the same numbers."""
+    10 L/h each, to customers a and b. The rewrite's local sharing gives the same numbers. The
+    parameter is `customer`: `to` is a word of the language."""
     b = Builder(UNITS)
     customer = b.template('Customer', value('water', 'L', 0, lower=0))
     a, bb = b.member(customer, 'a'), b.member(customer, 'b')
@@ -1595,9 +1600,9 @@ def _pinned(name, shared, late, expected):
             value('supply', 'L', 40, lower=0, outflow=endpoint(capacity=q(10, 'L/h'))),
             event(
                 'deliver',
-                param('to', ref_to('Customer')),
-                flow('pipe', this.supply, local.to.water, request=q(10, 'L/h')),
-                until(local.to.water >= q(20, 'L')),
+                param('customer', ref_to('Customer')),
+                flow('pipe', this.supply, local.customer.water, request=q(10, 'L/h')),
+                until(local.customer.water >= q(20, 'L')),
                 *triggers,
             ),
         )
@@ -1606,9 +1611,9 @@ def _pinned(name, shared, late, expected):
             'depot',
             event(
                 'deliver',
-                param('to', ref_to('Customer')),
+                param('customer', ref_to('Customer')),
                 value('batch', 'L', 20, lower=0),
-                flow('pipe', local.batch, local.to.water, request=q(10, 'L/h')),
+                flow('pipe', local.batch, local.customer.water, request=q(10, 'L/h')),
                 until(local.batch <= q(0, 'L')),
             ),
         )

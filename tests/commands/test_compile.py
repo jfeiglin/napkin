@@ -47,12 +47,13 @@ def test_compile_summarizes_the_program_of_the_tank(tmp_path, capsys):
 
 
 def test_a_part_of_a_later_slice_is_refused_by_name(tmp_path, capsys):
-    """An enum member comes with S4: the front end names the part and the slice."""
-    model = package(tmp_path / 'gate', TANK.replace('clinic:', 'gate:\n    state = OPEN\n\nclinic:'), UNITS)
+    """A solver comes with S5: the front end names the part and the slice."""
+    solver = 'plan:\n    split: L = 1\n    s = solver:\n        solve_for:\n            this.split\n\nclinic:'
+    model = package(tmp_path / 'plan', TANK.replace('clinic:', solver), UNITS)
     found = napkin(capsys, 'compile', model)
     assert found.code == 1
     assert '[later_slice]' in found.err
-    assert '(S4)' in found.err
+    assert '(S5)' in found.err
 
 
 def test_a_report_of_the_setup_is_a_warning_and_refuses_nothing(tmp_path, capsys):

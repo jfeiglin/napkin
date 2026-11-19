@@ -4,7 +4,6 @@ bytes of the example's; inputs that draw their default lower as the examples bui
 a later slice is refused by name; and the migrated piano tuners load, lower and pass `finish()`."""
 
 import textwrap
-from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -183,39 +182,6 @@ for _name, _labor, _work, _cap in (
 # The tables that a source names, by the name that it writes.
 TABLES = {'keyed_lookup': {'readings.csv': 'hour: h,factor\n10,2\n11,3\n'}}
 
-# The water model of the spec (D17) as `water_service_returns` builds it, with the event that gives
-# service back at 5 h, which a later slice (S4) brings.
-WATER = """
-    Utility:
-        input demand: L/h = 10
-        online: bool = true
-        served: L = 0 in [0,]
-        flow delivery: SOURCE -> this.served
-            request = formula(this.demand)
-            capacity = formula(this.demand if this.online else 0 L/h)
-        unserved_rate = formula(max(0 L/h, this.demand - this.delivery.actual_rate))
-        unserved: L = 0 in [0,]
-        flow count_unserved: SOURCE -> this.unserved
-            request = formula(this.unserved_rate)
-    {restore}
-    north: Utility
-        online = false
-
-    south: Utility
-        demand = 4 L/h
-
-    initial_unserved = sum(Utility.instances.unserved)
-    unserved_volume = formula(sum(Utility.instances.unserved))
-    unserved_now = formula(sum(Utility.instances.unserved_rate))
-    """
-RESTORE = """    restore = event():
-            when t >= 5 h:
-                this.restore.start()
-                reset when false
-            after 0 h:
-                this.online = true
-"""
-
 
 def compiled(text, units=UNITS, tables=None):
     return compile_text(textwrap.dedent(text), units, tables=tables)
@@ -228,21 +194,6 @@ def same(program, expected):
 @pytest.mark.parametrize('name', sorted(SOURCES))
 def test_the_text_of_an_example_lowers_to_its_program(name):
     assert same(compiled(SOURCES[name], tables=TABLES.get(name)).program, EXAMPLES[name]().program)
-
-
-def test_the_water_model_lowers_to_its_program_but_for_the_event_of_a_later_slice():
-    example = EXAMPLES['water_service_returns']().program
-    (utility,) = example.templates
-    # Without its event the example spells no unit h: only the event's times are in hours.
-    expected = replace(
-        example,
-        templates=(replace(utility, events=()),),
-        units=tuple(unit for unit in example.units if unit.name != 'h'),
-    )
-    assert same(compiled(WATER.format(restore='')).program, expected)
-    with pytest.raises(LanguageError) as caught:
-        compiled(WATER.format(restore=RESTORE))
-    assert caught.value.codes == ['later_slice'] and '(S4)' in str(caught.value)
 
 
 def test_a_reordered_table_with_ids_gives_the_same_program():
@@ -356,18 +307,13 @@ def test_a_distribution_valued_value_keeps_its_type():
 @pytest.mark.parametrize(
     ('text', 'construct', 'slice_'),
     [
-        ('tank:\n    refill = event():\n        after 1 h:\n            this.x += 1\n', 'an event', 'S4'),
         ('p:\n    s = solver:\n        solve_for:\n            this.x\n', 'a solver', 'S5'),
         ('c:\n    status ok\n        "Fine."\n', 'a status display', 'C'),
-        ('tank:\n    water: L = 8\nassert tank.water > 0 L\n', 'an assertion over state', 'S4'),
-        ('d:\n    sees e.x\ne:\n    x = 1\n', 'sees', 'S4'),
         ('use pumps.common\n', 'use', 'S6'),
         ('change tank:\n    x = 2\n', 'change', 'S6'),
         ('options "Speed":\n    "Fast":\n        tank.x = 2\n', 'options', 'S6'),
         ('runs:\n    fast = "Fast"\n', 'runs', 'S6'),
         ('variant "Wet"\n    horizon 1 h\n', 'a variant', 'S6'),
-        ('gate: enum[OPEN, CLOSED] = OPEN\n', 'an enum', 'S4'),
-        ('d = categorical(A: 1, B: 0)\n', 'a categorical distribution', 'S4'),
         ('tank:\n    x = 1\ntank.x = 3\n', 'a property set by its path', 'S6'),
         ('x = 1\ny = formula(x.mean)\n', None, None),
     ],
@@ -387,7 +333,8 @@ def test_a_construct_of_a_later_slice_is_refused_by_name(text, construct, slice_
 def test_a_value_that_reads_a_later_slice_is_refused_with_it():
     with pytest.raises(LanguageError) as caught:
         compiled(
-            'gate: enum[OPEN, CLOSED] = OPEN\nopen = formula(gate == OPEN)\nboth = formula(open and open)\n'
+            'p:\n    a: L = 1\n    s = solver:\n        solve_for:\n            this.a\n'
+            'x = formula(p.s.y)\nboth = formula(x + x)\n'
         )
     assert caught.value.codes == ['later_slice'] * 3
 

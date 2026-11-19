@@ -27,7 +27,6 @@ tests/engine/test_expectations.py
 tests/engine/test_finite_face_kernel.py
 tests/engine/test_finite_stock_boundaries.py
 tests/engine/test_firing_values.py
-tests/engine/test_initiation.py
 tests/engine/test_moment.py
 tests/engine/test_monotone_crossing.py
 tests/engine/test_monte_carlo_study.py
@@ -62,7 +61,6 @@ tests/model/test_contracts.py
 tests/model/test_copies_and_start.py
 tests/model/test_desugar.py
 tests/model/test_diagnostic_places.py
-tests/model/test_distribution_contracts.py
 tests/model/test_identity.py
 tests/model/test_kept_parts.py
 tests/model/test_library.py
@@ -72,7 +70,6 @@ tests/model/test_long_expressions.py
 tests/model/test_material.py
 tests/model/test_meaning.py
 tests/model/test_modules.py
-tests/model/test_named_arguments.py
 tests/model/test_notes.py
 tests/model/test_orders_and_options.py
 tests/model/test_packages.py
@@ -81,13 +78,10 @@ tests/model/test_parts.py
 tests/model/test_resolved.py
 tests/model/test_runs.py
 tests/model/test_shared_formulas.py
-tests/model/test_sight.py
 tests/model/test_start_states.py
-tests/model/test_state_assignment.py
 tests/model/test_structure.py
 tests/model/test_structure_checks.py
 tests/model/test_units.py
-tests/model/test_views.py
 tests/test_bench.py
 tests/test_check.py
 tests/test_cli.py

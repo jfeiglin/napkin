@@ -201,7 +201,7 @@ def test_where_by_and_at_lower_as_the_builder_makes_them():
     assert same(ROUTES, b)
 
 
-def test_assertions_over_inputs_lower_and_one_over_state_is_a_later_slices():
+def test_assertions_over_inputs_and_over_state_lower():
     text = """
         Pump:
             input low: L/h = 1
@@ -216,9 +216,11 @@ def test_assertions_over_inputs_lower_and_one_over_state_is_a_later_slices():
     b.root(assertion(fsum(pump.instances.high) <= q(100, 'L/h')))
     assert same(text, b)
     assert [item.path for item in compiled(text).declared.asserts] == ['assert[0]']
-    with pytest.raises(LanguageError) as caught:
-        compiled('Pump:\n    level: L = 1\n    assert this.level > 0 L\n')
-    assert caught.value.codes == ['later_slice'] and 'an assertion over state comes' in str(caught.value)
+    assert compiled(text).declared.asserts[0].fixed
+    # An assertion over state is checked after every round (S4): it lowers, and it is not fixed.
+    over_state = compiled('Pump:\n    level: L = 1\n    assert this.level > 0 L\n')
+    (declared,) = [part for part in over_state.declared.entities[0].parts if part.path == 'Pump.assert[0]']
+    assert not declared.fixed and len(over_state.program.template('Pump').asserts) == 1
 
 
 def test_an_assertion_through_a_deep_chain_of_shared_formulas_is_a_check_of_the_inputs():
@@ -229,15 +231,17 @@ def test_an_assertion_through_a_deep_chain_of_shared_formulas_is_a_check_of_the_
     chain = [f'f{k} = formula(f{k - 1} + f{k - 1})' for k in range(1, depth + 1)]
     text = '\n'.join(['input w: L = 1', 'f0 = formula(w)', *chain, f'assert f{depth} >= 0 L']) + '\n'
     assert [item.path for item in compiled(text).declared.asserts] == ['assert[0]']
-    with pytest.raises(LanguageError) as caught:
-        compiled(text.replace('input w: L = 1', 'w: L = 1'))
-    assert caught.value.codes == ['later_slice']
+    assert compiled(text).declared.asserts[0].fixed
+    assert not compiled(text.replace('input w: L = 1', 'w: L = 1')).declared.asserts[0].fixed
     # A member that replaces the formula that an assertion reads may read state with it.
     replaced = 'Pump:\n    input low = 1\n    level = 2\n    ok = formula(this.low > 0)\n    assert this.ok\na: Pump\n'
-    assert len(compiled(replaced).program.template('Pump').asserts) == 1
-    with pytest.raises(LanguageError) as caught:
-        compiled(replaced + '    ok = formula(this.level > 0)\n')
-    assert caught.value.codes == ['later_slice']
+
+    def fixed(text):
+        return next(
+            part.fixed for part in compiled(text).declared.entities[0].parts if part.path == 'Pump.assert[0]'
+        )
+
+    assert fixed(replaced) and not fixed(replaced + '    ok = formula(this.level > 0)\n')
 
 
 # ---- a template's instances, from tests/model/test_template_lists.py -------------------------------

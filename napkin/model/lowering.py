@@ -19,6 +19,12 @@ nothing, so the two texts are one program. A reversible route is a `build.route`
 legs a `build.legs` of its legs, each a directed flow. A read of a flow's end reaches the lowering
 as the read of its store (`semantic.Resolver.end`), so the program reads the store by its path.
 
+An event is a `build.event` of its parameters, its locals and flows, its steps and its triggers; a
+statement is the builder's assignment, move, start or branch, and the setup's starts are
+`Builder.setup`. A bare name of an event is `refs.Local`. An enum is declared once by its spelling
+(`enum[OPEN, CLOSED]`), its members a `refs.EnumValue`; a draw and a choice carry a temporary site
+until `Builder.finish` gives each its place, as the builder's own `draw` and `choose` do.
+
 A part that a later slice brings is refused by name (`later_slice`), with the slice that brings it.
 A refusal of the program's checker is given at the line of the declared part that it names, and so
 is each of the setup's reports (`reports`), which refuse nothing.
@@ -27,10 +33,12 @@ is each of the setup's reports (`reports`), which refuse nothing.
 from __future__ import annotations
 
 import itertools
+from dataclasses import fields, is_dataclass
 from fractions import Fraction
 
 from ..core import expr as nodes
 from ..program import build, check
+from ..program import parts as p
 from ..program.check import ProgramError
 from ..program.refs import (
     ITEM,
@@ -38,14 +46,20 @@ from ..program.refs import (
     THIS,
     TIME,
     By,
+    Choice,
+    Delayed,
     Distribution,
     Draw,
+    Elapsed,
+    EnumValue,
     Instances,
     Literal,
+    Local,
     Lookup,
     Named,
     Path,
     Reduce,
+    Since,
     Where,
     spelled,
 )
@@ -71,6 +85,9 @@ def lower(model):
     if model.deferred:
         raise LanguageError([refusal(part) for part in model.deferred])
     builder = build.Builder(model.units.table)
+    enums = _enums(model)
+    for name in sorted(enums):
+        builder.enum(name, *enums[name].members)
     templates = {}
     for entity in model.entities:
         templates[entity.path] = entity
@@ -89,6 +106,7 @@ def lower(model):
             rows = [_row(each, template) for each in model.members if each.table == member.table]
             builder.table(member.table, member.template, rows)
     builder.root(*(value_of(value) for value in model.root), *(_assertion(item) for item in model.asserts))
+    builder.setup(*(_statement(start) for start in model.setup))
     try:
         return builder.finish()
     except ProgramError as error:
@@ -143,15 +161,43 @@ def _row(member, template):
 # ---- parts ------------------------------------------------------------------------------------------
 
 
+def _enums(model):
+    """Each enum that the types, the values and the distributions of a model name, by its spelling
+    (an enum is its members, `semantic.EnumOf`). A member's own value is of its template's type, so
+    the members need no walk."""
+    found = {}
+
+    def walk(item):
+        if isinstance(item, s.EnumOf):
+            found.setdefault(str(item), item)
+        elif isinstance(item, tuple):
+            for each in item:
+                walk(each)
+        elif is_dataclass(item) and not isinstance(item, type):
+            for each in fields(item):
+                walk(getattr(item, each.name))
+
+    walk((model.entities, model.root, model.asserts, model.setup))
+    return found
+
+
 def _type(kind):
     if isinstance(kind, s.Num):
         return kind.unit
+    if isinstance(kind, s.EnumOf):
+        return p.EnumType(str(kind))
     if isinstance(kind, s.Dist):
-        return build.dist_of(kind.of.unit)
+        return build.dist_of(_type(kind.of))
+    if isinstance(kind, s.Ent):
+        return build.ref_to(kind.template)
     return build.BOOL if kind == s.BOOL else build.TEXT
 
 
 def part_of(part):
+    if isinstance(part, s.DeclaredEvent):
+        return event_of(part)
+    if isinstance(part, s.DeclaredSees):
+        return build.sees(build.X.read(_path(part.read)))
     if isinstance(part, s.DeclaredLegs):
         return build.legs(part.name, *(flow_of(leg) for leg in part.legs))
     if isinstance(part, s.DeclaredFlow):
@@ -217,7 +263,89 @@ def initial(init):
 
 
 def distribution(found):
+    """The program's distribution: a numeric family in one unit, or a categorical over its enum."""
+    if found.family == 'categorical':
+        return Distribution('categorical', found.params, enum=str(found.type.of), outcomes=found.outcomes)
     return Distribution(found.family, found.params, found.type.of.unit)
+
+
+def _source(source):
+    """What a draw or a choice reads: a distribution written in place, or the path of a value."""
+    return distribution(source) if isinstance(source, s.Distribution) else _path(source)
+
+
+# ---- events -----------------------------------------------------------------------------------------
+
+
+def event_of(event):
+    """The program's event: its parameters, its locals and flows in written order, its steps and its
+    triggers (`build.event` keeps each group in its order)."""
+    parts = [
+        build.param(
+            param.name,
+            _type(param.type),
+            lower=None if param.lower is None else handle(param.lower),
+            upper=None if param.upper is None else handle(param.upper),
+        )
+        for param in event.params
+    ]
+    parts += [part_of(local) for local in event.locals]
+    parts += [_timing(step) for step in event.steps]
+    parts += [_trigger(trigger) for trigger in event.triggers]
+    return build.event(event.name, *parts)
+
+
+def _timing(step):
+    if isinstance(step, s.DeclaredGate):
+        return build.until(handle(step.test))
+    guard = None if step.guard is None else handle(step.guard)
+    return build.after(handle(step.delay), *_statements(step.body), when=guard)
+
+
+def _trigger(trigger):
+    reset = None
+    if trigger.reset is not None:
+        kind, expression = trigger.reset
+        reset = (build.reset_when if kind == 'when' else build.reset_after)(handle(expression))
+    captures = tuple(
+        build.value(capture.name, _type(capture.type), handle(capture.init)) for capture in trigger.captures
+    )
+    return build.when(handle(trigger.test), *_statements(trigger.starts), captures=captures, reset=reset)
+
+
+def _statements(body):
+    return [_statement(item) for item in body]
+
+
+def _statement(item):
+    """The program's statement of a declared one: an assignment, a move, a start or a branch."""
+    if isinstance(item, s.DeclaredAssign):
+        make = {'=': build.assign, '+=': build.add, '-=': build.subtract}[item.op]
+        return make(build.X.read(_path(item.target)), _assigned(item.value))
+    if isinstance(item, s.DeclaredMove):
+        ends = (build.X.read(_path(end)) for end in (item.source, item.destination))
+        return build.move(handle(item.amount), *ends)
+    if isinstance(item, s.DeclaredStart):
+        return build.start(build.X.read(_path(item.event)), *(handle(arg) for arg in item.args))
+    if isinstance(item, s.DeclaredIf):
+        return build.if_(handle(item.test), _statements(item.then), _statements(item.orelse))
+    cases = [
+        build.case(
+            case.member, *_statements(case.body), when=None if case.guard is None else handle(case.guard)
+        )
+        for case in item.cases
+    ]
+    return build.switch(handle(item.selector), *cases, orelse=_statements(item.orelse))
+
+
+def _assigned(value):
+    """An assigned value as the builder takes it: an allocation, or an initializer."""
+    if isinstance(value, tuple):
+        rule, *items = value
+        if rule == 'priority':
+            return build.priority(*(build.X.read(_path(item)) for item in items[0]))
+        return build.proportional()
+    return initial(value)
 
 
 def flow_of(flow):
@@ -245,6 +373,8 @@ def _path(read):
     kind, *rest = read.start
     if kind == 'this':
         start = THIS
+    elif kind == 'local':
+        start = Local(rest[0])
     elif kind == 'named':
         start = Named(rest[0])
     elif kind == 'root':
@@ -292,6 +422,8 @@ def _number(value):
 
 def _node(item, reads):
     if isinstance(item, s.Const):
+        if isinstance(item.type, s.EnumOf):
+            return _named(EnumValue(str(item.type), item.value), reads)
         if isinstance(item.value, (bool, str)):
             return nodes.const(item.value)
         if isinstance(item.type, s.Num) and item.type.unit:
@@ -303,7 +435,16 @@ def _node(item, reads):
         return _named(Reduce(item.op, _path(item.source)), reads)
     if isinstance(item, s.Drawn):
         # A temporary site, distinct for each draw, until `Builder.finish` gives the draw its place.
-        return _named(Draw(distribution(item.source), f'?lowered{next(_SITES)}'), reads)
+        return _named(Draw(_source(item.source), f'?lowered{next(_SITES)}'), reads)
+    if isinstance(item, s.Chosen):
+        return _named(Choice(_path(item.actor), _source(item.source), f'?lowered{next(_SITES)}'), reads)
+    if isinstance(item, s.History):
+        source = _path(item.source)
+        if item.op == 'since':
+            return _named(Since(source), reads)
+        if item.op == 'elapsed':
+            return _named(Elapsed(source), reads)
+        return _named(Delayed(source, build.expr_of(handle(item.delay))), reads)
     args = [_node(arg, reads) for arg in item.args]
     if item.op in OPERATIONS:
         return nodes.binary(OPERATIONS[item.op], *args)

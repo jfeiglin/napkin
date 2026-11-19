@@ -177,11 +177,7 @@ def test_a_construct_of_a_later_slice_is_kept_by_name():
         since_refill = formula(since(tank.refill))
         """
     )
-    assert [(part.path, part.slice) for part in model.deferred] == [
-        ('tank.refill', 'S4'),
-        ('Place.charge', 'S5'),
-        ('since_refill', 'S4'),
-    ]
+    assert [(part.path, part.slice) for part in model.deferred] == [('Place.charge', 'S5')]
 
 
 # ---- refusals -------------------------------------------------------------------------------------

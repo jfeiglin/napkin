@@ -17,6 +17,8 @@ readings:
   `this`. A hyphen or a `^` in a unit is refused: `person * year`, `L/h/h`.
 - **Capitals**: a name with a capital first letter is a template or a member of an enum; the name of
   a value starts with a small letter.
+- **The setup scope**: a top-level line that starts an event (`grinder.refill.start(50 g)`) is a
+  statement of the setup, which commits as round zero; the top level has no other statement.
 """
 
 from __future__ import annotations
@@ -68,7 +70,8 @@ VALUE_NAME = (
 TOP = (
     'a line at the top level is the scenario line, a use, an entity (`name:`), a template (`Name:`), an '
     'instance (`name: Template`), a table (`name: Template from "file.csv"`), a value (`name = value`), a '
-    'property by its path (`a.b.request = value`), an assert, a record, a change, options, runs or notes'
+    'property by its path (`a.b.request = value`), a start of an event (`tank.fill.start(5 L)`), an '
+    'assert, a record, a change, options, runs or notes'
 )
 COPIES = (
     'copies of a template are no form of the language: write each instance (name: Template), or give '
@@ -878,6 +881,9 @@ class Parser:
         if second is None:
             cursor.fail(TOP)
         if second.is_op('.'):
+            # A line with no assignment is a start of the setup scope (`grinder.refill.start(50 g)`).
+            if not any(token.is_op('=', '+=', '-=') for token in line.tokens):
+                return self.setup_start(line)
             return self.property(line)
         if second.is_op('='):
             return self.declaration(line, 'top')
@@ -902,6 +908,19 @@ class Parser:
         if cursor.at_name('from'):
             return self.table(line, cursor, declared)
         return self.declaration(line, 'top')
+
+    def setup_start(self, line):
+        """`grinder.refill.start(50 g)` at the top level: a start of the setup scope, which commits
+        as round zero. The setup scope starts events and does nothing else."""
+        found = self.statement(line)
+        if not isinstance(found, n.Start):
+            raise SyntaxProblem(
+                'the top level starts an event, as grinder.refill.start(50 g); a change of state belongs '
+                'to a stage of an event',
+                line.number,
+                0,
+            )
+        return found
 
     def scenario(self, line):
         """`scenario "Title"` or `variant "Title"`, with the scenario's lines under it (`HEADER`)."""

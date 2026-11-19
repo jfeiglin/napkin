@@ -49,17 +49,44 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   store at that end, with its amount and the steps of a store. The ends are fixed for the run, so
   the read goes to the store's own path from the flow's member (`end`); an end at `SOURCE` or
   `SINK`, or of a member of an endpoint's `flows`, which may end anywhere, has no store to read.
+- **Events** (`DeclaredEvent`) belong to an entity or a template. Inside an event a bare name is a
+  parameter or a local of the occurrence (`Scope.event`; they stand in `syntax` under the event's
+  path, `grinder.refill.amount`): a parameter is a value copy or an entity (D13), and a parameter
+  holds no stock (`parameter_end`). A plain initializer of a local, and a plain property of a local
+  flow, reads only what is above it (D14, `local_order`); a formula may read below. Stages (`after D:`,
+  `after D when C:`, the wait `after D`) and gates (`until C`) are steps in order; a stage's
+  statements assign, move, start and branch (`if`/`else`, `switch` over an enum with guarded
+  cases). A trigger (`when C:`) has no occurrence: its condition reads the receiver, its captures
+  what is above them, its starts and its reset the captures. The paths of an event's parts are the
+  origins that the program gives them (`grinder.refill.step[0].do[1]`, `.when[0]`).
+- **Writes.** A statement assigns a stored value, a local or a parameter's copy, a formula (with a
+  formula) or a distribution (with another), of this, through a link or an entity parameter, of a
+  live occurrence, or a setting of a flow or an endpoint. An input, a link, an event and the ends of
+  a flow are fixed (`fixed_write`), also through `f.source` or `f.sink`, which read the store at that
+  end; readonly forbids `=`, `+=` and `-=` (`readonly_write`); what the run computes, a rate, a
+  served fraction and an occurrence's `started`, `done` and `active`, no statement assigns
+  (`result_write`).
+- **Occurrences** (`Occ`): `e.occurrences` is a collection keyed by start times, read with `count`,
+  `any`, a projection and `.at(t)`; an occurrence reads its parameters, its locals and flows, and
+  `started`, `done`, `active`. `since(e)`, `elapsed(x)` and `delayed(x, d)` are `History` reads.
+- **Enums** (`EnumOf`) are their members in written order (E1 of the front end of S4): two
+  declarations of `enum[OPEN, CLOSED]` are one type, and the program names it `enum[OPEN,
+  CLOSED]`. A bare member takes its enum from its place: a declared type, the other side of a
+  comparison or a conditional, an assignment's target, a parameter, a switch's selector, a column.
+  A categorical takes the enum of its place, or the enum of its outcomes.
+- **Draws and choices.** `d.draw()` of a distribution written in place or held by a value, and
+  `actor.choose(d)` over a categorical forecast, stand where a value is captured once (an
+  initializer, a stage, a capture, an argument); a formula and a condition that is read again (a
+  gate, a trigger, a reset, an assertion) makes none (`formula_draws`). A distribution's parameters
+  are numbers written in place.
 - **Expressions** become a small typed form (`Const`, `Read`, `Apply`, `Retain`, `Distribution`,
-  `Drawn`, `Reduced`) that the lowering writes as a program. A `Read` knows whether what it reads is
-  fixed for the run (inputs, links and the members of fixed collections), which `where` and `assert`
-  need, and whether it ends at a stored number, which a flow and an endpoint need.
+  `Drawn`, `Chosen`, `History`, `Reduced`) that the lowering writes as a program. A `Read` knows
+  whether what it reads is fixed for the run (inputs, links and the members of fixed collections),
+  which `where` and `assert` need, whether it ends at a stored number, which a flow, an endpoint and a
+  move need, and the declared value that it ends at, which an assignment needs.
 - **What a later slice brings** is kept as a `Deferred` part, with the construct and the slice that
-  brings it; the lowering refuses it by name. These slices resolve the entities, the templates and
-  their members, the tables, values, inputs (a default may draw from a distribution), formulas,
-  `readonly`, ranges with either side open, scales, links, collections and their reductions, stores,
-  directed flows between any stores with `request` and `capacity`, reversible routes, flows with
-  legs, the reads of the ends of a flow, the settings and the reads of endpoints, and assertions
-  over inputs.
+  brings it; the lowering refuses it by name: solvers (S5), status displays (C), `use`, `change`,
+  options, runs, variants and a property set by its path (S6).
 """
 
 from __future__ import annotations
@@ -178,13 +205,49 @@ PLAIN = Num()
 
 
 @dataclass(frozen=True)
-class Dist:
-    """A distribution of numbers in a unit."""
+class EnumOf:
+    """Named states: the members of an enum in written order. An enum is its members, so two
+    declarations that write `enum[OPEN, CLOSED]` have one type, and a value of it can be stored in a
+    local of that type; the program names the enum by its spelling (`enum[OPEN, CLOSED]`)."""
 
-    of: Num
+    members: tuple[str, ...]
+
+    def __str__(self):
+        return f'enum[{", ".join(self.members)}]'
+
+
+@dataclass(frozen=True)
+class Dist:
+    """A distribution of numbers in a unit, or of the members of an enum (a categorical)."""
+
+    of: Num | EnumOf
 
     def __str__(self):
         return f'distribution({self.of})'
+
+
+@dataclass(frozen=True)
+class EventOf:
+    """A bound event (`grinder.refill`), which is no value: its `occurrences` are read, a stage or
+    the setup starts it, and `since` reads its latest start. `event` is the path of its declaration
+    (`grinder.refill`, `Utility.restore`)."""
+
+    event: str
+
+    def __str__(self):
+        return f'the event {self.event}'
+
+
+@dataclass(frozen=True)
+class Occ:
+    """An occurrence of an event: its parameters, its locals and its flows by their names, and its
+    built-in `started` (its start time), `done` (normal completion) and `active`. A collection of
+    occurrences is keyed by their start times."""
+
+    event: str
+
+    def __str__(self):
+        return f'an occurrence of {self.event}'
 
 
 @dataclass(frozen=True)
@@ -304,6 +367,9 @@ class Read:
     # Whether the read ends at a stored number, which can be an end of a flow and has an outflow and
     # an inflow.
     stored: bool = field(default=False, compare=False)
+    # The path of the declared value, parameter or local that the read ends at (an assignment asks
+    # it whether it is writable), or ''.
+    part: str = field(default='', compare=False)
 
 
 @dataclass(frozen=True)
@@ -336,19 +402,42 @@ class Retain:
 
 @dataclass(frozen=True)
 class Distribution:
-    """A distribution of a family, its parameters as numbers in one unit."""
+    """A distribution of a family, its parameters as numbers in one unit; a categorical has a weight
+    for each of its `outcomes`, members of the enum of its type."""
 
     family: str
     params: tuple
     type: Dist
+    outcomes: tuple = ()
 
 
 @dataclass(frozen=True)
 class Drawn:
-    """`d.draw()` of a distribution."""
+    """`d.draw()` of a distribution written in place, or of the one that a value holds (a `Read`)."""
 
-    source: Distribution
-    type: Num
+    source: Distribution | Read
+    type: object
+
+
+@dataclass(frozen=True)
+class Chosen:
+    """`actor.choose(d)`: the pick of the actor's controller among the eligible members of the
+    forecast `d` (a categorical, or a value that holds one), or with no controller a draw of it."""
+
+    actor: Read
+    source: Distribution | Read
+    type: EnumOf
+
+
+@dataclass(frozen=True)
+class History:
+    """`since(e)` (the time since the latest start of an event), `elapsed(x)` (since the value of `x`
+    last changed at a commit) or `delayed(x, d)` (the committed value of `x` at `d` before now)."""
+
+    op: str
+    source: Read
+    type: object
+    delay: object = None
 
 
 def reads_of(expression):
@@ -362,6 +451,26 @@ def reads_of(expression):
             yield from reads_of(arg)
     elif isinstance(expression, Retain):
         yield from reads_of(expression.body)
+    elif isinstance(expression, (Drawn, Chosen)) and isinstance(expression.source, Read):
+        yield expression.source
+    elif isinstance(expression, History):
+        yield expression.source
+        if expression.delay is not None:
+            yield from reads_of(expression.delay)
+
+
+def draws_of(expression):
+    """The draws and the choices of a typed expression, which a formula and a condition that is
+    read again may not make."""
+    if isinstance(expression, (Drawn, Chosen)):
+        yield expression
+    elif isinstance(expression, Apply):
+        for arg in expression.args:
+            yield from draws_of(arg)
+    elif isinstance(expression, Retain):
+        yield from draws_of(expression.body)
+    elif isinstance(expression, History) and expression.delay is not None:
+        yield from draws_of(expression.delay)
 
 
 def fixed(expression):
@@ -477,14 +586,189 @@ class DeclaredLegs:
 
 @dataclass(frozen=True)
 class DeclaredAssert:
-    """An assertion over what is fixed for the run, checked once: its test, its message (`text`) and
-    its evidence. Its path is `assert[k]` of its owner."""
+    """An assertion: its test, its message (`text`) and its evidence. Its path is `assert[k]` of its
+    owner. `fixed` says that it reads only what is fixed for the run, so it is checked once, after the
+    effective inputs are assembled; an assertion over state is checked after every round."""
 
     path: str
     test: object
     text: str | None = None
     evidence: tuple = ()
     line: int = 0
+    fixed: bool = True
+
+
+@dataclass(frozen=True)
+class DeclaredSees:
+    """`sees depot.spares`: what a human player of this actor is shown (it permits nothing)."""
+
+    path: str
+    read: Read
+    line: int = 0
+
+
+# ---- events: their statements, steps and triggers ------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DeclaredAssign:
+    """`target = value`, `target += value` or `target -= value` in a stage: the target's `Read`
+    (a value of this, through a link or an entity parameter, of a live occurrence, a local or a
+    parameter, a setting of a flow or of an endpoint) and the typed value (a `Retain` for a formula,
+    a `Distribution` for a distribution, the allocation `('priority', items)`)."""
+
+    path: str
+    target: Read
+    op: str
+    value: object
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredMove:
+    """`move amount from source to destination`: one checked debit and credit of two stores."""
+
+    path: str
+    amount: object
+    source: Read
+    destination: Read
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredStart:
+    """`event.start(args)`: of one event (`EventOf`), or of one on each member of a collection, with
+    the arguments that the caller evaluates once, left to right, each of its parameter's type."""
+
+    path: str
+    event: Read
+    args: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredIf:
+    """`if test:` with its actions, and `else:` with its own (D11)."""
+
+    path: str
+    test: object
+    then: tuple
+    orelse: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredCase:
+    """A case of a switch: a member of the selector's enum, its guard (read once, before the
+    selector) and its actions; its path is the switch's and the member (`...do[0].FIXED`)."""
+
+    path: str
+    member: str
+    body: tuple
+    guard: object = None
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredSwitch:
+    """`switch selector:` over an enum (a value, a draw or an actor's choice), its cases and `else`."""
+
+    path: str
+    selector: object
+    cases: tuple[DeclaredCase, ...]
+    orelse: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredStage:
+    """`after delay [when guard]:` and its actions; `after delay` alone (`wait`) waits. The delay is
+    captured when the step is reached, the guard read once when the stage comes due."""
+
+    path: str
+    delay: object
+    body: tuple = ()
+    guard: object = None
+    wait: bool = False
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredGate:
+    """`until test`: the occurrence waits until the live condition holds."""
+
+    path: str
+    test: object
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredTrigger:
+    """`when test:` of an event: its condition on the receiver, its captures in written order (each
+    a `DeclaredValue` at `trigger.name`), its starts of its own event, and its reset, `('when',
+    test)` or `('after', duration)`, or None (it rearms when its condition becomes false)."""
+
+    path: str
+    test: object
+    captures: tuple = ()
+    starts: tuple[DeclaredStart, ...] = ()
+    reset: tuple | None = None
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredEvent:
+    """An event of an entity or a template (`grinder.refill`): its parameters (`DeclaredValue`s
+    with no initializer, a value copy or an entity), its locals (values and flows, whose plain
+    initializers run in written order, D14), its steps (stages and gates, in order) and its
+    triggers. Its parts have the paths that the program gives them as their origins
+    (`grinder.refill.amount`, `.step[0]`, `.step[0].do[1]`, `.when[0]`)."""
+
+    path: str
+    name: str
+    params: tuple = ()
+    locals: tuple = ()
+    steps: tuple = ()
+    triggers: tuple = ()
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+def statements_of(body):
+    """The statements of a body and of the branches inside it, outermost first."""
+    for statement in body:
+        yield statement
+        if isinstance(statement, DeclaredIf):
+            yield from statements_of((*statement.then, *statement.orelse))
+        elif isinstance(statement, DeclaredSwitch):
+            for case in statement.cases:
+                yield case
+                yield from statements_of(case.body)
+            yield from statements_of(statement.orelse)
+
+
+def event_parts(event):
+    """Each part of an event that has a path: its parameters, locals (and the legs of a local flow
+    with legs), steps, statements, triggers, captures and starts."""
+    yield from event.params
+    for local in event.locals:
+        yield local
+        yield from local.legs if isinstance(local, DeclaredLegs) else ()
+    for step in event.steps:
+        yield step
+        if isinstance(step, DeclaredStage):
+            yield from statements_of(step.body)
+    for trigger in event.triggers:
+        yield trigger
+        yield from trigger.captures
+        yield from trigger.starts
 
 
 @dataclass(frozen=True)
@@ -595,10 +879,12 @@ class DeclaredModel:
     members: tuple[DeclaredMember, ...] = ()
     tables: tuple[DeclaredTable, ...] = ()
     asserts: tuple[DeclaredAssert, ...] = ()
+    setup: tuple[DeclaredStart, ...] = ()
 
     def part(self, path):
         """The declared part of a path (an entity, a template, a value, the settings of an
-        endpoint, a flow, a leg, an assertion, a member, a table or a deferred part), or None."""
+        endpoint, a flow, a leg, an event and each part of it, an assertion, a member, a table, a
+        start of the setup or a deferred part), or None."""
         return self._paths.get(path)
 
     @cached_property
@@ -612,7 +898,9 @@ class DeclaredModel:
                 found.setdefault(part.path, part)
                 for leg in part.legs if isinstance(part, DeclaredLegs) else ():
                     found.setdefault(leg.path, leg)
-        for part in (*self.members, *self.tables, *self.root, *self.asserts, *self.deferred):
+                for inner in event_parts(part) if isinstance(part, DeclaredEvent) else ():
+                    found.setdefault(inner.path, inner)
+        for part in (*self.members, *self.tables, *self.root, *self.asserts, *self.setup, *self.deferred):
             found.setdefault(part.path, part)
         for value in [part for part in found.values() if isinstance(part, DeclaredValue)]:
             for side in (value.outflow, value.inflow):
@@ -645,10 +933,16 @@ class Refused(Exception):
 @dataclass(frozen=True)
 class Scope:
     """Where an expression stands: the template whose member `this` names ('' at the top level), and
-    inside the test of a `where` the template of the member under test (`item`)."""
+    inside the test of a `where` the template of the member under test (`item`). Inside an event,
+    `event` is its path, whose parameters and locals the bare names read; inside a trigger, which
+    has no occurrence (`trigger` is its path), `captures` are the paths of the captures that it has
+    taken so far."""
 
     owner: str = ''
     item: str | None = None
+    event: str | None = None
+    captures: tuple = ()
+    trigger: str | None = None
 
 
 TOP = Scope()
@@ -668,11 +962,11 @@ ARITY = {
     'lognormal': (2, 4),
 }
 PURE = ('exp', 'expm1', 'ln', 'log1p', 'erf')
-LATER_CALLS = dict.fromkeys(('since', 'elapsed', 'delayed'), ('history (since, elapsed, delayed)', 'S4'))
-LATER_METHODS = {
-    'draw': ('a draw outside the default of an input', 'S4'),
-    'choose': ("an actor's choice", 'S4'),
-}
+HISTORY = ('since', 'elapsed', 'delayed')
+OCCURRENCE = {'started': 'h', 'done': BOOL, 'active': BOOL}  # the built-in fields of an occurrence
+# What the run computes, which no statement assigns: the rates of a flow and of an endpoint, the
+# served fraction of a flow with legs, the built-in fields of an occurrence.
+RESULTS = ('actual_rate', 'served_fraction', *OCCURRENCE)
 ID = re.compile(r'[A-Za-z_][A-Za-z0-9_]*\Z')
 
 
@@ -705,6 +999,9 @@ class Resolver:
         self.ids, self.data = {}, {}  # the ids of the rows of each table that was read, and its form
         self.owned = {}  # the paths of the values of each template, once a member asks for them
         self.inputs_only = {}  # whether each formula that an assertion reaches reads inputs only
+        # The scope of each event by its path: the parameters and locals of an event are in `syntax`
+        # under the event's path (`grinder.refill.amount`), with the event's path as their owner.
+        self.scopes = {}
         for item in tree.items:
             if isinstance(item, n.Entity):
                 (self.entities if item.name[:1].islower() else self.templates)[item.name] = item
@@ -712,6 +1009,11 @@ class Resolver:
                     name = getattr(member, 'name', None)
                     if isinstance(member, (n.Declaration, n.Flow, n.Event, n.Solver)) and name:
                         self.syntax[f'{item.name}.{name}'] = (item.name, member)
+                    if isinstance(member, n.Event):
+                        event = f'{item.name}.{name}'
+                        self.scopes[event] = Scope(item.name, event=event)
+                        for part in (*member.params, *member.locals):
+                            self.syntax.setdefault(f'{event}.{part.name}', (event, part))
         for item in tree.items:
             if isinstance(item, n.Table):
                 self.tables[item.name] = item
@@ -730,6 +1032,20 @@ class Resolver:
 
     def fail(self, code, message, node=None):
         raise Refused(code, message, node)
+
+    def scope_of(self, owner):
+        """The scope of what an owner declares: a template's or an entity's, or an event's (whose
+        bare names are its parameters and locals)."""
+        return self.scopes.get(owner) or Scope(owner)
+
+    def parts_of(self, template):
+        """The names of the parts of a template, for a suggestion."""
+        prefix = f'{template}.'
+        return [
+            key[len(prefix) :]
+            for key in self.syntax
+            if key.startswith(prefix) and '.' not in key[len(prefix) :]
+        ]
 
     def report(self, code, message, line=0, column=0, file=''):
         self.problems.append(Problem(code, message, line, column, file))
@@ -776,11 +1092,11 @@ class Resolver:
             return self.num(spelling_of(flat_unit(node.unit)), node), False
         if isinstance(node, n.DistributionType):
             inner, _ = self.declared_type(node.of)
-            if not isinstance(inner, Num):
-                raise Later('a distribution of an enum', 'S4')
+            if not isinstance(inner, (Num, EnumOf)):
+                self.fail('type', f'a distribution is of numbers or of an enum, not {inner}', node)
             return Dist(inner), False
         if isinstance(node, n.EnumType):
-            raise Later('an enum', 'S4')
+            return EnumOf(node.members), False
         if isinstance(node, n.CollectionType):
             inner, _ = self.declared_type(node.of)
             if not isinstance(inner, Ent):
@@ -790,21 +1106,44 @@ class Resolver:
 
     # ---- expressions -----------------------------------------------------------------------------
 
+    def is_member(self, node):
+        """Whether a node is a bare member of an enum (`OPEN`): a capital name that is no template."""
+        return isinstance(node, n.Name) and node.name[:1].isupper() and node.name not in self.templates
+
+    def member_of(self, node, expected):
+        """A bare member of an enum, which takes its enum from its place (`expected`)."""
+        if not isinstance(expected, EnumOf):
+            self.fail(
+                'enum_member',
+                f'{node.name} is a member of an enum, which takes its enum from its place: compare it with '
+                'a value of the enum, or declare the type, as gate: enum[OPEN, CLOSED] = OPEN',
+                node,
+            )
+        if node.name not in expected.members:
+            self.fail(
+                'enum_member',
+                f'{node.name} is not a member of {expected}' + close(node.name, expected.members),
+                node,
+            )
+        return Const(node.name, expected)
+
     def expression(self, node, scope, unit=None):
-        """The typed form of an expression in a scope. `unit` is the declared unit that a bare number
-        takes (the whole initializer)."""
+        """The typed form of an expression in a scope. `unit` is the declared type of the place: a
+        bare number takes its unit (the whole initializer), and a bare member of an enum its enum."""
         found = literal(node)
         if found is not None:
             value, written = found
             if isinstance(written, n.Quantity):
                 return self.quantity(value, written, scope)
-            if unit is not None and isinstance(value, (int, float)) and not isinstance(value, bool):
+            if isinstance(unit, Num) and isinstance(value, (int, float)) and not isinstance(value, bool):
                 return Const(value, unit)
             return Const(value, PLAIN)
         if isinstance(node, n.Bool):
             return Const(node.value, BOOL)
         if isinstance(node, n.Text):
             return Const(node.value, TEXT)
+        if self.is_member(node) and not self.item_field(scope, node.name):
+            return self.member_of(node, unit)
         if isinstance(node, (n.Name, n.Member, n.Collection)) or (
             isinstance(node, n.Method) and node.name in KEYED
         ):
@@ -829,13 +1168,22 @@ class Resolver:
                     'its flows, as water.outflow.actual_rate',
                     node,
                 )
+            if isinstance(found.type, EventOf):
+                self.fail(
+                    'type',
+                    'an event is no value: read its occurrences, as count(this.refill.occurrences), or '
+                    'since(this.refill), and start it with .start(...)',
+                    node,
+                )
             return found
         if isinstance(node, n.Method):
             if node.name == 'diff':
                 self.fail('not_in_v1', 'formula differentiation (.diff) is not in the first version', node)
             if node.name == 'start':
                 self.fail('start', '.start(...) starts an occurrence and gives no value', node)
-            raise Later(*LATER_METHODS[node.name])
+            if node.name == 'draw':
+                return self.drawn(node, scope, unit)
+            return self.chosen(node, scope, unit)
         if isinstance(node, n.Call):
             return self.call(node, scope)
         if isinstance(node, n.Formula):
@@ -854,7 +1202,17 @@ class Resolver:
         if isinstance(node, n.Binary):
             return self.binary(node, scope)
         if isinstance(node, n.Compare):
-            operands = [self.expression(item, scope) for item in node.operands]
+            # A bare member of an enum takes the enum of the operand beside it (`gate == OPEN`).
+            operands = [
+                None if self.is_member(item) else self.expression(item, scope) for item in node.operands
+            ]
+            enum = next(
+                (item.type for item in operands if item is not None and isinstance(item.type, EnumOf)), None
+            )
+            operands = [
+                self.member_of(item, enum) if found is None else found
+                for item, found in zip(node.operands, operands)
+            ]
             for k, op in enumerate(node.ops):
                 operands[k], operands[k + 1] = self.alike(operands[k], operands[k + 1], node, op)
             return Apply('compare', tuple(operands), BOOL, node.ops)
@@ -866,9 +1224,21 @@ class Resolver:
         if isinstance(node, n.IfElse):
             test = self.expression(node.test, scope)
             self.want_bool(test, node, 'if')
-            body, orelse = self.alike(
-                self.expression(node.body, scope), self.expression(node.orelse, scope), node, 'if'
+            # A bare member of an enum takes the enum of the place, or of the other side.
+            expected = unit if isinstance(unit, EnumOf) else None
+            body = (
+                None
+                if self.is_member(node.body) and expected is None
+                else self.expression(node.body, scope, expected)
             )
+            if expected is None and body is not None and isinstance(body.type, EnumOf):
+                expected = body.type
+            orelse = self.expression(node.orelse, scope, expected)
+            if body is None:
+                body = self.expression(
+                    node.body, scope, orelse.type if isinstance(orelse.type, EnumOf) else None
+                )
+            body, orelse = self.alike(body, orelse, node, 'if')
             return Apply('if', (test, body, orelse), body.type if body.type != PLAIN else orelse.type)
         if isinstance(node, n.Within):
             value = self.expression(node.value, scope)
@@ -972,9 +1342,41 @@ class Resolver:
         if value.type != BOOL:
             self.fail('type', f'{op} takes a yes/no, not {value.type}', node)
 
+    def history(self, node, scope):
+        """`since(e)` of an event, a duration that fails before its first start; `elapsed(x)`, the
+        time since a value last changed at a commit; `delayed(x, d)`, the committed value of `x` at
+        `d` before now, of the type of `x`."""
+        wanted = 2 if node.function == 'delayed' else 1
+        if len(node.args) != wanted or node.named:
+            what = (
+                'an event'
+                if node.function == 'since'
+                else 'a value' + (' and a duration' if wanted == 2 else '')
+            )
+            self.fail('arguments', f'{node.function} takes {what}, as {node.function}(...)', node)
+        if not isinstance(node.args[0], (n.Name, n.Member)):
+            self.fail('history', f'{node.function} reads a named part, not an expression', node)
+        source = self.path(node.args[0], scope)
+        hours = self.num('h', node)
+        if node.function == 'since':
+            if not isinstance(source.type, EventOf):
+                self.fail('history', f'since takes an event, as since(this.repair), not {source.type}', node)
+            return History('since', source, hours)
+        if (
+            isinstance(source.type, (Many, Ent, EventOf, FlowOf, RouteOf, LegsOf, EndOf, Dist))
+            or not source.part
+        ):
+            self.fail('history', f'{node.function} takes a value, not {source.type}', node)
+        if node.function == 'elapsed':
+            return History('elapsed', source, hours)
+        delay = self.expression(node.args[1], scope)
+        if not (isinstance(delay.type, Num) and delay.type.dimension == hours.dimension):
+            self.fail('unit', f'the delay of delayed(...) is a time, not {delay.type}', node)
+        return History('delayed', source, source.type, delay)
+
     def call(self, node, scope):
-        if node.function in LATER_CALLS:
-            raise Later(*LATER_CALLS[node.function])
+        if node.function in HISTORY:
+            return self.history(node, scope)
         if node.function in ALLOCATIONS:
             self.fail(
                 'allocation',
@@ -1043,7 +1445,7 @@ class Resolver:
                     'count(c) the number of members',
                     node,
                 )
-            if not (isinstance(of, (Ent, FlowOf)) or of == BOOL):
+            if not (isinstance(of, (Ent, FlowOf, Occ)) or of == BOOL):
                 self.fail('type', f'count counts members or yes/no values, not {of}', node)
             return Reduced(op, source, PLAIN)
         if op in ('any', 'all'):
@@ -1094,10 +1496,23 @@ class Resolver:
             return Read(('time',), (), self.num('h', node))
         if self.item_field(scope, name):
             return self.step(Read(('item',), (), Ent(scope.item), True), name, node)
+        for capture in scope.captures:
+            if capture.rpartition('.')[2] == name:
+                return Read(('local', name), (), self.done[capture].type, part=capture)
+        own = f'{scope.event}.{name}'
+        if scope.event is not None and self.syntax.get(own, ('',))[0] == scope.event:
+            # A parameter, a local or a flow of this occurrence (a bare name belongs to it).
+            syntax = self.syntax[own][1]
+            if isinstance(syntax, n.Flow):
+                return Read(('local', name), (), self.flow_type(own, scope.event, syntax))
+            value = self.value(own)
+            return Read(
+                ('local', name), (), value.type, stored=_stored(value) and value.init is not None, part=own
+            )
         if name in self.root:
             value = self.value(name)
             formula = name if value.kind == FORMULA else ''
-            return Read(('root',), (name,), value.type, fixed_kind(value), formula, _stored(value))
+            return Read(('root',), (name,), value.type, fixed_kind(value), formula, _stored(value), name)
         if name in self.entities:
             return Read(('named', name), (), Ent(name), True)
         if name in self.instances:
@@ -1112,9 +1527,14 @@ class Resolver:
                 node,
             )
         if name[:1].isupper():
-            raise Later('a member of an enum', 'S4')
+            self.member_of(node, None)
         known = [*self.root, *self.entities, *self.instances]
-        self.fail('unknown_name', f'{name} names nothing here' + close(name, known), node)
+        if scope.event is not None:
+            known += [
+                key.rpartition('.')[2] for key, (owner, _) in self.syntax.items() if owner == scope.event
+            ]
+        hint = '; a trigger has no occurrence: it reads its captures and this' if scope.trigger else ''
+        self.fail('unknown_name', f'{name} names nothing here' + close(name, known) + hint, node)
 
     def row(self, table, id, node):
         """`sites.clinic`: the row of a table by its id."""
@@ -1148,20 +1568,58 @@ class Resolver:
             template = inner.template
             path = f'{template}.{name}'
             if path not in self.syntax:
-                parts = [key.split('.', 1)[1] for key in self.syntax if key.startswith(f'{template}.')]
+                parts = self.parts_of(template)
                 self.fail('unknown_name', f'{template} has no {name}' + close(name, parts), node)
             _, syntax = self.syntax[path]
-            formula, stored = '', False
+            formula, stored, part = '', False, ''
             if isinstance(syntax, n.Flow):
                 found, steady = self.flow_type(path, template, syntax), False
             elif isinstance(syntax, n.Declaration):
                 value = self.value(path)
                 found, steady = value.type, base.fixed and fixed_kind(value)
                 formula = path if base.fixed and value.kind == FORMULA else ''
-                stored = _stored(value)
+                stored, part = _stored(value), path
+            elif isinstance(syntax, n.Event):
+                found, steady = EventOf(path), False
             else:
-                raise Later('an event', 'S4') if isinstance(syntax, n.Event) else Later('a solver', 'S5')
-            return Read(base.start, steps, self.projected(found, kind, name, node), steady, formula, stored)
+                raise Later('a solver', 'S5')
+            return Read(
+                base.start, steps, self.projected(found, kind, name, node), steady, formula, stored, part
+            )
+        if isinstance(inner, EventOf):
+            if name == 'occurrences':
+                found = Many(Occ(inner.event), self.num('h', node))
+                return Read(base.start, steps, self.projected(found, kind, name, node))
+            self.fail(
+                'unknown_name',
+                f'an event reads its occurrences, and a stage starts it with .start(...), not {name}',
+                node,
+            )
+        if isinstance(inner, Occ):
+            own = f'{inner.event}.{name}'
+            if self.syntax.get(own, ('',))[0] == inner.event:
+                syntax = self.syntax[own][1]
+                if isinstance(syntax, n.Flow):
+                    found = self.flow_type(own, inner.event, syntax)
+                    return Read(base.start, steps, self.projected(found, kind, name, node))
+                value = self.value(own)
+                stored = _stored(value) and value.init is not None
+                return Read(
+                    base.start, steps, self.projected(value.type, kind, name, node), stored=stored, part=own
+                )
+            if name in OCCURRENCE:
+                found = OCCURRENCE[name]
+                found = self.num(found, node) if isinstance(found, str) else found
+                return Read(base.start, steps, self.projected(found, kind, name, node))
+            names = [
+                key.rpartition('.')[2] for key, (owner, _) in self.syntax.items() if owner == inner.event
+            ]
+            self.fail(
+                'unknown_name',
+                f'an occurrence of {inner.event} has no {name}: it reads its parameters, its locals and '
+                'started, done and active' + close(name, [*names, *OCCURRENCE]),
+                node,
+            )
         if isinstance(inner, FlowOf):
             if name in FLOW_READS and not (inner.view and name == 'capacity'):
                 return Read(base.start, steps, Many(inner.rate, kind.key) if many else inner.rate)
@@ -1241,7 +1699,9 @@ class Resolver:
                 )
             return Read(base.start, steps, self.projected(EndOf(self.per_hour(inner)), kind, name, node))
         if isinstance(inner, Dist) and name in ('mean', 'std'):
-            raise Later("a distribution's mean and std", 'S4')
+            if not isinstance(inner.of, Num):
+                self.fail('type', f'a categorical has no {name}: its outcomes are no numbers', node)
+            return Read(base.start, steps, self.projected(inner.of, kind, name, node))
         self.fail('unknown_name', f'{name} is no part of a value of {kind}', node)
 
     def projected(self, found, kind, name, node):
@@ -1278,7 +1738,14 @@ class Resolver:
     def keyed(self, node, scope):
         """`c.where(test)`, `c.by(field)` and `c.at(key)` of a collection of members."""
         source = self.path(node.base, scope)
-        if not (isinstance(source.type, Many) and isinstance(source.type.of, Ent)):
+        if isinstance(source.type, Many) and isinstance(source.type.of, Occ) and node.name != 'at':
+            self.fail(
+                'collection',
+                f'the occurrences of an event are read with .at(t), the newest start, in this version, '
+                f'not .{node.name}(...)',
+                node,
+            )
+        if not (isinstance(source.type, Many) and isinstance(source.type.of, (Ent, Occ))):
             self.fail(
                 'collection', f'.{node.name}(...) takes a collection of members, not {source.type}', node
             )
@@ -1301,7 +1768,7 @@ class Resolver:
         if node.name == 'by':
             path = f'{of.template}.{getattr(arg, "name", "")}'
             if not isinstance(arg, n.Name) or not isinstance(self.syntax.get(path, (0, 0))[1], n.Declaration):
-                parts = [k.split('.', 1)[1] for k in self.syntax if k.startswith(f'{of.template}.')]
+                parts = self.parts_of(of.template)
                 self.fail(
                     'unknown_name',
                     f'by names a value of {of.template}' + close(getattr(arg, 'name', ''), parts),
@@ -1363,7 +1830,11 @@ class Resolver:
             )
         self.active.add(path)
         try:
-            found = self.declaration(path, Scope(owner), syntax)
+            scope = self.scope_of(owner)
+            if isinstance(syntax, n.Param):
+                found = self.param(path, scope, syntax)
+            else:
+                found = self.declaration(path, scope, syntax)
         except Later as later:
             self.done[path] = Deferred(path, later.construct, later.slice, syntax.line)
             raise
@@ -1375,9 +1846,36 @@ class Resolver:
         self.done[path] = found
         return found
 
+    def param(self, path, scope, node):
+        """A parameter of an event: a value copy (a number, a yes/no, a text, a member of an enum) or a
+        reference to an entity (D13), with its entry bounds; each start gives its argument."""
+        declared, retained = self.declared_type(node.type)
+        if retained or isinstance(declared, (Many, Dist)):
+            self.fail(
+                'type',
+                f'the parameter {node.name} is a number, a yes/no, a text, a member of an enum or an entity, '
+                f'not {"a formula" if retained else declared}',
+                node,
+            )
+        lower = upper = None
+        if node.range is not None:
+            if not isinstance(declared, Num):
+                self.fail('range', f'a range belongs to a number, and {node.name} is {declared}', node.range)
+            lower, upper = (
+                self.bound(end, scope, declared, node) for end in (node.range.low, node.range.high)
+            )
+        kind = LINK if isinstance(declared, Ent) else STATE
+        return DeclaredValue(path, node.name, kind, declared, None, lower, upper, line=node.line)
+
     def declaration(self, path, scope, node):
         declared, retained = (None, False) if node.type is None else self.declared_type(node.type)
         template = scope.owner in self.templates
+        if scope.event is not None and node.value is None:
+            self.fail(
+                'no_value',
+                f'{node.name} is a local of an event, which has its starting value: {node.name}: type = value',
+                node,
+            )
         if node.value is None:
             if isinstance(declared, Ent):
                 if not template:
@@ -1396,7 +1894,7 @@ class Resolver:
             self.fail(
                 'no_value', f'{node.name} has no starting value: an annotation gives no value (D4)', node
             )
-        unit = declared if isinstance(declared, Num) else None
+        unit = declared if isinstance(declared, (Num, EnumOf, Dist)) else None
         kind, init = self.initializer(node, scope, declared, retained, unit)
         value_type = init.type if declared is None else declared
         if declared is not None and not compatible(init.type, declared):
@@ -1405,6 +1903,13 @@ class Resolver:
         if isinstance(init, Retain) and isinstance(init.type, (Ent, Many)):
             self.fail(
                 'formula', 'a formula gives a number, a yes/no or a text, not a member or a collection', node
+            )
+        if isinstance(init.type, Ent) and scope.event is not None:
+            self.fail(
+                'link',
+                f'{node.name} would hold an entity: a local holds a value, and an entity reaches an event '
+                'as a parameter (D13)',
+                node,
             )
         if isinstance(init.type, Ent):
             if not scope.owner:
@@ -1464,7 +1969,12 @@ class Resolver:
             if not isinstance(value_type, Num):
                 self.fail('range', f'a scale belongs to a number, and {node.name} is {value_type}', node)
             scale = self.bound(node.scale, scope, value_type, node)
-        if kind == INPUT and isinstance(init, Drawn):
+        if (
+            kind == INPUT
+            and isinstance(init, Drawn)
+            and isinstance(init.type, Num)
+            and isinstance(init.source, Distribution)
+        ):
             lower, upper = self.support(init.source, lower, upper, node)
         found = DeclaredValue(
             path,
@@ -1495,7 +2005,8 @@ class Resolver:
                     f'{node.name} keeps a calculation: declare it {node.name}: formula({declared})',
                     node,
                 )
-            body = self.expression(value.body, scope)
+            body = self.expression(value.body, scope, unit if isinstance(unit, EnumOf) else None)
+            self.no_draws(body, node, 'a formula')
             return FORMULA, Retain(body, body.type)
         if retained:
             self.fail('formula', f'{node.name} is declared a formula: its initializer is formula(...)', node)
@@ -1508,12 +2019,16 @@ class Resolver:
         if isinstance(value, n.Call) and (value.function in ARITY or value.function == 'categorical'):
             source = self.distribution(value, unit.of if isinstance(unit, Dist) else unit)
             return (INPUT if node.modifier == 'input' else DISTRIBUTION), source
-        if isinstance(value, n.Method) and value.name == 'draw' and not value.args:
-            if node.modifier != 'input':
-                raise Later(*LATER_METHODS['draw'])
-            if not (isinstance(value.base, n.Call) and value.base.function in ARITY):
-                raise Later('the draw of a distribution that a value holds', 'S4')
-            source = self.distribution(value.base, unit)
+        if (
+            node.modifier == 'input'
+            and isinstance(value, n.Method)
+            and value.name == 'draw'
+            and not value.args
+            and isinstance(value.base, n.Call)
+            and value.base.function in ARITY
+        ):
+            # The default of an input that draws keeps the support of its distribution as its range.
+            source = self.distribution(value.base, unit if isinstance(unit, Num) else None)
             return INPUT, Drawn(source, source.type.of)
         init = self.expression(value, scope, unit)
         return (INPUT if node.modifier == 'input' else STATE), init
@@ -1542,16 +2057,55 @@ class Resolver:
                 written = f'{found.value} {found.type.unit}'.strip()
                 self.fail('range', f'{written} is {side} the range of {value.name}', node)
 
+    def categorical(self, node, expected):
+        """`categorical(FIXED: 0.7, FAILED: 0.3)`: a weight, a plain number written in place, for each
+        outcome. Its enum is the one that its place expects (`expected`), of which each outcome is a
+        member, or else the enum of its outcomes in written order."""
+        if node.args or not node.named:
+            self.fail(
+                'arguments',
+                'categorical names each outcome with its weight: categorical(A: 0.7, B: 0.3)',
+                node,
+            )
+        weights = []
+        for name, arg in node.named:
+            found = literal(arg)
+            if found is None or isinstance(found[1], n.Quantity):
+                self.fail('distribution', f'the weight of {name} is a plain number written in place', arg)
+            if found[0] < 0:
+                self.fail('distribution', f'the weight of {name} is not negative', arg)
+            weights.append(found[0])
+        if sum(weights) <= 0:
+            self.fail('distribution', 'the weights of a categorical are not all zero', node)
+        outcomes = tuple(name for name, _ in node.named)
+        enum = expected if isinstance(expected, EnumOf) else EnumOf(outcomes)
+        for name in outcomes:
+            if name not in enum.members:
+                self.fail(
+                    'enum_member', f'{name} is not a member of {enum}' + close(name, enum.members), node
+                )
+        return Distribution('categorical', tuple(weights), Dist(enum), outcomes)
+
     def distribution(self, node, unit):
-        """A distribution of numbers: its value arguments take the declared unit, or they write one."""
+        """A distribution of numbers: its value arguments take the declared unit, or they write one. A
+        categorical takes the enum of its place (`unit`)."""
         if node.function == 'categorical':
-            raise Later('a categorical distribution', 'S4')
+            return self.categorical(node, unit)
         if len(node.args) not in ARITY[node.function]:
             counts = ' or '.join(str(count) for count in ARITY[node.function])
             self.fail('arguments', f'{node.function} takes {counts} arguments', node)
         found = [literal(arg) for arg in node.args]
         if any(item is None for item in found):
-            raise Later('a distribution whose arguments are values', 'S4')
+            # The program holds a distribution's parameters as numbers (`refs.Distribution`); a
+            # distribution that a run should change is an input that holds it (D2).
+            self.fail(
+                'distribution',
+                f'the parameters of {node.function} are numbers written in place, as uniform(1 h, 3 h): an '
+                'input that holds a distribution is what a run changes (D2)',
+                node,
+            )
+        if isinstance(unit, EnumOf):
+            self.fail('type', f'{node.function}(...) gives numbers, and its place takes {unit}', node)
         shapes = SHAPES.get(node.function, set())
         written = {
             item[1].unit
@@ -1618,6 +2172,55 @@ class Resolver:
                 )
         return lower, upper
 
+    def drawn(self, node, scope, expected):
+        """`d.draw()`: of a distribution written in place (its value arguments take the unit of the
+        place, as when the draw is the whole initializer), or of a value that holds one."""
+        if node.args:
+            self.fail('arguments', '.draw() takes no argument', node)
+        base = node.base
+        if isinstance(base, n.Call) and (base.function in ARITY or base.function == 'categorical'):
+            source = self.distribution(base, expected if isinstance(expected, (Num, EnumOf)) else None)
+            return Drawn(source, source.type.of)
+        if not isinstance(base, (n.Name, n.Member)):
+            self.fail('draw', '.draw() takes a distribution, or a value that holds one', node)
+        source = self.path(base, scope)
+        if not isinstance(source.type, Dist):
+            self.fail('draw', f'.draw() takes a distribution, and this is {source.type}', node)
+        return Drawn(source, source.type.of)
+
+    def chosen(self, node, scope, expected):
+        """`actor.choose(d)`: the actor is an entity, and its forecast `d` a categorical (written in
+        place, or a value that holds one) over the enum of the choice."""
+        if len(node.args) != 1:
+            self.fail('arguments', 'choose takes the forecast of the actor: dispatcher.choose(d)', node)
+        if not isinstance(node.base, (n.Name, n.Member)):
+            self.fail('choice', 'an actor is an entity: dispatcher.choose(d)', node)
+        actor = self.path(node.base, scope)
+        if not isinstance(actor.type, Ent):
+            self.fail('choice', f'an actor is an entity, as dispatcher.choose(d), not {actor.type}', node)
+        (arg,) = node.args
+        if isinstance(arg, n.Call) and arg.function == 'categorical':
+            source = self.distribution(arg, expected if isinstance(expected, EnumOf) else None)
+        elif isinstance(arg, (n.Name, n.Member)):
+            source = self.path(arg, scope)
+        else:
+            source = None
+        kind = getattr(source, 'type', None)
+        if not (isinstance(kind, Dist) and isinstance(kind.of, EnumOf)):
+            self.fail('choice', 'an actor chooses a member of an enum: its forecast is a categorical', node)
+        return Chosen(actor, source, kind.of)
+
+    def no_draws(self, expression, node, what):
+        """A formula, and a condition that is read again, makes no draw and asks no actor: it may read
+        a stored draw."""
+        for found in draws_of(expression):
+            verb = 'draws' if isinstance(found, Drawn) else 'asks an actor'
+            self.fail(
+                'formula_draws',
+                f'{what} is read again, and a read never {verb}: store the drawn or chosen value in a local',
+                node,
+            )
+
     def scale(self, kind):
         """The size of one of a number's unit in the canonical unit of its dimension."""
         return self.units.of(kind.unit)[1] if kind.unit else 1
@@ -1655,7 +2258,7 @@ class Resolver:
                 and found is not None
                 and isinstance(found[1], n.Quantity)
             ):
-                return self.quantity(1, found[1], Scope(owner)).type
+                return self.quantity(1, found[1], self.scope_of(owner)).type
         for end in (node.source, node.sink):
             if end not in (('SOURCE',), ('SINK',)):
                 return self.per_hour(self.store(end, owner, node).type)
@@ -1669,7 +2272,7 @@ class Resolver:
         for name in end[1:-1]:
             written = n.Member(written, name, line=node.line, column=node.column)
         spelled = '.'.join(end)
-        found = self.path(written, Scope(owner))
+        found = self.path(written, self.scope_of(owner))
         if len(end) > 1:
             kind = found.type.of if isinstance(found.type, Many) else found.type
             if isinstance(kind, Ent) and f'{kind.template}.{end[-1]}' not in self.syntax:
@@ -1677,6 +2280,13 @@ class Resolver:
             found = self.step(found, end[-1], node)
         if isinstance(found.type, Many):
             self.fail('flow_end', f'{spelled} is a projection: an end of a flow is one stored number', node)
+        if found.start[0] == 'local' and not found.steps and isinstance(self.syntax[found.part][1], n.Param):
+            self.fail(
+                'parameter_end',
+                f'{spelled} is a parameter, a value copy that holds no stock: an event that takes from a store '
+                'takes its entity, as source: Tank, and uses source.water (D13)',
+                node,
+            )
         if not found.stored:
             self.fail(
                 'flow_end',
@@ -1715,7 +2325,7 @@ class Resolver:
                 self.fail('property', f'{what} takes request and capacity, not {key}', item)
             if key in settings:
                 self.fail('property', f'{key} is given twice', item)
-            settings[key] = self.rate_setting(item, Scope(owner), rate, f'the {key} of {node.name}')
+            settings[key] = self.rate_setting(item, self.scope_of(owner), rate, f'the {key} of {node.name}')
         return (DeclaredRoute if route else DeclaredFlow)(
             path,
             node.name,
@@ -1769,6 +2379,16 @@ class Resolver:
         if end in (('SOURCE',), ('SINK',)):
             self.fail('flow_end', f'the {name} of {flow.flow} is {end[0]}, which holds nothing to read', node)
         store = self.store(end, owner, node)
+        if owner in self.scopes:
+            # A flow of an occurrence: inside its event its ends are read as written there.
+            if base.start[0] != 'local':
+                self.fail(
+                    'flow_end',
+                    f'the {name} of a flow of an occurrence is read inside its event; outside it, read the '
+                    'store by its path',
+                    node,
+                )
+            return store
         many = isinstance(base.type, Many)
         if store.start != ('this',):
             if many:
@@ -1801,6 +2421,7 @@ class Resolver:
         captured once, or a `Retain`; a bare zero takes the rate's unit."""
         if isinstance(item.value, n.Formula):
             body = self.expression(item.value.body, scope)
+            self.no_draws(body, item, what)
             found = Retain(body, body.type)
         else:
             found = self.expression(item.value, scope)
@@ -1915,13 +2536,12 @@ class Resolver:
         return ('priority', tuple(items))
 
     def assertion(self, path, scope, node):
-        """An assertion over what is fixed for the run, checked once; one that reads state is a later
-        slice's."""
+        """An assertion: over what is fixed for the run (`fixed`), checked once; over state, checked
+        after every round, every moment and every contact between moments. It makes no draw."""
         test = self.expression(node.test, scope)
         self.want_bool(test, node, 'assert')
-        if not self.over_inputs(test):
-            raise Later('an assertion over state', 'S4')
-        return DeclaredAssert(path, test, node.text, self.evidence(node), node.line)
+        self.no_draws(test, node, 'an assertion')
+        return DeclaredAssert(path, test, node.text, self.evidence(node), node.line, self.over_inputs(test))
 
     def over_inputs(self, expression):
         """Whether an expression reads only what is fixed for the run, also through the formulas that
@@ -1944,6 +2564,313 @@ class Resolver:
                 return False
         return True
 
+    # ---- events --------------------------------------------------------------------------------------
+
+    def event(self, path, owner, node):
+        """An event: its parameters, its locals and flows (whose plain initializers run in written
+        order, D14), its steps and its triggers."""
+        seen = {}
+        for item in (*node.params, *node.locals):
+            if item.name in seen:
+                self.fail(
+                    'duplicate_name',
+                    f'{path}.{item.name} is declared twice; the first is on line {seen[item.name]}',
+                    item,
+                )
+            seen[item.name] = item.line
+        params = tuple(self.value(f'{path}.{item.name}') for item in node.params)
+        locals_ = []
+        for index, item in enumerate(node.locals):
+            own = f'{path}.{item.name}'
+            found = self.flow(own, path, item) if isinstance(item, n.Flow) else self.value(own)
+            self.local_order(node, index, found, item)
+            locals_.append(found)
+        scope = self.scopes[path]
+        steps = tuple(self.timing(f'{path}.step[{k}]', scope, item) for k, item in enumerate(node.steps))
+        triggers = tuple(
+            self.trigger(f'{path}.when[{k}]', owner, item) for k, item in enumerate(node.triggers)
+        )
+        return DeclaredEvent(
+            path,
+            node.name,
+            params,
+            tuple(locals_),
+            steps,
+            triggers,
+            node.text,
+            self.evidence(node),
+            node.line,
+        )
+
+    def local_order(self, event, index, found, node):
+        """D14: a plain initializer of a local, and a plain property of a local flow, reads the
+        parameters and the locals above it; only a `formula(...)` may read a local below it."""
+        below = {item.name for item in event.locals[index:]}
+        if isinstance(found, DeclaredValue):
+            plain = [] if isinstance(found.init, Retain) else [found.init]
+            plain += [found.lower, found.upper]
+        else:
+            flows = found.legs if isinstance(found, DeclaredLegs) else (found,)
+            plain = [setting for flow in flows for setting in (flow.request, flow.capacity)]
+        for expression in plain:
+            if expression is None or isinstance(expression, Retain):
+                continue
+            for read in reads_of(expression):
+                if read.start[0] == 'local' and read.start[1] in below:
+                    self.fail(
+                        'local_order',
+                        f'{node.name} reads {read.start[1]}, a local declared below it: a plain initializer '
+                        'runs in written order (D14), and a formula(...) is read later',
+                        node,
+                    )
+
+    def timing(self, path, scope, node):
+        """A timing step: a stage (`after D:`, `after D when C:`), a wait (`after D`) or a gate."""
+        if isinstance(node, n.Gate):
+            return DeclaredGate(path, self.condition(node.test, scope, node, 'until'), node.line)
+        delay = self.duration(node.delay, scope, node, 'after')
+        guard = None if node.guard is None else self.test(node.guard, scope, node, 'when')
+        body = self.statements(path, 'do', scope, node.body)
+        return DeclaredStage(path, delay, body, guard, node.wait, node.text, self.evidence(node), node.line)
+
+    def duration(self, node, scope, line, what):
+        """A time: the delay of a stage or the duration of a reset; a bare zero is 0 h."""
+        found = self.expression(node, scope)
+        hours = self.num('h', line)
+        if _zero(found):
+            return Const(found.value, hours)
+        if not (isinstance(found.type, Num) and found.type.dimension == hours.dimension):
+            self.fail('unit', f'{what} takes a time, not {found.type}', line)
+        return found
+
+    def test(self, node, scope, line, what):
+        """A yes/no that is read once, when its statement runs or its stage comes due."""
+        found = self.expression(node, scope)
+        self.want_bool(found, line, what)
+        return found
+
+    def condition(self, node, scope, line, what):
+        """A yes/no that the run reads again (a gate, a trigger, a reset): it makes no draw."""
+        found = self.test(node, scope, line, what)
+        self.no_draws(found, line, f'the condition of {what}')
+        return found
+
+    def statements(self, path, label, scope, body):
+        """The statements of a body, at `path.label[k]` (`step[0].do[1]`, `do[0].then[0]`)."""
+        return tuple(self.statement(f'{path}.{label}[{k}]', scope, item) for k, item in enumerate(body or ()))
+
+    def statement(self, path, scope, node):
+        if isinstance(node, n.Assign):
+            return self.assignment(path, scope, node)
+        if isinstance(node, n.Move):
+            return self.transfer(path, scope, node)
+        if isinstance(node, n.Start):
+            return self.start(path, scope, node)
+        if isinstance(node, n.If):
+            test = self.test(node.test, scope, node, 'if')
+            then = self.statements(path, 'then', scope, node.then)
+            return DeclaredIf(path, test, then, self.statements(path, 'else', scope, node.orelse), node.line)
+        return self.switch(path, scope, node)
+
+    def through_end(self, node, scope):
+        """Refuse a target through `f.source` or `f.sink`: the front end reads either as the store at
+        that end, so an assignment would reach the store (`fixed_write`)."""
+        while isinstance(node, n.Member):
+            if node.name in ENDS:
+                base = self.path(node.base, scope)
+                kind = base.type.of if isinstance(base.type, Many) else base.type
+                if isinstance(kind, FlowOf):
+                    self.fail(
+                        'fixed_write',
+                        f'{node.name} of a flow is the store at that end, and the ends of a flow are fixed '
+                        'for the run: assign to the store by its own path',
+                        node,
+                    )
+            node = node.base
+
+    def assignment(self, path, scope, node):
+        """`target = value`, `+=` or `-=`: a writable value (stored, a local or a parameter's copy, a
+        formula or a distribution that a stage replaces), or a setting of a flow or of an endpoint.
+        An input and a link are fixed (`fixed_write`), a readonly value is assigned by no statement
+        (`readonly_write`), and what the run computes neither (`result_write`)."""
+        self.through_end(node.target, scope)
+        target = self.path(node.target, scope)
+        spelled = '.'.join(target.steps) or getattr(node.target, 'name', '')
+        if isinstance(target.type, Many):
+            self.fail('collection', f'{spelled} is a projection: a statement assigns one value', node)
+        base = self.path(node.target.base, scope) if isinstance(node.target, n.Member) else None
+        inner = None if base is None else base.type
+        name = getattr(node.target, 'name', '')
+        if isinstance(inner, (FlowOf, RouteOf, LegsOf, EndOf, Occ)) and not target.part:
+            if name in RESULTS or (isinstance(inner, FlowOf) and inner.view):
+                self.fail('result_write', f'the run computes {spelled}: no statement assigns it', node)
+            if isinstance(inner, EndOf) and name == 'allocation':
+                if node.op != '=':
+                    self.fail('assign_value', 'an allocation takes =', node)
+                return DeclaredAssign(path, target, '=', self.allocation(node.value, scope), node.line)
+            if node.op != '=' and isinstance(node.value, n.Formula):
+                self.fail('assign_value', f'{spelled} takes a formula with =', node)
+            item = n.Property((name,), node.value, line=node.line, column=node.column)
+            return DeclaredAssign(
+                path, target, node.op, self.rate_setting(item, scope, target.type, spelled), node.line
+            )
+        if not target.part:
+            self.fail('fixed_write', f'{spelled} is no value that a statement assigns', node)
+        value = self.done.get(target.part) or self.value(target.part)
+        if value.kind in (INPUT, LINK) or isinstance(value.type, Ent):
+            self.fail('fixed_write', f'{spelled} is fixed for the run: no statement assigns it', node)
+        if value.readonly:
+            self.fail(
+                'readonly_write',
+                f'{spelled} is readonly, which no statement assigns: a flow or a move can still change a stock',
+                node,
+            )
+        if value.kind == FORMULA:
+            if node.op != '=' or not isinstance(node.value, n.Formula):
+                self.fail(
+                    'assign_value',
+                    f'{spelled} keeps a calculation: a stage gives it formula(...) with =',
+                    node,
+                )
+            body = self.expression(
+                node.value.body, scope, value.type if isinstance(value.type, EnumOf) else None
+            )
+            self.no_draws(body, node, 'a formula')
+            if not compatible(body.type, value.type):
+                self.fail('unit', f'{spelled} is {value.type}, and this formula {body.type}', node)
+            return DeclaredAssign(path, target, '=', Retain(body, body.type), node.line)
+        if value.kind == DISTRIBUTION:
+            call = node.value
+            if node.op != '=' or not (
+                isinstance(call, n.Call) and (call.function in ARITY or call.function == 'categorical')
+            ):
+                self.fail(
+                    'assign_value', f'{spelled} holds a distribution: a stage gives it another with =', node
+                )
+            found = self.distribution(call, value.type.of)
+            if not compatible(found.type.of, value.type.of):
+                self.fail('unit', f'{spelled} is {value.type}, and this {found.type}', node)
+            return DeclaredAssign(path, target, '=', found, node.line)
+        if isinstance(node.value, n.Formula):
+            self.fail('assign_value', f'{spelled} keeps no calculation: a stage gives it a value', node)
+        found = self.expression(node.value, scope, value.type if isinstance(value.type, EnumOf) else None)
+        if node.op != '=' and not isinstance(value.type, Num):
+            self.fail('assign_value', f'{spelled} is {value.type}, which takes =, not {node.op}', node)
+        if not compatible(found.type, value.type):
+            if not (_zero(found) and isinstance(value.type, Num)):
+                code = 'unit' if isinstance(found.type, Num) and isinstance(value.type, Num) else 'type'
+                self.fail(code, f'{spelled} is {value.type}, and this value is {found.type}', node)
+            found = Const(found.value, value.type)
+        return DeclaredAssign(path, target, node.op, found, node.line)
+
+    def transfer(self, path, scope, node):
+        """`move amount from source to destination`: an amount of the dimension of two stores, each a
+        stored number (readonly or not); a formula, an input or a parameter is no store."""
+        ends = []
+        for item, what in ((node.source, 'from'), (node.destination, 'to')):
+            found = self.path(item, scope)
+            if isinstance(found.type, Many) or not found.stored:
+                self.fail('move_end', f'a move takes {what} a stored number, and this is {found.type}', node)
+            ends.append(found)
+        if ends[0].type.dimension != ends[1].type.dimension:
+            self.fail(
+                'unit', f'a move joins two stores of one dimension: {ends[0].type} and {ends[1].type}', node
+            )
+        amount = self.expression(node.amount, scope)
+        self.want_number(amount, node, 'move')
+        if amount.type.dimension != ends[0].type.dimension:
+            if not _zero(amount):
+                self.fail('unit', f'the amount of a move is in {ends[0].type}, not {amount.type}', node)
+            amount = Const(amount.value, ends[0].type)
+        return DeclaredMove(path, amount, ends[0], ends[1], node.line)
+
+    def start(self, path, scope, node):
+        """`event.start(args)`: of an event, or of one on each member of a collection; one argument for
+        each parameter, of its type, evaluated by the caller left to right."""
+        call = node.call
+        event = self.path(call.base, scope)
+        kind = event.type.of if isinstance(event.type, Many) else event.type
+        if not isinstance(kind, EventOf):
+            self.fail('start', f'.start(...) starts an event, not {event.type}', node)
+        params = [self.value(f'{kind.event}.{item.name}') for item in self.syntax[kind.event][1].params]
+        if len(call.args) != len(params):
+            names = ', '.join(param.name for param in params) or 'none'
+            self.fail(
+                'arguments',
+                f'{kind.event} takes {len(params)} argument{"s" if len(params) != 1 else ""} ({names}), '
+                f'not {len(call.args)}',
+                node,
+            )
+        args = []
+        for arg, param in zip(call.args, params):
+            found = self.expression(arg, scope, param.type if isinstance(param.type, EnumOf) else None)
+            if not compatible(found.type, param.type):
+                if not (_zero(found) and isinstance(param.type, Num)):
+                    code = 'unit' if isinstance(found.type, Num) and isinstance(param.type, Num) else 'type'
+                    self.fail(
+                        code, f'the parameter {param.name} is {param.type}, and this is {found.type}', node
+                    )
+                found = Const(found.value, param.type)
+            args.append(found)
+        return DeclaredStart(path, event, tuple(args), node.line)
+
+    def switch(self, path, scope, node):
+        """`switch selector:` over an enum: each case a member of it, with a guard read once before the
+        selector, and an optional `else`."""
+        selector = self.expression(node.selector, scope)
+        if not isinstance(selector.type, EnumOf):
+            hint = ': a yes/no branches with if C: and else:' if selector.type == BOOL else ''
+            self.fail('type', f'switch takes a member of an enum, not {selector.type}{hint}', node)
+        cases = []
+        for case in node.cases:
+            if case.member not in selector.type.members:
+                self.fail(
+                    'enum_member',
+                    f'{case.member} is not a member of {selector.type}'
+                    + close(case.member, selector.type.members),
+                    case,
+                )
+            own = f'{path}.{case.member}'
+            guard = None if case.guard is None else self.test(case.guard, scope, case, 'a guard')
+            body = self.statements(own, 'do', scope, case.body)
+            cases.append(
+                DeclaredCase(own, case.member, body, guard, case.text, self.evidence(case), case.line)
+            )
+        orelse = self.statements(path, 'else', scope, node.orelse)
+        return DeclaredSwitch(path, selector, tuple(cases), orelse, node.line)
+
+    def trigger(self, path, owner, node):
+        """`when test:` of an event, once for each receiver: its condition reads the receiver; its
+        captures, in written order, the receiver and the captures above them; its starts and its
+        reset, the receiver and every capture. A trigger has no occurrence of its own."""
+        test = self.condition(node.test, Scope(owner, trigger=path), node, 'when')
+        captures, taken = [], ()
+        for capture in node.captures:
+            own = f'{path}.{capture.name}'
+            if own in taken:
+                self.fail('duplicate_name', f'the capture {capture.name} is written twice', capture)
+            found = self.expression(capture.value, Scope(owner, captures=taken, trigger=path))
+            if not isinstance(found.type, (Num, Word, EnumOf)):
+                self.fail(
+                    'type',
+                    f'a capture holds a number, a yes/no, a text or a member of an enum, not {found.type}',
+                    capture,
+                )
+            self.done[own] = DeclaredValue(own, capture.name, STATE, found.type, found, line=capture.line)
+            captures.append(self.done[own])
+            taken += (own,)
+        scope = Scope(owner, captures=taken, trigger=path)
+        starts = tuple(self.start(f'{path}.do[{k}]', scope, item) for k, item in enumerate(node.starts))
+        reset = None
+        if node.reset is not None:
+            if node.reset.kind == 'when':
+                reset = ('when', self.condition(node.reset.value, scope, node.reset, 'reset when'))
+            else:
+                reset = ('after', self.duration(node.reset.value, scope, node.reset, 'reset after'))
+        return DeclaredTrigger(
+            path, test, tuple(captures), starts, reset, node.text, self.evidence(node), node.line
+        )
+
     # ---- members -----------------------------------------------------------------------------------
 
     def given(self, template, path, node, line_node, evidence):
@@ -1958,7 +2885,7 @@ class Resolver:
         (name,) = path
         found = self.syntax.get(f'{template}.{name}')
         if found is None:
-            parts = [key.split('.', 1)[1] for key in self.syntax if key.startswith(f'{template}.')]
+            parts = self.parts_of(template)
             self.fail('unknown_name', f'{template} has no {name}' + close(name, parts), line_node)
         if isinstance(found[1], n.Flow):
             self.fail(
@@ -1966,8 +2893,14 @@ class Resolver:
                 f"{name} is a flow of {template}: the settings of a flow are its template's",
                 line_node,
             )
+        if isinstance(found[1], n.Event):
+            self.fail(
+                'property',
+                f'{name} is an event of {template}: a member gives values and links, and its template the events',
+                line_node,
+            )
         if not isinstance(found[1], n.Declaration):
-            raise Later('an event', 'S4') if isinstance(found[1], n.Event) else Later('a solver', 'S5')
+            raise Later('a solver', 'S5')
         value = self.value(f'{template}.{name}')
         scope, line = Scope(template), line_node.line
         if value.kind == LINK:
@@ -1989,13 +2922,15 @@ class Resolver:
                 'formula', f'{name} of {template} keeps no calculation: a member gives it a value', node
             )
         if isinstance(value.type, Dist):
-            if not (isinstance(node, n.Call) and node.function in ARITY):
+            if not (isinstance(node, n.Call) and (node.function in ARITY or node.function == 'categorical')):
                 self.fail(
                     'type', f'{name} holds a distribution: a member gives another, as uniform(1 h, 3 h)', node
                 )
             found = self.distribution(node, value.type.of)
+            if not compatible(found.type.of, value.type.of):
+                self.fail('unit', f'{name} of {template} is {value.type}, and this {found.type}', node)
             return False, Given(name, found, evidence, line)
-        unit = value.type if isinstance(value.type, Num) else None
+        unit = value.type if isinstance(value.type, (Num, EnumOf)) else None
         if isinstance(node, n.Collection) and not node.items and isinstance(value.type, Many):
             return False, Given(name, Read(('literal', ()), (), value.type, True), evidence, line)
         found = self.expression(node, scope, unit)
@@ -2249,6 +3184,10 @@ class Resolver:
             return False, Given(column.name, Const(text == 'true', BOOL), cites, line)
         if value.type == TEXT:
             return False, Given(column.name, Const(text, TEXT), cites, line)
+        if isinstance(value.type, EnumOf):
+            if text not in value.type.members:
+                self.fail('enum_member', f'{column.name} is {value.type}, and {text!r} is no member of it')
+            return False, Given(column.name, Const(text, value.type), cites, line)
         found = _cell_number(text) or literal(_cell_expression(text))
         if found is None or not isinstance(value.type, Num):
             self.fail(
@@ -2288,6 +3227,17 @@ class Resolver:
                 return self.flow(path, owner, node)
             if isinstance(node, n.Assert):
                 return self.assertion(path, Scope(owner), node)
+            if isinstance(node, n.Event):
+                return self.event(path, owner, node)
+            if isinstance(node, n.Sees):
+                found = self.path(node.path, Scope(owner))
+                if not isinstance(found.type, (Num, Word, EnumOf)):
+                    self.fail(
+                        'sees', f'sees names one value to show, as sees depot.spares, not {found.type}', node
+                    )
+                return DeclaredSees(path, found, node.line)
+            if isinstance(node, n.Start):
+                return self.start(path, TOP, node)
         except Later as later:
             return Deferred(path, later.construct, later.slice, node.line)
         except Refused as refused:
@@ -2295,10 +3245,8 @@ class Resolver:
                 self.report(refused.code, refused.message, refused.line or node.line, refused.column)
             return None
         construct, slice_ = {
-            n.Event: ('an event', 'S4'),
             n.Solver: ('a solver', 'S5'),
             n.Status: ('a status display', 'C'),
-            n.Sees: ('sees', 'S4'),
             n.Property: ('a property set by its path', 'S6'),
         }[type(node)]
         return Deferred(path, construct, slice_, node.line)
@@ -2329,7 +3277,7 @@ class Resolver:
             if isinstance(item, n.Table):
                 self.load(item)
         entities = [self.entity(item) for item in self.tree.items if isinstance(item, n.Entity)]
-        root, members, tables_, asserts, notes, scenario = [], [], [], [], [], None
+        root, members, tables_, asserts, notes, setup, scenario = [], [], [], [], [], [], None
         top_later = {
             n.Use: ('use', 'S6'),
             n.Change: ('change', 'S6'),
@@ -2363,6 +3311,9 @@ class Resolver:
                     root.append(found)
             elif isinstance(item, n.Notes):
                 notes.extend(item.notes)
+            elif isinstance(item, n.Start):
+                found = self.part(f'setup[{len(setup)}]', '', item)
+                setup.append(found)
             else:
                 construct, slice_ = top_later[type(item)]
                 self.deferred.append(
@@ -2392,6 +3343,7 @@ class Resolver:
             members=tuple(members),
             tables=tuple(tables_),
             asserts=tuple(asserts),
+            setup=tuple(found for found in setup if found is not None),
         )
 
     def check_names(self):

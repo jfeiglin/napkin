@@ -13,4 +13,6 @@ build them in Python. It imports nothing of napkin but `napkin.core`.
 - `check`: the resolver of paths and the invariants that an engine relies on, each with a code.
 - `build`: the builders that make programs, with `Builder.finish`, which checks them.
 - `canonical`: the canonical bytes of a program and of a configuration, for the key of a stored run.
+- `reach`: which events can start and which values each named state can take under a configuration,
+  each with its reason: proof metadata (D16), by which nothing prunes a run.
 """
