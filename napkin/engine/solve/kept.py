@@ -297,10 +297,10 @@ class Kept:
 
     # -- solve -------------------------------------------------------------------------------------
     def run(self):
-        """One run of HiGHS from the present basis. A run that is no answer (`answers`) is made again on
-        a fresh instance with the basis that HiGHS holds, and then, if that one is no answer either,
-        on a fresh instance with no basis, by the dual simplex (see the module text). Gives the last
-        run, which `answers` may still refuse."""
+        """One run of HiGHS from the present basis. A run that is no answer (`_checked`) is made again
+        on a fresh instance with the basis that HiGHS holds, and then, if that one is no answer
+        either, on a fresh instance with no basis, by the dual simplex (see the module text). Gives
+        the last run; its `answered` tells whether it is one."""
         run = self._checked(self._once())
         if not run.answered:
             self._renew(keep_basis=True)
@@ -313,7 +313,7 @@ class Kept:
 
     def _checked(self, run):
         """`run` with `answered`: its status says something of the program, and an optimum holds the
-        rows and bounds to MISS times the primal tolerance of the run (`missed`)."""
+        rows and bounds to MISS times the primal tolerance of the run (`_missed`)."""
         run.answered = run.status in STATED
         if run.status == OPTIMAL:
             run.missed = self._missed(run.x)

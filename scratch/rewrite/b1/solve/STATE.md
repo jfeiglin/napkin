@@ -61,9 +61,9 @@
 - Interface: what the engine calls is unchanged; new `Work.renewals`, `Run.answered`/`missed`; those
   failures' `reached` has 'rows', 'columns' (and 'missed').
 - 30,000, fair (`--fair-programs 5000`), objective + fair: normal 4.2 + 152.0 s, 459 programs, no
-  renewal; x1.45 6.1 + 396.3 s, 1,287 (1,282 levels), 29 renewals; damaged PENDING; x1.7 PENDING.
-  Before the mend: x1.45 kUnknown at 678 (with a renewal alone 450 s, 1 renewal, one program 50 s);
-  x1.7 'numerical ... no answer on the face' at program 147.
+  renewal; x1.45 6.1 + 396.3 s, 1,287 (1,282 levels), 29 renewals; damaged 3.8 + 175.4 s, 693 (531),
+  none; x1.7 6.3 + 586.8 s, 1,779 (1,771), 43. Before: x1.45 kUnknown at 678 (renewal alone: 450 s,
+  1 renewal, one program 50 s); x1.7 'no answer on the face' at 147. Budget 1,000: x1.45, x1.7 stop.
 - 30,000, whole order, normal (renewal only): objective 4.3, fair 140.8, distance 349.5 s (Newton
   439 of 500 + 3), no QP.
 - Engine (`b1/s5-engine/bench.py`, 30,000): PENDING.
