@@ -8,16 +8,25 @@ contract"):
    references (`distance`).
 
 A `Solver` belongs to one run of the engine, never to a compiled plan: the engine makes one for each
-declared solver of a run, so that a sample gives the same answers alone and in a batch. Each `solve`
-takes the whole problem of the moment. The kept instance follows it by the keys of the unknowns and
-rows: what left is deleted, what joined is added at the end, and a row whose working coefficients
-changed is replaced. The instance then holds the program of the problem formed fresh, in another
-order, and starts warm from its last basis; each answer equals that of a fresh solve to the
-tolerances of the steps.
+declared solver of a run, so that the state of its kept instance (basis, factorization, scaling,
+fresh instances) follows from that run's own problems alone. Each `solve` takes the whole problem of
+the moment. The kept instance follows it by the keys of the unknowns and rows: what left is deleted,
+what joined is added at the end, and a row whose working coefficients changed is replaced. The
+instance then holds the program of the problem formed fresh, in another order, and starts warm from
+its last basis; each answer equals that of a fresh solve to the tolerances of the steps.
 
 The answer is checked before it is given: each kept optimum, each fair level, and every bound and
 row of the problem. A solve that cannot give the answer raises a `SolveFailure` by name and never
 gives another answer in its place.
+
+Reproducibility (the owner's rule): the same run, with the same code, configuration, seed and
+thread settings on one machine, gives the same answers bit for bit, which one `Solver` for each run
+and no state outside it ensure. Anything else agrees within the tolerances of the steps, not bit
+for bit: a sample alone and in a batch, a solver formed fresh against a kept one, another platform.
+A threshold at a tolerance boundary can fire differently there: a dual against TAU (`ranked`,
+`fair`), t* against FULL (`fair`), a miss against MISS (`kept`), a residual against the stall rule
+(`distance`); the work then differs, the answers agree within the tolerances, and a solve near a
+budget can pass in one setting and stop by name in another.
 """
 
 from __future__ import annotations

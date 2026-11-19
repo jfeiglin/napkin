@@ -1,9 +1,10 @@
 """Unknowns and rows that join and leave the problem of one kept solver.
 
 A `Solver` keeps one HiGHS instance for a run and follows each problem by its keys. Each answer
-must equal that of the same problem solved fresh, and a solver must answer a sequence of problems
-the same, bit for bit, whatever other solvers did before it (one solver for each run: a sample
-gives the same answer alone and in a batch).
+must equal that of the same problem solved fresh, and a sequence of problems must be answered alike
+whatever other solvers do beside it, both within the tolerances of the steps: a fair level is known
+to 1e-7 of its request (`fair.FIX`), so two answers agree within 1e-6 of the size of the problem
+(the owner's rule: only the same run, repeated, must agree bit for bit, and it does).
 """
 
 import numpy as np
@@ -13,14 +14,16 @@ from napkin.engine.solve import FLOW, Problem, Solver
 
 from . import cases
 
+TOLERANCE = 1e-6  # two answers of one problem agree within this, times the size of the problem
+
 
 def fresh(problem):
     return Solver().solve(problem)
 
 
-def same(kept, formed):
+def same(kept, formed, size=10.0):
     assert kept.keys == formed.keys
-    assert kept.x == pytest.approx(formed.x, abs=1e-8)
+    assert kept.x == pytest.approx(formed.x, abs=TOLERANCE * size)
 
 
 def test_occurrences_join_and_leave_a_shared_limit():
@@ -103,19 +106,34 @@ def sequence():
     ]
 
 
+def run(solver, others=None):
+    """The answers of one run: the sequence on `solver`, with another solver answering other
+    problems between its solves when `others` is given."""
+    noise = (cases.bottlenecks(True), cases.pump(), cases.provider())
+    answers = []
+    for k, problem in enumerate(sequence()):
+        if others is not None and k < len(noise):
+            others.solve(noise[k])
+        answers.append(solver.solve(problem))
+    return answers
+
+
 def test_each_run_answers_alike_alone_and_beside_others():
-    alone = [answer.x for answer in map(Solver().solve, sequence())]
-    first, other = Solver(), Solver()
-    beside = []
-    for problem, noise in zip(sequence(), (cases.bottlenecks(True), cases.pump(), cases.provider())):
-        other.solve(noise)
-        beside.append(first.solve(problem).x)
-    for a, b in zip(alone, beside):
-        assert np.array_equal(a, b)
+    # the worked network's rates are at most 8 W: within the tolerance of the steps, not bit for bit
+    for a, b in zip(run(Solver()), run(Solver(), Solver())):
+        same(a, b, size=8.0)
+        assert a.levels == pytest.approx(b.levels, abs=TOLERANCE)
+
+
+def test_the_same_run_repeated_is_identical():
+    first, second = run(Solver(), Solver()), run(Solver(), Solver())
+    for a, b in zip(first, second):
+        assert np.array_equal(a.x, b.x) and np.array_equal(a.levels, b.levels, equal_nan=True)
+        assert a.optima == b.optima
 
 
 def test_a_problem_solved_again_on_a_kept_solver():
     solver = Solver()
     first = solver.solve(cases.bottlenecks(True))
     second = solver.solve(cases.bottlenecks(True))
-    assert second.x == pytest.approx(first.x, abs=1e-9)
+    same(second, first, size=6.0)

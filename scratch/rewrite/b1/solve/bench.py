@@ -225,8 +225,9 @@ def _round_trip(kept, after, before):
 
 
 def sec_again(share, repeat):
-    """The same problem (shortage) cold, and warm on an instance that first solved another (normal):
-    the optimum and the fair levels; and two fresh solvers, which must agree bit for bit."""
+    """The same problem (shortage) cold, and warm on an instance that first solved another (normal),
+    which agree within the tolerances: the optimum and the fair levels; and the same run repeated (a
+    second fresh solver), which must agree bit for bit (the owner's rule of reproducibility)."""
     net, need, up = scenario(share, 'shortage')
     shortage = network_problem(net, need, up)
     normal = network_problem(*scenario(share, 'normal'))
@@ -237,7 +238,7 @@ def sec_again(share, repeat):
     _, o_again, l_again, *_ = Timed().solve(shortage, until='fair')
     print(
         f'again {share:g}: optimum cold {o_cold[0]:.9f}, warm {o_warm[0]:.9f}; fair levels: warm differs from cold '
-        f'by {np.abs(l_warm - l_cold).max():.1e}; a second fresh solver: optimum and levels bit for bit '
+        f'by {np.abs(l_warm - l_cold).max():.1e}; the same run repeated: optimum and levels bit for bit '
         f'{o_again == o_cold and np.array_equal(l_again, l_cold)} [load {load():.1f}]',
         flush=True,
     )

@@ -4,8 +4,9 @@
 
 This is the solver that SciPy bundles, read through SciPy's private interface
 (`scipy.optimize._highspy`), as `napkin/engine/continuous/highs.py` reads it, on one thread. A `Kept`
-instance belongs to one run of the engine and never to a compiled plan, so that the answers of a
-sample do not depend on the samples solved before it. Costs, bounds, columns and rows change in
+instance belongs to one run of the engine and never to a compiled plan, so that its state follows
+from that run's own problems and the same run, repeated, answers bit for bit alike (`solver`, the
+owner's rule of reproducibility). Costs, bounds, columns and rows change in
 place, and each `run` starts from the basis of the last one. HiGHS marks its basis invalid after a
 deletion, so `delete_cols` and `delete_rows` carry it over by hand (prototype A3: 300 flows that join
 a kept program of 30,000 places cost 0.90 s, against 6.12 s for the program formed fresh).

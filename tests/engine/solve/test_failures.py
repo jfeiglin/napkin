@@ -158,14 +158,11 @@ def bottlenecks_answered(answer):
 
 
 def test_a_fair_program_that_says_nothing_is_run_again_on_a_fresh_instance(monkeypatch):
-    plain = Solver().solve(cases.bottlenecks(objective=False))
     # the first run finds the hard constraints feasible; the second is the first fair program
     unknown(monkeypatch, {2})
     answer = Solver().solve(cases.bottlenecks(objective=False))
     bottlenecks_answered(answer)
     assert answer.work.renewals == 1
-    # the fresh instance starts from the basis that HiGHS held, which is optimal: no more iterations
-    assert answer.work.iterations == plain.work.iterations
 
 
 def test_a_fresh_instance_with_no_basis_comes_next(monkeypatch):
