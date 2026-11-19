@@ -213,6 +213,28 @@ These override the text of this plan below, wherever the two differ. The owner's
    adopted and why, the profile design (named profiles in the run's identity, invariants exact in
    every profile, fallback by name, published runs on `default`), the open case (need x1.7 at
    30,000 places), and the commit that holds P1's scripts.
+19. **The audit after G2 (owner, 2026-11-19).** An audit of the branch raised five questions and a
+   list of bugs whose answer the spec already gives. The owner's answers:
+   - **Solver scope.** A solver decides only the rates that it names in `solve_for`. A flow that it
+     does not name keeps its endpoints' local sharing; the solver sees it only through the limits
+     that it imposes, so that it still conserves; to take over who is served, the provider names
+     those rates. In the worked junctions (spec, "Local allocation") a solver that names only the
+     upstream feed leaves 1/2, 1/4, 1/4. This reverses S5's "a flow that shares a store with a
+     solver's flow is in that solver's calculation", in the engine and the oracle, as the spec says:
+     "Flows that no solver determines follow their own endpoints".
+   - **An empty case.** A `switch` case may be empty, with or without a text.
+   - **Titles and roles.** A member may have a `title`, model text kept with the labels outside the
+     program's identity, which reports and playback show. An event's `role` belongs to the
+     scenario's wrapper (its UI or `brief.toml`); the model refuses it with that hint. Neither is
+     lost silently.
+   - **Timescales** are retired: refused, with the message that the engine chooses its own steps and
+     a run that needs finer ones sets `max_step`. M confirms on the heat-wave and cyber models that
+     their results meet their accuracy without the hint.
+   - **Cycles** are checked on the members' actual connections (links are fixed when a model
+     compiles: R-A1-30); a real cycle is reported as its chain.
+   - **Before the migration branch starts**, the bugs are fixed on this branch, each with its failing
+     example as a test, and the migration checker gains a step that runs the old and the new model to
+     the horizon and fails on a difference that the package's `changed.md` does not list.
 
 ### If the session is cut off
 
