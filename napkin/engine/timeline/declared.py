@@ -560,7 +560,9 @@ class Former:
             return Affine({self.cols[name]: 1.0})
         value = self.plan.values[name]
         if value.kind == FORMULA:
-            found = self.value(value.node)
+            # An enforced equality is the equality here; its readers compare it within the solver's
+            # tolerance (`plan.Plan._tolerate_enforced`).
+            found = self.value(self.plan.enforced.get(name, value.node))
             if isinstance(found, list):
                 return [(affine, op, (name, *label)) for affine, op, label in found]
             return found

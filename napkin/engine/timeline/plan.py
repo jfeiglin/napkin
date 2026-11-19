@@ -566,8 +566,32 @@ class Plan:
             for event in scope[0].events
             for index in range(len(event.triggers))
         ]
+        self._tolerate_enforced()
         self._connect()
         self._classify_asserts()
+
+    def _tolerate_enforced(self):
+        """R-A3-02: a formula that is an equality that a declared solver enforces (a relation of its
+        constraints reads it) compares to 1e-7 relative where it is read, since the solver holds it to
+        its tolerance: its readers (the record, a condition, a stage) read |a - b| <= 1e-7 max(1, |a|,
+        |b|), in canonical units, which one canonical unit, the solver's reference scale, bounds from
+        below; the solver reads the equality (`enforced`)."""
+        self.enforced = {}  # a formula -> its equality, which the solver reads
+        for declared in self.solvers.values():
+            for _, node in declared.constraints:
+                for name in sorted(self.expansion(node).formulas):
+                    value = self.values.get(name)
+                    found = value.node if value is not None and value.kind == FORMULA else None
+                    if name in self.enforced or not isinstance(found, nodes.Compare) or found.ops != ('eq',):
+                        continue
+                    self.enforced[name] = found
+                    a, b = found.operands
+                    size = nodes.call('max', [nodes.const(1.0), nodes.call('abs', [a]), nodes.call('abs', [b])])
+                    tolerant = nodes.compare(
+                        ['le'],
+                        [nodes.call('abs', [nodes.binary('sub', a, b)]), nodes.binary('mul', nodes.const(1e-7), size)],
+                    )
+                    self.values[name] = replace(value, node=tolerant, shape=None, binding=())
 
     @classmethod
     def of(cls, program, configuration):

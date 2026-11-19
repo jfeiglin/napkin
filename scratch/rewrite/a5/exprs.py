@@ -1,12 +1,11 @@
-"""Expressions for the scripts of A5: one small tree, a printer in the proposed notation, a reader of
-that notation, and the rewrite of an expression of the old language into it.
+"""Expressions for the migration scripts: one small tree, a printer in the language of now, and the
+rewrite of an expression of the old language into it.
 
 The tree is made of tuples:
 
     ('num', text, unit or None)        a number as written, with its unit: `12 h`, `0.3`
     ('name', 'a.b.c')                  a path: `this.water`, `Utility.instances.unserved`, `t`, `OPEN`
     ('text', 'words')                  a quoted text
-    ('none',)                          `none`
     ('call', 'f', [args])              `f(a, b)`
     ('method', obj, 'm', [args])       `obj.m(a)`: `.draw()`, `.at(t)`, `.where(...)`, `.by(...)`
     ('attr', obj, 'x')                 `obj.x` where obj is not a plain path: `c.at(t).factor`
@@ -17,13 +16,13 @@ The tree is made of tuples:
     ('if', test, then, otherwise)      `then if test else otherwise`
     ('in', x, low, high)               `x in [low, high]`
     ('coll', [items])                  `<a, b>`
-    ('pair', key, value)               `KEY: value` inside a call: `choice(OPEN: 1, WAIT: else)`
-    ('else',)                          the word `else` as the value of a pair
+    ('pair', key, value)               `KEY: value` inside a call: `categorical(OPEN: 1, WAIT: 0)`
 
 `rewrite_old` reads an expression of the old language with the old compiler's own reader
 (`napkin.model.language.expressions`) and gives it in this tree, with each name as the new language
-writes it. `parse_new` reads the proposed notation. Two expressions mean the same when their trees
-are equal after `canonical`.
+writes it; `with_new_units` then spells each unit as the language of now does (D12). The tree keeps
+the old spelling of a unit until then, because `numbers_of` gives the old file's numbers to the
+check (`oldmodel.facts`), which reads the old spellings with the old registry of units.
 """
 
 from __future__ import annotations
@@ -61,17 +60,14 @@ def show(node, parent=0, right=False):
     mine = level(node)
     if kind == 'num':
         text = node[1] if node[2] is None else f'{node[1]} {node[2]}'
-        # A number with its unit is one value: `(2 h)` after a division keeps it together.
-        if node[2] is not None and parent >= PRECEDENCE['*'] and right:
+        # A number with its unit is one value: `(2 h)` after a division keeps it together, and so
+        # does a unit that is a product, wherever it stands in an operation (`(3 person * days)`).
+        if node[2] is not None and parent > 0 and ((parent >= PRECEDENCE['*'] and right) or ' * ' in node[2]):
             return f'({text})'
     elif kind == 'name':
         text = node[1]
     elif kind == 'text':
         text = '"' + node[1].replace('\\', '\\\\').replace('"', '\\"') + '"'
-    elif kind == 'none':
-        text = 'none'
-    elif kind == 'else':
-        text = 'else'
     elif kind == 'call':
         text = f'{node[1]}({", ".join(show(arg) for arg in node[2])})'
     elif kind == 'method':
@@ -127,7 +123,7 @@ def canonical(node):
         inner = canonical(node[2])
         value = number_value(inner[1])
         return ('num', str((-value).normalize()) if value is not None else '-' + inner[1], inner[2])
-    if kind in ('name', 'text', 'none', 'else', 'old'):
+    if kind in ('name', 'text', 'old'):
         return node
     if kind == 'call':
         return ('call', node[1], [canonical(arg) for arg in node[2]])
@@ -228,9 +224,11 @@ def calls_of(node):
 DISTRIBUTIONS = frozenset(
     {'uniform', 'triangular', 'pert', 'loguniform', 'normal', 'lognormal', 'beta', 'bernoulli', 'categorical'}
 )
+# The families that the language of now has; the old `beta` and `bernoulli` have no form now.
+NEW_DISTRIBUTIONS = frozenset({'uniform', 'triangular', 'pert', 'loguniform', 'normal', 'lognormal'})
 FUNCTIONS = frozenset(
     {'min', 'max', 'clip', 'abs', 'exp', 'expm1', 'ln', 'log1p', 'sqrt', 'erf', 'sum', 'count', 'any', 'all'}
-    | {'since', 'elapsed', 'delayed'}
+    | {'since', 'elapsed'}
 )
 
 # ---- the rewrite of an old expression -------------------------------------------------------------------
@@ -466,243 +464,66 @@ def _call(node, scope, draws):
             return ('call', name, others)
         # `max(list.x, v)`: the largest of the members' values and the other arguments.
         return ('call', name, [*lists, *others]) if others or len(lists) > 1 else lists[0]
-    if name in DISTRIBUTIONS:
+    if name in NEW_DISTRIBUTIONS:
         made = ('call', name, [_new(arg, scope, draws) for arg in args])
         return ('method', made, 'draw', []) if draws else made
+    if name in DISTRIBUTIONS:
+        raise Hand(f'the language of now has no {name}(): write the draw with a family that it has')
     if name == 'delayed':
-        return ('call', name, [_new(arg, scope, draws) for arg in args])
+        # Change 12 after G0: a delayed observation is an event that waits and then writes.
+        raise Hand('delayed() left the language: an event that waits (`after D:`) and then writes')
     if name in FUNCTIONS:
         return ('call', name, [_new(arg, scope, draws) for arg in args])
     raise Hand(f'the function {name}')
 
 
-# ---- the reader of the proposed notation ---------------------------------------------------------------
-
-TOKEN = re.compile(
-    r"""
-    (?P<space>\s+)
-  | (?P<number>[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)
-  | (?P<text>"(?:[^"\\]|\\.)*")
-  | (?P<name>[A-Za-z_][A-Za-z0-9_]*)
-  | (?P<op><->|->|\*\*|<=|>=|==|!=|\+=|-=|[-+*/<>=(),.:\[\]@])
-    """,
-    re.X,
-)
-# A word after a number that is a word of the notation, never a unit.
-NOT_UNITS = frozenset(
-    'in if else and or not when scale to from until after reset is then versus cumulative lag'.split()
-)
-UNIT = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(?:[-/^][A-Za-z0-9_]+)*')
-ESCAPE = re.compile(r'\\(.)')
+# ---- units, as the language of now spells them ---------------------------------------------------------
 
 
-class NewSyntax(Exception):
-    """A text that the reader of the proposed notation does not read."""
+def new_unit(spelling):
+    """A unit of the old notation as the language of now spells it (D12): the factors of a product,
+    which the old notation joins with a hyphen, are joined by `*`, a power is its factor written again,
+    and each factor below the line divides from the left. `tunings/tuner-year` is
+    `tunings/tuner/year`, `person-hours` is `person * hours` and `L/h^2` is `L/h/h`. A unit that the
+    old library declares under a composed name (`USD2024_bn/yr`) is spelled by its parts, each of which
+    must then be a unit of the new library."""
+    if spelling is None:
+        return None
+
+    def factors(piece):
+        out = []
+        for term in piece.split('-'):
+            base, _, power = term.partition('^')
+            out += [base] * (int(power) if power else 1)
+        return out
+
+    pieces = spelling.split('/')
+    above = factors(pieces[0])
+    below = [factor for piece in pieces[1:] for factor in factors(piece)]
+    return ' * '.join(above) + ''.join('/' + factor for factor in below)
 
 
-def tokens_of(text):
-    """The tokens of a text in the proposed notation: (kind, value). A number takes the word after
-    one space as its unit, as the old language does: `12 h`, `5 L/h`, `0.5 Wh/L`."""
-    out, i = [], 0
-    while i < len(text):
-        if text[i] == '#':
-            break  # a trailing comment
-        found = TOKEN.match(text, i)
-        if found is None:
-            raise NewSyntax(f'no token at {text[i : i + 20]!r}')
-        kind = found.lastgroup
-        value = found.group(kind)
-        i = found.end()
-        if kind == 'space':
-            continue
-        if kind == 'number':
-            unit = None
-            if i < len(text) and text[i] == ' ':
-                word = UNIT.match(text, i + 1)
-                if word is not None and word.group(0).split('/')[0].split('-')[0].split('^')[0] not in NOT_UNITS:
-                    end = word.end()
-                    # A unit is one word: it ends at a space, a comma or a bracket.
-                    if end == len(text) or text[end] in ' ,)]:\n':
-                        unit = word.group(0)
-                        i = end
-            out.append(('num', value, unit))
-            continue
-        if kind == 'text':
-            out.append(('text', ESCAPE.sub(r'\1', value[1:-1])))
-            continue
-        out.append((kind, value))
-    return out
-
-
-class Parser:
-    """A precedence reader of one expression of the proposed notation."""
-
-    def __init__(self, tokens):
-        self.tokens = tokens
-        self.i = 0
-
-    def peek(self, k=0):
-        return self.tokens[self.i + k] if self.i + k < len(self.tokens) else None
-
-    def at(self, kind, value=None):
-        token = self.peek()
-        return token is not None and token[0] == kind and (value is None or token[1] == value)
-
-    def take(self, kind=None, value=None):
-        token = self.peek()
-        if token is None or (kind is not None and token[0] != kind) or (value is not None and token[1] != value):
-            raise NewSyntax(f'expected {value or kind}, found {token!r}')
-        self.i += 1
-        return token
-
-    def done(self):
-        return self.i >= len(self.tokens)
-
-    def expression(self):
-        body = self.or_()
-        if self.at('name', 'if'):
-            self.take()
-            test = self.or_()
-            self.take('name', 'else')
-            return ('if', test, body, self.expression())
-        return body
-
-    def or_(self):
-        values = [self.and_()]
-        while self.at('name', 'or'):
-            self.take()
-            values.append(self.and_())
-        return values[0] if len(values) == 1 else ('bool', 'or', values)
-
-    def and_(self):
-        values = [self.not_()]
-        while self.at('name', 'and'):
-            self.take()
-            values.append(self.not_())
-        return values[0] if len(values) == 1 else ('bool', 'and', values)
-
-    def not_(self):
-        if self.at('name', 'not'):
-            self.take()
-            return ('un', 'not', self.not_())
-        return self.comparison()
-
-    def comparison(self):
-        left = self.sum_()
-        token = self.peek()
-        if token is not None and token[0] == 'op' and token[1] in ('==', '!=', '<', '<=', '>', '>='):
-            self.take()
-            return ('cmp', token[1], left, self.sum_())
-        if self.at('name', 'in') and self.peek(1) == ('op', '['):
-            self.take()
-            self.take('op', '[')
-            low = self.expression()
-            self.take('op', ',')
-            high = self.expression()
-            self.take('op', ']')
-            return ('in', left, low, high)
-        return left
-
-    def sum_(self):
-        left = self.product()
-        while self.at('op', '+') or self.at('op', '-'):
-            op = self.take()[1]
-            left = ('bin', op, left, self.product())
-        return left
-
-    def product(self):
-        left = self.unary()
-        while self.at('op', '*') or self.at('op', '/'):
-            op = self.take()[1]
-            left = ('bin', op, left, self.unary())
-        return left
-
-    def unary(self):
-        if self.at('op', '-') or self.at('op', '+'):
-            op = self.take()[1]
-            return ('un', op, self.unary())
-        return self.power()
-
-    def power(self):
-        base = self.postfix()
-        if self.at('op', '**'):
-            self.take()
-            return ('bin', '**', base, self.unary())
-        return base
-
-    def arguments(self):
-        args = []
-        self.take('op', '(')
-        while not self.at('op', ')'):
-            arg = self.expression() if not self.at('name', 'else') else (self.take() and ('else',))
-            if self.at('op', ':'):
-                self.take()
-                value = ('else',) if self.at('name', 'else') and self.take() else self.expression()
-                arg = ('pair', arg, value)
-            args.append(arg)
-            if self.at('op', ','):
-                self.take()
-        self.take('op', ')')
-        return args
-
-    def postfix(self):
-        node = self.atom()
-        while True:
-            if self.at('op', '.') and self.peek(1) is not None and self.peek(1)[0] == 'name':
-                self.take()
-                name = self.take('name')[1]
-                if self.at('op', '('):
-                    node = ('method', node, name, self.arguments())
-                elif node[0] == 'name':
-                    node = ('name', f'{node[1]}.{name}')
-                else:
-                    node = ('attr', node, name)
-                continue
-            return node
-
-    def atom(self):
-        token = self.peek()
-        if token is None:
-            raise NewSyntax('an expression ends too soon')
-        if token[0] == 'num':
-            self.take()
-            return token
-        if token[0] == 'text':
-            self.take()
-            return ('text', token[1])
-        if token == ('op', '('):
-            self.take()
-            node = self.expression()
-            self.take('op', ')')
-            return node
-        if token == ('op', '<'):
-            # A collection literal: `<a, b>` or `<>`.
-            self.take()
-            items = []
-            while not self.at('op', '>'):
-                items.append(self.sum_())
-                if self.at('op', ','):
-                    self.take()
-            self.take('op', '>')
-            return ('coll', items)
-        if token[0] == 'name':
-            self.take()
-            if token[1] == 'none':
-                return ('none',)
-            if self.at('op', '('):
-                return ('call', token[1], self.arguments())
-            return ('name', token[1])
-        raise NewSyntax(f'{token[1]!r} starts no expression')
-
-
-def parse_new(text):
-    """The tree of one expression of the proposed notation."""
-    parser = Parser(tokens_of(text) if isinstance(text, str) else text)
-    node = parser.expression()
-    if not parser.done():
-        raise NewSyntax(f'{parser.peek()!r} follows the expression')
+def with_new_units(node):
+    """A tree with the unit of each number spelled as the language of now does (`new_unit`)."""
+    kind = node[0]
+    if kind == 'num':
+        return ('num', node[1], new_unit(node[2]))
+    if kind == 'call':
+        return ('call', node[1], [with_new_units(arg) for arg in node[2]])
+    if kind == 'method':
+        return ('method', with_new_units(node[1]), node[2], [with_new_units(arg) for arg in node[3]])
+    if kind == 'attr':
+        return ('attr', with_new_units(node[1]), node[2])
+    if kind == 'un':
+        return ('un', node[1], with_new_units(node[2]))
+    if kind in ('bin', 'cmp'):
+        return (kind, node[1], with_new_units(node[2]), with_new_units(node[3]))
+    if kind == 'bool':
+        return ('bool', node[1], [with_new_units(value) for value in node[2]])
+    if kind in ('if', 'in'):
+        return (kind, *(with_new_units(part) for part in node[1:]))
+    if kind == 'coll':
+        return ('coll', [with_new_units(item) for item in node[1]])
+    if kind == 'pair':
+        return ('pair', node[1], with_new_units(node[2]))
     return node
-
-
-def same(a, b):
-    return canonical(a) == canonical(b)

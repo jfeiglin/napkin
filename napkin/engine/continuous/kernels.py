@@ -1,5 +1,12 @@
 """The segment classifier and the exact kernels: constant-rate (affine) segments and positive linear
-compartment segments, solved by their matrix exponential."""
+compartment segments, solved by their matrix exponential.
+
+The matrix exponential (`expm`) is the scaling and squaring of the [13/13] Pade approximant
+(Higham, "The scaling and squaring method for the matrix exponential revisited", 2005), made of
+NumPy's products and one solve. SciPy's `expm` gives the same to rounding, but its compiled routine
+took 4 to 10 ms for a 4 x 4 matrix where OpenBLAS runs on several threads on a loaded machine (7 us
+on one): a linear chain of three compartments, whose record reads the exponential at each point of
+each fit, took 9 to 12 s."""
 
 from __future__ import annotations
 
@@ -8,11 +15,49 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from scipy.linalg import expm
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import evaluate, names_in, stock_face_dependencies
+
+
+# The coefficients of the [13/13] Pade approximant of the exponential, and the largest 1-norm for
+# which it holds to double precision (Higham 2005, table 2.3).
+_PADE = (
+    64764752532480000.0,
+    32382376266240000.0,
+    7771770303897600.0,
+    1187353796428800.0,
+    129060195264000.0,
+    10559470521600.0,
+    670442572800.0,
+    33522128640.0,
+    1323241920.0,
+    40840800.0,
+    960960.0,
+    16380.0,
+    182.0,
+    1.0,
+)
+_THETA = 5.371920351148152
+
+
+def expm(matrix):
+    """The exponential of a square matrix (see the module)."""
+    a = np.asarray(matrix, dtype=float)
+    norm = float(np.abs(a).sum(axis=0).max()) if a.size else 0.0
+    squarings = max(0, math.ceil(math.log2(norm / _THETA))) if norm > _THETA else 0
+    a = a / 2.0**squarings
+    b, eye = _PADE, np.eye(len(a))
+    a2 = a @ a
+    a4 = a2 @ a2
+    a6 = a2 @ a4
+    u = a @ (a6 @ (b[13] * a6 + b[11] * a4 + b[9] * a2) + b[7] * a6 + b[5] * a4 + b[3] * a2 + b[1] * eye)
+    v = a6 @ (b[12] * a6 + b[10] * a4 + b[8] * a2) + b[6] * a6 + b[4] * a4 + b[2] * a2 + b[0] * eye
+    found = np.linalg.solve(v - u, v + u)
+    for _ in range(squarings):
+        found = found @ found
+    return found
 
 
 @dataclass
