@@ -423,11 +423,16 @@ class Instant:
         tiers = {}
         for tier, a, wanted in claims:
             tiers.setdefault(tier, []).append((a, wanted))
-        found = select(
-            rows,
-            asked.capacity[part],
-            [tiers[key] for key in sorted(tiers)],
-            prefs,
-            asked.request[part],
-        )
-        return found
+        try:
+            return select(
+                rows,
+                asked.capacity[part],
+                [tiers[key] for key in sorted(tiers)],
+                prefs,
+                asked.request[part],
+            )
+        except SimulationError as problem:
+            raise SimulationError(
+                f'{problem}; the part: the stores {", ".join(self._name(s) for s in stores)} and the '
+                f'flows {", ".join(net.flows[f] for f in part)}'
+            ) from None
