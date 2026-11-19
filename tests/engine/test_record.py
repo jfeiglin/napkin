@@ -202,7 +202,7 @@ def test_the_reader_names_each_path_by_its_member_and_gives_its_declared_unit():
     record = run(program, configured(2))
     assert key_of(program, 'panel.feed.actual_rate') == Key('panel', ('feed', 'actual_rate'))
     assert key_of(program, 'peak') == Key('', ('peak',))
-    assert unit_of(program, Key('panel', ('feed', 'request'))) == 'kW'
+    assert unit_of(program, Key('panel', ('feed', 'request'))) == ('kW', 1000.0)
     feed, peak, stored = read(record, program, ['panel.feed.actual_rate', 'peak', 'panel.stored'], [0, 2])
     assert (feed.unit, feed.values) == ('kW', pytest.approx((1, 1)))
     assert (peak.unit, peak.values) == ('kW', pytest.approx((3, 3)))

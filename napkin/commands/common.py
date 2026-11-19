@@ -18,6 +18,7 @@ import difflib
 import json
 import os
 import re
+import sys
 from fractions import Fraction
 from pathlib import Path
 
@@ -84,7 +85,7 @@ def compiled(entry):
     from ..model.load import SourceError
 
     try:
-        return load_scenario(entry)
+        found = load_scenario(entry)
     except LanguageError as error:
         raise Failed(error.problems) from None
     except SourceError as error:
@@ -103,6 +104,11 @@ def compiled(entry):
         raise Failed([unreadable(entry, error)]) from None
     except OSError as error:
         raise Failed([problem('file', error.strerror or str(error), error.filename or entry)]) from None
+    # The reports of the setup refuse nothing: each is a warning on the error stream, so that what a
+    # command writes on its output stays as it is.
+    for item in found.reports:
+        sys.stderr.write(located(item, 'warning') + '\n')
+    return found
 
 
 def unreadable(entry, error):
@@ -174,14 +180,15 @@ def shown(path):
         return str(absolute)
 
 
-def located(item):
+def located(item, kind='error'):
     """One diagnostic on one line, as a compiler writes it: `file:line:column: error: message
-    [code]`, with the file relative to the current folder when it is inside it."""
+    [code]`, with the file relative to the current folder when it is inside it. A report of the
+    setup, which refuses nothing, is a `warning`."""
     where = shown(item.file) if item.file else ''
     if where and item.line:
         where += f':{item.line}' + (f':{item.column}' if item.column else '')
     message = ' '.join(item.message.split('\n'))
-    return f'{where + ": " if where else ""}error: {message} [{item.code}]'
+    return f'{where + ": " if where else ""}{kind}: {message} [{item.code}]'
 
 
 def show(problems, stream):

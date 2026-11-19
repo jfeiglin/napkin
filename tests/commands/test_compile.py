@@ -53,3 +53,28 @@ def test_a_part_of_a_later_slice_is_refused_by_name(tmp_path, capsys):
     assert found.code == 1
     assert '[later_slice]' in found.err
     assert '(S4)' in found.err
+
+
+def test_a_report_of_the_setup_is_a_warning_and_refuses_nothing(tmp_path, capsys):
+    """Two rows of a keyed view that `.at(...)` reads have one key (spec, "Collections, keys and
+    projections"): setup reports it at the row that wins, the second row of the table, and the model
+    still compiles."""
+    text = """\
+scenario "Readings"
+    horizon 4 h
+
+Reading:
+    input hour: h = 0
+    input factor = 1
+
+readings: Reading from "readings.csv"
+
+factor_now = formula(Reading.instances.by(hour).at(t).factor)
+"""
+    model = package(tmp_path / 'readings', text, UNITS)
+    (model / 'readings.csv').write_text('id,hour: h,factor\nmorning,0,2\nnoon,0,3\n', encoding='utf-8')
+    found = napkin(capsys, 'compile', model)
+    assert found.code == 0
+    (line,) = found.err.splitlines()
+    assert line.startswith(f'{model / "readings.csv"}:3: warning: ')
+    assert line.endswith('[equal_keys]')

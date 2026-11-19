@@ -33,7 +33,11 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] the engine: pools of members, the reverse index, the index of keys with its key times, the reductions; a connected set of one flow whose rate reads nothing that moves runs on arrays at any size. Benchmark: 30,000 rows, plan 4.7 s, run 7.2 s with the record of everything (`b1/s1-engine/STATE.md`)
   - [ ] for S2: the checker refuses `count(this.pumps)` (a path that ends on a collection value); a field named `start`, `draw`, `where`, `by`, `at` or `choose` cannot be read through a handle of `build.py`; per-row formulas of a large table are fitted row by row (slow); a failure inside a long numerical segment is timed at the segment's start; the setup reports for equal keys under `.at` and for coverage at a lower bound
   - [ ] contract and examples, for S5: the worked network's flows carry `W` where a source gets `Wh/h`, and its readings are fractions where a table gives floats, so its bytes differ from its source
-- [ ] S2 the flow network and sharing: two tracks at work (`briefs/s2.md`); the carry-over of S1 is in it
+- [ ] S2 the flow network and sharing (`briefs/s2.md`); the carry-over of S1 is in it
+  - [x] the front end: endpoints, priority over flows and ranked projections, flows across entities, junctions; the three contract fixes; the setup reports print as warnings
+  - [x] the engine (its agent stopped at a restart of the container after step 8 of 9; the main session finished it): one sparse network, local sharing settled in the direction of supply, lines for rates held between moments, a sparse integrator for moving sets; 300 random networks agree with the oracle (2,000 under `deep`)
+  - [ ] the moving benchmark at 30,000 places; not yet ported: `test_chattering.py`, `test_closed_form_short.py`, `test_roundoff_properties.py`
+  - [ ] performance, separate from behaviour: rates held between moments on 30,000 places run in 87 s (one set of 52,038 stores, 113,009 line starts), where the prototype's lines took 1.4 s
 - [ ] S3 reversible flows and flows with legs
 - [ ] S4 occurrences and time
 - [ ] S5 solvers
