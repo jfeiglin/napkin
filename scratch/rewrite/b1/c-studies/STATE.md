@@ -1,4 +1,4 @@
-# C-S: studies and runs — state (in progress)
+# C-S: studies and runs — state (done, but for S7's part)
 
 Brief: `briefs/c.md` (C-S) with `COMMON-B.md`; PLAN "Changes after G0" 10-13 and 15; `b1/c-report/STATE.md`.
 Owner (2026-11-19, PLAN item 15): breakpoints, checkpoints and edits replace the player machinery.
@@ -24,7 +24,9 @@ NOT ported, waiting for S7: `napkin/session.py` (resolver, picks, controllers, `
   `expectations.weighted` and `mean_of` dropped (no given outcomes in the engine; no caller).
 - model/analysis/ stays: session.py (S7) imports values.py; report.schema.json stays: model/load.py
   loads it at import (old report; nothing writes it now).
-- Next: the final command (my files + core, engine, program, -n 2), counts, last message.
+- Final: my 6 files 73 passed; with tests/core, tests/engine, tests/program: 3176 passed (-n 2).
+- Can leave dormant.txt: tests/test_store.py, tests/test_spread.py, tests/engine/test_monte_carlo_study.py,
+  test_public_engine.py, test_expectations.py (test_admission_scope.py deleted).
 
 ## Decisions
 - Reuse rule: one entry per key holds one record; it serves a request with a horizon at or before

@@ -11,12 +11,8 @@ tests/publish/
 tests/evidence/test_catalogue.py
 tests/evidence/test_scientific_spec.py
 tests/release/
-tests/engine/test_admission_scope.py
 tests/engine/test_decision_resolver.py
 tests/engine/test_distributions_deep.py
-tests/engine/test_expectations.py
-tests/engine/test_monte_carlo_study.py
-tests/engine/test_public_engine.py
 tests/model/test_analysis.py
 tests/model/test_bases.py
 tests/model/test_build.py
@@ -49,8 +45,6 @@ tests/test_examples.py
 tests/test_nested_packages.py
 tests/test_package.py
 tests/test_session.py
-tests/test_spread.py
-tests/test_store.py
 tests/test_tools_new.py
 tests/test_scenario_ownership.py
 tests/test_api.py
