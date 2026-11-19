@@ -7,9 +7,10 @@ everything you need is in the repository, and this file says where. Read it all 
 ## Where things stand
 
 - The rewrite replaces napkin's language, compiler and engine in place. Stages S0 to S7 and C are
-  done, gate G2 passed on branch `claude/blissful-heisenberg-5me2hn`, and the fixes of an audit
-  after it (changes 19 and 20, below) are in: every central test passes with no catalogue (6,088
-  passed, 2 skipped for TeX and Ghostscript), ruff is clean on `napkin/`, `tests/` and `tools/`.
+  done, gate G2 passed on branch `claude/blissful-heisenberg-5me2hn`, and the fixes of two audits
+  after it (changes 19 to 22, below) are in: every central test passes with no catalogue
+  (7,263 passed, 2 skipped for TeX and Ghostscript), every deep test passes (14,984), and ruff is
+  clean on `napkin/`, `tests/` and `tools/`.
 - What is left is the catalogue: the five model packages under `scenarios/` and `examples/` (all
   but `examples/piano_tuners`) are still in the old language, and so are their tests. That is your
   work, stage M, and it ends at gate G3. Stage F (docs, deleting `scratch/`) comes after, not now.
@@ -50,11 +51,11 @@ export NAPKIN_BASE="$(cd ../napkin-base && pwd)"
 ## Read, in this order
 
 1. `scratch/rewrite/PLAN.md`: the progress list at the top (the last entries say what G2 left
-   open), then "Changes after G0", items 1 to 20. These override the rest of the plan and the spec.
+   open), then "Changes after G0", items 1 to 22. These override the rest of the plan and the spec.
    The ones you will feel most: 10 (the owner's priorities: defensibility, then speed, then
    precision), 11 (reproducibility), 12 (no `delayed`), 13 (the publisher is ported in M), 15
    (breakpoints and checkpoints replace player machinery: `choose`, `sees`, controllers are gone),
-   16 (the evidence rule), 18 (speedups), 19 and 20 (the owner's answers after an audit, below).
+   16 (the evidence rule), 18 (speedups), 19 to 22 (the owner's answers after two audits, below).
 2. `scratch/rewrite/g0-decisions.md`: the owner's decisions. They win over everything else.
 3. `scratch/rewrite/briefs/m.md`: the detailed brief of stage M: the scripts, the measured state of
    the translation, each package's needs, the tests each one unlocks, and the rule that no change is
@@ -93,6 +94,39 @@ beside the model's files (7 for the heat wave, 4 for the IV model, 4 for the wat
 publisher read them as the actor of each timeline card (`tools/publish/pages.py`, `Pages.cards`),
 which the water UI shows, so read them from there when you port the publisher and the UI. Anything
 else that changes what a model author writes or sees is still the owner's: ask.
+
+## What the re-audit changed (`PLAN.md`, changes 21 and 22)
+
+A second audit found that fixes had cured the cases named and left their causes. Each cause is now
+fixed in one mechanism, with a test of its rule (`briefs/audit2.md`; the state files
+`scratch/rewrite/b1/audit2-*/STATE.md`). What you will meet in the catalogue:
+
+1. **A quantity is its dimension and an exact scale**, however it is spelled: `0.1 day` is `2.4 h`
+   in a range, a bound, a membership test, a `sqrt` or a power; a reversed interval in a test is an
+   error. Durations add exactly, so `0.1 h` three times is `0.3 h`, and a horizon in days is the
+   same time in hours. A units file's scale is read as the number that its float stands for with
+   the fewest digits: the library's units per day (1/24, written as 0.041666666666666664) and per
+   year (1/8760) are their ratios, a decimal such as 3785411.784 is itself
+   (`napkin/core/units.py`, `scale_of`).
+2. **A value that cites a datum equals it**, in dimension and scale, read exactly: a datum states a
+   number and a unit and no precision. A difference is a `datum` warning with both numbers, and the
+   evidence stage of `tools.check` refuses it as it refuses a value without a record. The old
+   compiler refused such a model outright, so a `datum` warning in a translation most likely means
+   a number or a unit changed on the way.
+3. **A value has a lifetime.** An occurrence reference is a local of its type, set once, whose
+   fields read its occurrence; a formula may read only what lives as long as it does (`lifetime`):
+   copy an invocation's local into a field instead of capturing it.
+4. **An endpoint's rule ranks all its flows, whether or not a solver names them.** Where a flow
+   that the solver does not name reaches a ring of empty stores, local sharing cannot rank it and
+   the run stops by name; the message says to name those flows in `solve_for`. No answer is
+   published worse on any rank than the solver's own.
+5. **A record gives only what it holds**: anything else is `unavailable`, with the reason, never 0
+   or a guess. A reporting lag whose window reaches before 0 h is `unavailable` there (change 22),
+   where the old engine gave 0: `iv_fluid_shortage` lags `deaths` and `serious_survivors` by
+   `harm_delay` (6 h), so its check will find them `unavailable` at 0 h, where the old report has 0.
+   List that in its `changed.md`, with change 22 as the cause. A lag of a yes/no or a text is
+   refused by name, and a history budget that a run would exceed stops it by name.
+6. **The checker compares how each run ended** before its values (below, "No change is silent").
 
 ## The work, in order
 
@@ -150,6 +184,13 @@ Parity with the old numbers is not required, but every change is traced.
   `OUTPUT at T h`, the cause the rule of the spec or the change after G0, and the evidence the
   trace or the check's line. The checker fails on an unlisted difference, on numbers that do not
   match, on a stale row and on an empty cause or evidence.
+- The run step compares first how each run ended: `finished at T h`, `failed at T h: WHY` or
+  `paused at T h: WHY`. A new failure or pause, or one at another time or for another reason,
+  fails the step even when every value agrees, unless a row lists it with `outcome` as its
+  quantity and the run's outcome, its reason in full, as its new cell:
+  `| check run ENTRY | outcome | finished at 8760 h | failed at 8760 h: WHY | cause | evidence |`.
+  The docstring of `scratch/rewrite/a5/check.py` has the whole format. Run `napkin run` on the
+  package as well: it exits 1 on a run that failed.
 - If you find a bug in `napkin/`, fix it only if the fix is small and plainly a bug, with a test that
   failed before it; otherwise write it down with a failing example. Do not change the language, the
   engine's rules or a tolerance to make a model fit: that is the owner's.
@@ -183,9 +224,8 @@ Parity with the old numbers is not required, but every change is traced.
 Beyond the ports and the behaviour tests above, the owner may ask for more; take them from the owner.
 Candidates that the rewrite left open (see the end of the progress list in `PLAN.md`): a near-tie
 for a split of who is served decided between moments, inside the integration (not marked today);
-the oracle's coverage of `where` over an endpoint's flows (it does not run them); a check of a value
-against the datum that its record cites; acceptance tests from source for each package's headline
-numbers. A run that re-integrates after a new trigger moment costs time (a 10,000 h test went from
+the oracle's coverage of `where` over an endpoint's flows (it does not run them); acceptance tests
+from source for each package's headline numbers. A run that re-integrates after a new trigger moment costs time (a 10,000 h test went from
 3.1 s to 5.9 s): watch the catalogue's run times, and report a model that becomes slow.
 
 ## Gate G3: done when
@@ -201,7 +241,7 @@ numbers. A run that re-integrates after a new trigger moment costs time (a 10,00
 Open the pull request into `claude/blissful-heisenberg-5me2hn`, and do not merge it. Its description:
 
 1. For each package: what was translated by hand and why, and the result of `check.py`.
-2. How each decision of changes 19 and 20 applied to the packages, and the heat-wave and cyber
+2. How each decision of changes 19 to 22 applied to the packages, and the heat-wave and cyber
    models' accuracy without `timescales`.
 3. The changed numbers: a link to each `changed.md`, and the five largest changes in a table.
 4. Every decision you made that the owner did not, one line each.

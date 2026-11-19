@@ -94,7 +94,8 @@ on a row of the entry that lists no difference (its values or its outcomes agree
 compares no such run, output or time), and on a row of the entry that does not read.
 
 It notes, without failing, the numbers, names and flows that only the new model has, and the
-warnings of the evidence rule (`no_record`, change 16), which `tools.check` refuses for a package.
+warnings of the evidence rule (`no_record`, change 16, and `datum`, a value that differs from the
+datum that its record cites), which `tools.check` refuses for a package.
 """
 
 from __future__ import annotations

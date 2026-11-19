@@ -5,7 +5,7 @@ the same package name: `translate.py` calls it in a process of its own, and `che
 
 - `compiled(entry)`: the compile of an entry file (`napkin.model.compile.load_scenario`), as the
   problems that refuse it, each with its code, file and line, and the setup's reports, among them
-  the warnings of the evidence rule (`no_record`, change 16).
+  the warnings of the evidence rule (`no_record`, change 16, and `datum`).
 - `facts(entry, proven, runs, reads)`: what `check.py` compares of a model: each number with its unit
   as a value in base units and a dimension, each text, the kind and dimension of each declared name,
   the ends of each flow, the events, for each path in `proven` (a value that the old compiler proved
