@@ -57,6 +57,37 @@ def test_products_and_quotients_make_their_units():
     assert [value.type.unit for value in model.root] == ['person*year', 'L/h', 'h', 'h*h']
 
 
+def chain(written, count, operator):
+    """`count` copies of a written value joined by `operator`, from the left."""
+    return f' {operator} '.join([written] * count)
+
+
+def test_a_sum_longer_than_the_deepest_tree_is_one_sum_of_its_terms():
+    """`a + b - c` reads as `sum(a, b, -c)` past 150 operations (`DEEPEST`), which adds from the
+    left bit for bit, so its tree stays shallow; up to there it stays a chain of `+` and `-`."""
+    rate = 'x: L/h = 1 L/h\n'
+    short = root(rate + f'total = formula({chain("x", s.DEEPEST + 1, "+")})\n', 'total').init.body
+    assert short.op == 'add' and short.args[0].op == 'add'
+    terms = chain('x', s.DEEPEST + 1, '+') + ' - x + 0'
+    found = root(rate + f'total = formula({terms})\n', 'total').init.body
+    assert (found.op, found.detail, len(found.args), found.type.unit) == ('call', 'sum', s.DEEPEST + 3, 'L/h')
+    assert found.args[-2].op == 'neg' and found.args[-1] == s.Const(0, found.type)
+
+
+def test_a_chain_of_signs_longer_than_the_deepest_tree_is_the_sign_that_it_makes():
+    x = 'x = 1\n'
+    assert root(x + 'y = formula(' + '- ' * 150 + 'x)\n', 'y').init.body.op == 'neg'
+    assert isinstance(root(x + 'y = formula(' + '- ' * 152 + 'x)\n', 'y').init.body, s.Read)
+    odd = root(x + 'y = formula(' + '- ' * 151 + 'x)\n', 'y').init.body
+    assert odd.op == 'neg' and isinstance(odd.args[0], s.Read)
+    assert root('c = true\nd = formula(' + 'not ' * 153 + 'c)\n', 'd').init.body.op == 'not'
+
+
+def test_a_product_longer_than_the_deepest_tree_is_refused_by_name():
+    problem = refused('x = 2\ny = formula(' + chain('x', s.DEEPEST + 2, '*') + ')\n', 'deep', 2)
+    assert 'a product of more than 150 factors' in str(problem)
+
+
 def test_a_unit_run_stops_at_the_first_name_that_is_no_unit():
     # `hour` is a value here: in brackets the quantity is multiplied by it; without them the name
     # continues the unit.

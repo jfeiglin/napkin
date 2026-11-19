@@ -38,7 +38,23 @@ from typing import Any
 
 from .refs import Number
 
-KINDS = ('start', 'finish', 'commit', 'fire', 'draw', 'move', 'solve', 'edit', 'pause', 'failure')
+KINDS = (
+    'start',
+    'finish',
+    'commit',
+    'fire',
+    'draw',
+    'move',
+    'solve',
+    'edit',
+    'pause',
+    'failure',
+    # Near-ties that no other entry carries, each written only with its `near` detail.
+    'miss',
+    'skip',
+    'release',
+    'settle',
+)
 
 
 @dataclass(frozen=True)

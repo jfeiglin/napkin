@@ -83,22 +83,15 @@ def test_a_definition_is_a_complete_record_not_an_alias(definition):
     assert problems(text) == [('syntax', line_of(text, definition))]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason='bug: a second record of one name is accepted and replaces the first '
-    '(napkin/model/semantic.py, Resolver.check_names reads no record)',
-)
 def test_a_record_name_is_declared_once():
+    """The second record of one name is refused at its line, and the problem names both lines."""
     text = SERVICE + 'record shared: assumption "Another record of the same name."\n'
-    try:
+    with pytest.raises(LanguageError) as raised:
         compile_text(text, UNITS)
-    except LanguageError as error:
-        assert [(item.code, item.line) for item in error.problems] == [
-            ('duplicate_name', line_of(text, 'Another record'))
-        ]
-    else:
-        raise AssertionError('the model was accepted')
+    (problem,) = raised.value.problems
+    assert (problem.code, problem.line) == ('duplicate_name', line_of(text, 'Another record'))
+    first, second = line_of(text, 'record shared:'), line_of(text, 'Another record')
+    assert f'on line {first} and on line {second}' in problem.message
 
 
 def test_values_and_options_keep_their_own_records():

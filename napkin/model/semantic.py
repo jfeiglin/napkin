@@ -136,6 +136,7 @@ from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import cached_property
 
+from ..core.expr import DEEPEST
 from .language import nodes as n
 from .language import tables
 from .language.parse import parse_expression
@@ -1248,7 +1249,8 @@ class Resolver:
                 for member in item.members:
                     name = getattr(member, 'name', None)
                     if isinstance(member, (n.Declaration, n.Flow, n.Event, n.Solver)) and name:
-                        self.syntax[f'{item.name}.{name}'] = (item.name, member)
+                        # The first declaration of a name keeps it; a second is `duplicate_name`.
+                        self.syntax.setdefault(f'{item.name}.{name}', (item.name, member))
                     if isinstance(member, n.Event):
                         event = f'{item.name}.{name}'
                         self.scopes[event] = Scope(item.name, event=event)
@@ -1275,7 +1277,7 @@ class Resolver:
                     self.root[item.name] = item
                     self.syntax[item.name] = ('', item)
             elif isinstance(item, n.Record):
-                self.records[item.name] = item
+                self.records.setdefault(item.name, item)  # a second of one name is `duplicate_name`
         self.register_changes()
 
     def fail(self, code, message, node=None):
@@ -1458,12 +1460,7 @@ class Resolver:
                 node,
             )
         if isinstance(node, n.Unary):
-            operand = self.expression(node.operand, scope)
-            if node.op == 'not':
-                self.want_bool(operand, node, 'not')
-                return Apply('not', (operand,), BOOL)
-            self.want_number(operand, node, node.op)
-            return operand if node.op == '+' else Apply('neg', (operand,), operand.type)
+            return self.unary(node, scope)
         if isinstance(node, n.Binary):
             return self.binary(node, scope)
         if isinstance(node, n.Compare):
@@ -1545,15 +1542,74 @@ class Resolver:
             result = self.product('mul' if op == '*' else 'div', result, other, node)
         return result
 
+    def unary(self, node, scope):
+        """A chain of signs or of `not` (`- -x`, `not not c`), read from the inside out with no call
+        of Python for each: `+` keeps a number, `-` negates it and `not` negates a yes/no. A chain of
+        more than `DEEPEST` is the one negation that it makes, or none, since each is its own inverse
+        exactly: so its tree stays shallow."""
+        chain = []
+        while isinstance(node, n.Unary):
+            chain.append(node)
+            node = node.operand
+        inner = found = self.expression(node, scope)
+        negations = 0
+        for each in reversed(chain):
+            if each.op == 'not':
+                self.want_bool(found, each, 'not')
+                found = Apply('not', (found,), BOOL)
+            else:
+                self.want_number(found, each, each.op)
+                if each.op == '-':
+                    found = Apply('neg', (found,), found.type)
+            negations += each.op != '+'
+        if len(chain) <= DEEPEST:
+            return found
+        if negations % 2 == 0:
+            return inner
+        return Apply('not' if chain[0].op == 'not' else 'neg', (inner,), inner.type)
+
     def binary(self, node, scope):
-        left, right = self.expression(node.left, scope), self.expression(node.right, scope)
-        if node.op in ('+', '-'):
-            left, right = self.alike(left, right, node, node.op)
-            self.want_number(left, node, node.op)
+        """`+ - * / **` of two operands. A chain of `+` and `-` from the left, or of `*` and `/`, is
+        read operation by operation with no call of Python for each, so a sum of hundreds of terms
+        costs no depth of calls. A sum of more than `DEEPEST` operations is one `sum(...)` of its
+        terms, whose tree is shallow: `sum(a, b, c)` is `a + b + c` added from the left, bit for
+        bit (`napkin/core/expr.py`), and `a - b` is `a + (-b)`. A longer product is refused by name."""
+        if node.op == '**':
+            return self.power(node, scope)
+        group = ('+', '-') if node.op in ('+', '-') else ('*', '/')
+        chain = []
+        while isinstance(node, n.Binary) and node.op in group:
+            chain.append(node)
+            node = node.left
+        found = self.expression(node, scope)
+        terms = [found]
+        for each in reversed(chain):
+            right = self.expression(each.right, scope)
+            if group[0] == '*':
+                found = self.product('mul' if each.op == '*' else 'div', found, right, each)
+                continue
+            left, right = self.alike(found, right, each, each.op)
+            if len(terms) == 1:
+                terms[0] = left  # a first term that is a bare zero takes the other's unit
+            self.want_number(left, each, each.op)
             kind = left.type if left.type != PLAIN or right.type == PLAIN else right.type
-            return Apply('add' if node.op == '+' else 'sub', (left, right), kind)
-        if node.op in ('*', '/'):
-            return self.product('mul' if node.op == '*' else 'div', left, right, node)
+            found = Apply('add' if each.op == '+' else 'sub', (left, right), kind)
+            terms.append(right if each.op == '+' else Apply('neg', (right,), right.type))
+        if len(chain) <= DEEPEST:
+            return found
+        if group[0] == '*':
+            self.fail(
+                'deep',
+                f'a product of more than {DEEPEST} factors one after the other: give a part of it a name '
+                'of its own, as part = formula(...), and multiply by that name',
+                chain[-1],
+            )
+        return Apply('call', tuple(terms), found.type, 'sum')
+
+    def power(self, node, scope):
+        """`a ** b`: a plain number to any power, a number with a unit to a whole power written in
+        place."""
+        left, right = self.expression(node.left, scope), self.expression(node.right, scope)
         self.want_number(left, node, '**')
         self.want_number(right, node, '**')
         if right.type.dimension:
@@ -3827,7 +3883,8 @@ class Resolver:
         return DeclaredStatus(path, tuple(found), cases[0].line)
 
     def entity(self, item):
-        """An entity written once or a template, with its parts."""
+        """An entity written once or a template, with its parts. A second declaration of a name is
+        not read: `check_names` reports it."""
         parts, asserts = [], 0
         for k, member in enumerate(item.members):
             if isinstance(member, n.Status):
@@ -3836,6 +3893,8 @@ class Resolver:
                 name, asserts = f'assert[{asserts}]', asserts + 1
             else:
                 name = getattr(member, 'name', None) or f'{type(member).__name__.lower()}[{k}]'
+            if self.syntax.get(f'{item.name}.{name}', (None, member))[1] is not member:
+                continue
             found = self.part(f'{item.name}.{name}', item.name, member)
             if found is not None:
                 parts.append(found)
@@ -3894,6 +3953,7 @@ class Resolver:
                 elif found is not None:
                     root.append(found)
             elif isinstance(item, n.Notes):
+                self.note_records(item.notes)
                 notes = merged_notes(notes, item.notes)
             elif isinstance(item, n.Start):
                 found = self.part(f'setup[{len(setup)}]', '', item)
@@ -4309,9 +4369,19 @@ class Resolver:
         return tuple(found)
 
     def check_names(self):
-        """Two declarations of one scope with one name are an error."""
-        seen = {}
+        """Two declarations of one scope with one name are an error, and so are two records of one
+        name in the model."""
+        seen, records = {}, {}
         for item in self.tree.items:
+            if isinstance(item, n.Record):
+                if item.name in records:
+                    self.report(
+                        'duplicate_name',
+                        f'the record {item.name} is declared twice, {self.on_line(records[item.name])} and '
+                        f'{self.on_line(item.line)}: a record has one name in its model',
+                        item.line,
+                    )
+                records.setdefault(item.name, item.line)
             name = getattr(item, 'name', None)
             if isinstance(item, (n.Entity, n.Table, n.Declaration)) and name:
                 if name in seen:
@@ -4334,6 +4404,22 @@ class Resolver:
                                 member.line,
                             )
                         own.setdefault(member_name, member.line)
+
+    def note_records(self, notes):
+        """Each record that a note cites, at any depth, is a record of the model (`unknown_record`
+        at the line of the citation)."""
+        pending = list(notes)
+        while pending:
+            note = pending.pop()
+            pending += note.notes
+            for item in (*note.cites, *note.evidence):
+                if isinstance(item, n.Cite) and item.name not in self.records:
+                    self.report(
+                        'unknown_record',
+                        f'@{item.name} names no record of the model' + close(item.name, self.records),
+                        item.line or note.line,
+                        item.column,
+                    )
 
     def scenario(self, node):
         def hours(value, key):

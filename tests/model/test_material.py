@@ -186,28 +186,50 @@ def test_the_capacity_of_a_store_with_one_flow_caps_that_flow(limit, rate):
 # ---- an assertion of a sum ---------------------------------------------------------------------------
 
 BOOKS = 'assert service.waiting + service.served in [service.users - 0.001 person, service.users + 0.001 person]\n'
-# The spec writes a sum that must hold as such an assertion ("Assertions and their timing"), and says
-# that the compiler rejects an assertion whose guarantee the engine cannot give.
-UNCERTIFIED = pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason='bug: the front end accepts an assertion of the sum of two stores that move, and the engine '
-    'stops its run at 0 h: "the first contact ... cannot be certified: it reads more than one store"',
-)
+# The spec writes a sum that must hold as such an assertion ("Assertions and their timing"). The serve
+# moves the users on a curve; the engine certifies the first contact of the sum, whose total only falls
+# or only rises (`triggers.py`, `_monotone`).
 
 
-@UNCERTIFIED
 def test_an_assertion_of_a_sum_holds_while_the_flows_keep_their_stores():
     model = compile_text(SERVICE.format(parts=SERVE) + BOOKS, UNITS)
     assert run(model.program, model.configuration).failure is None
 
 
-@UNCERTIFIED
 def test_an_assertion_of_a_sum_fails_when_a_flow_takes_from_its_stores():
     """A leak of 1 person an hour from the waiting users leaves the books 0.001 person short at
-    0.001 h."""
+    0.001 h. The engine finds the contact within the tolerance of the books, 1e-10 of their size of
+    1000 people, which the leak crosses in 1e-7 h."""
     leak = SERVE + '    flow leak: this.waiting -> SINK\n        request = 1 person/h\n'
     model = compile_text(SERVICE.format(parts=leak) + BOOKS, UNITS)
     record = run(model.program, model.configuration)
-    assert record.failure is not None and record.failure.t == pytest.approx(0.001, rel=1e-6)
+    assert record.failure is not None and record.failure.t == pytest.approx(0.001, abs=2e-7)
     assert 'assert[0]: the assertion does not hold' in record.failure.detail('message')
+
+
+def test_an_assertion_of_a_sum_of_stores_on_lines_is_certified_by_its_ends():
+    """Where the serve holds its rate, 5 people an hour, the sum of the stores is a line between
+    moments: the leak's contact is its root, 0.001 h."""
+    held = '    flow serve: this.waiting -> this.served\n        request = 5 person/h\n'
+    leak = held + '    flow leak: this.waiting -> SINK\n        request = 1 person/h\n'
+    model = compile_text(SERVICE.format(parts=held) + BOOKS, UNITS)
+    assert run(model.program, model.configuration).failure is None
+    model = compile_text(SERVICE.format(parts=leak) + BOOKS, UNITS)
+    record = run(model.program, model.configuration)
+    assert record.failure is not None and record.failure.t == pytest.approx(0.001, rel=1e-9)
+
+
+def test_a_sum_of_stores_whose_total_moves_both_ways_is_not_certified():
+    """A fill into the waiting users and a leak out of the served: the total rises by one flow and
+    falls by the other, so its sign may change more than once, and the run stops by name."""
+    both = (
+        SERVE
+        + '    flow fill: SOURCE -> this.waiting\n        request = formula(this.waiting / 10 h)\n'
+        + '    flow leak: this.served -> SINK\n        request = 1 person/h\n'
+    )
+    model = compile_text(SERVICE.format(parts=both) + BOOKS, UNITS)
+    record = run(model.program, model.configuration)
+    assert record.failure is not None and record.failure.t == 0
+    assert 'only a store, or a sum of stores, that only rises or only falls' in record.failure.detail(
+        'message'
+    )

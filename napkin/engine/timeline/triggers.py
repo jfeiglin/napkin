@@ -42,10 +42,13 @@ the root of a line (of a clock, the time that its other side gives; of one store
 start plus its distance over its rate: their closed forms; `since(e)` is the time less the newest
 start, so it moves as the time does); else,
 where the comparison is affine in one store that only rises or only falls through the window
-(it only supplies or only receives the flows of its set) against what holds between moments, the
+(it only supplies or only receives the flows of its set), or is a sum of stores whose total only
+rises or only falls (each flow that crosses the boundary of the group crosses it one way, or none
+does, as for the books of a transfer, `waiting + served`), against what holds between moments, the
 first change of sign along its trajectory, found by sampling and bisection to the crossing
 tolerance; any other comparison on a curve has no first contact that the engine can certify, and the
-run stops with a diagnostic. `any` and `all` of yes/no values are read through their members'
+run stops with a diagnostic that says what it certifies. Where the stores hold their rates between
+moments, a sum of them is a line, whose ends in the window certify its root. `any` and `all` of yes/no values are read through their members'
 comparisons; a sum is affine where its members are, and a count, a least or a greatest value of what
 moves is not. A keyed read whose key or members move changes by steps that the engine does not
 locate: a watched condition that reads one stops the run with a diagnostic. That time is a moment, and so is an event of a way that changes what a
@@ -91,7 +94,7 @@ from ..errors import SimulationError
 from .family import Family
 from .lines import Lines
 from .moment import Tx, near_ties
-from .plan import FORMULA, LOOKUP, RATE, REDUCE
+from .plan import FORMULA, LOOKUP, RATE, REDUCE, ROUTE
 from .reads import lazily
 
 # The comparisons of `napkin/core/expr`, as functions of the difference of their sides and of the
@@ -518,9 +521,10 @@ class Triggers:
             if not self._certified(left, right, moving):
                 raise SimulationError(
                     f'the first contact of {nodes.text(left)} {_SPELLING[op]} {nodes.text(right)} cannot be '
-                    'certified: it reads a value that moves on a curve and does not compare one store '
-                    'that only rises or only falls with what holds between moments; use such a '
-                    'threshold or an inspection schedule'
+                    'certified: it reads a value that moves on a curve, and the engine certifies on a '
+                    'curve only a store, or a sum of stores, that only rises or only falls between '
+                    'moments, compared with what holds between them; use such a threshold or an '
+                    'inspection schedule'
                 )
             root = self._search(left, right, now, until, self.band(left, right))
             if root is not None:
@@ -553,17 +557,43 @@ class Triggers:
         return sorted(found)
 
     def _certified(self, left, right, moving):
-        """Whether the first contact of a comparison on a curve is certain to be found: one side is
-        affine in a single store that only rises or only falls through the window, the other holds
-        between moments, so the difference changes its sign once at most."""
+        """Whether the first contact of a comparison on a curve is certain to be found, so that the
+        difference changes its sign once at most: one side holds between moments, and the other is
+        affine in a single store that only rises or only falls through the window, or is a sum of
+        stores (each added, or each subtracted) whose total only rises or only falls (`_monotone`),
+        as the books of a transfer are (`waiting + served`)."""
         plan, ways = self.plan, self.run.ways
-        if len(moving) != 1:
+        if not moving or any(name not in ways.set_of for name in moving):
             return False
-        (store,) = moving
-        if store not in ways.set_of:
+        sides = [part for part in (left, right) if _reads(part, plan) & moving]
+        if len(sides) != 1 or not _affine(sides[0], moving, plan):
             return False
-        sides = [part for part in (left, right) if store in _reads(part, plan)]
-        return len(sides) == 1 and _affine(sides[0], moving, plan) and ways.monotone(store)
+        if len(moving) == 1:
+            return ways.monotone(next(iter(moving)))
+        signs = _signs(sides[0], moving, plan)
+        return signs is not None and len(set(signs.values())) == 1 and self._monotone(set(signs))
+
+    def _monotone(self, stores):
+        """Whether the total of some stores only rises or only falls between moments: every
+        connection of their sets that meets one of them and no other crosses the boundary of the
+        group in one direction, or none does, and no route crosses it (its signed rate moves the
+        total either way). What moves inside the group leaves the total as it is."""
+        ways, plan = self.run.ways, self.plan
+        directions = set()
+        for key in {ways.set_of[store] for store in stores}:
+            for flow in ways.sets[key][0].flows:
+                found = plan.flows[flow]
+                if found.kind == ROUTE:
+                    if (found.source in stores) != (found.sink in stores):
+                        return False
+                    continue
+                for connection in found.connections:
+                    inside = (connection.source in stores, connection.sink in stores)
+                    if inside == (True, False):
+                        directions.add('out')
+                    elif inside == (False, True):
+                        directions.add('in')
+        return len(directions) <= 1
 
     def _window(self, moving):
         """The time until which the trajectories of the moving reads hold: the next moment that the
@@ -659,6 +689,37 @@ def _affine(node, moving, plan):
         if node.op == 'div':
             return still[1] and _affine(node.left, moving, plan)
     return not (_reads(node, plan) & (moving | {'t'}))
+
+
+def _signs(node, moving, plan):
+    """The sign with which a node that is a sum adds each moving name that it reads, through formulas
+    and sums of collections: +1 or -1, or None when it is no plain sum of them (a name read twice,
+    or scaled, or under any operation but `+` and `-`)."""
+    found = {}
+    pending = [(node, 1)]
+    while pending:
+        part, sign = pending.pop()
+        if not (_reads(part, plan) & moving):
+            continue
+        if isinstance(part, nodes.Ref):
+            value = plan.values.get(part.name)
+            if part.name in moving:
+                if part.name in found:
+                    return None
+                found[part.name] = sign
+            elif value is not None and value.kind == FORMULA:
+                pending.append((value.node, sign))
+            elif value is not None and value.kind == REDUCE and plan.reductions[part.name].op == 'sum':
+                pending += [(nodes.ref(name), sign) for name in plan.reductions[part.name].names or ()]
+            else:
+                return None
+        elif isinstance(part, nodes.Unary) and part.op in ('neg', 'pos'):
+            pending.append((part.operand, -sign if part.op == 'neg' else sign))
+        elif isinstance(part, nodes.Binary) and part.op in ('add', 'sub'):
+            pending += [(part.left, sign), (part.right, -sign if part.op == 'sub' else sign)]
+        else:
+            return None
+    return found
 
 
 def _reads(node, plan):

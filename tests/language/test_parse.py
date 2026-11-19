@@ -68,6 +68,44 @@ def test_an_expression_goes_on_inside_brackets_only():
     refused('x = 1 +\n    2\n', 'continue', 1)
 
 
+def test_the_operators_bind_from_the_loosest_to_the_tightest():
+    """`a if C else b`, `or`, `and`, `not`, a comparison, `+ -`, `* /`, a sign, `**`, a dot."""
+    a, b, c, d = (n.Name(name) for name in 'abcd')
+    assert parse_expression('a + b * c - d') == n.Binary('-', n.Binary('+', a, n.Binary('*', b, c)), d)
+    assert parse_expression('-a ** b * c') == n.Binary('*', n.Unary('-', n.Binary('**', a, b)), c)
+    assert parse_expression('a ** -b ** c') == n.Binary('**', a, n.Unary('-', n.Binary('**', b, c)))
+    assert parse_expression('not a < b and c or d') == n.BoolOp(
+        'or', (n.BoolOp('and', (n.Unary('not', n.Compare(('<',), (a, b))), c)), d)
+    )
+    assert parse_expression('a if b else c if d else a') == n.IfElse(b, a, n.IfElse(d, c, a))
+    assert parse_expression('not not - - a') == n.Unary('not', n.Unary('not', n.Unary('-', n.Unary('-', a))))
+
+
+@pytest.mark.parametrize(
+    ('form', 'levels'),
+    [('({})', 150), ('min({}, a)', 150), ('(a if a > 0 else {})', 75), ('a ** ({})', 75)],
+    ids=['brackets', 'calls', 'choices', 'powers'],
+)
+def test_an_expression_nested_past_the_deepest_tree_is_refused_by_name(form, levels):
+    """An operation inside another costs a few calls of Python in each reader of the tree: 150 of
+    them one inside the other (`napkin.core.expr.DEEPEST`) parse, one more is refused (`deep`) at its
+    line. A choice nests two (its bracket and the side after `else`), and so does a power of a
+    bracket."""
+    text = 'a'
+    for _ in range(levels):
+        text = form.format(text)
+    parse_expression(text)
+    problem = refused(f'x = 1\ny = {form.format(text)}\n', 'deep', 2)
+    assert 'nests more than 150 operations one inside the other' in str(problem)
+
+
+def test_a_chain_of_any_length_is_read_without_nesting():
+    """A sum from the left, a chain of signs and a conjunction are loops of the parser."""
+    assert parse_expression(' + '.join(['a'] * 2000)).right == n.Name('a')
+    assert parse_expression('- ' * 2000 + 'a').op == '-'
+    assert len(parse_expression(' and '.join(['a'] * 2000)).values) == 2000
+
+
 @pytest.mark.parametrize(
     ('text', 'code', 'line'),
     [

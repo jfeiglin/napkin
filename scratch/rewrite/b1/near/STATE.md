@@ -5,15 +5,10 @@ Owned: engine/timeline/moment.py, triggers.py, collections.py, plan.py, engine/r
 model/semantic.py, lowering.py, tests/language/, new files in tests/engine/; later also
 model/language/parse.py and tests/model/ (for the five bugs).
 
-## Scope
-1. Near-ties not marked yet: a split of who is served (settling), a gate's release, a false guard,
-   a trigger within tolerance that did not fire. Detail `near`, report message for each.
-2. `where` over an endpoint's flows, front end and engine.
-3. (added by the coordinator) five bugs held as xfail(strict) in tests/model/ (cleanup STATE):
-   deep expressions (RecursionError), two `record shared`, a note citing no record, a value then
-   an event/flow of its name (AttributeError), an assertion over a sum of two moving stores.
+Scope: the near-ties not yet marked; `where` over an endpoint's flows; the five bugs that the
+cleanup held as xfail(strict) in tests/model/ (its STATE, "Bugs found").
 
-## Design (decided, see docstrings once written)
+## Design (see the docstrings)
 - New trace kinds, each only with a detail `near`: `skip` (a stage guard false within tolerance),
   `miss` (an armed trigger false within tolerance, now and 1e-6 h later; once per arming unless its
   near-ties change: memory derived from the trace, so a restored run agrees), `release` (a gate
@@ -35,6 +30,28 @@ model/language/parse.py and tests/model/ (for the five bugs).
   plan.py (`_ends`, `_dynamic_where`, item points, `_refuse_kept_in_solvers`), collections.py
   (`Ends`, `Dynamic.keep`, filter in `dynamic_value`). Tests: tests/language/test_endpoints.py
   (+13), tests/engine/test_where_over_flows.py (10).
+- Five bugs (marks removed in tests/model): (1) parse.py is precedence climbing (`operation`,
+  `factor`, `dots`; ~3 calls of Python per nested bracket; signs and `not` in loops), nesting past
+  DEEPEST (150: brackets, call arguments, `else`, powers, intervals; `enter`) refused `deep`;
+  semantic.py reads `+ -` and `* /` chains and sign chains in loops: a sum past DEEPEST operations
+  is one `sum(...)` (bit for bit the same), a sign chain past it folds, a longer product `deep`.
+  (2) a second `record X` is `duplicate_name` naming both lines. (3) `note_records`: a note's
+  `@X` must name a record. (4) entity members: first declaration of a name keeps `syntax`, later
+  ones are skipped (check_names reports them). (5) triggers.py `_certified`/`_monotone`/`_signs`:
+  a plain sum of stores whose group total only rises or falls is certified on curves.
+  Tests: tests/language/test_parse.py (+7), test_semantic.py (+3), tests/model (361 pass).
+
+## Tests (final)
+- core, program, reference, language, engine: 4095 passed; with tests/model: 4456 passed (-n 2).
+  ruff check and format clean on every touched file.
+
+## For others (not my files)
+- napkin/program/record.py: KINDS and its near-tie paragraph should list skip, miss, release, settle.
+- napkin/commands/run.py docstring still says a near-tie is "a firing or a test".
+- A split that a way makes between moments (a store meets a bound inside its instance) is not
+  marked: it needs a call of `moment.split_ties` after `instance.step()` in run.py `next_moment`.
+- The oracle reads `item.sink` in a where as the amount at that end and raises TypeError at SINK:
+  it does not cover a where over flows (not edited).
 
 ## Status
-- the five bugs of tests/model (cleanup STATE "Bugs found")
+- done

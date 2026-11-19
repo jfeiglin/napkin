@@ -54,27 +54,15 @@ class Recursed(AssertionError):
     """The front end ended in a RecursionError: raised in its place, so that the report is short."""
 
 
-# The parser reads a bracket, a call or a choice with about eleven calls of Python for each level, and
-# the declared model a sum or a sign with two for each term: past about 90 levels of the first and 450
-# terms of the second, the stack of Python ends before the front end does.
-RECURSION = pytest.mark.xfail(
-    strict=True,
-    raises=Recursed,
-    reason='bug: napkin/model/language/parse.py and semantic.py recurse once or more for each level of an '
-    'expression, so a deep expression ends in a RecursionError, not in a value or a problem at its line',
-)
+# The forms that nest one operation inside another: past the deepest tree, the front end refuses
+# them by name (`deep`); a sum from the left and a chain of signs are read in a loop, at any length.
 NESTED = ('a sum from the right', 'calls', 'choices', 'brackets')
 
 
 def depths(form):
-    """The depths of a form that the test reads: a few levels, 60, and past the deepest tree, up to
-    the first depth at which the front end ends in a RecursionError, so that each form shows the bug
-    once."""
+    """The depths of a form that the test reads: a few levels, 60, and past the deepest tree; a chain
+    also far past it."""
     return (3, 60, DEEPEST + 1) if form in NESTED else (3, 60, DEEPEST + 1, 2 * DEEPEST, 700)
-
-
-def broken(form, levels):
-    return (form in NESTED and levels > 90) or levels >= 450
 
 
 def value_of(expression, name='s.total', time=4):
@@ -95,12 +83,7 @@ def test_a_sum_of_many_terms_is_an_expression_like_any_other(terms):
 
 
 @pytest.mark.parametrize(
-    ('form', 'levels'),
-    [
-        pytest.param(form, levels, marks=[RECURSION] if broken(form, levels) else [])
-        for form in sorted(FORMS)
-        for levels in depths(form)
-    ],
+    ('form', 'levels'), [(form, levels) for form in sorted(FORMS) for levels in depths(form)]
 )
 def test_an_expression_of_any_depth_has_its_value_or_a_problem_at_its_line(form, levels):
     """Each form with a few levels, near the deepest tree of `napkin/core/expr.py`, and far past it.
@@ -114,14 +97,7 @@ def test_an_expression_of_any_depth_has_its_value_or_a_problem_at_its_line(form,
         assert found == value(levels)
 
 
-@pytest.mark.parametrize(
-    'form',
-    [
-        'a sum from the left',
-        pytest.param('a sum from the right', marks=RECURSION),
-        'signs',
-    ],
-)
+@pytest.mark.parametrize('form', ['a sum from the left', 'a sum from the right', 'signs'])
 def test_an_expression_at_the_deepest_tree_leaves_room_on_the_stack(form):
     """A caller can be deep itself (a test runner, a notebook, a server): with 250 calls fewer than
     Python gives, an expression one level below the deepest tree still has its value."""

@@ -346,12 +346,6 @@ def test_independent_faults_are_all_reported():
 VALUE = 'go: L = 1 L'
 EVENT = 'go = event():\n        after 1 h'
 FLOW = 'flow go: SOURCE -> this.spare\n        request = 1 L/h'
-DUPLICATE = pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason='bug: a value declared before an event or a flow of its name ends in an AttributeError, not in '
-    'duplicate_name: the later declaration replaces the value in Resolver.syntax (napkin/model/semantic.py)',
-)
 
 
 @pytest.mark.parametrize(
@@ -359,8 +353,8 @@ DUPLICATE = pytest.mark.xfail(
     [
         pytest.param(EVENT, VALUE, id='an event, then a value'),
         pytest.param(FLOW, EVENT, id='a flow, then an event'),
-        pytest.param(VALUE, EVENT, id='a value, then an event', marks=DUPLICATE),
-        pytest.param(VALUE, FLOW, id='a value, then a flow', marks=DUPLICATE),
+        pytest.param(VALUE, EVENT, id='a value, then an event'),
+        pytest.param(VALUE, FLOW, id='a value, then a flow'),
     ],
 )
 def test_a_name_is_declared_once_in_its_entity(first, second):

@@ -80,12 +80,6 @@ def test_the_records_of_a_note_at_any_depth_are_records_of_the_model():
     assert [(item.kind, item.text) for item in first.evidence] == [('identity', "A reviewer's source.")]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason='bug: a note that cites no record of the model is accepted (napkin/model/semantic.py checks '
-    'the citations of declarations only, and napkin/model/evidence.basis_errors no named record)',
-)
 @pytest.mark.parametrize(
     'note', ['checks: "Checked."  @missing', 'checks:\n    first: "By a reviewer."  @missing']
 )

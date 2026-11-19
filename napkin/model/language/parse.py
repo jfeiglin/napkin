@@ -23,9 +23,15 @@ readings:
 
 from __future__ import annotations
 
+from ...core.expr import DEEPEST
 from . import lex
 from . import nodes as n
 from .problems import SyntaxProblem
+
+# The levels of the operators, from the loosest (`Expressions.operation`): a choice, `or`, `and`,
+# `not`, a comparison or a membership test, and `+ -`, which `* /` binds tighter than; a sign, a
+# power and a dot bind tighter still (`Expressions.factor`).
+CHOICE, OR, AND, NOT, COMPARE, SUM = range(6)
 
 # The words that name nothing else. `scale` ends a declaration, so it is never read as a unit.
 RESERVED = frozenset(
@@ -209,53 +215,93 @@ def _place(token):
 
 
 class Expressions:
-    """The precedence parser of expressions over a cursor. `statement` says that the expression is the
-    head of a line of a stage or a trigger, where `.start(...)` can stand."""
+    """The precedence parser of expressions over a cursor (precedence climbing). `statement` says
+    that the expression is the head of a line of a stage or a trigger, where `.start(...)` can stand.
+
+    Each level of binding is a loop of `operation`, and a chain of signs or of `not` is read in a
+    loop too, so an expression costs a few calls of Python for each operand written inside another
+    (in brackets, in a call, after `else`) and none for each level of binding. One that nests more
+    than `DEEPEST` operations one inside the other is refused by name (`deep`): each reader of its
+    tree goes down it with calls of Python (`napkin/core/expr.py`)."""
 
     def __init__(self, cursor, statement=False):
         self.c = cursor
         self.statement = statement
         self.started = None
+        self.depth = 0  # the operations open at the cursor, one inside the other (`enter`)
 
     def expression(self, bare_in=True):
-        token = self.c.peek()
-        body = self.disjunction(bare_in)
-        if self.c.at_name('if'):
+        return self.operation(CHOICE, bare_in)
+
+    def operation(self, level, bare_in):
+        """The operations that bind at `level` or tighter, from the cursor: an operand, then the
+        operators of each level from the tightest to `level`, each with its operands."""
+        start = self.c.peek()
+        if level <= NOT and self.c.at_name('not'):
+            nots = []
+            while self.c.at_name('not'):
+                nots.append(self.c.take())
+            node = self.operation(COMPARE, bare_in)
+            for token in reversed(nots):
+                node = n.Unary('not', node, **_place(token))
+        else:
+            node = self.factor()
+            while self.c.at_op('*', '/', '+', '-'):
+                token = self.c.take()
+                if token.value in ('*', '/'):
+                    node = n.Binary(token.value, node, self.factor(), **_place(token))
+                    continue
+                # The right side of `+` or `-` is a product, read here and not by a call.
+                right = self.factor()
+                while self.c.at_op('*', '/'):
+                    op = self.c.take()
+                    right = n.Binary(op.value, right, self.factor(), **_place(op))
+                node = n.Binary(token.value, node, right, **_place(token))
+            if level <= COMPARE:
+                node = self.comparison(node, start, bare_in)
+        if level <= AND and self.c.at_name('and'):
+            values = [node]
+            while self.c.at_name('and'):
+                self.c.i += 1
+                values.append(self.operation(NOT, bare_in))
+            node = n.BoolOp('and', tuple(values), **_place(start))
+        if level <= OR and self.c.at_name('or'):
+            values = [node]
+            while self.c.at_name('or'):
+                self.c.i += 1
+                values.append(self.operation(AND, bare_in))
+            node = n.BoolOp('or', tuple(values), **_place(start))
+        if level <= CHOICE and self.c.at_name('if'):
             self.c.i += 1
-            test = self.disjunction(bare_in)
+            test = self.operation(OR, bare_in)
             if not self.c.at_name('else'):
                 if self.c.at_name('in') and not bare_in:
                     self.c.fail(MEMBERSHIP, code='in')
                 self.c.fail('a value that depends on a condition has both sides: a if C else b')
-            self.c.i += 1
-            return n.IfElse(test, body, self.expression(bare_in), **_place(token))
-        return body
-
-    def disjunction(self, bare_in):
-        token = self.c.peek()
-        values = [self.conjunction(bare_in)]
-        while self.c.at_name('or'):
-            self.c.i += 1
-            values.append(self.conjunction(bare_in))
-        return values[0] if len(values) == 1 else n.BoolOp('or', tuple(values), **_place(token))
-
-    def conjunction(self, bare_in):
-        token = self.c.peek()
-        values = [self.negation(bare_in)]
-        while self.c.at_name('and'):
-            self.c.i += 1
-            values.append(self.negation(bare_in))
-        return values[0] if len(values) == 1 else n.BoolOp('and', tuple(values), **_place(token))
-
-    def negation(self, bare_in):
-        if self.c.at_name('not'):
             token = self.c.take()
-            return n.Unary('not', self.negation(bare_in), **_place(token))
-        return self.comparison(bare_in)
+            self.enter(token)
+            orelse = self.operation(CHOICE, bare_in)
+            self.depth -= 1
+            node = n.IfElse(test, node, orelse, **_place(start))
+        return node
 
-    def comparison(self, bare_in):
-        start = self.c.peek()
-        operands, ops = [self.sum()], []
+    def enter(self, token):
+        """One more operation inside the others at `token`: a bracket, the arguments of a call, the
+        side after `else`, the exponent of a power, the sides of an interval. One that nests more than
+        `DEEPEST` is refused by name."""
+        self.depth += 1
+        if self.depth > DEEPEST:
+            self.c.fail(
+                f'this expression nests more than {DEEPEST} operations one inside the other: give a part '
+                'of it a name of its own, as part = formula(...), and read that name here',
+                token,
+                'deep',
+            )
+
+    def comparison(self, first, start, bare_in):
+        """A comparison or a membership test whose first operand `first` began at `start`, or `first`
+        itself when none follows it."""
+        operands, ops = [first], []
         while True:
             token = self.c.peek()
             if token is None:
@@ -269,7 +315,7 @@ class Expressions:
                         token,
                         'chain',
                     )
-                operands.append(self.sum())
+                operands.append(self.operation(SUM, bare_in))
                 continue
             if token.is_name('is'):
                 self.c.fail(
@@ -305,43 +351,38 @@ class Expressions:
     def interval(self):
         """`[lo, hi]` with either side left empty (D8): `[0,]`, `[, 10 L]`."""
         opening = self.c.op('[', 'in is followed by a closed interval: x in [lo, hi], or [0,] with one side')
+        self.enter(opening)
         low = None if self.c.at_op(',') else self.expression()
         self.c.op(',', 'an interval has two sides separated by a comma: [lo, hi], or [0,] with one side')
         high = None if self.c.at_op(']') else self.expression()
         self.c.op(']', 'an interval closes with ]: [lo, hi]')
+        self.depth -= 1
         if low is None and high is None:
             self.c.fail('an interval has at least one end: [0,] or [, 10 L]', opening)
         return low, high
 
-    def sum(self):
-        left = self.product()
-        while self.c.at_op('+', '-'):
-            token = self.c.take()
-            left = n.Binary(token.value, left, self.product(), **_place(token))
-        return left
-
-    def product(self):
-        left = self.signed()
-        while self.c.at_op('*', '/'):
-            token = self.c.take()
-            left = n.Binary(token.value, left, self.signed(), **_place(token))
-        return left
-
-    def signed(self):
-        if self.c.at_op('-', '+'):
-            token = self.c.take()
-            return n.Unary(token.value, self.signed(), **_place(token))
-        return self.power()
-
-    def power(self):
-        base = self.postfix()
+    def factor(self):
+        """A sign, a power or a postfix (`-a`, `a ** b`, `a.b`): its signs in a loop, then its base,
+        then the right side of a power, which may have a sign of its own (`a ** -b`)."""
+        signs = []
+        while self.c.at_op('-', '+'):
+            signs.append(self.c.take())
+        node = self.dots(self.primary())
         if self.c.at_op('**'):
             token = self.c.take()
-            return n.Binary('**', base, self.signed(), **_place(token))
-        return base
+            self.enter(token)
+            node = n.Binary('**', node, self.factor(), **_place(token))
+            self.depth -= 1
+        for token in reversed(signs):
+            node = n.Unary(token.value, node, **_place(token))
+        return node
 
     def postfix(self):
-        node = self.primary()
+        """A value and the members and operations after its dots (`this.water.outflow`)."""
+        return self.dots(self.primary())
+
+    def dots(self, node):
+        """The members and operations after the dots that follow a value."""
         if self.c.at_op('['):
             self.c.fail('a value has no index: a member of a collection is read by its key, c.at(key)')
         while self.c.at_op('.'):
@@ -379,6 +420,7 @@ class Expressions:
 
     def arguments(self, named=False):
         """The arguments of a call in brackets; with `named`, the outcomes `A: p` of `categorical`."""
+        self.enter(self.c.peek())
         self.c.op('(', 'the arguments of a call are in brackets')
         args, pairs = [], []
         while not self.c.at_op(')'):
@@ -398,15 +440,16 @@ class Expressions:
                 self.c.i += 2
                 if token.value in [name for name, _ in pairs]:
                     self.c.fail(f'categorical names each outcome once: {token.value} is written twice', token)
-                pairs.append((token.value, self.expression()))
+                pairs.append((token.value, self.operation(CHOICE, True)))
             else:
-                args.append(self.expression())
+                args.append(self.operation(CHOICE, True))
             if self.c.at_op(','):
                 self.c.i += 1
                 continue
             if not self.c.at_op(')'):
                 self.c.fail('the arguments of a call are separated by commas and end with )')
         self.c.i += 1
+        self.depth -= 1
         return tuple(pairs) if named else tuple(args)
 
     def bare(self, k, first=False):
@@ -479,7 +522,9 @@ class Expressions:
         if token.kind == 'op':
             if token.value == '(':
                 self.c.i += 1
-                inner = self.expression()
+                self.enter(token)
+                inner = self.operation(CHOICE, True)
+                self.depth -= 1
                 self.c.op(')', 'a bracket ( closes with )')
                 return inner
             if token.value == '<':
@@ -501,7 +546,9 @@ class Expressions:
             if not called:
                 self.c.fail('formula keeps a calculation: formula(expression)')
             self.c.i += 2
-            body = self.expression()
+            self.enter(token)
+            body = self.operation(CHOICE, True)
+            self.depth -= 1
             self.c.op(')', 'formula(expression) closes with )')
             return n.Formula(body, **_place(token))
         if name in ('event', 'solver'):
