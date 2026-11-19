@@ -9,7 +9,10 @@ At a time, rounds. One round is:
    the receiver, through a link or an entity parameter, of an occurrence of the stage or of a live
    occurrence that `.occurrences.at(t)` names; a finished occurrence is frozen, and a write to it
    fails), `=` of a distribution on a distribution-valued value, which the draws after it read,
-   and of an allocation on an endpoint, by which it shares its flows from the settling on;
+   of an allocation on an endpoint, by which it shares its flows from the settling on, and of a
+   `formula(...)` on a formula, a request or a capacity, which reads the new calculation from the
+   commit on (a number written to a request or a capacity that was a formula captures it; spec:
+   "A scalar assignment captures a value. `formula(...)` explicitly installs a live calculation");
    `move`, which debits and credits two stores together or fails whole; `.start(...)`, whose
    arguments are evaluated at the caller left to right when the statement runs, on one event or on
    each member of a collection in the order of its keys; `if`/`else`; and `switch` on an enum value,
@@ -42,14 +45,24 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from dataclasses import dataclass
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...program import parts as p
-from ...program.refs import Distribution
+from ...program.refs import Distribution, Formula
 from ..errors import SimulationError
+from .plan import FORMULA
 
 _SETUP = 'setup'  # what a pause in the setup holds
+
+
+@dataclass(frozen=True)
+class Defined:
+    """A definition that a stage gives a value with `= formula(...)`: the node of the calculation
+    over engine names, which what reads the value follows from the commit on."""
+
+    node: nodes.Node
 
 
 class Tx:
@@ -66,6 +79,14 @@ class Tx:
         self.starts = []  # (member, event, arguments)
         self.choices = []  # (site, owner, details) of the trace entry of each choice
         self.allocations = []  # (store, side, allocation, scope, origin) of each new allocation
+        # A value that the stage gives a definition -> the statement that gives it its last: a
+        # formula, or a captured number in place of a request's or a capacity's formula.
+        self.defined = {}
+
+    def details(self):
+        """The details of the trace entry of the commit: the definitions that it gives, by the
+        statements that give them (`Plan.definitions_of`)."""
+        return {'defines': tuple(self.defined.items())} if self.defined else {}
 
 
 class _Moving:
@@ -106,6 +127,9 @@ class Moment:
         run.chance.made = []
         self.execute(self.plan.program.setup, tx, None)  # a pause stops here and holds the setup
         self.held, run.chance.kept = None, set()
+        if tx.defined:
+            # The definitions of the setup are in its trace, as those of a stage, for a reader.
+            run.recorder.entry(run.now, 'commit', 'setup', '', **tx.details())
         self.commit(tx)
         self.settle()
         run.occurrences.delays()
@@ -195,7 +219,7 @@ class Moment:
                 raise SimulationError(
                     f'{problem} [stage {live.step + 1} of {made.id}, t = {run.now:g} h]'
                 ) from None
-            run.recorder.entry(run.now, 'commit', step.origin, made.id)
+            run.recorder.entry(run.now, 'commit', step.origin, made.id, **tx.details())
         run.chance.kept = set()  # a resumed stage has traced the draws that it kept
         self.commit(tx)
         run.occurrences.reach(live, live.step + 1)
@@ -286,11 +310,22 @@ class Moment:
             # A new distribution for the draws to come; what was drawn stays as it is.
             tx.writes[name] = statement.value
             return
+        if isinstance(statement.value, Formula):
+            # A new calculation: what reads the value follows it from the commit on.
+            node = run.occurrences.node(statement.value.expr, scope, statement.origin)
+            tx.writes[name] = Defined(node)
+            tx.defined[name] = statement.origin
+            return
         value = self.truth(statement.value, scope, statement.origin, tx)
         if statement.op != '=':
             current = run.value(name, tx=tx)
             value = current + value if statement.op == '+=' else current - value
         tx.writes[name] = self.checked(name, value, statement.origin)
+        found = self.plan.values.get(name)  # none for a distribution-valued value
+        if name in tx.defined or (found is not None and found.kind == FORMULA):
+            # A request or a capacity that was a formula now holds the number (spec: "A scalar
+            # assignment captures a value").
+            tx.defined[name] = statement.origin
 
     def move(self, statement, tx, scope):
         """`move amount from source to destination`: both inventories are checked before anything

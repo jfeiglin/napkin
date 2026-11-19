@@ -17,7 +17,9 @@ without lowering a claim at that level, so the lower bound holds it. A claim of 
 a bound of that column, and any other claim by a row. The programs run at HiGHS's tightest primal
 tolerance, so that t* - FIX can be reached: at the default 1e-7, t* came out high by more than FIX on
 a random network of 8 places, the face that the distance step reads was empty at 1e-9, and its
-method could not converge.
+method could not converge. At 30,000 places with need x1.45, one of 1,287 programs at that tolerance
+ended on the kept instance with HiGHS's status kUnknown, which says nothing of the program; a fresh
+instance holding the same program answered it, as `kept.Kept.run` does, with the same t*.
 
 After the first program of a tier only bounds change, and the last answer stays feasible, so the
 later programs run the primal simplex from the last basis (A3: 5 to 40 iterations each at 3,000

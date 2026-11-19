@@ -59,7 +59,9 @@ class Face:
 def solve(kept, step, first=False):
     """One run of the kept instance, or the named failure of its status. `first` marks the first
     program of a solve, whose infeasibility is that of the hard constraints; a later program runs
-    on a face that an earlier one found feasible, so its infeasibility is numerical."""
+    on a face that an earlier one found feasible, so its infeasibility is numerical. A status that
+    says nothing of the program is the last of three runs: the kept instance, then two fresh ones
+    (`kept.Kept.run`)."""
     run = kept.run()
     if run.status == OPTIMAL:
         return run
@@ -74,7 +76,14 @@ def solve(kept, step, first=False):
         raise SolveFailure(NUMERICAL, step, 'no answer on the face that the earlier ranks left', reached)
     if status == Status.kUnbounded:
         raise SolveFailure(UNBOUNDED, step, 'the objective has no finite optimum', reached)
-    raise SolveFailure(NUMERICAL, step, f'HiGHS ended with the status {reached["status"]}', reached)
+    reached.update(rows=kept.m, columns=kept.n)
+    raise SolveFailure(
+        NUMERICAL,
+        step,
+        f'HiGHS ended with the status {reached["status"]} on a program of {kept.m} rows and {kept.n} '
+        'columns, and so did two fresh instances of it, one with its basis and one with none',
+        reached,
+    )
 
 
 def _feasible(kept):

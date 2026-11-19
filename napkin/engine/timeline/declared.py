@@ -22,7 +22,10 @@ solve library (`napkin/engine/solve/`):
 - **claims**: each positive request of a flow (a route's in the direction of its sign, a flow with
   legs' on its fraction, as a request of one) and of an endpoint. A declared solver shares across all
   of its claims on one level; an endpoint's `priority(...)` orders its flows' claims in tiers
-  (`network.layers`), and an endpoint's claim is in the first.
+  (`network.layers`), and an endpoint's claim is in the first. The preferred classes of an endpoint
+  that has a request carry it first (spec: "A preferred route has first access to useful requested
+  work, up to the outstanding claim it serves"): after every tier, as much of the request as can be
+  on its first class, then on its first two, and so on, each a claim alone in a tier of its own.
 
 The expressions of the solver read its unknowns as symbols (`Affine`): a formula, a reduction or a
 dynamic read that reads an unknown is expanded where it is read, and any other value is a number of
@@ -80,7 +83,8 @@ from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
 from .family import Columns
 from .lines import asked_of
 from .network import BACKWARD, FORWARD, IN, LEG, LEGS, OUT, ROUTE, SIDES, network_of
-from .plan import DYNAMIC, FORMULA, REDUCE
+from .collections import selected
+from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE
 from .reads import lazily
 from .record import fitted
 
@@ -156,6 +160,7 @@ class Former:
         for name in connected.results:
             self.unknown[name] = ('value', name)
         self._reads = {}
+        self._touch = None  # the place of each store in the oracle's order (`_first_touch`)
 
     # ---- whether a name reads an unknown -------------------------------------------------------
 
@@ -238,6 +243,7 @@ class Former:
             self.cols[f'{flow}.actual_rate'] = column
         for name in self.connected.results:
             self.cols[name] = self._result(name)
+        preferred = []  # (the place of the endpoint in the oracle's order, terms, amount)
         for (side, s), (wanted, cap) in self._ends(t).items():
             store = net.stores[s]
             here = net.ends[side].of(s).tolist()
@@ -250,13 +256,15 @@ class Former:
                         f'{store}.{SIDES[side]}.request with a route at that endpoint, in the solver '
                         f'{declared.id}: a request on the positive parts of a route is not convex'
                     )
-                if (side, s) in net.classes:
-                    raise Unsupported(
-                        f'{store}.{SIDES[side]}: a priority allocation with a request, in the solver '
-                        f'{declared.id}: the preferred routes of an aggregate request are no rank of a '
-                        "declared solver's selection order"
-                    )
                 claims.append((total.terms, wanted, None))
+                # The preferred routes of the aggregate request carry it first, class after class
+                # (spec: "A preferred route has first access to useful requested work, up to the
+                # outstanding claim it serves"): as much of it as can be on the first class, then on
+                # the first two, after every tier of fair sharing.
+                carried = Affine()
+                for members in net.classes.get((side, s), ())[:-1]:
+                    carried = carried.plus(self._total(list(members)))
+                    preferred.append(((self._first_touch(s), side), dict(carried.terms), wanted))
         for s, store in enumerate(net.stores):
             if not (lower[s] or upper[s]):
                 continue
@@ -297,10 +305,31 @@ class Former:
         )
         for terms in objectives:
             problem.minimize(made(terms))
+        last = 0
         for terms, wanted, f in claims:
             tier = int(net.layer[f]) - 1 if f is not None else 0
             problem.claim(made(terms), wanted, tier)
+            last = max(last, tier)
+        # Each preferred class is a tier of its own after the others, in the order in which the
+        # oracle meets the endpoints: one claim alone in a tier is served as far as it can be.
+        for k, (_, terms, wanted) in enumerate(sorted(preferred, key=lambda item: item[0])):
+            problem.claim(made(terms), wanted, last + 1 + k)
         return problem
+
+    def _first_touch(self, s):
+        """The place of a store in the order in which the oracle meets the stores of a problem: by
+        the first connection that meets it, its flows in their order of creation, a connection's
+        source before its sink."""
+        found = self._touch
+        if found is None:
+            net, plan = self.net, self.plan
+            found = self._touch = {}
+            order = sorted(range(len(net.source)), key=lambda c: (plan.number(net.flows[int(net.of[c])]), c))
+            for place, c in enumerate(order):
+                for end, which in ((int(net.source[c]), 0), (int(net.sink[c]), 1)):
+                    if end >= 0:
+                        found.setdefault(end, (place, which))
+        return found[s]
 
     def _parts(self):
         """Make the positive parts of the problem, in one block for each depth (a part of an
@@ -542,6 +571,18 @@ class Former:
             members = self.plan.members(dynamic.source)
             names = [self.plan.project(point, dynamic.steps) for point in members]
             return self._reduced(dynamic.op, names, dynamic.spelled)
+        if value.kind == LOOKUP:
+            # A keyed read that selects its member from known numbers reads that member's value.
+            keyed = self.plan.keyed[name]
+            if self._symbolic(keyed.key) or any(
+                self.reads_unknown(read) for read in keyed.reads() - set(keyed.names)
+            ):
+                raise self._refused(f'{keyed.spelled}: a lookup keyed by an unknown of the solver')
+            entry = selected(keyed, self._reader(), self.plan.units, self.t)
+            if entry is None:
+                x = float(lazily(keyed.key, self._reader(), self.plan.units, self.t))
+                raise SimulationError(f'{keyed.spelled}: no member has a key at or below {x:g}')
+            return self.value(nodes.ref(keyed.names[entry]))
         raise self._refused(f'{name}, which the problem reads as an unknown')
 
     def _reduced(self, op, names, spelled):

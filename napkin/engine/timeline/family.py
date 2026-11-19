@@ -37,7 +37,7 @@ import numpy as np
 from ...core import arrays
 from ...core.errors import ExpressionError
 from ..errors import SimulationError
-from .collections import combined
+from .collections import combined, looked_up
 from .plan import FORMULA, LOOKUP, REDUCE
 from .reads import Reads, lazily
 
@@ -64,8 +64,10 @@ class Columns:
                 return combined(reduction.op, [None] * len(entries), reduction.spelled)
             found = self.at([reduction.names[k] for k in entries], t)
             return combined(reduction.op, list(found), reduction.spelled)
-        if kind == LOOKUP and plan.keyed[name].by_time:
-            return run.stepped_of(name).at(t)
+        if kind == LOOKUP and plan.stepped(name):
+            return self.one(run.stepped_of(name).name_at(t), t)
+        if kind == LOOKUP:
+            return looked_up(plan.keyed[name], lambda read: self.one(read, t), plan.units, t)
         return run.value_of(name)
 
     def at(self, names, t):

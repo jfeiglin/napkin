@@ -33,6 +33,7 @@ from napkin.program.build import (
     after,
     assign,
     constraint,
+    endpoint,
     event,
     flow,
     fmin,
@@ -41,6 +42,7 @@ from napkin.program.build import (
     local,
     maximize,
     named,
+    priority,
     q,
     reset_when,
     solve_for,
@@ -53,6 +55,8 @@ from napkin.program.build import (
     when,
 )
 from napkin.program.config import Configuration, Request
+from napkin.program.record import Key
+from tests.reference.from_program import run_of, value_at
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 
@@ -365,3 +369,56 @@ def test_a_relation_outside_the_constraint_language_fails_and_names_its_form(rel
     message = record.failure.detail('message')
     assert record.failure.t == 0
     assert 'unsupported in the solver provider.plan' in message and form in message
+
+
+def common_sink(order, limit=None):
+    """The common sink of "Local allocation" (6 L/h asked at the clinic's inflow, `main` capped at
+    4 L/h) with a provider's solver that determines both feeds, and `limit` on their sum, if any."""
+    b = Builder(UNITS)
+    clinic = b.entity(
+        'clinic',
+        value(
+            'water',
+            'L',
+            0,
+            lower=0,
+            inflow=endpoint(request=q(6, 'L/h'), allocation=priority(*(getattr(this, n) for n in order))),
+        ),
+        flow('main', SOURCE, this.water, capacity=q(4, 'L/h')),
+        flow('backup', SOURCE, this.water),
+    )
+    parts = [given('m', clinic.main), given('b', clinic.backup)]
+    parts += [solve_for(local.m.actual_rate), solve_for(local.b.actual_rate)]
+    if limit is not None:
+        parts.append(constraint(local.m.actual_rate + local.b.actual_rate <= q(limit, 'L/h')))
+    b.entity('provider', solver('feeds', *parts))
+    return b.finish()
+
+
+@pytest.mark.parametrize(
+    'order, limit, rates',
+    [
+        (('main', 'backup'), None, (4, 2)),
+        (('main', 'backup'), 5, (4, 1)),
+        (('backup', 'main'), None, (0, 6)),
+        (('backup', 'main'), 5, (0, 5)),
+    ],
+    ids=['main-first', 'main-first-short', 'backup-first', 'backup-first-short'],
+)
+def test_the_preferred_routes_of_a_request_carry_it_first_inside_a_solver(order, limit, rates):
+    """Spec, "Selection order": "A preferred route has first access to useful requested work, up to
+    the outstanding claim it serves". The sink's claim of 6 L/h (or the 5 L/h that the limit
+    leaves) is served first; then the preferred feed carries as much of it as it can, within its
+    capacity, and the other feed the rest. By hand: main first gives 4 and 2 L/h, as local sharing
+    does (acceptance row 6), and 4 and 1 L/h under a limit of 5 L/h; backup first carries all of it."""
+    program = common_sink(order, limit)
+    configuration = Configuration(Request(1))
+    record = run(program, configuration)
+    assert record.failure is None, record.failure
+    found = [values(record, program, f'clinic.{name}.actual_rate', [0.5])[0] for name in ('main', 'backup')]
+    assert found == pytest.approx(list(rates), abs=1e-9)
+    oracle, failed = run_of(program, configuration)
+    assert failed is None
+    for name, rate in zip(('main', 'backup'), rates):
+        expected = value_at(oracle, program, Key('clinic', (name, 'actual_rate')), 0)
+        assert float(expected) == rate

@@ -57,6 +57,7 @@ class Work:
     programs: int = 0  # linear programs run (hard constraints, objectives, fair sharing)
     iterations: int = 0  # simplex iterations of those programs
     tight: int = 0  # programs run again with tight tolerances for exact duals
+    renewals: int = 0  # fresh instances that took the kept one's place (`kept.Kept.run`)
     fair_programs: int = 0
     levels: int = 0  # distinct fair levels, over all tiers
     newton: list = field(default_factory=list)  # Newton steps of each distance stage
@@ -94,7 +95,7 @@ class Solver:
         _check_hard(arrays)
         w = self._follow(Scaled(arrays))
         kept, work = self._kept, Work()
-        start = kept.iterations
+        start, renewed = kept.iterations, kept.renewals
         face = ranked.Face(w)
         try:
             optima = ranked.optimize(kept, face, w, work)
@@ -103,6 +104,7 @@ class Solver:
         finally:
             self._restore(w)
             work.iterations = kept.iterations - start
+            work.renewals = kept.renewals - renewed
         return _answer(arrays, w, xi, optima, levels, work)
 
     def _follow(self, w):

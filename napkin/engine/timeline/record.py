@@ -232,6 +232,15 @@ class Recorder:
         """Pieces of a value, which a run gives as it goes."""
         self._add(name, pieces)
 
+    def defined(self, name):
+        """A commit gave a value a new definition: a record of some keys that needs the value keeps
+        what the new definition reads from now on. Gives the names that it keeps now and did not."""
+        if self._wanted is None or name not in self._wanted:
+            return set()
+        found = self._needed_names([name]) - self._wanted
+        self._wanted |= found
+        return found
+
     def wanted(self, name):
         """Whether the record keeps the history of an engine name (or what a kept formula reads)."""
         request = self.plan.configuration.request
@@ -257,16 +266,13 @@ class Recorder:
         for name, value in plan.values.items():
             if needed is not None and name not in needed:
                 continue
-            if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED, DELAYED):
+            if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED, DELAYED) or name in plan.defined:
                 continue
             # The value at the start, then the pieces that the run gave it: a store's lines and
             # curves, a value that a commit wrote, an occurrence's values from its start.
             pieces = [(0.0, self.constants[name], 0.0)] if name in self.constants else []
             pieces += [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
             histories[name] = self._history(value.key, pieces)
-        for name in plan.keyed:
-            if needed is None or name in needed:
-                histories[name] = self._history(None, self._keyed(name, end))
         for name, stored in plan.changed.items():
             if stored in histories:
                 # The time of the last change at a commit: a constant piece at the start and at each.
@@ -280,9 +286,10 @@ class Recorder:
         calculated = {
             name
             for name, value in plan.values.items()
-            if value.kind in (FORMULA, REDUCE, DYNAMIC) and (needed is None or name in needed)
+            if (value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC) or name in plan.defined)
+            and (needed is None or name in needed)
         }
-        for name in plan.ordered(calculated):
+        for name in plan.ordered(calculated, ever=True):
             value = plan.values[name]
             owner = plan.occurrence_of(name)
             start = 0.0
@@ -290,10 +297,15 @@ class Recorder:
                 # A formula of an occurrence exists from its start, and keeps after its finish the
                 # value that it had then (D7).
                 start = histories[f'{owner}.started'].pieces[0].t
+            if name in plan.defined:
+                histories[name] = self._history(value.key, self._defined(name, histories, end))
+                continue
             if name in self.formulas:
                 pieces = [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
             elif value.kind == REDUCE:
                 pieces = self._reduction(name, histories, end)
+            elif value.kind == LOOKUP:
+                pieces = self._lookup(name, histories, end)
             elif value.kind == DYNAMIC:
                 pieces = self._dynamic(name, histories, end)
             elif (
@@ -329,16 +341,21 @@ class Recorder:
     def _needed(self, keys):
         """The engine names whose histories a record of only these keys needs: theirs, and what
         their formulas and reductions read."""
+        return self._needed_names([name_of(key) for key in keys])
+
+    def _needed_names(self, names):
+        """The engine names whose histories a record of these names needs (`_needed`): what their
+        formulas read under every definition that they had."""
         plan, found = self.plan, set()
-        pending = [name_of(key) for key in keys]
+        pending = list(names)
         while pending:
             name = pending.pop()
             if name in found or name not in plan.values:
                 continue
             found.add(name)
             kind = plan.values[name].kind
-            if kind in (FORMULA, REDUCE):
-                reads = plan.expanded(name)
+            if kind in (FORMULA, REDUCE, LOOKUP) or name in plan.defined:
+                reads = plan.expanded_ever(name)
                 pending += [*reads.leaves, *reads.formulas, *reads.stepped]
             elif kind in (CHANGED, DELAYED):
                 pending += sorted(plan.reads(name))  # the value that it follows, and the delay
@@ -378,21 +395,46 @@ class Recorder:
                 pieces.append((piece.t + d, piece.value, rate))
         return pieces
 
-    def _keyed(self, name, end):
-        """The pieces of a keyed read: at the start and at each key time of a read by the time."""
-        run = self.run
+    def _lookup(self, name, histories, end):
+        """The pieces of a keyed read: of a stepped one, over each of its key intervals, the pieces of
+        the value of the member that it selects there (below its first key `Unavailable`); of any
+        other, from the histories of what it reads, as a formula's."""
+        plan, run = self.plan, self.run
+        keyed = plan.keyed[name]
+        boolean = plan.values[name].boolean
         try:
-            if not self.plan.keyed[name].by_time:
-                return [(0.0, run.value_of(name), 0.0)]
-            stepped = run.stepped_of(name)
+            stepped = run.stepped_of(name) if plan.stepped(name) else None
+            if stepped is None:
+                run.kept_of(name)
         except FAILURES as problem:
             return [(0.0, Unavailable(str(problem)), 0.0)]
-        try:
-            pieces = [(0.0, stepped.at(0.0), 0.0)]
-        except ExpressionError as problem:
-            pieces = [(0.0, Unavailable(str(problem)), 0.0)]
+        if stepped is None:
+            return self.formula(
+                name,
+                histories,
+                end,
+                sorted(keyed.reads()),
+                lambda env: looked_up(keyed, env.__getitem__, plan.units, env['t']),
+                boolean,
+                timed='t' in nodes.names(keyed.key),
+            )
         times = stepped.times.tolist()
-        return pieces + [(t, stepped.values[k], 0.0) for k, t in enumerate(times) if 0 < t <= end]
+        pieces = []
+        try:
+            stepped.place(0.0)
+        except ExpressionError as problem:
+            pieces.append((0.0, Unavailable(str(problem)), 0.0))
+        for k, at in enumerate(times):
+            a = max(float(at), 0.0)
+            b = min(float(times[k + 1]), end) if k + 1 < len(times) else end
+            if a > end or (b <= a and k + 1 < len(times)):
+                continue
+            selected = stepped.names[k]
+            found = self.formula(
+                name, histories, b, [selected], lambda env, selected=selected: env[selected], boolean, start=a
+            )
+            pieces += [piece for piece in found if piece[0] < b or k + 1 == len(times)]
+        return pieces
 
     def _reduction(self, name, histories, end):
         """The pieces of a reduction from the histories of its kept entries."""
@@ -447,19 +489,36 @@ class Recorder:
 
         return self.formula(name, histories, end, sorted(plan.dynamic_reads(name)), point=point)
 
-    def formula(self, name, histories, end, reads=None, compute=None, boolean=None, start=0.0, point=None):
+    def formula(
+        self,
+        name,
+        histories,
+        end,
+        reads=None,
+        compute=None,
+        boolean=None,
+        start=0.0,
+        point=None,
+        node=None,
+        timed=None,
+    ):
         """The pieces of a formula from the histories of what it reads, from `start` on (of a
-        reduction, when `reads` and `compute` are given: the names of its kept entries, and its value
-        from theirs; of a dynamic read, when `point` gives its value at a time)."""
+        reduction or a keyed read, when `reads` and `compute` are given: the names that it reads,
+        and its value from theirs, `timed` when it reads the time; of a dynamic read, when `point`
+        gives its value at a time; of one definition that a commit gave the value, when `node` is its
+        node)."""
         plan = self.plan
         value = plan.values[name]
-        timed = compute is None and point is None and 't' in nodes.names(value.node)
-        reads = sorted(plan.reads(name)) if reads is None else reads
+        node = value.node if node is None else node
+        if timed is None:
+            timed = compute is None and point is None and 't' in nodes.names(node)
+        if reads is None:
+            reads = sorted(set(nodes.names(node)) - {'t'})
         reads = [read for read in reads if read in histories]
         if compute is None:
 
             def compute(env):
-                return evaluate(value.node, env, plan.units)
+                return evaluate(node, env, plan.units)
 
         boolean = value.boolean if boolean is None else boolean
         times = sorted(
@@ -510,6 +569,35 @@ class Recorder:
                 except FAILURES as problem:
                     found = [(a, Unavailable(str(problem)), 0.0)]
                 pieces += found
+        return pieces
+
+    def _defined(self, name, histories, end):
+        """The pieces of a value that commits gave new definitions (`Plan.defined`): over the time of
+        each definition, a formula's from the histories of what it reads, and a captured number's
+        from what the run wrote; from the finish of its occurrence, the value that froze then (D7)."""
+        plan, run = self.plan, self.run
+        definitions = plan.defined[name]
+        owner = plan.occurrence_of(name)
+        finish = None
+        if name in run.frozen:
+            active = histories[f'{owner}.active'].pieces
+            finish = next(piece.t for piece in active if piece.value is False)
+        stop = end if finish is None else min(end, finish)
+        written = [(0.0, self.constants[name], 0.0)] if name in self.constants else []
+        written += self.pieces.get(name, ())
+        pieces = []
+        for k, (a, value) in enumerate(definitions):
+            last = k + 1 == len(definitions)
+            b = stop if last else min(definitions[k + 1][0], stop)
+            if a > stop or (b <= a and not last):
+                continue  # replaced at the time that it was given, or after the finish
+            if value.kind == FORMULA:
+                found = self.formula(name, histories, b, start=a, node=value.node)
+            else:
+                found = [piece for piece in written if a <= piece[0] <= b]
+            pieces += [piece for piece in found if piece[0] < b or (last and piece[0] <= b)]
+        if finish is not None and finish <= end:
+            pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, run.frozen[name], 0.0)]
         return pieces
 
 
@@ -632,7 +720,9 @@ _PLANS = {}
 
 def remember(plan):
     """Keep the plan of a run for the reader: what a configuration sets changes no formula, no
-    reduction and no keyed read, so the plan of any run of a program serves every record of it."""
+    reduction and no keyed read, so the plan of any run of a program serves every record of it. A
+    definition that a commit gave a value is in the trace of its record (`Plan.definitions_of`), and
+    the reader reads the plan's values as the program declares them (`Plan.original`)."""
     _PLANS.clear()
     _PLANS[id(plan.program)] = (plan.program, plan)
 
@@ -663,8 +753,19 @@ class _Values:
         self.record = record
         self.histories = {history.key: history for history in record.histories}
         self.plan = _plan_of(program, record)
+        # The definitions that the commits of the run gave values, from its trace: a value is read
+        # with the definition that it had at the time of the read.
+        self.definitions = self.plan.definitions_of(record.trace)
         self.done = {}
         self.kept = {}
+
+    def _value(self, name, t):
+        """The plan's value of an engine name with the definition that it had at time t."""
+        found = self.definitions.get(name)
+        if found is None:
+            return self.plan.original(name)
+        place = bisect_right([at for at, _ in found], float(t)) - 1
+        return found[max(place, 0)][1]
 
     def at(self, name, t):
         """The value of an engine name at a time: from its history, or for a formula from what it
@@ -672,7 +773,7 @@ class _Values:
         LookupError."""
         if (name, t) in self.done:
             return self.done[name, t]
-        value = self.plan.values[name]
+        value = self._value(name, t)
         owner = self.plan.occurrence_of(name)
         if value.kind in (REDUCE, LOOKUP):
             found = self._derived(name, t)

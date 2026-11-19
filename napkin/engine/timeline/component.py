@@ -452,7 +452,7 @@ class ComponentWay:
             run.settings,
             missing,
         )
-        rigid = [name for name in connected.flows if plan.rigid(plan.flows[name])]
+        rigid = [name for name in connected.flows if plan.rigid(plan.flows[name], run.held)]
         self.component = Component(system, context, [values[name] for name in stores], rigid)
         self.component.state.time = float(t)
         self.place = {name: k for k, name in enumerate(stores)}
@@ -465,8 +465,10 @@ class ComponentWay:
         value there is left out: a rate that reads it fails."""
         store = self.component.state.store
         for name in self.connected.stepped:
+            # The value of the member that it selects, which holds between moments here: a set whose
+            # keyed read selects a value that moves runs on the sparse integrator (`plan.connect`).
             try:
-                store[name] = self.run.stepped_of(name).at(t)
+                store[name] = self.run.value(self.run.stepped_of(name).name_at(t), t)
             except ExpressionError:
                 store.pop(name, None)
 

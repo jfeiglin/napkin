@@ -42,7 +42,7 @@ from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ..continuous import integrate
 from ..errors import SimulationError
-from .collections import combined
+from .collections import combined, looked_up, selected
 from .lines import asked_of
 from .network import SIDES, Asked, Instant, network_of
 from .plan import FORMULA, LOOKUP, REDUCE
@@ -52,11 +52,13 @@ from .record import fitted
 
 class Vector:
     """The values of engine names at a time and a state of a set's stores, as arrays (see the
-    module). `stores` are the names of the state, in its order."""
+    module). `stores` are the names of the state, in its order; `held` gives, for a keyed read that
+    an instance holds through its segment, the entry that it selects (`Sparse`)."""
 
-    def __init__(self, run, stores):
+    def __init__(self, run, stores, held=None):
         self.run, self.plan = run, run.plan
         self.place = {name: k for k, name in enumerate(stores)}
+        self.held = {} if held is None else held
 
     def compiled(self, names):
         """A function (t, y) -> the array of the values of `names`, in their order."""
@@ -79,9 +81,10 @@ class Vector:
                 steps.append(([k], self._single(name)))
             elif kind == REDUCE:
                 steps.append(([k], self._reduction(name)))
-            elif kind == LOOKUP and plan.keyed[name].by_time:
-                stepped = run.stepped_of(name)
-                steps.append(([k], lambda t, y, stepped=stepped: stepped.at(t)))
+            elif kind == LOOKUP and plan.stepped(name):
+                steps.append(([k], self._stepped(name)))
+            elif kind == LOOKUP:
+                steps.append(([k], self._lookup(name)))
             else:
                 constant_at.append(k)
                 try:
@@ -148,6 +151,35 @@ class Vector:
 
         return value
 
+    def _stepped(self, name):
+        """A stepped keyed read: the value of the member that it selects at the time."""
+        stepped = self.run.stepped_of(name)
+        subs = [self.compiled([selected]) for selected in stepped.names]
+
+        def value(t, y):
+            return float(subs[stepped.place(t)](t, y)[0])
+
+        return value
+
+    def _lookup(self, name):
+        """A keyed read evaluated at each state, from what it reads: its key, its members' keys and
+        values, and their tests; where the instance holds the entry that it selects through the
+        segment (`held`), the value of that entry."""
+        plan, held = self.plan, self.held
+        keyed = plan.keyed[name]
+        subs = {read: self.compiled([read]) for read in sorted(keyed.reads())}
+
+        def value(t, y):
+            if name in held:
+                entry = held[name]
+                if entry is None:
+                    x = float(lazily(keyed.key, lambda read: float(subs[read](t, y)[0]), plan.units, t))
+                    raise ExpressionError(f'{keyed.spelled}: no member has a key at or below {x:g}')
+                return float(subs[keyed.names[entry]](t, y)[0])
+            return float(looked_up(keyed, lambda read: float(subs[read](t, y)[0]), plan.units, t))
+
+        return value
+
     def _reduction(self, name):
         """A reduction of the values of its kept entries."""
         plan, run = self.plan, self.run
@@ -192,7 +224,11 @@ class Sparse:
                     if getattr(end, which) is not None:
                         self.end_settings.append((SIDES.index(side), place[store], which))
                         names.append(getattr(end, which))
-        self.settings = Vector(run, stores).compiled(names)
+        # A keyed read of the settings that moves holds the entry that it selects through a
+        # segment, which ends where it selects another (`_switch`).
+        self.selection = {}
+        vector = Vector(run, stores, self.selection)
+        self.settings = vector.compiled(names)
         self.y = np.array([float(values[name]) for name in stores])
         self.lower = np.array([run.bounds[name][0] for name in stores])
         self.upper = np.array([run.bounds[name][1] for name in stores])
@@ -227,6 +263,47 @@ class Sparse:
                 if store in place:
                     self.switches.setdefault(store, []).append(f)
         self.brief, self.brief_from = 0, None  # the steps in a row shorter than a moment (`_count`)
+        self.switching = [
+            (name, self._selector(vector, plan.keyed[name]))
+            for name in sorted(plan.expansion_of(names).leaves)
+            if name in plan.keyed and not plan.stepped(name) and plan.lookup_moves(name, place)
+        ]
+
+    def _selector(self, vector, keyed):
+        """A function (t, y) -> the entry that a keyed read selects there (None below its first
+        key), from what its key, its members' keys and their tests read."""
+        plan = self.plan
+        reads = sorted(keyed.reads() - set(keyed.names))
+        values = vector.compiled(reads)
+
+        def select(t, y):
+            found = dict(zip(reads, values(t, y).tolist()))
+            return selected(keyed, found.__getitem__, plan.units, t)
+
+        return select
+
+    def _select(self):
+        """At the start of a segment: each keyed read that moves holds the entry that it selects."""
+        y = np.minimum(np.maximum(self.y, self.lower), self.upper)
+        self.selection.clear()
+        for name, select in self.switching:
+            self.selection[name] = select(self.t, y)
+
+    def _switch(self, solution, start, end, name, select):
+        """The first time in (start, end] at which a keyed read selects another entry than the one
+        that it holds through the segment, to within the crossing tolerance; or None."""
+        held = self.selection[name]
+        if select(end, solution(end)) == held:
+            return None
+        crossing = self.plan.numerics.crossing
+        left, right = start, end
+        while right - left > crossing:
+            middle = 0.5 * (left + right)
+            if select(middle, solution(middle)) == held:
+                left = middle
+            else:
+                right = middle
+        return right
 
     def _conditioned(self, names):
         """The stores that the settings `names` read through a comparison or an if/else."""
@@ -414,6 +491,7 @@ class Sparse:
         if self.t >= until:
             return math.inf
         if self.solver is None:
+            self._select()
             self._flags()
             numerics = self.plan.numerics
             self.solver = Radau(
@@ -448,6 +526,11 @@ class Sparse:
             events.append((self._crossing(solution, start, end, k, self.lower[k] + self.atol[k]), k))
         for k in np.flatnonzero(self.upper_flags & (y < self.upper - self.atol)).tolist():
             events.append((self._crossing(solution, start, end, k, self.upper[k] - self.atol[k]), k))
+        for name, select in self.switching:
+            # A keyed read that selects another entry changes a rate by a step: the segment ends.
+            at = self._switch(solution, start, end, name, select)
+            if at is not None:
+                events.append((at, None))
         ended = bool(events) or solver.status != 'running'
         if events:
             end = min(at for at, _ in events)

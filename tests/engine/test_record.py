@@ -25,8 +25,11 @@ from napkin.program.build import (
     event,
     flow,
     formula,
+    fsum,
+    group_of,
     input_,
     legs,
+    literal,
     named,
     q,
     this,
@@ -259,22 +262,21 @@ def test_a_negative_request_stops_the_run():
     assert 'Negative flow rates' in run(program, configured(3)).failure.detail('message')
 
 
-@pytest.mark.parametrize(
-    'parts, slice_, links',
-    [
-        (
-            (
-                value('low', BOOL, formula(this.water <= q(1, 'L'))),
-                event('alarm', after(q(1, 'h'), assign(this.low, formula(this.water <= q(2, 'L'))))),
-            ),
-            'S4',
-            None,
-        ),
-    ],
-)
-def test_a_part_of_a_later_slice_is_refused_by_name(parts, slice_, links):
-    with pytest.raises(Outside, match=slice_):
-        run(tank(*parts, links=links).finish(), configured(1))
+def test_a_collection_assigned_in_a_stage_is_refused_with_the_reason_of_the_spec():
+    """A collection holds links to its members, and links are fixed for the run (spec: "A link is
+    set by its initializer, by a table or by a `change`, and no stage assigns one")."""
+    b = Builder(UNITS)
+    pump = b.template('Pump', input_('rate', 'L/h', 1))
+    b.member(pump, 'p1')
+    b.member(pump, 'p2')
+    b.entity(
+        'station',
+        value('pumps', group_of('Pump'), literal(named('p1'), named('p2'))),
+        value('total', 'L/h', formula(fsum(this.pumps.rate))),
+        event('drop', after(q(1, 'h'), assign(this.pumps, literal(named('p1'))))),
+    )
+    with pytest.raises(Outside, match='links are fixed for the run'):
+        run(b.finish(), configured(2))
 
 
 def test_a_request_that_reads_an_actual_rate_of_its_own_set_needs_a_declared_solver():

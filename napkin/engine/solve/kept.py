@@ -14,6 +14,17 @@ The signs of HiGHS for a minimum: the dual of a column is its reduced cost d = c
 at a lower bound and at most zero at an upper bound; the dual y of a row is at least zero when the
 row rests on its lower side and at most zero on its upper side.
 
+A kept instance can fail where a fresh one holding the same program does not. HiGHS scales a program
+when it first solves it and extends those factors as columns and rows join, and it keeps its simplex
+data from run to run. At 30,000 places (`scratch/rewrite/b1/solve/bench.py`, need x1.45), the 678th
+program of the run, a fair-sharing program at the tightest primal tolerance, reached an optimal basis
+of the scaled program; on the program itself a bound then missed by 1.3e-7, the cleanup met a basis
+change that HiGHS had made taboo, and HiGHS stopped with the status kUnknown. A fresh instance with
+the same program, scaled afresh, found that basis optimal with no iteration, and the dual simplex and
+a cold solve gave the same optimum to 1e-14. So a run whose status says nothing of the program (not
+in STATED) is made again on a fresh instance with the same program, options and basis, then on one
+with no basis (`Kept.run`). The program is the same, so the answer is the same; only the work grows.
+
 `quadratic` solves the convex QP of a distance step on an instance of its own, the exact fallback of
 the distance method.
 """
@@ -34,7 +45,11 @@ AT_LOWER = highs.HighsBasisStatus.kLower
 AT_UPPER = highs.HighsBasisStatus.kUpper
 AT_ZERO = highs.HighsBasisStatus.kZero
 ERROR = highs.HighsStatus.kError
-PRIMAL_SIMPLEX = 4  # HiGHS's simplex_strategy for the primal simplex
+# The statuses that say something of the program. Any other (kUnknown, an error of HiGHS) says nothing
+# of it, and the run is made again on a fresh instance (`Kept.run`).
+STATED = (OPTIMAL, EMPTY, Status.kInfeasible, Status.kUnbounded, Status.kUnboundedOrInfeasible)
+DUAL_SIMPLEX = 1  # HiGHS's simplex_strategy for the dual simplex
+PRIMAL_SIMPLEX = 4  # and for the primal simplex
 # The tightest tolerances that HiGHS takes, for a second run whose duals must be exact (`Kept.tight`).
 TIGHT = 1e-10
 
@@ -96,6 +111,7 @@ class Kept:
         self.lower, self.upper = _f64(lower).copy(), _f64(upper).copy()
         self.row_lower, self.row_upper = _f64(row_lower).copy(), _f64(row_upper).copy()
         self.iterations = 0  # the simplex iterations of every run of the instance
+        self.renewals = 0  # the fresh instances that took its place (`run`)
 
     # -- changes in place --------------------------------------------------------------------------
     def set_cost(self, cost):
@@ -259,7 +275,37 @@ class Kept:
 
     # -- solve -------------------------------------------------------------------------------------
     def run(self):
-        """One run of HiGHS from the present basis."""
+        """One run of HiGHS from the present basis. A run whose status says nothing of the program is
+        made again on a fresh instance with the basis that HiGHS holds, and then, if that one says
+        nothing either, on a fresh instance with no basis, by the dual simplex (see the module text).
+        Gives the last run."""
+        run = self._once()
+        if run.status not in STATED:
+            self._renew(keep_basis=True)
+            run = self._once()
+        if run.status not in STATED:
+            self._renew(keep_basis=False)
+            with self.option('simplex_strategy', DUAL_SIMPLEX):
+                run = self._once()
+        return run
+
+    def _renew(self, keep_basis):
+        """A fresh HiGHS instance in place of this one, with its program and options, and with its
+        basis where `keep_basis` is set and HiGHS holds one. HiGHS scales the program afresh (a
+        program that it is passed loses its scale factors) and starts its simplex data afresh."""
+        old = self.s
+        basis = old.getBasis() if keep_basis else None
+        s = highs._Highs()
+        s.passOptions(old.getOptions())
+        if s.passModel(old.getLp()) == ERROR:
+            raise ValueError('HiGHS refused the program')
+        if basis is not None and basis.valid:
+            s.setBasis(basis)
+        self.s = s
+        self.renewals += 1
+
+    def _once(self):
+        """One run of HiGHS from the present basis, as it ends."""
         s = self.s
         if s.run() == ERROR:
             return Run(Status.kSolveError, None, None, None, None, None, 0)

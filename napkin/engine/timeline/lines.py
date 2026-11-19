@@ -80,7 +80,7 @@ class Lines:
         # Whether a moment may solve downstream only (see the module).
         self.closed = (
             self.net.plain
-            and all(plan.rigid(plan.flows[flow]) for flow in self.flows)
+            and all(plan.rigid(plan.flows[flow], run.held) for flow in self.flows)
             and not any(plan.settled(end) for (store, _), end in plan.ends.items() if store in place)
         )
         self.selected = False  # whether the selection order has solved a part of the sets

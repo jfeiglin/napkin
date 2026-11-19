@@ -184,14 +184,21 @@ def index_of(keyed, value, units, entries=None):
     return Keys(keys), entries
 
 
-def looked_up(keyed, value, units, t, index=None):
-    """The value of a keyed read at time t (the time matters only to a read by the time)."""
+def selected(keyed, value, units, t, index=None):
+    """The entry that a keyed read selects at time t (the place of its member), or None below its
+    first key: the time matters to a key that reads it."""
     index, entries = index_of(keyed, value, units) if index is None else index
-    x = float(lazily(keyed.key, value, units, t))
-    place = index.find(x)
-    if place is None:
+    place = index.find(float(lazily(keyed.key, value, units, t)))
+    return None if place is None else entries[place]
+
+
+def looked_up(keyed, value, units, t, index=None):
+    """The value of a keyed read at time t (the time matters to a key that reads it)."""
+    found = selected(keyed, value, units, t, index)
+    if found is None:
+        x = float(lazily(keyed.key, value, units, t))
         raise ExpressionError(f'{keyed.spelled}: no member has a key at or below {x:g}')
-    return value(keyed.names[entries[place]])
+    return value(keyed.names[found])
 
 
 def node_of(reduction, entries):

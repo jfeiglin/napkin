@@ -65,7 +65,7 @@ from ..continuous.system import run_settings, step_cap
 from ..errors import SimulationError
 from .chance import Chance, Paused
 from .collections import dynamic_value, index_of, kept, looked_up, reduced
-from .moment import Moment
+from .moment import Defined, Moment
 from .occurrences import Occurrences
 from .plan import (
     CHANGED,
@@ -110,19 +110,24 @@ def _literal(node, units):
 
 @dataclass(frozen=True)
 class Stepped:
-    """A keyed read by the time: its value from each distinct key of its kept entries (`times`) to
-    the next; below the first key it fails."""
+    """A keyed read by the time with fixed keys (`Plan.stepped`): the engine name of the value of
+    the member that it selects from each distinct key of its kept entries (`times`) to the next; it
+    reads that value, as it is then. Below the first key it fails."""
 
     spelled: str
     times: np.ndarray
-    values: tuple
+    names: tuple
 
-    def at(self, t):
-        """The value at time t, or an ExpressionError below the first key."""
+    def place(self, t):
+        """The place of the key interval of time t, or an ExpressionError below the first key."""
         place = int(np.searchsorted(self.times, t, side='right')) - 1
         if place < 0:
             raise ExpressionError(f'{self.spelled}: no member has a key at or below {t:g}')
-        return self.values[place]
+        return place
+
+    def name_at(self, t):
+        """The engine name of the value that the read selects at time t."""
+        return self.names[self.place(t)]
 
 
 class Run:
@@ -200,7 +205,7 @@ class Run:
         """The engine name of the value that a keyed read finds at the start, or None."""
         keyed, entries = self.plan.keyed[name], self.kept_of(name)
         index = self._index(name)
-        x = 0.0 if keyed.by_time else float(lazily(keyed.key, self.value_of, self.plan.units, 0.0))
+        x = float(lazily(keyed.key, self.value_of, self.plan.units, 0.0))
         place = index.find(x)
         return None if place is None else keyed.names[entries[place]]
 
@@ -314,12 +319,12 @@ class Run:
         return self._indexes[name]
 
     def stepped_of(self, name):
-        """The keyed read by the time `name` (`Stepped`), from the keys of its kept entries."""
+        """The stepped keyed read `name` (`Stepped`), from the keys of its kept entries."""
         if name not in self._stepped:
             keyed, entries, index = self.plan.keyed[name], self.kept_of(name), self._index(name)
             times = index.times()
-            values = tuple(self.value_of(keyed.names[entries[index.find(key)]]) for key in times.tolist())
-            self._stepped[name] = Stepped(keyed.spelled, times, values)
+            names = tuple(keyed.names[entries[index.find(key)]] for key in times.tolist())
+            self._stepped[name] = Stepped(keyed.spelled, times, names)
         return self._stepped[name]
 
     def start(self):
@@ -404,7 +409,11 @@ class Run:
         """The value of an engine name now, or at a time t inside the present window of the ways (see
         the module); a stage's own writes (`tx`) first."""
         if tx is not None and name in tx.writes:
-            return tx.writes[name]
+            found = tx.writes[name]
+            if isinstance(found, Defined):  # a calculation that the stage gave the value
+                at = self.now if t is None else float(t)
+                return lazily(found.node, lambda read: self.value(read, at, tx), self.plan.units, at)
+            return found
         if name == 't':
             return self.now if t is None else float(t)
         t = self.now if t is None else float(t)
@@ -444,10 +453,9 @@ class Run:
                 plan.reductions[name], lambda read: self.value(read, t, tx), plan.units, self.kept_of(name)
             )
         if kind == LOOKUP:
-            keyed = plan.keyed[name]
-            if keyed.by_time:
-                return self.stepped_of(name).at(t)
-            return looked_up(keyed, lambda read: self.value(read, t, tx), plan.units, t)
+            if plan.stepped(name):
+                return self.value(self.stepped_of(name).name_at(t), t, tx)
+            return looked_up(plan.keyed[name], lambda read: self.value(read, t, tx), plan.units, t)
         if kind == DYNAMIC:
             dynamic = plan.dynamic[name]
             return dynamic_value(
@@ -518,8 +526,14 @@ class Run:
 
     def write(self, name, value):
         """A commit writes a value: a store of a set waits for the settling, any other value holds
-        it from now on."""
+        it from now on. A definition (`Defined`), and a number in place of a request's or a
+        capacity's formula, changes what the value is from now on (`define`)."""
         plan = self.plan
+        found = plan.values.get(name)  # none for a distribution-valued value
+        if isinstance(value, Defined) or (found is not None and found.kind == FORMULA):
+            self.define(name, value.node if isinstance(value, Defined) else None)
+            if isinstance(value, Defined):
+                return
         if name in self.ways.set_of:
             old = self.value(name)
             self.written[name] = value
@@ -543,6 +557,21 @@ class Run:
         found = plan.values.get(name)
         owner = found.key.owner if found is not None and found.key is not None else ''
         if '#' in owner:
+            receiver, event = owner.rsplit('#', 1)[0].rsplit('.', 1)
+            self.changed.add(('occurrences', receiver, event))
+        for end in plan.setting_ends(name):
+            self.changed.add(('flows', *end))
+
+    def define(self, name, node):
+        """A commit gives a value a new definition: a formula's node, or None for a captured number
+        in place of a formula (`Plan.define`). What reads the value is touched, so the sets that read
+        it are built again and read it so; a record of some keys keeps what the new one reads."""
+        plan = self.plan
+        plan.define(name, node, self.now, plan.start_of(name))
+        self.changed.add(name)
+        self.changed.update(self.recorder.defined(name))
+        owner = plan.occurrence_of(name)
+        if owner is not None:
             receiver, event = owner.rsplit('#', 1)[0].rsplit('.', 1)
             self.changed.add(('occurrences', receiver, event))
         for end in plan.setting_ends(name):
@@ -747,8 +776,8 @@ class Run:
         """{key time inside the run: the keyed reads by the time that change there}, made once."""
         if self._keyed is None:
             self._keyed = {}
-            for name, keyed in self.plan.keyed.items():
-                if keyed.by_time:
+            for name in self.plan.keyed:
+                if self.plan.stepped(name):
                     for at in self.stepped_of(name).times.tolist():
                         if 0 < at <= self.plan.horizon:
                             self._keyed.setdefault(float(at), []).append(name)

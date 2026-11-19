@@ -219,11 +219,12 @@ class Occurrences:
 
     def _computed(self, node):
         """The rates and results that a delay reads, through formulas, reductions and dynamic reads."""
-        found = self._delays.get(node)
+        plan = self.plan
+        key = (node, plan.version)  # a definition that a commit gives changes what a node reads
+        found = self._delays.get(key)
         if found is None:
-            plan = self.plan
             leaves = plan.reads_now(plan.expansion(node)).leaves
-            found = self._delays[node] = frozenset(
+            found = self._delays[key] = frozenset(
                 leaf for leaf in leaves if leaf in plan.values and plan.values[leaf].kind in (RATE, RESULT)
             )
         return found
@@ -306,7 +307,12 @@ class Occurrences:
                     f'{left / scale:g} {unit}'.rstrip()
                     + '. Wait for it to drain, move the rest to a named stock, or send it to SINK.'
                 )
-        for name in made.formulas:
+        # What is a formula at the finish freezes: a stage may have given a request or a capacity a
+        # formula, or a number in place of one.
+        for name in dict.fromkeys((*made.formulas, *made.initial)):
+            found = plan.values.get(name)  # none for a distribution-valued local
+            if found is None or found.kind != FORMULA:
+                continue
             try:
                 frozen = run.value(name)
             except (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError) as problem:

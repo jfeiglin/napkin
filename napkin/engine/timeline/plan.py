@@ -501,6 +501,11 @@ class Plan:
         self._places = {}  # the place of each value in `values`, for `ordered`
         self._given = {(item.member, item.name): item for item in configuration.inputs}
         self._copies = []  # (distribution-valued value, the value whose distribution it copies, origin)
+        # A value that a commit gave a new definition -> [(time, its `Value` from then on)], the
+        # first its own from its start (`define`); `version` counts the definitions.
+        self.defined, self.version = {}, 0
+        self._stepped_reads = {}  # a keyed read -> whether it is stepped (`stepped`)
+        self._statements = None  # the statements of the program by their origin (`definitions_of`)
         self._refuse_parts()
         self.dynamic = {}  # engine name -> `Dynamic`: a read of a collection that changes in a run
         self.events = {}  # (member id, event name) -> (template, row, member, Event)
@@ -561,7 +566,7 @@ class Plan:
             for index in range(len(event.triggers))
         ]
         self._connect()
-        self._refuse_reads()
+        self._classify_asserts()
 
     @classmethod
     def of(cls, program, configuration):
@@ -571,17 +576,19 @@ class Plan:
     # ---- what this slice refuses ----------------------------------------------------------------
 
     def _refuse_parts(self):
-        """Status displays (C), and the assignment of a formula or a collection in a stage (S4). The
-        controllers and the picks of the configuration must name members and the sites of choices."""
+        """Status displays (C), and the assignment of a collection in a stage, which the language
+        does not have: a collection's members are links to them, fixed for the run. The controllers
+        and the picks of the configuration must name members and the sites of choices."""
         program = self.program
         for template in program.templates:
             if template.status is not None:
                 raise Outside(f'{template.status.origin or template.name}: a status display (C)')
         for origin, statement in _program_statements(program):
-            allowed = Expr | Distribution | p.Priority | p.Proportional
-            if isinstance(statement, p.Assign) and not isinstance(statement.value, allowed):
+            if isinstance(statement, p.Assign) and isinstance(statement.value, Path):
                 raise Outside(
-                    f'{origin}: an assignment of a {type(statement.value).__name__.lower()} in a stage (S4)'
+                    f'{origin}: an assignment of a collection in a stage: a collection holds links to '
+                    'its members, and links are fixed for the run (spec: "A link is set by its '
+                    'initializer, by a table or by a `change`, and no stage assigns one")'
                 )
         for controller in self.configuration.controllers:
             try:
@@ -614,20 +621,8 @@ class Plan:
             raise SimulationError(message)
         self.failures.append(message)
 
-    def _refuse_reads(self):
-        """A keyed read of what moves is refused (S4). An assertion that reads what is not fixed by the
-        inputs is over state (`checks`)."""
-        moving = self.moving
-        for keyed in self.keyed.values():
-            found = Expanded.union(self.expanded(read) for read in keyed.reads())
-            if (
-                found.time
-                or found.stepped
-                or any(leaf in moving or self._is_rate(leaf) for leaf in found.leaves)
-            ):
-                raise Outside(
-                    f'{keyed.spelled}: `.at(...)` of a value or with a key that changes between moments (S4)'
-                )
+    def _classify_asserts(self):
+        """An assertion that reads what is not fixed by the inputs is over state (`checks`)."""
         fixed = []
         for check in self.asserts:
             (fixed if self._fixed(self.expansion(check[2])) else self.checks).append(check)
@@ -658,6 +653,36 @@ class Plan:
             if not self._fixed(inner):
                 return False
         return True
+
+    def stepped(self, name):
+        """Whether a keyed read is by the time with keys that the inputs fix: it selects a member at
+        each of its key times, which are moments of the run, and reads that member's value then
+        (`run.Stepped`). Any other keyed read is evaluated where it is read (`collections.looked_up`)."""
+        found = self._stepped_reads.get(name)
+        if found is None:
+            keyed = self.keyed[name]
+            keys = [key for key in keyed.keys if isinstance(key, str)]
+            found = keyed.by_time and self._fixed(self.expansion_of(keys))
+            self._stepped_reads[name] = found
+        return found
+
+    def lookup_moves(self, name, moving):
+        """Whether a keyed read changes between moments, where `moving` holds the stores that do:
+        the value of a member that it can select moves, or, for one that is not stepped, its key or
+        a key of its members does, the time included (a stepped one changes its member only at its
+        key times, which are moments)."""
+        keyed = self.keyed[name]
+        if self.stepped(name):
+            found = self.reads_now(self.expansion_of(keyed.names))
+            timed = found.time
+        else:
+            found = self.reads_now(self.expansion_of(keyed.reads()))
+            timed = found.time or 't' in nodes.names(keyed.key)
+        return timed or any(leaf in moving for leaf in found.leaves)
+
+    def number(self, name):
+        """The creation number of a flow or a connection, from 1: its natural key."""
+        return self._numbers[name]
 
     def _is_rate(self, name):
         value = self.values.get(name)
@@ -1008,6 +1033,87 @@ class Plan:
             self._ranking(store, side, allocation, scope, origin)
         else:
             self.rankings.pop((store, side), None)
+
+    # ---- definitions that commits give ----------------------------------------------------------
+
+    def define(self, name, node, t, start):
+        """A commit gives a value a new definition from time t on: a `formula(...)` (its node over
+        engine names), or for a request or a capacity that was a formula, a captured number (node
+        None), which the run holds. `start` is the time from which the value exists. What reads the
+        value reads the new definition from then on: the expansions are found again."""
+        value = self.values[name]
+        found = self.defined.setdefault(name, [(start, value)])
+        if node is None:
+            made = replace(value, kind=CAPTURE, node=None, shape=None, binding=())
+        else:
+            made = replace(value, kind=FORMULA, node=node, shape=None, binding=())
+        self.values[name] = made
+        found.append((t, made))
+        self._expanded.clear()
+        self.version += 1
+
+    def original(self, name):
+        """A value as the program declares it, before any commit gave it a new definition."""
+        found = self.defined.get(name)
+        return found[0][1] if found else self.values[name]
+
+    def definitions_of(self, trace):
+        """{engine name: [(time, its `Value` from then on)]} of the values whose definitions the
+        commits of a trace changed (the detail `defines` of a commit or a firing): the first is the
+        value as declared, from its start. A reader reads each with the definition of the time."""
+        if self._statements is None:
+            self._statements = dict(_program_statements(self.program))
+        found = {}
+        for entry in trace:
+            if entry.kind not in ('commit', 'fire'):
+                continue
+            defines = dict(entry.details).get('defines')
+            if not defines:
+                continue
+            scope = self._scope_of(entry)
+            for name, origin in defines:
+                statement = self._statements[origin]
+                original = self.original(name)
+                if isinstance(statement.value, Formula):
+                    node = self.node(statement.value.expr, scope, origin)
+                    made = replace(original, kind=FORMULA, node=node, shape=None, binding=())
+                else:
+                    made = replace(original, kind=CAPTURE, node=None, shape=None, binding=())
+                start = self.start_of(name)
+                found.setdefault(name, [(start, original)]).append((float(entry.t), made))
+        return found
+
+    def _scope_of(self, entry):
+        """The scope in which the statements of a commit or of a firing of a trace ran: the
+        occurrence's, the trigger's, or the setup's (None)."""
+        if entry.kind == 'fire':
+            return next(
+                trigger.scope
+                for trigger in self.triggers
+                if trigger.origin == entry.part and trigger.member == entry.owner
+            )
+        return self.frames[entry.owner] if entry.owner else None
+
+    def start_of(self, name):
+        """The time from which a value exists: 0, or the start of the occurrence that owns it."""
+        owner = self.occurrence_of(name)
+        return 0.0 if owner is None else float(self.values[f'{owner}.started'].node.value)
+
+    def reads_ever(self, name):
+        """The names that a value reads under any definition that it had in the run."""
+        found = set(self.reads(name))
+        for _, value in self.defined.get(name, ()):
+            if value.node is not None:
+                found |= set(nodes.names(value.node)) - {'t'}
+        return found
+
+    def expanded_ever(self, name):
+        """What a value reads through formulas and reductions under any definition that it had."""
+        parts = [self.expanded(name)]
+        for _, value in self.defined.get(name, ()):
+            if value.kind == FORMULA:
+                parts.append(self.expansion(value.node))
+        return Expanded.union(parts)
 
     # ---- events -------------------------------------------------------------------------------
 
@@ -1606,8 +1712,6 @@ class Plan:
             return self._dynamic(path, 'at', source[1], path.steps, scope, item)
         entries = self._many(lookup.source, scope, origin, item)
         x = self.node(lookup.key, scope, origin, item)
-        if 't' in nodes.names(x) and not by_time:
-            raise Outside(f'{origin}: a key of `.at(...)` that is a function of the time other than t (S4)')
         points = entries.points
         for step in path.steps:
             points = tuple(self._step(point, step, origin) for point in points)
@@ -1836,18 +1940,24 @@ class Plan:
         value = self.values.get(name)
         if name == 't':
             return Expanded(time=True)
-        followed = value is not None and (
-            value.kind in (FORMULA, REDUCE) or (value.kind == LOOKUP and self.keyed[name].by_time)
-        )
+        followed = value is not None and value.kind in (FORMULA, REDUCE, LOOKUP)
         if not followed:
             return Expanded(leaves=frozenset({name}))
         self._expanded[name] = _VISITING
         if value.kind == FORMULA:
             found = self.expansion(value.node)
+        elif value.kind == LOOKUP and self.stepped(name):
+            # Its key is the time and its keys are fixed: what it reads is the values of its members.
+            found = self.expansion_of(self.keyed[name].names)
         else:
             found = Expanded.union(self.expanded(read) for read in self.reads(name))
-        if value.kind == LOOKUP:
+        if value.kind == LOOKUP and self.stepped(name):
             found = Expanded(found.leaves, found.formulas, found.stepped | {name}, found.time)
+        elif value.kind == LOOKUP:
+            # Any other keyed read is evaluated where it is read, from what it reads: it is a leaf
+            # beside them, so that what holds values between moments holds it too.
+            time = found.time or 't' in nodes.names(self.keyed[name].key)
+            found = Expanded(found.leaves | {name}, found.formulas, found.stepped, time)
         else:
             found = Expanded(found.leaves, found.formulas | {name}, found.stepped, found.time)
         self._expanded[name] = found
@@ -1863,19 +1973,16 @@ class Plan:
         """What several values read through formulas and reductions (`Expanded`)."""
         return Expanded.union(self.expanded(name) for name in names)
 
-    def rigid(self, flow):
-        """Whether a flow provably never carries more than its request: its capacity is the same
-        expression as its request, or a number at most its request's number."""
+    def rigid(self, flow, held):
+        """Whether a flow provably never carries more than its request now: its capacity is the same
+        formula as its request, or both are captured and the capacity holds at most the request
+        (`held(name)` gives what a captured setting holds now, which a stage may have written)."""
         if flow.capacity is None:
             return False
-        request, capacity = self.values[flow.request].node, self.values[flow.capacity].node
-        if request == capacity:
-            return True
-        return (
-            isinstance(request, nodes.Const)
-            and isinstance(capacity, nodes.Const)
-            and float(capacity.value) <= float(request.value)
-        )
+        request, capacity = self.values[flow.request], self.values[flow.capacity]
+        if request.kind == FORMULA or capacity.kind == FORMULA:
+            return request.kind == capacity.kind and request.node == capacity.node
+        return float(held(capacity.name)) <= float(held(request.name))
 
     def formula_reads(self, node):
         """The names other than formulas and reductions that a node reads, through them (the keyed
@@ -2082,6 +2189,11 @@ class Plan:
             )
             # A route and a flow with legs are unknowns of the network: lines or the sparse integrator.
             directed = all(self.flows[flow].kind == DIRECTED for flow in members)
+            # A keyed read that moves between moments is evaluated at each state: no component holds
+            # it as a number of its segment.
+            looked = any(
+                leaf in self.keyed and self.lookup_moves(leaf, moving) for leaf in found.leaves | found.stepped
+            )
             if sid is not None:
                 way = DECLARED
             elif not moves:
@@ -2089,6 +2201,7 @@ class Plan:
             elif (
                 directed
                 and not settled
+                and not looked
                 and len(stores) <= LIMIT
                 and all(count == 1 for (store, _), count in meets.items() if store in stores)
             ):
@@ -2147,17 +2260,19 @@ class Plan:
             self._places = {name: place for place, name in enumerate(self.values)}
         return self._places.__getitem__
 
-    def ordered(self, formulas):
-        """Formulas and reductions in an order in which each comes after those that it reads."""
+    def ordered(self, formulas, ever=False):
+        """Formulas and reductions in an order in which each comes after those that it reads (with
+        `ever`, under any definition that it had in the run)."""
         done, order = set(), []
         formulas = set(formulas)
+        reads = self.reads_ever if ever else self.reads
 
         def visit(name, path):
             if name in done:
                 return
             if name in path:
                 raise Outside(f'{name}: a formula that reads itself')
-            for read in sorted(self.reads(name)):
+            for read in sorted(reads(name)):
                 if read in formulas:
                     visit(read, path | {name})
             done.add(name)

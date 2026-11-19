@@ -2,13 +2,16 @@
 
 Run from /home/user/napkin:
 
-    NAPKIN_STORE=off .venv/bin/python scratch/rewrite/b1/solve/bench.py [SECTION ...] [--share S] [--repeat R]
+    NAPKIN_STORE=off OPENBLAS_NUM_THREADS=1 .venv/bin/python scratch/rewrite/b1/solve/bench.py [SECTION ...]
+        [--share S] [--repeat R] [--fair-programs N]
 
 Sections: fair, objective, after, join, again, small, verify (default: all but `after` and `verify`,
 which solve the whole order on every scenario). `--share 0.1` (the default) is 3,000 places of A3's
-network (`scratch/rewrite/a3/network.py`: 3,000 places, 3,500 routes, 1,500 sources); `verify` is
-meant for a share where the QP of HiGHS finishes (0.01). Each timing is the best of R runs (default 1)
-and gives the load of the machine (4 cores, shared).
+network (`scratch/rewrite/a3/network.py`: 3,000 places, 3,500 routes, 1,500 sources), and `--share
+1.0` its 30,000 places; `verify` is meant for a share where the QP of HiGHS finishes (0.01).
+`--fair-programs` sets the fair-sharing budget (default `Budget()`: 1,000 programs; at 30,000 places
+need x1.45 takes 1,287). Each timing is the best of R runs (default 1) and gives the load of the
+machine (4 cores, shared).
 """
 
 import os
@@ -21,11 +24,12 @@ import scipy.sparse as sp
 sys.path.insert(0, '/home/user/napkin/scratch/rewrite/a3')
 from network import damaged, network  # A3's synthetic network
 
-from napkin.engine.solve import FLOW, OTHER, Budget, Problem, Solver, distance, fair, ranked
+from napkin.engine.solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver, distance, fair, ranked
 from napkin.engine.solve.scaled import Scaled
 from napkin.engine.solve.solver import Work, _answer, _check_hard
 
 INF = np.inf
+BUDGET = Budget()  # `--fair-programs` sets its fair-sharing budget
 
 
 def load():
@@ -93,7 +97,7 @@ class Timed:
     """`Solver.solve` with a clock on each step (the library itself counts work, never seconds)."""
 
     def __init__(self, budget=None):
-        self.solver = Solver(budget)
+        self.solver = Solver(budget or BUDGET)
         self.budget = self.solver.budget
 
     def solve(self, problem, until='distance'):
@@ -103,7 +107,7 @@ class Timed:
         _check_hard(arrays)
         w = solver._follow(Scaled(arrays))
         kept, work = solver._kept, Work()
-        first = kept.iterations
+        first, renewed = kept.iterations, kept.renewals
         face = ranked.Face(w)
         times['form'] = time.perf_counter() - start
         answer = None
@@ -125,6 +129,7 @@ class Timed:
         finally:
             solver._restore(w)
             work.iterations = kept.iterations - first
+            work.renewals = kept.renewals - renewed
         times['total'] = time.perf_counter() - start
         return answer, optima, levels, work, times
 
@@ -140,16 +145,27 @@ def best(fn, repeat):
 
 # -- sections -------------------------------------------------------------------------------------
 def sec_fair(share, repeat):
-    """The objective and the fair rank of one tier, on one kept instance; the distance step apart."""
+    """The objective and the fair rank of one tier, on one kept instance; the distance step apart. A
+    scenario that stops by name prints its failure, and the next one runs."""
     for name in ('normal', 'shortage', 'damaged', 'global'):
         net, need, up = scenario(share, name)
         p = network_problem(net, need, up)
-        _, (_, _, levels, work, times) = best(lambda: Timed().solve(p, until='fair'), repeat)
+        clock = time.perf_counter()
+        try:
+            _, (_, _, levels, work, times) = best(lambda: Timed().solve(p, until='fair'), repeat)
+        except SolveFailure as stopped:
+            print(
+                f'fair {share:g} {name:8s}: stopped after {time.perf_counter() - clock:.2f} s: {stopped}; '
+                f'reached {stopped.reached} [load {load():.1f}]',
+                flush=True,
+            )
+            continue
         below = int((levels < 1 - 1e-7).sum())
         print(
             f'fair {share:g} {name:8s}: objective {times["objective"]:.2f} s, fair {times["fair"]:.2f} s; '
             f'{work.fair_programs} programs, {work.levels} distinct levels, {below} claims below 100%, '
-            f'{work.iterations} iterations, {work.tight} tight runs [load {load():.1f}]',
+            f'{work.iterations} iterations, {work.tight} tight runs, {work.renewals} fresh instances '
+            f'[load {load():.1f}]',
             flush=True,
         )
 
@@ -300,7 +316,11 @@ if __name__ == '__main__':
         i = args.index('--repeat')
         repeat = int(args[i + 1])
         del args[i : i + 2]
+    if '--fair-programs' in args:
+        i = args.index('--fair-programs')
+        BUDGET = Budget(fair_programs=int(args[i + 1]))
+        del args[i : i + 2]
     names = args or ['small', 'fair', 'objective', 'join', 'again']
-    print(f'bench {names} share {share} repeat {repeat}; budget {Budget()}; load {load():.1f}', flush=True)
+    print(f'bench {names} share {share} repeat {repeat}; budget {BUDGET}; load {load():.1f}', flush=True)
     for name in names:
         SECTIONS[name](share, repeat)

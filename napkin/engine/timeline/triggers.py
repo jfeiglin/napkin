@@ -45,7 +45,10 @@ where the comparison is affine in one store that only rises or only falls throug
 (it only supplies or only receives the flows of its set) against what holds between moments, the
 first change of sign along its trajectory, found by sampling and bisection to the crossing
 tolerance; any other comparison on a curve has no first contact that the engine can certify, and the
-run stops with a diagnostic. That time is a moment, and so is an event of a way that changes what a
+run stops with a diagnostic. `any` and `all` of yes/no values are read through their members'
+comparisons; a sum is affine where its members are, and a count, a least or a greatest value of what
+moves is not. A keyed read whose key or members move changes by steps that the engine does not
+locate: a watched condition that reads one stops the run with a diagnostic. That time is a moment, and so is an event of a way that changes what a
 watched condition reads (a rate that jumps). The prediction holds within the window of the ways that
 it reads and is made again after it. A strict comparison whose difference moves has no first
 instant: the run stops with a diagnostic when such a condition is watched, never polling. So does a
@@ -65,7 +68,7 @@ from ..errors import SimulationError
 from .family import Family
 from .lines import Lines
 from .moment import Tx
-from .plan import FORMULA, RATE
+from .plan import FORMULA, LOOKUP, RATE, REDUCE
 from .reads import lazily
 
 # The comparisons of `napkin/core/expr`, as functions of the difference of their sides and of the
@@ -231,7 +234,7 @@ class Triggers:
                 raise SimulationError(f'{trigger.origin}: reset after {duration!r}, which is no duration')
             state.rearm_at = run.now + float(duration)
         del run.chance.firing[trigger.key]
-        run.recorder.entry(run.now, 'fire', trigger.origin, trigger.member)
+        run.recorder.entry(run.now, 'fire', trigger.origin, trigger.member, **tx.details())
         moment.again = True
         moment.commit(tx)
 
@@ -331,6 +334,13 @@ class Triggers:
                 and node.name not in self.run.frozen
             ):
                 return self._atoms(value.node, positive)
+            if value is not None and value.kind == REDUCE and value.boolean:
+                # `any` or `all` of yes/no values changes only where one of its members does.
+                reduction = self.plan.reductions[node.name]
+                atoms = []
+                for k in self.run.kept_of(node.name) if reduction.names else ():
+                    atoms += self._atoms(nodes.ref(reduction.names[k]), positive)
+                return atoms
             return []
         if isinstance(node, nodes.Unary) and node.op == 'not':
             return self._atoms(node.operand, not positive)
@@ -351,6 +361,14 @@ class Triggers:
         first instant at which it does not, which either form has."""
         run = self.run
         now, earliest, window = run.now, math.inf, math.inf
+        stepping = self._moving_lookups(node)
+        if stepping:
+            raise SimulationError(
+                f'the first contact of {nodes.text(node)} cannot be certified: it reads {stepping[0]}, a '
+                'keyed read whose key or members move between moments, which changes by steps that the '
+                'engine does not locate; compare what it is keyed by with the keys, or use an inspection '
+                'schedule'
+            )
         for left, op, right, positive in self._atoms(node):
             moving = self.moving_reads(left, right)
             if not moving:
@@ -420,6 +438,15 @@ class Triggers:
                 value, slope, since = line
                 return since + (float(self.side(other, now)) - value) / slope
         return None
+
+    def _moving_lookups(self, *parts):
+        """The keyed reads that the nodes read, through formulas, that move between moments."""
+        plan, ways = self.plan, self.run.ways
+        found = set()
+        for part in parts:
+            leaves = plan.reads_now(plan.expansion(part)).leaves | plan.expansion(part).stepped
+            found |= {leaf for leaf in leaves if leaf in plan.keyed and plan.lookup_moves(leaf, ways.set_of)}
+        return sorted(found)
 
     def _certified(self, left, right, moving):
         """Whether the first contact of a comparison on a curve is certain to be found: one side is
@@ -503,6 +530,15 @@ def _affine(node, moving, plan):
         return True
     if isinstance(node, nodes.Ref):
         value = plan.values.get(node.name)
+        if value is not None and value.kind == LOOKUP:
+            # A keyed read is a step in what it reads: affine only where nothing that it reads moves.
+            return not (_reads(node, plan) & (moving | {'t'}))
+        if value is not None and value.kind == REDUCE:
+            # A sum of affine values is affine; a count, a least or a greatest value steps or bends.
+            reduction = plan.reductions[node.name]
+            if reduction.op == 'sum' and reduction.names is not None:
+                return all(_affine(nodes.ref(name), moving, plan) for name in reduction.names)
+            return not (_reads(node, plan) & (moving | {'t'}))
         if node.name in moving or node.name == 't' or value is None or value.kind != FORMULA:
             return True
         return _affine(value.node, moving, plan)

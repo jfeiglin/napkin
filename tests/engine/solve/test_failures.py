@@ -2,10 +2,13 @@
 
 A solve that cannot give the answer of the selection order raises `SolveFailure` with a name, the
 step that stopped and what it reached, and never gives another answer in its place (G0, D0). A
-budget is forced small here where a budget is meant.
+budget is forced small here where a budget is meant. A run of HiGHS whose status says nothing of
+the program is run again on fresh instances first (`kept.Kept.run`); such a status is forced here.
 """
 
+import itertools
 import math
+from fractions import Fraction as F
 
 import numpy as np
 import pytest
@@ -25,6 +28,7 @@ from napkin.engine.solve import (
     Solver,
     distance,
 )
+from napkin.engine.solve.kept import Kept, Status
 
 from . import cases
 
@@ -128,6 +132,69 @@ def test_a_failure_leaves_the_kept_solver_usable():
         solver.solve(cases.bottlenecks(objective=False))
     answer = solver.solve(cases.shared_limit(('A',)))
     assert answer.x == pytest.approx([2.0], abs=1e-6)
+
+
+def unknown(monkeypatch, failing):
+    """Make the runs of HiGHS numbered `failing` (from one, over every instance) end with the status
+    kUnknown after the run itself, so that HiGHS holds the basis that the run reached, as a kept
+    instance did at 30,000 places (`kept`)."""
+    once, count = Kept._once, itertools.count(1)
+
+    def run(self):
+        found = once(self)
+        if next(count) in failing:
+            found.status = Status.kUnknown
+        return found
+
+    monkeypatch.setattr(Kept, '_once', run)
+
+
+def bottlenecks_answered(answer):
+    # worked by hand: all three rise to 2 W, where a + b <= 4 binds; then c rises to 3 W, where
+    # b + c <= 5 binds; served fractions 1/3, 1/3 and 1/2 of 6 W
+    assert answer.levels == pytest.approx([F(1, 3), F(1, 3), F(1, 2)], abs=1e-6)
+    assert answer.x == pytest.approx([2, 2, 3], abs=6e-6)
+
+
+def test_a_fair_program_that_says_nothing_is_run_again_on_a_fresh_instance(monkeypatch):
+    plain = Solver().solve(cases.bottlenecks(objective=False))
+    # the first run finds the hard constraints feasible; the second is the first fair program
+    unknown(monkeypatch, {2})
+    answer = Solver().solve(cases.bottlenecks(objective=False))
+    bottlenecks_answered(answer)
+    assert answer.work.renewals == 1
+    # the fresh instance starts from the basis that HiGHS held, which is optimal: no more iterations
+    assert answer.work.iterations == plain.work.iterations
+
+
+def test_a_fresh_instance_with_no_basis_comes_next(monkeypatch):
+    unknown(monkeypatch, {2, 3})
+    answer = Solver().solve(cases.bottlenecks(objective=False))
+    bottlenecks_answered(answer)
+    assert answer.work.renewals == 2
+
+
+def test_an_objective_program_that_says_nothing_is_run_again(monkeypatch):
+    unknown(monkeypatch, {1})
+    answer = Solver().solve(cases.bottlenecks(objective=True))
+    assert answer.work.renewals == 1
+    # a + b <= 4 and b + c <= 5 serve at most 9 - b W of 18 W: the least unmet is 9 W, at b = 0
+    assert answer.optima[0] == pytest.approx(9.0, abs=6e-6)
+
+
+def test_a_status_that_fresh_instances_meet_too_stops_by_name_with_the_size(monkeypatch):
+    unknown(monkeypatch, {2, 3, 4})
+    solver = Solver()
+    with pytest.raises(SolveFailure) as caught:
+        solver.solve(cases.bottlenecks(objective=False))
+    stopped = caught.value
+    assert (stopped.name, stopped.step) == (NUMERICAL, 'fair sharing, tier 0')
+    # the program of the tier: a, b, c and the level t; the two limits and the three claim rows
+    assert stopped.reached == {'status': 'kUnknown', 'rows': 5, 'columns': 4}
+    assert 'kUnknown on a program of 5 rows and 4 columns, and so did two fresh instances' in str(stopped)
+    # the solver holds the last fresh instance, and it answers the next solve
+    monkeypatch.undo()
+    bottlenecks_answered(solver.solve(cases.bottlenecks(objective=False)))
 
 
 def test_unknown_failure_names_are_refused():
