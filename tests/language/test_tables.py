@@ -438,3 +438,84 @@ def test_a_reordered_network_keeps_its_named_rows_and_their_links():
     rows = {member.id: row for row, member in enumerate(place.members)}
     clinic = next(member for member in route.members if member.id == 'links.junction_clinic')
     assert dict(clinic.links) == {'origin': rows['sites.junction'], 'destination': rows['sites.clinic']}
+
+
+# ---- the setup's reports ---------------------------------------------------------------------------
+
+# Spec, "Collections, keys and projections": for rows, setup reports equal keys within a keyed view
+# that `.at(...)` reads, at the row that wins (of equal keys the later-created; rows with ids are
+# created in the order of their ids), and a lookup whose key has a known lower bound below the first
+# key. The reports refuse nothing.
+READ_AT = """
+    Reading:
+        input hour: h = 0
+        input factor = 1
+        input valid: bool = true
+
+    readings: Reading from "readings.csv"
+
+    factor_now = formula(Reading.instances.by(hour).at(t).factor)
+    """
+
+
+def reported(text, **files):
+    found = compile_text(textwrap.dedent(text), UNITS, tables=files)
+    return [(item.code, item.file, item.line) for item in found.reports], found.reports
+
+
+def test_equal_keys_under_at_are_reported_at_the_row_that_wins():
+    # The ids order the rows late, morning, noon: of the two rows at 10 h, morning is created later.
+    table = 'id,hour: h,factor,valid\nmorning,10,2,true\nnoon,0,3,true\nlate,10,4,false\n'
+    places, (report,) = reported(READ_AT, **{'readings.csv': table})
+    assert places == [('equal_keys', 'readings.csv', 2)]
+    assert 'readings.late, readings.morning have the key 10 h' in report.message
+    assert 'created later, readings.morning' in report.message
+
+
+def test_a_where_limits_the_check_of_equal_keys_to_the_rows_that_pass_it():
+    table = 'id,hour: h,factor,valid\nmorning,10,2,true\nnoon,0,3,true\nlate,10,4,false\n'
+    text = READ_AT.replace('Reading.instances.by', 'Reading.instances.where(valid).by')
+    assert reported(text, **{'readings.csv': table})[0] == []
+
+
+def test_equal_ranks_in_a_view_that_only_priority_reads_are_no_report():
+    text = """
+        reservoir:
+            water: L = 20 in [0, 20]
+                outflow.allocation = priority(Customer.instances.by(rank).delivery)
+        Customer:
+            input rank = 1
+            flow delivery: reservoir.water -> SINK
+                request = 2 L/h
+        customers: Customer from "customers.csv"
+        """
+    assert reported(text, **{'customers.csv': 'id,rank\na,1\nb,1\n'})[0] == []
+
+
+def test_a_lookup_below_its_first_key_at_a_known_lower_bound_is_reported_at_its_line():
+    # t starts at 0 h, and the first reading is at 2 h: a read at 1 h fails when it is evaluated.
+    places, (report,) = reported(READ_AT, **{'readings.csv': 'hour: h,factor\n2,5\n'})
+    assert places == [('below_first_key', '', 9)]
+    assert 'at 0 h at the least, below the first key 2 h' in report.message
+    assert reported(READ_AT, **{'readings.csv': 'hour: h,factor\n0,1\n2,5\n'})[0] == []
+
+
+@pytest.mark.parametrize(
+    ('first', 'lowest', 'words'),
+    [(1, 500, '0.5 kWh at the least, below the first key 1 kWh'), (1, 1000, None)],
+)
+def test_a_key_with_a_lower_bound_is_compared_in_the_unit_of_the_view(first, lowest, words):
+    text = f"""
+        Tier:
+            input threshold: kWh = 0
+            input price = 1
+
+        tiers: Tier from "tiers.csv"
+
+        meter:
+            input volume: Wh = {lowest} in [{lowest},]
+            price = formula(Tier.instances.by(threshold).at(this.volume).price)
+        """
+    places, found = reported(text, **{'tiers.csv': f'threshold: kWh,price\n{first},2\n3,1\n'})
+    assert places == ([] if words is None else [('below_first_key', '', 10)])
+    assert words is None or words in found[0].message

@@ -3,6 +3,9 @@
 `check(program)` gives the diagnostics of a program in the order in which it meets them; a program
 with none can run. `build.Builder.finish` runs it and raises `ProgramError` with them. Each
 diagnostic has a code, the origin of the part that breaks the rule, and a message that names it.
+`reports(program)` gives the setup's reports, which refuse nothing: equal keys in a keyed view that
+`.at(...)` reads (`equal_keys`), and a lookup below the first key at a known lower bound
+(`below_first_key`).
 
 The resolver (`Resolver.resolve`) gives what a path names (`Found`) in the scope of the part that
 holds it: the receiver's template, an event's parameters and locals, a trigger's captures, a
@@ -50,6 +53,7 @@ from __future__ import annotations
 import dataclasses
 from collections import Counter
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Any
 
 from ..core import expr as nodes
@@ -241,12 +245,15 @@ class Resolver:
         raise TypeError(f'no start: {type(start).__name__}')
 
     def collection(self, path, scope, where, retained):
-        """What a path names, which must be a collection."""
+        """What a path names, which must be a collection: a collection or a projection over one, or
+        a value that holds a collection (`this.pumps`), which names its members."""
         found = self.resolve(path, scope, where, retained)
-        if found is not None and not found.many:
-            self.fail('collection', where, f'`{spelled(path)}` is no collection')
-            return None
-        return found
+        if found is None or found.many:
+            return found
+        if found.kind == 'value' and isinstance(found.part.type, p.CollectionType):
+            return Found('member', self.templates.get(found.part.type.template), many=True)
+        self.fail('collection', where, f'`{spelled(path)}` is no collection')
+        return None
 
     def literal(self, literal, scope, where, retained):
         templates = set()
@@ -617,9 +624,10 @@ class _Checker(Resolver):
         elif isinstance(init, Distribution):
             self.distribution(init, where)
         elif isinstance(init, Path):
-            found = self.resolve(init, scope, where)
-            if value.kind == p.COLLECTION and found is not None and not found.many:
-                self.fail('collection', where, f'`{spelled(init)}` is no collection')
+            if value.kind == p.COLLECTION:
+                self.collection(init, scope, where, None)
+            else:
+                self.resolve(init, scope, where)
         else:
             self.check_expr(init, scope, where)
 
@@ -1094,3 +1102,284 @@ def _locals_read(expression):
 def check(program):
     """The diagnostics of a program: each invariant that it breaks, with its code and its part."""
     return _Checker(program).run()
+
+
+# ---- the setup's reports ------------------------------------------------------------------------------
+
+
+def reports(program):
+    """The setup's reports of a checked program: what it says of a program before a run, refusing
+    nothing (spec, "Collections, keys and projections"). Each is a `Diagnostic`:
+
+    - `equal_keys`, at the member that wins: members of a keyed view that `.at(...)` reads have one
+      key. Of equal keys a lookup reads the member created later, the later row of the program, and
+      the report names it. A `where` limits the check to the members that pass its test.
+    - `below_first_key`, at the part that reads the lookup: its key has a known lower bound (a
+      number, `t` from 0 h, or a stored value or an input with a lower bound) below the first key of
+      its view, or the view is empty. Such a read fails when it is evaluated.
+
+    The views are those that the program fixes before a run: `Template.instances`, a literal of
+    named members, a collection value of the root, and `where` and `by` of a view. A key, or a
+    `where` test, is known when the member's value of each field that it reads is a number, a
+    yes/no or a text written in place (its own, or its template's initializer); the inputs keep the
+    program's values, before a configuration overrides them. A view whose test is not known for
+    every member takes no part, nor a member whose key is not known, nor a lookup by an unkeyed
+    view (its creation numbers are distinct)."""
+    return tuple(_Reports(program).run())
+
+
+class _Reports:
+    """The reports of `reports`, each at most once: a tie once for each view, a lookup below its
+    first key once for each place that reads it."""
+
+    def __init__(self, program):
+        self.program = program
+        self.resolver = Resolver(program)
+        self.done = set()
+
+    def run(self):
+        for scope, origin, lookup in _lookups(self.program):
+            yield from self.lookup(scope, origin, lookup)
+
+    def lookup(self, scope, origin, lookup):
+        view = lookup.source
+        field = _key_field(view)
+        found = None if field is None else self.members(view)
+        if found is None:
+            return
+        template, rows = found
+        part = template.part(field)
+        if not isinstance(part, p.Value) or not isinstance(part.type, p.Number):
+            return
+        unit = part.type.unit
+        keys = {row: self.written(template, template.members[row], field) for row in rows}
+        known = sorted((key, row) for row, key in keys.items() if key is not None)
+        if ('tie', view) not in self.done:
+            self.done.add(('tie', view))
+            ties = {}
+            for key, row in known:
+                ties.setdefault(key, []).append(template.members[row].id)
+            for key, ids in ties.items():
+                if len(ids) > 1:
+                    yield Diagnostic(
+                        'equal_keys',
+                        ids[-1],
+                        f'{", ".join(ids)} have the key {_quantity(key, unit, self.program)} in '
+                        f'`{spelled(view)}`, which `.at(...)` reads: of equal keys it reads the member '
+                        f'created later, {ids[-1]}',
+                    )
+        lowest = self.lower(lookup.key, scope)
+        if lowest is None or ('below', origin, lookup) in self.done or None in keys.values():
+            return
+        self.done.add(('below', origin, lookup))
+        reader = f'`{spelled(Path(lookup))}`'
+        if not known:
+            yield Diagnostic(
+                'below_first_key',
+                origin,
+                f'{reader} reads an empty collection: such a read fails when it is evaluated',
+            )
+        elif lowest < known[0][0]:
+            yield Diagnostic(
+                'below_first_key',
+                origin,
+                f'{reader} reads at {_quantity(lowest, unit, self.program)} at the least, below the '
+                f'first key {_quantity(known[0][0], unit, self.program)}: such a read fails when it '
+                'is evaluated',
+            )
+
+    def members(self, path):
+        """(template, rows) of a view that the program fixes before a run, with the rows that pass
+        its `where` tests in row order (the order of creation), or None."""
+        start = path.start
+        if isinstance(start, Root) and len(path.steps) == 1:
+            value = self.program.root_value(path.steps[0])
+            if value is None or value.kind != p.COLLECTION or not isinstance(value.init, Path):
+                return None
+            return self.members(value.init)
+        if path.steps:
+            return None
+        if isinstance(start, Instances):
+            template = self.resolver.templates.get(start.template)
+            return None if template is None else (template, list(range(len(template.members))))
+        if isinstance(start, Literal):
+            if not start.items or not all(_named(item) for item in start.items):
+                return None
+            try:
+                found = [self.program.member(item.start.id) for item in start.items]
+            except KeyError:
+                return None
+            return found[0][0], sorted(row for _, row in found)
+        if isinstance(start, By):
+            return self.members(start.source)
+        if isinstance(start, Where):
+            found = self.members(start.source)
+            if found is None:
+                return None
+            template, rows = found
+            kept = []
+            for row in rows:
+                passed = self.passes(start.test, template, template.members[row])
+                if passed is None:
+                    return None
+                if passed:
+                    kept.append(row)
+            return template, kept
+        return None
+
+    def written(self, template, member, name):
+        """The exact value of a member's field written in place (its own initializer, or its
+        template's), or None."""
+        part = template.part(name)
+        if not isinstance(part, p.Value) or part.kind not in (p.INPUT, p.STATE):
+            return None
+        init = member.value(name)
+        init = part.init if init is None else init
+        return _exact(init.node, {}, self.program) if isinstance(init, Expr) and not init.reads else None
+
+    def passes(self, test, template, member):
+        """Whether a member passes a `where` test that reads only its fields written in place, or
+        None."""
+        values = {}
+        for name, read in test.reads:
+            if not (isinstance(read, Path) and read.start == ITEM and len(read.steps) == 1):
+                return None
+            values[name] = self.written(template, member, read.steps[0])
+            if values[name] is None:
+                return None
+        found = _exact(test.node, values, self.program)
+        return found if isinstance(found, bool) else None
+
+    def lower(self, key, scope):
+        """The known lower bound of a lookup's key, exact in the canonical unit, or None: a number,
+        `t` (a run starts at 0 h), or a stored value or an input with a lower bound written in
+        place."""
+        if not key.reads:
+            found = _exact(key.node, {}, self.program)
+            return None if isinstance(found, (bool, str)) else found
+        if not isinstance(key.node, nodes.Ref) or len(key.reads) != 1:
+            return None
+        read = key.reads[0][1]
+        if isinstance(read, Time):
+            return Fraction(0)
+        if not isinstance(read, Path):
+            return None
+        found = self.resolver.resolve(read, scope, '')
+        if found is None or found.kind != 'value' or found.many:
+            return None
+        value = found.part
+        if value.kind not in (p.INPUT, p.STATE) or not isinstance(value.lower, Expr) or value.lower.reads:
+            return None
+        bound = _exact(value.lower.node, {}, self.program)
+        return None if isinstance(bound, (bool, str)) else bound
+
+
+def _named(path):
+    return isinstance(path.start, Named) and not path.steps
+
+
+def _key_field(path):
+    """The field that keys a view (`c.by(hour)`, or a `where` of one), or None."""
+    while not path.steps and isinstance(path.start, Where):
+        path = path.start.source
+    return path.start.key if not path.steps and isinstance(path.start, By) else None
+
+
+def _lookups(program):
+    """(scope, origin, lookup) of each `.at(...)` of a program: in its templates' parts and members,
+    in its root, its setup and its assertions."""
+    for template in program.templates:
+        scope = Scope(template)
+        status = (template.status,) if template.status is not None else ()
+        for part in (*template.values, *template.flows, *template.asserts, *status):
+            yield from _found_in(part, scope, part.origin)
+        for event in template.events:
+            yield from _found_in(
+                (event.params, event.locals, event.steps), Scope(template, event), event.origin
+            )
+            for trigger in event.triggers:
+                yield from _found_in(trigger, Scope(template, trigger=trigger), trigger.origin)
+        for solver in template.solvers:
+            yield from _found_in(solver, Scope(template, solver=solver), solver.origin)
+        for member in template.members:
+            yield from _found_in(member.values, scope, member.id)
+    for part in (*program.root, *program.setup, *program.asserts):
+        yield from _found_in(part, Scope(), part.origin)
+
+
+def _found_in(value, scope, origin):
+    """The lookups inside a record, a tuple or a read, each with the origin of the nearest part."""
+    if isinstance(value, Lookup):
+        yield scope, origin, value
+    if isinstance(value, Expr):
+        # Most expressions of a large table read nothing: only their reads can hold a lookup.
+        for _, read in value.reads:
+            yield from _found_in(read, scope, origin)
+    elif isinstance(value, tuple):
+        for each in value:
+            yield from _found_in(each, scope, origin)
+    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
+        here = getattr(value, 'origin', '') or origin
+        for item in dataclasses.fields(value):
+            yield from _found_in(getattr(value, item.name), scope, here)
+
+
+_EXACT_BINARY = {
+    'add': lambda a, b: a + b,
+    'sub': lambda a, b: a - b,
+    'mul': lambda a, b: a * b,
+    'div': lambda a, b: a / b if b else None,
+}
+_EXACT_COMPARE = {
+    'eq': lambda a, b: a == b,
+    'ne': lambda a, b: a != b,
+    'lt': lambda a, b: a < b,
+    'le': lambda a, b: a <= b,
+    'gt': lambda a, b: a > b,
+    'ge': lambda a, b: a >= b,
+}
+
+
+def _exact(node, values, program):
+    """The exact value of a node whose names are in `values`: a number (a Fraction in the canonical
+    unit of its dimension, as `q(number, unit)` scales it), a yes/no or a text; or None when a part
+    of it is not known, or is not one of these operations."""
+    if isinstance(node, nodes.Const):
+        value = node.value
+        if isinstance(value, (bool, str)):
+            return value
+        return Fraction(value) if isinstance(value, (int, float)) else None
+    if isinstance(node, nodes.Ref):
+        return values.get(node.name)
+    if isinstance(node, nodes.Call) and node.function == 'q' and len(node.args) == 2:
+        number, unit = _exact(node.args[0], values, program), node.args[1]
+        if not isinstance(number, Fraction) or not isinstance(unit, nodes.Const):
+            return None
+        try:
+            return number * program.unit(unit.value).scale
+        except KeyError:
+            return None
+    parts = [_exact(child, values, program) for child in node.children]
+    if any(part is None for part in parts):
+        return None
+    numbers = all(isinstance(part, Fraction) for part in parts)
+    if isinstance(node, nodes.Unary):
+        if node.op == 'not':
+            return not parts[0] if isinstance(parts[0], bool) else None
+        return (-parts[0] if node.op == 'neg' else parts[0]) if numbers else None
+    if isinstance(node, nodes.Binary) and node.op in _EXACT_BINARY:
+        return _EXACT_BINARY[node.op](*parts) if numbers else None
+    if isinstance(node, nodes.Compare):
+        if not numbers and node.ops not in (('eq',), ('ne',)):
+            return None
+        return all(_EXACT_COMPARE[op](a, b) for op, a, b in zip(node.ops, parts, parts[1:]))
+    if isinstance(node, nodes.BoolOp) and all(isinstance(part, bool) for part in parts):
+        return all(parts) if node.op == 'and' else any(parts)
+    return None
+
+
+def _quantity(value, unit, program):
+    """A canonical value written in a unit, for a message: `10 h`, `0.5 kW`."""
+    number = value / program.unit(unit).scale
+    written = str(number.numerator) if number.denominator == 1 else f'{float(number):g}'
+    return f'{written} {unit}'.strip()

@@ -13,7 +13,7 @@ and the line of a table.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -23,7 +23,7 @@ from .language.evidence import document
 from .language.parse import parse
 from .language.problems import LanguageError, Problem, SyntaxProblem
 from .language.tables import in_folder, in_memory
-from .lowering import lower
+from .lowering import lower, reports
 from .semantic import DeclaredModel, declare
 
 MAIN = 'the main file of a package starts with its scenario line: scenario "Title"'
@@ -32,12 +32,15 @@ HORIZON = 'the scenario line gives the horizon of the default run: horizon 30 da
 
 @dataclass(frozen=True)
 class Compiled:
-    """A model as the front end gives it: its declared model, its program, and the configuration of
-    its default run (None for a text with no horizon)."""
+    """A model as the front end gives it: its declared model, its program, the configuration of its
+    default run (None for a text with no horizon), and the setup's reports (`lowering.reports`),
+    each a `Problem` at its place that refuses nothing: equal keys in a keyed view that `.at(...)`
+    reads, and a lookup below its first key at a known lower bound."""
 
     declared: DeclaredModel
     program: Program
     configuration: Configuration | None
+    reports: tuple[Problem, ...] = ()
 
 
 def compile_text(text, units, file='', tables=None):
@@ -54,7 +57,8 @@ def compile_text(text, units, file='', tables=None):
         raise LanguageError([problem.problem], file) from None
     except LanguageError as error:
         raise LanguageError(error.problems, file) from None
-    return Compiled(declared, program, default_run(declared))
+    found = tuple(replace(item, file=item.file or file) for item in reports(declared, program))
+    return Compiled(declared, program, default_run(declared), found)
 
 
 def default_run(declared):

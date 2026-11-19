@@ -27,15 +27,24 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   must be fixed: an input or a link), `by(field)` (the key) and `.at(x)` (one member, `x` in the
   key's unit). A step from a collection is a projection, which only a reduction reads: `sum` and
   `min`/`max` of numbers, `count` of members or of yes/no values, `any` and `all` of yes/no values.
+- **Flows and endpoints.** A directed flow ends at `SOURCE`, `SINK` or a stored number: of its own
+  member, through links (`this.origin.power`), of a named member (`reservoir.water`) or of the top
+  level. A stored number has an `outflow` and an `inflow` (`EndOf`): their `actual_rate` (the sum of
+  the incident flows), `request`, `capacity` and `flows` (a collection of flows) are read, and their
+  settings are written under the store (`outflow.capacity = 10 L/h`, `inflow.allocation =
+  priority(this.main, this.backup)`; `DeclaredEndpoint`). A setting is resolved after its store, so
+  it may read it. `priority(...)` ranks flows, or a projection of flows over a collection by its
+  keys; that each is incident at the store is the program's rule (`check.priority_item`).
 - **Expressions** become a small typed form (`Const`, `Read`, `Apply`, `Retain`, `Distribution`,
   `Drawn`, `Reduced`) that the lowering writes as a program. A `Read` knows whether what it reads is
   fixed for the run (inputs, links and the members of fixed collections), which `where` and `assert`
-  need.
+  need, and whether it ends at a stored number, which a flow and an endpoint need.
 - **What a later slice brings** is kept as a `Deferred` part, with the construct and the slice that
-  brings it; the lowering refuses it by name. This slice resolves the entities, the templates and
+  brings it; the lowering refuses it by name. These slices resolve the entities, the templates and
   their members, the tables, values, inputs (a default may draw from a distribution), formulas,
   `readonly`, ranges with either side open, scales, links, collections and their reductions, stores,
-  directed flows with `request` and `capacity` on one member's stores, and assertions over inputs.
+  directed flows between any stores with `request` and `capacity`, the settings and the reads of
+  endpoints, and assertions over inputs.
 """
 
 from __future__ import annotations
@@ -43,8 +52,9 @@ from __future__ import annotations
 import difflib
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
+from functools import cached_property
 
 from .language import nodes as n
 from .language import tables
@@ -190,12 +200,27 @@ class Many:
 
 @dataclass(frozen=True)
 class FlowOf:
-    """A flow, which is no value: its rates are read (`actual_rate`, `request`, `capacity`)."""
+    """A flow, which is no value: its rates are read (`actual_rate`, `request`, `capacity`). `flow`
+    is the path of its declaration, or '' for a member of an endpoint's `flows`, which may be any of
+    the flows incident there."""
+
+    rate: Num
+    flow: str = field(default='', compare=False)
+
+    def __str__(self):
+        return f'a flow in {self.rate}'
+
+
+@dataclass(frozen=True)
+class EndOf:
+    """The outflow or the inflow of a store, which is no value: its total rate (`actual_rate`), its
+    settings (`request`, `capacity`) and its incident flows (`flows`) are read. `rate` is the store's
+    unit per hour."""
 
     rate: Num
 
     def __str__(self):
-        return f'a flow in {self.rate}'
+        return f'an endpoint in {self.rate}'
 
 
 def compatible(a, b):
@@ -232,6 +257,9 @@ class Read:
     # The path of the formula that the read ends at, when the way to it is fixed: an assertion that
     # reads it is over inputs when the formula is.
     formula: str = field(default='', compare=False)
+    # Whether the read ends at a stored number, which can be an end of a flow and has an outflow and
+    # an inflow.
+    stored: bool = field(default=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -312,11 +340,28 @@ LINK, COLLECTION = 'link', 'collection'
 
 
 @dataclass(frozen=True)
+class DeclaredEndpoint:
+    """The settings of a store's `outflow` or `inflow`, written under the store
+    (`outflow.capacity = 10 L/h`): a hard `capacity` and a soft `request` on the total rate in that
+    direction (each captured once, or a `Retain`), and the `allocation` among the incident flows,
+    `('proportional',)` (the default) or `('priority', items)` with the `Read` of each item, a flow
+    or a projection of flows (`Customer.instances.by(rank).delivery`), first to last. Its path is
+    the store's and the side (`reservoir.water.outflow`); its line is that of its first setting."""
+
+    path: str
+    capacity: object = None
+    request: object = None
+    allocation: tuple = ('proportional',)
+    line: int = 0
+
+
+@dataclass(frozen=True)
 class DeclaredValue:
     """A value of an entity, a template or the top level: its kind (`input`, `state`, `formula`,
     `distribution`, `link`, `collection`), its type, its initializer (None for a value of a template
     that each member gives, or a link that each member sets), its range (either side None), its
-    scale, its texts and its evidence (the records that it cites and those written under it)."""
+    scale, its texts and its evidence (the records that it cites and those written under it). A
+    stored number has the settings of its `outflow` and its `inflow` (`DeclaredEndpoint`), or None."""
 
     path: str
     name: str
@@ -330,6 +375,8 @@ class DeclaredValue:
     text: str | None = None
     evidence: tuple = ()
     line: int = 0
+    outflow: DeclaredEndpoint | None = None
+    inflow: DeclaredEndpoint | None = None
 
 
 def fixed_kind(value):
@@ -340,10 +387,16 @@ def fixed_kind(value):
     return value.kind == COLLECTION and value.init is not None and value.init.fixed
 
 
+def _stored(value):
+    """Whether a declared value is a stored number: an end of a flow, with an outflow and an inflow."""
+    return value.kind == STATE and isinstance(value.type, Num)
+
+
 @dataclass(frozen=True)
 class DeclaredFlow:
-    """A directed flow: its ends (`'SOURCE'`, `'SINK'` or the `Read` of a store), the type of its
-    rates, its request and its capacity (captured once, or a `Retain`)."""
+    """A directed flow: its ends (`'SOURCE'`, `'SINK'` or the `Read` of a store: of its own member,
+    through a link, of a named member or of the top level), the type of its rates, its request and
+    its capacity (captured once, or a `Retain`)."""
 
     path: str
     name: str
@@ -479,16 +532,26 @@ class DeclaredModel:
     asserts: tuple[DeclaredAssert, ...] = ()
 
     def part(self, path):
-        """The declared part of a path (an entity, a template, a value, a flow, an assertion, a
-        member, a table or a deferred part), or None."""
+        """The declared part of a path (an entity, a template, a value, the settings of an
+        endpoint, a flow, an assertion, a member, a table or a deferred part), or None."""
+        return self._paths.get(path)
+
+    @cached_property
+    def _paths(self):
+        """Each declared part by its path, made once, so that a large model places each of many
+        diagnostics at once: the first of two parts of one path wins, entities before members."""
+        found = {}
         for entity in self.entities:
-            if entity.path == path:
-                return entity
+            found.setdefault(entity.path, entity)
             for part in entity.parts:
-                if part.path == path:
-                    return part
-        parts = (*self.members, *self.tables, *self.root, *self.asserts, *self.deferred)
-        return next((part for part in parts if part.path == path), None)
+                found.setdefault(part.path, part)
+        for part in (*self.members, *self.tables, *self.root, *self.asserts, *self.deferred):
+            found.setdefault(part.path, part)
+        for value in [part for part in found.values() if isinstance(part, DeclaredValue)]:
+            for side in (value.outflow, value.inflow):
+                if side is not None:
+                    found.setdefault(side.path, side)
+        return found
 
 
 # ---- resolution ---------------------------------------------------------------------------------------
@@ -523,6 +586,9 @@ class Scope:
 
 TOP = Scope()
 FLOW_READS = ('actual_rate', 'request', 'capacity')
+SIDES = ('outflow', 'inflow')
+SETTINGS = ('capacity', 'request', 'allocation')
+ALLOCATIONS = ('priority', 'proportional')
 KEYED = ('where', 'by', 'at')
 SHAPES = {'lognormal': {1}}  # the positions of the plain (shape) arguments of a family: the gsd
 ARITY = {
@@ -534,10 +600,7 @@ ARITY = {
     'lognormal': (2, 4),
 }
 PURE = ('exp', 'expm1', 'ln', 'log1p', 'erf')
-LATER_CALLS = {
-    **dict.fromkeys(('since', 'elapsed', 'delayed'), ('history (since, elapsed, delayed)', 'S4')),
-    **dict.fromkeys(('priority', 'proportional'), ('an allocation (priority, proportional)', 'S2')),
-}
+LATER_CALLS = dict.fromkeys(('since', 'elapsed', 'delayed'), ('history (since, elapsed, delayed)', 'S4'))
 LATER_METHODS = {
     'draw': ('a draw outside the default of an input', 'S4'),
     'choose': ("an actor's choice", 'S4'),
@@ -604,6 +667,11 @@ class Resolver:
         self.problems.append(Problem(code, message, line, column, file))
 
     # ---- types and units ---------------------------------------------------------------------
+
+    def per_hour(self, kind):
+        """The type of the rates of a store of a number type: its unit per hour (`1/h` for a plain
+        number), the spelling that the program's builder gives a flow between such stores."""
+        return self.num(f'{kind.unit}/h' if kind.unit else '1/h')
 
     def num(self, spelling, node=None):
         found = self.units.of(spelling)
@@ -677,6 +745,13 @@ class Resolver:
                 self.fail(
                     'type',
                     'a flow is no value: read its actual_rate, request or capacity, as delivery.actual_rate',
+                    node,
+                )
+            if isinstance(found.type, EndOf):
+                self.fail(
+                    'type',
+                    'an outflow or an inflow is no value: read its actual_rate, request or capacity, or '
+                    'its flows, as water.outflow.actual_rate',
                     node,
                 )
             return found
@@ -825,6 +900,13 @@ class Resolver:
     def call(self, node, scope):
         if node.function in LATER_CALLS:
             raise Later(*LATER_CALLS[node.function])
+        if node.function in ALLOCATIONS:
+            self.fail(
+                'allocation',
+                f'{node.function}(...) is an allocation, no value: it is the value of '
+                'outflow.allocation or inflow.allocation under a store',
+                node,
+            )
         if node.function in ('sum', 'count', 'any', 'all') or (
             node.function in ('min', 'max') and len(node.args) == 1
         ):
@@ -940,7 +1022,7 @@ class Resolver:
         if name in self.root:
             value = self.value(name)
             formula = name if value.kind == FORMULA else ''
-            return Read(('root',), (name,), value.type, fixed_kind(value), formula)
+            return Read(('root',), (name,), value.type, fixed_kind(value), formula, _stored(value))
         if name in self.entities:
             return Read(('named', name), (), Ent(name), True)
         if name in self.instances:
@@ -979,8 +1061,9 @@ class Resolver:
         return Read(('named', f'{table}.{id}'), (), Ent(template), True)
 
     def step(self, base, name, node):
-        """The read one step on from `base`: a part of a member (a projection from a collection), or
-        a rate of a flow."""
+        """The read one step on from `base`: a part of a member (a projection from a collection), a
+        rate of a flow, the outflow or the inflow of a stored number, or what an endpoint reads (its
+        rates and its flows)."""
         kind = base.type
         many = isinstance(kind, Many)
         inner = kind.of if many else kind
@@ -992,38 +1075,68 @@ class Resolver:
                 parts = [key.split('.', 1)[1] for key in self.syntax if key.startswith(f'{template}.')]
                 self.fail('unknown_name', f'{template} has no {name}' + close(name, parts), node)
             _, syntax = self.syntax[path]
-            formula = ''
+            formula, stored = '', False
             if isinstance(syntax, n.Flow):
-                found, steady = FlowOf(self.rate(path)), False
+                found, steady = FlowOf(self.rate(path), path), False
             elif isinstance(syntax, n.Declaration):
                 value = self.value(path)
                 found, steady = value.type, base.fixed and fixed_kind(value)
                 formula = path if base.fixed and value.kind == FORMULA else ''
+                stored = _stored(value)
             else:
                 raise Later('an event', 'S4') if isinstance(syntax, n.Event) else Later('a solver', 'S5')
-            if many:
-                if isinstance(found, Many):
-                    self.fail(
-                        'collection',
-                        f'{name} is a collection on each member, and a projection of collections is no '
-                        'collection: reduce it on the member, then reduce that value',
-                        node,
-                    )
-                found = Many(found, kind.key)
-            return Read(base.start, steps, found, steady, formula)
+            return Read(base.start, steps, self.projected(found, kind, name, node), steady, formula, stored)
         if isinstance(inner, FlowOf):
             if name in FLOW_READS:
                 return Read(base.start, steps, Many(inner.rate, kind.key) if many else inner.rate)
             if name in ('source', 'sink'):
-                raise Later("a flow's ends as values", 'S2')
+                raise Later("a flow's ends as values", 'S3')
             self.fail(
                 'unknown_name', f'a directed flow reads actual_rate, request and capacity, not {name}', node
             )
-        if name in ('outflow', 'inflow'):
-            raise Later('the settings of an endpoint (outflow, inflow)', 'S2')
+        if isinstance(inner, EndOf):
+            if name in FLOW_READS:
+                return Read(base.start, steps, Many(inner.rate, kind.key) if many else inner.rate)
+            if name == 'flows':
+                return Read(base.start, steps, self.projected(Many(FlowOf(inner.rate)), kind, name, node))
+            if name == 'allocation':
+                self.fail(
+                    'allocation',
+                    'an allocation is no value: it is set under the store, as outflow.allocation = '
+                    'priority(...)',
+                    node,
+                )
+            self.fail(
+                'unknown_name',
+                f'an outflow or an inflow reads actual_rate, request, capacity and flows, not {name}',
+                node,
+            )
+        if name in SIDES:
+            if not base.stored:
+                self.fail(
+                    'flow_end',
+                    f'{".".join(base.steps) or name} is no stored number: a store has an outflow and an '
+                    'inflow',
+                    node,
+                )
+            return Read(base.start, steps, self.projected(EndOf(self.per_hour(inner)), kind, name, node))
         if isinstance(inner, Dist) and name in ('mean', 'std'):
             raise Later("a distribution's mean and std", 'S4')
         self.fail('unknown_name', f'{name} is no part of a value of {kind}', node)
+
+    def projected(self, found, kind, name, node):
+        """The type of a step: of the one thing that it names, or from a collection the projection
+        of it over each member, with the collection's keys. A projection of collections is none."""
+        if not isinstance(kind, Many):
+            return found
+        if isinstance(found, Many):
+            self.fail(
+                'collection',
+                f'{name} is a collection on each member, and a projection of collections is no '
+                'collection: reduce it on the member, then reduce that value',
+                node,
+            )
+        return Many(found, kind.key)
 
     def literal(self, node, scope):
         """`<a, b>`: members of one template, each named once."""
@@ -1143,8 +1256,6 @@ class Resolver:
         return found
 
     def declaration(self, path, scope, node):
-        if node.properties:
-            raise Later('the settings of an endpoint (outflow, inflow)', 'S2')
         declared, retained = (None, False) if node.type is None else self.declared_type(node.type)
         template = scope.owner in self.templates
         if node.value is None:
@@ -1187,6 +1298,13 @@ class Resolver:
             self.link_target(init, None, node)
             kind = LINK
         elif isinstance(init.type, Many):
+            if isinstance(init.type.of, FlowOf):
+                self.fail(
+                    'collection',
+                    'a collection of flows is read where it stands, as count(c) or sum(c.actual_rate): '
+                    'it is no value of its own',
+                    node,
+                )
             if not isinstance(init.type.of, Ent):
                 self.fail(
                     'collection',
@@ -1396,7 +1514,7 @@ class Resolver:
                 )
         return found
 
-    # ---- flows -------------------------------------------------------------------------------------
+    # ---- flows and endpoints ---------------------------------------------------------------------
 
     def rate(self, path):
         """The type of a flow's rates, from its ends (a store's unit per hour), or for `SOURCE ->
@@ -1417,35 +1535,32 @@ class Resolver:
                 return self.quantity(1, found[1], Scope(owner)).type
         for end in (node.source, node.sink):
             if end not in (('SOURCE',), ('SINK',)):
-                store = self.store(end, owner, node)
-                return self.num(f'{store.type.unit}/h' if store.type.unit else '1/h', node)
+                return self.per_hour(self.store(end, owner, node).type)
         self.fail('flow_units', f'flow {node.name}: SOURCE -> SINK needs a rate written with its unit', node)
 
     def store(self, end, owner, node):
-        """The stored number that an end of a flow names: `this.water`, or for an entity written once
-        `tank.water`. A flow of a template ends at its own member's stores."""
-        if len(end) != 2:
-            raise Later('an end of a flow through a link or a local', 'S2' if len(end) > 2 else 'S4')
-        head, name = end
-        if head == 'this':
-            entity = owner
-        elif head in self.entities and owner in self.entities:
-            entity = head
-        elif head in (*self.entities, *self.instances, *self.tables):
-            raise Later('a flow between members of two templates', 'S2')
-        else:
-            self.fail('unknown_name', f'{head} names no entity' + close(head, self.entities), node)
-        path = f'{entity}.{name}'
-        if path not in self.syntax or not isinstance(self.syntax[path][1], n.Declaration):
-            self.fail('flow_end', f'{".".join(end)} is no stored number of {entity}', node)
-        value = self.value(path)
-        if value.kind != STATE or not isinstance(value.type, Num):
+        """The `Read` of the stored number that an end of a flow names, in the scope of the flow's
+        owner: a store of its own member (`this.water`), through links (`this.origin.power`), of a
+        named member (`reservoir.water`, `sites.junction.power`) or of the top level."""
+        written = n.Name(end[0], line=node.line, column=node.column)
+        for name in end[1:-1]:
+            written = n.Member(written, name, line=node.line, column=node.column)
+        spelled = '.'.join(end)
+        found = self.path(written, Scope(owner))
+        if len(end) > 1:
+            kind = found.type.of if isinstance(found.type, Many) else found.type
+            if isinstance(kind, Ent) and f'{kind.template}.{end[-1]}' not in self.syntax:
+                self.fail('flow_end', f'{spelled} is no stored number of {kind.template}', node)
+            found = self.step(found, end[-1], node)
+        if isinstance(found.type, Many):
+            self.fail('flow_end', f'{spelled} is a projection: an end of a flow is one stored number', node)
+        if not found.stored:
             self.fail(
                 'flow_end',
-                f'{".".join(end)} is no stored number: a flow ends at a stored value, SOURCE or SINK',
+                f'{spelled} is no stored number: a flow ends at a stored value, SOURCE or SINK',
                 node,
             )
-        return value
+        return found
 
     def flow(self, path, owner, node):
         rate = self.rate(path)
@@ -1455,36 +1570,22 @@ class Resolver:
                 ends.append(end[0])
                 continue
             store = self.store(end, owner, node)
-            per_hour = self.units.of(f'{store.type.unit}/h' if store.type.unit else '1/h')[0]
-            if per_hour != rate.dimension:
+            if self.per_hour(store.type).dimension != rate.dimension:
                 self.fail(
                     'flow_units',
                     f'flow {node.name}: its ends and its rates are of two dimensions '
                     f'({store.type} against {rate}; a rate is its stock per time)',
                     node,
                 )
-            start = ('this',) if end[0] == 'this' else ('named', end[0])
-            ends.append(Read(start, (end[1],), store.type))
+            ends.append(store)
         settings = {}
         for item in node.properties:
-            key = item.path[-1] if len(item.path) == 1 else '.'.join(item.path)
+            key = '.'.join(item.path)
             if key not in ('request', 'capacity'):
-                if len(item.path) > 1 and item.path[0] in ('outflow', 'inflow'):
-                    raise Later('the settings of an endpoint (outflow, inflow)', 'S2')
                 self.fail('property', f'a directed flow takes request and capacity, not {key}', item)
             if key in settings:
                 self.fail('property', f'{key} is given twice', item)
-            if isinstance(item.value, n.Formula):
-                body = self.expression(item.value.body, Scope(owner))
-                found = Retain(body, body.type)
-            else:
-                found = self.expression(item.value, Scope(owner))
-            if not compatible(found.type, rate):
-                if _zero(found):
-                    found = Const(found.value, rate)
-                else:
-                    self.fail('unit', f'the {key} of {node.name} is a rate in {rate}, not {found.type}', item)
-            settings[key] = found
+            settings[key] = self.rate_setting(item, Scope(owner), rate, f'the {key} of {node.name}')
         return DeclaredFlow(
             path,
             node.name,
@@ -1497,6 +1598,108 @@ class Resolver:
             self.evidence(node),
             node.line,
         )
+
+    def rate_setting(self, item, scope, rate, what):
+        """A request or a capacity (of a flow or of an endpoint): a rate of the dimension of `rate`,
+        captured once, or a `Retain`; a bare zero takes the rate's unit."""
+        if isinstance(item.value, n.Formula):
+            body = self.expression(item.value.body, scope)
+            found = Retain(body, body.type)
+        else:
+            found = self.expression(item.value, scope)
+        if not compatible(found.type, rate):
+            if not _zero(found):
+                self.fail('unit', f'{what} is a rate in {rate}, not {found.type}', item)
+            found = Const(found.value, rate)
+        return found
+
+    def endpoints(self, value, owner, node):
+        """A value with the settings of its outflow and its inflow, written under it: only a stored
+        number has them. Each setting is resolved after the value, so that it may read the store (a
+        request that fills a tank to a level). A setting with a problem is reported, or deferred,
+        and leaves the value as it is."""
+        if not node.properties:
+            return value
+        if not _stored(value):
+            self.report(
+                'property',
+                f'{value.name} is no stored number: only a store takes the settings of its outflow and '
+                'its inflow (capacity, request, allocation)',
+                node.properties[0].line,
+            )
+            return value
+        scope, sides = Scope(owner), {}
+        for item in node.properties:
+            key = '.'.join(item.path)
+            side = item.path[0]
+            if len(item.path) != 2 or side not in SIDES or item.path[1] not in SETTINGS:
+                self.report(
+                    'property',
+                    f'{key} is no setting of a store: a store takes outflow.capacity, outflow.request, '
+                    'outflow.allocation and the same of inflow',
+                    item.line,
+                )
+                continue
+            settings = sides.setdefault(side, {'line': item.line})
+            if item.path[1] in settings:
+                self.report('property', f'{key} is given twice', item.line)
+                continue
+            try:
+                if item.path[1] == 'allocation':
+                    settings['allocation'] = self.allocation(item.value, scope)
+                else:
+                    rate = self.per_hour(value.type)
+                    settings[item.path[1]] = self.rate_setting(item, scope, rate, f'{value.name}.{key}')
+            except Later as later:
+                self.deferred.append(Deferred(f'{value.path}.{key}', later.construct, later.slice, item.line))
+            except Refused as refused:
+                if refused.code != 'depends':
+                    self.report(refused.code, refused.message, refused.line or item.line, refused.column)
+        found = {
+            side: DeclaredEndpoint(
+                f'{value.path}.{side}',
+                settings.get('capacity'),
+                settings.get('request'),
+                settings.get('allocation', ('proportional',)),
+                settings['line'],
+            )
+            for side, settings in sides.items()
+        }
+        value = replace(value, outflow=found.get('outflow'), inflow=found.get('inflow'))
+        self.done[value.path] = value
+        return value
+
+    def allocation(self, node, scope):
+        """`proportional()`, or `priority(...)` over flows, first to last: each a flow
+        (`hospital.delivery`, `this.main`) or a projection of flows over a collection
+        (`Customer.instances.by(rank).delivery`, ranked by the collection's keys), each named once.
+        That each flow is incident at the store is the program's rule (`check.priority_item`)."""
+        if not (isinstance(node, n.Call) and node.function in ALLOCATIONS):
+            self.fail('allocation', 'an allocation is priority(...) or proportional()', node)
+        if node.function == 'proportional':
+            if node.args:
+                self.fail('arguments', 'proportional() takes no argument', node)
+            return ('proportional',)
+        if not node.args:
+            self.fail('arguments', 'priority(...) names the flows that it serves first, in order', node)
+        items = []
+        for arg in node.args:
+            if not isinstance(arg, (n.Name, n.Member, n.Method)):
+                self.fail('priority_item', 'priority(...) names flows, as hospital.delivery', arg)
+            found = self.path(arg, scope)
+            kind = found.type.of if isinstance(found.type, Many) else found.type
+            if not isinstance(kind, FlowOf) or not kind.flow:
+                what = "an endpoint's collection of flows" if isinstance(kind, FlowOf) else str(found.type)
+                self.fail(
+                    'priority_item',
+                    f'priority(...) ranks flows, or a projection of flows (customers.by(rank).delivery), '
+                    f'not {what}',
+                    arg,
+                )
+            items.append(found)
+        if len(set(items)) < len(items):
+            self.fail('priority_item', 'priority(...) names each flow once', node)
+        return ('priority', tuple(items))
 
     def assertion(self, path, scope, node):
         """An assertion over what is fixed for the run, checked once; one that reads state is a later
@@ -1867,7 +2070,7 @@ class Resolver:
         a problem."""
         try:
             if isinstance(node, n.Declaration):
-                return self.value(path)
+                return self.endpoints(self.value(path), owner, node)
             if isinstance(node, n.Flow):
                 return self.flow(path, owner, node)
             if isinstance(node, n.Assert):

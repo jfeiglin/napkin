@@ -35,7 +35,7 @@ from napkin.program.build import (
     value,
 )
 from napkin.program.canonical import program_bytes
-from napkin.program.refs import Instances, Literal, Named, Path, Reduce
+from napkin.program.refs import THIS, By, Instances, Literal, Named, Path, Reduce
 from tests.program.examples import UNITS
 
 
@@ -110,6 +110,25 @@ def test_links_literals_projections_and_the_six_reductions_lower_as_the_builder_
         value('smallest', 'L/h', formula(fmin(pumps.flow_max))),
     )
     assert same(PUMPS, b)
+
+
+def test_a_path_that_ends_on_a_collection_value_is_that_collection():
+    """`count(this.pumps)` counts the members of the station's collection, and `where` and `by` take
+    it as they take `Pump.instances`: the program's checker reads the value as its members (S2)."""
+    lines = (
+        '        held = formula(count(this.pumps))\n'
+        '        strong = formula(count(this.pumps.where(flow_max > 5 L/h)))\n'
+        '        first = formula(this.pumps.by(flow_max).at(5 L/h).flow_max)\n'
+    )
+    text = PUMPS.replace('        spare = formula(this.backup.flow_max)\n', lines)
+    station = compiled(text).program.template('Station')
+    pumps = Path(THIS, ('pumps',))
+    held, strong, first = (dict(station.part(name).init.expr.reads) for name in ('held', 'strong', 'first'))
+    assert list(held.values()) == [Reduce('count', pumps)]
+    ((_, where),) = strong.items()
+    assert (where.op, where.source.start.source) == ('count', pumps)
+    ((_, lookup),) = first.items()
+    assert lookup.start.source.start == By(pumps, 'flow_max')
 
 
 def test_a_member_written_by_hand_has_its_values_and_the_members_of_its_links():

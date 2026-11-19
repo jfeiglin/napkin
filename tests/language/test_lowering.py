@@ -26,6 +26,7 @@ from napkin.program.build import (
     ifelse,
     input_,
     q,
+    t,
     this,
     uniform,
     value,
@@ -83,7 +84,68 @@ SOURCES = {
 
         factor_now = formula(Reading.instances.by(hour).at(t).factor)
         """,
+    'reservoir_priority': """
+        reservoir:
+            water: L = 20 in [0, 20]
+                outflow.capacity = 10 L/h
+                outflow.allocation = priority(hospital.delivery, garden.delivery)
+
+        hospital:
+            flow delivery: reservoir.water -> SINK
+                request = 8 L/h
+
+        garden:
+            flow delivery: reservoir.water -> SINK
+                request = 12 L/h
+        """,
+    # The default allocation, as the spec says: "The default `proportional()` instead gives 4 and 6".
+    'reservoir_proportional': """
+        reservoir:
+            water: L = 20 in [0, 20]
+                outflow.capacity = 10 L/h
+
+        hospital:
+            flow delivery: reservoir.water -> SINK
+                request = 8 L/h
+
+        garden:
+            flow delivery: reservoir.water -> SINK
+                request = 12 L/h
+        """,
+    'common_sink': """
+        clinic:
+            water: L = 0 in [0,]
+                inflow.request = 6 L/h
+                inflow.allocation = priority(this.main, this.backup)
+            flow main: SOURCE -> this.water
+                capacity = 4 L/h
+            flow backup: SOURCE -> this.water
+        """,
 }
+# "One pipe and three requests": the source, the pipe and the sink request 10, 8 and 6 L/h, and a cap
+# of 7 L/h stands at one of the three scopes, or at none.
+ONE_PIPE = """
+    upstream:
+        water: L = 100 in [0,]
+            outflow.request = 10 L/h{source}
+
+    downstream:
+        water: L = 0 in [0,]
+            inflow.request = 6 L/h{sink}
+
+    pipe:
+        flow carry: upstream.water -> downstream.water
+            request = 8 L/h{pipe}
+
+    source_short = formula(max(0 L/h, upstream.water.outflow.request - upstream.water.outflow.actual_rate))
+    pipe_short = formula(max(0 L/h, pipe.carry.request - pipe.carry.actual_rate))
+    sink_short = formula(max(0 L/h, downstream.water.inflow.request - downstream.water.inflow.actual_rate))
+    """
+CAPS = {'source': 'outflow.capacity', 'pipe': 'capacity', 'sink': 'inflow.capacity'}
+for _name, _at in (('one_pipe', None), *((f'one_pipe_capped_at_{at}', at) for at in CAPS)):
+    SOURCES[_name] = ONE_PIPE.format(
+        **{scope: f'\n            {CAPS[scope]} = 7 L/h' if scope == _at else '' for scope in CAPS}
+    )
 # The tables that a source names, by the name that it writes.
 TABLES = {'keyed_lookup': {'readings.csv': 'hour: h,factor\n10,2\n11,3\n'}}
 
@@ -222,6 +284,36 @@ def test_formulas_inputs_and_flows_with_live_settings():
     assert same(compiled(text).program, b.finish())
 
 
+def test_a_field_named_as_an_operation_of_a_handle_is_read_through_a_handle():
+    """A model may name a field `start`, `draw`, `where`, `by`, `at` or `choose`: `this.start` reads
+    it, and the builder's handle reads it too, while `c.by(...)` and `c.at(...)` still key and look up."""
+    b = Builder(UNITS)
+    clock = b.template(
+        'Clock',
+        value('start', 'h', 0),
+        value('at', 'h', 2),
+        *(value(name, '', number) for number, name in enumerate(('where', 'by', 'draw', 'choose'), 1)),
+        value('span', 'h', formula(this.at - this.start)),
+        value('total', '', formula(this.where + this.by + this.draw + this.choose)),
+    )
+    b.member(clock, 'c')
+    b.root(value('first', 'h', formula(clock.instances.by('start').at(t).start)))
+    text = """
+        Clock:
+            start: h = 0
+            at: h = 2
+            where = 1
+            by = 2
+            draw = 3
+            choose = 4
+            span = formula(this.at - this.start)
+            total = formula(this.where + this.by + this.draw + this.choose)
+        c: Clock
+        first = formula(Clock.instances.by(start).at(t).start)
+        """
+    assert same(compiled(text).program, b.finish())
+
+
 def test_a_distribution_valued_value_keeps_its_type():
     found = compiled('m:\n    speeds = uniform(1 L/h, 3 L/h)\n').program.templates[0].values[0]
     assert (found.kind, found.type) == (p.DISTRIBUTION, dist_of('L/h'))
@@ -236,17 +328,10 @@ def test_a_distribution_valued_value_keeps_its_type():
         ('tank:\n    water: L = 8\nassert tank.water > 0 L\n', 'an assertion over state', 'S4'),
         ('d:\n    sees e.x\ne:\n    x = 1\n', 'sees', 'S4'),
         (
-            'Place:\n    power: Wh = 0\nRoute:\n    origin: Place\n    flow f: this.origin.power -> SINK\n'
-            '        request = 1 W\n',
-            'an end of a flow through a link',
-            'S2',
+            'tank:\n    water: L = 8\n    flow f: this.water -> SINK\n    far = formula(this.f.sink)\n',
+            "a flow's ends as values",
+            'S3',
         ),
-        (
-            'tank:\n    water: L = 8\nCustomer:\n    flow f: tank.water -> SINK\n        request = 1 L/h\n',
-            'a flow between members of two templates',
-            'S2',
-        ),
-        ('r:\n    water: L = 20\n        outflow.capacity = 10 L/h\n', 'the settings of an endpoint', 'S2'),
         ('c:\n    a: L = 1\n    b: L = 1\n    flow link: this.a <-> this.b\n', 'a reversible route', 'S3'),
         (
             's:\n    a: L = 1\n    b: L = 0\n    flow r:\n        flow l: this.a -> this.b\n            request = 1 L/h\n',

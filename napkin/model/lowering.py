@@ -13,10 +13,13 @@ An expression is written as a node of `napkin/core/expr` with the read of each o
 source text and the program that a test builds by hand have the same canonical bytes. A read through
 a collection starts at `Instances`, `Literal`, `Where`, `By` or `Lookup`, and a test or a key inside
 one is an `Expr` of its own. A number with a unit is the core's literal `q(number, unit)`; a bare
-number that takes a unit is written with it.
+number that takes a unit is written with it. The settings of a store's outflow and inflow are its
+`build.endpoint`; a side that sets nothing but `proportional()`, the default, is a side that sets
+nothing, so the two texts are one program.
 
 A part that a later slice brings is refused by name (`later_slice`), with the slice that brings it.
-A refusal of the program's checker is given at the line of the declared part that it names.
+A refusal of the program's checker is given at the line of the declared part that it names, and so
+is each of the setup's reports (`reports`), which refuse nothing.
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ import itertools
 from fractions import Fraction
 
 from ..core import expr as nodes
-from ..program import build
+from ..program import build, check
 from ..program.check import ProgramError
 from ..program.refs import (
     ITEM,
@@ -88,6 +91,13 @@ def lower(model):
         return builder.finish()
     except ProgramError as error:
         raise LanguageError([_located(model, item) for item in error.diagnostics]) from None
+
+
+def reports(model, program):
+    """The setup's reports of a lowered model (`check.reports`: equal keys in a view that `.at`
+    reads, a lookup below its first key), each a `Problem` at the line of its part, which refuses
+    nothing."""
+    return tuple(_located(model, item) for item in check.reports(program))
 
 
 def _located(model, item):
@@ -162,7 +172,28 @@ def value_of(value):
     init = None if value.init is None else initial(value.init)
     if value.kind == s.INPUT:
         return build.input_(value.name, _type(value.type), init, **bounds)
-    return build.value(value.name, _type(value.type), init, readonly=value.readonly, **bounds)
+    ends = {'outflow': _endpoint(value.outflow), 'inflow': _endpoint(value.inflow)}
+    return build.value(value.name, _type(value.type), init, readonly=value.readonly, **bounds, **ends)
+
+
+def _endpoint(declared):
+    """The settings of an outflow or an inflow (`build.endpoint`), or None for a side that sets
+    nothing but the default `proportional()`, which is the program of a side that sets nothing."""
+    if declared is None:
+        return None
+    rule, *items = declared.allocation
+    if declared.capacity is None and declared.request is None and rule == 'proportional':
+        return None
+    allocation = (
+        build.priority(*(build.X.read(_path(item)) for item in items[0]))
+        if rule == 'priority'
+        else build.proportional()
+    )
+    return build.endpoint(
+        capacity=None if declared.capacity is None else initial(declared.capacity),
+        request=None if declared.request is None else initial(declared.request),
+        allocation=allocation,
+    )
 
 
 def _assertion(declared):

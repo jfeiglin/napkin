@@ -15,9 +15,11 @@ The tank of the spec, which delivers 3 L/h until it empties at 2 hours 40 minute
 An expression is written with handles (`X`): `this`, `local` (a bare name), `item`, `root`, `t`, a
 member that `entity`, `member`, `named` or a table gives, `q(number, unit)`, `call` of a function
 of the language (`call('abs', x)`), and the functions below. A handle on a path takes more steps by
-attribute (`this.origin.level`), and operators make nodes of `napkin/core/expr` (`&`, `|`, `~` are
-`and`, `or`, `not`). A node that no operator makes, such as a chain of comparisons or an `and` of
-three values, is made with `napkin/core/expr` and wrapped as `X(node, reads)` (see `X`). The part
+attribute (`this.origin.level`), also a step named as an operation of a handle: `this.start` reads
+the field `start`, and `this.start()` starts it (so too `draw`, `where`, `by`, `at` and `choose`).
+Operators make nodes of `napkin/core/expr` (`&`, `|`, `~` are `and`, `or`, `not`). A node that no
+operator makes, such as a chain of comparisons or an `and` of three values, is made with
+`napkin/core/expr` and wrapped as `X(node, reads)` (see `X`). The part
 constructors (`value`, `flow`, `event`, `after`, `solver`, ...) make the records of `parts.py`, and
 `Builder` puts them into templates, members, the root and the setup.
 
@@ -35,6 +37,7 @@ their declarations.
 
 from __future__ import annotations
 
+import functools
 import itertools
 import re
 from dataclasses import fields, is_dataclass, replace
@@ -77,6 +80,27 @@ _TOKENS = itertools.count()
 
 
 # ---- handles on expressions ---------------------------------------------------------------------
+
+
+class _Operation:
+    """An operation of a handle that is also a step of its path: `c.where` is the handle of the
+    field `where` of what `c` names (a `_Step`), and `c.where(test)` calls the operation. So a field
+    of any name can be read through a handle, a model's `start`, `draw` or `at` among them."""
+
+    def __init__(self, function):
+        self.function = function
+        self.__doc__ = function.__doc__
+
+    def __set_name__(self, owner, name):
+        self.name = name
+
+    def __get__(self, handle, owner=None):
+        if handle is None:
+            return self
+        if handle._path is None:
+            # No path, no field: the call alone, which refuses what has no path.
+            return functools.partial(self.function, handle)
+        return _Step(handle, self.name, self.function)
 
 
 class X:
@@ -129,28 +153,35 @@ class X:
             raise TypeError(f'{nodes.text(self._node)} is no path: only a path takes a step')
         return self._path
 
-    # The operations of a collection or of a distribution that a path names.
+    # The operations of a collection, a distribution, an actor or an event that a path names. Each is
+    # also a step: unless it is called, `this.start` reads the field `start`.
 
+    @_Operation
     def where(self, test):
         """`c.where(test)`; the test reads the member through `item`."""
         return X.read(Path(Where(self._own_path(), expr_of(test))))
 
+    @_Operation
     def by(self, key):
         """`c.by(key)`: the members keyed by their field `key`."""
         return X.read(Path(By(self._own_path(), key)))
 
+    @_Operation
     def at(self, key):
         """`c.at(key)`: the member with the greatest key at or below `key`."""
         return X.read(Path(Lookup(self._own_path(), expr_of(key))))
 
+    @_Operation
     def draw(self):
         """`d.draw()` of the distribution that this path names."""
         return draw(self)
 
+    @_Operation
     def choose(self, source):
         """`actor.choose(d)`."""
         return choose(self, source)
 
+    @_Operation
     def start(self, *args):
         """`event.start(args)` as a statement."""
         return start(self, *args)
@@ -219,6 +250,22 @@ class X:
 
     def __ge__(self, other):
         return _compare('ge', self, other)
+
+
+class _Step(X):
+    """The handle of a step named as an operation (`this.start`): it reads that field, and called
+    (`this.start()`) it is the operation on the path before the step."""
+
+    __slots__ = ('_call',)
+
+    def __init__(self, receiver, name, operation):
+        path = receiver._path.then(name)
+        spelling = spelled(path)
+        super().__init__(nodes.ref(spelling), {spelling: path}, path)
+        object.__setattr__(self, '_call', functools.partial(operation, receiver))
+
+    def __call__(self, *args):
+        return self._call(*args)
 
 
 class _Names:
