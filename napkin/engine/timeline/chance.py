@@ -32,7 +32,6 @@ import hashlib
 import math
 
 import numpy as np
-from scipy import special
 
 from ...distributions import FAMILIES, PERT_WEIGHT, quantile
 from ...program.config import MEDIAN
@@ -61,18 +60,108 @@ def numeric(distribution, units, u):
         return float(quantile(family.name, args, u))
 
 
-def _phi(x):
-    """The density of a standard normal, and x times it (0 at an infinite x)."""
-    if not math.isfinite(x):
-        return 0.0, 0.0
-    density = math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
-    return density, x * density
+# Gauss-Legendre points and weights on [-1, 1], for the moments of a normal truncated to an
+# interval (`_tail`).
+_POINTS, _WEIGHTS = np.polynomial.legendre.leggauss(64)
+# How far into a tail its density counts: past the point where it has fallen by e^-50 from where the
+# interval starts, what is left changes no moment by a part in 1e20.
+_DEPTH = 50.0
+_HALF_LOG_TAU = 0.5 * math.log(2.0 * math.pi)
+
+
+def _tail(alpha, width):
+    """The density of a standard normal on [alpha, alpha + width], alpha >= 0, as quadrature: points
+    y from alpha, and the weights of the density at alpha + y relative to its value at alpha,
+    e^(-alpha y - y^2/2). The points end where that has fallen by e^-50 (`_DEPTH`), or at the end of
+    the interval, so the density falls by the same factor over them however far out the tail lies:
+    nothing underflows, and no mass is a difference of two masses near 1."""
+    reach = 2.0 * _DEPTH / (alpha + math.sqrt(alpha * alpha + 2.0 * _DEPTH))
+    end = min(width, reach)
+    y = 0.5 * end * (_POINTS + 1.0)
+    return y, 0.5 * end * _WEIGHTS * np.exp(-alpha * y - 0.5 * y * y)
+
+
+def _points(alpha, beta, width):
+    """A standard normal truncated to [alpha, beta] (of width `width`) as quadrature, from the tail
+    that holds it (`_tail`): (base, offsets, weights) of points base + offsets, the weights relative to
+    the density at the base. An interval below zero is the mirror of one above it, and one around
+    zero is a tail on each side of it."""
+    if beta <= 0:
+        base, offsets, weights = _points(-beta, -alpha, width)
+        return -base, -offsets, weights
+    if alpha >= 0:
+        return (alpha, *_tail(alpha, width))
+    (right, upper), (left, lower) = _tail(0.0, beta), _tail(0.0, -alpha)
+    return 0.0, np.concatenate([right, -left]), np.concatenate([upper, lower])
+
+
+def truncated(alpha, beta, width=None):
+    """The mean and the standard deviation of a standard normal truncated to [alpha, beta] (alpha <
+    beta, either may be infinite; `width`, beta - alpha, when it is known more precisely than their
+    difference), from its points (`_points`). The spread is taken about the mean of the offsets, so
+    it has no cancellation."""
+    base, offsets, weights = _points(alpha, beta, beta - alpha if width is None else width)
+    total = float(weights.sum())
+    shift = float(weights @ offsets) / total
+    return base + shift, math.sqrt(float(weights @ (offsets - shift) ** 2) / total)
+
+
+def log_mass(alpha, beta, width=None):
+    """The logarithm of the probability that a standard normal lies in [alpha, beta] (`_points`),
+    with `width` as `truncated` takes it."""
+    base, _, weights = _points(alpha, beta, beta - alpha if width is None else width)
+    return -0.5 * base * base - _HALF_LOG_TAU + math.log(float(weights.sum()))
+
+
+def _lognormal(mu, sigma, low, high):
+    """The mean and the standard deviation of e^(mu + sigma N) for N a standard normal truncated to
+    the logarithms of [low, high] (either may be 0 or infinite). Where sigma times the span of the
+    points of N is at most 1, both come from the points, the spread about their mean with `expm1`, so
+    a narrow range keeps its precision. Elsewhere, from E[X^k] = e^(k mu + k^2 sigma^2 / 2) P(N in
+    [alpha - k sigma, beta - k sigma]) / P(N in [alpha, beta]) (the normal of the logarithm tilted by
+    k sigma is a normal shifted by it), whose ratio of the second to the square of the first is then
+    far enough from 1 for its logarithm to give the spread (`expm1`)."""
+    alpha = (math.log(low) - mu) / sigma if low > 0 else -math.inf
+    beta = (math.log(high) - mu) / sigma if math.isfinite(high) else math.inf
+    # The width in the logarithm, from the ratio of the bounds: one width for every interval below,
+    # so that its roundoff cancels from the spread.
+    width = math.log1p((high - low) / low) / sigma if low > 0 else math.inf
+    base, offsets, weights = _points(alpha, beta, width)
+    if sigma * float(offsets.max() - offsets.min()) <= 1.0:
+        total = float(weights.sum())
+        tilt = np.expm1(sigma * offsets)
+        shift = float(weights @ tilt) / total
+        level = math.exp(mu + sigma * base)
+        return level * (1.0 + shift), level * math.sqrt(float(weights @ (tilt - shift) ** 2) / total)
+    whole = log_mass(alpha, beta, width)
+    first = log_mass(alpha - sigma, beta - sigma, width) - whole
+    second = log_mass(alpha - 2 * sigma, beta - 2 * sigma, width) - whole
+    mean = math.exp(mu + 0.5 * sigma * sigma + first)
+    return mean, mean * math.sqrt(max(math.expm1(sigma * sigma + second - 2 * first), 0.0))
+
+
+def _excess(h):
+    """h cosh h - sinh h, from its series below 1 (h^3/3 + h^5/30 + ...), whose terms would cancel."""
+    if abs(h) >= 1.0:
+        return h * math.cosh(h) - math.sinh(h)
+    term, total, k = h, 0.0, 1
+    while True:
+        term *= h * h / ((2 * k) * (2 * k + 1))  # h^(2k+1) / (2k+1)!
+        part = 2 * k * term
+        total += part
+        if abs(part) <= 1e-17 * abs(total):
+            return total
+        k += 1
 
 
 def described(distribution, units, which):
-    """The mean or the standard deviation (`which`) of a numeric distribution, in canonical units:
-    the closed form of its family. A normal or a lognormal with bounds is truncated to them, as its
-    draws are (`distributions.quantile`). Reading it draws nothing."""
+    """The mean or the standard deviation (`which`) of a numeric distribution, in canonical units,
+    in a form that keeps its precision across the tails and for narrow ranges: no difference of two
+    nearly equal numbers. A normal or a lognormal with bounds is truncated to them, as its draws are
+    (`distributions.quantile`): a normal from the tail that holds it (`truncated`), a lognormal from
+    the masses of its interval shifted by one and two of its sigmas (`log_mass`), its spread from
+    their logarithms (`expm1`). A spread of the others is a sum of squares of differences or of
+    products of positive numbers. Reading it draws nothing."""
     family = FAMILIES[distribution.family]
     scale = units.scale(distribution.unit) if distribution.unit else 1.0
     a = [
@@ -82,44 +171,50 @@ def described(distribution, units, which):
     name = distribution.family
     if name == 'uniform':
         low, high = a
-        mean, variance = (low + high) / 2, (high - low) ** 2 / 12
+        mean, std = 0.5 * (low + high), (high - low) / math.sqrt(12.0)
     elif name == 'triangular':
         low, mode, high = a
         mean = (low + mode + high) / 3
-        variance = (low * low + mode * mode + high * high - low * mode - low * high - mode * high) / 18
+        std = math.sqrt(((high - low) ** 2 + (mode - low) ** 2 + (high - mode) ** 2) / 36)
     elif name == 'pert':
         low, mode, high = a
         alpha = 1 + PERT_WEIGHT * (mode - low) / (high - low)
         beta = 1 + PERT_WEIGHT * (high - mode) / (high - low)
         mean = low + (high - low) * alpha / (alpha + beta)
-        variance = (high - low) ** 2 * alpha * beta / ((alpha + beta) ** 2 * (alpha + beta + 1))
+        std = (high - low) * math.sqrt(alpha * beta / ((alpha + beta) + 1)) / (alpha + beta)
     elif name == 'loguniform':
         low, high = a
-        span = math.log(high / low)
+        span = math.log1p((high - low) / low)  # log(high / low), exact for a narrow range
         mean = (high - low) / span
-        variance = (high * high - low * low) / (2 * span) - mean * mean
+        # high^2 - low^2 over 2 span, less the mean squared: low^2 expm1(s) / s^2 2 e^(s/2) (h cosh h
+        # - sinh h) for h = s/2, with no cancellation.
+        half = 0.5 * span
+        std = low * math.sqrt(math.expm1(span) / (span * span) * 2.0 * math.exp(half) * _excess(half))
+    elif name == 'beta':
+        p, q = a
+        mean, std = p / (p + q), math.sqrt(p * q / (p + q + 1)) / (p + q)
     elif name == 'normal':
         mu, sd = a[:2]
-        low, high = a[2:] if len(a) == 4 else (-math.inf, math.inf)
-        alpha, beta = (low - mu) / sd, (high - mu) / sd
-        mass = float(special.ndtr(beta) - special.ndtr(alpha))
-        (pa, xa), (pb, xb) = _phi(alpha), _phi(beta)
-        shift = (pa - pb) / mass
-        mean, variance = mu + sd * shift, sd * sd * (1 + (xa - xb) / mass - shift * shift)
-    else:  # lognormal: the k-th moment of a normal of the logarithm, truncated
+        mean, std = mu, sd
+        if len(a) == 4:
+            low, high = a[2:]
+            if not low < high:
+                mean, std = low, 0.0
+            else:
+                middle, spread = truncated((low - mu) / sd, (high - mu) / sd, (high - low) / sd)
+                mean, std = mu + sd * middle, sd * spread
+    elif name == 'lognormal':
         mu, sigma = math.log(a[0]), math.log(a[1])
-        low, high = a[2:] if len(a) == 4 else (0.0, math.inf)
-        alpha = (math.log(low) - mu) / sigma if low > 0 else -math.inf
-        beta = (math.log(high) - mu) / sigma if math.isfinite(high) else math.inf
-        mass = float(special.ndtr(beta) - special.ndtr(alpha))
-
-        def moment(k):
-            inside = special.ndtr(beta - k * sigma) - special.ndtr(alpha - k * sigma)
-            return math.exp(k * mu + k * k * sigma * sigma / 2) * float(inside) / mass
-
-        mean = moment(1)
-        variance = moment(2) - mean * mean
-    return mean if which == 'mean' else math.sqrt(max(variance, 0.0))
+        if len(a) == 4 and not a[2] < a[3]:
+            mean, std = a[2], 0.0
+        elif len(a) == 4 and (a[2] > 0 or math.isfinite(a[3])):
+            mean, std = _lognormal(mu, sigma, a[2], a[3])
+        else:
+            mean = math.exp(mu + 0.5 * sigma * sigma)
+            std = mean * math.sqrt(math.expm1(sigma * sigma))
+    else:
+        raise SimulationError(f'a {name} distribution has no mean or standard deviation to read')
+    return mean if which == 'mean' else std
 
 
 def outcome(distribution, eligible, u, site=''):

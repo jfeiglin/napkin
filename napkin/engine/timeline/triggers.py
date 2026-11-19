@@ -39,10 +39,11 @@ the moments, and every condition is read in every round. Between moments, each w
 each assertion over state) gives the first time after now at which one of its comparisons on moving
 values can change its answer (`predict`). Where a comparison is affine in what it reads and each
 read is a line (the time; a store on its line; a rate of the family or of the lines, which holds
-between their events), that is the root of its line: of a clock, the time that its other side
-gives; of one store on its line, its start plus its distance over its rate (their closed forms);
-`since(e)` is the time less the newest start, so it moves as the time does. So a condition on sets
-whose rates hold between moments is exact.
+between their events), that is the root of its line: of a comparison whose only moving read is the
+time (`t`, `since(e)`, the time less the newest start, or `elapsed(x)`), the time at which it
+changes in exact arithmetic, as the clock builds a time (`moment.Clock`); of one store on its line,
+its start plus its distance over its rate (their closed forms). So a condition on sets whose rates
+hold between moments is exact.
 
 **Values that turn** (PLAN, change 20). Where a read moves on a curve, the comparison is certified
 step by step (`_contact`). Its difference d, the left side less the right, is a sum of what moves
@@ -112,6 +113,7 @@ import heapq
 import math
 import sys
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import pairwise
 
 from ...core import expr as nodes
@@ -123,7 +125,7 @@ from ..errors import SimulationError
 from .family import Family
 from .lines import Lines
 from .moment import Tx, near_ties
-from .plan import FORMULA, LOOKUP, RATE, REDUCE
+from .plan import FORMULA, LOOKUP, RATE, REDUCE, walked
 from .reads import lazily
 
 # The comparisons of `napkin/core/expr`, as functions of the difference of their sides and of the
@@ -188,24 +190,31 @@ class Triggers:
     def _truth(self, node, t, band, close=None):
         """The truth of a condition at time t; a comparison read on the way whose sides differ by no
         more than the widest tolerance of the run is added to `close`, when it is given, so that a
-        condition with none has no near-tie to look for."""
+        condition with none has no near-tie to look for. It is read through boolean formulas with no
+        recursion (`plan.walked`)."""
+        return walked(self._truth_of(node, t, band, close))
+
+    def _truth_of(self, node, t, band, close):
+        """The computation of `_truth`: each part through a boolean formula is one that it yields."""
         plan, run = self.plan, self.run
         if isinstance(node, nodes.Const):
             return node.value
         if isinstance(node, nodes.Ref):
             found = plan.values.get(node.name)
             if found is not None and found.kind == FORMULA and found.boolean and node.name not in run.frozen:
-                return self._truth(found.node, t, band, close)
+                return (yield self._truth_of(found.node, t, band, close))
             return _known(run.value(node.name, t))
         if isinstance(node, nodes.BoolOp):
-            if node.op == 'and':
-                return all(self._truth(part, t, band, close) for part in node.values)
-            return any(self._truth(part, t, band, close) for part in node.values)
+            decides = node.op == 'or'  # the answer of a term that decides the whole
+            for part in node.values:
+                if bool((yield self._truth_of(part, t, band, close))) == decides:
+                    return decides
+            return not decides
         if isinstance(node, nodes.Unary) and node.op == 'not':
-            return not self._truth(node.operand, t, band, close)
+            return not (yield self._truth_of(node.operand, t, band, close))
         if isinstance(node, nodes.IfElse):
-            test = self._truth(node.test, t, band, close)
-            return self._truth(node.body if test else node.orelse, t, band, close)
+            test = yield self._truth_of(node.test, t, band, close)
+            return (yield self._truth_of(node.body if test else node.orelse, t, band, close))
         if isinstance(node, nodes.Compare):
             for left, op, right in zip(node.operands, node.ops, node.operands[1:]):
                 a, b = self.side(left, t), self.side(right, t)
@@ -322,8 +331,8 @@ class Triggers:
                         state.armed, state.blocked_at = True, t
                 elif reset[0] == 'when':
                     state.armed = self.holds(reset[1])
-                elif state.rearm_at is not None and t >= state.rearm_at:
-                    state.armed = True
+                elif state.rearm_at is not None and run.clock.due(state.rearm_at, t, run.moment.round == 1):
+                    state.armed = True  # its time has come, by the clock (`moment.Clock`)
             if state.armed and state.blocked_at != t:
                 close = []
                 if self._truth(trigger.test, t, True, close):
@@ -382,10 +391,12 @@ class Triggers:
         moment.execute(trigger.body, tx, trigger.scope)
         state.armed, state.firings = False, state.firings + 1
         if trigger.reset is not None and trigger.reset[0] == 'after':
-            duration = run.truth(trigger.reset[1])
-            if isinstance(duration, bool) or not isinstance(duration, int | float) or duration < 0:
-                raise SimulationError(f'{trigger.origin}: reset after {duration!r}, which is no duration')
-            state.rearm_at = run.now + float(duration)
+            # The time at which it rearms is the clock's: exact from the duration (`moment.Clock`).
+            duration = run.clock.value(trigger.reset[1], run.value, run.now)
+            if isinstance(duration, bool) or not isinstance(duration, int | float | Fraction) or duration < 0:
+                shown = float(duration) if isinstance(duration, Fraction) else duration
+                raise SimulationError(f'{trigger.origin}: reset after {shown!r}, which is no duration')
+            state.rearm_at = run.clock.later(run.now, duration)
         del run.chance.firing[trigger.key]
         run.recorder.entry(run.now, 'fire', trigger.origin, trigger.member, **tx.details())
         self._missed().pop((trigger.origin, trigger.member), None)
@@ -477,7 +488,11 @@ class Triggers:
 
     def _atoms(self, node, positive=True):
         """The comparisons of a condition, through its boolean formulas, each with its polarity
-        (whether `not` turns it over)."""
+        (whether `not` turns it over), found with no recursion (`plan.walked`)."""
+        return walked(self._atoms_of(node, positive))
+
+    def _atoms_of(self, node, positive):
+        """The computation of `_atoms`: each part through a boolean formula is one that it yields."""
         found = self.plan.values
         if isinstance(node, nodes.Ref):
             value = found.get(node.name)
@@ -487,17 +502,17 @@ class Triggers:
                 and value.boolean
                 and node.name not in self.run.frozen
             ):
-                return self._atoms(value.node, positive)
+                return (yield self._atoms_of(value.node, positive))
             if value is not None and value.kind == REDUCE and value.boolean:
                 # `any` or `all` of yes/no values changes only where one of its members does.
                 reduction = self.plan.reductions[node.name]
                 atoms = []
                 for k in self.run.kept_of(node.name) if reduction.names else ():
-                    atoms += self._atoms(nodes.ref(reduction.names[k]), positive)
+                    atoms += yield self._atoms_of(nodes.ref(reduction.names[k]), positive)
                 return atoms
             return []
         if isinstance(node, nodes.Unary) and node.op == 'not':
-            return self._atoms(node.operand, not positive)
+            return (yield self._atoms_of(node.operand, not positive))
         if isinstance(node, nodes.Compare):
             return [
                 (left, op, right, positive)
@@ -505,7 +520,7 @@ class Triggers:
             ]
         atoms = []
         for child in node.children:
-            atoms += self._atoms(child, positive)
+            atoms += yield self._atoms_of(child, positive)
         return atoms
 
     def _next(self, node, strict=True):
@@ -629,9 +644,9 @@ class Triggers:
                 found = first(s, e)
                 if found is not None:
                     break
-        # Two moments nearer than the crossing tolerance are one: a change just after now is read at
-        # the first instant that the engine tells apart from now.
-        return None if found is None else min(max(found, now + crossing), until)
+        # A change just after now is read at the first instant that the engine tells apart from now:
+        # what is due before it is due at now (`moment.Clock`).
+        return None if found is None else min(max(found, self.run.clock.apart(now)), until)
 
     def _forms(self, left, right, moving, now, until, spelled):
         """How the difference of a comparison's sides moves through the window (see the module): a
@@ -700,35 +715,40 @@ class Triggers:
 
         return motion, breaks
 
-    def _weights(self, node, moving, t, scale=1.0, found=None):
+    def _weights(self, node, moving, t):
         """The weight of each moving name in an affine node (`_affine`), through formulas and the sums
-        of their kept entries: {name: weight}, with what holds between moments read at time t."""
+        of their kept entries: {name: weight}, with what holds between moments read at time t, found
+        with no recursion (`plan.walked`)."""
+        found = {}
+        walked(self._weights_of(node, moving, t, 1.0, found))
+        return found
+
+    def _weights_of(self, node, moving, t, scale, found):
+        """The computation of `_weights`: each part through a formula or a sum is one that it yields."""
         plan = self.plan
-        found = {} if found is None else found
         if not (_reads(node, plan) & (moving | {'t'})):
-            return found
+            return
         if isinstance(node, nodes.Ref):
             value = plan.values.get(node.name)
             if node.name in moving or node.name == 't':
                 found[node.name] = found.get(node.name, 0.0) + scale
             elif value is not None and value.kind == FORMULA and node.name not in self.run.frozen:
-                self._weights(value.node, moving, t, scale, found)
+                yield self._weights_of(value.node, moving, t, scale, found)
             elif value is not None and value.kind == REDUCE:
                 names = plan.reductions[node.name].names  # a sum, which `_affine` admits
                 for k in self.run.kept_of(node.name):
-                    self._weights(nodes.ref(names[k]), moving, t, scale, found)
+                    yield self._weights_of(nodes.ref(names[k]), moving, t, scale, found)
         elif isinstance(node, nodes.Unary):
-            self._weights(node.operand, moving, t, -scale if node.op == 'neg' else scale, found)
+            yield self._weights_of(node.operand, moving, t, -scale if node.op == 'neg' else scale, found)
         elif node.op in ('add', 'sub'):
-            self._weights(node.left, moving, t, scale, found)
-            self._weights(node.right, moving, t, -scale if node.op == 'sub' else scale, found)
+            yield self._weights_of(node.left, moving, t, scale, found)
+            yield self._weights_of(node.right, moving, t, -scale if node.op == 'sub' else scale, found)
         elif node.op == 'div':
-            self._weights(node.left, moving, t, scale / float(self.side(node.right, t)), found)
+            yield self._weights_of(node.left, moving, t, scale / float(self.side(node.right, t)), found)
         elif _reads(node.left, plan) & (moving | {'t'}):  # a product with one side that holds
-            self._weights(node.left, moving, t, scale * float(self.side(node.right, t)), found)
+            yield self._weights_of(node.left, moving, t, scale * float(self.side(node.right, t)), found)
         else:
-            self._weights(node.right, moving, t, scale * float(self.side(node.left, t)), found)
-        return found
+            yield self._weights_of(node.right, moving, t, scale * float(self.side(node.left, t)), found)
 
     def _bisect(self, difference, edge, band, before, low, high):
         """The first time in (low, high] at which a difference that moves one way leaves the side
@@ -744,15 +764,30 @@ class Triggers:
         return high
 
     def _exact_root(self, left, right, moving, now):
-        """The root of a clock (`t` against what holds between moments), which is the time that the
-        other side gives, or of one store on its line against what holds, which is the line's start
-        plus its distance over its rate; None for any other comparison."""
-        ways = self.run.ways
+        """The root of a comparison whose only moving read is the time (`t`, `since(e)` or
+        `elapsed(x)` against what holds), which the clock gives exactly (`moment.Clock`): the sides
+        are affine in the time, so their difference at now and an hour later, in exact arithmetic,
+        gives the time at which it is zero; so `since(e) >= 0.2 h` after a start at 0.1 h changes at
+        0.3 h, as `t >= 0.3 h` does. Or the root of one store on its line against what holds, the
+        line's start plus its distance over its rate. None for any other comparison."""
+        run, ways = self.run, self.run.ways
+        if moving == {'t'}:
+            clock = run.clock
+
+            def difference(t):
+                read = lambda name: run.value(name, now)  # noqa: E731 (what holds, now)
+                return clock.value(left, read, t) - clock.value(right, read, t)
+
+            try:
+                begin = clock.exact(now)
+                start = difference(begin)
+                slope = difference(begin + 1) - start
+                return None if slope == 0 else float(begin - start / slope)
+            except (ExpressionError, ArithmeticError, TypeError, ValueError, LookupError):
+                return None  # sides that exact arithmetic does not read: the line's root
         for side, other in ((left, right), (right, left)):
             if not isinstance(side, nodes.Ref) or moving != {side.name}:
                 continue
-            if side.name == 't':
-                return float(self.side(other, now))
             line = ways.linear(side.name) if side.name in ways.set_of else None
             if line is not None and line[1] != 0:
                 value, slope, since = line
@@ -812,7 +847,13 @@ def _side(edge, difference, band):
 
 
 def _affine(node, moving, plan):
-    """Whether a node is affine in the moving names that it reads, through formulas."""
+    """Whether a node is affine in the moving names that it reads, through formulas, found with no
+    recursion (`plan.walked`)."""
+    return walked(_affine_of(node, moving, plan))
+
+
+def _affine_of(node, moving, plan):
+    """The computation of `_affine`: each part through a formula or a sum is one that it yields."""
     if isinstance(node, nodes.Const):
         return True
     if isinstance(node, nodes.Ref):
@@ -824,23 +865,31 @@ def _affine(node, moving, plan):
             # A sum of affine values is affine; a count, a least or a greatest value steps or bends.
             reduction = plan.reductions[node.name]
             if reduction.op == 'sum' and reduction.names is not None:
-                return all(_affine(nodes.ref(name), moving, plan) for name in reduction.names)
+                for name in reduction.names:
+                    if not (yield _affine_of(nodes.ref(name), moving, plan)):
+                        return False
+                return True
             return not (_reads(node, plan) & (moving | {'t'}))
         if node.name in moving or node.name == 't' or value is None or value.kind != FORMULA:
             return True
-        return _affine(value.node, moving, plan)
+        return (yield _affine_of(value.node, moving, plan))
     if isinstance(node, nodes.Unary) and node.op in ('neg', 'pos'):
-        return _affine(node.operand, moving, plan)
+        return (yield _affine_of(node.operand, moving, plan))
     if isinstance(node, nodes.Binary):
         if node.op in ('add', 'sub'):
-            return _affine(node.left, moving, plan) and _affine(node.right, moving, plan)
+            return bool((yield _affine_of(node.left, moving, plan))) and bool(
+                (yield _affine_of(node.right, moving, plan))
+            )
         still = [not (_reads(part, plan) & (moving | {'t'})) for part in (node.left, node.right)]
         if node.op == 'mul':
-            return (still[0] or still[1]) and all(
-                _affine(part, moving, plan) for part in (node.left, node.right)
-            )
+            if not (still[0] or still[1]):
+                return False
+            for part in (node.left, node.right):
+                if not (yield _affine_of(part, moving, plan)):
+                    return False
+            return True
         if node.op == 'div':
-            return still[1] and _affine(node.left, moving, plan)
+            return still[1] and bool((yield _affine_of(node.left, moving, plan)))
     return not (_reads(node, plan) & (moving | {'t'}))
 
 

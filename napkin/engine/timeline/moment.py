@@ -3,9 +3,8 @@
 At a time, rounds. One round is:
 
 1. **Stages.** The stages that are due when the round begins commit one after the other, in the
-   order in which their occurrences were made (D5); the first round of a moment takes those due
-   within the time tolerance after it as due at it (`occurrences.py`), so 0.1 h then 0.2 h is the
-   moment of 0.3 h, the horizon's too. A stage's guard (`after D when C`) is read once,
+   order in which their occurrences were made (D5); what is due is the clock's rule (`Clock`, below),
+   so 0.1 h then 0.2 h is the moment of 0.3 h, the horizon's too. A stage's guard (`after D when C`) is read once,
    when it comes due; a stage whose guard is false runs nothing and commits no entry. Its statements
    run in order and each sees the writes before it (`Tx`): `=`, `+=` and `-=` on a writable value (of
    the receiver, through a link or an entity parameter, of an occurrence of the stage or of a live
@@ -54,6 +53,32 @@ At a time, rounds. One round is:
 Another round follows at the same time while a stage is due there or a condition acted. The setup is
 round zero: its statements commit as one stage, the sets start, and the triggers get their first
 check; the rounds of time 0 follow. `max_rounds` limits the rounds at one time (D6).
+
+**The clock** (re-audit 04) is the one rule for when something is due, and every path calls it: the
+delay of a stage (`after D`, `occurrences.py`), the rearming of a trigger (`reset after D`), a
+comparison of the time with what holds (`t >= T`, `since(e) >= D` and `elapsed(x) >= D`, in a
+trigger, a reset or a gate: `triggers.py`), a contact that joins a known moment and the horizon
+(`run.py`). Two parts:
+
+- **A time built from a duration is exact.** The duration's expression is evaluated in exact
+  arithmetic: each number as the decimal that it prints as (the oracle's reading of a number), each
+  unit at the exact scale of the program; the sum with the time is exact and rounded once (`later`).
+  So a schedule reached by any sum of durations is the very float of the schedule written directly:
+  0.1 h three times from 0 h is 0.3 h, 0.1 day is 2.4 h, and the record and every reader see that
+  time. The time of a moment is a float; it is read again as its decimal, so a chain of decimal
+  durations never drifts, and no state but floats is kept (a checkpoint saves the same).
+- **What is due is fixed when a moment begins**: a time at most the time tolerance
+  (`Numerics.crossing`) after the moment's time is due at it (`due`). The first round of a moment
+  takes its stages and rearms its triggers by that rule; a later round takes what the moment itself
+  scheduled with no delay, so a delay above zero reached in a moment is due at a later moment; and
+  the horizon is due at the first moment within the tolerance before it. So a time that carries the
+  roundoff of a value computed elsewhere (a parameter computed from a product, a solver's result) is
+  the moment that it is within the tolerance of, as a comparison of the time is read within it.
+
+Exact arithmetic alone could not place such a time, and a tolerance alone would leave a time reached
+by a sum one roundoff from the one written: a reader at 0.3 h would miss a commit at
+0.30000000000000004 h, and a long chain of resets would drift by its roundoff. Each part does what
+the other cannot.
 """
 
 from __future__ import annotations
@@ -61,13 +86,16 @@ from __future__ import annotations
 import math
 from collections import Counter
 from dataclasses import dataclass
+from fractions import Fraction
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
+from ...core.units import rational
+from ...expressions import UnitSystem
 from ...program import parts as p
 from ...program.refs import Distribution, Formula
 from ..errors import SimulationError
-from .plan import BACKWARD, FORMULA, FORWARD
+from .plan import BACKWARD, FORMULA, FORWARD, walked
 from .reads import lazily
 
 # The comparisons of a stage's test, exact, as functions of the difference of their sides.
@@ -81,6 +109,68 @@ _EXACT = {
 }
 
 _SETUP = 'setup'  # what a stop in the setup holds
+
+
+class _ExactUnits(UnitSystem):
+    """The units of a program, with each quantity converted in exact arithmetic and not rounded: the
+    decimal that writes its number (`core.units.rational`) times the exact scale of its unit."""
+
+    def normalize(self, value, name):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float | Fraction)
+            or not math.isfinite(value)
+        ):
+            raise ExpressionError(f'Expected a finite quantity in {name}')
+        return rational(value) * self.exact_scale(name)
+
+
+class Clock:
+    """The one rule for when something is due (see the module)."""
+
+    def __init__(self, plan):
+        self.crossing = plan.numerics.crossing
+        self.units = _ExactUnits(
+            {
+                unit.name: {'dimensions': dict(unit.dimension), 'scale': unit.scale}
+                for unit in plan.program.units
+            }
+        )
+
+    @staticmethod
+    def exact(x):
+        """A time or a duration as an exact number: the decimal that writes it (`core.units.rational`,
+        the oracle's reading of a number)."""
+        return rational(x)
+
+    def value(self, node, read, t):
+        """The value of an expression at time t in exact arithmetic (see the module): of a duration,
+        or of a side of a comparison of the time. A fraction, or a float where it computes what no
+        fraction holds (a square root); `read(name)` gives the value of an engine name as the engine
+        holds it."""
+
+        def exact(name):
+            if name == 't':
+                return rational(t)
+            found = read(name)
+            return (
+                rational(found) if isinstance(found, int | float) and not isinstance(found, bool) else found
+            )
+
+        return lazily(node, exact, self.units)
+
+    def later(self, t, duration):
+        """The time `duration` after t: their exact sum, rounded once."""
+        return float(rational(t) + rational(duration))
+
+    def due(self, at, t, opening=True):
+        """Whether a time is due at the moment of time t: at most the time tolerance after it when the
+        moment begins (`opening`), else at t."""
+        return at <= t + self.crossing if opening else at <= t
+
+    def apart(self, t):
+        """The first time that the engine tells apart from t."""
+        return t + self.crossing
 
 
 @dataclass(frozen=True)
@@ -272,10 +362,8 @@ class Moment:
                 if self.round > limit:
                     raise SimulationError(self._round_limit(t, limit))
                 self.again = False
-                # The first round takes the steps due within the time tolerance after t when the
-                # moment begins, as due at t (`Occurrences.due`).
-                window = self.plan.numerics.crossing if self.round == 1 else 0.0
-                queue = run.occurrences.due(t + window)
+                # What is due is fixed when the moment begins: its first round opens it (`Clock`).
+                queue = run.occurrences.due(t, self.round == 1)
                 # A run can stop in the stages of a round: each solver takes its next solve on a fresh
                 # instance with its basis, so that its state there is data (`saved.py`).
                 run.ways.renew()
@@ -291,7 +379,8 @@ class Moment:
             self.phase = 'conditions'
             run.triggers.conditions()
             run.triggers.check()
-            if not self.again and run.occurrences.next_due() != t:
+            due = run.occurrences.next_due()
+            if not self.again and (due is None or not run.clock.due(due, t, opening=False)):
                 break
         self.phase = 'between'
         run.limit = run.discrete()
@@ -778,27 +867,29 @@ def near_ties(node, origin, plan, frozen, side, holds, tolerance, later=None):
     link of a true one, else the link that fails."""
 
     def decided(part):
-        """(the answer of a part, the near-ties of the comparisons that decide it)."""
+        """(the answer of a part, the near-ties of the comparisons that decide it), as a computation
+        of `plan.walked`: each part through a boolean formula is one that it yields, so a chain of
+        them is no limit of Python's."""
         if isinstance(part, nodes.Ref):
             value = plan.values.get(part.name)
             if value is not None and value.kind == FORMULA and value.boolean and part.name not in frozen:
-                return decided(value.node)
+                return (yield decided(value.node))
             return bool(side(part)), []
         if isinstance(part, nodes.BoolOp):
             stops = part.op == 'or'  # the answer of a term that decides the whole
             ties = []
             for each in part.values:
-                answer, mine = decided(each)
+                answer, mine = yield decided(each)
                 if answer == stops:
                     return answer, mine
                 ties += mine
             return not stops, ties
         if isinstance(part, nodes.Unary) and part.op == 'not':
-            answer, mine = decided(part.operand)
+            answer, mine = yield decided(part.operand)
             return not answer, mine
         if isinstance(part, nodes.IfElse):
-            test, mine = decided(part.test)
-            answer, more = decided(part.body if test else part.orelse)
+            test, mine = yield decided(part.test)
+            answer, more = yield decided(part.body if test else part.orelse)
             return answer, mine + more
         if isinstance(part, nodes.Compare):
             return compared(part)
@@ -824,4 +915,4 @@ def near_ties(node, origin, plan, frozen, side, holds, tolerance, later=None):
             ties += tie
         return True, ties
 
-    return tuple(dict.fromkeys(decided(node)[1]))
+    return tuple(dict.fromkeys(walked(decided(node))[1]))

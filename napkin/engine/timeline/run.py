@@ -4,8 +4,8 @@
    in the order of what it reads, across members (a formula, a reduction or a keyed read that one of
    them reads is evaluated there and then, at time 0). The order is found as the values are asked,
    with no recursion, so a chain through the rows of a large table is no limit: an evaluation that
-   asks for a read that is not known yet waits while that read is computed (`_Unknown`), so a side
-   that its evaluation does not take is never read (`reads.py`). A draw is executed there,
+   asks for a read that is not known yet waits while that read is computed (`Pending`, on the stack
+   of `plan.walked`), so a side that its evaluation does not take is never read (`reads.py`). A draw is executed there,
    keyed by its site and its member (`chance.py`); each is an entry of the trace. An input that the configuration sets must lie in its admitted range. The entries that each `where`
    keeps are found from fixed values, once (`kept_of`), and so is the sorted index of the keys of
    each keyed read (`stepped_of`). Then each assertion over inputs is checked once; one that does not
@@ -19,21 +19,24 @@
    (`triggers.py`). Occurrences are in `occurrences.py`.
 4. **Between moments** each instance of a way runs its sets (`ways.py`). The next moment is the
    earliest of a stage that is due, a reset timer, a key time of a keyed read by the time, the
-   horizon (`limit`) and the first contact of a watched condition or assertion (a contact within the
-   crossing tolerance before a known moment is in that moment); an event inside an instance (a store
-   that reaches a bound, the end of a segment) before it is committed first, and is itself a moment
-   when it changes what a watched condition or another set's setting reads. An event at the time of
-   a moment only puts its store on its bound: the moment's settling solves its set after the stages
-   of the moment, as the oracle settles once.
-5. **The horizon** is an inclusive cutoff: the work due there settles as at any moment, with the
-   steps due within the time tolerance after it (`occurrences.py`), and the record holds the state
-   that its last round committed.
+   horizon (`limit`) and the first contact of a watched condition or assertion; an event inside an
+   instance (a store that reaches a bound, the end of a segment) before it is committed first, and
+   is itself a moment when it changes what a watched condition or another set's setting reads. A
+   known moment that is due at a contact or at such an event (`moment.Clock`) is one moment with it,
+   at the time that the run knows exactly; there an event only puts its store on its bound, at its
+   own time, and the moment's settling solves its set after the stages of the moment, as the oracle
+   settles once.
+5. **The horizon** is an inclusive cutoff: the work due there settles as at any moment, by the
+   clock's rule (`moment.Clock`): the last moment is the first at which the horizon is due, and the
+   record holds the state that its last round committed.
 
 The present (`value`): the value of an engine name now, or at a time inside the present window of
 the ways (`t`): a store of a set from its instance, one written by this moment's commits from what
 was written, an actual rate or a served fraction from the instance of its flow (zero for a flow that
 is in no set), a formula from what it reads (a formula of a finished occurrence keeps its frozen
-value), a reduction, a keyed read and a dynamic read of a collection from their members, the time
+value), a reduction, a keyed read and a dynamic read of a collection from their members (each such
+derived value computed after the derived values that it reads, on the stack of `plan.walked`, with
+no recursion: `_derived`), the time
 of the last change of a stored value at a commit (`changed_at`), and any other value from what the
 run holds between moments (`env`). A stage reads its own writes first. A draw is executed when an
 expression of a stage, an entry, a delay or a firing reads it (`truth`), which reads each name as its
@@ -64,7 +67,7 @@ from ..errors import SimulationError
 from .chance import Chance
 from .checkpoints import Breaks, Stopped
 from .collections import dynamic_value, index_of, kept, looked_up, reduced
-from .moment import Defined, Moment
+from .moment import Clock, Defined, Moment
 from .occurrences import Occurrences
 from .plan import (
     CHANGED,
@@ -79,6 +82,8 @@ from .plan import (
     RESULT,
     STARTS,
     STATE,
+    Pending,
+    walked,
 )
 from .reads import lazily
 from .record import Recorder, remember
@@ -147,6 +152,7 @@ class Run:
         self.written = {}  # a store of a set that a commit of this moment wrote, and its value
         self.frozen = {}  # a formula of a finished occurrence -> its value or `Unavailable` (D7)
         self.limit = plan.horizon  # the next moment that the run knows (`next_moment`)
+        self.clock = Clock(plan)  # when something is due (`moment.Clock`)
         self._keyed = None  # {key time: the keyed reads by the time that change there}
         self.changed = set()  # what a commit or an event of the ways changed: names and sources
         self.joined, self.left = [], []  # the flows that join and that leave at this moment
@@ -169,7 +175,7 @@ class Run:
         a collection before its members' values, and of a keyed read the keys of its kept entries and
         its key, then the value of the entry that it finds. Any other value asks for what it reads as
         its expression is evaluated (`_compute`): a branch that is not taken reads nothing, and a read
-        that is not known yet stops the evaluation (`_Unknown`)."""
+        that is not known yet stops the evaluation (`Pending`)."""
         plan, env = self.plan, self.env
         if name in plan.draws:
             return []
@@ -214,7 +220,7 @@ class Run:
         return None if place is None else keyed.names[entries[place]]
 
     def _compute(self, name):
-        """The value of a name at the start, from the values known so far; `_Unknown` names a read
+        """The value of a name at the start, from the values known so far; `Pending` names a read
         that its evaluation asks for and that is not known yet."""
         plan, env = self.plan, self.env
         if name in plan.draws:
@@ -237,7 +243,7 @@ class Run:
         node = plan.values[name].node
         if isinstance(node, nodes.Ref):
             if node.name not in env:
-                raise _Unknown(node.name)
+                raise Pending(node.name)
             return env[node.name]  # a value that names another: no expression to compile
         return evaluate(node, _Known(env), plan.units)
 
@@ -254,29 +260,29 @@ class Run:
         if found is not None:
             env[name] = found  # a table's cell, a constant: it reads nothing
             return found
-        # Depth first, with no recursion: a value whose evaluation asks for a read that is not
-        # known yet waits on the stack while that read is computed, and is evaluated again. A read
-        # that waits already is one of the values that wait for this one: a cycle.
-        stack, waiting = [name], set()
-        while stack:
-            top = stack[-1]
-            if top in env:
-                stack.pop()
-                continue
-            missing = self._missing(top)
+        return walked(self._starting(name, set()))
+
+    def _starting(self, name, waiting):
+        """The computation of a starting value (`plan.walked`): after what it reads, each computed
+        first on the driver's stack, and evaluated again once they are known (`Pending`). A read
+        that waits already is one of the values that wait for this one: a cycle."""
+        env = self.env
+        waiting.add(name)
+        while name not in env:
+            missing = self._missing(name)
             if not missing:
                 try:
-                    env[top] = self._compute(top)
-                except _Unknown as unknown:
-                    missing = [unknown.name]
-                else:
-                    stack.pop()
-                    continue
-            waiting.add(top)
+                    env[name] = self._compute(name)
+                    break
+                except Pending as pending:
+                    missing = pending.names
             for read in missing:
-                if read in waiting and read not in env:
+                if read in env:
+                    continue
+                if read in waiting:
                     raise SimulationError(f'{read}: a starting value that reads itself')
-                stack.append(read)
+                yield self._starting(read, waiting)
+        waiting.discard(name)
         return env[name]
 
     def classes_of(self, store, side, items, number):
@@ -432,7 +438,7 @@ class Run:
             found = tx.writes[name]
             if isinstance(found, Defined):  # a calculation that the stage gave the value
                 at = self.now if t is None else float(t)
-                return lazily(found.node, lambda read: self.value(read, at, tx), self.plan.units, at)
+                return walked(self._derived(name, at, tx, {}, set()))
             return found
         if name == 't':
             return self.now if t is None else float(t)
@@ -462,35 +468,99 @@ class Run:
                 if isinstance(frozen, Unavailable):
                     raise ExpressionError(frozen.reason)
                 return frozen
-            node = found.node
-            if isinstance(node, nodes.Ref):
-                return self.value(node.name, t, tx)
-            return lazily(node, lambda read: self.value(read, t, tx), plan.units, t)
-        if kind == REDUCE:
-            return reduced(
-                plan.reductions[name], lambda read: self.value(read, t, tx), plan.units, self.kept_of(name)
-            )
-        if kind == LOOKUP:
-            if plan.stepped(name):
-                return self.value(self.stepped_of(name).name_at(t), t, tx)
-            return looked_up(
-                plan.keyed[name], lambda read: self.value(read, t, tx), plan.units, t, self.index_for(name)
-            )
-        if kind == DYNAMIC:
-            dynamic = plan.dynamic[name]
-            return dynamic_value(
-                dynamic,
-                plan.members(dynamic.source),
-                lambda point: plan.project(point, dynamic.steps),
-                lambda read: self.value(read, t, tx),
-                t,
-            )
+        if kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC):
+            return walked(self._derived(name, t, tx, {}, set()))
         if name in self.ways.set_of:
             return self.ways.value(name, t)
         try:
             return self.env[name]
         except KeyError:
             raise ExpressionError(f'{name} has no value yet') from None
+
+    def _is_derived(self, name, tx):
+        """Whether a value is computed from others where it is read: a formula (not frozen), a
+        reduction, a keyed or a dynamic read, or a calculation that a stage gave it."""
+        if tx is not None and name in tx.writes:
+            return isinstance(tx.writes[name], Defined)
+        found = self.plan.values.get(name)
+        kind = found.kind if found is not None else None
+        return kind in (REDUCE, LOOKUP, DYNAMIC) or (kind == FORMULA and name not in self.frozen)
+
+    def _derived(self, name, t, tx, known, waiting):
+        """The value of a derived value (`_is_derived`) at time t, as a computation of `plan.walked`
+        (re-audit 15): what it reads is read as its evaluation asks for it (`reads.py`), and each
+        derived value among those that this read has not computed yet (`known`) is computed first,
+        on the driver's stack, after which it is evaluated again with the reads that it made kept.
+        A reduction, and a dynamic read of every member, asks for all its derived entries at once.
+        `known` keeps each derived value of one read of the present, or the error that it raised,
+        which a read of it raises again; a value that waits for itself (`waiting`) reads itself."""
+        own = {}
+
+        def read(each):
+            found = own.get(each, _MISSING)
+            if found is not _MISSING:
+                return found
+            if self._is_derived(each, tx):
+                if each not in known:
+                    raise Pending(each)
+                found = known[each]
+                if isinstance(found, _Failed):
+                    raise found.problem
+            else:
+                found = self.value(each, t, tx)
+            own[each] = found
+            return found
+
+        waiting.add(name)
+        while True:
+            try:
+                found = self._evaluated(name, t, tx, read, known)
+            except Pending as pending:
+                for each in pending.names:
+                    if each in known:
+                        continue
+                    if each in waiting:
+                        raise SimulationError(f'{each}: a value that reads itself at t = {t:g} h') from None
+                    try:
+                        known[each] = yield self._derived(each, t, tx, known, waiting)
+                    except Exception as problem:  # raised where the evaluation reads it, as a call raises
+                        known[each] = _Failed(problem)
+                continue
+            waiting.discard(name)
+            return found
+
+    def _evaluated(self, name, t, tx, read, known):
+        """One evaluation of a derived value from `read` (`_derived`); a reduction or a dynamic read
+        of every member first asks for those of its entries that this read has not computed."""
+        plan = self.plan
+        if tx is not None and name in tx.writes:
+            return lazily(tx.writes[name].node, read, plan.units, t)
+        kind = plan.values[name].kind
+        if kind == FORMULA:
+            node = plan.values[name].node
+            return read(node.name) if isinstance(node, nodes.Ref) else lazily(node, read, plan.units, t)
+        if kind == REDUCE:
+            reduction, entries = plan.reductions[name], self.kept_of(name)
+            if reduction.names is not None:
+                self._ask((reduction.names[k] for k in entries), tx, known)
+            return reduced(reduction, read, plan.units, entries)
+        if kind == LOOKUP:
+            if plan.stepped(name):
+                return read(self.stepped_of(name).name_at(t))
+            return looked_up(plan.keyed[name], read, plan.units, t, self.index_for(name))
+        dynamic = plan.dynamic[name]
+        members = plan.members(dynamic.source)
+        if dynamic.keep is None and dynamic.steps and dynamic.op not in ('at', 'latest'):
+            self._ask((plan.project(point, dynamic.steps) for point in members), tx, known)
+        return dynamic_value(dynamic, members, lambda point: plan.project(point, dynamic.steps), read, t)
+
+    def _ask(self, names, tx, known):
+        """Raise `Pending` for the derived names among `names` that the read in progress has not
+        computed (`known`): a computation that reads them all asks for them at once, so a reduction
+        over thousands of formulas is evaluated once, not once for each."""
+        missing = [name for name in dict.fromkeys(names) if name not in known and self._is_derived(name, tx)]
+        if missing:
+            raise Pending(*missing)
 
     def held(self, name):
         """The value now of a name that holds between moments (an input, a parameter of a set)."""
@@ -749,9 +819,10 @@ class Run:
         return self.recorder.record(self.plan.horizon)
 
     def loop(self):
-        """Moment after moment to the horizon, which is a moment too."""
+        """Moment after moment to the horizon, which is a moment too: the first moment at which it is
+        due (`moment.Clock`)."""
         horizon = self.plan.horizon
-        while self.now < horizon:
+        while not self.clock.due(horizon, self.now):
             t, touched = self.next_moment()
             self.moment.at(t, touched)
         self.ways.finish(horizon)
@@ -791,11 +862,11 @@ class Run:
             at = float(at)
             contact = float(self.triggers.next_contact())
             moment = min(limit, contact)
-            if contact < limit <= contact + self.plan.numerics.crossing:
-                # Two moments nearer than the crossing tolerance are one (`Numerics.crossing`): a
-                # contact just before a known moment is in it, where it holds within its tolerance.
+            if contact < limit and self.clock.due(limit, contact):
+                # A known moment due at a contact is one moment with it (`moment.Clock`), at the time
+                # that the run knows exactly: the contact holds there within its tolerance.
                 moment = limit
-            if at < moment:
+            if at < moment and not self.clock.due(moment, at):
                 self.now = at
                 stores, rates, jumped = instance.step()
                 changed = set(stores) | set(rates)
@@ -807,27 +878,31 @@ class Run:
                 self.triggers.predict(changed)
                 continue
             self.now = moment
-            # An event of an instance at the time of the moment puts its store on its bound, and the
-            # moment's settling, after its stages, solves the set again (as the oracle settles once).
+            # An event of an instance at the time of the moment, or one at which the moment is due
+            # (`moment.Clock`: a store that the ways bring to its bound a roundoff before a stage
+            # due there), puts its store on its bound at its own time, and the moment's settling,
+            # after its stages, solves the set again (as the oracle settles once).
             changed = set()
-            while at == moment:
+            while at <= moment:
                 changed |= set(instance.snap())
                 at, instance = self.ways.peek()
             self.ways.cut(moment)
             return moment, changed
 
 
-class _Unknown(Exception):
-    """A read that the evaluation of a starting value asks for and that is not known yet."""
+class _Failed:
+    """The error that a derived value raised where a read of the present computed it: a later read
+    of it in that read raises it again (`Run._derived`)."""
 
-    def __init__(self, name):
-        super().__init__(name)
-        self.name = name
+    __slots__ = ('problem',)
+
+    def __init__(self, problem):
+        self.problem = problem
 
 
 class _Known(Mapping):
     """The values known at the start, as an evaluation of a starting value reads them: a read that
-    is not known yet raises `_Unknown`, so that the start computes it first."""
+    is not known yet raises `Pending`, so that the start computes it first."""
 
     __slots__ = ('env',)
 
@@ -838,7 +913,7 @@ class _Known(Mapping):
         try:
             return self.env[name]
         except KeyError:
-            raise _Unknown(name) from None
+            raise Pending(name) from None
 
     def __contains__(self, name):
         return True  # each read of the evaluation asks, so that an unknown one is named

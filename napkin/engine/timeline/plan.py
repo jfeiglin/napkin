@@ -152,7 +152,7 @@ from ...program.refs import (
 )
 from ..errors import SimulationError
 from .collections import Dynamic, Ends, Entries, Keyed, Reduction
-from .pools import pools_of
+from .pools import Keys, pools_of
 
 # The kinds of the values of a plan.
 INPUT = 'input'  # fixed for the run
@@ -345,6 +345,46 @@ class Expanded:
         return Expanded(frozenset(leaves), frozenset(formulas), frozenset(stepped), time)
 
 
+class Pending(Exception):
+    """A computation over the dependency graph asks for values that are not known yet (`names`, in
+    the order in which it reads them): its driver computes them first and runs it again (`walked`)."""
+
+    def __init__(self, *names):
+        super().__init__(*names)
+        self.names = names
+
+
+def walked(computation):
+    """The result of a computation over the dependency graph, with no recursion (re-audit 15): a
+    computation is a generator that yields each computation that it needs and is sent its result,
+    and returns its own; an exception that a needed one raises is thrown into the one that waits for
+    it, where a call would have raised it. The computations that wait are kept on an explicit stack,
+    so a chain of formulas, links or keyed reads of any length is no limit of Python's. An evaluation
+    that the core compiles (`reads.lazily`) cannot yield: it raises `Pending` for a value that its
+    computation does not know yet, which yields that value's computation and evaluates it again (the
+    reads that it made are kept, so none is made twice). The start of a run, the present, the
+    expansions of the plan and the conditions of a run all walk the graph so."""
+    stack, sent, thrown = [computation], None, None
+    while True:
+        top = stack[-1]
+        try:
+            asked = top.send(sent) if thrown is None else top.throw(thrown)
+        except StopIteration as done:
+            stack.pop()
+            if not stack:
+                return done.value
+            sent, thrown = done.value, None
+            continue
+        except Exception as problem:
+            stack.pop()
+            if not stack:
+                raise
+            sent, thrown = None, problem
+            continue
+        stack.append(asked)
+        sent, thrown = None, None
+
+
 def _renamed(node, names):
     """A node with each of its names replaced by the node that `names` gives it."""
     if isinstance(node, nodes.Ref):
@@ -470,11 +510,10 @@ class Plan:
         self.program, self.configuration = program, configuration
         self.horizon = float(configuration.request.horizon)
         self.numerics = configuration.numerics
+        # Each unit at the exact scale of the program, so that a quantity converts once, rounded once
+        # (`core.units`): 20 min is the float of 1/3 h.
         self.units = UnitSystem(
-            {
-                unit.name: {'dimensions': dict(unit.dimension), 'scale': float(unit.scale)}
-                for unit in program.units
-            }
+            {unit.name: {'dimensions': dict(unit.dimension), 'scale': unit.scale} for unit in program.units}
         )
         self.pools = pools_of(program)
         self.values, self.draws, self.flows, self.distributions = {}, {}, {}, {}
@@ -497,6 +536,7 @@ class Plan:
         self.started = False  # once the run has started, an error that the plan finds stops it
         self._derived = {}  # (owner, read) -> the engine name of a reduction or a keyed read
         self._expanded = {}
+        self._expanding = False  # while an expansion is found: a read of one not found yet asks for it
         self._places = {}  # the place of each value in `values`, for `ordered`
         self._given = {(item.member, item.name): item for item in configuration.inputs}
         self._copies = []  # (distribution-valued value, the value whose distribution it copies, origin)
@@ -662,17 +702,21 @@ class Plan:
 
     def _fixed(self, found):
         """Whether what an expansion reads is fixed by the inputs: inputs, links, and keyed reads
-        with a fixed key of what is fixed."""
-        if found.time or found.stepped:
-            return False
-        for leaf in found.leaves:
-            value = self.values.get(leaf)
-            if value is None or value.kind in FIXED:
-                continue  # a draw, which only an input's initializer executes
-            if value.kind != LOOKUP:
+        with a fixed key of what is fixed (followed on a list, with no recursion)."""
+        todo, seen = [found], set()
+        while todo:
+            part = todo.pop()
+            if part.time or part.stepped:
                 return False
-            if not self._fixed(self.lookup_reads(leaf)):
-                return False
+            for leaf in part.leaves:
+                value = self.values.get(leaf)
+                if value is None or value.kind in FIXED:
+                    continue  # a draw, which only an input's initializer executes
+                if value.kind != LOOKUP:
+                    return False
+                if leaf not in seen:
+                    seen.add(leaf)
+                    todo.append(self.lookup_reads(leaf))
         return True
 
     def _members_part(self, keyed):
@@ -707,12 +751,27 @@ class Plan:
 
     def lookup_reads(self, name):
         """What a keyed read reads that can change (`Expanded`): its key, and what its members read
-        that the inputs do not fix (of a stepped one, the values of its members only)."""
+        that the inputs do not fix (of a stepped one, the values of its members only). A constant key
+        over the natural keys of entries that no test filters selects one entry when the plan is made
+        (re-audit 15): the read reads that entry alone, so a value that the others read is no cycle."""
         keyed = self.keyed[name]
+        chosen = self._chosen(keyed)
+        if chosen is not None:
+            return Expanded() if chosen is False else self.expanded(chosen)
         ordering, values = self._members_part(keyed)
         if self.stepped(name):
             return values
         return Expanded.union([ordering, values, self.expansion(keyed.key)])
+
+    def _chosen(self, keyed):
+        """The engine name of the entry that a keyed read selects when the plan is made (`lookup_reads`),
+        False when its key is below the first, or None when only a run selects it."""
+        if not isinstance(keyed.key, nodes.Const) or isinstance(keyed.key.value, bool | str):
+            return None
+        if any(test is not None for test in keyed.tests) or not all(type(key) is int for key in keyed.keys):
+            return None
+        place = Keys(keyed.keys).find(float(keyed.key.value)) if keyed.keys else None
+        return False if place is None else keyed.names[place]
 
     def lookup_moves(self, name, moving):
         """Whether a keyed read changes between moments, where `moving` holds the stores that do:
@@ -1335,12 +1394,16 @@ class Plan:
             key = Key(occ, (field,))
             self._add(Value(name_of(key), key, kind, nodes.const(value), '', field != 'started'))
             initial.append(name_of(key))
+        self.frames[occ] = scope  # a reference of its own locals may name it
         for part in event.locals:
+            if isinstance(part, p.Value) and isinstance(part.type, p.OccurrenceType):
+                frame.names[part.name] = self._referred(part, scope, occ)
+                continue
             kind = 'flow' if isinstance(part, p.Flow) else 'value'
             frame.names[part.name] = (kind, name_of(Key(occ, (part.name,))))
         first = len(self._declared)
         for part in event.locals:
-            if isinstance(part, p.Value):
+            if isinstance(part, p.Value) and not isinstance(part.type, p.OccurrenceType):
                 self._declare(part, scope)
         flows = []
         for part in event.locals:
@@ -1378,6 +1441,8 @@ class Plan:
         stores, formulas = [], []
         for part in event.locals:
             name = name_of(Key(occ, (part.name,)))
+            if isinstance(part, p.Value) and isinstance(part.type, p.OccurrenceType):
+                continue  # a reference holds no value: it names an occurrence
             if isinstance(part, p.Value):
                 initial.append(name)
                 for side in SIDES:
@@ -1396,10 +1461,34 @@ class Plan:
                 continue
             for setting in self._flow_settings(name):
                 (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
-        self.frames[occ] = scope
         self.occurrences[(member, event_name)].append(occ)
         flows = tuple(name for name in flows if name in self.flows)
         return Occurrence(occ, member, event, scope, tuple(initial), tuple(stores), flows, tuple(formulas))
+
+    def _referred(self, value, scope, occ):
+        """The occurrence that a reference to one (`parts.OccurrenceType`) names from the entry of its
+        own occurrence `occ` on, which it keeps after later starts (spec, "A finished occurrence is a
+        stable record"): of `e.occurrences.at(t)`, the newest that has started then, the one that
+        enters included; of an earlier reference, the one that it names. A read through it steps from
+        that occurrence (`_step`): live while it runs, frozen once it finishes (D7)."""
+        path, origin = value.init, value.origin
+        if isinstance(path.start, Lookup) and not path.steps:
+            key = path.start.key
+            source = self.resolve(path.start.source, scope, origin)
+            timed = isinstance(key.node, nodes.Ref) and isinstance(key.read(key.node.name), Time)
+            if source[0] != 'dynamic' or source[1][0] != 'occurrences' or source[2] or not timed:
+                raise Outside(f'{origin}: {value.name} refers to no occurrence of an event at the time t')
+            _, member, event = source[1]
+            made = [*self.occurrences[(member, event)]]
+            if occ.rpartition('#')[0] == f'{member}.{event}':
+                made.append(occ)
+            if not made:
+                raise SimulationError(f'{origin}: {spelled(path)}: no occurrence has started')
+            return ('occurrence', made[-1])
+        found = self.resolve(path, scope, origin)
+        if found[0] != 'occurrence':
+            raise Outside(f'{origin}: {value.name} refers to no occurrence (a type error)')
+        return found
 
     def replay(self, trace):
         """The occurrences of a run made again from the starts of its trace, in their order, so
@@ -2073,19 +2162,49 @@ class Plan:
 
     def expanded(self, name):
         """What a value reads through formulas and reductions (`Expanded`): a formula, a reduction
-        and a keyed read by the time are followed, any other value is a leaf."""
+        and a keyed read by the time are followed, any other value is a leaf. Each is found once,
+        after what it reads (`walked`): a read of one that is not found yet inside the finding of
+        another asks for it (`Pending`)."""
         found = self._expanded.get(name)
         if found is not None:
             if found is _VISITING:
                 raise Outside(f'{name}: a formula that reads itself')
             return found
-        value = self.values.get(name)
         if name == 't':
             return Expanded(time=True)
-        followed = value is not None and value.kind in (FORMULA, REDUCE, LOOKUP)
-        if not followed:
+        value = self.values.get(name)
+        if value is None or value.kind not in (FORMULA, REDUCE, LOOKUP):
             return Expanded(leaves=frozenset({name}))
+        if self._expanding:
+            raise Pending(name)
+        return walked(self._expansion_of(name))
+
+    def _expansion_of(self, name):
+        """The computation of `expanded(name)` (`walked`): found again once each expansion that it
+        asks for is found."""
         self._expanded[name] = _VISITING
+        while True:
+            self._expanding = True
+            try:
+                found = self._expand(name)
+            except Pending as pending:
+                (read,) = pending.names
+                if self._expanded.get(read) is _VISITING:
+                    del self._expanded[name]
+                    raise Outside(f'{read}: a formula that reads itself') from None
+                yield self._expansion_of(read)
+                continue
+            except BaseException:
+                self._expanded.pop(name, None)
+                raise
+            finally:
+                self._expanding = False
+            self._expanded[name] = found
+            return found
+
+    def _expand(self, name):
+        """The expansion of one formula, reduction or keyed read from those of what it reads."""
+        value = self.values[name]
         if value.kind == FORMULA:
             found = self.expansion(value.node)
         elif value.kind == LOOKUP:
@@ -2101,7 +2220,6 @@ class Plan:
             found = Expanded(found.leaves | {name}, found.formulas, found.stepped, found.time)
         else:
             found = Expanded(found.leaves, found.formulas | {name}, found.stepped, found.time)
-        self._expanded[name] = found
         return found
 
     def expansion(self, node):
@@ -2407,21 +2525,27 @@ class Plan:
         done, order = set(), []
         formulas = set(formulas)
         reads = self.reads_ever if ever else self.reads
-
-        def visit(name, path):
-            if name in done:
-                return
-            if name in path:
-                raise Outside(f'{name}: a formula that reads itself')
-            for read in sorted(reads(name)):
-                if read in formulas:
-                    visit(read, path | {name})
-            done.add(name)
-            order.append(name)
-
-        if formulas:
-            for name in sorted(formulas, key=self._place_of()):
-                visit(name, frozenset())
+        # Depth first on an explicit stack: a name is placed once what it reads is.
+        for first in sorted(formulas, key=self._place_of()) if formulas else ():
+            stack, path = [(first, None)], set()
+            while stack:
+                name, waiting = stack[-1]
+                if waiting is None:
+                    if name in done:
+                        stack.pop()
+                        continue
+                    if name in path:
+                        raise Outside(f'{name}: a formula that reads itself')
+                    path.add(name)
+                    waiting = [read for read in sorted(reads(name), reverse=True) if read in formulas]
+                    stack[-1] = (name, waiting)
+                if waiting:
+                    stack.append((waiting.pop(), None))
+                    continue
+                stack.pop()
+                path.discard(name)
+                done.add(name)
+                order.append(name)
         return order
 
 

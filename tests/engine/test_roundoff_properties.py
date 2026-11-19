@@ -71,6 +71,12 @@ def exact(x):
     return Fraction(x)
 
 
+def written(x):
+    """The decimal that writes a double (its `repr`): the number that a model's text holds, which the
+    clock adds exactly (`moment.Clock`)."""
+    return Fraction(repr(x))
+
+
 def shared_tank(demand, factors, start, top, fill_factor, order, rising=False):
     """A tank with an inflow from outside and outflows that share it, each to its own tally. Flow i
     asks `demand * factors[i]` (times 1 + t / 30 h when `rising`); the inflow asks the sum of the
@@ -329,12 +335,14 @@ def timed(first, delay1, delay2, switch, level, rate, threshold, tick):
 @pytest.mark.parametrize('seed', [11, 12])
 def test_the_times_of_clocks_delays_and_a_crossing_are_the_exact_times_within_their_roundoff(seed):
     """The exact times: a clock at its double; a delay after the time of the stage before it, so `c`
-    finishes at first + delay1 + delay2; the crossing at switch + (threshold - level) / rate. The
-    bounds are of the arithmetic of doubles, far inside the crossing tolerance of 1e-8 h: each sum of
-    a delay rounds once, to half an ulp of a time no later than the event, so a chain of k delays is
-    within k / 2 ulps; the crossing rounds the difference, the quotient and the sum, each to half a
-    unit of roundoff of the threshold over the rate or of the time (`triggers.py`, the root of a line).
-    At the horizon the level and the tally are their exact values within 1e-13 of them."""
+    finishes at first + delay1 + delay2, the sum of the decimals that write them (`moment.Clock`, the
+    re-audit's 04); the crossing at switch + (threshold - level) / rate. The bounds are of the
+    arithmetic of doubles, far inside the crossing tolerance of 1e-8 h: the first delay's sum rounds
+    once, to half an ulp, and each delay after it reads the time that it starts from as its decimal,
+    within half an ulp of that time, so a chain of k delays is within k - 1/2 ulps; the crossing
+    rounds the difference, the quotient and the sum, each to half a unit of roundoff of the threshold
+    over the rate or of the time (`triggers.py`, the root of a line). At the horizon the level and the
+    tally are their exact values within 1e-13 of them."""
     rng = np.random.default_rng(seed)
     checked = 0
     for _ in range(30):
@@ -348,8 +356,8 @@ def test_the_times_of_clocks_delays_and_a_crossing_are_the_exact_times_within_th
         crossing = exact(switch) + (exact(threshold) - exact(level)) / exact(rate)
         times = {
             'a': exact(first),
-            'b': exact(first) + exact(delay1),
-            'c': exact(first) + exact(delay1) + exact(delay2),
+            'b': written(first) + written(delay1),
+            'c': written(first) + written(delay1) + written(delay2),
             'switch': exact(switch),
             'crossed': crossing,
         }
@@ -368,7 +376,7 @@ def test_the_times_of_clocks_delays_and_a_crossing_are_the_exact_times_within_th
         assert fired['a'] == first and fired['switch'] == switch
         for name, delays in (('b', 1), ('c', 2)):
             ulp = exact(math.ulp(float(times[name])))
-            assert abs(exact(finished[name]) - times[name]) <= Fraction(delays, 2) * ulp
+            assert abs(exact(finished[name]) - times[name]) <= (delays - Fraction(1, 2)) * ulp
         between = sum(exact(switch) < times[name] < crossing for name in ('a', 'b', 'c'))
         roundoff = exact(EPS) * (crossing + exact(threshold) / exact(rate))
         assert abs(exact(fired['crossed']) - crossing) <= (1 + between) * roundoff

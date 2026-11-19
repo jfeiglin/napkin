@@ -13,16 +13,14 @@ the settling of the round (`ways.py`).
 Then it goes through its steps in order (spec, "Time, waiting and completion"):
 
 - `after D` captures D when the step is reached, a finite duration from zero, and is due D later:
-  its stage commits then (`moment.py`). Stages due together commit in the order in which their
-  occurrences were made (D5). Two times nearer than the time tolerance (`Numerics.crossing`) are one
-  moment, and a sum of delays is no exact time (0.1 h + 0.2 h is 0.30000000000000004 h in binary
-  floating point, and even the exact sum of the two binary numbers is not the binary 0.3 h): so the
-  first round of a moment at t takes each step due by t + crossing when the moment begins, the
-  horizon's moment too, as due at t. A step reached during the moment with a delay above zero is due
-  later, at its own moment. A D that
-  a stage reaches and that reads a rate or a result of a declared solver takes them after the
-  round's settling, so a solve that the round affects gives its settled answer; what else it reads
-  is captured when the step is reached (`delays`);
+  its stage commits then (`moment.py`). D and the time at which it is due are the clock's
+  (`moment.Clock`): D is evaluated in exact arithmetic and added to the time exactly, so 0.1 h and
+  then 0.2 h is due at 0.3 h exactly, and the first round of a moment takes each step due within the
+  time tolerance after it, as due at it; a step reached during the moment with a delay above zero
+  is due later, at its own moment. Stages due together commit in the order in which their
+  occurrences were made (D5). A D that a stage reaches and that reads a rate or a result of a
+  declared solver takes them after the round's settling, so a solve that the round affects gives its
+  settled answer; what else it reads is captured when the step is reached (`delays`);
 - `until C` is a gate: the occurrence waits there until the conditions of a round find C true
   (`triggers.py`), and goes on in that round.
 
@@ -43,6 +41,7 @@ from __future__ import annotations
 import heapq
 import math
 from dataclasses import dataclass, field
+from fractions import Fraction
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
@@ -213,21 +212,23 @@ class Occurrences:
             # The rates and results that it reads settle after the stages of the round (D5).
             self.awaiting.append((live, live.version, node, step, self._captured(node, computed)))
             return
-        self._schedule(live, run.truth(node), step)
+        self._schedule(live, run.clock.value(node, run.value, run.now), step)
 
     def _schedule(self, live, delay, step):
+        """A step is due `delay` after now, by the clock (`moment.Clock`)."""
         run = self.run
         if (
             isinstance(delay, bool)
-            or not isinstance(delay, int | float)
+            or not isinstance(delay, int | float | Fraction)
             or not math.isfinite(delay)
             or delay < 0
         ):
+            shown = float(delay) if isinstance(delay, Fraction) else delay
             raise SimulationError(
                 f'the delay {nodes.text(step.delay.node)} of {live.id} must be a duration that is not '
-                f'negative, and is {delay!r} at t = {run.now:g} h'
+                f'negative, and is {shown!r} at t = {run.now:g} h'
             )
-        live.due = run.now + float(delay)
+        live.due = run.clock.later(run.now, delay)
         heapq.heappush(self.schedule, (live.due, live.number, live.id, live.version))
 
     def _computed(self, node):
@@ -274,7 +275,7 @@ class Occurrences:
                     return lazily(value.node, read, plan.units, run.now)
                 return run.value(name)
 
-            self._schedule(live, lazily(node, read, plan.units, run.now), step)
+            self._schedule(live, run.clock.value(node, read, run.now), step)
 
     def next_due(self):
         """The time of the next step that waits for its time, or None."""
@@ -283,12 +284,12 @@ class Occurrences:
             heapq.heappop(schedule)
         return schedule[0][0] if schedule else None
 
-    def due(self, until):
-        """The occurrences whose steps are due by the time `until`, in the order in which they were
-        made (D5): a moment's first round takes those due within the time tolerance after it (see the
-        module)."""
-        found = []
-        while self.next_due() is not None and self.schedule[0][0] <= until:
+    def due(self, t, opening):
+        """The occurrences whose steps are due at the moment of time t, in the order in which they
+        were made (D5): by the clock (`moment.Clock`), as the moment begins (`opening`, its first
+        round) or within it."""
+        found, clock = [], self.run.clock
+        while self.next_due() is not None and clock.due(self.schedule[0][0], t, opening):
             _, _, occ, _ = heapq.heappop(self.schedule)
             found.append(self.live[occ])
         return sorted(found, key=lambda live: live.number)
