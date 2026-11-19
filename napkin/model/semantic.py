@@ -27,6 +27,10 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   must be fixed: an input or a link), `by(field)` (the key) and `.at(x)` (one member, `x` in the
   key's unit). A step from a collection is a projection, which only a reduction reads: `sum` and
   `min`/`max` of numbers, `count` of members or of yes/no values, `any` and `all` of yes/no values.
+  An endpoint's `flows` take a `where` too (`flows_where`): in its test the bare names `source` and
+  `sink` are the member's ends (`FlowEnd`), fixed for the flow's lifetime, which compare with `==`
+  or `!=` to a stored number, by identity (`count(tank.water.outflow.flows.where(sink ==
+  clinic.water))`); a flow's rates and settings are live, and no where tests them.
 - **Flows and endpoints.** A directed flow ends at `SOURCE`, `SINK` or a stored number: of its own
   member, through links (`this.origin.power`), of a named member (`reservoir.water`) or of the top
   level. A stored number has an `outflow` and an `inflow` (`EndOf`): their `actual_rate` (the sum of
@@ -362,6 +366,27 @@ class EndOf:
 
     def __str__(self):
         return f'an endpoint in {self.rate}'
+
+
+@dataclass(frozen=True)
+class Flows:
+    """The member under test of a `where` over an endpoint's flows (`Scope.item`): any flow incident
+    there, whose rates are in `rate`."""
+
+    rate: Num
+
+
+@dataclass(frozen=True)
+class FlowEnd:
+    """An end of the member under test of a `where` over an endpoint's flows (`source`, `sink`): the
+    store at that end, or SOURCE or SINK, fixed for the flow's lifetime. It is no value: the test
+    compares it with `==` or `!=` to a stored number, or to the member's other end, and the program
+    compares stores by identity there. `rate` is the unit of the flows' rates."""
+
+    rate: Num
+
+    def __str__(self):
+        return 'an end of a flow'
 
 
 @dataclass(frozen=True)
@@ -1139,14 +1164,15 @@ class Refused(Exception):
 @dataclass(frozen=True)
 class Scope:
     """Where an expression stands: the template whose member `this` names ('' at the top level), and
-    inside the test of a `where` the template of the member under test (`item`). Inside an event,
+    inside the test of a `where` the template of the member under test (`item`), or `Flows` for a
+    flow of an endpoint's flows. Inside an event,
     `event` is its path, whose parameters and locals the bare names read; inside a trigger, which
     has no occurrence (`trigger` is its path), `captures` are the paths of the captures that it has
     taken so far. Inside a solver, `solver` is its path, whose inputs and unknowns the bare names
     read."""
 
     owner: str = ''
-    item: str | None = None
+    item: str | Flows | None = None
     event: str | None = None
     captures: tuple = ()
     trigger: str | None = None
@@ -1452,6 +1478,8 @@ class Resolver:
                 self.member_of(item, enum) if found is None else found
                 for item, found in zip(node.operands, operands)
             ]
+            if len(node.ops) > 1 and any(isinstance(item.type, FlowEnd) for item in operands):
+                self.fail('type', 'an end of a flow is compared once, as sink == clinic.water', node)
             for k, op in enumerate(node.ops):
                 operands[k], operands[k + 1] = self.alike(operands[k], operands[k + 1], node, op)
             return Apply('compare', tuple(operands), BOOL, node.ops)
@@ -1552,6 +1580,8 @@ class Resolver:
 
     def alike(self, left, right, node, op):
         """Two operands of one dimension; a bare zero takes the other's unit."""
+        if isinstance(left.type, FlowEnd) or isinstance(right.type, FlowEnd):
+            return self.ends_alike(left, right, node, op)
         if isinstance(left.type, Num) and isinstance(right.type, Num):
             if left.type.dimension != right.type.dimension:
                 if _zero(left) and not left.type.dimension:
@@ -1694,8 +1724,8 @@ class Resolver:
     # ---- paths -------------------------------------------------------------------------------------
 
     def item_field(self, scope, name):
-        """Whether a bare name is a value of the member under test of a `where`."""
-        found = self.syntax.get(f'{scope.item}.{name}') if scope.item is not None else None
+        """Whether a bare name is a value of the member under test of a `where` of members."""
+        found = self.syntax.get(f'{scope.item}.{name}') if isinstance(scope.item, str) else None
         return found is not None and isinstance(found[1], n.Declaration)
 
     def path(self, node, scope):
@@ -1729,6 +1759,16 @@ class Resolver:
             return Read(('this',), (), Ent(scope.owner), True)
         if name == 't':
             return Read(('time',), (), self.num('h', node))
+        if isinstance(scope.item, Flows) and name in (*ENDS, *FLOW_READS):
+            # A bare name of a flow's own in the test of a where over flows is the member's.
+            if name in FLOW_READS:
+                self.fail(
+                    'where_live',
+                    f'where tests what is fixed for each member, and the {name} of a flow is not: a '
+                    'where over flows compares their ends, as sink == clinic.water',
+                    node,
+                )
+            return Read(('item',), (name,), FlowEnd(scope.item.rate), True)
         if self.item_field(scope, name):
             return self.step(Read(('item',), (), Ent(scope.item), True), name, node)
         for capture in scope.captures:
@@ -1809,6 +1849,13 @@ class Resolver:
         many = isinstance(kind, Many)
         inner = kind.of if many else kind
         steps = (*base.steps, name)
+        if isinstance(inner, FlowEnd):
+            self.fail(
+                'where_live',
+                f'a where over flows compares their ends, as sink == clinic.water: the store at an end '
+                f'is live, and {base.steps[-1]}.{name} is not read there',
+                node,
+            )
         if isinstance(inner, Ent):
             template = inner.template
             path = f'{template}.{name}'
@@ -2001,8 +2048,11 @@ class Resolver:
         return Read(('literal', items), (), Many(Ent(templates[0])), all(item.fixed for item in items))
 
     def keyed(self, node, scope):
-        """`c.where(test)`, `c.by(field)` and `c.at(key)` of a collection of members."""
+        """`c.where(test)`, `c.by(field)` and `c.at(key)` of a collection of members, and `where` of
+        an endpoint's flows (`flows_where`)."""
         source = self.path(node.base, scope)
+        if isinstance(source.type, Many) and isinstance(source.type.of, FlowOf) and node.name == 'where':
+            return self.flows_where(source, node, scope)
         if isinstance(source.type, Many) and isinstance(source.type.of, Occ) and node.name != 'at':
             self.fail(
                 'collection',
@@ -2052,6 +2102,58 @@ class Resolver:
                 self.fail('unit', f'.at(...) reads a key in {key}, not {found.type}', node)
             found = Const(found.value, key)
         return Read(('lookup', source, found), (), of, source.fixed and fixed(found))
+
+    def flows_where(self, source, node, scope):
+        """`flows.where(test)` of an endpoint's flows (spec, "Collections, keys and projections": a
+        fixed-field filter over an endpoint collection follows its membership changes). The bare
+        names `source` and `sink` of the test are the member's ends, which are fixed for the flow's
+        lifetime and compare by identity (`FlowEnd`); its rates and settings are live, and refused.
+        The test reads the enclosing scope as the test of a where of members does."""
+        flow = source.type.of
+        if flow.flow:
+            self.fail(
+                'collection',
+                f'a where over flows narrows the flows of an endpoint (water.outflow.flows); a projection '
+                f'of {flow.flow} narrows its members first, as Template.instances.where(...).{flow.flow.rpartition(".")[2]}',
+                node,
+            )
+        if len(node.args) != 1:
+            self.fail('arguments', '.where(...) takes one argument', node)
+        test = self.expression(node.args[0], Scope(scope.owner, Flows(flow.rate)))
+        self.want_bool(test, node, 'where')
+        return Read(('where', source, test), (), source.type)
+
+    def ends_alike(self, left, right, node, op):
+        """The sides of a comparison of an end of a flow (`FlowEnd`): `==` or `!=` with another end,
+        or with one stored number of the flows' quantity, which it is, or is not."""
+        end, other = (left, right) if isinstance(left.type, FlowEnd) else (right, left)
+        if op not in ('==', '!='):
+            self.fail(
+                'type',
+                f'an end of a flow is compared with == or != to a stored number, as sink == clinic.water, '
+                f'not with {op}',
+                node,
+            )
+        if isinstance(other.type, FlowEnd):
+            return left, right
+        if not (isinstance(other, Read) and other.stored and isinstance(other.type, Num)):
+            what = other.type
+            if isinstance(what, Num):
+                what = f'a number in {what.unit}' if what.unit else 'a plain number'
+            self.fail(
+                'type',
+                f'an end of a flow is a store, compared to a stored number, as sink == clinic.water, not '
+                f'to {what}',
+                node,
+            )
+        if self.per_hour(other.type).dimension != end.type.rate.dimension:
+            self.fail(
+                'unit',
+                f'these flows carry {end.type.rate}, and {".".join(other.steps)} holds {other.type}: no '
+                'flow of them ends there',
+                node,
+            )
+        return left, right
 
     def link_target(self, found, expected, node):
         """The id of the member that a link's initializer names: an entity, an instance or a row."""

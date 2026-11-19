@@ -17,6 +17,10 @@ continuous engine and the record read these names; nothing reads the spelling of
   that an expression reads (`this`, `item.destination`) is the text of its member's id: entities
   compare by identity. A `where` test is resolved for each entry; its constant parts are folded
   here, and `T.instances.where(link == this)` takes its entries from the reverse index of the link.
+  A `where` over flows compares the ends of each member, `item.source` and `item.sink`, by
+  identity with a store (`collections.Ends`, `_ends`): each such comparison is answered for each
+  flow here, or, over the flows of an endpoint whose members change in a run, for each member as
+  the dynamic read reads it (`Dynamic.keep`).
 - **Kinds.** An input is fixed for the run: the configuration's value, or its default. A stored value
   starts from its initializer. Each of these, a link (the id of the member that it names), a draw,
   and a request or a capacity that is captured once, is evaluated at the start of the run, in the
@@ -108,8 +112,9 @@ continuous engine and the record read these names; nothing reads the spelling of
   (`definitions_of`).
 
 A part that the engine does not run is refused by name (`Outside`) with its reason: an assignment
-of a collection in a stage (links are fixed for the run), and the type errors that the program's
-check lets through.
+of a collection in a stage (links are fixed for the run), a solver whose problem reads a `where` over
+the flows of an endpoint whose members change in a run (`_refuse_kept_in_solvers`), and the type
+errors that the program's check lets through.
 """
 
 from __future__ import annotations
@@ -146,7 +151,7 @@ from ...program.refs import (
     spelled,
 )
 from ..errors import SimulationError
-from .collections import Dynamic, Entries, Keyed, Reduction
+from .collections import Dynamic, Ends, Entries, Keyed, Reduction
 from .pools import pools_of
 
 # The kinds of the values of a plan.
@@ -282,8 +287,8 @@ class Flow:
 @dataclass(frozen=True)
 class End:
     """An endpoint of a stored number, `store.outflow` or `store.inflow`: the engine names of its
-    request, its capacity (None when it has none) and its actual rate, and its flows in their order
-    of creation."""
+    request, its capacity (None when it has none) and its actual rate, its flows in their order
+    of creation, and the origin of its settings (of its store, when it has none)."""
 
     store: str
     side: str
@@ -291,6 +296,7 @@ class End:
     capacity: str | None
     actual_rate: str
     flows: tuple[str, ...]
+    origin: str = ''
 
 
 @dataclass(frozen=True)
@@ -567,8 +573,24 @@ class Plan:
             for index in range(len(event.triggers))
         ]
         self._tolerate_enforced()
+        self._refuse_kept_in_solvers()
         self._connect()
         self._classify_asserts()
+
+    def _refuse_kept_in_solvers(self):
+        """A solver's problem reads a where over the flows of an endpoint whose members change in a
+        run nowhere: the problem names the members of such a read without its test."""
+        for declared in self.solvers.values():
+            parts = [node for _, node in declared.constraints]
+            parts += [node for _, node, _ in declared.objectives]
+            for node in parts:
+                for name in sorted(self.expansion(node).leaves):
+                    found = self.dynamic.get(name)
+                    if found is not None and found.keep is not None:
+                        raise Outside(
+                            f'{declared.origin}: {found.spelled} in a solver: this engine reads a where over '
+                            'the flows of an endpoint whose members change in a run outside solvers'
+                        )
 
     def _tolerate_enforced(self):
         """R-A3-02: a formula that is an equality that a declared solver enforces (a relation of its
@@ -1049,7 +1071,7 @@ class Plan:
             total = total if total is not None else nodes.const(0.0)
             self._add(Value(name_of(rate), rate, FORMULA, total, unit))
         self.ends[(store, side)] = End(
-            store, side, names['request'], names.get('capacity'), name_of(rate), flows
+            store, side, names['request'], names.get('capacity'), name_of(rate), flows, origin
         )
         if isinstance(setting.allocation, p.Priority):
             self._declared.append(lambda: self._ranking(store, side, setting.allocation, scope, origin))
@@ -1412,19 +1434,20 @@ class Plan:
     # ---- expressions ----------------------------------------------------------------------------
 
     def node(self, expression, scope, origin, item=None):
-        """The node of an expression of a scope, with engine names; `item` is the member that the
-        test of a `where` is about."""
+        """The node of an expression of a scope, with engine names; `item` is the point of the member
+        that the test of a `where` is about (`('member', id)`)."""
         return self._bound(expression, scope, origin, item)[0]
 
-    def _bound(self, expression, scope, origin, item=None):
+    def _bound(self, expression, scope, origin, item=None, answered=()):
         """The node of an expression with engine names, and the engine name of each of its names
-        (None when it reads an entity, whose name becomes a text)."""
+        (None when it reads an entity, whose name becomes a text). The names `answered` have no read
+        and stay as they are (`_ends`)."""
         if not isinstance(expression, Expr):
             raise Outside(
                 f'{origin}: an initializer of kind {type(expression).__name__} where a value is expected '
                 '(a type error)'
             )
-        names, binding = {}, {}
+        names, binding = {name: nodes.ref(name) for name in answered}, {}
         for name, read in expression.reads:
             if isinstance(read, Time):
                 names[name] = nodes.ref('t')
@@ -1501,7 +1524,7 @@ class Plan:
         if isinstance(start, Item):
             if item is None:
                 raise Outside(f'{origin}: a member of a where, read outside its where')
-            return ('member', item)
+            return item
         if isinstance(start, Instances):
             template = self.program.template(start.template)
             ids = [member.id for member in template.members]
@@ -1510,10 +1533,12 @@ class Plan:
         if isinstance(start, Literal):
             return ('many', self._literal(start, scope, origin, item))
         if isinstance(start, Where):
-            return (
-                'many',
-                self._where(self._many(start.source, scope, origin, item), start.test, scope, origin),
-            )
+            source = self.resolve(start.source, scope, origin, item)
+            if source[0] == 'dynamic':
+                return self._dynamic_where(source, start, scope, origin)
+            if source[0] != 'many':
+                raise Outside(f'{origin}: {spelled(start.source)} is no collection')
+            return ('many', self._where(source[1], start.test, scope, origin))
         if isinstance(start, By):
             entries = self._many(start.source, scope, origin, item)
             keys = []
@@ -1567,7 +1592,7 @@ class Plan:
                 raise Outside(f'{origin}: the {name} of the event {point[1]}.{point[2]} (a type error)')
             return ('dynamic', ('occurrences', point[1], point[2]), ())
         if kind == 'dynamic':
-            return ('dynamic', point[1], point[2] + (name,))
+            return ('dynamic', point[1], point[2] + (name,), *point[3:])
         if kind == 'occurrence':
             names = self.frames[point[1]][3].names
             if name in names:
@@ -1670,23 +1695,26 @@ class Plan:
         )
 
     def _where(self, entries, test, scope, origin):
-        """The entries that a where test keeps: its constant parts folded, the rest per entry."""
+        """The entries that a where test keeps: its constant parts folded, the rest per entry. Over
+        flows, the comparisons of their ends are answered for each flow (`_ends`)."""
         reverse = self._reverse(entries, test, scope)
         if reverse is not None:
             return reverse
-        points, tests, keys = [], [], []
+        points, tests, keys, ends = [], [], [], None
         for point, before, key in zip(entries.points, entries.tests, entries.keys):
             if point[0] == 'value':
                 raise Outside(
                     f'{origin}: a where over values, which the language leaves out: a collection holds '
                     'entities, flows or occurrences; put the value on a member and reduce the field'
                 )
-            if point[0] != 'member':
-                raise Outside(
-                    f'{origin}: a where over flows: this engine keeps members of entities by a where, '
-                    'as the front end admits'
-                )
-            node = self.node(test, scope, origin, item=point[1])
+            if point[0] == 'flow':
+                if ends is None:
+                    ends = self._ends(test, scope, origin)
+                node = ends.node(point[1])
+            elif point[0] == 'member':
+                node = self.node(test, scope, origin, item=point)
+            else:
+                raise Outside(f'{origin}: a where over a collection of {point[0]}s (a type error)')
             if not nodes.names(node):
                 if not evaluate(node, {}, self.units):
                     continue
@@ -1724,6 +1752,86 @@ class Plan:
             tuple(entries.keys[row] for row in rows),
         )
 
+    def _dynamic_where(self, source, start, scope, origin):
+        """A where over the flows of an endpoint whose members change in a run: the dynamic read
+        keeps its members by the test (`_ends`), found for each as it is read."""
+        if source[1][0] != 'flows' or source[2]:
+            raise Outside(
+                f'{origin}: {spelled(start.source)}.where(...): a where over the occurrences of an event '
+                'or over a projection, which the language leaves out (a type error)'
+            )
+        before = source[3] if len(source) > 3 else None
+        ends = self._ends(start.test, scope, origin)
+        return ('dynamic', source[1], (), replace(ends, before=before))
+
+    def _ends(self, test, scope, origin):
+        """The test of a where over flows (`collections.Ends`): each comparison of an end of the
+        member (`item.source`, `item.sink`) by `==` or `!=` with a stored number of the scope, or
+        with the member's other end, is an atom that each flow answers by identity; the rest of the
+        test is bound as any expression of the scope. An end read in any other way is refused."""
+        atoms = []
+
+        def end(part):
+            read = test.read(part.name) if isinstance(part, nodes.Ref) else None
+            return isinstance(read, Path) and isinstance(read.start, Item)
+
+        def side(part):
+            read = test.read(part.name)
+            if end(part):
+                if read.steps not in (('source',), ('sink',)):
+                    raise Outside(
+                        f'{origin}: {spelled(read)} in a where over flows, which tests their ends, '
+                        'item.source and item.sink (a type error)'
+                    )
+                return ('end', read.steps[0])
+            point = self.resolve(read, scope, origin) if isinstance(read, Path) else None
+            found = self.values.get(point[1]) if point is not None and point[0] == 'value' else None
+            if found is None or found.kind != STATE or found.boolean:
+                raise Outside(
+                    f'{origin}: {spelled(read)} beside an end of a flow, which compares with a stored '
+                    'number, by identity (a type error)'
+                )
+            return ('store', point[1])
+
+        def folded(node):
+            if isinstance(node, nodes.Compare) and any(end(part) for part in node.operands):
+                if list(node.ops) not in (['eq'], ['ne']) or not all(
+                    isinstance(part, nodes.Ref) for part in node.operands
+                ):
+                    raise Outside(
+                        f'{origin}: {nodes.text(node)}: an end of a flow compares with == or != to a '
+                        'stored number (a type error)'
+                    )
+                atoms.append((node.ops[0], *(side(part) for part in node.operands)))
+                return nodes.ref(f'?{len(atoms) - 1}')
+            if isinstance(node, nodes.Ref):
+                if end(node):
+                    raise Outside(
+                        f'{origin}: {spelled(test.read(node.name))} outside a comparison: an end of a '
+                        'flow compares with == or != to a stored number (a type error)'
+                    )
+                return node
+            if isinstance(node, nodes.Const):
+                return node
+            if isinstance(node, nodes.Unary):
+                return nodes.unary(node.op, folded(node.operand))
+            if isinstance(node, nodes.Binary):
+                return nodes.binary(node.op, folded(node.left), folded(node.right))
+            if isinstance(node, nodes.Compare):
+                return nodes.compare(node.ops, [folded(part) for part in node.operands])
+            if isinstance(node, nodes.BoolOp):
+                return nodes.boolean(node.op, [folded(part) for part in node.values])
+            if isinstance(node, nodes.IfElse):
+                return nodes.if_else(*(folded(part) for part in (node.test, node.body, node.orelse)))
+            return nodes.call(node.function, [folded(part) for part in node.args])
+
+        node = folded(test.node)
+        left = nodes.names(node)
+        rest = Expr(node, tuple((name, read) for name, read in test.reads if name in left))
+        answered = [f'?{k}' for k in range(len(atoms))]
+        bound = self._bound(rest, scope, origin, answered=answered)[0]
+        return Ends(tuple(atoms), bound, self.connections, self.units)
+
     def _derived_name(self, read, scope, item):
         """The engine name of a reduction or a keyed read: its spelling, after the member that it
         reads through `this` and the member of a where that it reads through `item`."""
@@ -1731,7 +1839,7 @@ class Plan:
         if scope is not None and len(scope) > 3 and _uses(read, Local):
             owner = scope[3].owner
         if item is not None and _uses(read, Item):
-            owner = f'{owner}@{item}'
+            owner = f'{owner}@{item[1]}'
         key = (owner, read)
         if key in self._derived:
             return key, self._derived[key]
@@ -1747,7 +1855,7 @@ class Plan:
             return name
         point = self.resolve(read.source, scope, origin, item)
         if point[0] == 'dynamic':
-            return self._dynamic(read, read.op, point[1], point[2], scope, item)
+            return self._dynamic(read, read.op, point[1], point[2], scope, item, *point[3:])
         entries = self._many(read.source, scope, origin, item)
         names = entries.names
         if names is None and (
@@ -1803,14 +1911,14 @@ class Plan:
         self._add(Value(name, None, LOOKUP, None, unit, boolean))
         return name
 
-    def _dynamic(self, read, op, source, steps, scope, item):
+    def _dynamic(self, read, op, source, steps, scope, item, keep=None):
         """The engine name of a read of a collection whose members change in a run, which the plan
-        holds in `dynamic`."""
+        holds in `dynamic`; `keep` is the test of a where over its flows (`_ends`)."""
         key, name = self._derived_name(read, scope, item)
         if key in self._derived:
             return name
         self._derived[key] = name
-        self.dynamic[name] = Dynamic(name, op, source, tuple(steps), spelled(read))
+        self.dynamic[name] = Dynamic(name, op, source, tuple(steps), spelled(read), keep)
         boolean = op in ('any', 'all') or (op == 'at' and self._projects_boolean(source, steps))
         self._add(Value(name, None, DYNAMIC, None, '', boolean))
         return name
@@ -1916,7 +2024,7 @@ class Plan:
         """The engine names that a dynamic read reads over the whole run: what each member that it
         ever had projects, and the fields that say when each is a member."""
         dynamic = self.dynamic[name]
-        found = set()
+        found = set(dynamic.keep.reads()) if dynamic.keep is not None else set()
         for point in self.members_ever(dynamic.source):
             if dynamic.steps:
                 found.add(self.project(point, dynamic.steps))
@@ -2054,6 +2162,11 @@ class Plan:
             if end
         }
         self.sets = tuple(self.connect(list(self.flows), self.moving))
+
+    def incident(self, store, side):
+        """The connections present at a side of a store now, in their order of creation."""
+        found = self.end_flows if self.dynamic_ends else self._incident
+        return tuple(found.get((store, side), ()))
 
     def members(self, source):
         """The points of the members of a dynamic collection now: every occurrence of an event that

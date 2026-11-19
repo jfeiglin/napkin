@@ -1,14 +1,14 @@
 """Declared solvers on the engine (spec: "Solver and execution contract"; G0, D5).
 
 Rounds: two writes in one round cause one solve, and a trigger that reacts to the result causes a
-second round with a second solve at the same time. Reading a result whose inputs changed in the round
-before the solve settles fails, naming the result, also through a formula and in a later stage of
-the round; reading it once it has settled does not. A solve that cannot answer stops the run there,
-naming the solver and the step, before a trigger reads a partial answer. Flows of occurrences that
-join and leave a solver's store join and leave its problem, on the solver that the run keeps. A
-problem whose requests follow its tanks is solved at trial states between moments, and one beyond
-the limit of such a set stops by name; two solvers in one calculation, and a relation outside the
-constraint language, fail by name.
+second round with a second solve at the same time. Reading a result whose inputs changed in the
+round before the solve settles fails, naming the result, also through a formula and in a later stage
+of the round; reading it once it has settled does not. A solve that cannot answer stops the run
+there, naming the solver and the step, before a trigger reads a partial answer. Flows of occurrences
+that join and leave a solver's store join and leave its problem, on the solver that the run keeps,
+and a store held at both bounds is one equality of it. A problem whose requests follow its tanks is
+solved at trial states between moments, and one beyond the limit of such a set stops by name; two
+solvers in one calculation, and a relation outside the constraint language, fail by name.
 
 The expected numbers are worked by hand from the rules of the spec: the staffing solver of
 "Allocating staff hours" gives care 70% of the staff hours (outreach at its minimum, 30%), and fair
@@ -238,6 +238,36 @@ def deliveries(capacity=3):
     b.entity('provider', solver('supply', given('fill', depot.fill), solve_for(local.fill.actual_rate)))
     b.setup(start(depot.deliver), start(depot.second))
     return b.finish()
+
+
+def junction():
+    """A junction held at 0 L passes on what its feed brings, at most 3 L/h, to two pipes that request
+    2 L/h each; the provider's solver determines the three rates."""
+    b = Builder(UNITS)
+    hub = b.entity(
+        'hub',
+        value('water', 'L', 0, lower=0, upper=0),
+        flow('feed', SOURCE, this.water, capacity=q(3, 'L/h')),
+        flow('east', this.water, SINK, request=q(2, 'L/h')),
+        flow('west', this.water, SINK, request=q(2, 'L/h')),
+    )
+    flows = [given(name, getattr(hub, name)) for name in ('feed', 'east', 'west')]
+    rates = [solve_for(getattr(local, name).actual_rate) for name in ('feed', 'east', 'west')]
+    b.entity('provider', solver('supply', *flows, *rates))
+    return b.finish()
+
+
+def test_a_store_held_at_both_bounds_is_one_equality_of_its_solvers_problem():
+    """The junction's books are one row, feed - east - west == 0, and no row of either sign alone; fair
+    sharing gives each pipe half of the feed's 3 L/h."""
+    program = junction()
+    made = Run(Plan.of(program, Configuration(Request(1))))
+    record = made.run()
+    assert record.failure is None
+    for path, rate in (('hub.feed', 3), ('hub.east', 1.5), ('hub.west', 1.5)):
+        assert values(record, program, f'{path}.actual_rate', (0.5,)) == pytest.approx((rate,), abs=1e-6)
+    rows = [key for key in made.ways.kept['provider.supply']._rows if key[:2] == ('store', 'hub.water')]
+    assert rows == [('store', 'hub.water', 'held')]
 
 
 def test_flows_that_join_and_leave_a_solvers_store_join_and_leave_its_problem():

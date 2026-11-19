@@ -7,6 +7,13 @@ key) and, after a projection, the engine name of the value that it projects. A `
 what is fixed for each member (links, inputs, the ends of flows; the program's check refuses the
 rest), so which entries a collection keeps is fixed for the run and found at its start.
 
+A `where` over flows (`Ends`) tests the ends of each member: `item.source` and `item.sink` are the
+stores at them, or none at SOURCE and SINK, and compare with `==` or `!=` by identity, as entities
+do (spec, "What each scope can see": a connection reads its two endpoint identities). Each such
+comparison is answered for each flow, so the test of an entry is the rest of the test, with those
+answers in place. Over the flows of an endpoint whose members change in a run (`Dynamic`), the
+answers are found as each member is read, from the ends of its connection, which never change.
+
 - `Reduction`: `sum`, `count`, `any`, `all`, `min` or `max` of a collection's kept entries. An empty
   `sum` is zero in its unit, `count` zero, `any` false and `all` true; `min` and `max` of an empty
   collection fail when they are read (D4). A sum adds in the shape of a pairwise tree
@@ -28,7 +35,7 @@ count or a least value of values that hold between moments is followed by an int
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -99,26 +106,93 @@ class Keyed:
         return (found | set(nodes.names(self.key))) - {'t'}
 
 
+@dataclass(eq=False)
+class Ends:
+    """The test of a `where` over flows (see the module). `atoms` are its comparisons of an end of
+    the member by `==` or `!=`, each (op, side, side), a side being ('end', 'source' or 'sink') or
+    ('store', the engine name of a stored number); `rest` is the rest of the test, a node over engine
+    names in which the k-th atom is the name `?k`; `connections` gives the `plan.Connection` of each
+    connection by its engine name; `before` is the test of a `where` that this one narrows."""
+
+    atoms: tuple
+    rest: nodes.Node
+    connections: dict
+    units: object
+    before: Ends | None = None
+    _nodes: dict = field(default_factory=dict)
+
+    def node(self, connection):
+        """The test of one flow, a connection by its engine name: the rest, with the answers of its
+        ends in place of the atoms."""
+        found = self._nodes.get(connection)
+        if found is None:
+            made = self.connections[connection]
+            ends = {
+                'source': made.source if made.source is not None else ('SOURCE',),
+                'sink': made.sink if made.sink is not None else ('SINK',),
+            }
+            answers = {}
+            for k, (op, *sides) in enumerate(self.atoms):
+                a, b = (ends[name] if kind == 'end' else name for kind, name in sides)
+                answers[f'?{k}'] = nodes.const((a == b) == (op == 'eq'))
+            found = self._nodes[connection] = _answered(self.rest, answers)
+        return found
+
+    def keeps(self, point, value):
+        """Whether the test keeps a member of a dynamic collection (its point), from the values of
+        engine names."""
+        if self.before is not None and not self.before.keeps(point, value):
+            return False
+        return bool(lazily(self.node(point[1]), value, self.units))
+
+    def reads(self):
+        """The engine names that the test reads besides the ends of its members."""
+        found = set(self.before.reads()) if self.before is not None else set()
+        return found | {name for name in nodes.names(self.rest) if not name.startswith('?')} - {'t'}
+
+
+def _answered(node, answers):
+    """A node with the names of `answers` replaced by the nodes that it gives them."""
+    if isinstance(node, nodes.Ref):
+        return answers.get(node.name, node)
+    if isinstance(node, nodes.Const):
+        return node
+    if isinstance(node, nodes.Unary):
+        return nodes.unary(node.op, _answered(node.operand, answers))
+    if isinstance(node, nodes.Binary):
+        return nodes.binary(node.op, _answered(node.left, answers), _answered(node.right, answers))
+    if isinstance(node, nodes.Compare):
+        return nodes.compare(node.ops, [_answered(part, answers) for part in node.operands])
+    if isinstance(node, nodes.BoolOp):
+        return nodes.boolean(node.op, [_answered(part, answers) for part in node.values])
+    if isinstance(node, nodes.IfElse):
+        return nodes.if_else(*(_answered(part, answers) for part in (node.test, node.body, node.orelse)))
+    return nodes.call(node.function, [_answered(part, answers) for part in node.args])
+
+
 @dataclass(frozen=True)
 class Dynamic:
     """A read of a collection whose members change during a run: the occurrences of an event
     (`source` is `('occurrences', member, event)`, members in their order of creation), or the
-    connections present at an endpoint (`('flows', store, side)`). `op` is a reduction (`sum`,
-    `count`, `any`, `all`, `min`, `max`), `at` (`.occurrences.at(t)`: the newest occurrence that has
-    started, which is the one created last) or `latest` (the time of the newest start, which
-    `since(e)` subtracts from the time; `spelled` is the `since`); `steps` go from each member to
-    the value that it projects."""
+    connections present at an endpoint (`('flows', store, side)`), of which a `where` keeps those
+    that `keep` (`Ends`) keeps. `op` is a reduction (`sum`, `count`, `any`, `all`, `min`, `max`),
+    `at` (`.occurrences.at(t)`: the newest occurrence that has started, which is the one created
+    last) or `latest` (the time of the newest start, which `since(e)` subtracts from the time;
+    `spelled` is the `since`); `steps` go from each member to the value that it projects."""
 
     name: str
     op: str
     source: tuple
     steps: tuple[str, ...]
     spelled: str
+    keep: Ends | None = None
 
 
 def dynamic_value(dynamic, members, project, value, t):
     """The value of a dynamic read at time t from its members at t (their points, in order), the
     engine name that each projects (`project(point)`) and the values of engine names."""
+    if dynamic.keep is not None:
+        members = [member for member in members if dynamic.keep.keeps(member, value)]
     op = dynamic.op
     if op == 'latest':
         if not members:

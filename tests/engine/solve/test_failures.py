@@ -4,7 +4,9 @@ A solve that cannot give the answer of the selection order raises `SolveFailure`
 step that stopped and what it reached, and never gives another answer in its place (G0, D0). A
 budget is forced small here where a budget is meant. A run of HiGHS whose status says nothing of
 the program, or whose optimum misses it, is run again on fresh instances first (`kept.Kept.run`);
-such a status and such an optimum are forced here.
+such a status and such an optimum are forced here. Parts of a tier that share no row share its
+programs, so the budget counts the rounds; a distance stage whose solve by LDL' misses its accuracy
+(forced) goes on by SuperLU.
 """
 
 import itertools
@@ -100,10 +102,40 @@ def test_the_fair_budget_counts_every_tier():
     assert (stopped.name, stopped.step) == (FAIR_BUDGET, 'fair sharing, tier 1')
 
 
+def test_parts_that_share_no_row_share_their_programs():
+    # two copies of the two bottlenecks, which share no row: one program a round serves both, 1/3
+    # for a and b, then 1/2 for c in each, so two programs fit a budget that one copy needs alone
+    p = Problem()
+    for copy in ('north', 'south'):
+        flows = {name: p.unknown((copy, name), 0.0, 6.0, FLOW, 6.0) for name in 'abc'}
+        p.at_most((copy, 'first limit'), {flows['a']: 1.0, flows['b']: 1.0}, 4.0)
+        p.at_most((copy, 'second limit'), {flows['b']: 1.0, flows['c']: 1.0}, 5.0)
+        for column in flows.values():
+            p.claim({column: 1.0}, 6.0)
+    answer = Solver(Budget(fair_programs=2)).solve(p)
+    assert answer.work.fair_programs == 2
+    assert answer.levels == pytest.approx([F(1, 3), F(1, 3), F(1, 2)] * 2, abs=1e-6)
+    for copy in ('north', 'south'):
+        assert [answer[(copy, name)] for name in 'abc'] == pytest.approx([2, 2, 3], abs=1e-5)
+
+
 def test_the_distance_step_stops_by_name_at_its_budget():
     stopped = failure(cases.band(0.0), newton_steps=0, qp_iterations=0)
     assert (stopped.name, stopped.step) == (DISTANCE_BUDGET, 'distance of the others')
     assert stopped.reached['qp iterations'] == 0
+
+
+def test_a_stage_whose_ldl_solve_misses_its_accuracy_goes_on_by_superlu(monkeypatch):
+    # every solve by LDL' misses ACCURATE: the stage goes on by SuperLU, which answers the band
+    # 4 <= x + y <= 6 nearest (0, 0) at (2, 2)
+    def inaccurate(self, rhs):
+        raise distance._Inaccurate
+
+    monkeypatch.setattr(distance._LDL, 'solve', inaccurate)
+    answer = Solver().solve(cases.band(0.0))
+    assert (answer['x'], answer['y']) == pytest.approx((2.0, 2.0), abs=1e-9)
+    assert answer.work.methods == ['newton']
+    assert answer.work.superlu == 1
 
 
 def test_a_lost_optimum_is_a_numerical_failure_and_no_answer(monkeypatch):

@@ -18,7 +18,8 @@ At a time, rounds. One round is:
    each member of a collection in the order of its keys; `if`/`else`; and `switch` on an enum value,
    whose case guards are read before the selector: a draw as the selector picks among the eligible
    outcomes (`chance.py`). A guard, an `if` and the guard of a case that were decided
-   within tolerance of their boundary are marked in the entry of the commit (`near`, triggers.py).
+   within tolerance of their boundary are marked in the entry of the commit (`near`, triggers.py);
+   a stage whose guard was false so commits nothing, and has an entry `skip` for its near-ties.
    A value that misses a bound by less than its tolerance is
    put on the bound; one that misses it by more fails the run, and so does a move that does not fit.
    A commit publishes the stage's writes, traces its edits and its moves and registers the
@@ -32,7 +33,13 @@ At a time, rounds. One round is:
    moving rates they read, which integrate with them. A store that no
    flow meets any more holds its value. So each declared solver that the round affected is solved
    once, after the stages commit, in dependency order, and its results are published together
-   (`declared.py`); the sets of declared solvers first settle after the setup's commit. Then each
+   (`declared.py`); the sets of declared solvers first settle after the setup's commit. A settling
+   has no entry in the trace, but where it split who is served within tolerance (`split_ties`): an
+   endpoint that serves its flows by priority, whose limit (its capacity, or what reaches its store
+   at a bound) is within the tolerance of what it reads of the claims of the classes ahead of a
+   class that claims more, has an entry `settle` with the detail `near`. The sets that it built are
+   checked, and in round zero every set, which starts then. A split that a way makes between
+   moments, where a store meets a bound inside its instance, is not marked. Then each
    delay that a stage reached and that reads a rate or a result takes its value: its other reads
    were captured when the stage reached it (`occurrences.py`).
 3. **Conditions** (`triggers.py`): triggers, resets and gates are read on the settled state; then
@@ -55,7 +62,7 @@ from ...core.errors import ExpressionError
 from ...program import parts as p
 from ...program.refs import Distribution, Formula
 from ..errors import SimulationError
-from .plan import FORMULA
+from .plan import BACKWARD, FORMULA, FORWARD
 from .reads import lazily
 
 # The comparisons of a stage's test, exact, as functions of the difference of their sides.
@@ -150,6 +157,7 @@ class Moment:
             run.recorder.entry(run.now, 'commit', 'setup', '', **tx.details())
         self.commit(tx)
         self.settle()
+        self.splits(None)  # every set has just started
         run.occurrences.delays()
         self.phase = 'conditions'
         run.triggers.conditions()
@@ -200,7 +208,7 @@ class Moment:
                 self.held = (queue, k)  # a stop in this stage holds it and the stages after it
                 self.stage(live)
             self.held = None
-            self.settle()
+            self.splits(self.settle())
             run.occurrences.delays()
             self.phase = 'conditions'
             run.triggers.conditions()
@@ -242,6 +250,10 @@ class Moment:
                     f'{problem} [stage {live.step + 1} of {made.id}, t = {run.now:g} h]'
                 ) from None
             run.recorder.entry(run.now, 'commit', step.origin, made.id, **tx.details())
+        elif tx.near:
+            # A guard that was false within tolerance of its boundary: the stage that ran nothing has
+            # an entry for its near-ties alone.
+            run.recorder.entry(run.now, 'skip', step.origin, made.id, near=tuple(tx.near))
         run.chance.kept = set()  # a resumed stage has traced the draws that it kept
         self.commit(tx)
         run.occurrences.reach(live, live.step + 1)
@@ -509,7 +521,8 @@ class Moment:
     # ---- the settling -----------------------------------------------------------------------------
 
     def settle(self):
-        """Build again the sets that the round touched (see the module)."""
+        """Build again the sets that the round touched (see the module); gives the stores of the
+        sets that it built."""
         run, ways, plan, t = self.run, self.run.ways, self.plan, self.run.now
         self.phase = 'settle'
         joined, left = list(run.joined), set(run.left)
@@ -524,7 +537,7 @@ class Moment:
         waiting, run.waiting = run.waiting, []
         if not touched and not joined and not waiting:
             run.settled()
-            return
+            return set()
         moving_before = set(ways.set_of)
         while True:
             # The sets in the order of their ids, so that the region is the same whatever the order in
@@ -579,71 +592,141 @@ class Moment:
                 run.tolerate(plan.flows[flow])
         run.settled()
         ways.build(made, values, t)
+        return stay
+
+    def splits(self, stores):
+        """Mark each split of who is served that the settling decided within tolerance (see the
+        module): an entry `settle` with the near-ties (`split_ties`) of each endpoint that serves
+        its flows by priority, at the stores `stores` (at every store, with None)."""
+        run, plan = self.run, self.plan
+        for store, side in sorted(plan.rankings):
+            if stores is not None and store not in stores:
+                continue
+            near = split_ties(run, store, side)
+            if near:
+                origin = plan.ends[(store, side)].origin
+                run.recorder.entry(run.now, 'settle', origin, plan.values[store].key.owner, near=near)
+
+
+def split_ties(run, store, side):
+    """The near-ties of the split of who is served at an endpoint that serves its flows by priority
+    classes, first to last (see the module): (origin, comparison, difference, tolerance) for each
+    boundary between two classes at which what the endpoint has differs from what the classes ahead
+    of the boundary claim by no more than the tolerance of what it reads, while the class after it
+    claims more than that. What the endpoint has is its capacity, or less: what flows into the store
+    while it is at its lower bound, for its outflow, and what flows out of it while it is at its upper
+    bound, for its inflow (within the store's tolerance). A connection claims its request in its
+    direction within its capacity. An endpoint that nothing limits shares no split."""
+    plan, tolerance = run.plan, run.recorder.tolerance
+    end = plan.ends[(store, side)]
+    classes = run.classes_of(store, side, plan.rankings[(store, side)], {c: c for c in end.flows})
+    if len(classes) < 2:
+        return ()
+    limits, read = [], [*end.flows]
+    if end.capacity is not None:
+        limits.append((float(run.value(end.capacity)), f'the capacity of {store}.{side}'))
+    lower, upper = run.bounds[store]
+    level, slack = float(run.value(store)), tolerance.get(store, 0.0)
+    if (side == 'outflow' and level - lower <= slack) or (side == 'inflow' and upper - level <= slack):
+        other = plan.incident(store, 'inflow' if side == 'outflow' else 'outflow')
+        read += other
+        total = sum(float(run.value(f'{c}.actual_rate')) for c in other)
+        limits.append((total, f'what flows {"into" if side == "outflow" else "out of"} {store}'))
+    if not limits:
+        return ()
+    limit, what = min(limits, key=lambda each: each[0])
+    ends = {store} | {
+        each for c in read for each in (plan.connections[c].source, plan.connections[c].sink) if each
+    }
+    band = max(tolerance.get(each, 0.0) for each in ends)
+    claims = [sum(_claim(run, plan.connections[c]) for c in members) for members in classes]
+    found, ahead = [], 0.0
+    for k in range(len(classes) - 1):
+        ahead += claims[k]
+        difference = limit - ahead
+        if claims[k + 1] > band and abs(difference) <= band:
+            served = [c for members in classes[: k + 1] for c in members]
+            comparison = (
+                f'{what} against the claims of {_listed(served)}, served before {_listed(classes[k + 1])}'
+            )
+            found.append((end.origin, comparison, difference, band))
+    return tuple(found)
+
+
+def _claim(run, connection):
+    """What a connection claims: its request in its direction (a leg of a route takes the positive
+    part of the route's signed request in its own), within its capacity; nothing for no request."""
+    request = float(run.value(connection.request))
+    if connection.role in (FORWARD, BACKWARD):
+        request = max(-request if connection.role == BACKWARD else request, 0.0)
+    if request <= 0:
+        return 0.0
+    return request if connection.capacity is None else min(request, float(run.value(connection.capacity)))
+
+
+def _listed(names):
+    """Connections by name, for a message: the first three, and how many more."""
+    names = list(names)
+    shown = ', '.join(names[:3])
+    return shown if len(names) <= 3 else f'{shown} and {len(names) - 3} more'
 
 
 def near_ties(node, origin, plan, frozen, side, holds, tolerance, later=None):
     """The near-ties of a condition (see the module): (origin, comparison, difference, tolerance) of
-    each numeric comparison on the path of its answer, through boolean formulas, whose sides differ by
+    each numeric comparison that decides its answer, through boolean formulas, whose sides differ by
     no more than `tolerance(left, right)`, and with `later`, still do an instant later. `side(node)` is
     the value of a side and `holds(op, difference, left, right)` the answer of a comparison, as the
-    reader of the condition gives them; `and` and `or` stop at the term that decides, a conditional
-    takes its selected side."""
-    found = []
+    reader of the condition gives them. The terms read are those of the answer's path: `and` and `or`
+    stop at the term that decides, a conditional takes its selected side. Of those, the ones that
+    decide are kept: every term of a true `and` or of a false `or`, since each one turned the other
+    way would turn the answer; else only the term that stopped it; of a chain of comparisons, every
+    link of a true one, else the link that fails."""
 
-    def truth(part):
+    def decided(part):
+        """(the answer of a part, the near-ties of the comparisons that decide it)."""
         if isinstance(part, nodes.Ref):
             value = plan.values.get(part.name)
             if value is not None and value.kind == FORMULA and value.boolean and part.name not in frozen:
-                return truth(value.node)
-            return bool(side(part))
+                return decided(value.node)
+            return bool(side(part)), []
         if isinstance(part, nodes.BoolOp):
-            results = (truth(each) for each in part.values)
-            return all(results) if part.op == 'and' else any(results)
-        if isinstance(part, nodes.Unary) and part.op == 'not':
-            return not truth(part.operand)
-        if isinstance(part, nodes.IfElse):
-            return truth(part.body if truth(part.test) else part.orelse)
-        if isinstance(part, nodes.Compare):
-            return walk(part, keep=False)
-        return bool(side(part))
-
-    def walk(part, keep=True):
-        if isinstance(part, nodes.Ref):
-            value = plan.values.get(part.name)
-            if value is not None and value.kind == FORMULA and value.boolean and part.name not in frozen:
-                walk(value.node, keep)
-            return None
-        if isinstance(part, nodes.BoolOp):
+            stops = part.op == 'or'  # the answer of a term that decides the whole
+            ties = []
             for each in part.values:
-                walk(each, keep)
-                if truth(each) == (part.op == 'or'):
-                    break
-            return None
+                answer, mine = decided(each)
+                if answer == stops:
+                    return answer, mine
+                ties += mine
+            return not stops, ties
         if isinstance(part, nodes.Unary) and part.op == 'not':
-            return walk(part.operand, keep)
+            answer, mine = decided(part.operand)
+            return not answer, mine
         if isinstance(part, nodes.IfElse):
-            walk(part.test, keep)
-            return walk(part.body if truth(part.test) else part.orelse, keep)
-        if not isinstance(part, nodes.Compare):
-            return None
+            test, mine = decided(part.test)
+            answer, more = decided(part.body if test else part.orelse)
+            return answer, mine + more
+        if isinstance(part, nodes.Compare):
+            return compared(part)
+        return bool(side(part)), []
+
+    def compared(part):
+        ties = []
         for left, op, right in zip(part.operands, part.ops, part.operands[1:], strict=False):
             a, b = side(left), side(right)
             if isinstance(a, bool | str) or isinstance(b, bool | str):
                 if not ((a == b) if op == 'eq' else (a != b)):
-                    return False
+                    return False, []
                 continue
             difference = float(a) - float(b)
             band = tolerance(left, right)
-            if (
-                keep
-                and band > 0
-                and abs(difference) <= band
-                and (later is None or abs(later(left, right)) <= band)
-            ):
-                found.append((origin, nodes.text(part), difference, band))
+            tie = (
+                [(origin, nodes.text(part), difference, band)]
+                if band > 0 and abs(difference) <= band and (later is None or abs(later(left, right)) <= band)
+                else []
+            )
             if not holds(op, difference, left, right):
-                return False
-        return True
+                return False, tie
+            ties += tie
+        return True, ties
 
-    walk(node)
-    return tuple(dict.fromkeys(found))
+    return tuple(dict.fromkeys(decided(node)[1]))

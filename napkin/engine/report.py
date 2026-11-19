@@ -29,9 +29,12 @@ model has no report of its own: any named value can be reported, and the caller 
   exercised, and says so; "could have and did not" is what the trace says (D16). An edit at a stop
   withdraws those proofs for the run, and the trail of such an event says which edit. A part reached
   only through parts that the run did not exercise is not exercised either.
-- **Near-ties** (change 10): each firing or commit that the engine decided within tolerance of its
-  boundary (`Record.near_ties`), with a message ("this trigger fired within tolerance of its
-  threshold"). The report lists them and computes nothing more precisely.
+- **Near-ties** (change 10): each decision that the engine made within tolerance of its boundary
+  (`Record.near_ties`), with a message by the kind of its entry: a trigger that fired (`fire`), or
+  that came within tolerance of its threshold and did not fire (`miss`); a test of a stage that
+  committed (`commit`), or a false guard of a stage that ran nothing (`skip`); a gate that released
+  its occurrence (`release`); a split of who is served at a settling (`settle`). The report lists
+  them and computes nothing more precisely.
 - **A run that stopped**: a failure, or the stop at a breakpoint, ends the record. The report reads up to that time,
   each time after it is `Unavailable` with the reason, and `stopped` says when and why.
 """
@@ -113,9 +116,10 @@ class Reported:
 
 @dataclass(frozen=True)
 class NearTie:
-    """A decision of the run within tolerance of its boundary: when, the kind of its entry (`fire` or
-    `commit`), the part that decided, the member or occurrence, the comparison, its difference and
-    its tolerance in canonical units, and the message."""
+    """A decision of the run within tolerance of its boundary: when, the kind of its entry (`fire`,
+    `miss`, `commit`, `skip`, `release` or `settle`), the part that decided, the member or
+    occurrence, the comparison, its difference and its tolerance in canonical units, and the
+    message."""
 
     t: float
     kind: str
@@ -314,7 +318,11 @@ def _lagged(record, program, key, times, lag):
 
 _NEAR = {
     'fire': 'this trigger fired within tolerance of its threshold',
+    'miss': 'this trigger came within tolerance of its threshold and did not fire',
     'commit': 'this test of a stage was decided within tolerance of its boundary',
+    'skip': 'this guard was false within tolerance of its boundary, and the stage ran nothing',
+    'release': 'this gate released its occurrence within tolerance of its threshold',
+    'settle': 'this split of who is served was decided within tolerance of its boundary',
 }
 
 

@@ -18,7 +18,7 @@ while true; do
   case "$line" in ''|'#'*) continue;; esac
   echo "=== $(date +%T) load $(cut -d' ' -f1 /proc/loadavg): $line" >> "$LOG"
   start=$(date +%s)
-  timeout 900 /home/user/venvs/p1/bin/python -W ignore $line 2>&1 | grep -v "^Running HiGHS\|^Includes third" >> "$LOG"
+  timeout 900 ${PY:-/home/user/venvs/p1/bin/python} -W ignore $line 2>&1 | grep -v "^Running HiGHS\|^Includes third" >> "$LOG"
   status=${PIPESTATUS[0]}
   echo "=== exit $status after $(( $(date +%s) - start )) s" >> "$LOG"
   if [ "$status" = "124" ]; then echo "DID NOT FINISH IN 15 MIN: $line" >> "$LOG"; fi

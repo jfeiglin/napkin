@@ -54,17 +54,28 @@ it reads and is made again after it. A strict comparison whose difference moves 
 instant: the run stops with a diagnostic when such a condition is watched, never polling.
 
 **Near-ties** (change 10). A tiny difference can flip a discrete outcome; the engine does not
-compute it more precisely, it marks it. A firing whose condition read a numeric comparison with sides
-that differ by no more than the tolerance of what they read (the largest tolerance of the stores and
-the rates that they read, through formulas, and the crossing tolerance for the time), now and an
-instant later (`AFTER`), was decided within tolerance of its threshold: its trace entry has the
-detail `near`, one (origin, comparison, difference, tolerance) for each such comparison on the path
-of its answer (`moment.near_ties`), the difference and the tolerance in canonical units. Sides that move
-through the boundary, as at a crossing, differ by more an instant later: the firing then follows
-from when they cross, and is no near-tie. A stage's guard, an `if` and the guard of a case are marked
-the same way in the entry of their commit (`moment.py`), with no instant later: a stage reads its
-test once. A gate's release, and a decision that makes no entry (a trigger that does not fire, a
-guard that is false), carry no mark.
+compute it more precisely, it marks it. A condition whose answer was decided by a numeric comparison
+with sides that differ by no more than the tolerance of what they read (the largest tolerance of the
+stores and the rates that they read, through formulas, and the crossing tolerance for the time), now
+and an instant later (`AFTER`), was decided within tolerance of its threshold: its trace entry has the
+detail `near`, one (origin, comparison, difference, tolerance) for each such comparison that decides
+its answer (`moment.near_ties`), the difference and the tolerance in canonical units. Sides that move
+through the boundary, as at a crossing, differ by more an instant later: the answer then follows from
+when they cross, and is no near-tie. So are marked:
+
+- a firing, in its entry `fire`;
+- an armed trigger whose condition is false, in an entry `miss` ("came within tolerance of its
+  threshold and did not fire"). A trigger is read in every round, so a near-tie that holds from
+  moment to moment would repeat: a `miss` is written when its near-ties differ from those of the
+  trigger's last `miss` since it last fired. That memory is what the trace says (`_missed`), so a
+  run restored from a checkpoint has it too. A comparison whose sides differ by more than the widest
+  tolerance of the run has no near-tie, so a condition far from its threshold costs no more;
+- a gate's release, in an entry `release` of the occurrence at the gate.
+
+A stage's guard, an `if` and the guard of a case are marked the same way in the entry of their commit,
+and a false guard in an entry `skip` of the stage that ran nothing (`moment.py`), with no instant
+later: a stage reads its test once. A gate that stays shut is read again in every round, and is not
+marked.
 """
 
 from __future__ import annotations
@@ -120,6 +131,10 @@ class Triggers:
         self.windows = []  # (time, watched key, version): the end of the window of a prediction
         self.version = {}  # watched key -> the version of its prediction
         self.readers = {}  # engine name -> the watched keys that read it
+        # (origin, member) of a trigger -> the near-ties of its last `miss` since it last fired, made
+        # from the trace when first needed, so that a restored run has it as the trace gives it.
+        self.missed = None
+        self._widest = (-1, 0.0)  # (the count of the record's tolerances, the largest of them)
 
     # ---- reading --------------------------------------------------------------------------------
 
@@ -127,23 +142,27 @@ class Triggers:
         """The truth of a condition now (or at time t inside the window of the ways)."""
         return bool(self._truth(node, self.run.now if t is None else t, band))
 
-    def _truth(self, node, t, band):
+    def _truth(self, node, t, band, close=None):
+        """The truth of a condition at time t; a comparison read on the way whose sides differ by no
+        more than the widest tolerance of the run is added to `close`, when it is given, so that a
+        condition with none has no near-tie to look for."""
         plan, run = self.plan, self.run
         if isinstance(node, nodes.Const):
             return node.value
         if isinstance(node, nodes.Ref):
             found = plan.values.get(node.name)
             if found is not None and found.kind == FORMULA and found.boolean and node.name not in run.frozen:
-                return self._truth(found.node, t, band)
+                return self._truth(found.node, t, band, close)
             return _known(run.value(node.name, t))
         if isinstance(node, nodes.BoolOp):
             if node.op == 'and':
-                return all(self._truth(part, t, band) for part in node.values)
-            return any(self._truth(part, t, band) for part in node.values)
+                return all(self._truth(part, t, band, close) for part in node.values)
+            return any(self._truth(part, t, band, close) for part in node.values)
         if isinstance(node, nodes.Unary) and node.op == 'not':
-            return not self._truth(node.operand, t, band)
+            return not self._truth(node.operand, t, band, close)
         if isinstance(node, nodes.IfElse):
-            return self._truth(node.body if self._truth(node.test, t, band) else node.orelse, t, band)
+            test = self._truth(node.test, t, band, close)
+            return self._truth(node.body if test else node.orelse, t, band, close)
         if isinstance(node, nodes.Compare):
             for left, op, right in zip(node.operands, node.ops, node.operands[1:]):
                 a, b = self.side(left, t), self.side(right, t)
@@ -152,12 +171,24 @@ class Triggers:
                     if found is None:
                         raise ExpressionError(f'{nodes.text(node)}: only == and != compare these values')
                 else:
+                    difference = float(a) - float(b)
+                    if close is not None and abs(difference) <= self.widest():
+                        close.append(node)
                     tolerance = self.band(left, right) if band else 0.0
-                    found = _COMPARE[op](float(a) - float(b), tolerance)
+                    found = _COMPARE[op](difference, tolerance)
                 if not found:
                     return False
             return True
         return self.side(node, t)
+
+    def widest(self):
+        """The largest tolerance of what a comparison can read: of the values that the record keeps,
+        and the crossing tolerance for the time."""
+        tolerance = self.run.recorder.tolerance
+        if self._widest[0] != len(tolerance):
+            found = max(tolerance.values(), default=0.0)
+            self._widest = (len(tolerance), max(found, self.plan.numerics.crossing))
+        return self._widest[1]
 
     def side(self, node, t):
         """The value of a side of a comparison at time t, which reads only what its evaluation takes
@@ -250,18 +281,50 @@ class Triggers:
                     state.armed = self.holds(reset[1])
                 elif state.rearm_at is not None and t >= state.rearm_at:
                     state.armed = True
-            if state.armed and state.blocked_at != t and self.holds(trigger.test):
-                fires.append(state)
+            if state.armed and state.blocked_at != t:
+                close = []
+                if self._truth(trigger.test, t, True, close):
+                    fires.append(state)
+                elif close:
+                    self.miss(trigger)
         releases = []
         for live in run.occurrences.waiting():
             step = live.plan.event.steps[live.step]
-            if self.holds(run.occurrences.node(step.test, live.plan.scope, step.origin)):
-                releases.append(live)
+            node = run.occurrences.node(step.test, live.plan.scope, step.origin)
+            if self.holds(node):
+                releases.append((live, step.origin, self.near(node, step.origin, t)))
         for state in fires:
             self.fire(state)
-        for live in releases:
+        for live, origin, near in releases:
             if live.waiting:
+                if near:
+                    run.recorder.entry(t, 'release', origin, live.id, near=near)
                 run.occurrences.reach(live, live.step + 1)
+
+    def miss(self, trigger):
+        """An armed trigger whose condition is false: an entry `miss` when it came within tolerance of
+        its threshold (`near`, now and an instant later), unless the trigger's last `miss` since it
+        last fired has the same near-ties, so that a near-tie that holds from moment to moment is in
+        the trace once."""
+        run = self.run
+        near = self.near(trigger.test, trigger.origin, run.now)
+        if not near:
+            return
+        missed = self._missed()
+        if missed.get((trigger.origin, trigger.member)) != near:
+            missed[(trigger.origin, trigger.member)] = near
+            run.recorder.entry(run.now, 'miss', trigger.origin, trigger.member, near=near)
+
+    def _missed(self):
+        """The near-ties of the last `miss` of each trigger since it last fired, as the trace has them."""
+        if self.missed is None:
+            self.missed = {}
+            for entry in self.run.recorder.trace:
+                if entry.kind == 'fire':
+                    self.missed.pop((entry.part, entry.owner), None)
+                elif entry.kind == 'miss':
+                    self.missed[(entry.part, entry.owner)] = entry.detail('near')
+        return self.missed
 
     def fire(self, state):
         """A firing: the captures in written order, the start of the event, the reset. A draw of the
@@ -282,6 +345,7 @@ class Triggers:
             state.rearm_at = run.now + float(duration)
         del run.chance.firing[trigger.key]
         run.recorder.entry(run.now, 'fire', trigger.origin, trigger.member, **tx.details())
+        self._missed().pop((trigger.origin, trigger.member), None)
         moment.again = True
         moment.commit(tx)
 

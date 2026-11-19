@@ -352,6 +352,99 @@ def test_the_settings_of_an_endpoint_are_a_part_with_a_path_and_a_line():
     assert model.part('reservoir.water').outflow is settings
 
 
+# ---- a where over an endpoint's flows -----------------------------------------------------------------
+
+DELIVERIES = """
+    clinic:
+        water: L = 0 in [0,]
+    garden:
+        water: L = 0 in [0,]
+    tank:
+        water: L = 10 in [0,]
+        flow a: this.water -> clinic.water
+            request = 1 L/h
+        flow b: this.water -> garden.water
+            request = 2 L/h
+        flow c: this.water -> SINK
+            request = 4 L/h
+        to_clinic = formula(sum(this.water.outflow.flows.where(sink == clinic.water).actual_rate))
+        elsewhere = formula(count(this.water.outflow.flows.where(clinic.water != sink)))
+        from_here = formula(count(clinic.water.inflow.flows.where(source == this.water)))
+    """
+
+
+def test_a_where_over_an_endpoints_flows_compares_their_ends_as_the_builder_writes_it():
+    """Spec, "Collections, keys and projections": a fixed-field filter over an endpoint collection.
+    In its test `source` and `sink` are the member's ends, fixed for the flow's lifetime, on either
+    side of `==` or `!=`; the program reads them as `item.sink` and `item.source`."""
+    b = Builder(UNITS)
+    b.entity('clinic', value('water', 'L', 0, lower=0))
+    b.entity('garden', value('water', 'L', 0, lower=0))
+    clinic = named('clinic').water
+    b.entity(
+        'tank',
+        value('water', 'L', 10, lower=0),
+        flow('a', this.water, clinic, request=q(1, 'L/h')),
+        flow('b', this.water, named('garden').water, request=q(2, 'L/h')),
+        flow('c', this.water, SINK, request=q(4, 'L/h')),
+        value(
+            'to_clinic', 'L/h', formula(fsum(this.water.outflow.flows.where(item.sink == clinic).actual_rate))
+        ),
+        value('elsewhere', '', formula(count(this.water.outflow.flows.where(clinic != item.sink)))),
+        value('from_here', '', formula(count(clinic.inflow.flows.where(item.source == this.water)))),
+    )
+    assert same(DELIVERIES, b)
+
+
+@pytest.mark.parametrize(
+    ('test', 'code', 'words'),
+    [
+        ('sink >= clinic.water', 'type', 'compared with == or != to a stored number'),
+        ('sink == 3 L', 'type', 'not to a number in L'),
+        ('sink == clinic', 'type', 'not to a member of clinic'),
+        ('sink', 'type', 'where takes a yes/no, not an end of a flow'),
+        ('sink + 1 L == clinic.water', 'type', 'an end of a flow'),
+        ('request > 1 L/h', 'where_live', 'the request of a flow is not'),
+        ('actual_rate > 0 L/h', 'where_live', 'the actual_rate of a flow is not'),
+        ('sink == clinic.water.inflow', 'type', 'is no value'),
+        ('sink.outflow.actual_rate > 0 L/h', 'where_live', 'sink.outflow is not read there'),
+    ],
+)
+def test_a_where_over_flows_tests_their_ends_by_identity_and_nothing_live(test, code, words):
+    text = DELIVERIES.replace('where(sink == clinic.water)', f'where({test})')
+    found = refused(text, code, 14)
+    assert words in found.message, found
+
+
+def test_a_where_over_flows_compares_an_end_with_a_store_of_their_quantity():
+    text = DELIVERIES.replace('    garden:\n', '    meter:\n        power: Wh = 0 in [0,]\n    garden:\n')
+    text = text.replace('where(sink == clinic.water)', 'where(sink == meter.power)')
+    found = refused(text, 'unit', 16)
+    assert 'these flows carry L/h, and power holds Wh' in found.message, found
+
+
+def test_a_projection_of_declared_flows_takes_its_where_before_the_projection():
+    text = """
+        Customer:
+            water: L = 0 in [0,]
+        tank:
+            water: L = 10 in [0,]
+        x = formula(count(Customer.instances.water.inflow.flows.where(source == tank.water)))
+        """
+    refused(text, 'collection', 6)
+    text = """
+        Customer:
+            water: L = 0 in [0,]
+            flow fill: tank.water -> this.water
+                request = 1 L/h
+        tank:
+            water: L = 10 in [0,]
+        x = formula(count(Customer.instances.fill.where(source == tank.water)))
+        """
+    found = refused(text, 'collection', 8)
+    assert 'Template.instances.where(...).fill' in found.message, found
+
+
 # ---- refusals ---------------------------------------------------------------------------------------
 
 STORE = 'tank:\n    water: L = 10\n{settings}    flow a: this.water -> SINK\n{rest}'

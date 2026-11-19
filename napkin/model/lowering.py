@@ -12,7 +12,8 @@ An expression is written as a node of `napkin/core/expr` with the read of each o
 (`refs.Path`, `refs.Reduce`, `refs.TIME`), the form in which the builder's own handles write it, so a
 source text and the program that a test builds by hand have the same canonical bytes. A read through
 a collection starts at `Instances`, `Literal`, `Where`, `By` or `Lookup`, and a test or a key inside
-one is an `Expr` of its own. A number with a unit is the core's literal `q(number, unit)`; a bare
+one is an `Expr` of its own; in the test of a `where` over an endpoint's flows, an end of the member
+is `ITEM.source` or `ITEM.sink`, which the engine compares with a store by identity. A number with a unit is the core's literal `q(number, unit)`; a bare
 number that takes a unit is written with it. The settings of a store's outflow and inflow are its
 `build.endpoint`; a side that sets nothing but `proportional()`, the default, is a side that sets
 nothing, so the two texts are one program. A reversible route is a `build.route`, and a flow with
