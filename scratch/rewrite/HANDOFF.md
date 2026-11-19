@@ -7,9 +7,9 @@ everything you need is in the repository, and this file says where. Read it all 
 ## Where things stand
 
 - The rewrite replaces napkin's language, compiler and engine in place. Stages S0 to S7 and C are
-  done, and gate G2 passed on branch `claude/blissful-heisenberg-5me2hn` (commit `baeaaed` and
-  later): every central test passes with no catalogue (5,979 passed, 2 skipped for TeX and
-  Ghostscript), ruff is clean on `napkin/`, `tests/` and `tools/`.
+  done, gate G2 passed on branch `claude/blissful-heisenberg-5me2hn`, and the fixes of an audit
+  after it (changes 19 and 20, below) are in: every central test passes with no catalogue (6,088
+  passed, 2 skipped for TeX and Ghostscript), ruff is clean on `napkin/`, `tests/` and `tools/`.
 - What is left is the catalogue: the five model packages under `scenarios/` and `examples/` (all
   but `examples/piano_tuners`) are still in the old language, and so are their tests. That is your
   work, stage M, and it ends at gate G3. Stage F (docs, deleting `scratch/`) comes after, not now.
@@ -50,11 +50,11 @@ export NAPKIN_BASE="$(cd ../napkin-base && pwd)"
 ## Read, in this order
 
 1. `scratch/rewrite/PLAN.md`: the progress list at the top (the last entries say what G2 left
-   open), then "Changes after G0", items 1 to 18. These override the rest of the plan and the spec.
+   open), then "Changes after G0", items 1 to 20. These override the rest of the plan and the spec.
    The ones you will feel most: 10 (the owner's priorities: defensibility, then speed, then
    precision), 11 (reproducibility), 12 (no `delayed`), 13 (the publisher is ported in M), 15
    (breakpoints and checkpoints replace player machinery: `choose`, `sees`, controllers are gone),
-   16 (the evidence rule), 18 (speedups).
+   16 (the evidence rule), 18 (speedups), 19 and 20 (the owner's answers after an audit, below).
 2. `scratch/rewrite/g0-decisions.md`: the owner's decisions. They win over everything else.
 3. `scratch/rewrite/briefs/m.md`: the detailed brief of stage M: the scripts, the measured state of
    the translation, each package's needs, the tests each one unlocks, and the rule that no change is
@@ -87,8 +87,12 @@ fixed on the rewrite branch, each with its failing example as a test. What this 
 6. **Triggers on values that rise and fall between events are certified step by step** (change
    20), so the reservoir's `water >= level` runs: its spillway opens at 40 h.
 
-The translator (`scratch/rewrite/a5/translate.py`) follows these decisions. Anything else that
-changes what a model author writes or sees is still the owner's: ask.
+The translator (`scratch/rewrite/a5/translate.py`) follows these decisions. It writes an old
+`timescales` hint into the package's `notes:` as text, and the event roles into a `roles.toml`
+beside the model's files (7 for the heat wave, 4 for the IV model, 4 for the water model): the old
+publisher read them as the actor of each timeline card (`tools/publish/pages.py`, `Pages.cards`),
+which the water UI shows, so read them from there when you port the publisher and the UI. Anything
+else that changes what a model author writes or sees is still the owner's: ask.
 
 ## The work, in order
 

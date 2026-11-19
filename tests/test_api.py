@@ -45,6 +45,7 @@ CLOSURE = (
     'engine/allocation.py',
     'engine/continuous/__init__.py',
     'engine/continuous/bounds.py',
+    'engine/continuous/dense.py',
     'engine/continuous/fields.py',
     'engine/continuous/highs.py',
     'engine/continuous/integrate.py',
