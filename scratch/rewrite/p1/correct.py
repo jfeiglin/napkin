@@ -183,6 +183,16 @@ def run(method, tol, fix, deep):
                   f'largest error {error:.1e} = {ratio:.2g} x its tolerance')
     for failure in failures[:6]:
         print('   e.g.', failure)
+    import json
+
+    worst_ratio = max((r for r, _ in worst.values()), default=0.0)
+    worst_error = max((e for _, e in worst.values()), default=0.0)
+    families = {name: dict(passed=p, failed=f, stopped=stopped.get(name, 0), ratio=worst[name][0], error=worst[name][1])
+                for name, (p, f) in counts.items()}  # fmt: skip
+    with open(f'{lab.DATA}/correct.jsonl', 'a') as f:
+        f.write(json.dumps(dict(method=method, tol=tol, fix=fix, passed=total[0], failed=total[1],
+                                stopped=sum(stopped.values()), worst_ratio=worst_ratio, worst_error=worst_error,
+                                families=families, seconds=seconds, load=lab.load())) + '\n')  # fmt: skip
     return counts, failures
 
 
