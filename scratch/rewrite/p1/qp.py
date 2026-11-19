@@ -43,6 +43,12 @@ METHODS = {
     'osqp': ('osqp', dict(eps_abs=1e-6, eps_rel=1e-6, max_iter=200_000, polishing=True, time_limit=840)),
     'osqp-tight': ('osqp', dict(eps_abs=1e-9, eps_rel=1e-9, max_iter=400_000, polishing=True, time_limit=840)),
 }
+# `NAME-box`: the same, but the second stage holds the flows within BOX (relative) of the first
+# stage's values instead of exactly: a first stage met to its solver's tolerance leaves the rows of
+# the second (the levels, with every flow fixed) inconsistent by that much (PIQP stops there).
+BOX = {'clarabel': 1e-8, 'piqp': 1e-8, 'osqp': 1e-6}
+for _name in list(METHODS):
+    METHODS[f'{_name}-box'] = METHODS[_name]
 
 
 def reduced(A, row_lower, row_upper, lower, upper, target, weight):
@@ -151,7 +157,12 @@ def candidate(name, state):
     if flows.any():
         xi, info = candidate_stage(name, A, row_lower, row_upper, lower, upper, target, flows * 1.0)
         infos.append(info)
-        lower[flows] = upper[flows] = xi[flows]
+        if name.endswith('-box'):
+            width = BOX[METHODS[name][0]] * (1.0 + np.abs(xi[flows]))
+            lower[flows] = np.maximum(lower[flows], xi[flows] - width)
+            upper[flows] = np.minimum(upper[flows], xi[flows] + width)
+        else:
+            lower[flows] = upper[flows] = xi[flows]
     if others.any() or xi is None:
         xi, info = candidate_stage(name, A, row_lower, row_upper, lower, upper, target, others * 1.0)
         infos.append(info)

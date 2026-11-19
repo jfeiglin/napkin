@@ -3,12 +3,13 @@ cards that the picture draws.
 
 A symbol (`Symbol`) is a base, an optional prime and an optional subscript: `W_s`, `δ_s`, `W'_s,w`.
 The base is a Latin letter or a Greek letter (`GREEK`), and the subscript is letters and digits, with
-a comma between two parts. The key of a symbol is `entity.member`: the name of the entity, as a `Ref`
-names it (an instance's own name, and `set.k` for copy k of a set), then the name of its value, its
-flow or its event. A value has a symbol when it is an input, a fixed value, a state, a stock, a tally
-or a formula (`CLASSES`); a text and an output have none.
+a comma between two parts. The key of a symbol is `member.name`: the id of a member (an entity
+written once, a member written by hand, `places.a` for the row `a` of the table `places`), then the
+name of its value, its flow or its event. A value has a symbol when it is an input, a fixed value, a
+state, a stock, a tally or a formula (`CLASSES`, the kinds of `things.Things.kind`); a text, a link
+and a collection have none.
 
-The symbol of an event is the time since it happened, τ by default. Its count is N with the same
+The symbol of an event is the time since it started, τ by default. Its count is N with the same
 subscript (`Symbol.counted`), and the two are symbols of their own: no value has either of them.
 
 `style.toml` can give symbols (`[symbol.<thing or template>]`, `given`) and the subscripts of cards
@@ -20,16 +21,16 @@ the picture draws:
   letter when no Greek letter fits; τ for an event.
 - The subscript starts with the card's tag (`tags`): the initials of the words of its name. Cards
   that share a tag add letters, one at a time, to the word that tells their names apart soonest,
-  until no other card has their tag. An instance takes its own tag. The subscript of an event adds
-  the initial of the event's first word.
+  until no other card has their tag. A member takes its own tag. The subscript of an event adds the
+  initial of the event's first word.
 - Two members of one card that would have one symbol: each that has a second word adds that word's
   initial, and then a number from 2 gives the first free symbol (`_candidates`).
-- Each copy of a set adds its number: `H_w,1`, `H_w,2`.
+- Each row of a table adds its number in the table, from 1: `H_w,1`, `H_w,2`.
 
 The symbols that the file gives come first, and no made symbol is one of them. A thing's own symbol is
-used as it is written. The symbol of a template is a base only: each instance adds its subscript, and
-an instance's own symbol wins over its template's. A `[subscript]` replaces the tag of its card.
-Everything here is deterministic: the order of the cards, of the entities and of the members, and
+used as it is written. The symbol of a template is a base only: each member adds its subscript, and
+a member's own symbol wins over its template's. A `[subscript]` replaces the tag of its card.
+Everything here is deterministic: the order of the cards, of the members and of their parts, and
 never the order of a set.
 """
 
@@ -39,8 +40,9 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 
-from ..model.semantic import in_words
+from ..model import semantic as sem
 from . import style as styles
+from .text import in_words
 
 # The Greek letters of a symbol, by their names in LaTeX: each lower-case letter but omicron, and each
 # upper-case letter whose shape is not a Latin letter. The text of a symbol has the letter, and its
@@ -214,34 +216,38 @@ def words(name):
     return in_words(name).lower().split(' ')
 
 
-def members(entity):
-    """(name, class) of each member of an entity that has a symbol, in order: its values (`CLASSES`),
-    then its flows (`lower`), then its events (`event`)."""
-    out = [(value.name, CLASSES[value.kind]) for value in entity.values if value.kind in CLASSES]
-    out += [(flow.name, 'lower') for flow in entity.flows]
-    out += [(event.name, 'event') for event in entity.events]
+def members(found, card):
+    """(name, class) of each member of a card that has a symbol, in written order: its values
+    (`CLASSES`), its flows (`lower`) and its events (`event`)."""
+    out = []
+    for part in found.parts(card):
+        if isinstance(part, sem.DeclaredValue) and found.kind(part) in CLASSES:
+            out.append((part.name, CLASSES[found.kind(part)]))
+        elif isinstance(part, (sem.DeclaredFlow, sem.DeclaredLegs)):
+            out.append((part.name, 'lower'))
+        elif isinstance(part, sem.DeclaredEvent):
+            out.append((part.name, 'event'))
     return out
 
 
-def lacking(entity, member, name):
-    """Why the member `member` of an entity has no symbol, with `name` for the entity (a template or a
+def lacking(found, card, member, name):
+    """Why the member `member` of a card has no symbol, with `name` for the card (a template or a
     thing of the stylesheet), or None when it has one."""
-    if any(found == member for found, _ in members(entity)):
+    if any(item == member for item, _ in members(found, card)):
         return None
-    value = entity.value(member)
-    if value is not None and value.kind == 'text':
-        return f'{member} is a text of {name}, which has no symbol'
-    if value is not None and value.kind == 'output':
-        return f'{member} is an output of {name}, which has no symbol'
+    part = found.part(found.cards[card].template, member)
+    if isinstance(part, sem.DeclaredValue):
+        return f'{member} is a {found.kind(part)} of {name}, which has no symbol'
     return f'{member} is not a value, a flow or an event of {name}'
 
 
-def entities_of(model):
-    """{entity line: [its entities]}: one entity, or each copy of a set in order."""
-    out = {}
-    for entity in model.scenario.entities:
-        out.setdefault(entity.entry, []).append(entity)
-    return out
+def copies(found, card):
+    """[(member, its number)]: the members of a card, each with its number in its table from 1, or
+    None for a card of one member."""
+    card = found.cards[card]
+    if card.kind != 'table':
+        return [(member, None) for member in card.members]
+    return [(member, k + 1) for k, member in enumerate(card.members)]
 
 
 def _base(name, kind):
@@ -294,13 +300,13 @@ def _apart(group, names, size):
     return min(found)[1] if found else None
 
 
-def tags(model, sheet, cards=None):
-    """{card: its tag}, for each of `cards` (entity lines; by default the ones that the picture draws),
+def tags(found, sheet, cards=None):
+    """{card: its tag}, for each of `cards` (by default the ones that the picture draws),
     in their order. A card that `[subscript]` names has that subscript. Every other card starts with
     the initials of the words of its name (`words`). Then, as long as cards share a tag, or a card has a
     tag of `[subscript]`, each of them adds the next letter of one word (`_apart`), all at once. A card
     whose tag an earlier card still has adds the first number from 2 that gives a new tag."""
-    cards = list(styles.drawn(sheet, model) if cards is None else cards)
+    cards = list(styles.drawn(sheet, found) if cards is None else cards)
     given = {name: text for name, text in sheet.subscripts if name in cards}
     made = [card for card in cards if card not in given]
     names = {card: words(card) for card in made}
@@ -345,47 +351,45 @@ def tags(model, sheet, cards=None):
 # ---- the symbols that the file gives --------------------------------------------------------------
 
 
-def given(model, sheet, cards=None, tag=None):
+def given(found, sheet, cards=None, tag=None):
     """[(key, symbol, where, class)]: the symbols that `[symbol.<name>]` gives the members of `cards`
-    (by default the ones that the picture draws), in the order of the file, then of the entity lines
-    that a name stands for, then of the copies of a set. `where` is the key of the file,
+    (by default the ones that the picture draws), in the order of the file, then of the cards that a
+    name stands for, then of the rows of a table. `where` is the key of the file,
     `symbol.<name>.<member>`, and `class` the class of the member (`members`). A thing's own symbol is
-    as written; for a template, the instance's tag (`tag`, by default `tags`) is its subscript; a copy
-    of a set adds its number. An instance's own symbol wins over its template's, and a member that has
-    no symbol, or a name that is not on the map, gives nothing (`style.check` reports them)."""
-    cards = list(styles.drawn(sheet, model) if cards is None else cards)
-    tag = tags(model, sheet, cards) if tag is None else tag
-    lines, entities = styles.entity_lines(model), entities_of(model)
-    own = {name: dict(found) for name, found in sheet.symbols}
+    as written; for a template, the member's tag (`tag`, by default `tags`) is its subscript; a row of a
+    table adds its number. A member's own symbol wins over its template's, and a member that has no
+    symbol, or a name that is not on the map, gives nothing (`style.check` reports them)."""
+    cards = list(styles.drawn(sheet, found) if cards is None else cards)
+    tag = tags(found, sheet, cards) if tag is None else tag
+    own = {name: dict(items) for name, items in sheet.symbols}
     shown, out, done = set(cards), [], set()
-    for name, found in sheet.symbols:
-        for member, written in found:
-            for card in styles.expand(name, lines, model):
+    for name, items in sheet.symbols:
+        for member, written in items:
+            for card in styles.expand(name, found):
                 if card not in shown or (card != name and member in own.get(card, {})):
                     continue
-                kinds = dict(members(lines[card]))
+                kinds = dict(members(found, card))
                 if member not in kinds:
                     continue
                 symbol = parse(written)
                 if card != name:
                     symbol = Symbol(symbol.base, symbol.prime, tag[card])
-                copies = entities[card]
-                for entity in copies:
-                    key = f'{entity.name}.{member}'
+                for entity, number in copies(found, card):
+                    key = f'{entity}.{member}'
                     if key in done:
                         continue
                     done.add(key)
-                    each = symbol.under(str(entity.copy)) if entity.copy is not None else symbol
+                    each = symbol.under(str(number)) if number is not None else symbol
                     out.append((key, each, f'symbol.{name}.{member}', kinds[member]))
     return out
 
 
-def clashes(model, sheet, cards=None):
+def clashes(found, sheet, cards=None):
     """[(where, message)]: each key of the file whose symbol (`given`) an earlier one already is, or
     whose count (an event's) is: the later in the file has the problem, once for each key of the file
-    (a template's, for its first instance with it)."""
+    (a template's, for its first member with it)."""
     taken, out = {}, {}
-    for key, symbol, where, kind in given(model, sheet, cards):
+    for key, symbol, where, kind in given(found, sheet, cards):
         mine = [(symbol.text(), 'symbol')]
         if kind == 'event':
             mine.append((symbol.counted().text(), 'count'))
@@ -402,36 +406,36 @@ def clashes(model, sheet, cards=None):
 # ---- every symbol ----------------------------------------------------------------------------------
 
 
-def symbols(model, sheet=None, cards=None, keys=None):
-    """{key: Symbol} of each member that has a symbol (`members`) of each entity of `cards`, in the
-    order of the cards and of their members, with each copy of a set after the other. `sheet` is the
-    picture (`style.Style`), by default the model's own (`style.of`); `cards` are entity lines, by
-    default the ones that the picture draws, in its order (`style.drawn`). With `keys`, only those
-    keys have a symbol, and only their members share the letters of a card (the copies of a set have
-    their symbols made together). The file's symbols come first (`given`); each other symbol is the
-    first of its candidates that no symbol has (`_candidates`)."""
-    sheet = styles.of(model) if sheet is None else sheet
-    cards = list(styles.drawn(sheet, model) if cards is None else cards)
-    tag = tags(model, sheet, cards)
-    fixed = {key: (symbol, kind) for key, symbol, _, kind in given(model, sheet, cards, tag)}
+def symbols(found, sheet=None, cards=None, keys=None):
+    """{key: Symbol} of each member that has a symbol (`members`) of each member of `cards`, in the
+    order of the cards and of their parts, with each row of a table after the other. `found` is the
+    model's `things.Things`; `sheet` is the picture (`style.Style`), by default the model's own
+    (`style.of`); `cards` are cards, by default the ones that the picture draws, in its order
+    (`style.drawn`). With `keys`, only those keys have a symbol, and only their members share the
+    letters of a card (the rows of a table have their symbols made together). The file's symbols come
+    first (`given`); each other symbol is the first of its candidates that no symbol has
+    (`_candidates`)."""
+    sheet = styles.of(found.compiled) if sheet is None else sheet
+    cards = list(styles.drawn(sheet, found) if cards is None else cards)
+    tag = tags(found, sheet, cards)
+    fixed = {key: (symbol, kind) for key, symbol, _, kind in given(found, sheet, cards, tag)}
     taken = {text for key, (symbol, kind) in fixed.items() for text in _texts(symbol, kind)}
     wanted = None if keys is None else set(keys)
-    entities = entities_of(model)
     out = {}
     for card in cards:
-        copies = entities[card]
-        found = []
-        for name, kind in members(copies[0]):
-            names = [f'{entity.name}.{name}' for entity in copies]
+        rows = copies(found, card)
+        items = []
+        for name, kind in members(found, card):
+            names = [f'{entity}.{name}' for entity, _ in rows]
             if wanted is None or any(key in wanted for key in names):
-                found.append((name, kind, names))
+                items.append((name, kind, names))
         first = {
             name: Symbol(_base(name, kind), False, ','.join(_head(name, kind, tag[card]))).text()
-            for name, kind, names in found
+            for name, kind, names in items
             if names[0] not in fixed
         }
         shared = Counter(first.values())
-        for name, kind, names in found:
+        for name, kind, names in items:
             if names[0] in fixed:
                 out.update((key, fixed[key][0]) for key in names if key in fixed and _wanted(key, wanted))
                 continue
@@ -439,9 +443,9 @@ def symbols(model, sheet=None, cards=None, keys=None):
             for parts in _candidates(name, kind, tag[card], clash):
                 each = [
                     Symbol(
-                        _base(name, kind), False, ','.join(parts if e.copy is None else [*parts, str(e.copy)])
+                        _base(name, kind), False, ','.join(parts if number is None else [*parts, str(number)])
                     )
-                    for e in copies
+                    for _, number in rows
                 ]
                 texts = [text for symbol in each for text in _texts(symbol, kind)]
                 if not any(text in taken for text in texts) and len(set(texts)) == len(texts):
@@ -482,7 +486,7 @@ __all__ = [
     'TIME',
     'Symbol',
     'clashes',
-    'entities_of',
+    'copies',
     'given',
     'lacking',
     'members',

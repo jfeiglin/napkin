@@ -1,58 +1,56 @@
-"""The trigger lines of the cards (D-56): in short plain words, what makes each event of a thing
-happen, how it waits, its chances, what it changes and the options that switch it.
+"""The trigger lines of the cards (D-56): in short plain words, how each event of a thing starts, what
+its stages wait for and change, and the runs that leave it out.
 
-The words are literal. They follow the rule as the file writes it, in the rule's own order: each name
-comes from the model, and only generic words join the names ("when", "from", "has passed since", "is
-at most", …). Nothing here is written for one model. The layout puts the lines on the cards and
-chooses how much of them shows; this module only gives the words.
+The words are literal. They follow the event as the file writes it, in its own order: each name comes
+from the model, and only generic words join the names ("when", "after", "has passed since", "is at
+most", …). Nothing here is written for one model. The layout puts the lines on the cards and chooses
+how much of them shows; this module only gives the words.
 
-- `condition_words(node, name_of)`: the words of an expression with its names resolved, from its
-  typed nodes (`Expression.node`, `napkin/model/resolved.py`).
-- `namer(model, entity, expressions)`: the `name_of` of one line: the words of each name that the
-  expressions read, made distinct. `event_namer(model, entity, event)` is the one of an event's line.
-- `event_line(model, entity, event)`: the `Line` of one event.
-- `card_events(model, card)` and `card_lines(model, card)`: the events of one card, and their lines, in
-  the order of the file.
-- `shorten(text, width, lines, measure)`: a text in at most `lines` lines of at most `width`.
+- `condition_words(expression, name_of)`: the words of an expression of the typed form
+  (`napkin/model/semantic.py`), with the words of each read from `name_of`.
+- `namer(found, card, expressions)`: the `name_of` of one line: the words of each name that the
+  expressions read, made distinct.
+- `card_lines(found, card)`: the `Line` of each event of one card, in written order.
 
 The choices of the words:
-- **Names.** A value reads as its member's name in words, and an event as its own name in words
-  (`reaction_time` "reaction time", `strike_again` "strike again"). A label never replaces a name: a
-  label is a phrase or a sentence, which is too long for a line and reads badly before "is", and the
-  name matches the rule on the hover, the values of the arrows and the symbols. An outcome `o` of an
-  event `e` reads "e (o)". When two names in one line read the same, each one of another card adds
-  "of <the card's title>"; when they still read the same, each adds the title of its thing, then its
-  name in the model. A template instance reads its own trees, so its words use the template's names.
-- **Values.** A named value reads in words (`"coming_back"` "coming back"). `true` and `false` read
-  "yes" and "no", as a yes/no state reads on a page (CONTRIBUTING.md, "Writing style", rule 13). A
-  number reads plainly: an integer as it is, any other number in its shortest form (`0.5`, `1e-9`),
-  with its unit as the file writes it (`2 h`, `0 Mgal`).
-- **Forms.** `x is s` "x is s"; `is not` "is not"; `<`, `<=`, `>`, `>=` "is below", "is at most", "is
+- **Names.** A value reads as its name in words, and an event as its own name (`reaction_time`
+  "reaction time", `strike_again` "strike again"). A label never replaces a name: a label is a phrase
+  or a sentence, which is too long for a line. When two names in one line read the same, each one of
+  another card adds "of <the card's title>"; when they still read the same, each adds its thing's
+  name in the model. A rate reads as its flow; a request, a capacity, an outflow, an inflow, a mean
+  and a spread read "request of f", "outflow of s", "mean of d".
+- **Values.** An enum member and a named value read in words (`COMING_BACK` "coming back"); `true`
+  and `false` read "yes" and "no". A number reads plainly: an integer as it is, any other number in
+  its shortest form (`0.5`, `1e-9`), with its unit (`2 h`, `0 L`); a text is in quotes.
+- **Forms.** `x == s` "x is s"; `!=` "is not"; `<`, `<=`, `>`, `>=` "is below", "is at most", "is
   above", "is at least"; `since(e) >= d` "d has passed since e", `since(e) > d` "more than d has passed
   since e", `since(e) < d` and `<= d` "within d of e"; `elapsed(s) >= d` "d has passed since s
-  changed"; `count(e) > 0` "e has happened", `count(e) > n` "e has happened more than n times" (and "at
-  least", "exactly", "no more than", "fewer than"; "once" for 1); `t >= x` "from x", `t < x` "before x";
-  `any`, `all`, `sum`, `min` and `max` of a list "any x of L", "every x of L", "sum of x over L", "least
-  x of L", "most x of L"; `count` of a list "number of L where x", and in a comparison "x holds in more
-  than n of L". Any other use of these reads literally ("time since e", "times e has happened").
-- **Groups.** `and` reads "A and B", or "A, B, and C"; `or` reads "A or B"; `not` reads "not x", or "not
-  (…)" around a comparison or a group. A group inside a group of the other kind is in parentheses, and
-  nowhere else; an `and` inside an `and` is one list. A tree has no parentheses of its own, so the
-  outer parentheses of a rule never show.
+  changed"; `count(e.occurrences) > 0` "e has started", `> n` "e has started more than n times" (and
+  "at least", "exactly", "no more than", "fewer than"; "once" for 1); `t >= x` "from x", `t < x`
+  "before x"; `any`, `all`, `sum`, `min` and `max` of a collection "any x of L", "every x of L", "sum
+  of x over L", "least x of L", "most x of L"; `count` of yes/no values "number of L where x", and in
+  a comparison "x holds in more than n of L". A collection reads as written: `T.instances` "T
+  instances", a literal its members, `where` "L where c", a keyed read "x of L with k v".
+- **Groups.** `and` reads "A and B", or "A, B, and C"; `or` reads "A or B"; `not` reads "not x", or
+  "not (…)" around a comparison or a group. A group inside a group of the other kind is in
+  parentheses, and nowhere else.
 - **Arithmetic** uses the symbols `+`, `−`, `×`, `/` and `^`, with parentheses only where the order of
-  the operations needs them. Any other function keeps its name: `abs(x)`, `pert(1 h, 3 h, 12 h)`.
-
-- **Outcomes.** The changes of an outcome name each target after its verb, and the verb once for each
-  run of lines with the same verb: "sets a, b, adds to c, moves from d to e, fires <card>: <event>".
-  An event with several outcomes names each outcome that has a chance or a change. A chance shows only
-  when it is a number or an expression ("chance 1 − share", and `else` "chance of the rest"); a chance
-  that is a condition, and the condition of an outcome, say when the outcome happens, so they show
-  nothing.
+  the operations needs them. Any other function keeps its name: `abs(x)`, `clip(x, 1 L, 6 L)`.
+- **Starts.** A trigger reads "when C" ("from x" for a condition that starts with the time), with
+  its reset: "once" for `reset when false`, "again when D", "again after T". An event that another
+  event starts reads "when <card>: <event> starts it" (or "<event>" of its own card), one that the
+  setup starts "the setup starts it", and one that nothing starts "never: nothing starts it".
+- **Steps.** A stage reads "after d" (with "when g" for its guard) and what it changes; a wait
+  "waits d"; a gate "until c". The changes name each target after its verb, the verb once for each
+  run of the same verb: "sets a, b, adds to c, moves from d to e, starts <card>: <event>". A branch
+  reads "if c: …, else: …"; a switch names what selects its case ("draws fixed (chance 0.7) or
+  failed (chance 0.3)", "dispatcher chooses send or wait", "by mode") and what each case changes.
+- **Runs.** "only with <option>" or "not with <option>" when some runs cannot start the event
+  (`things.Things.startable`); "" when every run can.
 
 The full line (`Line.full`) is the name, " — ", and then the parts that the event has, joined by "; ":
-when (or "from x" for a rule that starts with the time), after, while, the window, once, the choice,
-the outcomes, and the options. For example: "strike again — when watch is preparing, access is kept,
-and reaction time has passed since controls back; sets watch, strikes; only with <option>".
+how it starts, its steps, and the runs. For example: "strike again — when watch is preparing and
+reaction time has passed since controls back; after 1 h: sets watch, adds to strikes".
 """
 
 from __future__ import annotations
@@ -60,20 +58,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from ..core import expr
-from ..model import resolved
-from ..model.ir import thaw
-from ..model.semantic import Assign, Expression, Fire, Move, Ref, flat_entity, in_words
-from . import style as styles
-from .model_map import card_title, operator_word, plain_text
-from .text import ELLIPSIS, shorten  # noqa: F401  (shorten is part of this module's words)
+from ..model import semantic as s
+from .text import ELLIPSIS, in_words, shorten  # noqa: F401  (shorten is part of this module's words)
 
 # The marks of a line.
 DASH = ' — '
 PARTS = '; '
 
-# The words of a comparison, and its mirror when its two sides change places. Each operation has the
-# name that a typed node gives it (`napkin/core/expr.py`).
+# The words of a comparison by its operator, and its mirror when its two sides change places.
+OPS = {'==': 'eq', '!=': 'ne', '<': 'lt', '<=': 'le', '>': 'gt', '>=': 'ge'}
 COMPARE_WORDS = {
     'eq': 'is',
     'ne': 'is not',
@@ -82,14 +75,7 @@ COMPARE_WORDS = {
     'gt': 'is above',
     'ge': 'is at least',
 }
-MIRROR = {
-    'eq': 'eq',
-    'ne': 'ne',
-    'lt': 'gt',
-    'le': 'ge',
-    'gt': 'lt',
-    'ge': 'le',
-}
+MIRROR = {'eq': 'eq', 'ne': 'ne', 'lt': 'gt', 'le': 'ge', 'gt': 'lt', 'ge': 'le'}
 # How many times, for `count`, by the comparison: the word before the number.
 HOW_MANY = {
     'gt': 'more than',
@@ -101,19 +87,30 @@ HOW_MANY = {
 }
 # The symbols of arithmetic and their precedence: a higher one binds tighter.
 ARITHMETIC = {'add': ('+', 5), 'sub': ('−', 5), 'mul': ('×', 6), 'div': ('/', 6), 'pow': ('^', 8)}
-# The precedence of the other forms: a group of `or` and of `and`, a `not`, a comparison, a sign, and
-# a name, a number or a call, which never needs parentheses.
-OR, AND, NOT, COMPARISON, SIGN, ATOM = 1, 2, 3, 4, 7, 9
-# The words of the functions of a list.
+# The precedence of the other forms: a conditional, a group of `or` and of `and`, a `not`, a
+# comparison, a sign, and a name, a number or a call, which never needs parentheses.
+IF, OR, AND, NOT, COMPARISON, SIGN, ATOM = 0, 1, 2, 3, 4, 7, 9
+# The words of the reductions of a collection.
 LIST_WORDS = {'any': 'any', 'all': 'every', 'min': 'least', 'max': 'most'}
-# How a verb of a change reads.
-VERBS = {'sets': 'sets', 'adds': 'adds to', 'takes': 'takes from'}
+# How a verb of a change reads, by the operator of an assignment.
+VERBS = {'=': 'sets', '+=': 'adds to', '-=': 'takes from'}
+# The words of the steps after a flow, a value or an endpoint that a read takes.
+OF_WORDS = {
+    'request': 'request of',
+    'capacity': 'capacity of',
+    'outflow': 'outflow of',
+    'inflow': 'inflow of',
+    'mean': 'mean of',
+    'std': 'spread of',
+    'served_fraction': 'served fraction of',
+}
 
 
 def words(name):
-    """A name of the model in words, in lower case: `strike_again` "strike again", `coming_back` "coming
-    back"; an acronym keeps its capitals (`AIShare` "AI share")."""
-    found = in_words(str(name))
+    """A name of the model in words, in lower case: `strike_again` "strike again", `COMING_BACK`
+    "coming back"; an acronym keeps its capitals (`AIShare` "AI share")."""
+    name = str(name)
+    found = in_words(name.lower() if name.isupper() and len(name) > 1 else name)
     first = found.split(' ', 1)[0]
     if len(first) > 1 and first.isupper():
         return found
@@ -138,15 +135,25 @@ def number(value):
     return text
 
 
+def constant(expression):
+    """The number of a constant number of the typed form, else None."""
+    if isinstance(expression, s.Const) and isinstance(expression.value, (int, float)):
+        return None if isinstance(expression.value, bool) else expression.value
+    return None
+
+
+def _with_unit(value, kind):
+    unit = getattr(kind, 'unit', '')
+    return f'{number(value)} {unit}' if unit else number(value)
+
+
 # ---- the words of a condition -------------------------------------------------------------------
 
 
-def condition_words(node, name_of):
-    """The words of an expression whose names are resolved, from its typed nodes
-    (`semantic.Expression.node`), in their order. `name_of(node)` gives the words of each name: of a
-    `Ref` and an `EventRef`, a text; of a `Terms` (the members of a list), the pair (the member's words,
-    the list's words)."""
-    return _Words(name_of).text(node)
+def condition_words(expression, name_of):
+    """The words of an expression of the typed form, in its order. `name_of(read)` gives the words of
+    each read, and `name_of.collection(read)` those of a collection."""
+    return _Words(name_of).text(expression)
 
 
 class _Words:
@@ -163,48 +170,88 @@ class _Words:
 
     def phrase(self, node):
         """(the words of a node, its precedence)."""
-        if isinstance(node, (resolved.Ref, resolved.EventRef)):
+        if isinstance(node, s.Read):
             return self.name_of(node), ATOM
-        if isinstance(node, resolved.Terms):
-            member, group = self.name_of(node)
-            return f'{member} of {group}', ATOM
-        if isinstance(node, resolved.Word):
-            return number(bool(node.value)), ATOM
-        if isinstance(node, resolved.Problem):
-            return '?', ATOM
-        if isinstance(node, expr.Const):
-            return (words(node.value) if isinstance(node.value, str) else number(node.value)), ATOM
-        if isinstance(node, expr.Ref):
-            return ('time' if node.name == 't' else words(node.name)), ATOM
-        if isinstance(node, expr.BoolOp):
+        if isinstance(node, s.Const):
+            value = node.value
+            if isinstance(value, bool):
+                return number(value), ATOM
+            if isinstance(value, str):
+                return (words(value) if isinstance(node.type, s.EnumOf) else f'"{value}"'), ATOM
+            return _with_unit(value, node.type), ATOM
+        if isinstance(node, s.Retain):
+            return self.phrase(node.body)
+        if isinstance(node, s.Reduced):
+            return self.reduced(node), ATOM
+        if isinstance(node, s.History):
+            if node.op == 'elapsed':
+                return f'time since {self.text(node.source)} changed', ATOM
+            return f'time since {self.text(node.source)}', ATOM
+        if isinstance(node, s.Distribution):
+            return self.distribution(node), ATOM
+        if isinstance(node, s.Drawn):
+            source = node.source
+            found = self.distribution(source) if isinstance(source, s.Distribution) else self.text(source)
+            return f'a draw of {found}', ATOM
+        if isinstance(node, s.Chosen):
+            return f'the choice of {self.text(node.actor)}', ATOM
+        if isinstance(node, s.Apply):
+            return self.apply(node)
+        return str(node), ATOM
+
+    def apply(self, node):
+        op, args = node.op, node.args
+        if op in ('and', 'or'):
             return self.group(node)
-        if isinstance(node, expr.Compare):
+        if op == 'compare':
             parts = _pairs(node)
             if len(parts) == 1:
                 return self.comparison(*parts[0]), COMPARISON
             return _listed([self.comparison(*part) for part in parts]), AND
-        if isinstance(node, expr.Unary):
-            if node.op == 'not':
-                found, own = self.phrase(node.operand)
-                return (f'not ({found})' if own <= COMPARISON else f'not {found}'), NOT
-            sign = '−' if node.op == 'neg' else '+'
-            return sign + self.wrapped(node.operand, SIGN), SIGN
-        if isinstance(node, expr.Binary):
-            symbol, level = ARITHMETIC[node.op]
+        if op == 'not':
+            found, own = self.phrase(args[0])
+            return (f'not ({found})' if own <= COMPARISON else f'not {found}'), NOT
+        if op == 'neg':
+            return '−' + self.wrapped(args[0], SIGN), SIGN
+        if op in ARITHMETIC:
+            symbol, level = ARITHMETIC[op]
             # `-` and `/` do not regroup on the right, and `^` does not on the left.
-            left = self.wrapped(node.left, level + 1 if node.op == 'pow' else level)
-            right = self.wrapped(node.right, level + 1 if node.op in ('sub', 'div') else level)
+            left = self.wrapped(args[0], level + 1 if op == 'pow' else level)
+            right = self.wrapped(args[1], level + 1 if op in ('sub', 'div') else level)
             return f'{left} {symbol} {right}', level
-        if isinstance(node, expr.IfElse):
-            body = self.wrapped(node.body, OR)
-            return f'{body} if {self.wrapped(node.test, OR)}, else {self.wrapped(node.orelse, OR)}', 0
-        if isinstance(node, expr.Call):
-            return self.call(node), ATOM
-        # A part that the language does not have (`expr.Foreign`) reads as its text, and so does a
-        # call with arguments by name (`resolved.Named`). The builder refuses a model that has a part
-        # outside the language, and the grammar of a file writes no argument by name, so no card
-        # shows either.
-        return expr.text(node), ATOM
+        if op == 'if':
+            test, body, orelse = args
+            text = f'{self.wrapped(body, OR)} if {self.wrapped(test, OR)}, else {self.wrapped(orelse, OR)}'
+            return text, IF
+        if op == 'call':
+            if node.detail in ('min', 'max'):
+                return f'{LIST_WORDS[node.detail]} of ' + _listed([self.text(arg) for arg in args]), ATOM
+            return f'{node.detail}(' + ', '.join(self.text(arg) for arg in args) + ')', ATOM
+        return f'{op}(' + ', '.join(self.text(arg) for arg in args) + ')', ATOM
+
+    def distribution(self, node):
+        if node.family == 'categorical':
+            return (
+                'categorical('
+                + ', '.join(
+                    f'{words(member)}: {number(weight)}' for member, weight in zip(node.outcomes, node.params)
+                )
+                + ')'
+            )
+        kind = node.type.of
+        return f'{node.family}(' + ', '.join(_with_unit(value, kind) for value in node.params) + ')'
+
+    def reduced(self, node):
+        member, group = self.name_of.collection(node.source)
+        if node.op == 'sum':
+            return f'sum of {member} over {group}'
+        if node.op == 'count':
+            if member is None:
+                return f'number of {group}'
+            if isinstance(node.source.type, s.Many) and isinstance(node.source.type.of, s.Occ):
+                return f'times {member} has started'
+            return f'number of {group} where {member}'
+        return f'{LIST_WORDS[node.op]} {member} of {group}'
 
     def group(self, node):
         """An `and` as one list, "A, B, and C", or an `or`, "A or B": a group of the other kind inside
@@ -215,91 +262,63 @@ class _Words:
 
     def item(self, node, level):
         """A member of a group: in parentheses when it is a group of the other kind (a chain of
-        comparisons is an `and`) or an if-else."""
+        comparisons is an `and`) or a conditional."""
         found, own = self.phrase(node)
         other = OR if level == AND else AND
-        return f'({found})' if own in (other, 0) else found
+        return f'({found})' if own in (other, IF) else found
 
     def comparison(self, left, op, right):
         """The words of one comparison, with the forms of the clocks, the counts and the time."""
         if _special(right) and not _special(left):
             left, op, right = right, MIRROR[op], left
-        elif isinstance(left, expr.Const) and isinstance(left.value, str) and op in ('eq', 'ne'):
+        elif isinstance(left, s.Const) and isinstance(left.value, str) and op in ('eq', 'ne'):
             left, right = right, left
-        if isinstance(left, expr.Call) and len(left.args) == 1:
-            function, argument = left.function, left.args[0]
-            amount = self.wrapped(right, COMPARISON + 1)
-            if function == 'since':
-                event = self.text(argument)
+        amount = self.wrapped(right, COMPARISON + 1)
+        if isinstance(left, s.History):
+            what = self.text(left.source)
+            if left.op == 'elapsed':
                 if op == 'ge':
-                    return f'{amount} has passed since {event}'
+                    return f'{amount} has passed since {what} changed'
                 if op == 'gt':
-                    return f'more than {amount} has passed since {event}'
+                    return f'more than {amount} has passed since {what} changed'
                 if op in ('lt', 'le'):
-                    return f'within {amount} of {event}'
-                return f'time since {event} {COMPARE_WORDS[op]} {amount}'
-            if function == 'elapsed':
-                state = self.text(argument)
-                if op == 'ge':
-                    return f'{amount} has passed since {state} changed'
-                if op == 'gt':
-                    return f'more than {amount} has passed since {state} changed'
-                if op in ('lt', 'le'):
-                    return f'within {amount} after {state} changed'
-                return f'time since {state} changed {COMPARE_WORDS[op]} {amount}'
-            if function == 'count' and isinstance(argument, resolved.Terms):
-                member, group = self.name_of(argument)
+                    return f'within {amount} after {what} changed'
+                return f'time since {what} changed {COMPARE_WORDS[op]} {amount}'
+            if op == 'ge':
+                return f'{amount} has passed since {what}'
+            if op == 'gt':
+                return f'more than {amount} has passed since {what}'
+            if op in ('lt', 'le'):
+                return f'within {amount} of {what}'
+            return f'time since {what} {COMPARE_WORDS[op]} {amount}'
+        if isinstance(left, s.Reduced) and left.op == 'count':
+            member, group = self.name_of.collection(left.source)
+            if isinstance(left.source.type, s.Many) and isinstance(left.source.type.of, s.Occ):
+                return self.count(member, op, right, amount)
+            if member is not None:
                 return f'{member} holds in {HOW_MANY[op]} {amount} of {group}'
-            if function == 'count':
-                return self.count(self.text(argument), op, right, amount)
-        if isinstance(left, expr.Ref) and left.name == 't':
-            amount = self.wrapped(right, COMPARISON + 1)
+        if isinstance(left, s.Read) and left.start == ('time',):
             if op == 'ge':
                 return f'from {amount}'
             if op == 'lt':
                 return f'before {amount}'
-        return (
-            f'{self.wrapped(left, COMPARISON + 1)} {COMPARE_WORDS[op]} {self.wrapped(right, COMPARISON + 1)}'
-        )
+        return f'{self.wrapped(left, COMPARISON + 1)} {COMPARE_WORDS[op]} {amount}'
 
     @staticmethod
     def count(event, op, right, amount):
-        """How many times an event has happened, by a comparison with `right` (its words `amount`)."""
-        value = _constant(right)
+        """How many times an event has started, by a comparison with `right` (its words `amount`)."""
+        value = constant(right)
         if value is not None:
             if (op, value) in {('gt', 0), ('ge', 1), ('ne', 0)}:
-                return f'{event} has happened'
+                return f'{event} has started'
             if (op, value) in {('eq', 0), ('le', 0), ('lt', 1)}:
-                return f'{event} has not happened'
+                return f'{event} has not started'
             times = 'once' if value == 1 else f'{amount} times'
         else:
             times = f'{amount} times'
         if op == 'ne':
-            return f'{event} has not happened exactly {times}'
-        return f'{event} has happened {HOW_MANY[op]} {times}'
-
-    def call(self, node):
-        name, args = node.function, node.args
-        if name == 'q' and len(args) == 2 and isinstance(args[1], expr.Const):
-            return f'{self.wrapped(args[0], ATOM)} {args[1].value}'
-        if name == 'since' and len(args) == 1:
-            return f'time since {self.text(args[0])}'
-        if name == 'elapsed' and len(args) == 1:
-            return f'time since {self.text(args[0])} changed'
-        if name == 'count' and len(args) == 1:
-            if isinstance(args[0], resolved.Terms):
-                member, group = self.name_of(args[0])
-                return f'number of {group} where {member}'
-            return f'times {self.text(args[0])} has happened'
-        if name in LIST_WORDS or name == 'sum':
-            if len(args) == 1 and isinstance(args[0], resolved.Terms):
-                member, group = self.name_of(args[0])
-                if name == 'sum':
-                    return f'sum of {member} over {group}'
-                return f'{LIST_WORDS[name]} {member} of {group}'
-            if name in ('min', 'max') and args:
-                return f'{LIST_WORDS[name]} of ' + _listed([self.text(arg) for arg in args])
-        return f'{name}(' + ', '.join(self.text(arg) for arg in args) + ')'
+            return f'{event} has not started exactly {times}'
+        return f'{event} has started {HOW_MANY[op]} {times}'
 
 
 def _listed(items):
@@ -311,20 +330,20 @@ def _listed(items):
 
 def _conjuncts(node):
     """The parts of an `and`, with each `and` inside it, and each comparison of a chain, in order."""
-    if isinstance(node, expr.BoolOp) and node.op == 'and':
-        for value in node.values:
+    if isinstance(node, s.Apply) and node.op == 'and':
+        for value in node.args:
             yield from _conjuncts(value)
-    elif isinstance(node, expr.Compare) and len(node.ops) > 1:
+    elif isinstance(node, s.Apply) and node.op == 'compare' and len(node.detail) > 1:
         for left, op, right in _pairs(node):
-            yield expr.compare([op], [left, right])
+            yield s.Apply('compare', (left, right), s.BOOL, ({v: k for k, v in OPS.items()}[op],))
     else:
         yield node
 
 
 def _disjuncts(node):
     """The parts of an `or`, with each `or` inside it, in order."""
-    if isinstance(node, expr.BoolOp) and node.op == 'or':
-        for value in node.values:
+    if isinstance(node, s.Apply) and node.op == 'or':
+        for value in node.args:
             yield from _disjuncts(value)
     else:
         yield node
@@ -332,118 +351,134 @@ def _disjuncts(node):
 
 def _pairs(node):
     """The comparisons of a chain, `a < b < c`, each (left, the name of its operator, right)."""
-    sides = node.operands
-    return [(sides[k], op, sides[k + 1]) for k, op in enumerate(node.ops)]
+    sides = node.args
+    return [(sides[k], OPS[op], sides[k + 1]) for k, op in enumerate(node.detail)]
 
 
 def _special(node):
-    """Whether a side of a comparison is a clock, a count or the time, which reads first."""
-    if isinstance(node, expr.Ref):
-        return node.name == 't'
-    return (
-        isinstance(node, expr.Call) and node.function in ('since', 'elapsed', 'count') and len(node.args) == 1
-    )
-
-
-def _constant(node):
-    """The number of a plain number (`0`) or of a number with its unit (`0 h`), else None."""
-    if isinstance(node, expr.Call) and node.function == 'q' and node.args:
-        node = node.args[0]
-    if (
-        isinstance(node, expr.Const)
-        and isinstance(node.value, (int, float))
-        and not isinstance(node.value, bool)
-    ):
-        return node.value
-    return None
+    """Whether a side of a comparison is a clock, a count of occurrences or the time, which reads
+    first."""
+    if isinstance(node, s.Read):
+        return node.start == ('time',)
+    if isinstance(node, s.History):
+        return True
+    return isinstance(node, s.Reduced) and node.op == 'count'
 
 
 # ---- the names of one line ------------------------------------------------------------------------
 
 
-def _node(item):
-    """The typed nodes of an `Expression`; any other item is its own nodes."""
-    return item.node if isinstance(item, Expression) else item
+def _reads(expression):
+    """The reads of an expression whose words name them: each read, without the members of a
+    collection that a reduction or a keyed read names as a whole."""
+    if isinstance(expression, s.Read):
+        yield expression
+    elif isinstance(expression, s.Apply):
+        for arg in expression.args:
+            yield from _reads(arg)
+    elif isinstance(expression, (s.Retain,)):
+        yield from _reads(expression.body)
+    elif isinstance(expression, s.History):
+        yield from _reads(expression.source)
+    elif isinstance(expression, (s.Drawn, s.Chosen)):
+        if isinstance(expression, s.Chosen):
+            yield expression.actor
+        if isinstance(expression.source, s.Read):
+            yield expression.source
 
 
-def _names(node):
-    """The `Ref`s and `EventRef`s of the nodes of an expression, in their order, without the members
-    of a list: a list reads as one name."""
-    if isinstance(node, (resolved.Ref, resolved.EventRef)):
-        yield node
-    elif isinstance(node, expr.Node) and not isinstance(node, resolved.Terms):
-        for child in node.children:
-            yield from _names(child)
+class namer:
+    """The `name_of` of one line of the card `card` (`condition_words`; None for the top level): the
+    words of each name that the expressions read, distinct within the line. A name of another card that reads like another
+    name adds "of <the card's title>"; names that still read the same add their member's name in the
+    model."""
 
-
-def namer(model, entity, expressions=()):
-    """The `name_of` of one line of `entity` (`condition_words`): the words of each name that the
-    expressions (or typed nodes) read, distinct within the line. A name of another card that reads like
-    another name adds "of <the card's title>"; names that still read the same add the title of their
-    thing, then its name in the model. A list reads as the file writes it (`Terms.written`)."""
-    scenario = model.scenario
-    lines = styles.entity_lines(model)
-    own = entity.entry
-    keys = {}  # the key of each name: its base words and its owner
-    for item in expressions:
-        if item is None:
-            continue
-        for node in _names(_node(item)):
-            key, base, owner = _name_key(node)
-            keys.setdefault(key, (base, owner))
-    final = {key: base for key, (base, _) in keys.items()}
-
-    def owner_entity(owner):
-        return scenario.entity(owner) if owner is not None else None
-
-    def card_words(owner):
-        found = owner_entity(owner)
-        return card_title(lines[found.entry]) if found is not None else None
-
-    def thing_words(owner):
-        found = owner_entity(owner)
-        return (thaw(found.title) or in_words(found.name)) if found is not None else None
-
-    for qualify, others_only in ((card_words, True), (thing_words, False), (lambda owner: owner, False)):
-        groups = {}
-        for key, text in final.items():
-            groups.setdefault(text, []).append(key)
-        for members in groups.values():
-            if len(members) < 2:
-                continue
-            for key in members:
-                base, owner = keys[key]
-                found = owner_entity(owner)
-                if others_only and (found is None or found.entry == own):
+    def __init__(self, found, card, expressions=()):
+        self.found, self.card = found, card
+        self.members = found.cards[card].members if card is not None else ()
+        self.final = {}
+        keys = {}
+        for expression in expressions:
+            for read in _reads(expression):
+                key, base, owner = self.key(read)
+                keys.setdefault(key, (base, owner))
+        self.final = {key: base for key, (base, _) in keys.items()}
+        for qualify, others_only in ((self.card_words, True), (lambda owner: owner, False)):
+            groups = {}
+            for key, text in self.final.items():
+                groups.setdefault(text, []).append(key)
+            for members in groups.values():
+                if len(members) < 2:
                     continue
-                extra = qualify(owner)
-                if extra:
-                    final[key] = f'{base} of {extra}'
+                for key in members:
+                    base, owner = keys[key]
+                    if owner is None or (others_only and found.card_of.get(owner) == card):
+                        continue
+                    extra = qualify(owner)
+                    if extra:
+                        self.final[key] = f'{base} of {extra}'
 
-    def name_of(node):
-        if isinstance(node, resolved.Terms):
-            head, member = None, None
-            if node.written is not None:
-                head, _, member = node.written.rpartition('.')
-            if member is None:
-                member = node.refs[0].member if node.refs else '?'
-            if head is None:
-                templates = {scenario.entity(ref.entity).template for ref in node.refs if ref.entity}
-                head = templates.pop() if len(templates) == 1 and None not in templates else 'the list'
-            return words(member), words(head)
-        key, base, _ = _name_key(node)
-        return final.get(key, base)
+    def card_words(self, owner):
+        card = self.found.cards.get(self.found.card_of.get(owner))
+        return card.title if card is not None else None
 
-    return name_of
+    def key(self, read):
+        """(the key of a read, its words, the member that owns it, or None). A field of the item of a
+        `where` reads as its field, and a member of a keyed collection names the collection."""
+        if read.start == ('item',):
+            return ('item', read.steps), words(read.steps[-1]) if read.steps else 'it', None
+        found = self.found.reached(read, self.members)
+        if found is None:
+            name = read.start[1] if read.start[0] == 'local' else (read.steps[-1] if read.steps else 'time')
+            base = 'time' if read.start == ('time',) else words(name)
+            return ('own', read.start, read.steps), base, None
+        if found.what == 'member':
+            owner = found.members[0] if len(found.members) == 1 else None
+            base = words(self.found.title_of(owner)) if owner is not None else 'members'
+            return ('member', found.members), base, owner
+        base = words(found.name)
+        steps = [step for step in found.steps if step not in ('actual_rate', 'occurrences')]
+        if found.what == 'solver' and steps:
+            base, steps = words(steps[0]), steps[1:]
+        for step in steps:
+            base = f'{OF_WORDS[step]} {base}' if step in OF_WORDS else f'{base} {words(step)}'
+        owner = found.members[0] if len(set(found.members)) == 1 else None
+        if read.start[0] in ('where', 'by', 'lookup'):
+            base = f'{base} of {self.group(s.Read(read.start, (), None))}'
+        return (found.what, found.members, found.name, tuple(found.steps)), base, owner
 
+    def __call__(self, read):
+        key, base, _ = self.key(read)
+        return self.final.get(key, base)
 
-def _name_key(node):
-    """(the key of a name, its words, the entity that owns it) of a `Ref` or an `EventRef`."""
-    if isinstance(node, resolved.EventRef):
-        owner, _, event = node.key.rpartition('.')
-        base = words(event) + (f' ({words(node.ending)})' if node.ending else '')
-        return ('event', node.key, node.ending), base, owner
-    return ('value', node.entity, node.member), words(node.member), node.entity
+    def collection(self, read):
+        """(the words of the member or the projected field, the words of the collection) of the
+        source of a reduction."""
+        of = read.type.of if isinstance(read.type, s.Many) else None
+        if isinstance(of, s.Occ):
+            # The occurrences of an event: the event.
+            return self(read), None
+        if isinstance(of, s.Ent) or not read.steps:
+            return None, self.group(read)
+        return words(read.steps[-1]), self.group(s.Read(read.start, read.steps[:-1], None))
+
+    def group(self, read):
+        """The words of a collection as the file writes it."""
+        start = read.start
+        if start[0] == 'instances' and not read.steps:
+            return f'{words(start[1])} instances'
+        if start[0] == 'literal' and not read.steps:
+            return _listed([self(item) for item in start[1]])
+        if start[0] == 'where' and not read.steps:
+            test = _Words(self).text(start[2])
+            return f'{self.group(start[1])} where {test}'
+        if start[0] == 'by' and not read.steps:
+            return f'{self.group(start[1])} by {words(start[2])}'
+        if start[0] == 'lookup' and not read.steps:
+            return f'{self.group(start[1])} at {_Words(self).text(start[2])}'
+        if read.steps:
+            return words(read.steps[-1])
+        return self(read)
 
 
 # ---- the line of an event -------------------------------------------------------------------------
@@ -453,38 +488,26 @@ def _name_key(node):
 class Line:
     """The trigger line of one event, as words.
 
-    - `card`, `event`, `key`: the entity line of the card, the event's name, and the event in the
-      structure (`entity.event`).
+    - `card`, `event`, `key`: the card, the event's name, and `card.event`; `path` the event's
+      declared path (its origin in the program).
     - `name`: the event's name in words.
-    - `when`: "when <the condition>"; "from <x>" for a condition that starts with the time; "when
-      <card>: <event> fires it" (or "<event>" of its own card) for an event without `when` that only a
-      line fires; "" for an event without `when` that a window triggers.
-    - `timing`: "after <d>", "while <k>", "once for each value of <w>", "once", in that order.
-    - `chance`: for each outcome whose chance is a number or an expression, "chance <p>", after the
-      outcome's name when the event has several ("manual, chance 0.7"); with such a chance, `else`
-      reads "chance of the rest". A chance that is a condition reads nothing: it says when the
-      outcome happens, not how likely it is.
-    - `choice`: "chooses <outcome> or <outcome>" for an actor's choice, else "".
-    - `changes`: for each outcome with lines, what they change, after the outcome's name when the event
-      has several: "sets a, b, adds to c, takes from d, moves from e to f, fires <card>: <event>".
-    - `outcomes`: the chance and the changes of each outcome together, as `full` shows them.
-    - `options`: "only with <option>" or "not with <option>" when some start options leave the event
-      out; "" when every structure holds it.
-    - `label`: the event's text with its braces filled (or the first outcome's), for the hover.
-    - `rule`: the condition exactly as the file writes it, for the hover; None without `when`.
+    - `starts`: how it starts: its triggers, the events and the setup that start it.
+    - `steps`: each step in words, in order.
+    - `options`: "only with <option>" or "not with <option>" when some runs cannot start the event;
+      "" when every run can.
+    - `label`: the event's text, or that of its first stage or case that has one, for the hover.
+    - `rule`: the condition of its first trigger exactly as the file writes it, for the hover; None
+      without a trigger.
     - `full`: the whole line, uncut: `name — part; part; …` (`joined`).
     """
 
     card: str
     event: str
     key: str
+    path: str
     name: str
-    when: str
-    timing: tuple
-    chance: tuple
-    choice: str
-    changes: tuple
-    outcomes: tuple
+    starts: str
+    steps: tuple
     options: str
     label: str | None
     rule: str | None
@@ -492,7 +515,7 @@ class Line:
 
     def joined(self, options=True):
         """The whole line (`full`), or the line without the options that switch the event."""
-        parts = [self.when, *self.timing, self.choice, *self.outcomes, self.options if options else '']
+        parts = [self.starts, *self.steps, self.options if options else '']
         return _joined(self.name, [part for part in parts if part])
 
 
@@ -501,279 +524,264 @@ def _joined(name, parts):
     return name + (DASH + PARTS.join(parts) if parts else '')
 
 
+def _shown(event):
+    """The expressions whose names a line of an event reads out: its triggers' conditions and resets,
+    its delays, guards and gates, and the targets, ends, events, selectors and guards of its
+    statements."""
+    found = []
+    for trigger in event.triggers:
+        found.append(trigger.test)
+        if trigger.reset is not None:
+            found.append(trigger.reset[1])
+    for step in event.steps:
+        if isinstance(step, s.DeclaredStage):
+            found += [step.delay, step.guard]
+            for statement in s.statements_of(step.body):
+                found += _statement_expressions(statement)
+        elif isinstance(step, s.DeclaredGate):
+            found.append(step.test)
+    return [item for item in found if item is not None]
+
+
+def _statement_expressions(statement):
+    if isinstance(statement, s.DeclaredAssign):
+        return [statement.target]
+    if isinstance(statement, s.DeclaredMove):
+        return [statement.source, statement.destination]
+    if isinstance(statement, s.DeclaredStart):
+        return [statement.event]
+    if isinstance(statement, s.DeclaredIf):
+        return [statement.test]
+    if isinstance(statement, s.DeclaredSwitch):
+        selector = statement.selector
+        found = (
+            []
+            if isinstance(selector, s.Drawn) and isinstance(selector.source, s.Distribution)
+            else [selector]
+        )
+        return found + [case.guard for case in statement.cases if case.guard is not None]
+    return []
+
+
 class _Lines:
-    """What the lines of one model share: the entity lines and the events that fire each event."""
+    """What the lines of one model share: the cards and the events that start each event."""
 
-    def __init__(self, model):
-        self.model = model
-        self.scenario = model.scenario
-        self.lines = styles.entity_lines(model)
-        self.callers = {}
-        for entity in self.scenario.entities:
-            for event in entity.events:
-                for outcome in event.outcomes:
-                    for line in outcome.lines:
-                        if isinstance(line, Fire) and isinstance(line.targets, tuple):
-                            for target in line.targets:
-                                found = self.callers.setdefault(tuple(target), [])
-                                if (entity, event) not in found:
-                                    found.append((entity, event))
+    def __init__(self, found):
+        self.found = found
+        self.callers = {}  # event path -> [(card, event path)] of the events that start it
+        self.setup = set()  # the event paths that the setup starts
+        for card in found.cards.values():
+            for event in found.events(card.id):
+                starts = [start for trigger in event.triggers for start in trigger.starts]
+                for step in event.steps:
+                    if isinstance(step, s.DeclaredStage):
+                        starts += [
+                            item for item in s.statements_of(step.body) if isinstance(item, s.DeclaredStart)
+                        ]
+                for start in starts:
+                    target = start.event.type.event
+                    if target == event.path:
+                        continue  # a trigger starts its own event: the trigger says when
+                    item = (card.id, event)
+                    if item not in self.callers.setdefault(target, []):
+                        self.callers[target].append(item)
+        for start in found.declared.setup:
+            self.setup.add(start.event.type.event)
 
-    def title(self, entity):
-        return card_title(self.lines[entity.entry])
-
-    def event_of(self, entity, event, own):
+    def event_words(self, card, event, own):
         """An event in words: its name, after its card's title when it is of another card."""
-        if entity.entry == own:
-            return words(event)
-        return f'{self.title(entity)}: {words(event)}'
+        if card == own:
+            return words(event.name)
+        return f'{self.found.cards[card].title}: {words(event.name)}'
 
-    def line(self, entity, event):
-        model = self.model
-        name_of = event_namer(model, entity, event)
+    def line(self, card, event):
+        found = self.found
+        name_of = namer(found, card, _shown(event))
         say = _Words(name_of).text
+        parts = []
+        for trigger in event.triggers:
+            condition = say(trigger.test)
+            text = condition if _starts_with_time(trigger.test) else f'when {condition}'
+            reset = trigger.reset
+            if reset is not None:
+                kind, value = reset
+                if kind == 'when' and isinstance(value, s.Const) and value.value is False:
+                    text += ', once'
+                else:
+                    text += f', again {"when" if kind == "when" else "after"} {say(value)}'
+            parts.append(text)
         callers = []
-        for caller, by in self.callers.get((entity.name, event.name), ()):
-            found = self.event_of(caller, by.name, entity.entry)
-            if found not in callers:
-                callers.append(found)
-        fired = ' or '.join(callers) + ' fires it' if callers else ''
-        if event.when is not None:
-            condition = say(event.when.node)
-            when = condition if _starts_with_time(event.when.node) else f'when {condition}'
-            if fired:
-                when += f', or when {fired}'
-        elif fired:
-            when = f'when {fired}'
-        elif event.each:
-            when = ''
-        else:
-            when = 'never: no event fires it'
-        timing = []
-        if event.after is not None:
-            timing.append(f'after {say(event.after.node)}')
-        if event.keep is not None:
-            timing.append(f'while {say(event.keep.node)}')
-        if event.each:
-            timing.append('once for each value of ' + _listed([say(item.node) for item in event.each]))
-        if event.once:
-            timing.append('once')
-        choice = 'chooses ' + ' or '.join(words(o.name) for o in event.outcomes) if event.choice else ''
-        chances, changes, outcomes = self.outcomes(entity, event, name_of)
-        options = _options(model, entity, event)
-        parts = [part for part in (when, *timing, choice, *outcomes, options) if part]
+        for caller, by in self.callers.get(event.path, ()):
+            text = self.event_words(caller, by, card)
+            if text not in callers:
+                callers.append(text)
+        if callers:
+            parts.append(f'when {" or ".join(callers)} starts it')
+        if event.path in self.setup:
+            parts.append('the setup starts it')
+        starts = ', or '.join(parts) if parts else 'never: nothing starts it'
+        steps = []
+        for step in event.steps:
+            if isinstance(step, s.DeclaredGate):
+                steps.append(f'until {say(step.test)}')
+                continue
+            delay = say(step.delay)
+            if step.wait:
+                steps.append(f'waits {delay}')
+                continue
+            head = f'after {delay}' + (f' when {say(step.guard)}' if step.guard is not None else '')
+            changes = self.changes(card, step.body, name_of)
+            steps.append(f'{head}: {changes}' if changes else head)
+        options = _options(found, event)
+        rule = None
+        if event.triggers:
+            rule = found.written('Trigger', event.triggers[0].line, 'test')
         name = words(event.name)
+        full = _joined(name, [part for part in (starts, *steps, options) if part])
         return Line(
-            card=entity.entry,
+            card=card,
             event=event.name,
-            key=f'{flat_entity(entity.name)}.{event.name}',
+            key=f'{card}.{event.name}',
+            path=event.path,
             name=name,
-            when=when,
-            timing=tuple(timing),
-            chance=tuple(chances),
-            choice=choice,
-            changes=tuple(changes),
-            outcomes=tuple(outcomes),
+            starts=starts,
+            steps=tuple(steps),
             options=options,
             label=_label(event),
-            rule=_rule(event),
-            full=_joined(name, parts),
+            rule=rule,
+            full=full,
         )
 
-    def outcomes(self, entity, event, name_of):
-        """(the chances, the changes, and both of each outcome together) of an event."""
+    def changes(self, card, body, name_of):
+        """What the statements of a body change: the verb once for each run of statements with the
+        same verb, "sets a, b, adds to c"."""
         say = _Words(name_of).text
-        many = len(event.outcomes) > 1
-        likely = [
-            o for o in event.outcomes if o.chance not in (None, 'else') and not _condition(o.chance, self)
-        ]
-        chances, changes, outcomes = [], [], []
-        for outcome in event.outcomes:
-            head = words(outcome.name) if many else ''
-            chance = ''
-            if outcome.chance == 'else' and likely:
-                chance = 'chance of the rest'
-            elif outcome in likely:
-                chance = f'chance {say(outcome.chance.node)}'
-            change = self.changes(entity, outcome, name_of)
-            if chance:
-                chances.append(f'{head}, {chance}' if head else chance)
-            if change:
-                changes.append(f'{head}: {change}' if head else change)
-            both = ', '.join(part for part in (head, chance) if part)
-            if change:
-                both = f'{both}: {change}' if both else change
-            if chance or change:
-                outcomes.append(both)
-        return chances, changes, outcomes
-
-    def changes(self, entity, outcome, name_of):
-        """What the lines of an outcome change: the verb once for each run of lines with the same verb,
-        "sets a, b, adds to c"."""
         items = []
-        for line in outcome.lines:
-            if isinstance(line, Assign):
-                # A target is a `Ref` of the semantic model: `name_of` reads its typed node.
-                target = (
-                    name_of(resolved.of_tree(line.target))
-                    if isinstance(line.target, Ref)
-                    else words(line.written)
+        for statement in body:
+            if isinstance(statement, s.DeclaredAssign):
+                items.append((VERBS[statement.op], name_of(statement.target)))
+            elif isinstance(statement, s.DeclaredMove):
+                items.append(
+                    ('moves', f'from {name_of(statement.source)} to {name_of(statement.destination)}')
                 )
-                items.append((VERBS[operator_word(line)], target))
-            elif isinstance(line, Move):
-                ends = [
-                    name_of(resolved.of_tree(end)) if isinstance(end, Ref) else words(written)
-                    for written, end in line.ends
-                ]
-                items.append(('moves', f'from {ends[0]} to {ends[1]}' if len(ends) == 2 else ' '.join(ends)))
-            elif isinstance(line, Fire):
-                items.append(('fires', self.fired(entity, line)))
+            elif isinstance(statement, s.DeclaredStart):
+                items.append(('starts', self.started(card, statement, name_of)))
+            elif isinstance(statement, s.DeclaredIf):
+                text = f'if {say(statement.test)}: {self.changes(card, statement.then, name_of) or "nothing"}'
+                if statement.orelse:
+                    text += f', else: {self.changes(card, statement.orelse, name_of)}'
+                items.append(('', text))
+            elif isinstance(statement, s.DeclaredSwitch):
+                items.append(('', self.switch(card, statement, name_of)))
         out, verb = [], None
         for found, target in items:
-            out.append(target if found == verb else f'{found} {target}')
+            out.append(target if found and found == verb else f'{found} {target}'.strip())
             verb = found
         return ', '.join(out)
 
-    def fired(self, entity, line):
-        """The events that a line fires: "<card>: <event>", or the event of its own card; the members
-        of a list, "<event> of <list>"."""
-        targets = line.targets if isinstance(line.targets, tuple) else ()
-        if not targets:
-            return words(line.written)
-        events = {event for _, event in targets}
-        if len(targets) > 1 and len(events) == 1:
-            head = str(line.written).rpartition('.')[0]
-            return f'{words(targets[0][1])} of {words(head) if head else "each"}'
-        found = []
-        for owner, event in targets:
-            thing = self.scenario.entity(owner)
-            text = self.event_of(thing, event, entity.entry) if thing is not None else words(event)
-            if text not in found:
-                found.append(text)
-        return ', '.join(found)
+    def switch(self, card, statement, name_of):
+        """A switch: what selects its case, and what each case changes."""
+        say = _Words(name_of).text
+        selector = statement.selector
+        members = [case.member for case in statement.cases]
+        if isinstance(selector, s.Drawn) and isinstance(selector.source, s.Distribution):
+            source = selector.source
+            weights = dict(zip(source.outcomes, source.params))
+            head = 'draws ' + ' or '.join(f'{words(m)} (chance {number(weights.get(m, 0))})' for m in members)
+        elif isinstance(selector, s.Drawn):
+            head = f'draws {" or ".join(words(m) for m in members)} from {say(selector.source)}'
+        elif isinstance(selector, s.Chosen):
+            head = f'{say(selector.actor)} chooses {" or ".join(words(m) for m in members)}'
+        else:
+            head = f'by {say(selector)}'
+        cases = []
+        for case in statement.cases:
+            changes = self.changes(card, case.body, name_of)
+            guard = f' when {say(case.guard)}' if case.guard is not None else ''
+            if changes or guard:
+                cases.append(f'{words(case.member)}{guard}: {changes or "nothing"}')
+        if statement.orelse:
+            cases.append(f'else: {self.changes(card, statement.orelse, name_of)}')
+        return ', '.join([head, *cases])
 
-
-def event_namer(model, entity, event):
-    """The `name_of` of the line of one event (`namer`): over its condition, delay, window and `while`,
-    the chances of its outcomes, and the targets of their lines."""
-    return namer(model, entity, _shown(event))
-
-
-def _shown(event):
-    """The expressions that a line of an event reads out: its condition, delay, window and `while`, the
-    chances of its outcomes, and the targets of their lines (each target as its typed node)."""
-    shown = [event.when, event.after, *event.each, event.keep]
-    for outcome in event.outcomes:
-        if outcome.chance not in (None, 'else'):
-            shown.append(outcome.chance)
-        for line in outcome.lines:
-            if isinstance(line, Assign) and isinstance(line.target, Ref):
-                shown.append(resolved.of_tree(line.target))
-            elif isinstance(line, Move):
-                shown += [resolved.of_tree(end) for _, end in line.ends if isinstance(end, Ref)]
-    return [item for item in shown if item is not None]
+    def started(self, card, statement, name_of):
+        """The event that a statement starts: "<card>: <event>", or the event of its own card; on
+        each member of a collection, "<event> of <collection>"."""
+        found = self.found.reached(statement.event, self.found.cards[card].members)
+        event = statement.event.type.event.rpartition('.')[2]
+        if found is None or found.what != 'event' or not found.members:
+            return words(event)
+        cards = list(dict.fromkeys(self.found.card_of.get(m) for m in found.members))
+        if len(found.members) > 1:
+            return f'{words(event)} of {name_of.group(s.Read(statement.event.start, statement.event.steps[:-1], None))}'
+        if cards == [card]:
+            return words(event)
+        other = self.found.cards.get(cards[0])
+        return f'{other.title}: {words(event)}' if other is not None else words(event)
 
 
 def _starts_with_time(node):
     """Whether a condition's words start with "from": a comparison `t >= x`, or an `and` that starts
     with one."""
     first = next(_conjuncts(node))
-    if not (isinstance(first, expr.Compare) and len(first.ops) == 1):
+    if not (isinstance(first, s.Apply) and first.op == 'compare' and len(first.detail) == 1):
         return False
     left, op, right = _pairs(first)[0]
     if _special(right) and not _special(left):
         left, op = right, MIRROR[op]
-    return isinstance(left, expr.Ref) and left.name == 't' and op == 'ge'
+    return isinstance(left, s.Read) and left.start == ('time',) and op == 'ge'
 
 
-def _condition(chance, lines):
-    """Whether the chance of an outcome is a condition (1 when it holds, else 0), not a number."""
-    node = _node(chance)
-    if isinstance(node, (expr.Compare, expr.BoolOp, resolved.Word)):
-        return True
-    if isinstance(node, expr.Unary):
-        return node.op == 'not'
-    if isinstance(node, expr.Const):
-        return isinstance(node.value, bool)
-    if isinstance(node, expr.IfElse):
-        return _condition(node.body, lines)
-    if isinstance(node, expr.Call):
-        return node.function in ('any', 'all')
-    if isinstance(node, resolved.Ref) and node.entity is not None:
-        thing = lines.scenario.entity(node.entity)
-        value = thing.value(node.member) if thing is not None else None
-        return value is not None and thaw(value.type) == 'bool'
-    return False
-
-
-def _options(model, entity, event):
-    """The options that switch an event: "only with <option>" when the structures that hold it are
-    those with the option, "not with <option>" when they are those without it, else the options of
-    each structure that holds it; "" when every structure holds it, and "in no run" when none does. A
-    structure holds the event unless it leaves its rule out (`model.left_out`)."""
-    key = f'{flat_entity(entity.name)}.{event.name}'
-    starts = list(model.structures)
-    held = [s for s in starts if key not in model.left_out[s].get('rules', {})]
-    if len(held) == len(starts):
+def _options(found, event):
+    """The options that switch an event, by the runs that can start it (`Things.startable`): "only
+    with <option>" when the runs that can are those with the option, "not with <option>" when they are
+    those without it, else the options of each run that can; "" when every run can, and "in no run"
+    when none can."""
+    runs = found.runs
+    held = [run for run in runs if found.startable(run).get(event.path, True)]
+    if len(held) == len(runs):
         return ''
     if not held:
         return 'in no run'
-    lacking = [s for s in starts if s not in held]
-    options = [o for o in model.start_options if any(o in s for s in starts)]
+    chosen = {run: set(found.declared.run(run).options) if run is not None else set() for run in runs}
+    lacking = [run for run in runs if run not in held]
+    options = list(dict.fromkeys(option for run in runs for option in sorted(chosen[run])))
     for option in options:
-        if all(option in s for s in held) and not any(option in s for s in lacking):
+        if all(option in chosen[r] for r in held) and not any(option in chosen[r] for r in lacking):
             return f'only with {option}'
     for option in options:
-        if not any(option in s for s in held) and all(option in s for s in lacking):
+        if not any(option in chosen[r] for r in held) and all(option in chosen[r] for r in lacking):
             return f'not with {option}'
-    common = [o for o in options if all(o in s for s in held)]
-    if common and not any(set(common) <= set(s) for s in lacking):
-        return 'only with ' + _listed(common)
-    ways = [_listed(list(s)) if s else 'none of ' + ', '.join(options) for s in held]
-    return 'only with ' + ', or with '.join(ways)
+    return 'only in ' + _listed([run for run in held if run is not None])
 
 
 def _label(event):
-    """The event's text with its braces filled, or that of its first outcome that has one."""
-    for words_of in (event.label, *(outcome.label for outcome in event.outcomes)):
-        found = plain_text(words_of.text) if words_of is not None else None
-        if found:
-            return found
+    """The event's text, or that of its first stage or case that has one."""
+    if event.text:
+        return event.text
+    for step in event.steps:
+        if isinstance(step, s.DeclaredStage):
+            if step.text:
+                return step.text
+            for statement in s.statements_of(step.body):
+                if isinstance(statement, s.DeclaredCase) and statement.text:
+                    return statement.text
     return None
 
 
-def _rule(event):
-    """The condition of an event as the file writes it, or None without one."""
-    if event.when is None:
-        return None
-    written = event.when.written
-    if isinstance(written, str):
-        return written
-    return ('true' if written else 'false') if isinstance(written, bool) else number(written)
+def card_events(found, card):
+    """The events of one card (`Things.events`), in written order."""
+    if card not in found.cards:
+        raise ValueError(f'{card} is not a thing of the model')
+    return tuple(found.events(card))
 
 
-def event_line(model, entity, event):
-    """The `Line` of one event of `entity` (a semantic `Entity`), in words."""
-    return _Lines(model).line(entity, event)
+def card_lines(found, card):
+    """The `Line` of each event of one card (`card_events`), in written order."""
+    lines = _Lines(found)
+    return tuple(lines.line(card, event) for event in card_events(found, card))
 
 
-def _entity_of(model, card):
-    if isinstance(card, str):
-        lines = styles.entity_lines(model)
-        if card not in lines:
-            raise ValueError(f'{card} is not a thing of the model')
-        return lines[card]
-    return card
-
-
-def card_events(model, card):
-    """The events of one card, in the order of the file: `card` is an entity line (the `id` of a card
-    of the picture) or an `Entity`. A set of copies shows the events of its first copy."""
-    return tuple(_entity_of(model, card).events)
-
-
-def card_lines(model, card):
-    """The `Line` of each event of one card (`card_events`), in the order of the file."""
-    entity = _entity_of(model, card)
-    lines = _Lines(model)
-    return tuple(lines.line(entity, event) for event in entity.events)
+def event_line(found, card, event):
+    """The `Line` of one event of a card."""
+    return _Lines(found).line(card, event)

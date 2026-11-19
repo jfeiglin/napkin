@@ -104,8 +104,6 @@ def walk_expression(expression, item=()):
             yield from walk_expression(expression.source, item)
     elif isinstance(expression, s.History):
         yield from walk_expression(expression.source, item)
-        if expression.delay is not None:
-            yield from walk_expression(expression.delay, item)
     elif isinstance(expression, tuple):
         for part in expression:
             yield from walk_expression(part, item)

@@ -3,10 +3,10 @@ symbols and equation lines rest on, and the marks that point into the list.
 
 A caller gives the cited places in reading order, `[(place, records), …]`. A place is any hashable
 key of the caller's, such as a row of the Symbols table or an equation line. Its records are the
-`.records` of a part of the semantic model: None, one record, or a list of them (docs/language.md,
-§2.10). `references` gives the entries, numbered 1 to n by first use, and the marks of each place.
-Everything that an entry shows comes from the records of the model and of its library
-(`model.library`).
+`evidence` of a part of the declared model: the records that it cites by name (`@name`, a
+`nodes.Cite`) and those written under it (`nodes.Inline`), or None. `references` gives the entries,
+numbered 1 to n by first use, and the marks of each place. Everything that an entry shows comes from
+the records of the model and of its library (`things.Things.library`).
 
 Each record gives entries by its kind:
 
@@ -143,11 +143,11 @@ class References:
         return self.entries[number - 1]
 
 
-def references(cited, model, *, kinds=KINDS):
-    """The References list of the places `cited` (`[(place, records), …]`, in reading order) of
-    `model`, with the entries of `kinds` only."""
+def references(cited, found, *, kinds=KINDS):
+    """The References list of the places `cited` (`[(place, records), …]`, in reading order) of a
+    model (`things.Things`), with the entries of `kinds` only."""
     listed = checked_kinds(kinds)
-    reader = _Reader(model)
+    reader = _Reader(found)
     drafts = {}  # key -> _Draft, in the order of first use
     cites = {}  # place -> keys, in the order of the place's records
     for place, records in cited:
@@ -329,19 +329,41 @@ class _Draft:
         )
 
 
+def content(item, named):
+    """The content of one record of a part's evidence, as an entry reads it: `{kind, explanation,
+    links, assumption, convention, name}`. A cited name (`nodes.Cite`) is that record of the model,
+    with its name; a record written in place (`nodes.Inline`) has no name. The IDs that a record rests
+    on are its `assumption` and its `convention`."""
+    from ..model.language import nodes as n
+    from ..model.language.evidence import content as written
+
+    if isinstance(item, n.Cite):
+        if item.name not in named:
+            raise ValueError(f'no record is named {item.name!r}')
+        found = {**written(named[item.name]), 'name': item.name}
+    elif isinstance(item, (n.Inline, n.Record)):
+        found = written(item)
+    elif isinstance(item, Mapping):
+        found = dict(item)
+    else:
+        return None
+    for relation in found.pop('rests_on', ()):
+        found.update(relation)
+    return found
+
+
 class _Reader:
     """The records of a model and of its library, by ID, and the words that an entry shows of them."""
 
-    def __init__(self, model):
-        library = model.library
+    def __init__(self, found):
+        library = found.library
 
         def by_id(collection):
             return {item['id']: item for item in library.get(collection) or ()}
 
         self.sources, self.claims = by_id('sources'), by_id('claims')
         self.assumptions, self.conventions = by_id('assumptions'), by_id('conventions')
-        scenario = getattr(model, 'scenario', None)
-        self.named = {record.name: record.content for record in getattr(scenario, 'records', ())}
+        self.named = {record.name: record for record in found.declared.records}
         ids = sorted(
             {item for collection in COLLECTIONS for item in by_id(collection)}, key=len, reverse=True
         )
@@ -384,17 +406,11 @@ class _Reader:
     # ---- records
 
     def records(self, records):
-        """The records of a basis: one record, a list of them, or None. A name, as the notes write a
-        record, is that named record. A range note gives the reasons for a range: it is no record."""
+        """The records of a part's evidence (`content`): a tuple of them, or None."""
         items = records if isinstance(records, (list, tuple)) else () if records is None else (records,)
         for item in items:
-            record = item
-            if isinstance(item, str):
-                found = self.named.get(item)
-                if found is None:
-                    raise ValueError(f'no record is named {item!r}')
-                record = {**found, 'name': item}
-            if not isinstance(record, Mapping) or 'kind' not in record:
+            record = content(item, self.named)
+            if record is None or 'kind' not in record:
                 continue
             if record['kind'] not in RECORD_KINDS:
                 raise ValueError(f'unknown kind of record {record["kind"]!r}')

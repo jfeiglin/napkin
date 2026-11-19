@@ -3,81 +3,69 @@ thing, as math trees (`notation.py`). Each tree comes from the model's own expre
 always says what the model says. The panel, the symbols and the typesetting are the callers' (E5, E2,
 E4); this module makes no symbol and no SVG.
 
-`Equations(model, run=None)` reads a model once. `block(entity)` gives the block of one entity: an
-entity, an instance of a template, or one copy of a set. Its keys are those of the notation:
-`entity.member`, with the entity as the semantic model names it (`waves.1`). With `run`, the parts
-that the structure of the run leaves out are absent; without it, a part is in the block when it can
-act in one run or more (as `model_map.picture`).
+`Equations(found, run=None)` reads a model (`things.Things`) once. `block(member)` gives the block of
+one member: an entity written once, a member written by hand, or one row of a table. Its keys are
+those of the notation (`notation.Keys`): `member.name`. With `run`, the events that the run cannot
+start are absent; without it, an event is in the block when it can start in one run or more (as
+`model_map.picture`).
 
-The lines of a block, in this order of kinds (`KINDS`), each in the order of the file:
+The lines of a block, in this order of kinds (`KINDS`), each in written order:
 
 - `balance`: for each stock and tally, `dS/dt = Σ in − Σ out`. A term is the symbol of the rate of a
-  pair of a flow that ends on S (`Term`): the symbols of the pairs into S, then of the pairs out of S.
-  A pair with a rate of its own has the key `entity.flow[k]` (`pair_key`, k from 0 as the structure
-  numbers the pairs); every other pair moves at the flow's rate, `entity.flow`. A stock that no flow
-  moves has `dS/dt = 0`: between moments it stays constant (docs/engine.md, "Values that only rules
-  set").
-- `rate`: for each flow, `f = rate`, with its `while` as `Cases` (the rate while C holds, else 0, as
-  the builder writes it); and for each pair with a rate of its own, `f[k] = rate`. A rate that is
-  one bare name of a formula of the same entity, without `while`, takes the formula's symbol and its
-  line: the line is `D = <the formula>`, and `flows` lists each flow and pair that moves at D. The
-  rate of a flow is what the flow asks: a share and a bound can give it less (below).
-- `formula`: each formula of the entity that the rates reach within `depth` hops of names, defined
-  once, in the order of a breadth-first search (`hop` is its number of hops). The search goes
-  through the formulas of the entity only. A formula of another entity is a name in the line and
-  the line of that entity's block; inputs, states and the formulas deeper than `depth` are names
-  too (the Symbols table lists them).
-- `bound`: for each stock and tally, and each number state with a bound in the file:
-  `lo ≤ S ≤ hi`, with the stock's and the tally's `0` when the file gives no minimum. Where a flow
-  moves S, the words say that the engine limits the flows at a bound (docs/engine.md, "At a bound":
-  "Material that cannot move is limited, never lost: a flow out of an empty stock gets only what
-  flows in, and a flow into a full stock is cut."). Elsewhere a value past a bound stops the run
-  ("Checks": "A quantity below `min` or above `max` by more than its tolerance stops the run").
-  The `size` is not a bound: it scales the solver's tolerance only ("Sizes").
-- `share`: each `share` of the entity: the flows that take from its stock add up to at most its
-  limit, `f1 + f2 ≤ L` ("the most that the group gives out per hour"), in the listed order or in
-  proportion to what they ask (docs/engine.md, "Allocation").
-- `together`: each flow of several pairs: the symbols of its pairs, which move by one fraction
-  ("Coupling": "when one flow is cut, every flow of the group is cut by the same fraction").
-- `jump`: each line of an event, of any entity, that sets, adds to or takes from a value of the
-  entity: `S ← v` (`notation.assignment`); and each `move A from S to D` with an end on the entity:
-  `S ← S − A` and `D ← D + A`, for its ends on the entity. `event` is the event's key, and `outcome`
-  the outcome's name when the event has more than one.
-- `check`: with `checks`, each `assert` of the entity: its condition, or for a sum
-  `|a + b − T| ≤ d` with `within d` and `a + b = T` without it.
+  flow that ends at S (`Term`): the flows into S, then the flows out of S, of any thing, a leg of a
+  flow with legs and a flow of an event too (that one while its occurrence lasts). A route takes from
+  its first end and gives to its second at its signed rate. A stock that no flow moves has
+  `dS/dt = 0`: between moments it stays constant.
+- `rate`: for each flow of the member, its request, `request(f) = r`: what the flow asks. Its
+  capacity, its ends and the allocations of its endpoints can give it less (below). A flow with no
+  request asks for nothing of its own (spec: "request … defaults to zero").
+- `formula`: each formula of the member that the requests and capacities reach within `depth` hops
+  of names, defined once, in the order of a breadth-first search (`hop` is its number of hops). The
+  search goes through the formulas of the member only; anything else is a name in the line (the
+  Symbols table lists it).
+- `bound`: for each capacity of a flow, `f ≤ c` (`|f| ≤ c` for a route); for each stock, tally and
+  number state with a range, `lo ≤ S ≤ hi`. Where a flow moves S, the words say that the engine limits
+  the flows at a bound (spec: "At its lower bound, total withdrawals can use simultaneous inflow");
+  elsewhere a value past a bound stops the run.
+- `share`: the settings of each endpoint of a store of the member: `outflow(S) ≤ c` for its capacity,
+  `request(outflow(S)) = r` for its request, and `priority(f1, f2)` for an allocation by priority,
+  with the words of the allocation (`priority` "shared in this order", `proportional` "shared in
+  proportion to what the flows ask", the default).
+- `together`: each flow with legs: the symbols of its legs, which move at one served fraction.
+- `jump`: each assignment of a stage of an event, of any thing, that sets, adds to or takes from a
+  value of the member: `S ← v` (`notation.assignment`); and each `move A from S to D` with an end on
+  the member: `S ← S − A` and `D ← D + A`, for its ends on the member. `event` is the event's key,
+  and `outcome` the case of a switch that the assignment is in, or None.
+- `check`: with `checks`, each `assert` of the member's template.
 
 Each line has its trees: `lhs` and `rhs` for a balance, a rate and a formula (`lhs = rhs`), else
-`math`, a tuple (most lines have one tree; a move with both ends on the entity has two, and
-`together` lists its symbols). It has its few words where the math alone cannot say it (`words`),
-the key of the part whose form it shows (`part`), the records of that part (`records`, for the
-reference marks: of a rate line that a formula takes, the formula's records and then those of each
-flow that moves at it), and the keys that it names (`keys`, for the Symbols table).
+`math`, a tuple. It has its few words where the math alone cannot say it (`words`), the key of the
+part whose form it shows (`part`), the evidence of that part (`records`, for the reference marks),
+and the keys that it names (`keys`, for the Symbols table).
 
-Templates. `same(a, b)` says whether two blocks are the same up to their entity: the blocks are
+Templates. `same(a, b)` says whether two blocks are the same up to their member: the blocks are
 equal once each one's own keys name one placeholder. A list (`Sum`) keeps its members: it is the same
-list for every instance. `generic(block, name)` writes a block with `name` for its entity, so
-`Zone.level` for `north.level`. `together(entities, name)` groups the blocks of `entities` that are
-the same (`Group`): each group's block is written once with the keys of `name` (a template), and its
-`members` are the entities that it stands for. `template(name)` does this for every instance of a
-template, in the order of the model.
+list for every member. `generic(block, name)` writes a block with `name` for its member, so
+`Zone.level` for `north.level`. `together(members, name)` groups the blocks of `members` that are the
+same (`Group`): each group's block is written once with the keys of `name` (a template), and its
+`members` are the members that it stands for. `template(name)` does this for every member of a
+template, in creation order.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields, replace
 
-from ..model import resolved
-from ..model.semantic import Assign as AssignLine
-from ..model.semantic import Move, Problem, Ref, flat_entity
+from ..model import semantic as s
 from . import notation
 from .notation import (
     Assign,
     Call,
-    Cases,
     Cmp,
     Count,
     Deriv,
     Elapsed,
+    Keys,
     Neg,
     Node,
     Num,
@@ -85,7 +73,6 @@ from .notation import (
     Since,
     Sum,
     Sym,
-    key_of,
     split,
 )
 
@@ -100,27 +87,21 @@ WORDS = {
     'bound_stops': 'past a bound, the run stops',
     'priority': 'shared in this order',
     'proportional': 'shared in proportion to what the flows ask',
-    'together': 'the pairs move by one fraction',
+    'together': 'the legs move at one served fraction',
 }
 # The kinds of value that have a balance: the stocks and the tallies.
 BALANCED = ('stock', 'tally')
-# The placeholder of the entity that `same` gives two blocks.
+# The placeholder of the member that `same` gives two blocks.
 PLACEHOLDER = '*'
-
-
-def pair_key(flow, k):
-    """The key of pair k (from 0) of the flow `flow` (`entity.flow`), whose rate is its own."""
-    return f'{flow}[{k}]'
 
 
 @dataclass(frozen=True)
 class Term:
-    """A term of a balance: the sign (+1 into the stock, -1 out of it), the flow (`entity.flow`), the
-    number of its pair (from 0), and the symbol of the pair's rate."""
+    """A term of a balance: the sign (+1 into the stock, -1 out of it), the flow's key, and the
+    symbol of its rate."""
 
     sign: int
     flow: str
-    pair: int
     node: Sym
 
 
@@ -128,14 +109,10 @@ class Term:
 class Line:
     """A line of a block (see the module's text). A balance, a rate and a formula are equations,
     `lhs = rhs`, and have no `math`; every other line has its trees in `math` and no `lhs` or `rhs`.
-    (A definition is no comparison: `Cmp` would put a right side of lower precedence, such as
-    `Cases`, in parentheses.) `flows`: of a rate line, what moves at its rate: a flow
-    (`entity.flow`, each of its pairs without a rate of its own) or a pair with its own rate
-    (`entity.flow[k]`); of a share, the pairs that take from its stock, in the order of the share;
-    of `together`, the pairs of the flow. A pair of a share or of `together` is `entity.flow` for a
-    flow of one pair, else `entity.flow[k]`. `hop`: of a formula, its hops from the rates. `terms`:
-    of a balance, its terms, in the order of `rhs`. `relation`: of an equation, `=`, or `⇔` for a
-    formula whose value is a yes/no: the formula holds exactly when its right side holds."""
+    `flows`: of a rate and a capacity, its flow; of a share, the flows of the endpoint, in the order of
+    its priority; of `together`, the legs. `hop`: of a formula, its hops from the rates. `terms`: of a
+    balance, its terms, in the order of `rhs`. `relation`: of an equation, `=`, or `⇔` for a formula
+    whose value is a yes/no: the formula holds exactly when its right side holds."""
 
     kind: str
     lhs: Node | None
@@ -170,8 +147,8 @@ class Line:
 
     @property
     def keys(self):
-        """The keys of the values, flows, events and outcomes that the line names, in order, each
-        once: the keys of its trees. (A jump names its event in words, so its event is no key.)"""
+        """The keys of the values, flows and events that the line names, in order, each once: the
+        keys of its trees. (A jump names its event in words, so its event is no key.)"""
         found = []
         for node in self.trees:
             for part in notation.nodes(node):
@@ -193,7 +170,7 @@ def _key_of(node):
 
 @dataclass(frozen=True)
 class Block:
-    """The block of an entity: its lines, in the order of `KINDS`."""
+    """The block of a member: its lines, in the order of `KINDS`."""
 
     entity: str
     lines: tuple
@@ -210,10 +187,9 @@ class Block:
 
 @dataclass(frozen=True)
 class Group:
-    """Entities whose blocks are the same up to the entity: the name whose keys the block writes (a
-    template), the entities that it stands for (`members`, in the order given), the block written
-    once with the keys of `name`, and each member's own block (`blocks`, in the order of
-    `members`)."""
+    """Members whose blocks are the same up to the member: the name whose keys the block writes (a
+    template), the members that it stands for (`members`, in the order given), the block written once
+    with the keys of `name`, and each member's own block (`blocks`, in the order of `members`)."""
 
     name: str
     members: tuple
@@ -240,406 +216,349 @@ def records_of(*parts):
 
 
 @dataclass(frozen=True)
-class _Pair:
-    """A pair of a flow, with what a block needs of it."""
+class _Flow:
+    """A flow of one member, with what a block needs of it: its key (`member.flow`, `member.flow.leg`
+    for a leg, `member.event.flow` for a flow of an event), its member, its declared flow (a directed
+    flow, a route or a leg), the flow with legs of a leg, the path of the event of a flow of an event,
+    and the (member, name) of the store at each end, or None at `SOURCE` and `SINK`."""
 
-    entity: str
-    flow: object  # semantic.Flow
-    k: int
-    pair: object  # semantic.Pair
-    ends: dict  # {'from' or 'to': the key of the value}
-    symbol: Sym  # the symbol of its rate
-    taken: str | None  # the key of the formula whose symbol and line its rate takes, or None
-    fid: str  # its name in the structure
-
-    @property
-    def key(self):
-        """The key of the flow, or of the pair when its rate is its own."""
-        flow = key_of(self.entity, self.flow.name)
-        return flow if self.pair.rate is None else pair_key(flow, self.k)
-
-    @property
-    def member(self):
-        """The name of the pair itself: the flow's key for a flow of one pair, else `entity.flow[k]`."""
-        flow = key_of(self.entity, self.flow.name)
-        return flow if len(self.flow.pairs) == 1 else pair_key(flow, self.k)
+    key: str
+    member: str
+    part: object
+    parent: object
+    event: str | None
+    source: tuple | None
+    sink: tuple | None
 
 
 class Equations:
-    """The blocks of one model, for one run (`run`) or for every run joined."""
+    """The blocks of one model (`things.Things`), for one run (`run`) or for every run joined."""
 
-    def __init__(self, model, run=None):
-        if run is not None and run not in model.runs:
-            raise ValueError(f'{run} is not a run of the model; its runs are {", ".join(model.runs)}')
-        self.model = model
-        self.scenario = model.scenario
+    def __init__(self, found, run=None):
+        if run is not None and run not in found.runs:
+            names = ', '.join(name for name in found.runs if name is not None) or 'none'
+            raise ValueError(f'{run} is not a run of the model; its runs are {names}')
+        self.found = found
         self.run = run
-        starts = dict.fromkeys(model.runs[name]['starts'] for name in ([run] if run else model.runs))
-        self.structures = [model.structures[key] for key in starts]
-        self.entities = {entity.name: entity for entity in self.scenario.entities}
-        self.values = {
-            key_of(entity.name, value.name): (entity, value)
-            for entity in self.scenario.entities
-            for value in entity.values
+        startable = [found.startable(name) for name in ((run,) if run is not None else found.runs)]
+        self.held = {
+            event.path
+            for card in found.cards
+            for event in found.events(card)
+            if any(item.get(event.path, True) for item in startable)
         }
-        self.pairs = [pair for entity in self.scenario.entities for pair in self._pairs(entity)]
-        self.jumps = self._jumps()
+        self.flows = [flow for card in found.cards for flow in self._flows(card)]
 
-    # ---- what the runs hold
+    def keys(self, member):
+        """The `notation.Keys` of one member."""
+        return Keys(self.found, member)
 
-    def holds(self, section, name):
-        """Whether a structure of the runs holds `name` in `section`."""
-        return any(name in structure.section(section) for structure in self.structures)
+    def _flows(self, card):
+        found = self.found
+        parts = []
+        for part in found.parts(card):
+            if isinstance(part, (s.DeclaredFlow, s.DeclaredLegs)):
+                parts.append((part.name, part, None))
+            elif isinstance(part, s.DeclaredEvent) and part.path in self.held:
+                for local in part.locals:
+                    if isinstance(local, (s.DeclaredFlow, s.DeclaredLegs)):
+                        parts.append((f'{part.name}.{local.name}', local, part.path))
+        for member in found.cards[card].members:
+            for name, part, event in parts:
+                legs = part.legs if isinstance(part, s.DeclaredLegs) else (part,)
+                for leg in legs:
+                    key = f'{member}.{name}' + (f'.{leg.name}' if leg is not part else '')
+                    ends = [self._end(end, member) for end in (leg.source, leg.sink)]
+                    yield _Flow(key, member, leg, part if leg is not part else None, event, *ends)
 
-    def holds_pair(self, pair):
-        """Whether a structure of the runs holds a pair: a flow, or the rate of a tally."""
-        return any(
-            pair.fid in structure.flows or any(pair.fid in rate.flows for rate in structure.rates.values())
-            for structure in self.structures
-        )
-
-    def holds_value(self, entity, value):
-        """Whether a structure of the runs holds a value: a stock, tally or number state, or a formula
-        (the builder writes a bool formula into its readers, so it is held while its entity is)."""
-        name = f'{flat_entity(entity.name)}.{value.name}'
-        if value.kind == 'formula':
-            return self.holds('computed', name) or self.holds('entities', flat_entity(entity.name))
-        return self.holds('quantities', name)
-
-    # ---- the parts of the model
-
-    def formula(self, key):
-        """The value of a key when it is a formula with its expression, else None."""
-        found = self.values.get(key)
-        if found is None:
+    def _end(self, end, member):
+        if not isinstance(end, s.Read):
             return None
-        value = found[1]
-        return value if value.kind == 'formula' and value.formula is not None else None
-
-    def _taken(self, entity, flow, rate):
-        """The key of the formula whose symbol a rate takes: one bare name of a formula of the flow's
-        own entity, without `while`; else None."""
-        node = getattr(rate, 'node', None)
-        if flow.condition is not None or not isinstance(node, resolved.Ref) or node.entity != entity.name:
+        reached = self.found.reached(end, (member,))
+        if reached is None or reached.what != 'value' or len(reached.members) != 1:
             return None
-        key = key_of(node.entity, node.member)
-        return key if self.formula(key) is not None else None
+        return reached.members[0], reached.name
 
-    def _pairs(self, entity):
-        host = flat_entity(entity.name)
-        for flow in entity.flows:
-            several = len(flow.pairs) > 1
-            for k, pair in enumerate(flow.pairs):
-                ends = {end: key_of(ref.entity, ref.member) for end, ref in pair.ends if isinstance(ref, Ref)}
-                taken = self._taken(entity, flow, pair.rate if pair.rate is not None else flow.rate)
-                if taken is not None:
-                    symbol = Sym(taken)
-                elif pair.rate is not None:
-                    symbol = Sym(pair_key(key_of(entity.name, flow.name), k))
-                else:
-                    symbol = Sym(key_of(entity.name, flow.name))
-                fid = f'{host}.{flow.name}' + (f'.{k}' if several else '')
-                yield _Pair(entity.name, flow, k, pair, ends, symbol, taken, fid)
-
-    def _jumps(self):
-        """{entity: [(event entity, event, outcome, the line's trees)]}: the lines of the events that
-        change a value of each entity, in the order of the model."""
-        found = {}
-        for owner in self.scenario.entities:
-            for event in owner.events:
-                for outcome in event.outcomes:
-                    for line in outcome.lines:
-                        for target, node in _changes(line):
-                            found.setdefault(target, []).append((owner, event, outcome, node))
-        return found
+    def value(self, member, name):
+        """The declared value `name` of a member's template, or None."""
+        return self.found.part(self.found.template_of[member], name)
 
     # ---- a block
 
-    def block(self, entity, *, depth=1, checks=False):
-        """The block of the entity `entity` (its name in the semantic model): see the module's text.
-        `depth` is the number of hops of formulas from the rates (0 or more), and `checks` adds the
-        entity's `assert` lines."""
-        if entity not in self.entities:
-            raise ValueError(f'{entity} is not an entity of the model')
+    def block(self, member, *, depth=1, checks=False):
+        """The block of the member `member` (its id): see the module's text. `depth` is the number of
+        hops of formulas from the rates (0 or more), and `checks` adds the `assert` lines of its
+        template."""
+        if member not in self.found.template_of:
+            raise ValueError(f'{member} is not a member of the model')
         if type(depth) is not int or depth < 0:
             raise ValueError(f'depth is a whole number, 0 or more: {depth!r}')
-        thing = self.entities[entity]
-        lines = []
-        lines += self._balances(thing)
-        rates = self._rates(thing)
+        keys = self.keys(member)
+        lines = [*self._balances(member)]
+        rates, capacities = self._rates(member, keys)
         lines += rates
-        lines += self._formulas(thing, rates, depth)
-        lines += self._bounds(thing)
-        lines += self._shares(thing)
-        lines += self._together(thing)
-        lines += self._jump_lines(thing)
+        lines += self._formulas(
+            member, keys, [line.rhs for line in rates] + [line.math[0] for line in capacities], depth
+        )
+        lines += capacities + self._bounds(member)
+        lines += self._shares(member, keys)
+        lines += self._together(member)
+        lines += self._jumps(member)
         if checks:
-            lines += self._checks(thing)
-        return Block(entity, tuple(lines))
+            lines += self._checks(member, keys)
+        return Block(member, tuple(lines))
 
-    def _balances(self, thing):
-        out = []
-        for value in thing.values:
-            if value.kind not in BALANCED or not self.holds_value(thing, value):
+    def _balances(self, member):
+        found, out = self.found, []
+        for value in found.values(found.card_of[member]):
+            if found.kind(value) not in BALANCED:
                 continue
-            key = key_of(thing.name, value.name)
-            ins, outs = [], []
-            for pair in self.pairs:
-                if not self.holds_pair(pair):
-                    continue
-                if pair.ends.get('to') == key:
-                    ins.append(Term(1, key_of(pair.entity, pair.flow.name), pair.k, pair.symbol))
-                if pair.ends.get('from') == key:
-                    outs.append(Term(-1, key_of(pair.entity, pair.flow.name), pair.k, pair.symbol))
-            sum_ = None
+            key, end = f'{member}.{value.name}', (member, value.name)
+            ins = [Term(1, flow.key, Sym(flow.key)) for flow in self.flows if flow.sink == end]
+            outs = [Term(-1, flow.key, Sym(flow.key)) for flow in self.flows if flow.source == end]
+            total = None
             for term in ins:
-                sum_ = term.node if sum_ is None else Op('+', sum_, term.node)
+                total = term.node if total is None else Op('+', total, term.node)
             for term in outs:
-                sum_ = Neg(term.node) if sum_ is None else Op('-', sum_, term.node)
-            rhs = Num(0) if sum_ is None else sum_
-            records = records_of(value.records)
-            out.append(Line('balance', Deriv(key), rhs, (), None, key, records, terms=(*ins, *outs)))
+                total = Neg(term.node) if total is None else Op('-', total, term.node)
+            rhs = Num(0) if total is None else total
+            out.append(Line('balance', Deriv(key), rhs, (), None, key, value.evidence, terms=(*ins, *outs)))
         return out
 
-    def _rates(self, thing):
-        """The rate lines of an entity's flows, in the order of the file; a formula that rates take is
-        one line, where the first of them is."""
-        out, taken = [], {}
-        for pair in self.pairs:
-            if pair.entity != thing.name or not self.holds_pair(pair):
+    def _rates(self, member, keys):
+        """The request lines and the capacity lines of a member's flows, in written order."""
+        rates, capacities = [], []
+        for flow in self.flows:
+            if flow.member != member:
                 continue
-            flow, own = pair.flow, pair.pair.rate is not None
-            if not own and pair.k != min(k for k, item in enumerate(flow.pairs) if item.rate is None):
-                continue  # the pairs that move at the flow's rate share the flow's line
-            records = records_of(pair.pair.records if own else None) or records_of(flow.records)
-            if pair.taken is not None:
-                line = taken.get(pair.taken)
-                if line is None:
-                    _, formula = self.values[pair.taken]
-                    rhs = notation.build(formula.formula)
-                    line = taken[pair.taken] = len(out)
-                    out.append(
-                        Line('rate', Sym(pair.taken), rhs, (), None, pair.taken, records_of(formula.records))
+            part, symbol = flow.part, Sym(flow.key)
+            if part.request is not None:
+                rhs = notation.build(part.request, keys)
+                rates.append(
+                    Line(
+                        'rate',
+                        Call('request', (symbol,)),
+                        rhs,
+                        (),
+                        None,
+                        flow.key,
+                        part.evidence,
+                        flows=(flow.key,),
                     )
-                found = out[line]
-                out[line] = replace(
-                    found,
-                    flows=(*found.flows, pair.key),
-                    records=records_of(found.records, records),
                 )
-                continue
-            rate = notation.build(pair.pair.rate if own else flow.rate)
-            if flow.condition is not None:
-                rate = Cases(((notation.build(flow.condition), rate),), Num(0))
-            out.append(Line('rate', pair.symbol, rate, (), None, pair.key, records, flows=(pair.key,)))
-        return out
+            if part.capacity is not None:
+                size = Call('abs', (symbol,)) if isinstance(part, s.DeclaredRoute) else symbol
+                math = Cmp(('<=',), (size, notation.build(part.capacity, keys)))
+                capacities.append(
+                    Line('bound', None, None, (math,), None, flow.key, part.evidence, flows=(flow.key,))
+                )
+        return rates, capacities
 
-    def _formulas(self, thing, rates, depth):
-        """The formulas of the entity within `depth` hops of the rates, in the order of the search."""
-        defined = {line.part for line in rates}
-        out = []
-        frontier = [line.rhs for line in rates]
+    def _formulas(self, member, keys, trees, depth):
+        """The formulas of the member within `depth` hops of the trees of its rates, in the order of
+        the search."""
+        defined, out, frontier = set(), [], trees
         for hop in range(1, depth + 1):
             reached = []
             for node in frontier:
                 for key in _names(node):
-                    value = self.formula(key)
-                    entity, _ = split(key)
-                    if value is None or entity != thing.name or key in defined:
-                        continue
-                    if not self.holds_value(thing, value):
+                    owner, name = split(key)
+                    value = self.value(member, name) if owner == member else None
+                    if not isinstance(value, s.DeclaredValue) or value.kind != s.FORMULA or key in defined:
                         continue
                     defined.add(key)
-                    tree = notation.build(value.formula)
-                    records = records_of(value.records)
-                    relation = '⇔' if value.type == 'bool' else '='
+                    tree = notation.build(value.init, keys)
+                    relation = '⇔' if value.type == s.BOOL else '='
                     out.append(
-                        Line('formula', Sym(key), tree, (), None, key, records, hop=hop, relation=relation)
+                        Line(
+                            'formula',
+                            Sym(key),
+                            tree,
+                            (),
+                            None,
+                            key,
+                            value.evidence,
+                            hop=hop,
+                            relation=relation,
+                        )
                     )
                     reached.append(tree)
             frontier = reached
         return out
 
-    def _bounds(self, thing):
-        out = []
-        for value in thing.values:
-            numeric = value.kind in BALANCED or (
-                value.kind == 'state' and value.type != 'bool' and not isinstance(value.type, tuple)
-            )
-            if not numeric or not self.holds_value(thing, value):
+    def _bounds(self, member):
+        found, out = self.found, []
+        keys = self.keys(member)
+        for value in found.values(found.card_of[member]):
+            kind = found.kind(value)
+            if kind not in (*BALANCED, 'state') or not isinstance(value.type, s.Num):
                 continue
-            key = key_of(thing.name, value.name)
-            low = notation.build(value.minimum.expression) if value.minimum is not None else None
-            if low is None and value.kind in BALANCED:
-                low = Num(0)  # a stock and a tally never go below 0 (docs/language.md, §2.4)
-            high = notation.build(value.maximum.expression) if value.maximum is not None else None
-            if low is None and high is None:
+            if value.lower is None and value.upper is None:
                 continue
+            key = f'{member}.{value.name}'
             symbol = Sym(key)
+            low = None if value.lower is None else notation.build(value.lower, keys)
+            high = None if value.upper is None else notation.build(value.upper, keys)
             if low is not None and high is not None:
                 math = Cmp(('<=', '<='), (low, symbol, high))
             elif low is not None:
                 math = Cmp(('>=',), (symbol, low))
             else:
                 math = Cmp(('<=',), (symbol, high))
-            moved = any(
-                key in pair.ends.values()
-                and any(pair.fid in structure.flows for structure in self.structures)
-                for pair in self.pairs
-            )
-            written = value.minimum is not None or value.maximum is not None
-            records = records_of(value.records) if written else ()
-            words = WORDS['bound_flows'] if moved else WORDS['bound_stops']
-            out.append(Line('bound', None, None, (math,), words, key, records))
+            words = WORDS['bound_flows'] if kind in BALANCED else WORDS['bound_stops']
+            out.append(Line('bound', None, None, (math,), words, key, value.evidence))
         return out
 
-    def _shares(self, thing):
-        out = []
-        host = flat_entity(thing.name)
-        for allocation in thing.allocations:
-            stock = allocation.stock
-            if not isinstance(stock, Ref) or not self.holds('allocation', f'{host}.{allocation.name}'):
-                continue
-            source = key_of(stock.entity, stock.member)
-            members = [
-                pair for pair in self.pairs if pair.ends.get('from') == source and self.holds_pair(pair)
-            ]
-            if allocation.serve is not None:
-                order = []
-                for _, owner, name, _ in allocation.serve:
-                    order += [pair for pair in members if (pair.entity, pair.flow.name) == (owner, name)]
-                members = order
-            if not members:
-                continue
-            total = None
-            for pair in members:
-                total = pair.symbol if total is None else Op('+', total, pair.symbol)
-            math = Cmp(('<=',), (total, notation.build(allocation.limit)))
-            words = WORDS['proportional' if allocation.serve is None else 'priority']
-            out.append(
-                Line(
-                    'share',
-                    None,
-                    None,
-                    (math,),
-                    words,
-                    key_of(thing.name, allocation.name),
-                    records_of(allocation.records),
-                    flows=tuple(pair.member for pair in members),
-                )
-            )
+    def _shares(self, member, keys):
+        found, out = self.found, []
+        for value in found.values(found.card_of[member]):
+            store = (member, value.name)
+            for side, end in ((value.outflow, 'source'), (value.inflow, 'sink')):
+                if side is None:
+                    continue
+                total = Call('outflow' if end == 'source' else 'inflow', (Sym(f'{member}.{value.name}'),))
+                math = []
+                if side.capacity is not None:
+                    math.append(Cmp(('<=',), (total, notation.build(side.capacity, keys))))
+                if side.request is not None:
+                    math.append(Cmp(('==',), (Call('request', (total,)), notation.build(side.request, keys))))
+                incident = [flow.key for flow in self.flows if getattr(flow, end) == store]
+                if side.allocation[0] == 'priority':
+                    ranked = tuple(keys(item) for item in side.allocation[1])
+                    math.append(Call('priority', ranked))
+                    flows = tuple(node.key for node in ranked if isinstance(node, Sym))
+                    words = WORDS['priority']
+                else:
+                    flows, words = tuple(incident), WORDS['proportional'] if math else None
+                if math:
+                    out.append(
+                        Line(
+                            'share',
+                            None,
+                            None,
+                            tuple(math),
+                            words,
+                            side.path.replace(value.path, f'{member}.{value.name}', 1),
+                            (),
+                            flows=flows,
+                        )
+                    )
         return out
 
-    def _together(self, thing):
+    def _together(self, member):
         out = []
-        host = flat_entity(thing.name)
-        for flow in thing.flows:
-            if len(flow.pairs) < 2 or not self.holds('coupling', f'{host}.{flow.name}'):
+        for part in self.found.parts(self.found.card_of[member]):
+            if not isinstance(part, s.DeclaredLegs):
                 continue
-            pairs = [
-                pair
-                for pair in self.pairs
-                if (pair.entity, pair.flow.name) == (thing.name, flow.name) and self.holds_pair(pair)
-            ]
-            symbols = tuple(dict.fromkeys(pair.symbol for pair in pairs))
-            records = records_of(flow.together.value if flow.together is not None else None)
+            legs = tuple(Sym(f'{member}.{part.name}.{leg.name}') for leg in part.legs)
+            key = f'{member}.{part.name}'
             out.append(
                 Line(
                     'together',
                     None,
                     None,
-                    symbols,
+                    legs,
                     WORDS['together'],
-                    key_of(thing.name, flow.name),
-                    records,
-                    flows=tuple(pair.member for pair in pairs),
+                    key,
+                    part.evidence,
+                    flows=tuple(leg.key for leg in legs),
                 )
             )
         return out
 
-    def _jump_lines(self, thing):
-        out = []
-        for owner, event, outcome, nodes in self.jumps.get(thing.name, ()):
-            if not self.holds('rules', f'{flat_entity(owner.name)}.{event.name}'):
-                continue
-            records = records_of(outcome.records if outcome.records is not None else event.records)
-            out.append(
-                Line(
-                    'jump',
-                    None,
-                    None,
-                    nodes,
-                    None,
-                    key_of(owner.name, event.name),
-                    records,
-                    event=key_of(owner.name, event.name),
-                    outcome=outcome.name if len(event.outcomes) > 1 else None,
-                )
-            )
+    def _jumps(self, member):
+        """The assignments and moves of the stages of every event that can act, of any thing, that
+        change a value of `member`."""
+        found, out = self.found, []
+        for card in found.cards:
+            for event in found.events(card):
+                if event.path not in self.held:
+                    continue
+                for owner in found.cards[card].members:
+                    keys = self.keys(owner)
+                    for step in event.steps:
+                        if not isinstance(step, s.DeclaredStage):
+                            continue
+                        for statement, case in _cases(step.body, None):
+                            nodes = _changed(statement, keys, member)
+                            if nodes:
+                                key = f'{owner}.{event.name}'
+                                records = step.evidence or event.evidence
+                                out.append(
+                                    Line(
+                                        'jump', None, None, nodes, None, key, records, event=key, outcome=case
+                                    )
+                                )
         return out
 
-    def _checks(self, thing):
-        if not self.holds('entities', flat_entity(thing.name)):
-            return []
+    def _checks(self, member, keys):
         out = []
-        for check in thing.checks:
-            if check.kind == 'sum':
-                total = None
-                for ref in check.parts:
-                    term = Sym(key_of(ref.entity, ref.member), ref.written)
-                    total = term if total is None else Op('+', total, term)
-                whole = notation.build(check.total)
-                if check.within is None:
-                    math = Cmp(('==',), (total, whole))
-                else:
-                    gap = Call('abs', (Op('-', total, whole),))
-                    math = Cmp(('<=',), (gap, notation.build(check.within)))
-            else:
-                math = notation.build(check.condition)
-            out.append(Line('check', None, None, (math,), None, None, records_of(check.records)))
+        for part in self.found.parts(self.found.card_of[member]):
+            if isinstance(part, s.DeclaredAssert):
+                out.append(
+                    Line('check', None, None, (notation.build(part.test, keys),), None, None, part.evidence)
+                )
         return out
 
     # ---- templates
 
-    def together(self, entities, name, *, depth=1, checks=False):
-        """The groups of `entities` whose blocks are the same up to the entity (`same`), in the order
+    def together(self, members, name, *, depth=1, checks=False):
+        """The groups of `members` whose blocks are the same up to the member (`same`), in the order
         of their first members: each group's block is written with the keys of `name`."""
         groups = []
-        for entity in entities:
-            own = self.block(entity, depth=depth, checks=checks)
-            for k, (members, blocks, plain) in enumerate(groups):
+        for member in members:
+            own = self.block(member, depth=depth, checks=checks)
+            for k, (items, blocks, plain) in enumerate(groups):
                 if plain == generic(own, PLACEHOLDER):
-                    groups[k] = ((*members, entity), (*blocks, own), plain)
+                    groups[k] = ((*items, member), (*blocks, own), plain)
                     break
             else:
-                groups.append(((entity,), (own,), generic(own, PLACEHOLDER)))
-        return tuple(Group(name, members, generic(blocks[0], name), blocks) for members, blocks, _ in groups)
+                groups.append(((member,), (own,), generic(own, PLACEHOLDER)))
+        return tuple(Group(name, items, generic(blocks[0], name), blocks) for items, blocks, _ in groups)
 
     def template(self, name, *, depth=1, checks=False):
-        """The groups of the instances of the template `name`, copies included, in the order of the
-        model (`together`)."""
-        if name not in self.scenario.templates:
+        """The groups of the members of the template `name`, in creation order (`together`)."""
+        if not isinstance(self.found.entities.get(name), s.DeclaredTemplate):
             raise ValueError(f'{name} is not a template of the model')
-        members = [entity.name for entity in self.scenario.entities if entity.template == name]
-        return self.together(members, name, depth=depth, checks=checks)
+        return self.together(self.found.members_of(name), name, depth=depth, checks=checks)
 
 
-def _changes(line):
-    """[(the entity, the trees)] of a line of an event: the entity whose value an assignment changes,
-    and the entities of the ends of a move with the trees of their ends (`S ← S − A`, `D ← D + A`)."""
-    if isinstance(line, AssignLine):
-        if isinstance(line.target, Ref):
-            return [(line.target.entity, (notation.assignment(line),))]
-        return []
-    if not isinstance(line, Move):
-        return []
-    amount = notation.build(line.amount)
-    found = {}
-    for (_, end), op in zip(line.ends, ('-=', '+=')):
-        if isinstance(end, Ref) and not isinstance(end, Problem):
-            node = Assign(key_of(end.entity, end.member), op, amount, end.written)
-            found.setdefault(end.entity, []).append(node)
-    return [(entity, tuple(nodes)) for entity, nodes in found.items()]
+def _cases(body, case):
+    """(statement, the member of the innermost case of a switch that holds it, or None) of each
+    statement of a body, outermost first."""
+    for statement in body:
+        yield statement, case
+        if isinstance(statement, s.DeclaredIf):
+            yield from _cases((*statement.then, *statement.orelse), case)
+        elif isinstance(statement, s.DeclaredSwitch):
+            for item in statement.cases:
+                yield from _cases(item.body, item.member)
+            yield from _cases(statement.orelse, case)
+
+
+def _mine(key, member):
+    return key == member or key.startswith(f'{member}.')
+
+
+def _changed(statement, keys, member):
+    """The trees of a statement that changes a value of `member`: an assignment's `S ← v`, and a
+    move's `S ← S − A` and `D ← D + A` for its ends on the member."""
+    if isinstance(statement, s.DeclaredAssign):
+        try:
+            node = notation.assignment(statement, keys)
+        except ValueError:
+            return ()
+        owner, _ = split(node.target)
+        return (node,) if owner == member else ()
+    if isinstance(statement, s.DeclaredMove):
+        amount = notation.build(statement.amount, keys)
+        out = []
+        for end, op in ((statement.source, '-='), (statement.destination, '+=')):
+            node = keys(end)
+            if isinstance(node, Sym) and split(node.key)[0] == member:
+                out.append(Assign(node.key, op, amount))
+        return tuple(out)
+    return ()
 
 
 def _names(node):
@@ -654,8 +573,10 @@ def _names(node):
 
 
 def _renamed(key, entity, name):
-    owner, member = split(key)
-    return key_of(name, member) if owner == entity else key
+    """A key of `entity` (the member itself, or a part of it) written with `name`."""
+    if key == entity:
+        return name
+    return f'{name}{key[len(entity) :]}' if key.startswith(f'{entity}.') else key
 
 
 def _rename(node, entity, name):
@@ -727,14 +648,14 @@ def same(a, b):
 # ---- the functions of one block --------------------------------------------------------------------
 
 
-def block(model, entity, *, depth=1, checks=False, run=None):
-    """The block of one entity of `model` (`Equations.block`)."""
-    return Equations(model, run).block(entity, depth=depth, checks=checks)
+def block(found, member, *, depth=1, checks=False, run=None):
+    """The block of one member of a model (`Equations.block`)."""
+    return Equations(found, run).block(member, depth=depth, checks=checks)
 
 
-def template(model, name, *, depth=1, checks=False, run=None):
-    """The groups of the instances of a template (`Equations.template`)."""
-    return Equations(model, run).template(name, depth=depth, checks=checks)
+def template(found, name, *, depth=1, checks=False, run=None):
+    """The groups of the members of a template (`Equations.template`)."""
+    return Equations(found, run).template(name, depth=depth, checks=checks)
 
 
 __all__ = [
@@ -748,8 +669,8 @@ __all__ = [
     'Term',
     'block',
     'generic',
-    'pair_key',
     'records_of',
+    'rename',
     'same',
     'template',
 ]

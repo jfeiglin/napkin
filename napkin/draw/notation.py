@@ -1,48 +1,45 @@
 """The mathematics of a model's expressions: a small tree of math nodes, and its LaTeX (docs/draw.md,
 the Equations panel).
 
-The nodes come from the expressions of the semantic model (`napkin/model/semantic.py`), so an equation
-always says what the model says. `build` makes the node of an expression from its typed nodes
-(`Expression.node`, `napkin/model/resolved.py`), and `to_node` writes a node back as those typed
-nodes: `to_node(build(e)) is e.node`, because two typed nodes with the same parts are one object. An
-expression that is a bare number or yes/no with no tree of its own is that number or word (`literal`).
-`assignment` makes the node of a line of an event. The picture reads the nodes; nothing in the model or
-the engine reads them.
+The nodes come from the expressions of the declared model, in its typed form
+(`napkin/model/semantic.py`), so an equation always says what the model says. `build(expression,
+keys)` makes the node of an expression, with the node of each read from `keys` (`Keys`: the reads of
+one member, by the keys of the picture). `assignment` makes the node of an assignment of a stage. The
+picture reads the nodes; nothing in the model or the engine reads them.
 
 The nodes, each a frozen dataclass:
-- `Sym`: a value, by its key `entity.member` (the entity as the semantic `Ref` names it). The key of
-  an output of the scenario is its name alone. `Time` is the time `t`. `Num` is a number with its unit
-  (the unit's text, or None). `Text` is a named value (`"on"`) or a yes/no word (True or False).
-- `Op` (`+ - * / **`), `Neg` and `Pos` (a sign), `Cmp`, `Logic` (`and`, `or`, with the items of one
-  Python `and` or `or`), `Not` and `Cases`. A comparison is one `Cmp` with its operators and its
-  operands: the chain `a < b < c` is one `Cmp` with two operators and three operands. `Cases` is
-  `a if C else b`; each `else … if` of a chain is one more case, in order.
-- `Call`: a function of the language (docs/language.md §2.1), and `delayed` and the distributions of
-  an event, with their keyword arguments. The typed node of a call with keyword arguments is a
-  `resolved.Named`. `Sum`: `sum`, `any`, `all`, `count`, `min` or `max` of a list, with the value of
-  each member (`terms`). An argument of `min` or `max` that is a list is a `Sum` of the same function,
-  in its place among the arguments of the `Call`.
-- `Since` and `Count`: the time since an event happened, and how many times it happened. `ending` is
-  the outcome that the file names (`since(respond.shut)`), or None for the event itself. `Elapsed` is
-  the time since a named state took its value: the file writes `since(state)`.
-- `Deriv` (d/dt of a stock) and `Assign` (a line of an event: `=`, `+=` or `-=`) are for the balances
-  and the jumps of the Equations panel. The language writes no derivative, so `Deriv` has no typed
-  node.
+- `Sym`: a value, a flow, an event or a part of one, by its key `member.name` (the member's id, then
+  the name; `site.restore.labor` for a leg, `grinder.refill.amount` for a parameter of an event). The
+  key of a value of the top level is its name alone. `Time` is the time `t`. `Num` is a number with
+  its unit (the unit's spelling, or None). `Text` is an enum member or a text (a string), or a yes/no
+  (True or False); it is also the words of a read that no symbol stands for (a member of a keyed
+  collection that only a run knows).
+- `Op` (`+ - * / **`), `Neg` and `Pos` (a sign), `Cmp`, `Logic` (`and`, `or`), `Not` and `Cases`. A
+  comparison is one `Cmp` with its operators and its operands: the chain `a < b < c` is one `Cmp` with
+  two operators and three operands. `Cases` is `a if C else b`; each `else … if` of a chain is one
+  more case, in order.
+- `Call`: a function of the language (`min`, `max`, `clip`, `abs`, `sqrt`, `exp`, `ln`, …); a
+  distribution (`uniform`, `pert`, `categorical` with a keyword argument for each outcome); `draw`
+  and `choose` of a distribution; and the reads of a flow or a store that are no value of their own:
+  `request(f)`, `capacity(f)`, `outflow(S)`, `inflow(S)`, `mean(d)` and `std(d)`. `Sum`: `sum`,
+  `any`, `all`, `count`, `min` or `max` of a collection whose members the model fixes, with the value
+  of each member (`terms`).
+- `Since` and `Count`: the time since an event last started, and how many times it started. `Elapsed`
+  is the time since a value last changed (`elapsed(x)`).
+- `Deriv` (d/dt of a stock) and `Assign` (an assignment of a stage: `=`, `+=` or `-=`) are for the
+  balances and the jumps of the Equations panel. The language writes no derivative, so `Deriv` has no
+  expression of its own.
 
-A node keeps how the file writes each name (`written`), and a yes/no word keeps its note (`problem`),
-so that `to_node` gives the same typed nodes again. Neither takes part in the equality of two nodes.
-A node with a `written` of None writes its key in the typed nodes. `as_dict` and `from_dict` give a
-node as JSON data, and `to_json` as JSON text.
+A node keeps how the file writes each name (`written`), which takes no part in the equality of two
+nodes. `as_dict` and `from_dict` give a node as JSON data, and `to_json` as JSON text.
 
-`walk(model)` gives each expression of a model with its place (`Place`).
+`walk(found)` gives each expression of a model with its place (`Place`).
 
 `latex(node, symbol)` writes a node in LaTeX (amsmath). `symbol(key)` gives the LaTeX of the symbol
-of a key; `latex` writes what it gives as it is. A key is that of a value, a flow or an event
-(`entity.member`: the members of a thing share one set of names), or of an outcome
-(`entity.event.outcome`, the name of an outcome in the language, docs/language.md §2.6). `clocks`
-gives the forms of `Since`, `Count` and `Elapsed`, with `%s` for the symbol of what they read:
-`CLOCKS` by default. The LaTeX of each node is one form only, so the LaTeX reads back to the node (a
-list in `min` or `max` writes its members in place, the same function of the same values):
+of a key; `latex` writes what it gives as it is. `clocks` gives the forms of `Since`, `Count` and
+`Elapsed`, with `%s` for the symbol of what they read: `CLOCKS` by default. The LaTeX of each node is
+one form only, so the LaTeX reads back to the node (a list in `min` or `max` writes its members in
+place, the same function of the same values):
 - The parentheses are the fewest that keep the tree. An operand with a lower precedence than its
   operator has them. So does a right operand of `+ - * /` with the same precedence: `a - (b - c)`
   and `a + (b + c)` keep them, and `(a - b) - c` is `a - b - c`. The precedences are those of Python
@@ -60,10 +57,10 @@ list in `min` or `max` writes its members in place, the same function of the sam
   its name. A keyword argument is `\\text{name}\\colon value`.
 - `Cmp` writes `<`, `\\le`, `>`, `\\ge`, `=` and `\\ne`; `Logic` and `Not` write `\\land`, `\\lor` and
   `\\lnot`. `Cases` is `\\begin{cases} a & \\text{if } C \\\\ b & \\text{otherwise} \\end{cases}`.
-- A named value is `\\text{…}`, and a yes/no word `\\mathrm{true}` or `\\mathrm{false}`. Every text
-  is escaped (`escape`).
+- An enum member and a text are `\\text{…}`, and a yes/no word `\\mathrm{true}` or `\\mathrm{false}`.
+  Every text is escaped (`escape`).
 - `Deriv` is `\\frac{\\mathrm{d}S}{\\mathrm{d}t}`. `Assign` is `S \\leftarrow v`; for `+=` and `-=`, v is
-  `S + v` and `S - v`, as the semantic model of the line writes it.
+  `S + v` and `S - v`.
 """
 
 from __future__ import annotations
@@ -74,34 +71,16 @@ import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, fields
 
-from ..core import expr
-from ..model import resolved, semantic
-from ..model.ir import DRAWN
-from ..model.semantic import Ref
+from ..model import semantic as s
 
-# The operators of each node, as Python writes them, and the name that a typed node gives each
-# operation (`napkin/core/expr.py`).
 OPERATORS = {'+': 'add', '-': 'sub', '*': 'mul', '/': 'div', '**': 'pow'}
 COMPARISONS = {'<': 'lt', '<=': 'le', '>': 'gt', '>=': 'ge', '==': 'eq', '!=': 'ne'}
 LOGIC = {'and': 'and', 'or': 'or'}
 ASSIGNMENTS = {'=': None, '+=': 'add', '-=': 'sub'}
-# The functions of a list (`Sum`), and the functions that take a list among their arguments.
+# The functions of a list (`Sum`).
 LISTS = ('sum', 'any', 'all', 'count', 'min', 'max')
-# The number of arguments of each function of a `Call` (None: one or more), except the distributions,
-# which take their parameters (`DRAWN`) by position or by name.
-ARITY = {
-    'min': None,
-    'max': None,
-    'clip': 3,
-    'abs': 1,
-    'exp': 1,
-    'expm1': 1,
-    'ln': 1,
-    'log1p': 1,
-    'sqrt': 1,
-    'erf': 1,
-    'delayed': 2,
-}
+# The calls of the reads of a flow, a store and a distribution that are no value of their own.
+STEPS = ('request', 'capacity', 'outflow', 'inflow', 'mean', 'std')
 
 
 class Node:
@@ -119,7 +98,7 @@ def _tuple(node, name):
 
 @dataclass(frozen=True)
 class Sym(Node):
-    """A value: `entity.member`, or the name of an output of the scenario."""
+    """A value, a flow or an event: `member.name`, or the name of a value of the top level."""
 
     key: str
     written: str | None = field(default=None, compare=False)
@@ -140,10 +119,9 @@ class Num(Node):
 
 @dataclass(frozen=True)
 class Text(Node):
-    """A named value (a text), or a yes/no word (True or False) with its note."""
+    """An enum member or a text, or a yes/no word (True or False)."""
 
     word: str | bool
-    problem: str | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -193,8 +171,8 @@ class Call(Node):
 
 @dataclass(frozen=True)
 class Sum(Node):
-    """`fn` of the members of a list: `fn` is one of `LISTS`, and `terms` are the members' values
-    (`Sym`). `written` is the name of the list and its member as the file writes them (`zones.flag`)."""
+    """`fn` of the members of a collection: `fn` is one of `LISTS`, and `terms` are the members'
+    values (`Sym`). `written` is the collection in words."""
 
     fn: str
     terms: tuple
@@ -261,35 +239,33 @@ class Not(Node):
 
 @dataclass(frozen=True)
 class Since(Node):
-    """The time since the event `event` (`entity.event`) happened, or its outcome `ending`."""
+    """The time since the event `event` (`member.event`) last started."""
 
     event: str
-    ending: str | None = None
     written: str | None = field(default=None, compare=False)
 
     @property
     def target(self):
-        """The name of what it reads: the event, or its outcome (`entity.event.outcome`)."""
-        return self.event if self.ending is None else f'{self.event}.{self.ending}'
+        """The key of what it reads: the event."""
+        return self.event
 
 
 @dataclass(frozen=True)
 class Count(Node):
-    """How many times the event `event` (`entity.event`) happened, or its outcome `ending`."""
+    """How many times the event `event` (`member.event`) started."""
 
     event: str
-    ending: str | None = None
     written: str | None = field(default=None, compare=False)
 
     @property
     def target(self):
-        """The name of what it reads: the event, or its outcome (`entity.event.outcome`)."""
-        return self.event if self.ending is None else f'{self.event}.{self.ending}'
+        """The key of what it reads: the event."""
+        return self.event
 
 
 @dataclass(frozen=True)
 class Elapsed(Node):
-    """The time since the named state `key` took its value."""
+    """The time since the value `key` last changed."""
 
     key: str
     written: str | None = field(default=None, compare=False)
@@ -304,7 +280,7 @@ class Deriv(Node):
 
 @dataclass(frozen=True)
 class Assign(Node):
-    """A line of an event: `target op value`, with op `=`, `+=` or `-=`."""
+    """An assignment of a stage: `target op value`, with op `=`, `+=` or `-=`."""
 
     target: str
     op: str
@@ -325,261 +301,198 @@ NODES = {cls.__name__: cls for cls in (*_CLASSES, Deriv, Assign)}
 
 
 def key_of(entity, member):
-    """The key of member `member` of entity `entity`; of an output of the scenario (entity None), its
-    name."""
+    """The key of the part `member` of `entity` (a member, or a part of one); of a value of the top
+    level (entity None), its name."""
     return member if entity is None else f'{entity}.{member}'
 
 
 def split(key):
-    """(entity, member) of a key: the entity is None for an output of the scenario. An entity's name
-    can hold dots (copy k of a set, `waves.1`); a member's name cannot."""
+    """(entity, name) of a key at its last dot: the entity is None for a value of the top level. An
+    entity can hold dots (the row `places.a`, the event `grinder.refill`); a name cannot."""
     entity, _, member = key.rpartition('.')
     return entity or None, member
 
 
-# ---- from the typed nodes of the semantic model ---------------------------------------------------
+# ---- from the typed form of the declared model -------------------------------------------------------
 
-# The operator of each node, by the name that a typed node gives its operation.
 _BINARY = {name: op for op, name in OPERATORS.items()}
-_COMPARE = {name: op for op, name in COMPARISONS.items()}
 
 
-def build(expression):
-    """The node of an expression: a semantic `Expression`, its typed nodes (`Expression.node`, the
-    value of a line, the amount of a move), or a bare number or yes/no.
+def build(expression, keys):
+    """The node of an expression of the typed form (`semantic.Const`, `Read`, `Apply`, `Reduced`,
+    `Retain`, `History`, `Distribution`, `Drawn`, `Chosen`); `keys(read)` gives the node of each read,
+    and `keys.reduced(node)` that of a reduction (`Keys`). Raises ValueError for a part that is not in
+    the notation."""
+    if isinstance(expression, s.Const):
+        return constant(expression.value, expression.type)
+    if isinstance(expression, s.Read):
+        return keys(expression)
+    if isinstance(expression, s.Retain):
+        return build(expression.body, keys)
+    if isinstance(expression, s.Reduced):
+        return keys.reduced(expression)
+    if isinstance(expression, s.History):
+        found = keys(expression.source)
+        if expression.op == 'since':
+            return Since(found.key) if isinstance(found, Sym) else Call('since', (found,))
+        return Elapsed(found.key) if isinstance(found, Sym) else Call('elapsed', (found,))
+    if isinstance(expression, s.Distribution):
+        return distribution(expression)
+    if isinstance(expression, s.Drawn):
+        return Call('draw', (build(expression.source, keys),))
+    if isinstance(expression, s.Chosen):
+        return Call('choose', (build(expression.source, keys),))
+    if isinstance(expression, s.Apply):
+        return _apply(expression, keys)
+    raise ValueError(f'{type(expression).__name__} is not a part of the notation')
 
-    An expression with no node is its written number or yes/no. So is a yes/no that the file writes
-    where an expression goes, such as the start value of a bool state: the front end gives it a
-    `Problem` ("an expression is text or a number"), and the builder reads the word that the file
-    writes (`literal`). Raises ValueError for a part that is not in the notation, and for any other
-    `Problem`."""
-    if isinstance(expression, semantic.Expression):
-        if literal(expression):
-            return _literal(expression.written)
-        return _node(expression.node)
-    if isinstance(expression, (bool, int, float)):
-        return _literal(expression)
-    return _node(expression)
 
-
-def literal(expression):
-    """Whether the node of a semantic `Expression` is its written number or yes/no, and not its typed
-    nodes: it has none, or it is a yes/no whose typed node is a `Problem`."""
-    if expression.node is None:
-        return True
-    return isinstance(expression.node, resolved.Problem) and isinstance(expression.written, bool)
-
-
-def _literal(value):
+def constant(value, kind=None):
+    """The node of a constant: a number with the unit of its type, a yes/no, an enum member or a
+    text."""
     if isinstance(value, bool):
         return Text(value)
+    if isinstance(value, str):
+        return Text(value)
     if type(value) in (int, float) and math.isfinite(value):
-        return Neg(Num(-value)) if math.copysign(1, value) < 0 else Num(value)
-    raise ValueError(f'{value!r} is not a number or a yes/no')
+        unit = getattr(kind, 'unit', '') or None
+        return Neg(Num(-value, unit)) if math.copysign(1, value) < 0 else Num(value, unit)
+    raise ValueError(f'the constant {value!r} is not in the notation')
 
 
-def _node(node):
-    if isinstance(node, resolved.Problem):
-        raise ValueError(f'the expression has a problem: {node.message}')
-    if isinstance(node, resolved.Ref):
-        return Sym(key_of(node.entity, node.member), node.written)
-    if isinstance(node, resolved.Word):
-        return Text(bool(node.value), node.problem)
-    if isinstance(node, (resolved.EventRef, resolved.Terms)):
-        raise ValueError(f'{type(node).__name__} is only the argument of a function')
-    if isinstance(node, expr.Const):
-        value = node.value
-        if isinstance(value, str):
-            return Text(value)
-        if type(value) in (int, float) and math.isfinite(value) and math.copysign(1, value) > 0:
-            return Num(value)
-        raise ValueError(f'the constant {value!r} is not in the notation')
-    if isinstance(node, expr.Ref):
-        if node.name == 't':
-            return Time()
-        # The front end reads every other name: one that it leaves is a name of Python's tree.
-        raise ValueError('Name is not a part of the notation')
-    if isinstance(node, expr.Binary):
-        return Op(_BINARY[node.op], _node(node.left), _node(node.right))
-    if isinstance(node, expr.Unary):
-        return {'neg': Neg, 'pos': Pos, 'not': Not}[node.op](_node(node.operand))
-    if isinstance(node, expr.BoolOp):
-        return Logic(node.op, tuple(_node(value) for value in node.values))
-    if isinstance(node, expr.Compare):
-        return Cmp(tuple(_COMPARE[op] for op in node.ops), tuple(_node(item) for item in node.operands))
-    if isinstance(node, expr.IfElse):
-        pairs = []
-        while isinstance(node, expr.IfElse):
-            pairs.append((_node(node.test), _node(node.body)))
-            node = node.orelse
-        return Cases(tuple(pairs), _node(node))
-    if isinstance(node, expr.Call):
-        return _call(node.function, node.args, ())
-    if isinstance(node, resolved.Named):
-        return _call(node.function, node.args, node.named)
-    if isinstance(node, expr.Foreign):
-        return _outside(node)
-    raise ValueError(f'{type(node).__name__} is not a part of the notation')
-
-
-def _outside(node):
-    """A part that the language does not have (`expr.Foreign`) is an error that names its kind in
-    Python's tree, which the typed node keeps."""
-    kind = type(node.tree).__name__
-    if kind == 'Call':
-        raise ValueError('a function is called by its name')
-    shown = type(getattr(node.tree, 'op', None)).__name__ if hasattr(node.tree, 'op') else None
-    raise ValueError(f'{kind}{f" ({shown})" if shown else ""} is not a part of the notation')
-
-
-def _terms(terms):
-    if not all(isinstance(ref, resolved.Ref) for ref in terms.refs):
-        raise ValueError('each member of a list is a value')
-    return tuple(Sym(key_of(ref.entity, ref.member), ref.written) for ref in terms.refs)
-
-
-def _call(name, args, keywords):
-    """The node of a call of the function `name` with the typed nodes `args`. `keywords` are its
-    keyword arguments, ((name, typed node), …)."""
-    if keywords and name not in DRAWN:
-        raise ValueError(f'{name}() takes no keyword arguments')
-    one = args[0] if len(args) == 1 and not keywords else None
-    if name == 'q':
-        if len(args) == 2 and type(args[0]) is expr.Const and type(args[1]) is expr.Const:
-            value, written = args[0].value, args[1].value
-            if type(value) in (int, float) and isinstance(written, str):
-                return Num(value, written)
-        raise ValueError('q() takes a number and the text of its unit')
-    if name in ('since', 'count') and isinstance(one, resolved.EventRef):
-        if one.kind != 'trigger':
-            raise ValueError(f'an event of kind {one.kind!r} is not in the notation')
-        clock = Since if name == 'since' else Count
-        return clock(one.key, one.ending, one.written)
-    if name in ('sum', 'any', 'all', 'count'):
-        if isinstance(one, resolved.Terms):
-            return Sum(name, _terms(one), one.written)
-        raise ValueError(f'{name}() takes {"an event or " if name == "count" else ""}a list')
-    if name == 'since':
-        raise ValueError('since() takes an event')
-    if name == 'elapsed':
-        if isinstance(one, resolved.Ref):
-            return Elapsed(key_of(one.entity, one.member), one.written)
-        raise ValueError('elapsed() takes a named state')
-    if name in ('min', 'max') and isinstance(one, resolved.Terms):
-        return Sum(name, _terms(one), one.written)
-    if name in ('min', 'max'):
-        items = tuple(
-            Sum(name, _terms(arg), arg.written) if isinstance(arg, resolved.Terms) else _node(arg)
-            for arg in args
+def distribution(expression):
+    """The node of a distribution: its family with its parameters in its unit, or a categorical with a
+    keyword argument for the weight of each outcome."""
+    if expression.family == 'categorical':
+        weights = tuple(
+            (outcome, constant(weight)) for outcome, weight in zip(expression.outcomes, expression.params)
         )
-    else:
-        items = tuple(_node(arg) for arg in args)
-    if name in DRAWN:
-        parameters = DRAWN[name]
-        named = [key for key, _ in keywords]
-        if (
-            len(args) > len(parameters)
-            or None in named
-            or len(set(named)) != len(named)
-            or not set(named) <= set(parameters[len(args) :])
-        ):
-            raise ValueError(f'{name}() takes {", ".join(parameters)}, each once')
-        return Call(name, items, tuple((key, _node(value)) for key, value in keywords))
-    if name not in ARITY:
-        raise ValueError(f'{name}() is not a function of the notation')
-    arity = ARITY[name]
-    if (arity is None and not args) or (arity is not None and len(args) != arity):
-        raise ValueError(f'{name}() takes {arity or "one or more"} arguments')
-    return Call(name, items)
+        return Call('categorical', (), weights)
+    kind = expression.type.of
+    return Call(expression.family, tuple(constant(value, kind) for value in expression.params))
 
 
-def assignment(line):
-    """The node of a line of an event that sets a value (a semantic `Assign`): `x = v`, `x += v` or
-    `x -= v`, whose value (v) is without the target. Raises ValueError for a line that has a
-    problem."""
-    target = line.target
-    if not isinstance(target, Ref):
-        raise ValueError('the target of the line has a problem')
-    key = key_of(target.entity, target.member)
-    value = line.value
-    if not line.augmented:
-        return Assign(key, '=', build(value), target.written)
-    op = {'Add': '+=', 'Sub': '-='}.get(line.operator)
-    if (
-        op is None
-        or not isinstance(value, expr.Binary)
-        or value.op != ASSIGNMENTS[op]
-        or not isinstance(value.left, resolved.Ref)
-        or key_of(value.left.entity, value.left.member) != key
+def _apply(node, keys):
+    op, args = node.op, node.args
+    if op in _BINARY:
+        return Op(_BINARY[op], build(args[0], keys), build(args[1], keys))
+    if op == 'neg':
+        return Neg(build(args[0], keys))
+    if op == 'not':
+        return Not(build(args[0], keys))
+    if op in LOGIC:
+        return Logic(op, tuple(build(arg, keys) for arg in args))
+    if op == 'compare':
+        return Cmp(tuple(node.detail), tuple(build(arg, keys) for arg in args))
+    if op == 'if':
+        pairs = []
+        while isinstance(node, s.Apply) and node.op == 'if':
+            test, body, node = node.args
+            pairs.append((build(test, keys), build(body, keys)))
+        return Cases(tuple(pairs), build(node, keys))
+    if op == 'call':
+        return Call(node.detail, tuple(build(arg, keys) for arg in args))
+    raise ValueError(f'{op} is not a part of the notation')
+
+
+def assignment(statement, keys):
+    """The node of an assignment of a stage (`semantic.DeclaredAssign`): `x = v`, `x += v` or
+    `x -= v`, whose target is a symbol. Raises ValueError for an assignment of a value that no symbol
+    stands for (a setting of a flow or of an endpoint)."""
+    target = keys(statement.target)
+    if not isinstance(target, Sym) or not isinstance(
+        statement.value, (s.Const, s.Read, s.Apply, s.Reduced, s.History, s.Drawn, s.Chosen, s.Retain)
     ):
-        raise ValueError('the value of the line is not its target and the change')
-    return Assign(key, op, build(value.right), value.left.written)
+        raise ValueError('the target of the assignment is no value of the notation')
+    return Assign(target.key, statement.op, build(statement.value, keys))
 
 
-# ---- back to the typed nodes -----------------------------------------------------------------------
+class Keys:
+    """The nodes of the reads of one member (`member`, a member of a card of `found`, a
+    `things.Things`; None at the top level), by the keys of the picture:
+    - a value is `member.name` (`places.a.need`), and a value of the top level its name;
+    - a parameter or a local of an event is `member.event.name`;
+    - a flow is `member.flow`, the symbol of its rate (`actual_rate`); a leg `member.flow.leg`; the
+      served fraction of a flow with legs is the flow's own symbol; a result of a solver is
+      `member.solver.name`;
+    - `request`, `capacity`, `outflow`, `inflow`, `mean` and `std` are calls of what they read
+      (`STEPS`);
+    - an event is `member.event`, for `Since` and `Count`.
+    A read that reaches several members (a member of a keyed collection, which only a run knows) is
+    its words (`Text`), as a trigger line writes them (`triggers.namer`)."""
+
+    def __init__(self, found, member=None):
+        self.found, self.member = found, member
+
+    @property
+    def members(self):
+        return () if self.member is None else (self.member,)
+
+    def words(self, read):
+        from .triggers import namer
+
+        card = self.found.card_of.get(self.member)
+        return Text(namer(self.found, card, (read,))(read))
+
+    def __call__(self, read):
+        if read.start == ('time',):
+            return Time()
+        if read.start == ('root',):
+            return Sym(read.steps[0]) if len(read.steps) == 1 else self.words(read)
+        found = self.found.reached(read, self.members)
+        if found is None or found.what == 'member' or len(set(found.members)) != 1:
+            return self.words(read)
+        if found.what == 'local':
+            template = self.found.template_of[found.members[0]]
+            return Sym(f'{found.members[0]}{read.part[len(template) :]}')
+        key = f'{found.members[0]}.{found.name}'
+        rest = list(found.steps)
+        if found.what == 'solver':
+            if not rest:
+                return self.words(read)
+            key, rest = f'{key}.{rest[0]}', rest[1:]
+        elif found.what == 'flow':
+            part = self.found.part(self.found.template_of[found.members[0]], found.name)
+            legs = {leg.name for leg in getattr(part, 'legs', ())}
+            if isinstance(part, s.DeclaredRoute):
+                legs = {'forward', 'backward'}
+            if rest and rest[0] in legs:
+                key, rest = f'{key}.{rest[0]}', rest[1:]
+        node = Sym(key)
+        for step in rest:
+            if step in ('actual_rate', 'served_fraction', 'occurrences'):
+                continue
+            if step not in STEPS:
+                return self.words(read)
+            node = Call(step, (node,))
+        return node
+
+    def reduced(self, node):
+        """The node of a reduction: the count of the occurrences of an event, or the reduction of the
+        values of a collection whose members the model fixes (`Sum`); else its words."""
+        source = node.source
+        of = source.type.of if isinstance(source.type, s.Many) else None
+        found = self.found.reached(source, self.members)
+        if isinstance(of, s.Occ) and found is not None and found.what == 'event' and len(found.members) == 1:
+            return Count(f'{found.members[0]}.{found.name}')
+        if _fixed_members(source) and found is not None and found.what == 'value' and not found.steps:
+            return Sum(node.op, tuple(Sym(f'{member}.{found.name}') for member in found.members))
+        from .triggers import condition_words, namer
+
+        card = self.found.card_of.get(self.member)
+        return Text(condition_words(node, namer(self.found, card, (source,))))
 
 
-def _ref(key, written):
-    entity, member = split(key)
-    return resolved.ref(entity, member, key if written is None else written)
-
-
-def _list(node):
-    return resolved.terms((_ref(term.key, term.written) for term in node.terms), node.written)
-
-
-def to_node(node):
-    """The typed nodes of a node (`napkin/model/resolved.py`): the nodes that `build` reads, so
-    `to_node(build(e)) is e.node`. For an `Assign`, the nodes of the value of its line. A `Deriv` has
-    no typed node."""
-    if isinstance(node, Sym):
-        return _ref(node.key, node.written)
-    if isinstance(node, Num):
-        if node.unit is None:
-            return expr.const(node.value)
-        return expr.call('q', [expr.const(node.value), expr.const(node.unit)])
-    if isinstance(node, Text):
-        if isinstance(node.word, bool):
-            return resolved.word(node.word, node.problem)
-        return expr.const(node.word)
-    if isinstance(node, Time):
-        return expr.ref('t')
-    if isinstance(node, Op):
-        return expr.binary(OPERATORS[node.op], to_node(node.left), to_node(node.right))
-    if isinstance(node, (Neg, Pos, Not)):
-        return expr.unary({Neg: 'neg', Pos: 'pos', Not: 'not'}[type(node)], to_node(node.x))
-    if isinstance(node, Logic):
-        return expr.boolean(LOGIC[node.op], [to_node(item) for item in node.items])
-    if isinstance(node, Cmp):
-        return expr.compare([COMPARISONS[op] for op in node.ops], [to_node(item) for item in node.items])
-    if isinstance(node, Cases):
-        made = to_node(node.otherwise)
-        for condition, value in reversed(node.pairs):
-            made = expr.if_else(to_node(condition), to_node(value), made)
-        return made
-    if isinstance(node, Call):
-        args = [
-            _list(arg) if isinstance(arg, Sum) and arg.fn == node.name else to_node(arg) for arg in node.args
-        ]
-        if node.keywords:
-            return resolved.named(node.name, args, ((key, to_node(value)) for key, value in node.keywords))
-        return expr.call(node.name, args)
-    if isinstance(node, Sum):
-        return expr.call(node.fn, [_list(node)])
-    if isinstance(node, (Since, Count)):
-        written = node.target if node.written is None else node.written
-        event = resolved.event_ref('trigger', node.event, node.ending, written)
-        return expr.call('since' if isinstance(node, Since) else 'count', [event])
-    if isinstance(node, Elapsed):
-        return expr.call('elapsed', [_ref(node.key, node.written)])
-    if isinstance(node, Assign):
-        value = to_node(node.value)
-        if node.op == '=':
-            return value
-        return expr.binary(ASSIGNMENTS[node.op], _ref(node.target, node.written), value)
-    if isinstance(node, Deriv):
-        raise ValueError('the language writes no derivative: a Deriv has no typed node')
-    raise ValueError(f'{node!r} is not a node of the notation')
+def _fixed_members(read):
+    """Whether a read of a collection names members that the model fixes: `T.instances`, a literal,
+    and steps through links and collection values of them; not a `where`, a `by` or a lookup, whose
+    members a run's values choose."""
+    start = read.start[0]
+    if start in ('where', 'by', 'lookup'):
+        return False
+    if start == 'literal':
+        return all(_fixed_members(item) for item in read.start[1])
+    return True
 
 
 # ---- the nodes as data ----------------------------------------------------------------------------
@@ -647,110 +560,112 @@ def to_json(node):
 
 @dataclass(frozen=True)
 class Place:
-    """Where an expression is: its entity (None for the scenario's own parts), the member that holds
-    it (a value, a flow, a share, an event or an output; None for a timescale), what it is (`part`)
-    and its place in the file."""
+    """Where an expression is: the declared path of the part that holds it (a value, a flow, an
+    endpoint, an event or a part of one, a solver's input, an assertion), what it is (`part`) and its
+    line."""
 
-    entity: str | None
-    name: str | None
+    path: str
     part: str
-    where: tuple
+    line: int
 
 
-def walk(model) -> Iterator[tuple[Place, semantic.Expression]]:
-    """Each expression of a model (or of its semantic `Scenario`), once, with its place, in the order
-    of the semantic model. The parts:
-    - of a value: `start`, `formula`, `rate`, `minimum`, `maximum`, `size`, `argument` (a parameter of
-      its distribution), and `output` and `lag` of an output;
-    - `option` (the start value that an option gives), `status` (a condition of a status line), and
-      `check`, `total` and `within` of an `assert`;
-    - of a flow: `flow` (its rate), `while` (its condition) and `pair` (the rate of a pair); of a
-      share: `limit`;
-    - of an event: `when`, `after`, `each`, `keep` (its `while`), and of its outcomes `chance`,
-      `available` (the condition of an outcome), `set` (the value of a line `x = v`, `x += v` or
-      `x -= v`, as its semantic tree writes it: `x + v` for `x += v`) and `move` (the amount of a
-      move);
-    - of the scenario: `timescale`, and its outputs and checks.
-    The value of a line and the amount of a move are typed nodes: each is an `Expression` here, with
-    no written text."""
-    scenario = getattr(model, 'scenario', model)
-    seen = set()
-    found = []
+def walk(found) -> Iterator[tuple[Place, object]]:
+    """Each expression of a model (`things.Things`), once, with its place, in written order. The
+    parts: of a value, `init`, `lower` and `upper`; of an endpoint, `capacity` and `request`; of a
+    flow and a leg, `request` and `capacity`; of an event, `when` (a trigger's condition), `capture`,
+    `reset`, `argument`, `delay`, `guard`, `until`, `value` (of an assignment), `amount` (of a move),
+    `test` (of an `if`), `selector` and `case` (a guard of a switch); `input` of a solver; `assert`;
+    and `own` of a member's own value."""
+    out = []
 
-    def add(entity, name, part, item, where=None):
-        if item is None:
-            return
-        if not isinstance(item, semantic.Expression):
-            item = semantic.Expression(None, item, tuple(where))
-        if id(item) in seen:
-            return
-        seen.add(id(item))
-        found.append((Place(entity, name, part, tuple(item.where)), item))
+    def add(path, part, expression, line):
+        if expression is not None and not isinstance(expression, (str, tuple)):
+            out.append((Place(path, part, line), expression))
 
-    def output(entity, name, item):
-        add(entity, name, 'output', item.formula)
-        for delay in item.lag.delays if item.lag is not None else ():
-            add(entity, name, 'lag', delay)
+    def value(item):
+        add(item.path, 'init', item.init, item.line)
+        add(item.path, 'lower', item.lower, item.line)
+        add(item.path, 'upper', item.upper, item.line)
+        for side in (item.outflow, item.inflow):
+            if side is not None:
+                add(side.path, 'capacity', side.capacity, side.line)
+                add(side.path, 'request', side.request, side.line)
 
-    def check(entity, item):
-        add(entity, None, 'check', item.condition)
-        add(entity, None, 'total', item.total)
-        add(entity, None, 'within', item.within)
+    def flow(item):
+        for leg in item.legs if isinstance(item, s.DeclaredLegs) else (item,):
+            add(leg.path, 'request', leg.request, leg.line)
+            add(leg.path, 'capacity', leg.capacity, leg.line)
 
-    for entity in scenario.entities:
-        e = entity.name
-        for value in entity.values:
-            n = value.name
-            add(e, n, 'start', value.initial)
-            add(e, n, 'formula', value.formula)
-            if value.rate is not None:
-                add(e, n, 'rate', value.rate.expression)
-            for part in ('minimum', 'maximum', 'size'):
-                bound = getattr(value, part)
-                if bound is not None:
-                    add(e, n, part, bound.expression)
-            for _, _, arguments in value.arguments:
-                for _, expression in arguments:
-                    add(e, n, 'argument', expression)
-            if value.output is not None:
-                output(e, n, value.output)
-        for setting in entity.settings:
-            add(e, setting.target, 'option', setting.start)
-        if entity.status is not None:
-            for case in entity.status.cases:
-                add(e, None, 'status', case.condition)
-        for item in entity.checks:
-            check(e, item)
-        for flow in entity.flows:
-            add(e, flow.name, 'flow', flow.rate)
-            add(e, flow.name, 'while', flow.condition)
-            for pair in flow.pairs:
-                add(e, flow.name, 'pair', pair.rate)
-        for allocation in entity.allocations:
-            add(e, allocation.name, 'limit', allocation.limit)
-        for event in entity.events:
-            n = event.name
-            add(e, n, 'when', event.when)
-            add(e, n, 'after', event.after)
-            for item in event.each:
-                add(e, n, 'each', item)
-            add(e, n, 'keep', event.keep)
-            for outcome in event.outcomes:
-                if isinstance(outcome.chance, semantic.Expression):
-                    add(e, n, 'chance', outcome.chance)
-                add(e, n, 'available', outcome.available)
-                for line in outcome.lines:
-                    if isinstance(line, semantic.Assign):
-                        add(e, n, 'set', line.value, line.where)
-                    elif isinstance(line, semantic.Move):
-                        add(e, n, 'move', line.amount, line.where)
-    for item in scenario.timescales or ():
-        add(None, None, 'timescale', item)
-    for item in scenario.outputs:
-        output(None, item.name, item)
-    for item in scenario.checks:
-        check(None, item)
-    yield from found
+    def statement(item):
+        if isinstance(item, s.DeclaredAssign):
+            add(item.path, 'value', item.value, item.line)
+        elif isinstance(item, s.DeclaredMove):
+            add(item.path, 'amount', item.amount, item.line)
+        elif isinstance(item, s.DeclaredStart):
+            for arg in item.args:
+                add(item.path, 'argument', arg, item.line)
+        elif isinstance(item, s.DeclaredIf):
+            add(item.path, 'test', item.test, item.line)
+        elif isinstance(item, s.DeclaredSwitch):
+            add(item.path, 'selector', item.selector, item.line)
+        elif isinstance(item, s.DeclaredCase):
+            add(item.path, 'case', item.guard, item.line)
+
+    for entity in found.declared.entities:
+        for part in entity.parts:
+            if isinstance(part, s.DeclaredValue):
+                value(part)
+            elif isinstance(part, (s.DeclaredFlow, s.DeclaredLegs)):
+                flow(part)
+            elif isinstance(part, s.DeclaredEvent):
+                for trigger in part.triggers:
+                    add(trigger.path, 'when', trigger.test, trigger.line)
+                    for capture in trigger.captures:
+                        add(capture.path, 'capture', capture.init, capture.line)
+                    if trigger.reset is not None:
+                        add(trigger.path, 'reset', trigger.reset[1], trigger.line)
+                for local in part.locals:
+                    flow(local) if isinstance(local, (s.DeclaredFlow, s.DeclaredLegs)) else value(local)
+                for step in part.steps:
+                    if isinstance(step, s.DeclaredGate):
+                        add(step.path, 'until', step.test, step.line)
+                        continue
+                    add(step.path, 'delay', step.delay, step.line)
+                    add(step.path, 'guard', step.guard, step.line)
+                    for item in s.statements_of(step.body):
+                        statement(item)
+            elif isinstance(part, s.DeclaredSolver):
+                for binding in part.inputs:
+                    add(binding.path, 'input', binding.read, binding.line)
+            elif isinstance(part, s.DeclaredAssert):
+                add(part.path, 'assert', part.test, part.line)
+    for item in found.declared.root:
+        value(item)
+    for item in found.declared.asserts:
+        add(item.path, 'assert', item.test, item.line)
+    for member in found.declared.members:
+        for given in member.values:
+            add(f'{member.path}.{given.name}', 'own', given.init, given.line)
+    yield from out
+
+
+def keys_of(found, place):
+    """The `Keys` of the member that an expression at `place` reads from: the first member of the
+    template whose part it is, or the member whose own value it is; the top level's for a value of
+    the top level."""
+    path = place.path
+    if place.part == 'own':
+        return Keys(found, path.rpartition('.')[0])
+    head = next(
+        (
+            template
+            for template in sorted(found.entities, key=len, reverse=True)
+            if path.startswith(f'{template}.')
+        ),
+        None,
+    )
+    members = found.members_of(head) if head is not None else ()
+    return Keys(found, members[0] if members else None)
 
 
 # ---- LaTeX ----------------------------------------------------------------------------------------

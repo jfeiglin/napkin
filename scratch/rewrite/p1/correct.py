@@ -120,9 +120,13 @@ def run(method, tol, fix, deep):
         distance.select = hybrid.replacement(ipm, eps_start)
         skip = FALLBACK
     elif method.startswith('loose:'):
-        loose = float(method[6:])
-        fair.TIGHT, fair.FIX = loose, 10 * loose
-        distance.TOL = loose
+        # loose:TOL[:FIX[:DISTANCE TOL]]: the library with its fair programs at the primal tolerance
+        # TOL, its held floors' slack FIX (default 10 x TOL) and its distance rows to DISTANCE TOL
+        parts = [float(v) for v in method[6:].split(':')]
+        loose = parts[0]
+        fair.TIGHT = loose
+        fair.FIX = parts[1] if len(parts) > 1 else 10 * loose
+        distance.TOL = parts[2] if len(parts) > 2 else loose
         solver.CHECK = max(solver.CHECK, 10 * fair.FIX)
     else:
         import qp
