@@ -44,15 +44,15 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   (the engine's reader evaluates the formula from them); it holds them for that, not for a read of
   their own. A value that the record does not hold is `Unavailable` with the reason, never a default.
 - **The budget** (`Record.within`, R-A4a-07): the values that a record holds have at most the
-  request's number of pieces. A record that would hold more ends at the last time at which its pieces
-  fit, with a failure entry that names the budget (the detail `budget`): every later value is
-  `Unavailable` with that reason. Only the pieces of the values that the record holds count, so a
-  record of a request cut from a wider record has the same end as a fresh run of that request.
+  request's number of pieces. A record that would hold more ends at the time of the first piece that
+  does not fit, with a failure entry there that names the budget (the detail `budget`): it holds the
+  values before that time, and from it on every value is `Unavailable` with that reason. Only the
+  pieces of the values that the record holds count, so a record of a request cut from a wider record
+  ends where a fresh run of that request ends.
 """
 
 from __future__ import annotations
 
-from bisect import bisect_left
 from dataclasses import dataclass
 from typing import Any
 
@@ -234,7 +234,8 @@ class Record:
 
     @property
     def end(self):
-        """The time to which the record reaches: the time of its stop, or the horizon."""
+        """The time to which the record reaches: the time of its stop (for a stop by the budget, the
+        time before which it holds its values), or the horizon."""
         stop = self.stop
         return self.manifest.horizon if stop is None else stop.t
 
@@ -253,9 +254,10 @@ class Record:
         )
 
     def after(self, time):
-        """`Unavailable` with the reason for a time after the end of a record that stopped early, or
-        None for a time that it reaches."""
-        if time <= self.end:
+        """`Unavailable` with the reason for a time after the end of a record that stopped early (from
+        the end on, for a stop by the budget), or None for a time that it reaches."""
+        stop = self.stop
+        if stop is None or time < stop.t or (time == stop.t and stop.detail('budget') is None):
             return None
         return Unavailable(f'{self.stopped()}: the record holds no value at {float(time):g} h')
 
@@ -292,9 +294,8 @@ class Record:
 
     def within(self, pieces):
         """The record within a budget of pieces (see the module): itself, when the values that it holds
-        have no more pieces; else the record to the last time at which they fit, which a failure entry
-        that names the budget ends (the histories and the trace to that time; none, when not even the
-        pieces at 0 h fit)."""
+        have no more pieces; else the record before the time of the first piece that does not fit (its
+        histories and its trace), which a failure entry at that time ends, naming the budget."""
         times = sorted(
             float(piece.t)
             for history in self.histories
@@ -303,21 +304,20 @@ class Record:
         )
         if len(times) <= pieces:
             return self
-        # The last time T at which the pieces at or before T are within the budget: before the time
-        # of the first piece that does not fit.
-        below = bisect_left(times, times[pieces]) if pieces > 0 else 0
-        end, empty = (times[below - 1], False) if below > 0 else (0.0, True)
+        end = times[pieces]
         histories = []
         for history in self.histories:
-            kept = () if empty else tuple(piece for piece in history.pieces if piece.t <= end)
+            kept = tuple(piece for piece in history.pieces if piece.t < end)
             if kept:
                 histories.append(History(history.key, kept))
-        trace = tuple(entry for entry in self.trace if entry.t <= end)
+        trace = tuple(entry for entry in self.trace if entry.t < end)
         unit = 'piece' if pieces == 1 else 'pieces'
-        message = f'the values that it holds would have more than its budget of {pieces} {unit} after it'
+        message = (
+            f'from this time the values that it holds would have more than its budget of {pieces} {unit}'
+        )
         failure = Entry(
             end,
-            trace[-1].round if trace else 0,
+            next((entry.round for entry in self.trace if entry.t >= end), 0),
             'failure',
             '',
             '',

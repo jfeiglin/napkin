@@ -12,14 +12,15 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from decimal import Decimal
 from fractions import Fraction
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from napkin.engine import read, run
-from napkin.model.compile import library_units, load_scenario
+from napkin.model.compile import compile_text, library_units, load_scenario
 from napkin.model.language.problems import LanguageError
 from napkin.model.library import PRELUDE, empty_library, prelude_units
 from napkin.model.load import schema_errors
@@ -170,3 +171,104 @@ def test_a_name_that_is_no_unit_is_refused_at_its_line_with_the_closest_unit(tmp
     found = [item for item in raised.value.problems if item.code == 'unit']
     assert [(item.file, item.line) for item in found] == [(path.as_posix(), line)]
     assert found[0].message.endswith('did you mean year?')
+
+
+# ---- a quantity is its dimension and its scale, however it is spelled ------------------------------
+
+# Three families of units with exact scales, each unit of a family a respelling of the others.
+FAMILIES = {
+    'time': {'h': Fraction(1), 'min': Fraction(1, 60), 'day': Fraction(24)},
+    'volume': {'L': Fraction(1), 'mL': Fraction(1, 1000), 'kL': Fraction(1000)},
+    'share': {'ratio': Fraction(1), 'fraction': Fraction(1), 'percent': Fraction(1, 100)},
+}
+DIMENSIONS = {'time': {'time': 1}, 'volume': {'volume': 1}, 'share': {}}
+SPELLED = {name: (DIMENSIONS[family], scale) for family, units in FAMILIES.items() for name, scale in units.items()}
+# A canonical step of each family whose multiples are finite decimals in every unit of the family.
+STEPS = {'time': Fraction(24, 100), 'volume': Fraction(1, 1000), 'share': Fraction(1, 100)}
+
+
+def written(value, unit):
+    """A canonical value in `unit` as a decimal text with its unit (`0.1 day`)."""
+    number = Decimal(value.numerator) / Decimal(value.denominator) / (
+        Decimal(FAMILIES_OF[unit][unit].numerator) / Decimal(FAMILIES_OF[unit][unit].denominator)
+    )
+    return f'{format(number.normalize(), "f")} {unit}'
+
+
+FAMILIES_OF = {name: units for units in FAMILIES.values() for name in units}
+
+
+def checked(text):
+    """(the codes and lines of the problems of a text, or None) and its compiled model."""
+    try:
+        return None, compile_text(text, SPELLED)
+    except LanguageError as error:
+        return sorted((item.code, item.line) for item in error.problems), None
+
+
+RESPELLED = """\
+scenario "Respelled"
+    horizon {horizon}
+input x: {unit} = {a} in [{b}, {c}]
+inside = ({a} in [{b}, {c}])
+root = sqrt({a} * {d})
+square = ({a}) ** 2
+input drawn = triangular({b}, {a}, {c}).draw()
+"""
+
+
+@st.composite
+def models(draw):
+    """A model of four quantities of one family and a horizon, written twice: each quantity in a unit
+    of its family drawn for each writing, and the same canonical value."""
+    family = draw(st.sampled_from(sorted(FAMILIES)))
+    # Few distinct values, so that equal ends (`[x, x]`, a mode at its minimum) are common; and the
+    # first three in order half the time, so that most models pass their checks.
+    a, b, c, d = (STEPS[family] * draw(st.integers(0, 4)) for _ in range(4))
+    if draw(st.booleans()):
+        b, a, c = sorted((a, b, c))
+    values = [a, b, c, d]
+    horizon = STEPS['time'] * draw(st.integers(1, 40))
+    units = st.sampled_from(sorted(FAMILIES[family]))
+    hours = st.sampled_from(sorted(FAMILIES['time']))
+
+    def text():
+        named = dict(zip('abcd', (written(value, draw(units)) for value in values)))
+        return RESPELLED.format(unit=draw(units), horizon=written(horizon, draw(hours)), **named)
+
+    return text(), text()
+
+
+def canonical(reading, program):
+    """A reading's values in the canonical unit of its dimension (a yes/no as it is)."""
+    scale = program.unit(reading.unit).scale if reading.unit else 1
+    return tuple(value if isinstance(value, bool) else value * float(scale) for value in reading.values)
+
+
+@settings(derandomize=True, max_examples=60, deadline=None)
+@given(models())
+def test_respelling_a_unit_never_changes_a_check_or_a_value(texts):
+    """The rule of units (spec, "Units, comparisons and layout"): a quantity is its dimension and its
+    scale, with its number read exactly as written, so writing one in another unit of its family (h,
+    min, day; L, mL, kL; ratio, fraction, percent) changes no check of the front end (the range of an
+    input and the value in it, the interval of a test, the unit of a square root and of a power, the
+    rule of a distribution and the support of a drawn input) and no value: the configuration's
+    horizon and each value that the run reads, in canonical units. A yes/no that compares two
+    quantities is the same, so a test of `0.1 day` against `2.4 h` is decided as if both were 2.4 h."""
+    first, second = (checked(text) for text in texts)
+    assert first[0] == second[0], texts
+    event('refused' if first[0] is not None else 'compiled and ran')
+    if first[0] is not None:
+        return
+    one, two = first[1], second[1]
+    assert one.configuration.request.horizon == two.configuration.request.horizon
+    paths = ['x', 'inside', 'root', 'square', 'drawn']
+    found = [
+        [canonical(reading, model.program) for reading in read(run(model.program, model.configuration), model.program, paths, [0])]
+        for model in (one, two)
+    ]
+    for path, left, right in zip(paths, *found):
+        if isinstance(left[0], bool):
+            assert left == right, (path, texts)
+        else:
+            assert left == pytest.approx(right, rel=1e-12), (path, texts)

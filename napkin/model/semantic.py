@@ -1549,8 +1549,10 @@ class Resolver:
             body, orelse = self.alike(body, orelse, node, 'if')
             return Apply('if', (test, body, orelse), body.type if body.type != PLAIN else orelse.type)
         if isinstance(node, n.Within):
+            # The interval of a test is an interval as a range is: its ends are checked by `interval`.
             value = self.expression(node.value, scope)
             self.want_number(value, node, 'in')
+            low = high = None
             tests = []
             if node.low is not None:
                 low, value = self.alike(self.expression(node.low, scope), value, node, 'in')
@@ -1558,6 +1560,7 @@ class Resolver:
             if node.high is not None:
                 value, high = self.alike(value, self.expression(node.high, scope), node, 'in')
                 tests.append(Apply('compare', (value, high), BOOL, ('<=',)))
+            self.interval(low, high, 'the interval of this test', node, (node.low, node.high))
             if len(tests) == 2:
                 return Apply('compare', (tests[0].args[0], value, tests[1].args[1]), BOOL, ('<=', '<='))
             return tests[0]
@@ -1651,8 +1654,9 @@ class Resolver:
         return Apply('call', tuple(terms), found.type, 'sum')
 
     def power(self, node, scope):
-        """`a ** b`: a plain number to any power, a number with a unit to a whole power written in
-        place."""
+        """`a ** b`: a number with no dimension to any power; a number with a dimension to a number
+        written in place, read exactly (`2.0` is 2, `0.5` is 1/2), whose result has the powers of its
+        dimension times the exponent, each whole (`raised`, as `sqrt` is the power 1/2)."""
         left, right = self.expression(node.left, scope), self.expression(node.right, scope)
         self.want_number(left, node, '**')
         self.want_number(right, node, '**')
@@ -1660,12 +1664,11 @@ class Resolver:
             self.fail('unit', 'an exponent has no unit', node)
         if not left.type.dimension:
             return Apply('pow', (left, right), PLAIN)
-        if not (isinstance(right, Const) and isinstance(right.value, int) and right.value > 0):
-            self.fail(
-                'unit', f'a value in {left.type} is raised only to a whole number written in place', node
-            )
-        spelling = spelling_of(factors(left.type.unit) * right.value)
-        return Apply('pow', (left, right), self.num(spelling, node))
+        written = literal(node.right)
+        if written is None or isinstance(written[1], n.Quantity):
+            self.fail('unit', f'a value in {left.type} is raised only to a number written in place', node)
+        exponent = rational(written[0])
+        return Apply('pow', (left, right), self.raised(left.type, exponent, node, f'{left.type} ** {_fraction_text(exponent)}'))
 
     def product(self, op, left, right, node):
         self.want_number(left, node, '*' if op == 'mul' else '/')
@@ -1677,6 +1680,61 @@ class Resolver:
         return Apply(
             op, (left, right), self.num(spelling_of(found + other), node) if found or other else PLAIN
         )
+
+    def raised(self, kind, exponent, node, what):
+        """The type of a number of type `kind` to the rational power `exponent` (a square root is the
+        power 1/2): its dimension, each power times the exponent, which must be whole, so that
+        `sqrt(24 h * 1 day)` is a time as `sqrt(24 h * 24 h)` is, and `sqrt` of a ratio is a plain
+        number. A run computes the value in the canonical unit of its dimension, so any unit of that
+        dimension names it exactly: the spelling that the exponent makes of `kind`'s own names when
+        their powers allow it (`h*h` gives `h`), no unit for no dimension, and else a unit of the
+        model of the dimension (`unit_for`)."""
+        dimension = []
+        for base, power in kind.dimension:
+            found = power * exponent
+            if found.denominator != 1:
+                rule = (
+                    'a square root needs each power of it even, as in h*h or h*day'
+                    if exponent == Fraction(1, 2)
+                    else f'each power of it times {_fraction_text(exponent)} must be whole'
+                )
+                self.fail('unit', f'{what}: its dimension is {_dimension_text(kind.dimension)}, and {rule}', node)
+            dimension.append((base, int(found)))
+        powers = {}
+        for sign, name in factors(kind.unit) if kind.unit else []:
+            powers[name] = powers.get(name, 0) + sign
+        scaled = {name: power * exponent for name, power in powers.items()}
+        if all(power.denominator == 1 for power in scaled.values()):
+            spelling = spelling_of(
+                [(1 if power > 0 else -1, name) for name, power in scaled.items() for _ in range(abs(int(power)))]
+            )
+            return self.num(spelling, node) if spelling else PLAIN
+        if not dimension:
+            return PLAIN
+        return self.unit_for(tuple(dimension), powers, node, what)
+
+    def unit_for(self, dimension, names, node, what):
+        """A unit of the model of a dimension, for a value whose own names do not spell it: of the
+        units of exactly that dimension, one of `names` first, then one of scale 1, then the first that
+        the model declares; else a product of such units of its base dimensions."""
+        order = {name: k for k, name in enumerate(self.units.base)}
+
+        def best(wanted):
+            found = [name for name, (dims, _) in self.units.base.items() if dims == wanted]
+            if not found:
+                return None
+            return min(found, key=lambda name: (name not in names, self.units.base[name][1] != 1, order[name]))
+
+        whole = best(dimension)
+        if whole is not None:
+            return self.num(whole, node)
+        parts = []
+        for base, power in dimension:
+            name = best(((base, 1),))
+            if name is None:
+                self.fail('unit', f'{what}: no unit of the model is a {base} alone, to name its result', node)
+            parts += [(1 if power > 0 else -1, name)] * abs(power)
+        return self.num(spelling_of(parts), node)
 
     def alike(self, left, right, node, op):
         """Two operands of one dimension; a bare zero takes the other's unit."""
@@ -1776,17 +1834,8 @@ class Resolver:
         if node.function == 'abs':
             return Apply('call', tuple(args), args[0].type, 'abs')
         if node.function == 'sqrt':
-            powers = {}
-            for sign, name in factors(args[0].type.unit) if args[0].type.unit else []:
-                powers[name] = powers.get(name, 0) + sign
-            if any(power % 2 for power in powers.values()):
-                self.fail('unit', f'sqrt of {args[0].type}: each unit of it needs an even power', node)
-            half = [
-                (1 if power > 0 else -1, name)
-                for name, power in powers.items()
-                for _ in range(abs(power) // 2)
-            ]
-            return Apply('call', tuple(args), self.num(spelling_of(half), node) if half else PLAIN, 'sqrt')
+            kind = self.raised(args[0].type, Fraction(1, 2), node, f'sqrt of {args[0].type}')
+            return Apply('call', tuple(args), kind, 'sqrt')
         if args[0].type.dimension:
             self.fail('unit', f'{node.function} takes a plain number, not {args[0].type}', node)
         return Apply('call', tuple(args), PLAIN, node.function)
@@ -2355,12 +2404,9 @@ class Resolver:
             lower, upper = (
                 self.bound(end, scope, declared, node) for end in (node.range.low, node.range.high)
             )
-            if self.reversed(lower, upper):
-                self.fail(
-                    'range',
-                    f'the range of {node.name} is reversed: [{_written(lower)}, {_written(upper)}]',
-                    node.range,
-                )
+            self.interval(
+                lower, upper, f'the range of {node.name}', node.range, (node.range.low, node.range.high)
+            )
         kind = LINK if isinstance(declared, Ent) else STATE
         return DeclaredValue(path, node.name, kind, declared, None, lower, upper, line=node.line)
 
@@ -2458,12 +2504,9 @@ class Resolver:
             lower, upper = (
                 self.bound(end, scope, value_type, node) for end in (node.range.low, node.range.high)
             )
-            if self.reversed(lower, upper):
-                self.fail(
-                    'range',
-                    f'the range of {node.name} is reversed: [{_written(lower)}, {_written(upper)}]',
-                    node.range,
-                )
+            self.interval(
+                lower, upper, f'the range of {node.name}', node.range, (node.range.low, node.range.high)
+            )
         if node.scale is not None:
             if not isinstance(value_type, Num):
                 self.fail('range', f'a scale belongs to a number, and {node.name} is {value_type}', node)
@@ -2545,23 +2588,41 @@ class Resolver:
             )
         return found
 
-    def reversed(self, lower, upper):
-        """Whether the ends of a range, both numbers written out, are reversed: compared in one unit, so
-        that [6 h, 1 day] runs from 6 h to 24 h."""
-        if not (isinstance(lower, Const) and isinstance(upper, Const)):
-            return False
-        return Fraction(lower.value) * self.scale(lower.type) > Fraction(upper.value) * self.scale(upper.type)
+    def interval(self, lower, upper, what, node, written=(None, None)):
+        """Refuse a closed interval whose two ends are fixed when the model compiles and reversed,
+        compared exactly in one unit (`exact`): a range, a domain or the interval of a test, so that
+        [6 h, 1 day] runs from 6 h to 24 h, [0.1 day, 2.4 h] holds one value and [5 h, 1 h] is an
+        error wherever it stands (spec: reversed bounds are an error). An end that only a run knows
+        is not compared here. `what` names the interval (`the range of x`); `written` are the ends as
+        the text writes them, for an end that is no number written out."""
+        ends = [None if end is None else self.exact(end) for end in (lower, upper)]
+        if None in ends or ends[0] <= ends[1]:
+            return
+        shown = [
+            _written(end) if isinstance(end, Const) else written_as(text)
+            for end, text in zip((lower, upper), written)
+        ]
+        self.fail(
+            'range',
+            f'{what} is reversed: [{shown[0]}, {shown[1]}]: an interval runs from its lower end to its upper end',
+            node,
+        )
 
     def within(self, found, value, node):
-        """A number written in place (a starting value, a member's value, a cell) lies in the value's
-        range."""
-        if not isinstance(found, Const) or not isinstance(found.type, Num):
+        """A value fixed when the model compiles (a starting value, a member's own value, a cell, the
+        constant of an option or an edit) lies in the value's range, compared exactly in one unit
+        (`exact`), so that `0.1 day` lies in [2.4 h, 2.4 h]."""
+        at = self.exact(found) if isinstance(found, (Const, Apply)) else None
+        if at is None:
             return
-        at = Fraction(found.value) * self.scale(found.type)
         for bound, sign, side in ((value.lower, 1, 'below'), (value.upper, -1, 'above')):
-            if isinstance(bound, Const) and sign * (at - Fraction(bound.value) * self.scale(bound.type)) < 0:
-                written = f'{found.value} {found.type.unit}'.strip()
-                self.fail('range', f'{written} is {side} the range of {value.name}', node)
+            end = None if bound is None else self.exact(bound)
+            if end is not None and sign * (at - end) < 0:
+                if isinstance(found, Const):
+                    shown = f'{found.value} {found.type.unit}'.strip()
+                else:
+                    shown = f'{_fraction_text(at / self.scale(value.type))} {value.type.unit}'.strip()
+                self.fail('range', f'{shown} is {side} the range of {value.name}', node)
 
     def categorical(self, node, expected):
         """`categorical(FIXED: 0.7, FAILED: 0.3)`: a weight, a plain number written in place, for each
@@ -2671,9 +2732,11 @@ class Resolver:
             return Const(ends[0], unit), Const(ends[1], unit)
         scale = self.scale(unit)
         for end, bound, sign in ((ends[0], lower, 1), (ends[1], upper, -1)):
-            if not isinstance(bound, Const):
+            limit = None if bound is None else self.exact(bound)
+            if limit is None:
                 continue
-            if sign * (bound.value * self.scale(bound.type) - end * scale) > 0:
+            # A bound that cuts an unbounded support, or cuts into a bounded one, holds less than it.
+            if not math.isfinite(end) or sign * (limit - rational(end) * scale) > 0:
                 self.fail(
                     'range',
                     f'the range of {node.name} must hold the support of its distribution, '
@@ -2708,8 +2771,33 @@ class Resolver:
             )
 
     def scale(self, kind):
-        """The size of one of a number's unit in the canonical unit of its dimension."""
-        return self.units.of(kind.unit)[1] if kind.unit else 1
+        """The size of one of a number's unit in the canonical unit of its dimension, exactly."""
+        return self.units.of(kind.unit)[1] if kind.unit else Fraction(1)
+
+    def exact(self, expression):
+        """The value of an expression fixed when the model compiles, exactly and in the canonical unit
+        of its dimension: a number written out is the decimal that writes it (`rational`) times its
+        unit's scale, so `0.1 day` and `2.4 h` are both 12/5; and the signs, sums, differences,
+        products, quotients, whole powers, `min`, `max` and `abs` of such values (`2 h - 30 min` is
+        3/2). None for any other expression, whose value only a run knows. Every check of a number
+        against another that the front end makes reads its numbers here."""
+        if isinstance(expression, Const):
+            value = expression.value
+            if isinstance(expression.type, Num) and isinstance(value, (int, float, Fraction)):
+                return None if isinstance(value, bool) else rational(value) * self.scale(expression.type)
+            return None
+        if not isinstance(expression, Apply):
+            return None
+        op = expression.detail if expression.op == 'call' else expression.op
+        if op not in _EXACT:
+            return None
+        args = []
+        for arg in expression.args:
+            found = self.exact(arg)
+            if found is None:
+                return None
+            args.append(found)
+        return _EXACT[op](*args)
 
     def evidence(self, node):
         """The records that a line cites and those written under it; each cited name is a record."""
@@ -3470,12 +3558,9 @@ class Resolver:
             lower, upper = (
                 self.bound(end, scope, declared, node) for end in (node.range.low, node.range.high)
             )
-            if self.reversed(lower, upper):
-                self.fail(
-                    'range',
-                    f'the domain of {node.name} is reversed: [{_written(lower)}, {_written(upper)}]',
-                    node.range,
-                )
+            self.interval(
+                lower, upper, f'the domain of {node.name}', node.range, (node.range.low, node.range.high)
+            )
         if node.scale is not None:
             scale = self.bound(node.scale, scope, declared, node)
         for found in (init, lower, upper, scale):
@@ -4420,9 +4505,8 @@ class Resolver:
         if isinstance(found.type, Num) and found.type != value.type:
             # In the input's own unit, so that two equal values are one value of a configuration; a
             # decimal is converted as written (`0.1 days` is 2.4 h).
-            number = Fraction(str(found.value)) if isinstance(found.value, float) else found.value
-            number = _converted(number, self.scale(found.type), self.scale(value.type))
-            found = Const(float(number) if isinstance(found.value, float) else number, value.type)
+            number = _converted(found.value, self.scale(found.type), self.scale(value.type))
+            found = Const(number, value.type)
         return found
 
     def declared_runs(self, lines, options):
@@ -4519,7 +4603,9 @@ class Resolver:
             if not isinstance(found, Const) or found.type.dimension != (('time', 1),):
                 self.report('scenario', f'{key} is a time, such as 30 days', node.line)
                 return None
-            return _converted(found.value, self.units.of(found.type.unit)[1], 1)
+            # Exact hours, however the time is spelled: `0.15 day` and `216 min` are both 18/5 h.
+            hours = self.exact(found)
+            return int(hours) if hours.denominator == 1 else hours
 
         return Scenario(
             'main' if node.role == 'scenario' else 'variant',
@@ -4808,8 +4894,9 @@ def _broken(family, params):
     follow `needs` in its refusal, or None when they hold it. The parameters are in one unit (a
     lognormal's gsd is plain), so `uniform(1 day, 20 h)` compares 24 h with 20 h. The rules are those
     by which the engine draws (`napkin.distributions`): a bounded normal or lognormal keeps some
-    probability between its bounds, or no draw has a meaning."""
-    a = dict(zip(PARAMETERS[family], params))
+    probability between its bounds, or no draw has a meaning. Each parameter is read exactly
+    (`rational`), so `triangular(0.1 h, 6 min, 1 h)` has its mode at its minimum."""
+    a = {name: rational(value) for name, value in zip(PARAMETERS[family], params)}
     if family == 'uniform':
         return None if a['min'] < a['max'] else 'min below max'
     if family in ('triangular', 'pert'):
@@ -4928,13 +5015,60 @@ def constant(value, node, units):
 
 
 def _converted(value, scale_from, scale_to):
-    """A number in one unit written in another: exact for a whole number, a float otherwise."""
+    """A number in one unit written in another, converted exactly (`rational`): a whole number or a
+    Fraction stays exact (an int when the result is whole), and a float is the float nearest to the
+    exact result, so `0.1 day` in hours is 2.4 and `0.1 day` in days stays 0.1."""
     if scale_from == scale_to:
         return value
-    if isinstance(value, int):
-        found = Fraction(value) * Fraction(scale_from) / Fraction(scale_to)
-        return int(found) if found.denominator == 1 else found
-    return float(value * scale_from / scale_to)
+    found = rational(value) * Fraction(scale_from) / Fraction(scale_to)
+    if isinstance(value, float):
+        return float(found)
+    return int(found) if found.denominator == 1 else found
+
+
+def _power(base, exponent):
+    """`base ** exponent` exactly, for a whole exponent (and a base that is not zero below zero);
+    None otherwise, since a root is seldom rational."""
+    if exponent.denominator != 1 or (base == 0 and exponent < 0) or abs(exponent) > 1024:
+        return None
+    return base ** int(exponent)
+
+
+# The operations whose result `Resolver.exact` computes exactly from exact arguments.
+_EXACT = {
+    'neg': lambda value: -value,
+    'add': lambda a, b: a + b,
+    'sub': lambda a, b: a - b,
+    'mul': lambda a, b: a * b,
+    'div': lambda a, b: None if b == 0 else a / b,
+    'pow': _power,
+    'sum': lambda *values: sum(values, Fraction(0)),
+    'min': lambda *values: min(values),
+    'max': lambda *values: max(values),
+    'abs': abs,
+}
+
+
+def _fraction_text(number):
+    """A rational for a message: `2`, `1/2`, or a decimal when its denominator is a power of 10."""
+    number = Fraction(number)
+    if number.denominator == 1:
+        return str(number.numerator)
+    decimal = number
+    for places in range(1, 13):
+        decimal *= 10
+        if decimal.denominator == 1:
+            return f'{number.numerator / number.denominator:.{places}f}'
+    return f'{number.numerator}/{number.denominator}'
+
+
+def _dimension_text(dimension):
+    """A dimension for a message: `time`, `volume/time`, `volume*volume`, or `no dimension`."""
+    above = [base for base, power in dimension for _ in range(max(power, 0))]
+    below = [base for base, power in dimension for _ in range(max(-power, 0))]
+    if not above and not below:
+        return 'no dimension'
+    return '/'.join(['*'.join(above) or '1', *below])
 
 
 def declare(tree, units, tables_reader=None, files=()):

@@ -125,7 +125,9 @@ class Request:
         if isinstance(self.horizon, bool) or not isinstance(self.horizon, Number) or self.horizon < 0:
             raise ConfigurationError(f'the horizon must be a number of hours, not {self.horizon!r}')
         if isinstance(self.pieces, bool) or not isinstance(self.pieces, int) or self.pieces < 1:
-            raise ConfigurationError(f'the budget of pieces must be a whole number from 1, not {self.pieces!r}')
+            raise ConfigurationError(
+                f'the budget of pieces must be a whole number from 1, not {self.pieces!r}'
+            )
 
 
 @dataclass(frozen=True)

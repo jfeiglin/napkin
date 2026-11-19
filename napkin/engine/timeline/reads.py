@@ -12,6 +12,13 @@ Each evaluation of an expression of the engine reads its names through `Reads`: 
 entry, in a condition, in a setting or a formula of each way of running, in the test of a collection,
 at the start of a run, and in the reader of a record. An evaluation over arrays (`napkin/core/arrays`)
 asks for each column as it gets to it, so a column that no instance's branch reads is never made.
+
+What an evaluation read is what it asked for: `Reads.found` (with `t`), which the reader of a record
+keeps for each value at each time that it evaluates (`record.Reader`), so a report says exercised for
+what a value read, and not for a side that it did not take. Of an evaluation that it did not see (a
+rate, a guard or a condition that the run evaluated), a reader knows only what every evaluation of
+the expression reads (`napkin.program.proofs.always`): the names outside the sides of a choice and
+the later terms of `and`, `or` and a chain of comparisons.
 """
 
 from __future__ import annotations
@@ -60,3 +67,4 @@ class Reads(Mapping):
 def lazily(node, read, units, t=None):
     """The value of a node whose names are read with `read(name)` as its evaluation asks for them."""
     return evaluate(node, Reads(nodes.names(node), read, t), units)
+

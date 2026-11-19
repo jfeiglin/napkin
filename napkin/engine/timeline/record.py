@@ -35,7 +35,9 @@ pieces of each value of a run:
   an occurrence is a member from its start, a flow of an occurrence while it is active.
 - **An edit of a store** at a stop (`checkpoints.py`) is a transfer from or to outside in its books:
   the store's history `external` (`tank.water.external`, in the store's unit) is what edits brought
-  into it so far, from its start, a piece at each edit; a withdrawal lowers it.
+  into it so far, from its start, a piece at each edit; a withdrawal lowers it. The record keeps the
+  ledger of every store that an edit changed, whatever its request names, and holds it with the
+  store or alone (`Manifest.names`); a store with no ledger took nothing from outside.
 - **The time of a change** that `elapsed` reads has a piece at the start of its value and at each
   commit that changed it. It has no key in the record: the reader finds it from the history of the
   value that it reads.
@@ -50,14 +52,19 @@ pieces of each value of a run:
   `Unavailable` with the reason. A record that keeps only some values keeps what their formulas read
   too.
 
+The values that a record holds have at most the request's budget of pieces: a record that would hold
+more ends before the time of the first piece that does not fit, naming the budget (`Record.within`).
+
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of each
-path. It evaluates a formula, a reduction, a keyed read and a dynamic read at each time that it is
-asked from the recorded values of what it reads (a formula of a finished occurrence reads its frozen
-piece; the time of the last change of a value is its last piece that differs from the one before),
-and never reads a formula's fitted pieces: a fit is checked at a few points of each piece only, so it
-could lose a kink between two of them, or a yes/no that changes and changes back. It reads a record
-with the plan of the run that made it, or makes the record's occurrences again from the starts of its
-trace (`Plan.replay`).
+path, from what the record holds and from nothing else (`Record.unavailable`): any other value is
+`Unavailable` with the reason, never a default. Its `Reader` evaluates a formula, a reduction, a keyed
+read and a dynamic read at each time that it is asked from the recorded values of what it reads (a
+formula of a finished occurrence reads its frozen piece; the time of the last change of a value is
+its last piece that differs from the one before), depth first with no recursion, and keeps what each
+evaluation read, which a report's evidence trail follows. It never reads a formula's fitted pieces: a
+fit is checked at a few points of each piece only, so it could lose a kink between two of them, or a
+yes/no that changes and changes back. It reads a record with the plan of the run that made it, or
+makes the record's occurrences again from the starts of its trace (`Plan.replay`).
 """
 
 from __future__ import annotations
@@ -74,12 +81,13 @@ from ...core.errors import ExpressionError
 from ...expressions import evaluate
 from ...program.config import Configuration, Request
 from ...program.parts import DistributionType
+from ...program.proofs import always
 from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Record, Unavailable
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
 from .plan import CHANGED, DYNAMIC, FORMULA, LOOKUP, REDUCE, Plan, name_of
-from .reads import Reads, lazily
+from .reads import Reads
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
 FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError)
@@ -336,21 +344,25 @@ class Recorder:
                 finish = next(piece[0] for piece in self.pieces[name])
                 pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, run.frozen[name], 0.0)]
             histories[name] = self._history(value.key, pieces)
+        # What a kept formula, reduction or dynamic read reads is kept too, so that `read` can
+        # evaluate it (`_needed`).
+        keys = set(request.keys)
+        if needed is not None:
+            keys |= {plan.values[name].key for name in needed if plan.values[name].key is not None}
+        # The ledger of every store that an edit changed, whatever the request names: the books of
+        # the store, which a record that holds the store, or the ledger, reads.
         for name, (start, moved) in self.transfers.items():
             key = plan.values[name].key
-            if name not in histories or key is None:
+            if key is None or plan.occurrence_of(name) not in started:
                 continue
             total, pieces = 0.0, [(start, 0.0, 0.0)]
             for at, amount in moved:
                 if at <= end:
                     total += amount
                     pieces.append((at, total, 0.0))
-            histories[f'{name}.external'] = self._history(Key(key.owner, (*key.steps, 'external')), pieces)
-        # What a kept formula, reduction or dynamic read reads is kept too, so that `read` can
-        # evaluate it (`_needed`).
-        keys = set(request.keys)
-        if needed is not None:
-            keys |= {plan.values[name].key for name in needed if plan.values[name].key is not None}
+            ledger = Key(key.owner, (*key.steps, 'external'))
+            histories[f'{name}.external'] = self._history(ledger, pieces)
+            keys.add(ledger)
         kept = [
             history
             for history in histories.values()
@@ -359,7 +371,8 @@ class Recorder:
         manifest = Manifest(request.horizon, request.everything, request.keys)
         last = failure if failure is not None else pause
         trace = tuple(self.trace) + ((last,) if last is not None else ())
-        return Record(manifest, tuple(kept), trace, failure)
+        # The values that the record holds stay within the request's budget of pieces (R-A4a-07).
+        return Record(manifest, tuple(kept), trace, failure).within(request.pieces)
 
     def _needed(self, keys):
         """The engine names whose histories a record of only these keys needs: theirs, and what
@@ -765,77 +778,208 @@ def _plan_of(program, record=None):
     return plan
 
 
-class _Values:
-    """The values of a record at a time, with each formula, reduction and keyed read evaluated
-    from the recorded values of what it reads, in canonical units. Which entries a collection keeps
-    is read from the recorded values of the fixed fields that its tests read."""
+class _Pending(Exception):
+    """Reads that an evaluation of the reader asks for before the reader has their values: the reader
+    finds those values first and evaluates again, so a long chain of formulas needs no recursion."""
+
+    def __init__(self, names):
+        super().__init__(names)
+        self.names = tuple(names)
+
+
+class Reader:
+    """The values of one record at the times that a caller asks (see the module): each from what the
+    record holds (`Record.unavailable`), else `Unavailable` with the reason; and, for each value that
+    it evaluates at a time, what that evaluation read (`reads`). Each value at each time is found
+    once, depth first with no recursion: an evaluation that asks for a read that is not known yet
+    waits while the reader finds it (`_Pending`). Within the reader a value that has none at a time
+    (an occurrence that has not started, a history that the record does not keep) is a LookupError,
+    which a collection reads as "not a member yet"; `value` gives the reason as `Unavailable`."""
 
     def __init__(self, record, program):
-        self.record = record
-        self.histories = {history.key: history for history in record.histories}
+        self.record, self.program = record, program
         self.plan = _plan_of(program, record)
         # The definitions that the commits of the run gave values, from its trace: a value is read
         # with the definition that it had at the time of the read.
         self.definitions = self.plan.definitions_of(record.trace)
-        self.done = {}
+        # When each occurrence started, from the trace, which every record holds whole.
+        self.starts = {entry.owner: float(entry.t) for entry in record.trace if entry.kind == 'start'}
+        self.found = {}  # (engine name, time) -> its value, or the LookupError of a value that has none
+        self.read = {}  # (engine name, time) -> the engine names that its evaluation read, in order
         self.kept = {}
+        self._stores = None
 
-    def _value(self, name, t):
+    # ---- what a caller asks -------------------------------------------------------------------------
+
+    def readings(self, paths, times):
+        """One `Reading` for each path, in order, of its values at the times in their order (see
+        `read`)."""
+        found = []
+        for path in paths:
+            key = key_of(self.program, path)
+            unit, scale = unit_of(self.program, key)
+            values = []
+            for t in times:
+                value = self.value(key, t)
+                if not isinstance(value, (bool, str, Unavailable)):
+                    value = float(value) / scale
+                values.append(value)
+            found.append(Reading(name_of(path) if isinstance(path, Key) else path, key, unit, tuple(values)))
+        return found
+
+    def value(self, key, t):
+        """The value of a record key at a time in canonical units, from what the record holds, else
+        `Unavailable` with the reason: a time or a value that the record does not hold
+        (`Record.unavailable`), an occurrence that has not started then (from the trace), a value
+        that cannot be read. A ledger that names no store is a KeyError: it is no value."""
+        t = float(t)
+        if key.store is not None and name_of(key.store) not in self.stores():
+            raise KeyError(f'{key}: {key.store} is no store, and only a store has a ledger of what came from outside')
+        reason = self.record.unavailable(key, t)
+        if reason is not None:
+            return Unavailable(reason)
+        if '#' in key.owner and not self.started(key.owner, t):
+            return Unavailable(f'{key.owner} has not started at {t:g} h')
+        try:
+            if key.store is not None:
+                return self.ledger(key, t)
+            return self.at(name_of(key), t)
+        except LookupError as problem:
+            stopped = self.record.stopped()
+            return Unavailable(str(problem) + (f': {stopped}' if stopped else ''))
+
+    def ledger(self, key, t):
+        """What edits brought into a store from outside up to time t (`Recorder.external`): the record
+        keeps the ledger of every store that an edit changed, whatever its request names, so a store
+        with none took nothing from outside."""
+        try:
+            history = self.record.history(key)
+        except KeyError:
+            return 0.0
+        return history.at(t)
+
+    def stores(self):
+        """The engine names of the stores of the run: the stored numbers that its flows meet."""
+        if self._stores is None:
+            self._stores = {
+                end
+                for connection in self.plan.connections.values()
+                for end in (connection.source, connection.sink)
+                if end is not None
+            }
+        return self._stores
+
+    def started(self, owner, t):
+        """Whether an occurrence has started at time t: its start is in the trace, at or before t."""
+        start = self.starts.get(owner)
+        return start is not None and start <= t
+
+    def reads(self, name, t):
+        """The engine names that the evaluation of an engine name at a time read, after `at` found its
+        value: what its formula asked for, the members and the entries that a collection read; none
+        for a value read from its history."""
+        return self.read.get((name, float(t)), ())
+
+    # ---- the values of engine names ---------------------------------------------------------------
+
+    def at(self, name, t):
+        """The value of an engine name at a time, from its history, or for a formula, a collection or
+        the time of a change from what it reads, in canonical units; a LookupError for a value that
+        has none then. Depth first, with no recursion (see the class)."""
+        t = float(t)
+        stack, waiting = [name], set()
+        while stack:
+            top = stack[-1]
+            if (top, t) in self.found:
+                stack.pop()
+                waiting.discard(top)
+                continue
+            try:
+                self.found[top, t] = self._evaluate(top, t)
+            except _Pending as pending:
+                # The reads go first; a read that waits already reads this value: a cycle, which the
+                # program's check refuses, and which the reader never loops on.
+                waiting.add(top)
+                for other in pending.names:
+                    if other in waiting:
+                        raise SimulationError(f'{other} reads itself') from None
+                stack.extend(pending.names)
+                continue
+            except LookupError as problem:
+                self.found[top, t] = problem
+            stack.pop()
+            waiting.discard(top)
+        found = self.found[name, t]
+        if isinstance(found, LookupError):
+            raise found
+        return found
+
+    def _known(self, name, t):
+        """A read of an evaluation: its value when the reader has it, else `_Pending`."""
+        found = self.found.get((name, t), _Pending)
+        if found is _Pending:
+            raise _Pending((name,))
+        if isinstance(found, LookupError):
+            raise found
+        return found
+
+    def _definition(self, name, t):
         """The plan's value of an engine name with the definition that it had at time t."""
         found = self.definitions.get(name)
         if found is None:
             return self.plan.original(name)
-        place = bisect_right([at for at, _ in found], float(t)) - 1
+        place = bisect_right([at for at, _ in found], t) - 1
         return found[max(place, 0)][1]
 
-    def at(self, name, t):
-        """The value of an engine name at a time: from its history, or for a formula from what it
-        reads, `Unavailable` when it cannot be evaluated. A value that the record does not hold is a
-        LookupError."""
-        if (name, t) in self.done:
-            return self.done[name, t]
-        value = self._value(name, t)
+    def _evaluate(self, name, t):
+        """The value of one engine name at a time, once what it reads is known; `_Pending` names a read
+        that is not (see `at`). It keeps the names that the evaluation read (`reads`)."""
+        value = self._definition(name, t)
+        asked = []
+
+        def read(other):
+            asked.append(other)
+            return self._known(other, t)
+
         owner = self.plan.occurrence_of(name)
         if value.kind in (REDUCE, LOOKUP):
-            found = self._derived(name, t)
+            found = self._derived(name, t, read)
         elif value.kind == DYNAMIC:
-            found = self._dynamic(name, t)
+            found = self._dynamic(name, t, read)
         elif value.kind == CHANGED:
-            found = self._changed(name, t)
-        elif value.kind != FORMULA or (owner is not None and self._finished(owner, t)):
+            found = self._changed(name, t, read)
+        elif value.kind != FORMULA or (owner is not None and read(f'{owner}.active') is False):
             # A value, or a formula of a finished occurrence, which keeps its value (D7).
-            history = self.histories.get(value.key)
-            if history is None:
-                raise LookupError(f'the record holds no value of {name}')
-            found = history.at(t)
+            found = self._stored(value).at(t)
         else:
-            # What the formula reads is read where its evaluation asks for it (`reads.py`); a read
-            # that the record does not hold is a LookupError of the reader, as before.
+            # What the formula reads is read where its evaluation asks for it (`reads.py`): a read
+            # that has no value then makes the formula unavailable, with its reason. What every
+            # evaluation of it reads is found first, together.
+            self._ready(always(value.node), t)
             try:
-                found = lazily(value.node, lambda read: self.at(read, t), self.plan.units, t)
+                found = evaluate(value.node, Reads(nodes.names(value.node), read, t), self.plan.units)
                 found = bool(found) if value.boolean else found if isinstance(found, str) else float(found)
-            except LookupError:
-                raise
             except FAILURES as problem:
                 found = Unavailable(str(problem))
-        self.done[name, t] = found
+        self.read[name, t] = tuple(dict.fromkeys(asked))
         return found
 
-    def _stored(self, name):
-        history = self.histories.get(self.plan.values[name].key)
-        if history is None:
-            raise LookupError(f'the record holds no value of {name}')
-        return history
+    def _stored(self, value):
+        """The history that the record keeps of a value, or LookupError."""
+        try:
+            return self.record.history(value.key)
+        except KeyError:
+            raise LookupError(f'the record keeps no history of {value.key or value.name}') from None
 
-    def _changed(self, name, t):
+    def _changed(self, name, t, read):
         """The time at which a stored value last changed at a commit, at time t: of the last piece of
         its history at or before t that differs from the value before it (a value that holds between
         moments has a piece at each commit that changes it; one that moves, beyond its tolerance), or
         the time of its first piece."""
-        pieces = self._stored(self.plan.changed[name]).pieces
+        stored = self.plan.changed[name]
+        read(stored)  # it has a value at t, or the change has none
+        pieces = self._stored(self.plan.values[stored]).pieces
         last = bisect_right([piece.t for piece in pieces], t) - 1
-        if last < 0:
-            raise LookupError(f'{name} has no value at {t} h')
         for k in range(last, 0, -1):
             before, piece = pieces[k - 1].at(pieces[k].t), pieces[k].value
             if isinstance(piece, bool | str) or isinstance(before, bool | str):
@@ -845,82 +989,57 @@ class _Values:
                 return pieces[k].t
         return pieces[0].t
 
-    def _finished(self, owner, t):
-        """Whether an occurrence has finished at time t."""
-        history = self.histories.get(Key(owner, ('active',)))
-        try:
-            return history is not None and history.at(t) is False
-        except LookupError:
-            return False  # it has not started
+    def _ready(self, names, t):
+        """`_Pending` for the reads among `names` that the reader has not found yet: what an evaluation
+        reads for sure is found before it runs, together, so that it runs again once for all of them
+        (a collection of many entries, a formula of many terms)."""
+        missing = [other for other in names if other != 't' and (other, t) not in self.found]
+        if missing:
+            raise _Pending(missing)
 
-    def _dynamic(self, name, t):
-        """A dynamic read at a time, from the recorded values of its members."""
+    def _dynamic(self, name, t, read):
+        """A dynamic read at a time, from the recorded values of its members: what they project and
+        the fields that say when each is a member are found first."""
         plan = self.plan
         dynamic = plan.dynamic[name]
-
-        def value(read):
-            return self.at(read, t)
-
+        self._ready(sorted(plan.dynamic_reads(name)), t)
         try:
-            members = plan.members_at(dynamic.source, value)
-            return dynamic_value(dynamic, members, lambda each: plan.project(each, dynamic.steps), value, t)
+            members = plan.members_at(dynamic.source, read)
+            return dynamic_value(dynamic, members, lambda each: plan.project(each, dynamic.steps), read, t)
         except FAILURES as problem:
             return Unavailable(str(problem))
 
-    def _derived(self, name, t):
-        """A reduction or a keyed read at a time, from the recorded values of what it reads."""
+    def _derived(self, name, t, read):
+        """A reduction or a keyed read at a time, from the recorded values of what it reads. Which
+        entries it keeps is read from the recorded values of the fixed fields that its tests read,
+        once. What it reads for sure is found first: the tests, then the kept entries of a reduction,
+        or the keys of a keyed read and its key; a keyed read reads only the entry that it selects."""
         plan = self.plan
-
-        def value(read):
-            return self.at(read, t)
-
+        derived = plan.reductions.get(name) or plan.keyed[name]
         try:
             if name not in self.kept:
-                derived = plan.reductions.get(name) or plan.keyed[name]
-                self.kept[name] = kept(derived.tests, value, plan.units)
+                self._ready([each for test in derived.tests if test is not None for each in always(test)], t)
+                self.kept[name] = kept(derived.tests, read, plan.units)
+            entries = self.kept[name]
             if name in plan.reductions:
-                return reduced(plan.reductions[name], value, plan.units, self.kept[name])
-            index = index_of(plan.keyed[name], value, plan.units, self.kept[name])
-            return looked_up(plan.keyed[name], value, plan.units, t, index)
+                reduction = plan.reductions[name]
+                self._ready([reduction.names[k] for k in entries] if reduction.names else (), t)
+                return reduced(reduction, read, plan.units, entries)
+            keyed = plan.keyed[name]
+            keys = [keyed.keys[k] for k in entries if isinstance(keyed.keys[k], str)]
+            self._ready([*keys, *sorted(always(keyed.key))], t)
+            index = index_of(keyed, read, plan.units, entries)
+            return looked_up(keyed, read, plan.units, t, index)
         except FAILURES as problem:
             return Unavailable(str(problem))
 
 
 def read(record, program, paths, times):
     """The values of named paths at chosen times, each in its declared unit: one `Reading` for each
-    path, in order. A formula, and a request, a capacity or an actual rate that is one, is evaluated
-    at each time from the recorded values of what it reads (see the module). A time that the record
-    does not hold is a LookupError, and so is a formula whose reads it does not hold. A value of an
-    occurrence before its start is `Unavailable`, and so is any value after the end of a record that
-    a failure or a breakpoint stopped (`Record.after`)."""
-    values_at = _Values(record, program)
-    found = []
-    for path in paths:
-        key = key_of(program, path)
-        unit, scale = unit_of(program, key)
-        values = []
-        for t in times:
-            external = key.steps[-1:] == ('external',)
-            if not record.manifest.holds(Key(key.owner, key.steps[:-1]) if external else key, t):
-                raise LookupError(f'{path}: the record holds no value at {t} h')
-            later = record.after(float(t))
-            if later is not None:
-                values.append(later)
-                continue
-            try:
-                if external:
-                    # What edits brought into a store from outside (`Recorder.external`): none, for a
-                    # store that no edit changed.
-                    history = values_at.histories.get(key)
-                    value = 0.0 if history is None else history.at(float(t))
-                else:
-                    value = values_at.at(name_of(key), t)
-            except LookupError:
-                if '#' not in key.owner:
-                    raise
-                value = Unavailable(f'{key.owner} has not started at {float(t):g} h')
-            if not isinstance(value, (bool, str, Unavailable)):
-                value = float(value) / scale
-            values.append(value)
-        found.append(Reading(name_of(path) if isinstance(path, Key) else path, key, unit, tuple(values)))
-    return found
+    path, in order, with a value for each time, in order. A formula, and a request, a capacity or an
+    actual rate that is one, is evaluated at each time from the recorded values of what it reads (see
+    the module). A value comes only from what the record holds; any other is `Unavailable` with the
+    reason (`Reader.value`): a time before the run, after its horizon or after its stop; a value that
+    the record does not hold; a value of an occurrence before its start; a formula whose reads the
+    record does not hold. A path that names no value of the program is a KeyError."""
+    return Reader(record, program).readings(paths, times)

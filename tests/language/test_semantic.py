@@ -8,6 +8,8 @@ from fractions import Fraction
 import pytest
 
 from napkin.model import semantic as s
+from napkin.model.compile import library_units
+from napkin.model.library import empty_library
 from napkin.model.language.parse import parse
 from napkin.model.language.problems import LanguageError
 from tests.program.examples import UNITS
@@ -178,6 +180,130 @@ def test_the_ends_of_a_range_are_compared_in_one_unit():
     assert declared(event, DAYS).entities[0].parts[0].params[0].upper.value == 1
     reversed_event = event.replace('[6 h, 1 day]', '[1 day, 6 h]')
     assert 'the range of wait is reversed: [1 day, 6 h]' in refused_with(reversed_event, DAYS, 'range')
+
+
+# Units of one dimension spelled several ways, and a named unit with no dimension.
+RESPELT = {
+    **UNITS,
+    'day': ({'time': 1}, 24),
+    'min': ({'time': 1}, Fraction(1, 60)),
+    'mL': ({'volume': 1}, Fraction(1, 1000)),
+    'kL': ({'volume': 1}, 1000),
+    'ratio': {},
+}
+
+
+def test_equal_quantities_are_equal_however_they_are_written():
+    """The audit's row 12: `0.1 day` lies in [2.4 h, 2.4 h], the ends [0.1 day, 2.4 h] are one value
+    and not reversed, and [0.1 day, 144 min] holds 2.4 h: each number is the decimal that writes it,
+    in its unit's exact scale. A value that a run would hold outside its range is still refused."""
+    for text in (
+        'input x: h = 0.1 day in [2.4 h, 2.4 h]\n',
+        'input x: h = 2.4 h in [0.1 day, 2.4 h]\n',
+        'input x: h = 2.4 h in [0.1 day, 144 min]\n',
+        'input x: h = 2 h in [1 h + 30 min, 2 h - 0 h]\n',
+        'x: L = 0.001 kL in [1000 mL, 1 L]\n',
+    ):
+        declared(text, RESPELT)
+    assert '2.5 h is above the range of x' in refused_with('input x: h = 2 h + 30 min in [0 h, 2 h]\n', RESPELT, 'range')
+    assert 'above the range of x' in refused_with('input x: h = 0.11 day in [2.4 h, 2.4 h]\n', RESPELT, 'range')
+
+
+@pytest.mark.parametrize(
+    'text',
+    [
+        'ok = (3 h in [5 h, 1 h])\n',
+        'x = 3 h\nassert x in [5 h, 1 h]\n',
+        'x = 3 h\nassert x in [1 day, 6 h]\n',
+        'x = 3 h\nassert x in [2 h + 3 h, 1 h]\n',
+        'm:\n    x: h = 3 h\n    go = event():\n        after 1 h:\n            if this.x in [5 h, 1 h]:\n                this.x = 1 h\n',
+        'x: h = 3 h in [5 h, 1 h]\n',
+    ],
+)
+def test_a_reversed_interval_is_an_error_wherever_it_stands(text):
+    """Spec, "Units, comparisons and layout": reversed bounds are an error, in a test as in a range
+    (the audit's row 12: a reversed interval of a test read false). Its ends compare exactly in one
+    unit, also when they are written as arithmetic of numbers."""
+    assert 'is reversed' in refused_with(text, RESPELT, 'range')
+
+
+def test_an_interval_of_one_value_or_with_an_end_that_a_run_knows_is_no_error():
+    """[1 day, 24 h] holds one value, and an end that only a run knows is not compared at compile
+    time."""
+    declared('x = 3 h\nassert x in [1 day, 24 h]\n', RESPELT)
+    declared('m:\n    low: h = 5 h\n    x: h = 3 h\n    ok = formula(this.x in [this.low, 1 h])\n', RESPELT)
+
+
+def test_a_square_root_and_a_power_read_the_dimension_and_not_the_spelling():
+    """The audit's row 22: `sqrt(24 h * 1 day)` is a time as `sqrt(24 h * 24 h)` is, and the square
+    root of a sum of two ratios is a plain number. A power reads its exponent exactly (`2.0` is 2)
+    and makes each power of the dimension times it, which must be whole."""
+    model = declared(
+        """
+        a = sqrt(24 h * 1 day)
+        b = sqrt(24 h * 24 h)
+        c = sqrt(60 min * 1 h)
+        d = sqrt(4 mL * 1 kL)
+        luck: ratio = 0.25
+        common: ratio = 0.5
+        e = sqrt(luck + common)
+        f = (2 h) ** 2.0
+        g = (4 h * 1 day) ** 0.5
+        k = (2 h) ** -1
+        """,
+        RESPELT,
+    )
+    types = {value.name: value.type for value in model.root}
+    assert [types[name].dimension for name in 'abcdefgk'] == [
+        (('time', 1),),
+        (('time', 1),),
+        (('time', 1),),
+        (('volume', 1),),
+        (),
+        (('time', 2),),
+        (('time', 1),),
+        (('time', -1),),
+    ]
+    assert (types['b'].unit, types['e'], types['f'].unit, types['k'].unit) == ('h', s.PLAIN, 'h*h', '1/h')
+    message = refused_with('x = sqrt(4 h)\n', RESPELT, 'unit')
+    assert message == 'sqrt of h: its dimension is time, and a square root needs each power of it even, as in h*h or h*day'
+    assert 'each power of it times 1.5 must be whole' in refused_with('x = (2 h) ** 1.5\n', RESPELT, 'unit')
+    assert 'raised only to a number written in place' in refused_with('y = 2\nx = (2 h) ** y\n', RESPELT, 'unit')
+
+
+def test_the_cyber_drafts_square_root_of_two_ratios_compiles():
+    """The formula of the cyber draft (scratch/rewrite/a5/translated/now/scenarios/cyber_learning_loop/
+    model.scn, line 840) with the prelude's `ratio` and `fraction`: the spread is the square root of
+    two squared spreads, each a ratio."""
+    units = library_units(empty_library())
+    model = declared(
+        """
+        Plan:
+            input success: fraction = 0.6
+            input spread_mass: ratio = 2
+            input target_mass: ratio = 3
+            input common_spread: ratio = 0.3
+            readonly luck: formula(ratio) = formula((1 - this.success) / this.success
+                * max(this.spread_mass, this.target_mass) / this.target_mass ** 2)
+            readonly common: formula(ratio) = formula((1 - this.success) ** 2
+                * this.common_spread ** 2)
+            readonly attack_spread: formula(ratio) = formula(sqrt(this.luck + this.common))
+        """,
+        units,
+    )
+    spread = next(part for part in model.entities[0].parts if part.name == 'attack_spread')
+    assert spread.type.dimension == () and spread.init.body.type == s.PLAIN
+
+
+def test_a_distribution_reads_its_parameters_exactly():
+    """A distribution's parameters convert to one unit exactly: `triangular(0.1 h, 6 min, 1 h)` has its
+    mode at its minimum, `uniform(0.1 day, 2.4 h)` has its minimum at its maximum, and the support
+    of `uniform(2.4 h, 3 h)` lies in [0.1 day, 12 h]."""
+    declared('input x = triangular(0.1 h, 6 min, 1 h).draw()\n', RESPELT)
+    assert 'min below max' in refused_with('input x = uniform(0.1 day, 2.4 h).draw()\n', RESPELT, 'distribution')
+    declared('input x = uniform(2.4 h, 3 h).draw() in [0.1 day, 12 h]\n', RESPELT)
+    found = declared('input x = uniform(0.1 day, 3 h).draw()\n', RESPELT).root[0].init.source
+    assert found.params == (0.1, Fraction(1, 8)) and found.type.of.unit == 'day'
 
 
 # ---- kinds, paths and texts ---------------------------------------------------------------------
