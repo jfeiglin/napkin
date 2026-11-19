@@ -4,7 +4,8 @@
 # translation of the piano tuners (it must PASS, its runs included), the check of each wrong
 # translation (each must FAIL in its own group, and in the run step too where the fault moves a
 # result), the wrong copy of the run step again with its change listed (it must PASS), the check of
-# the reservoir's mechanical translation (reported), and the check of the migration table.
+# the reservoir's mechanical translation (it must PASS, its run included), and the check of the
+# migration table.
 # Run from anywhere: sh /home/user/napkin/scratch/rewrite/a5/run_all.sh
 cd "$(dirname "$0")" || exit 2
 PY=/home/user/napkin/.venv/bin/python
@@ -31,8 +32,8 @@ done
 echo "--- the wrong copy (run) with its change listed in its own changed.md: the check must PASS"
 $PY check.py --quiet "$OLD/examples/piano_tuners/model.scn" translated/wrong/piano_tuners_run/model.scn \
     --changed translated/wrong/piano_tuners_run/changed.md || status=1
-echo "--- the mechanical translation of the reservoir (its empty case WAIT is left for a person; reported)"
-$PY check.py "$OLD/examples/reservoir/model.scn" translated/now/examples/reservoir/model.scn
+echo "--- the mechanical translation of the reservoir: the check must PASS, its run included"
+$PY check.py --quiet "$OLD/examples/reservoir/model.scn" translated/now/examples/reservoir/model.scn || status=1
 $PY table_check.py || status=1
 echo "run_all: $([ $status = 0 ] && echo OK || echo PROBLEMS)"
 exit $status

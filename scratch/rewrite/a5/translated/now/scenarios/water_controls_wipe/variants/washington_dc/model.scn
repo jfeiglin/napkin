@@ -9,6 +9,7 @@ variant "Washington, DC"
 washington_aqueduct: Utility
     "Washington Aqueduct (U.S. Army Corps of Engineers, Baltimore District). Its ID in the federal inventory
         is DC0000001."
+    title "The Washington Aqueduct"
     buys = <>
     sells = <washington_aqueduct_to_dc_water, washington_aqueduct_to_arlington, washington_aqueduct_to_fairfax_water>
     name = "The Washington Aqueduct"
@@ -20,6 +21,7 @@ washington_aqueduct: Utility
 
 dc_water: Utility
     "DC Water (District of Columbia Water and Sewer Authority). Its ID in the federal inventory is DC0000002."
+    title "DC Water"
     buys = <washington_aqueduct_to_dc_water>
     sells = <>
     name = "DC Water"
@@ -37,6 +39,7 @@ dc_water: Utility
 arlington: Utility
     "Arlington County, Virginia (Department of Environmental Services, water utility). Its ID in the federal
         inventory is VA6013010."
+    title "Arlington"
     buys = <washington_aqueduct_to_arlington>
     sells = <>
     name = "Arlington"
@@ -53,6 +56,7 @@ arlington: Utility
 
 fairfax_water: Utility
     "Fairfax Water (Fairfax County Water Authority). Its ID in the federal inventory is VA6059501."
+    title "Fairfax Water"
     buys = <washington_aqueduct_to_fairfax_water>
     sells = <>
     name = "Fairfax Water"
@@ -64,6 +68,7 @@ fairfax_water: Utility
 
 wssc_water: Utility
     "WSSC Water (Washington Suburban Sanitary Commission). Its ID in the federal inventory is MD0150005."
+    title "WSSC Water"
     buys = <>
     sells = <>
     name = "WSSC Water"
@@ -93,21 +98,25 @@ washington_aqueduct_to_fairfax_water: Tie
 
 dc_water_homes: Households
     "The people that DC Water serves."
+    title "DC Water: homes"
     utility = dc_water
     population = 632323 people  @dc_water_homes_population
 
 arlington_homes: Households
     "The people that Arlington serves."
+    title "Arlington: homes"
     utility = arlington
     population = 215000 people  @arlington_homes_population
 
 fairfax_water_homes: Households
     "The people that Fairfax Water serves."
+    title "Fairfax Water: homes"
     utility = fairfax_water
     population = 1121613 people  @fairfax_water_homes_population
 
 wssc_water_homes: Households
     "The people that WSSC Water serves."
+    title "WSSC Water: homes"
     utility = wssc_water
     population = 1900000 people  @wssc_water_homes_population
 
@@ -115,18 +124,21 @@ dc_water_hospitals: Hospitals
     "The 8 hospitals that DC Water supplies: Children's National Hospital; George Washington Univ Hospital;
         Howard University Hospital Corp; Medstar Georgetown University Hospital; Medstar Washington Hospital
         Center; Sibley Memorial Hospital; United Medical Center; Washington DC VA Medical Center."
+    title "DC Water: hospitals"
     utility = dc_water
     name = "DC Water"
     facilities = 8 facilities  @dc_water_hospitals_facilities
 
 arlington_hospitals: Hospitals
     "The hospital that Arlington supplies: Virginia Hospital Center."
+    title "Arlington: hospitals"
     utility = arlington
     name = "Arlington"
     facilities = 1 facilities  @arlington_hospitals_facilities
 
 fairfax_water_hospitals: Hospitals
     "The 2 hospitals that Fairfax Water supplies: Inova Fair Oaks Hospital; Reston Hospital Center."
+    title "Fairfax Water: hospitals"
     utility = fairfax_water
     name = "Fairfax Water"
     facilities = 2 facilities  @fairfax_water_hospitals_facilities
@@ -136,6 +148,7 @@ wssc_water_hospitals: Hospitals
         Healthcare Shady Grove Medical Center; Holy Cross Germantown Hospital; Holy Cross Hospital; Luminis
         Health Doctors Community Medical Ctr, Inc; Medstar Montgomery Medical Center; Medstar Southern
         Maryland Hospital Center; Suburban Hospital; University of MD Capital Region Medical Center."
+    title "WSSC Water: hospitals"
     utility = wssc_water
     name = "WSSC Water"
     facilities = 9 facilities  @wssc_water_hospitals_facilities
@@ -161,20 +174,6 @@ notes:
             out sooner here than in fact."  @wssc_water_demand
     verification:
         research: "variants/washington_dc/evidence/research.md"
-    titles:
-        washington_aqueduct: "The Washington Aqueduct"
-        dc_water: "DC Water"
-        arlington: "Arlington"
-        fairfax_water: "Fairfax Water"
-        wssc_water: "WSSC Water"
-        dc_water_homes: "DC Water: homes"
-        arlington_homes: "Arlington: homes"
-        fairfax_water_homes: "Fairfax Water: homes"
-        wssc_water_homes: "WSSC Water: homes"
-        dc_water_hospitals: "DC Water: hospitals"
-        arlington_hospitals: "Arlington: hospitals"
-        fairfax_water_hospitals: "Fairfax Water: hospitals"
-        wssc_water_hospitals: "WSSC Water: hospitals"
 
 record washington_aqueduct_demand: source "The Aqueduct has no distribution system and no retail customers: it
     sells all its finished water to DC Water, Arlington County and Fairfax Water."

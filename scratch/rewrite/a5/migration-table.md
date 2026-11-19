@@ -16,7 +16,7 @@ brought `translate.py` to them (2026-11-19); where a row and the compiler differ
 | --- | --- | --- | --- |
 | `file.role.*` | first declaration makes a main, a module or a variant | unchanged: `scenario`, `variant`, or a file of templates that `use` names | yes |
 | `scenario.line`, `scenario.summary`, `scenario.scope`, `scenario.horizon`, `scenario.library` | `scenario "T"` with `summary`, `scope`, `horizon`, `library` under it | unchanged lines under `scenario "T"`. PROPOSED, R-A5-01 | yes |
-| `scenario.timescales*` | `timescales a, b` | unchanged, but each scale is a time (`timescales 30 days`): one that names a value is refused now (`scenario`), so a person writes the time | yes |
+| `scenario.timescales*` | `timescales a, b` | retired (change 19): the engine chooses its own steps, and a run that needs finer ones sets `max_step`; the translator keeps the old hint in the notes, `timescales: "..."` | yes |
 | `scenario.resolution` | `resolution D` (longest solver step) | kept with its old meaning until the engine contract names the control (spec, "Numerical scale hints"). PROPOSED, R-A5-01 | yes |
 | `variant.*` | `variant "T"` with its own `summary`, `scope` (`horizon`, `resolution`, `timescales`: never used) | unchanged; a variant line overrides the line of the base. PROPOSED, R-A5-03 | yes |
 | `use` | `use NAME` | unchanged (spec, "How templates compose") | yes |
@@ -31,7 +31,7 @@ brought `translate.py` to them (2026-11-19); where a row and the compiler differ
 | `thing.instance*` | `name: Template` | unchanged | yes |
 | `thing.copies`, `expr.copy` | `name: Template * k`, `copy` | no form in the first version: write the instances, or a table. R-A5-10 | none |
 | `thing.table` | `name: Template from "file.csv"` | unchanged, with the spec's `id` column for links (spec, proposed) | none |
-| `thing.role*`, `thing.title` | `role R`, `title "…"` | unchanged lines on an entity or a template; a member written by hand has no `title` or `role` now, so the translator keeps them in `notes:` / `titles:` (`roles:`) | yes |
+| `thing.role*`, `thing.title` | `role R`, `title "…"` | unchanged lines on an entity or a template; a member written by hand keeps its `title` (change 19) and has no `role` | yes |
 | `thing.sees*` | `sees a, b.c` | none: `sees` left the language (change 15); a wrapper shows any value at a breakpoint | yes |
 | `link.declare.one` | `let region: Region` | `region: Region` (a slot that each instance binds). PROPOSED | yes |
 | `link.declare.many` | `let regions: [Region]` | `regions: <Region>` (spec collection type) | yes |
@@ -83,10 +83,10 @@ brought `translate.py` to them (2026-11-19); where a row and the compiler differ
 | `event.when.var_comparison.strict` | `when x < k` on a number var | kept when the var is discrete; on a continuous one the new compiler must diagnose (spec, "Monitoring a threshold"). Not checked here | yes |
 | `event.while` | `while K` on the header (never used) | no form in the first version. R-A5-10 | none |
 | `event.each` | `each W` (never used) | a trigger capture with `reset when W != captured` (spec) | none |
-| `event.outcomes.several*`, `outcome`, `outcome.chance.condition`, `outcome.chance.else`, `outcome.chance.none`, `outcome.no_lines` | named outcomes with conditions | a local `outcome: enum[A, B, C] = A`, then in the stage `outcome = A if C1 else B if C2 else C` and `switch outcome:` with a case for each outcome, its text and records under it (a conditional of bare members is no selector: `enum_member`). A case needs an action: an outcome with no line is left for a person | yes |
+| `event.outcomes.several*`, `outcome`, `outcome.chance.condition`, `outcome.chance.else`, `outcome.chance.none`, `outcome.no_lines` | named outcomes with conditions | a local `outcome: enum[A, B, C] = A`, then in the stage `outcome = A if C1 else B if C2 else C` and `switch outcome:` with a case for each outcome, its text and records under it (a conditional of bare members is no selector: `enum_member`); an outcome with no line is a case with its text alone (change 19) | yes |
 | `outcome.chance.number`, `event.outcomes.several.by_chance` | outcomes with chances | `switch categorical(A: p, B: q).draw():`, `else` as 1 less the others, each weight a number written in place (D1) | yes |
 | `event.choice` | `choice` | a field `forecast = categorical(A: p, B: q)` of the actor, a local `order: enum[A, B] = A`, `order = this.forecast.draw()` and `switch order:` (change 15; the acceptance example `pump_dispatch`): a caller edits `order` at a breakpoint | yes |
-| `event.role`, `outcome.role` | `role R` under an event or an outcome | no form: an event and a case have no role now; the translator writes a comment | yes |
+| `event.role`, `outcome.role` | `role R` under an event or an outcome | no form in the model: who plays an event belongs to the scenario's wrapper (change 19); the translator writes each into `roles.toml` beside the package's model files, which the publisher reads | yes |
 | `fn.count.outcome`, `fn.since.outcome` | `count(e.o)`, `since(e.o)` | no form: start an event of its own in that case, and read it. R-A5-10 | hand |
 | `text.event*`, `text.outcome*`, `text.event.list` | texts with `{name}` | unchanged: a text keeps its braces as written; the language of now gives them no meaning | yes |
 

@@ -8,7 +8,6 @@ scenario "Blackout in a heat wave, caused by a contractor's AI that will not sto
         and the cost depend on how fast staff stop the AI, how long the checks of the settings take, and who
         reaches cooling."
     horizon 1800 h
-    timescales homes.heat_up_time, compound_buildings.heat_up_time
     scope "The people on the supply, in the compound and in the homes around it, in three age bands, with the
         protection that they actually receive."
     library "../library"
@@ -410,7 +409,6 @@ crews:  @records_status_events
         "Switching waits for the checks"
     repairs_start = event():  @switching_starts
         "With the settings checked, crews start to switch the circuits back on one by one."
-        # role utility: an event has no role now
         when (this.state == WAITING and grid.remote_control == CUT_OFF and utility.determined > 0
             and utility.checked > 0):
             this.repairs_start.start()
@@ -501,7 +499,6 @@ supply:  @counts_quantity_value
     come_back = event():
         @restoration_back @service_follows_work
         "Power is back across the compound and the homes around it."
-        # role utility: an event has no role now
         when this.supply == COMING_BACK and crews.remaining <= 0 h:
             this.come_back.start()
         after 0 h:
@@ -636,14 +633,10 @@ ai:  @records_status_events
                     this.changes = CHANGING
                     crews.rework_left += this.rework_share * crews.remaining
                     crews.rework_caused += this.rework_share * crews.remaining
-                # TODO(hand): the case SKIPPED has no action, and a case of a switch needs one
-                # | skipped access is "kept" and not (supply.supply is "coming_back"):
-                # |     "Every circuit is back before the attacker is ready, and the circuits stay on."
-                # |     role operator
-                # TODO(hand): the case STOPPED has no action, and a case of a switch needs one
-                # | stopped else:
-                # |     "The attacker stops before it can change the settings again."
-                # |     role contractor
+                SKIPPED:
+                    "Every circuit is back before the attacker is ready, and the circuits stay on."
+                STOPPED:
+                    "The attacker stops before it can change the settings again."
     start = event():  @rt_delegation_contractor_holds_access
         "{actor} switches off the shared supply, changes the circuits' protection settings, keeps a hidden
             route to them and sets up a job on a server beside the controls."
@@ -697,7 +690,6 @@ job:  @records_status_events
     # go first: when the job is due at the moment that staff cancel it, or that crews finish the last
     # circuit, the job does not run.
     due = event():  @job_rework
-        # role adversary: an event has no role now
         outcome: enum[DONE, STOPPED] = DONE
         when count(ai.start.occurrences) > 0 and since(ai.start) >= this.run_time:
             this.due.start()
@@ -711,11 +703,9 @@ job:  @records_status_events
                     this.state = RAN
                     this.work_left += ai.rework_share * crews.remaining
                     this.work_caused += ai.rework_share * crews.remaining
-                # TODO(hand): the case STOPPED has no action, and a case of a switch needs one
-                # | stopped else:
-                # |     "The scheduled job never runs: contractor staff cancelled it after the attacker stopped, or every
-                # |         circuit was already back."
-                # |     role contractor
+                STOPPED:
+                    "The scheduled job never runs: contractor staff cancelled it after the attacker stopped, or every
+                        circuit was already back."
     assert this.work_left + this.work_done in [this.work_caused - 1e-05 h,
         this.work_caused + 1e-05 h]  @counts_hour_work
         "The extra work from the job is counted once, as work still to do or work done."
@@ -854,7 +844,6 @@ places:  @counts_quantity_value
             this.state = CLOSED
     filled = event():
         "Every usable cooled place is taken."
-        # role responder: an event has no role now
         @assumption "Officials keep a count of the places that they fill, so they know when every usable place
             is taken."
             assumption A-SC41-PROTECTION
@@ -1697,6 +1686,7 @@ notes:
         cooled places help only if they have their own power. A file that listed who depends on the supply, or
         a person who approves any action against a utility, would have prevented the cut altogether; this case
         does not model those choices."
+    timescales: "homes.heat_up_time, compound_buildings.heat_up_time"
     reporting:
         crews:
             work_left:

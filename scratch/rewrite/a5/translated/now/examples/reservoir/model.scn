@@ -57,9 +57,8 @@ operator:
                 OPEN:
                     "The operator opens the spillway."
                     reservoir.gate = OPEN
-                # TODO(hand): the case WAIT has no action, and a case of a switch needs one
-                # | wait else:
-                # |     "The operator waits, and the spillway stays closed."
+                WAIT:
+                    "The operator waits, and the spillway stays closed."
 
 record counts: identity "The model counts the water that comes in and goes out, each share once."
 record rule: assumption "The operator opens the spillway at that level; a reader who plays it can wait."

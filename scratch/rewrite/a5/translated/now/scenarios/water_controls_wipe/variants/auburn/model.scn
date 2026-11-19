@@ -7,6 +7,7 @@ variant "Auburn, Washington"
 
 auburn: Utility
     "City of Auburn, Washington. Its ID in the federal inventory is WA5303350."
+    title "Auburn"
     buys = <>
     sells = <>
     name = "Auburn"
@@ -24,11 +25,13 @@ auburn: Utility
 
 auburn_homes: Households
     "The people that Auburn serves."
+    title "Auburn: homes"
     utility = auburn
     population = 107655 people  @auburn_homes_population
 
 auburn_hospitals: Hospitals
     "The hospital that Auburn supplies: Multicare Auburn Medical Center."
+    title "Auburn: hospitals"
     utility = auburn
     name = "Auburn"
     facilities = 1 facilities  @auburn_hospitals_facilities
@@ -41,10 +44,6 @@ notes:
             fact."  @auburn_bought
     verification:
         research: "variants/auburn/evidence/research.md"
-    titles:
-        auburn: "Auburn"
-        auburn_homes: "Auburn: homes"
-        auburn_hospitals: "Auburn: hospitals"
 
 record auburn_demand: assumption "The highest day of the present system is 12.43 Mgal/day on July 29, 2020,
     with an average day of 6.32 Mgal/day (ratio 1.96677). Less the Algona sale at that ratio (0.360847 x

@@ -7,7 +7,6 @@ scenario "A country's cyber attacks and the learning loop"
         results for 25 years while AI makes attacks cheaper. It shows when military plans start to count on
         cyber attacks."
     horizon 25 years
-    timescales leadership.adjust_time, 1 / defenders.calm_rate, 1 / effects_program.forget_rate
     resolution 7 days
     scope "One capable country's cyber force, its surveillance and its attacks, from 2026 for 25 years."
     library "../library"
@@ -2639,6 +2638,7 @@ notes:
             A range is not a measured interval."  @program_basis
     decisive: "Whether the lessons of attacks outlast their loss to patches, turnover and secrecy at the
         volume that cheaper attacks allow."
+    timescales: "leadership.adjust_time, 1 / defenders.calm_rate, 1 / effects_program.forget_rate"
     reporting:
         deaths:
             category: deaths

@@ -8,6 +8,7 @@ variant "Jamestown, North Carolina"
 
 jamestown: Utility
     "Town of Jamestown, North Carolina. Its ID in the federal inventory is NC0241030."
+    title "Jamestown"
     buys = <high_point_to_jamestown, greensboro_to_jamestown>
     sells = <>
     name = "Jamestown"
@@ -26,6 +27,7 @@ jamestown: Utility
 
 greensboro: Utility
     "City of Greensboro, North Carolina. Its ID in the federal inventory is NC0241010."
+    title "Greensboro"
     buys = <>
     sells = <greensboro_to_jamestown>
     name = "Greensboro"
@@ -38,6 +40,7 @@ greensboro: Utility
 
 high_point: Utility
     "City of High Point, North Carolina. Its ID in the federal inventory is NC0241020."
+    title "High Point"
     buys = <>
     sells = <high_point_to_jamestown>
     name = "High Point"
@@ -62,27 +65,32 @@ greensboro_to_jamestown: Tie
 
 jamestown_homes: Households
     "The people that Jamestown serves."
+    title "Jamestown: homes"
     utility = jamestown
     population = 6543 people  @jamestown_homes_population
 
 greensboro_homes: Households
     "The people that Greensboro serves."
+    title "Greensboro: homes"
     utility = greensboro
     population = 319588 people  @greensboro_homes_population
 
 high_point_homes: Households
     "The people that High Point serves."
+    title "High Point: homes"
     utility = high_point
     population = 118662 people  @high_point_homes_population
 
 greensboro_hospitals: Hospitals
     "The hospital that Greensboro supplies: The Moses H. Cone Memorial Hospital."
+    title "Greensboro: hospitals"
     utility = greensboro
     name = "Greensboro"
     facilities = 1 facilities  @greensboro_hospitals_facilities
 
 high_point_hospitals: Hospitals
     "The hospital that High Point supplies: High Point Regional Health System."
+    title "High Point: hospitals"
     utility = high_point
     name = "High Point"
     facilities = 1 facilities  @high_point_hospitals_facilities
@@ -98,15 +106,6 @@ notes:
             event, so their stored water can last longer here than in fact."  @greensboro_bought
     verification:
         research: "variants/jamestown/evidence/research.md"
-    titles:
-        jamestown: "Jamestown"
-        greensboro: "Greensboro"
-        high_point: "High Point"
-        jamestown_homes: "Jamestown: homes"
-        greensboro_homes: "Greensboro: homes"
-        high_point_homes: "High Point: homes"
-        greensboro_hospitals: "Greensboro: hospitals"
-        high_point_hospitals: "High Point: hospitals"
 
 record jamestown_demand: assumption "The 2025 plan gives a total demand of 0.5313 MGD and no highest day. The
     peak use is 0.5313 x 1.54385 (the family median ratio of highest to average day) = 0.8202 MGD; the town

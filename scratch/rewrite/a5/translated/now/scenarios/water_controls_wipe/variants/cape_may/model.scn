@@ -7,6 +7,7 @@ variant "Cape May County, New Jersey"
 
 cape_may: Utility
     "City of Cape May Water & Sewer Utility. Its ID in the federal inventory is NJ0502001."
+    title "Cape May"
     buys = <>
     sells = <>
     name = "Cape May"
@@ -25,6 +26,7 @@ cape_may: Utility
 woodbine: Utility
     "Borough of Woodbine (Woodbine Water Department, formerly Woodbine MUA). Its ID in the federal inventory
         is NJ0516001."
+    title "Woodbine"
     buys = <>
     sells = <>
     name = "Woodbine"
@@ -44,11 +46,13 @@ woodbine: Utility
 
 cape_may_homes: Households
     "The people that Cape May serves."
+    title "Cape May: homes"
     utility = cape_may
     population = 35000 people  @cape_may_homes_population
 
 woodbine_homes: Households
     "The people that Woodbine serves."
+    title "Woodbine: homes"
     utility = woodbine
     population = 2650 people  @woodbine_homes_population
 
@@ -62,11 +66,6 @@ notes:
             fact."  @woodbine_nameplate
     verification:
         research: "variants/cape_may/evidence/research.md"
-    titles:
-        cape_may: "Cape May"
-        woodbine: "Woodbine"
-        cape_may_homes: "Cape May: homes"
-        woodbine_homes: "Woodbine: homes"
 
 record cape_may_demand: assumption "The maximum day demand is approximately 2.80 MGD and the annual average
     0.95 MGD, a peak ratio of 2.9474. The 2023 sales to West Cape May, Cape May Point and Lower Township were

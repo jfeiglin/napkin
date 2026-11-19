@@ -8,6 +8,7 @@ variant "Jackson, Mississippi"
 jxn_water: Utility
     "City of Jackson, Mississippi (O.B. Curtis and J.H. Fewell plants; operated by JXN Water). Its ID in the
         federal inventory is MS0250008."
+    title "JXN Water"
     buys = <>
     sells = <>
     name = "JXN Water"
@@ -18,12 +19,14 @@ jxn_water: Utility
 
 jxn_water_homes: Households
     "The people that JXN Water serves."
+    title "JXN Water: homes"
     utility = jxn_water
     population = 189673 people  @jxn_water_homes_population
 
 jxn_water_hospitals: Hospitals
     "The 4 hospitals that JXN Water supplies: Merit Health Central; Mississippi Baptist Medical Center;
         Mississippi Methodist Rehab Ctr; University of Mississippi Med Center."
+    title "JXN Water: hospitals"
     utility = jxn_water
     name = "JXN Water"
     facilities = 4 facilities  @jxn_water_hospitals_facilities
@@ -38,10 +41,6 @@ notes:
             hospital hours short of water are lower here than in fact."  @jxn_water_hospitals_facilities
     verification:
         research: "variants/jackson/evidence/research.md"
-    titles:
-        jxn_water: "JXN Water"
-        jxn_water_homes: "JXN Water: homes"
-        jxn_water_hospitals: "JXN Water: hospitals"
 
 record jxn_water_demand: assumption "No source reports a highest day. The average production into the
     distribution system from July 2025 to June 2026 is 37.106 MGD (four quarterly means weighted by their

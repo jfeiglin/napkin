@@ -35,8 +35,7 @@ every name is resolved with the names of the model (`oldmodel.Symbols`). What it
   `once`) and one stage (`after D:`). Outcomes by condition are a local `outcome` and a `switch` on it;
   outcomes by chance a `switch` on `categorical(...).draw()`; an actor's choice a field `forecast`
   holding the chances, a local `order` drawn from it and a `switch` on it, which a caller edits at a
-  breakpoint (change 15). A case whose outcome has no line cannot be written (a case has an action),
-  so it is left for a person with its text;
+  breakpoint (change 15). An outcome with no line is a case with its text alone (change 19);
 - status cases, asserts (a sum check is an interval), options, runs, notes and records (an ID goes on
   a line of its own under its record: R-A5-02);
 - an output as a named formula with its text and records, `in [0,]` unless it was `signed` (D10). What
@@ -44,8 +43,12 @@ every name is resolved with the names of the model (`oldmodel.Symbols`). What it
   `category` and `lag` of each output under `reporting:`, an output with no estimate (D4) with its
   label and reason under `not_estimated:`, and each `versus` pair under `comparisons:` (D9).
 
-What leaves the language with no trace in the model: `sees` (change 15), the `role` of an event or an
-outcome (written as a comment), `level`, `signed`, `cumulative`. Braces in a text stay as written.
+A member written by hand keeps its `title` (change 19). What the model no longer holds goes beside
+it, by rule of change 19: `timescales` are retired, and the old hint stays in the notes (`timescales:`,
+listed when it runs) so that M confirms the accuracy without it; the `role` of an event or a case
+belongs to the scenario's wrapper and goes into `roles.toml` beside the model files (`ROLES`). What
+leaves the language with no trace: `sees` (change 15), `level`, `signed`, `cumulative`. Braces in a
+text stay as written.
 """
 
 from __future__ import annotations
@@ -168,6 +171,8 @@ class Translator:
         self.formula_overrides = self._formula_overrides()
         self.renames = self._renames()
         self.started = self._started()
+        self.roles = {}  # {event path, or event path.CASE: role}: for `roles.toml`
+        self.timescales = []  # the old hints, as written
 
     # ---- bookkeeping ---------------------------------------------------------------------------------
 
@@ -371,8 +376,13 @@ class Translator:
             if key in ('summary', 'scope', 'library', 'horizon', 'resolution'):
                 self.verbatim(child.number)
             elif key == 'timescales':
-                parts = [self.expr(item, None, draws=False) for item in block.timescales]
-                self.emit(child.number, 1, 'timescales ' + ', '.join(parts))
+                # Retired (change 19): the engine chooses its own steps, and a run that needs finer
+                # ones sets `max_step`. The old hint stays in the notes, so that M can confirm that
+                # the results meet their accuracy without it.
+                line = self.logical[child.number]
+                hint = ' '.join(self.rows[k - 1].strip() for k in range(line.number, line.end + 1))
+                self.note('timescales', [], quoted(hint.removeprefix('timescales').strip()))
+                self.timescales.append(hint.removeprefix('timescales').strip())
                 self.done_block(child.number)
             else:
                 self.hand(child.number, 1, 'a line of the scenario line')
@@ -395,16 +405,10 @@ class Translator:
             word = first.value if first.kind == 'name' else None
             member = members.get(child.number)
             if word in ('title', 'role') and member is None:
-                if thing.template is None:
-                    self.verbatim(child.number)
-                    return True
-                # A member written by hand has no title or role in the language of now: its words
-                # go into the notes (`titles`, `roles`), for the drawings and the briefs.
-                words = child.tokens[1]
-                said = quoted(words.value) if words.kind == 'text' else words.value
-                self.note(word + 's', [name], said)
-                self.done_block(child.number)
-                self.dropped[f'the {word} of a member: into the notes'] += 1
+                if word == 'role' and thing.template is not None:
+                    # A member takes a title (change 19), and no role: who plays it is the wrapper's.
+                    return False
+                self.verbatim(child.number)
                 return True
             if word == 'sees' and member is None:
                 # Change 15: `sees` left the language; a wrapper shows any value at a breakpoint.
@@ -803,12 +807,9 @@ class Translator:
         def inner(child):
             first = child.first
             if first.is_name('role') and len(child.tokens) == 2:
-                # An event has no role in the language of now.
-                self.emit(
-                    child.number, 2, f'# role {child.tokens[1].value}: an event has no role now', raw=True
-                )
+                # The scenario's wrapper reads who plays an event (change 19): `roles.toml`.
+                self.roles[f'{self.symbols.declarer(thing)}.{event.name}'] = child.tokens[1].value
                 self.done(child.number)
-                self.dropped['the role of an event'] += 1
                 return True
             if first.is_name('choice') and len(child.tokens) == 1:
                 self.done(child.number)
@@ -834,12 +835,14 @@ class Translator:
                     self.emit(number, 3, fit(3, f'{target} = ', value, ''))
                 self.emit(number, 3, f'switch {selector[5]}:')
                 for outcome in outcomes:
-                    self.case(outcome, bodies[outcome.name], selector[6][outcome.name], thing)
+                    key = f'{self.symbols.declarer(thing)}.{event.name}'
+                    self.case(outcome, bodies[outcome.name], selector[6][outcome.name], key)
             elif outcomes and (bodies[outcomes[0].name] or guard is not None):
                 only = outcomes[0]
                 self.emit(number, 2, f'after {delay}' + (f' when {guard}' if guard else '') + ':')
                 if only.line != number:
-                    self.outcome_lines(only, 3, cites_row=True)
+                    key = f'{self.symbols.declarer(thing)}.{event.name}'
+                    self.outcome_lines(only, 3, cites_row=True, role_key=key)
                 for row in bodies[only.name]:
                     self.emit(number, 3, row)
             elif event.after is not None:
@@ -942,10 +945,10 @@ class Translator:
                     written.add((found[2], found[3]))
         return rows
 
-    def outcome_lines(self, outcome, depth, cites_row=False):
-        """The text, records and role of an outcome written by its name, under its case or its stage.
-        With `cites_row`, the records that its line cites go on a row of their own: a stage's line
-        takes none."""
+    def outcome_lines(self, outcome, depth, cites_row=False, role_key=None):
+        """The text and records of an outcome written by its name, under its case or its stage, and
+        its role into `roles.toml` under `role_key` (the event, and the case). With `cites_row`, the
+        records that its line cites go on a row of their own: a stage's line takes none."""
         self.done(outcome.line)
         if cites_row and self.cites(outcome.support):
             self.emit(outcome.line, depth, self.cites(outcome.support).strip())
@@ -954,11 +957,8 @@ class Translator:
                 continue
             first = child.first
             if first.is_name('role') and len(child.tokens) == 2:
-                self.emit(
-                    child.number, depth, f'# role {child.tokens[1].value}: a case has no role now', raw=True
-                )
+                self.roles[role_key] = child.tokens[1].value
                 self.done(child.number)
-                self.dropped['the role of an outcome'] += 1
             elif first.kind == 'text':
                 self.verbatim(child.number, depth)
             elif first.kind == 'at':
@@ -974,15 +974,12 @@ class Translator:
                 else:
                     self.verbatim(child.number, depth)
 
-    def case(self, outcome, rows, member, thing):
+    def case(self, outcome, rows, member, event):
         """One case of the switch of an event with outcomes: its member, then the outcome's text, records
-        and lines. A case needs an action, so an outcome with no line is left for a person."""
-        if not rows:
-            self.hand(outcome.line, 4, f'the case {member} has no action, and a case of a switch needs one')
-            return
+        and lines. An outcome with no line is a case with its text alone (change 19)."""
         cites = self.cites(outcome.support)
         self.emit(outcome.line, 4, f'{member}:{cites}')
-        self.outcome_lines(outcome, 5)
+        self.outcome_lines(outcome, 5, role_key=f'{event}.{member}')
         for row in rows:
             self.emit(outcome.line, 5, row)
 
@@ -1179,9 +1176,13 @@ class Translator:
             if self.file.notes is None:
                 self.emit(where, 0, '')
                 self.emit(where, 0, 'notes:')
-            for top in ('reporting', 'not_estimated', 'comparisons', 'titles', 'roles'):
+            for top in ('timescales', 'reporting', 'not_estimated', 'comparisons'):
                 items = self.extra.get(top)
                 if not items:
+                    continue
+                if not items[0][0]:
+                    # A note of one value: `timescales: "a, b"`.
+                    self.emit(where, 1, f'{top}: {items[0][1]}')
                     continue
                 self.emit(where, 1, f'{top}:')
                 written = set()
@@ -1238,6 +1239,8 @@ class Translator:
             'why': dict(self.why),
             'dropped': dict(self.dropped),
             'defaults': dict(self.defaults),
+            'roles': dict(self.roles),
+            'timescales': list(self.timescales),
         }
 
 
@@ -1417,6 +1420,33 @@ def entries(written):
     return sorted(found)
 
 
+# The file beside a package's model files that keeps the roles of its events for the scenario's
+# wrapper. The old publisher gave each timeline card the role of its outcome, else of its event, else of
+# its entity, as the card's actor (`tools/publish/pages.py`, `Pages.cards` at 8488047), which the water
+# UI shows (`ui/web/src/App.tsx`). An event's role belongs to the wrapper now (change 19), and nothing
+# of the new layout reads it yet: the publisher of stage M reads this file beside `brief.toml`.
+ROLES = 'roles.toml'
+
+
+def write_roles(package, roles):
+    """Write the roles of a package's events (`{event path: role}`, a case as `event.CASE`) into
+    `roles.toml` beside its translated model files; a package with none gets no file."""
+    target = OUT / package.relative_to(BASE) / ROLES
+    if not roles:
+        target.unlink(missing_ok=True)
+        return
+    lines = [
+        '# Who plays each event, and each case of an event, that the old model gave a role: the actor of',
+        "# its timeline cards (tools/publish/pages.py, `Pages.cards`, at 8488047). An event's role belongs",
+        "# to the scenario's wrapper (PLAN.md, change 19 after G0); the publisher reads it here.",
+        '',
+        '[events]',
+        *(f'"{event}" = "{role}"' for event, role in sorted(roles.items())),
+    ]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+
 def unspellable_units(packages):
     """[(file, unit, its spelling now, its parts that are no unit)] of the units that the prelude, the
     catalogue's library and the `units.json` of `packages` declare under a composed name: the
@@ -1478,6 +1508,8 @@ def main(argv):
         collections.Counter(),
     )
     rows, written, packages = [], [], set()
+    roles = collections.defaultdict(dict)  # {package: {event: role}}
+    timescales = []  # (file, the old hint)
     for path in paths:
         translator = Translator(path, events=events)
         text, counts = translator.translate()
@@ -1505,12 +1537,15 @@ def main(argv):
         why.update(counts['why'])
         dropped.update(counts['dropped'])
         defaults.update(counts['defaults'])
+        roles[package_of(path)].update(counts['roles'])
+        timescales += [(relative.as_posix(), hint) for hint in counts['timescales']]
         if counts['missed']:
             print(f'  {relative}: lines that the script lost: {counts["missed"][:8]}', file=sys.stderr)
     if to_stdout:
         return 0
     for package in sorted(packages):
         copy_support(package)
+        write_roles(package, roles.get(package, {}))
     width = max(len(row[0]) for row in rows)
     print(f'{"file":{width}}  lines  translated  left  share')
     for name, logical, done, todo, missed, share in rows:
@@ -1532,6 +1567,16 @@ def main(argv):
             for reason, n in counter.most_common():
                 print(f'  {n:5d}  {reason}')
     print(f'\nwrote {OUT}')
+    for package, found in sorted(roles.items()):
+        if found:
+            where = (OUT / package.relative_to(BASE) / ROLES).relative_to(OUT).as_posix()
+            print(f'\nthe roles of {len(found)} events and cases, for the wrapper: {where}')
+    if timescales:
+        print(
+            f'\nretired timescales (change 19), kept in the notes; confirm the accuracy without them ({len(timescales)}):'
+        )
+        for file, hint in timescales:
+            print(f'  {file}: {hint}')
     missing = unspellable_units(packages)
     if missing:
         print(f'\nunits declared under a composed name whose parts are no unit ({len(missing)}):')

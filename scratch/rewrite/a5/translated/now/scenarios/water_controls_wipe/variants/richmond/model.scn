@@ -8,6 +8,7 @@ variant "Richmond, Virginia"
 richmond: Utility
     "City of Richmond, Virginia, Department of Public Utilities (water). Its ID in the federal inventory is
         VA4760100."
+    title "Richmond"
     buys = <>
     sells = <>
     name = "Richmond"
@@ -19,12 +20,14 @@ richmond: Utility
 
 richmond_homes: Households
     "The people that Richmond serves."
+    title "Richmond: homes"
     utility = richmond
     population = 233655 people  @richmond_homes_population
 
 richmond_hospitals: Hospitals
     "The 3 hospitals that Richmond supplies: Bon Secours Richmond Community Hospital; Cjw Medical Center;
         Medical College of Virginia Hospitals."
+    title "Richmond: hospitals"
     utility = richmond
     name = "Richmond"
     facilities = 3 facilities  @richmond_hospitals_facilities
@@ -39,10 +42,6 @@ notes:
             fact."  @richmond_hospitals_facilities
     verification:
         research: "variants/richmond/evidence/research.md"
-    titles:
-        richmond: "Richmond"
-        richmond_homes: "Richmond: homes"
-        richmond_hospitals: "Richmond: hospitals"
 
 record richmond_demand: assumption "Peak day 96 Mgal/day (DPU; Henrico calls it the historical summer peak) is
     1.4953 times the 2025 average of 64.2. Less the wholesale sales to Henrico, Chesterfield and Hanover

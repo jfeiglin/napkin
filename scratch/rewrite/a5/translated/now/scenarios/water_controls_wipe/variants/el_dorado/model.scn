@@ -8,6 +8,7 @@ variant "El Dorado County, California"
 
 el_dorado: Utility
     "El Dorado Irrigation District - main system, California. Its ID in the federal inventory is CA0910001."
+    title "El Dorado"
     buys = <>
     sells = <>
     name = "El Dorado"
@@ -19,6 +20,7 @@ el_dorado: Utility
 
 georgetown_divide: Utility
     "Georgetown Divide Public Utility District, California. Its ID in the federal inventory is CA0910013."
+    title "Georgetown Divide"
     buys = <>
     sells = <>
     name = "Georgetown Divide"
@@ -36,16 +38,19 @@ georgetown_divide: Utility
 
 el_dorado_homes: Households
     "The people that El Dorado serves."
+    title "El Dorado: homes"
     utility = el_dorado
     population = 128408 people  @el_dorado_homes_population
 
 georgetown_divide_homes: Households
     "The people that Georgetown Divide serves."
+    title "Georgetown Divide: homes"
     utility = georgetown_divide
     population = 9434 people  @georgetown_divide_homes_population
 
 el_dorado_hospitals: Hospitals
     "The hospital that El Dorado supplies: Marshall Medical Center."
+    title "El Dorado: hospitals"
     utility = el_dorado
     name = "El Dorado"
     facilities = 1 facilities  @el_dorado_hospitals_facilities
@@ -60,12 +65,6 @@ notes:
             refill faster here than in fact."  @el_dorado_nameplate
     verification:
         research: "variants/el_dorado/evidence/research.md"
-    titles:
-        el_dorado: "El Dorado"
-        georgetown_divide: "Georgetown Divide"
-        el_dorado_homes: "El Dorado: homes"
-        georgetown_divide_homes: "Georgetown Divide: homes"
-        el_dorado_hospitals: "El Dorado: hospitals"
 
 record el_dorado_demand: assumption "The highest day on record is the 2013 max day production of the three
     plants, 79.9 MGD. The 2025 total potable use is 33,103 acre-feet (29.55 MGD), so the peak ratio is 2.7037.

@@ -7,6 +7,7 @@ variant "Camden, New Jersey"
 
 raritan: Utility
     "New Jersey American Water - Raritan System. Its ID in the federal inventory is NJ2004002."
+    title "The Raritan system"
     buys = <>
     sells = <>
     name = "The Raritan system"
@@ -18,12 +19,14 @@ raritan: Utility
 
 raritan_homes: Households
     "The people that the Raritan system serves."
+    title "The Raritan system: homes"
     utility = raritan
     population = 615430 people  @raritan_homes_population
 
 raritan_hospitals: Hospitals
     "The 3 hospitals that the Raritan system supplies: Hunterdon Medical Center; Robert Wood Johnson
         University Hospital - Somerset; University Medical Center of Princeton at Plainsboro."
+    title "The Raritan system: hospitals"
     utility = raritan
     name = "The Raritan system"
     facilities = 3 facilities  @raritan_hospitals_facilities
@@ -38,10 +41,6 @@ notes:
             ceiling."  @raritan_sold
     verification:
         research: "variants/camden/evidence/research.md"
-    titles:
-        raritan: "The Raritan system"
-        raritan_homes: "The Raritan system: homes"
-        raritan_hospitals: "The Raritan system: hospitals"
 
 record raritan_demand: assumption "The peak use is the highest day reported, about 180 MGD of production in
     summer 2025, which includes sales. Less the known sales at the peak ratio 180 / 124.427 = 1.4466 (7.0 MGD

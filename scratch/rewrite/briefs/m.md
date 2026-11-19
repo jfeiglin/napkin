@@ -1,8 +1,9 @@
 # Brief of stage M: the migration of the catalogue
 
 Read `briefs/COMMON-B.md` first (its rules hold: no git command that changes the repository, at most
-`-n 2`, the house style, a short last message); then `PLAN.md`, "Changes after G0" items 1 to 18
-and the section "M. Catalogue migration"; then `b1/m-prep/STATE.md`, which made this stage ready.
+`-n 2`, the house style, a short last message); then `PLAN.md`, "Changes after G0" items 1 to 20
+(19 holds the owner's answers to the audit, which the translator follows) and the section "M.
+Catalogue migration"; then `b1/m-prep/STATE.md`, which made this stage ready.
 The language of now is `napkin/model/` (the docstrings of `semantic.py`, `compile.py` and
 `support.py`), `spec.md` as the changes after G0 amend it, and the examples of `tests/language/`.
 `examples/piano_tuners` is migrated by hand; it is the model of a finished package.
@@ -30,10 +31,10 @@ process of its own. Set `NAPKIN_BASE` for a worktree elsewhere. Run a test of th
 | Script | Runs under | What it does |
 | --- | --- | --- |
 | `translate.py [--compile] [PATH...]` | old (`PYTHONPATH=/home/user/napkin-base`) | Translates old files (a file, or a package's folder; relative paths read from the base commit; none: every model) into `translated/now/`, with each package's `units.json`, `evidence/` and the catalogue's library, so the output compiles where it stands. Prints the share of logical lines translated, the lines left for a person by reason, what the language has no place for, and the names it chose. `--compile` compiles each entry (a package without variants, each variant) with the compiler of now and prints the refusals by code and the `no_record` warnings. `--stdout FILE` prints one translation. Never writes over a model |
-| `check.py OLD NEW [--rename A=B]... [--quiet]` | now (no PYTHONPATH) | Compares a whole new model with its old one, by meaning; exit 1 on a difference. Groups: `compile`, `number` (value in base units and dimension, counted), `text` (counted), `kind` (input, fixed, formula, state, stock, tally, link, collection, flow, event, entity, template, member, with the dimension of the type), `flow` (the stores it joins), `cumulative` (each value that the old compiler proved cumulative in a run is proved never to fall by `napkin/program/proofs.py` in the same run). `--rename Thing.status=Thing.state` declares a rename |
+| `check.py OLD NEW [--rename A=B]... [--changed FILE] [--at H]... [--quiet]` | now (no PYTHONPATH) | Compares a whole new model with its old one, by meaning; exit 1 on a difference. Groups: `compile`, `number` (value in base units and dimension, counted), `text` (counted), `kind` (input, fixed, formula, state, stock, tally, link, collection, flow, event, entity, template, member, with the dimension of the type), `flow` (the stores it joins), `cumulative` (each value that the old compiler proved cumulative in a run is proved never to fall by `napkin/program/proofs.py` in the same run), `run` (each run of the old default study under the old engine against the run of the same name under the engine of now, to the horizon, each old output within 1e-6 of the larger; a difference passes only when `b1/m-<package>/changed.md` lists it: its docstring gives the table). `--rename Thing.status=Thing.state` declares a rename |
 | `oldmodel.py ENTRY` / `newmodel.py --compile ENTRY...` | old / now | The two halves that the others call: the old model's facts as JSON; the compile of new entries as JSON |
 | `census.py`, `table_check.py` | old / any | A5's census of the old forms (`census.md`), and the check that `migration-table.md` covers every key |
-| `run_all.sh` | both | Translates the two test targets with `--compile`; the check PASSES on the piano tuners; it FAILS each wrong copy in `translated/wrong/piano_tuners_{number,text,kind,cumulative}` in exactly its group; it reports the reservoir's one missing text; the table check. About 6 s |
+| `run_all.sh` | both | Translates the two test targets with `--compile`; the check PASSES on the piano tuners; it FAILS each wrong copy in `translated/wrong/piano_tuners_{number,text,kind,cumulative,run}` with its own summary, and passes the `run` copy with its own `changed.md`; it checks the reservoir's mechanical translation (it PASSES, its run included); the table check |
 
 `translated/auto/` and the hand drafts in `translated/examples/`, `translated/scenarios/` and
 `translated/bad/` are A5's, in A5's proposed spelling (`none`, `report:`, `choice(...)`, `sees`):
@@ -53,36 +54,49 @@ useful only as references, such as A5's hand-named legs of the multi-leg flows.
   gets `in [0,]`. `size` is `scale`. A value named `status` beside status lines is `state` (pass
   `--rename T.status=T.state` to the check). A state whose start an option sets starts from a new
   input `x_start`, which the option sets (R-A5-04).
+- By the owner's answers (change 19): an outcome with no line is a case with its text alone; a
+  member written by hand keeps its `title`; `timescales` are retired, and the old hint stays in the
+  main file's notes (`timescales: "..."`), listed when the translator runs; an event's or a case's
+  `role` belongs to the scenario's wrapper and goes into `roles.toml` beside the package's model
+  files (`[events]`, `"Utility.strike_again" = "adversary"`, a case as `"event.CASE"`). The old
+  publisher read the roles as the actor of each timeline card (`tools/publish/pages.py`, `Pages.cards`,
+  at 8488047), which the water UI shows (`ui/web/src/App.tsx`); nothing of the new layout reads them
+  yet, so the publisher of this stage reads that file, beside `brief.toml`.
 - What the language has no place for goes into `notes:`, by what it was: `reporting:` (an output's
   `about`, `scope`, `category`, `lag`), `not_estimated:` (an output with no estimate: its label, its
-  reason and its records, D4), `comparisons:` (each `versus` pair, D9), `titles:` (of members written
-  by hand). An event's `role` is a comment; `sees` is dropped (change 15); `level`, `signed` and
-  `cumulative` say nothing now. Texts keep their braces as written.
+  reason and its records, D4), `comparisons:` (each `versus` pair, D9). `sees` is dropped (change
+  15); `level`, `signed` and `cumulative` say nothing now. Texts keep their braces as written.
 
-### Measured (2026-11-19), the whole old catalogue
+### Measured (2026-11-19, after change 19), the whole old catalogue
 
-6,918 of 6,960 logical lines translated (99.4%). Left for a person (42): 21 cases of a switch
-whose old outcome has no line (a case needs an action), 11 reads of one outcome's history
-(`since(attacker.alter_on_restart.done)`: start an event of its own in that case, R-A5-10), 5 option
-values that are calculations (an option gives a constant now, D2), 4 states that an option starts
-from a calculation, 1 share of such a state.
+6,939 of 6,960 logical lines translated (99.7%). Left for a person (21): 11 reads of one outcome's
+history (`since(attacker.alter_on_restart.done)`: start an event of its own in that case, R-A5-10),
+5 option values that are calculations (an option gives a constant now, D2), 4 states that an option
+starts from a calculation, 1 share of such a state. Into `roles.toml`: 7 roles of the heat wave, 4 of
+the IV fluid, 4 of the water. Retired `timescales`, kept in the notes: the heat wave
+(`homes.heat_up_time, compound_buildings.heat_up_time`) and the cyber model (`leadership.adjust_time,
+1 / defenders.calm_rate, 1 / effects_program.forget_rate`): confirm on both that the results meet
+their accuracy without them (change 19).
 
 | Entry | Compile by the compiler of now |
 | --- | --- |
 | `examples/piano_tuners`, `examples/reservoir` | compile, no warning |
 | `iv_fluid_shortage` | 8: the readers of the four hand-left states (`unknown_name` 5, `flow_end` 3) |
-| `heat_wave_blackout` | 5: `timescales` names values (2), units `customer`, `case` (3) |
-| `cyber_learning_loop` | 79: units `operation`, `access`, `target`, `yr` (76), `timescales` (3) |
-| `water_controls_wipe`, each of 16 variants | 7 to 9: `cycle` 1 (`Utility.tie_asks`), units `facility`, `min`, `yr`, `acre`, `ft` (2 to 4), 4 that depend on them |
+| `heat_wave_blackout` | 3: units `customer`, `case` (`unknown_name` 2, `unit` 1) |
+| `cyber_learning_loop` | 76: units `operation`, `access`, `target`, `yr` (`unit` 73, `unknown_name` 3) |
+| `water_controls_wipe`, each of 16 variants | 2 to 4: units `facility` (2, every variant), `min` and `yr` (auburn 2, austin 1, cape_may 1), `acre` (los_angeles 1) |
 
 The parse succeeds everywhere; these are the problems of the declared model, so more may show once
-these are mended. The units: 32 units of the library and of the packages' `units.json` have a name
-made of parts that are no unit (`facility-hours`, `USD2024_bn/yr`, `person-years/operation`,
-`gal/min`, `acre-ft`): the language of now composes a unit of its parts, so each part must be a unit.
-Declare the parts (`yr`, `operation`, `facility`...) or rename the unit; `translate.py` lists them
-for the packages that it translates. The cycle: `Utility.tie_asks` reads `Tie.ask`, which reads the buyer's need,
-which reads `tie_asks`; member by member the ties make no cycle, but the front end checks the
-template. Ask the front end, or restructure.
+these are mended. The water model's template cycle (`Utility.tie_asks`) is gone: cycles are checked
+on the members' actual connections now (change 19), and its ties make none. The units: 32 units of
+the library and of the packages' `units.json` have a name made of parts that are no unit
+(`facility-hours`, `USD2024_bn/yr`, `person-years/operation`, `gal/min`, `acre-ft`): the language of
+now composes a unit of its parts, so each part must be a unit. Declare the parts (`yr`, `operation`,
+`facility`...) or rename the unit; `translate.py` lists them for the packages that it translates.
+
+The reservoir's translation passes the whole check, its run included (change 20 certifies its
+trigger `water >= level`): its two outputs, `spilled` and `risk_time`, at 0 h and at the horizon,
+equal the old ones within the tolerance. The piano tuners pass as well.
 
 ## The order, and what each package needs
 
@@ -95,27 +109,29 @@ unserved rate is zero and the unserved volume keeps its value); then `python -B 
 with a `no_record` warning (change 16): every input, stored value, timed event, status case, assert
 and member's own value cites a record.
 
-1. **`examples/reservoir`**, by the main session, first; then the migration guide from
-   `a5/migration-table.md` (its new forms are A5's: correct them by the rules above). Hand: the case
-   `WAIT` (only a text). Unlocks `tests/test_examples.py` (it imports the old API: `actors`,
-   `evaluate_study`, `sample_result`; rewrite it on `run`, `report` and breakpoints).
+1. **`examples/reservoir`**, by the main session, first: its mechanical translation passes the
+   check as it stands (no hand line); then the migration guide from `a5/migration-table.md`.
+   Unlocks `tests/test_examples.py` (it imports the old API: `actors`, `evaluate_study`,
+   `sample_result`; rewrite it on `run`, `report` and breakpoints).
 2. Then one subagent for each package, in parallel:
    - **`iv_fluid_shortage`** (1,137 lines): the states `supply_left`, `ordinary_left`, `reserve`
      whose starts are calculations and whose starts options set; 5 option values that are
      calculations; 2 lags, now the caller's. Tests: `tests/` (acceptance, adversary, clinical damage,
      briefs, expected orders).
-   - **`heat_wave_blackout`** with `explore.ipynb`: `timescales` as times; units; empty cases. Tests:
-     reference, properties, sweeps, electricity damage, briefs; the notebook runs on the new API.
-   - **`cyber_learning_loop`** (3,200 lines, in sections): the units; 11 `since(... .done)`; its six
-     test files use `napkin.dynamics` (`VectorField(program, configuration)`, `b1/c-dynamics`).
-   - **`water_controls_wipe`** with its 16 variants: the cycle; the units; check each variant as an
-     entry (`OLD=.../variants/V/model.scn`). Its UI (`ui/server.py`, `ui/view.py`,
+   - **`heat_wave_blackout`** with `explore.ipynb`: the units; confirm its accuracy without the
+     retired `timescales`. Tests: reference, properties, sweeps, electricity damage, briefs; the
+     notebook runs on the new API.
+   - **`cyber_learning_loop`** (3,200 lines, in sections): the units; 11 `since(... .done)`; confirm
+     its accuracy without the retired `timescales`; its six test files use `napkin.dynamics`
+     (`VectorField(program, configuration)`, `b1/c-dynamics`).
+   - **`water_controls_wipe`** with its 16 variants: the units; check each variant as an entry
+     (`OLD=.../variants/V/model.scn`). Its UI (`ui/server.py`, `ui/view.py`,
      `tests/test_ui_server.py`, `test_ui_view.py`) becomes a client of the checkpoints
      (`run(..., breakpoints)`, `Checkpoint`, `resume`, change 15), as `napkin play` is.
 3. **The publisher** (change 13), once the catalogue is migrated: `tools/publish` over the new record
    (it imports `filled`, which is gone). It reads what the translator put in the notes
-   (`reporting:`, `not_estimated:`, `comparisons:`, `titles:`) and `brief.toml` (`show`, `featured`,
-   sweeps). `tools/check.py` `catalogue_problems` reads the old model (`model.outputs`): port it with
+   (`reporting:`, `not_estimated:`, `comparisons:`), each package's `roles.toml` (the actor of each
+   timeline card) and `brief.toml` (`show`, `featured`, sweeps); a member's title is on the member. `tools/check.py` `catalogue_problems` reads the old model (`model.outputs`): port it with
    the publisher (the scope of each reported value) or delete it. Once, at the end: `tools.publish
    --write` for all, which remakes the 110 committed outputs; then read every changed brief.
 
@@ -144,10 +160,6 @@ merges the lists for the owner at G3.
 
 ## For the owner, found while making M ready
 
-- A case of a switch needs an action, so an old outcome with only its text (21 lines, such as the
-  reservoir's `WAIT` and the water's `SKIPPED`, `STOPPED`) has no form: let a case hold only its text
-  (its card), or drop the texts.
-- A member written by hand has no `title` (69 in the water variants) and an event no `role` (10): the
-  translator keeps the titles in notes and the roles as comments.
-- `timescales` names values in two packages; the language of now takes times only.
-- The library's units whose parts are no unit (32), and the template-level cycle above.
+- Settled by change 19, and followed by the translator: empty cases, members' titles, events' roles
+  (`roles.toml`), the retired `timescales` and the cycles checked member by member.
+- Open: the library's units whose parts are no unit (32, above): declare the parts or rename them.

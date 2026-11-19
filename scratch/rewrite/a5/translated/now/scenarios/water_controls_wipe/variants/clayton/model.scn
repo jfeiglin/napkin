@@ -7,6 +7,7 @@ variant "Clayton County, Georgia"
 
 clayton_county: Utility
     "Clayton County Water Authority, Georgia. Its ID in the federal inventory is GA0630000."
+    title "Clayton County Water Authority"
     buys = <>
     sells = <>
     name = "Clayton County Water Authority"
@@ -19,11 +20,13 @@ clayton_county: Utility
 
 clayton_county_homes: Households
     "The people that Clayton County Water Authority serves."
+    title "Clayton County Water Authority: homes"
     utility = clayton_county
     population = 298374 people  @clayton_county_homes_population
 
 clayton_county_hospitals: Hospitals
     "The hospital that Clayton County Water Authority supplies: Southern Regional Medical Center."
+    title "Clayton County Water Authority: hospitals"
     utility = clayton_county
     name = "Clayton County Water Authority"
     facilities = 1 facilities  @clayton_county_hospitals_facilities
@@ -40,10 +43,6 @@ notes:
             in fact."  @clayton_county_demand
     verification:
         research: "variants/clayton/evidence/research.md"
-    titles:
-        clayton_county: "Clayton County Water Authority"
-        clayton_county_homes: "Clayton County Water Authority: homes"
-        clayton_county_hospitals: "Clayton County Water Authority: hospitals"
 
 record clayton_county_demand: assumption "No source reports a highest day. The average production of 28.15 MGD
     times the family median ratio 1.54385 gives 43.4593 MGD, more than the 42 MGD that the three plants can

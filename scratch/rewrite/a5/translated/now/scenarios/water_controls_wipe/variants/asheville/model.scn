@@ -7,6 +7,7 @@ variant "Asheville, North Carolina"
 
 asheville: Utility
     "City of Asheville, North Carolina. Its ID in the federal inventory is NC0111010."
+    title "Asheville"
     buys = <>
     sells = <>
     name = "Asheville"
@@ -19,12 +20,14 @@ asheville: Utility
 
 asheville_homes: Households
     "The people that Asheville serves."
+    title "Asheville: homes"
     utility = asheville
     population = 157431 people  @asheville_homes_population
 
 asheville_hospitals: Hospitals
     "The 2 hospitals that Asheville supplies: Asheville-Oteen VA Medical Center; Memorial Mission Hospital and
         Asheville Surgery Ce."
+    title "Asheville: hospitals"
     utility = asheville
     name = "Asheville"
     facilities = 2 facilities  @asheville_hospitals_facilities
@@ -38,10 +41,6 @@ notes:
             stored water can last longer here than on a higher peak day."  @asheville_demand
     verification:
         research: "variants/asheville/evidence/research.md"
-    titles:
-        asheville: "Asheville"
-        asheville_homes: "Asheville: homes"
-        asheville_hospitals: "Asheville: hospitals"
 
 record asheville_demand: assumption "Highest maximum day of 2025, 26.48 Mgal/day (January), is 1.1689 times
     the 2025 total demand of 22.6544. Less the 2025 sales of 1.1632 at the same ratio (1.3596) and divided by

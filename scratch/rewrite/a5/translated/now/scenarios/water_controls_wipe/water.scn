@@ -19,7 +19,6 @@ platform:  @shared_channel @first_move
     # The first effect of the first move: the integrator's platform runs the attacker's commands.
     compromised = event():  @shared_channel
         "The platform runs the attacker's commands to the utilities' controllers."
-        # role adversary: an event has no role now
         when this.channel == COMPROMISED:
             this.compromised.start()
             reset when false
@@ -344,12 +343,10 @@ Utility:  @reach
                 DONE:  @manual
                     "{name}'s operators switch to manual controls and run the plants by hand."
                     this.mode = MANUAL
-                # TODO(hand): the case SKIPPED has no action, and a case of a switch needs one
-                # | skipped mode is "disrupted" and not manual_ready:
-                # |     "{name} has nobody who can run its plants by hand."
-                # TODO(hand): the case STOPPED has no action, and a case of a switch needs one
-                # | stopped else:
-                # |     "{name}'s controls are back before its operators switch to manual controls."
+                SKIPPED:
+                    "{name} has nobody who can run its plants by hand."
+                STOPPED:
+                    "{name}'s controls are back before its operators switch to manual controls."
     manual_again = event():  @manual
         "{name}'s operators run the plants by hand again, as they did before."
         when this.mode == RECOVERED and this.controls == WIPED and this.manual_ready:
@@ -418,7 +415,6 @@ Utility:  @reach
             this.use_status = POTABLE
     sees_restoration = event():  @watches_restorations
         "{name}'s controls come back. {attacker.actor} sees it through its hidden credential."
-        # role adversary: an event has no role now
         when (this.watch == WATCHING and platform.access == KEPT
             and count(this.controls_back.occurrences) > this.strikes):
             this.sees_restoration.start()
@@ -426,7 +422,6 @@ Utility:  @reach
             this.watch = PREPARING
     strike_again = event():  @ai_tempo @restrike_effect @prepared_makes
         "{attacker.actor} wipes the restored controls again. {name} needs the crews to redo the work."
-        # role adversary: an event has no role now
         when (this.watch == PREPARING and platform.access == KEPT
             and count(this.controls_back.occurrences) > 0 and since(this.controls_back)
             >= attacker.reaction_time):
@@ -442,7 +437,6 @@ Utility:  @reach
         @watches_restorations
         "Responders remove the attacker's credential before it strikes again. {name}'s controls stay
             restored."
-        # role responder: an event has no role now
         when this.watch == PREPARING and platform.access == REMOVED:
             this.cut_off_before.start()
             reset when false

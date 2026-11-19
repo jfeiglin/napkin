@@ -7,6 +7,7 @@ variant "Lumberton, North Carolina"
 
 lumberton: Utility
     "City of Lumberton, North Carolina. Its ID in the federal inventory is NC0378010."
+    title "Lumberton"
     buys = <>
     sells = <>
     name = "Lumberton"
@@ -19,11 +20,13 @@ lumberton: Utility
 
 lumberton_homes: Households
     "The people that Lumberton serves."
+    title "Lumberton: homes"
     utility = lumberton
     population = 24460 people  @lumberton_homes_population
 
 lumberton_hospitals: Hospitals
     "The hospital that Lumberton supplies: Southeastern Regional Medical Center."
+    title "Lumberton: hospitals"
     utility = lumberton
     name = "Lumberton"
     facilities = 1 facilities  @lumberton_hospitals_facilities
@@ -38,10 +41,6 @@ notes:
             here than in fact."  @lumberton_bought
     verification:
         research: "variants/lumberton/evidence/research.md"
-    titles:
-        lumberton: "Lumberton"
-        lumberton_homes: "Lumberton: homes"
-        lumberton_hospitals: "Lumberton: hospitals"
 
 record lumberton_demand: assumption "Highest maximum day of 2025, 5.7 Mgal/day (January, June and December;
     1.2454 times the 2025 total demand of 4.5767). Lumberton sold no water in 2025, so nothing is removed;

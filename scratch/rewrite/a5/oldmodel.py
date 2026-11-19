@@ -736,7 +736,10 @@ def _numbers_and_texts(file, symbols, say, count):
         if dataclasses.is_dataclass(node) and not isinstance(node, type):
             for item in dataclasses.fields(node):
                 value = getattr(node, item.name)
-                if item.name != 'place' and not isinstance(value, dict):
+                # The timescales of the scenario line are retired (change 19): the translation keeps
+                # their hint as a text of the notes, so its numbers are no numbers of the model now.
+                retired = isinstance(node, nodes.ScenarioBlock) and item.name == 'timescales'
+                if item.name != 'place' and not isinstance(value, dict) and not retired:
                     walk(value)
         elif isinstance(node, (list, tuple)):
             for item in node:

@@ -7,6 +7,7 @@ variant "Minot, North Dakota"
 
 minot: Utility
     "City of Minot. Its ID in the federal inventory is ND5100660."
+    title "Minot"
     buys = <>
     sells = <minot_to_naws>
     name = "Minot"
@@ -24,6 +25,7 @@ minot: Utility
 
 naws: Utility
     "Northwest Area Water Supply (NAWS), North Dakota. Its ID in the federal inventory is ND5101687."
+    title "NAWS"
     buys = <minot_to_naws>
     sells = <>
     name = "NAWS"
@@ -42,11 +44,13 @@ minot_to_naws: Tie
 
 minot_homes: Households
     "The people that Minot serves."
+    title "Minot: homes"
     utility = minot
     population = 48743 people  @minot_homes_population
 
 minot_hospitals: Hospitals
     "The hospital that Minot supplies: Trinity Hospitals."
+    title "Minot: hospitals"
     utility = minot
     name = "Minot"
     facilities = 1 facilities  @minot_hospitals_facilities
@@ -62,11 +66,6 @@ notes:
             fact."  @minot_demand
     verification:
         research: "variants/minot/evidence/research.md"
-    titles:
-        minot: "Minot"
-        naws: "NAWS"
-        minot_homes: "Minot: homes"
-        minot_hospitals: "Minot: hospitals"
 
 record minot_demand: assumption "The highest day that a source reports is 13 million gallons, the lower end of
     the 13 to 14 million gallons a day that peak summer use often reaches (2020). The 2024 pumped average is

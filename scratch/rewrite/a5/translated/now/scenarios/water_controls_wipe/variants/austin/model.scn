@@ -7,6 +7,7 @@ variant "Austin, Texas"
 
 austin_water: Utility
     "Austin Water, Texas. Its ID in the federal inventory is TX2270001."
+    title "Austin Water"
     buys = <>
     sells = <>
     name = "Austin Water"
@@ -19,6 +20,7 @@ austin_water: Utility
 
 austin_water_homes: Households
     "The people that Austin Water serves."
+    title "Austin Water: homes"
     utility = austin_water
     population = 1115323 people  @austin_water_homes_population
 
@@ -28,6 +30,7 @@ austin_water_hospitals: Hospitals
         Medical Center; Dell Seton Med Center at the University of Tx; North Austin Medical Center; Northwest
         Hills Surgical Hospital; St David's Medical Center; St David's South Austin Medical Center; Texas
         Childrens Hospital North Austin Campus."
+    title "Austin Water: hospitals"
     utility = austin_water
     name = "Austin Water"
     facilities = 11 facilities  @austin_water_hospitals_facilities
@@ -42,10 +45,6 @@ notes:
             these customers serve."  @austin_water_sold
     verification:
         research: "variants/austin/evidence/research.md"
-    titles:
-        austin_water: "Austin Water"
-        austin_water_homes: "Austin Water: homes"
-        austin_water_hospitals: "Austin Water: hospitals"
 
 record austin_water_demand: assumption "The highest maximum day pumpage of fiscal 2016 to 2025 is 232 Mgal/day
     in fiscal 2023, when the average day was 54,850 Mgal / 365 = 150.274 Mgal/day (ratio 1.54385). Less the

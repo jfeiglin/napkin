@@ -68,7 +68,6 @@ manufacturer:  @a_pilot_assumed_brief
         @rt_cyber_shortage_manufacturer_s_release
         "The manufacturer can no longer release or ship IV fluid; hospitals fall back on their reserves and on
             other makers' supply, which goes to resuscitation."
-        # role environment: an event has no role now
         @assumption "Batch release requires reviewed records, so the manufacturer cannot ship."
             assumption RT-SC10-CYBER-SHORTAGE
         @assumption "When ransomware encrypts the release and shipment systems, release stops, even where the
@@ -138,7 +137,6 @@ manufacturer:  @a_pilot_assumed_brief
     # read this, so they stop when the study period ends.
     study_ends = event():  @published_incidents_catalogued @card_text_pilot
         "The study period ends."
-        # role environment: an event has no role now
         when t >= this.study_length:
             this.study_ends.start()
             reset when false
@@ -292,11 +290,9 @@ attacker:
                         assumption A-SC10-RETAMPER
                     records.state = ALTERED
                     move release_team.records_work from release_team.reserve to release_team.to_reconcile
-                # TODO(hand): the case STOPPED has no action, and a case of a switch needs one
-                # | stopped else:
-                # |     "The manufacturer removes the attacker's foothold before procurement starts, so the shipment
-                # |         records stay clean."
-                # |     role operator
+                STOPPED:
+                    "The manufacturer removes the attacker's foothold before procurement starts, so the shipment
+                        records stay clean."
     alter_on_restart = event():  @a_retamper_release_restarts_checks
         outcome: enum[DONE, STOPPED] = DONE
         when count(release_team.restart_release.occurrences) > 0 and this.access == KEPT:
@@ -320,12 +316,10 @@ attacker:
                         claims:
                             V-PA-IR01
                     records.state = DISGUISED
-                # TODO(hand): the case STOPPED has no action, and a case of a switch needs one
-                # | stopped else:
-                # |     "The manufacturer resets every credential for its release and shipment record systems before the
-                # |         attacker has worked out its changes. The attacker's access is gone, and released fluid
-                # |         continues to flow."
-                # |     role operator
+                STOPPED:
+                    "The manufacturer resets every credential for its release and shipment record systems before the
+                        attacker has worked out its changes. The attacker's access is gone, and released fluid
+                        continues to flow."
     start = event():  @published_incidents_catalogued_2
         "{actor}'s ransomware encrypts the manufacturer's release, labeling and shipment systems."
         @source_transfer "The first move uses these MITRE ATT&CK techniques. Valid accounts and external

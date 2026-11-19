@@ -1,0 +1,12 @@
+# Who plays each event, and each case of an event, that the old model gave a role: the actor of
+# its timeline cards (tools/publish/pages.py, `Pages.cards`, at 8488047). An event's role belongs
+# to the scenario's wrapper (PLAN.md, change 19 after G0); the publisher reads it here.
+
+[events]
+"ai.sees_switching.SKIPPED" = "operator"
+"ai.sees_switching.STOPPED" = "contractor"
+"crews.repairs_start" = "utility"
+"job.due" = "adversary"
+"job.due.STOPPED" = "contractor"
+"places.filled" = "responder"
+"supply.come_back" = "utility"

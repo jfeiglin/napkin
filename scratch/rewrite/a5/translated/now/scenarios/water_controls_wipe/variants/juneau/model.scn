@@ -7,6 +7,7 @@ variant "Juneau, Alaska"
 
 juneau: Utility
     "City and Borough of Juneau, Alaska. Its ID in the federal inventory is AK2110342."
+    title "Juneau"
     buys = <>
     sells = <>
     name = "Juneau"
@@ -19,11 +20,13 @@ juneau: Utility
 
 juneau_homes: Households
     "The people that Juneau serves."
+    title "Juneau: homes"
     utility = juneau
     population = 38526 people  @juneau_homes_population
 
 juneau_hospitals: Hospitals
     "The hospital that Juneau supplies: Bartlett Regional Hospital."
+    title "Juneau: hospitals"
     utility = juneau
     name = "Juneau"
     facilities = 1 facilities  @juneau_hospitals_facilities
@@ -39,10 +42,6 @@ notes:
             fact than here."  @juneau_nameplate
     verification:
         research: "variants/juneau/evidence/research.md"
-    titles:
-        juneau: "Juneau"
-        juneau_homes: "Juneau: homes"
-        juneau_hospitals: "Juneau: hospitals"
 
 record juneau_demand: assumption "In the summer of 2013 the utility's daily output spiked to five million
     gallons a day, against an average of 3.5 million, a peak ratio of 1.42857. CBJ sells no water to other

@@ -7,6 +7,7 @@ variant "Los Angeles, California"
 
 ladwp: Utility
     "Los Angeles Department of Water and Power, California. Its ID in the federal inventory is CA1910067."
+    title "LADWP"
     buys = <>
     sells = <>
     name = "LADWP"
@@ -18,6 +19,7 @@ ladwp: Utility
 
 ladwp_homes: Households
     "The people that LADWP serves."
+    title "LADWP: homes"
     utility = ladwp
     population = 3875566 people  @ladwp_homes_population
 
@@ -33,6 +35,7 @@ ladwp_hospitals: Hospitals
         Medical Center; Providence Little Co of Mary Med Ctr San Pedro; Ronald Reagan UCLA Medical Center;
         Sherman Oaks Hospital; Southern California Hospital at Hollywood; UCLA West Valley Medical Center;
         Valley Presbyterian Hospital."
+    title "LADWP: hospitals"
     utility = ladwp
     name = "LADWP"
     facilities = 28 facilities  @ladwp_hospitals_facilities
@@ -48,10 +51,6 @@ notes:
             production by hand can be higher here than in fact, most of all in a dry year."  @ladwp_nameplate
     verification:
         research: "variants/los_angeles/evidence/research.md"
-    titles:
-        ladwp: "LADWP"
-        ladwp_homes: "LADWP: homes"
-        ladwp_hospitals: "LADWP: hospitals"
 
 record ladwp_demand: assumption "No source reports a highest day, so the peak use is the FY2020-FY2024 average
     potable demand, 466,866 acre-feet a year (416.792 MGD), times the family median ratio 1.54385: 643.4629

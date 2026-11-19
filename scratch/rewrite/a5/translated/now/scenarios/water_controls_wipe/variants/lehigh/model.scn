@@ -9,6 +9,7 @@ variant "Lehigh County and Erie, Pennsylvania"
 lehigh_county_authority: Utility
     "Lehigh County Authority (LCA WaterWorks) - Allentown Division. Its ID in the federal inventory is
         PA3390024."
+    title "Lehigh County Authority"
     buys = <>
     sells = <>
     name = "Lehigh County Authority"
@@ -20,6 +21,7 @@ lehigh_county_authority: Utility
 
 erie_water: Utility
     "Erie Water Works (Erie City Water Authority). Its ID in the federal inventory is PA6250028."
+    title "Erie Water Works"
     buys = <>
     sells = <>
     name = "Erie Water Works"
@@ -31,17 +33,20 @@ erie_water: Utility
 
 lehigh_county_authority_homes: Households
     "The people that Lehigh County Authority serves."
+    title "Lehigh County Authority: homes"
     utility = lehigh_county_authority
     population = 118000 people  @lehigh_county_authority_homes_population
 
 erie_water_homes: Households
     "The people that Erie Water Works serves."
+    title "Erie Water Works: homes"
     utility = erie_water
     population = 220001 people  @erie_water_homes_population
 
 erie_water_hospitals: Hospitals
     "The 4 hospitals that Erie Water Works supplies: Saint Vincent Hospital; Erie VA Medical Center; UPMC
         Hamot; LECOM Medical Center and Behavioral Health Pav."
+    title "Erie Water Works: hospitals"
     utility = erie_water
     name = "Erie Water Works"
     facilities = 4 facilities  @erie_water_hospitals_facilities
@@ -57,12 +62,6 @@ notes:
             fact."  @lehigh_county_authority_storage
     verification:
         research: "variants/lehigh/evidence/research.md"
-    titles:
-        lehigh_county_authority: "Lehigh County Authority"
-        erie_water: "Erie Water Works"
-        lehigh_county_authority_homes: "Lehigh County Authority: homes"
-        erie_water_homes: "Erie Water Works: homes"
-        erie_water_hospitals: "Erie Water Works: hospitals"
 
 record lehigh_county_authority_demand: assumption "The highest day on record in LCA's 2016-2025 table is
     30.8709 Mgal/day (2022), 1.3718 times the 2022 average of 22.5044. Less the 2022 sale to LCA's Suburban
