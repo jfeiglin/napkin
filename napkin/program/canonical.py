@@ -1,4 +1,5 @@
-"""Canonical bytes of a program and of a configuration, for the key of a stored run.
+"""Canonical bytes of a program and of a configuration, for the key of a stored run, and of any value
+that they are made of (`value_bytes`), for the hash of a model.
 
 Two builds of one model give equal bytes; a change of a number, a unit, a name or the structure
 gives different bytes. The encoding is tagged and length-prefixed, so two different values never
@@ -100,6 +101,12 @@ def _bytes(value):
 def program_bytes(program):
     """The canonical bytes of a program."""
     return _bytes(program)
+
+
+def value_bytes(value):
+    """The canonical bytes of any value that programs and configurations are made of (a record, a
+    tuple, a number, a text, a node), such as the options of a model, which its hash covers."""
+    return _bytes(value)
 
 
 def configuration_bytes(configuration):

@@ -45,6 +45,9 @@ def _walk(node, path, out):
         'orelse',
         'cases',
         'notes',
+        'options',
+        'settings',
+        'runs',
     ):
         for k, child in enumerate(getattr(node, key, ()) or ()):
             name = getattr(child, 'name', None) or getattr(child, 'key', None) or f'{key}[{k}]'

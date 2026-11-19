@@ -95,9 +95,21 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   (`this.staffing.care`, `SolverOf`) and assigns none (`result_write`). What a constraint and an
   objective may say about what the solver determines (affine relations, the participants of the
   decision, one solver for each connected set) is checked on the program (`solvers.py`).
-- **What a later slice brings** is kept as a `Deferred` part, with the construct and the slice that
-  brings it; the lowering refuses it by name: status displays (C), `use`, `change`, options, runs,
-  variants and a property set by its path (S6).
+- **Packages.** A package's files are declared as one model (`Files`: each file's lines follow those
+  of the file before it, so a problem is placed at its file). A `change` (`register_changes`) names
+  an entity, a template or a member written by hand of an earlier file and gives a value or a link
+  that it declares a new initializer, of its kind and type, as a member's own value is (`own`): an
+  entity's or a template's declaration takes it, and a member's own line gives way to it; two
+  changes of one value are an error (R-A5-03), and its text, `title`, `role` and records replace
+  those of what it names. A value set by its path is no form of the language (`property`).
+- **Options and runs** (`DeclaredOption`, `DeclaredRun`): a setting names an input by its full path
+  (R-A5-04) and gives it a constant of its type, in the input's unit and range (D2, `constant`); a
+  number or a yes/no that an option or a change sets cites its record (R-A5-05, `recorded`). An
+  option's name is its own across the groups, and a run takes known options, at most one of each
+  group, no two of which set one input (`choice_problem`). `napkin/model/runs.py` makes a run's
+  configuration of them.
+- **What a later stage brings** is kept as a `Deferred` part, with the construct and the stage that
+  brings it; the lowering refuses it by name: status displays (C).
 """
 
 from __future__ import annotations
@@ -931,6 +943,45 @@ class Deferred:
 
 
 @dataclass(frozen=True)
+class DeclaredSetting:
+    """`path = value` of an option: the input that it sets, of one member (`member` is its id, `''`
+    for the top level) or of every member of a template (`instances`), and its value, a constant of
+    the input's type (`Const`, or a `Distribution` for a distribution-valued input)."""
+
+    path: str
+    name: str
+    value: object
+    member: str | None = None
+    instances: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredOption:
+    """An option of a group: its name, its group, its settings, its text (its line in a menu) and its
+    evidence."""
+
+    name: str
+    group: str
+    settings: tuple[DeclaredSetting, ...] = ()
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredRun:
+    """A named run: its options, at most one of each group, and its text."""
+
+    name: str
+    options: tuple[str, ...]
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
 class Scenario:
     """The scenario line: its role (`main` or `variant`), its title and texts, and its times in hours."""
 
@@ -949,7 +1000,9 @@ class Scenario:
 class DeclaredModel:
     """A declared model: its scenario line; its entities and templates, its top-level values, its
     members (instances by hand and table rows, in written order) and its top-level assertions; its
-    tables, records and notes; the parts that a later slice brings; its units and its tree."""
+    tables, records and notes; its options, in the order of their groups, and its named runs; the
+    parts that a later slice brings; its units and its tree. `files` names the files of a model read
+    from several (`place`)."""
 
     scenario: Scenario | None
     entities: tuple[DeclaredEntity, ...]
@@ -963,6 +1016,22 @@ class DeclaredModel:
     tables: tuple[DeclaredTable, ...] = ()
     asserts: tuple[DeclaredAssert, ...] = ()
     setup: tuple[DeclaredStart, ...] = ()
+    options: tuple[DeclaredOption, ...] = ()
+    runs: tuple[DeclaredRun, ...] = ()
+    files: tuple[tuple[str, int], ...] = ()
+
+    def place(self, line):
+        """(the file, the line in it) of a line of the model: the lines of a model read from several
+        files follow one another, each file's after the file before it (`Files`)."""
+        return Files(self.files).place(line)
+
+    def option(self, name):
+        """The option of a name, or None."""
+        return next((item for item in self.options if item.name == name), None)
+
+    def run(self, name):
+        """The named run of a name, or None."""
+        return next((item for item in self.runs if item.name == name), None)
 
     def part(self, path):
         """The declared part of a path (an entity, a template, a value, the settings of an
@@ -992,6 +1061,25 @@ class DeclaredModel:
                 if side is not None:
                     found.setdefault(side.path, side)
         return found
+
+
+@dataclass(frozen=True)
+class Files:
+    """The files of a model read from several, each `(name, offset)` in the order in which they are
+    read: the lines of a file are numbered after those of the file before it (its line k is the
+    model's line offset + k), so each line of the model names one line of one file. A model of one
+    text has no files: its lines are its own."""
+
+    files: tuple[tuple[str, int], ...] = ()
+
+    def place(self, line):
+        """(the file, the line in it) of a line of the model; ('', line) for a model of one text."""
+        found = ('', 0)
+        for file, offset in self.files:
+            if offset >= line:
+                break
+            found = (file, offset)
+        return found[0], line - found[1]
 
 
 # ---- resolution ---------------------------------------------------------------------------------------
@@ -1069,9 +1157,14 @@ class Resolver:
     """Resolves the parts of one parsed text against a table of units, reading its tables with
     `read_table` (see `tables.in_folder`)."""
 
-    def __init__(self, tree, units, read_table):
+    def __init__(self, tree, units, read_table, files=()):
         self.tree, self.units, self.read_table = tree, units, read_table
+        self.files = Files(tuple(files))
         self.problems, self.deferred = [], []
+        # The changes of the model: each line by the path of the value that it sets
+        # (`pool.start_water`, `a1.ask`), with the name that its change names; the changes of labels
+        # by that name.
+        self.changes, self.labels = {}, {}
         self.entities, self.templates, self.instances, self.tables = {}, {}, {}, {}
         self.root, self.records = {}, {}
         self.syntax, self.done, self.active = {}, {}, set()
@@ -1115,9 +1208,21 @@ class Resolver:
                     self.syntax[item.name] = ('', item)
             elif isinstance(item, n.Record):
                 self.records[item.name] = item
+        self.register_changes()
 
     def fail(self, code, message, node=None):
         raise Refused(code, message, node)
+
+    def on_line(self, line):
+        """`on line N` of a line of the model, in its own file, and naming the file when the model
+        has several."""
+        file, local = self.files.place(line)
+        return f'on line {local} of {file}' if len(self.files.files) > 1 else f'on line {local}'
+
+    def file_of(self, line):
+        """The number of the file of a line in the order in which the files are read (0 for a
+        model of one text)."""
+        return sum(1 for _, offset in self.files.files[1:] if offset < line)
 
     def scope_of(self, owner):
         """The scope of what an owner declares: a template's or an entity's, or an event's (whose
@@ -1965,6 +2070,8 @@ class Resolver:
                 found = self.unknown(path, scope, syntax)
             else:
                 found = self.declaration(path, scope, syntax)
+                if path in self.changes and (owner in self.entities or owner in self.templates):
+                    found = self.changed(found, owner, self.changes[path][1])
         except Refused:
             self.done[path] = None
             raise
@@ -2480,7 +2587,7 @@ class Resolver:
             if leg.name in seen:
                 self.fail(
                     'duplicate_name',
-                    f'{node.name} has two legs named {leg.name}; the first is on line {seen[leg.name]}',
+                    f'{node.name} has two legs named {leg.name}; the first is {self.on_line(seen[leg.name])}',
                     leg,
                 )
             seen[leg.name] = leg.line
@@ -2699,7 +2806,7 @@ class Resolver:
             if item.name in seen:
                 self.fail(
                     'duplicate_name',
-                    f'{path}.{item.name} is declared twice; the first is on line {seen[item.name]}',
+                    f'{path}.{item.name} is declared twice; the first is {self.on_line(seen[item.name])}',
                     item,
                 )
             seen[item.name] = item.line
@@ -3016,7 +3123,7 @@ class Resolver:
             if item.name in seen:
                 self.fail(
                     'duplicate_name',
-                    f'{path}.{item.name} is declared twice; the first is on line {seen[item.name]}',
+                    f'{path}.{item.name} is declared twice; the first is {self.on_line(seen[item.name])}',
                     item,
                 )
             seen[item.name] = item.line
@@ -3224,8 +3331,13 @@ class Resolver:
                 'solver',
                 line_node,
             )
-        value = self.value(f'{template}.{name}')
-        scope, line = Scope(template), line_node.line
+        return self.own(self.value(f'{template}.{name}'), template, node, line_node, evidence)
+
+    def own(self, value, template, node, line_node, evidence):
+        """(whether it is a link, the `Given`) of a value of a template given in place of the
+        template's own initializer, by a member or a change: of the value's kind and type, and for a
+        formula a formula (R-A5-07)."""
+        name, scope, line = value.name, Scope(template), line_node.line
         if value.kind == LINK:
             target = self.link_target(self.expression(node, scope), value.type, node)
             return True, Given(name, target, evidence, line)
@@ -3284,7 +3396,9 @@ class Resolver:
         for item in node.properties:
             key = '.'.join(item.path)
             if key in seen:
-                self.report('property', f'{key} is given twice; the first is on line {seen[key]}', item.line)
+                self.report(
+                    'property', f'{key} is given twice; the first is {self.on_line(seen[key])}', item.line
+                )
                 continue
             seen[key] = item.line
             try:
@@ -3294,10 +3408,31 @@ class Resolver:
                     self.report(refused.code, refused.message, refused.line or item.line, refused.column)
                 continue
             (links if is_link else values).append(found)
+        written = {path[0] for path in (item.path for item in node.properties)}
+        for target, line_node in self.changes.values():
+            if target != node.name:
+                continue
+            # A change of the member wins over its own line (R-A5-03).
+            try:
+                evidence = self.evidence(line_node)
+                is_link, found = self.given(template, (line_node.name,), line_node.value, line_node, evidence)
+                self.recorded(self.value(f'{template}.{line_node.name}'), evidence, line_node, 'a change')
+            except Refused as refused:
+                if refused.code != 'depends':
+                    self.report(refused.code, refused.message, refused.line or line_node.line, refused.column)
+                continue
+            kept = links if is_link else values
+            kept[:] = [item for item in kept if item.name != found.name] + [found]
+            written.add(line_node.name)
+        text, evidence = node.text, self.evidence(node)
+        label = self.labels.get(node.name)
+        if label is not None:
+            text = label.text if label.text is not None else text
+            evidence = self.evidence(label) or evidence
         member = DeclaredMember(
-            node.name, template, tuple(values), tuple(links), None, node.text, self.evidence(node), node.line
+            node.name, template, tuple(values), tuple(links), None, text, evidence, node.line
         )
-        self.complete(member, {path[0] for path in (item.path for item in node.properties)})
+        self.complete(member, written)
         return member
 
     def complete(self, member, written=()):
@@ -3559,11 +3694,10 @@ class Resolver:
             if refused.code != 'depends':
                 self.report(refused.code, refused.message, refused.line or node.line, refused.column)
             return None
-        construct, slice_ = {
-            n.Status: ('a status display', 'C'),
-            n.Property: ('a property set by its path', 'S6'),
-        }[type(node)]
-        return Deferred(path, construct, slice_, node.line)
+        if isinstance(node, n.Property):
+            self.report('property', PROPERTY_PATH.format('.'.join(node.path)), node.line)
+            return None
+        return Deferred(path, 'a status display', 'C', node.line)
 
     def entity(self, item):
         """An entity written once or a template, with its parts."""
@@ -3578,32 +3712,41 @@ class Resolver:
                 self.deferred.append(found)
             elif found is not None:
                 parts.append(found)
+        text, title, role, label = item.text, item.title, item.role, self.labels.get(item.name)
         try:
             evidence = self.evidence(item)
+            if label is not None:
+                # A change of the labels of an entity replaces each label that it writes.
+                text = label.text if label.text is not None else text
+                title = label.title if label.title is not None else title
+                role = label.role if label.role is not None else role
+                evidence = self.evidence(label) or evidence
         except Refused as refused:
             self.report(refused.code, refused.message, refused.line, refused.column)
             evidence = ()
         kind = DeclaredTemplate if item.name in self.templates else DeclaredEntity
-        return kind(item.name, tuple(parts), item.text, item.title, item.role, evidence, item.line)
+        return kind(item.name, tuple(parts), text, title, role, evidence, item.line)
 
     def model(self):
         for item in self.tree.items:
             if isinstance(item, n.Table):
                 self.load(item)
         entities = [self.entity(item) for item in self.tree.items if isinstance(item, n.Entity)]
-        root, members, tables_, asserts, notes, setup, scenario = [], [], [], [], [], [], None
-        top_later = {
-            n.Use: ('use', 'S6'),
-            n.Change: ('change', 'S6'),
-            n.Options: ('options', 'S6'),
-            n.Runs: ('runs', 'S6'),
-            n.Property: ('a property set by its path', 'S6'),
-        }
-        for index, item in enumerate(self.tree.items):
+        root, members, tables_, asserts, notes, setup, scenario = [], [], [], [], (), [], None
+        groups, run_lines = [], []
+        for item in self.tree.items:
             if isinstance(item, n.Scenario):
                 scenario = self.scenario(item)
-            elif isinstance(item, (n.Entity, n.Record)):
+            elif isinstance(item, (n.Entity, n.Record, n.Change)):
                 continue
+            elif isinstance(item, n.Options):
+                groups.append(item)
+            elif isinstance(item, n.Runs):
+                run_lines.extend(item.runs)
+            elif isinstance(item, n.Use):
+                self.report('use', USE_ALONE, item.line)
+            elif isinstance(item, n.Property):
+                self.report('property', PROPERTY_PATH.format('.'.join(item.path)), item.line)
             elif isinstance(item, n.Table):
                 declared, rows = self.table(item)
                 if declared is not None:
@@ -3624,22 +3767,14 @@ class Resolver:
                 elif found is not None:
                     root.append(found)
             elif isinstance(item, n.Notes):
-                notes.extend(item.notes)
+                notes = merged_notes(notes, item.notes)
             elif isinstance(item, n.Start):
                 found = self.part(f'setup[{len(setup)}]', '', item)
                 setup.append(found)
-            else:
-                construct, slice_ = top_later[type(item)]
-                self.deferred.append(
-                    Deferred(
-                        getattr(item, 'name', '') or f'{type(item).__name__.lower()}[{index}]',
-                        construct,
-                        slice_,
-                        item.line,
-                    )
-                )
-        if scenario is not None and scenario.role == 'variant':
-            self.deferred.append(Deferred('scenario', 'a variant', 'S6', scenario.line))
+        if scenario is not None and scenario.role == 'variant' and not self.files.files:
+            self.report('scenario', VARIANT_ALONE, scenario.line)
+        options = self.declared_options(groups)
+        runs = self.declared_runs(run_lines, options)
         self.check_names()
         if not self.problems:
             self.problems.extend(Order(entities, members, root).cycles())
@@ -3658,7 +3793,267 @@ class Resolver:
             tables=tuple(tables_),
             asserts=tuple(asserts),
             setup=tuple(found for found in setup if found is not None),
+            options=options,
+            runs=runs,
+            files=self.files.files,
         )
+
+    # ---- packages: changes, options and runs ------------------------------------------------------
+
+    def register_changes(self):
+        """Each line of each `change name:` by the path of the value or the link that it sets. A change
+        names an entity, a template or a member written by hand of an earlier file, sets only what it
+        declares (R-A5-03: a change of a missing name is an error), and sets each value once: two
+        changes of one value are an error, whatever the order of the files. Its own text, `title`,
+        `role` and records replace those of what it names."""
+        for item in self.tree.items:
+            if not isinstance(item, n.Change):
+                continue
+            target = self.entities.get(item.name) or self.templates.get(item.name)
+            target = target or self.instances.get(item.name)
+            if target is None or self.file_of(target.line) >= self.file_of(item.line):
+                names = [*self.entities, *self.templates, *self.instances]
+                self.report(
+                    'change',
+                    f'change {item.name}: names no entity, template or member of an earlier file'
+                    + close(item.name, names),
+                    item.line,
+                )
+                continue
+            if item.text is not None or item.title is not None or item.role is not None or item.cites:
+                first = self.labels.setdefault(item.name, item)
+                if first is not item:
+                    self.report(
+                        'change',
+                        f'the labels of {item.name} are changed twice; the first change is '
+                        f'{self.on_line(first.line)}',
+                        item.line,
+                    )
+            template = target.type.name if item.name in self.instances else item.name
+            for line_node in item.members:
+                if self.change_line(item.name, template, line_node):
+                    key = f'{item.name}.{line_node.name}'
+                    if key in self.changes:
+                        self.report(
+                            'change',
+                            f'{key} is changed twice; the first change is '
+                            f'{self.on_line(self.changes[key][1].line)}: one change sets a value (R-A5-03)',
+                            line_node.line,
+                        )
+                        continue
+                    self.changes[key] = (item.name, line_node)
+
+    def change_line(self, name, template, node):
+        """Whether a line of a change sets a declared value or link of its template (`x = value`);
+        else its problem is reported."""
+        if not isinstance(node, n.Declaration):
+            self.report(
+                'change',
+                f'change {name}: sets values, links and labels; a {type(node).__name__.lower()} '
+                f'belongs to the declaration of {template}',
+                node.line,
+            )
+            return False
+        if node.value is None or node.type is not None or node.modifier or node.range or node.scale:
+            self.report(
+                'change',
+                f'change {name}: gives {node.name} a value, as {node.name} = value; the type, the range '
+                'and the scale stay those of its declaration, and a change declares no new value',
+                node.line,
+            )
+            return False
+        if node.properties:
+            self.report(
+                'change',
+                f'change {name}: gives {node.name} a value; the settings of a part stay with its declaration',
+                node.properties[0].line,
+            )
+            return False
+        found = self.syntax.get(f'{template}.{node.name}')
+        if found is None or not isinstance(found[1], n.Declaration):
+            self.report(
+                'change',
+                f'change {name}: {template} declares no value {node.name}'
+                + close(node.name, self.parts_of(template)),
+                node.line,
+            )
+            return False
+        return True
+
+    def changed(self, value, owner, node):
+        """A value of an entity or a template with the initializer that a change gives it: of the
+        value's kind and type, as a member's own value is (`own`), with the change's records."""
+        evidence = self.evidence(node)
+        is_link, given = self.own(value, owner, node.value, node, evidence)
+        self.recorded(value, evidence, node, 'a change')
+        init = self.expression(node.value, Scope(owner)) if is_link else given.init
+        return replace(value, init=init, evidence=evidence)
+
+    def recorded(self, value, evidence, node, what):
+        """A number or a yes/no that an option or a change sets cites a record (R-A5-05); a text, a
+        member of an enum, a link, a collection and a formula, which calculates, need none."""
+        typed = value.type.of if isinstance(value.type, Dist) else value.type
+        numeric = isinstance(typed, Num) or typed == BOOL or isinstance(value.type, Dist)
+        if not evidence and numeric and value.kind != FORMULA:
+            self.fail(
+                'record',
+                f'{value.path}: {what} sets a number or a yes/no, which cites its record (@name)',
+                node,
+            )
+
+    def declared_options(self, groups):
+        """The options of the groups, in written order. An option's name is its own across the
+        groups, since a run names it alone; a group written in two files is one group."""
+        found, seen = [], {}
+        for group in groups:
+            for item in group.options:
+                first = seen.get(item.name)
+                if first is not None:
+                    self.report(
+                        'option',
+                        f'{item.name} is already an option of the group {first.group}, {self.on_line(first.line)}',
+                        item.line,
+                    )
+                    continue
+                settings, written = [], {}
+                for node in item.settings:
+                    key = '.'.join(node.path)
+                    if key in written:
+                        self.report(
+                            'option',
+                            f'{item.name} sets {key} twice; the first is {self.on_line(written[key])}',
+                            node.line,
+                        )
+                        continue
+                    written[key] = node.line
+                    try:
+                        settings.append(self.setting(node))
+                    except Refused as refused:
+                        if refused.code != 'depends':
+                            self.report(
+                                refused.code, refused.message, refused.line or node.line, refused.column
+                            )
+                try:
+                    evidence = self.evidence(item)
+                except Refused as refused:
+                    self.report(refused.code, refused.message, refused.line or item.line, refused.column)
+                    evidence = ()
+                seen[item.name] = DeclaredOption(
+                    item.name, group.group, tuple(settings), item.text, evidence, item.line
+                )
+                found.append(seen[item.name])
+        return tuple(found)
+
+    def setting(self, node):
+        """A setting of an option (R-A5-04): the input that its full path names, of one member
+        (`tank.rate`, `sites.clinic.rate`), of every member of a template (`Pump.instances.rate`) or
+        of the top level (`rate`), and the value that it gives, a constant of the input's type (D2)
+        with its record (R-A5-05)."""
+        member = instances = None
+        *owner, name = node.path
+        if len(owner) == 2 and owner[1] == 'instances' and owner[0] in self.templates:
+            template = instances = owner[0]
+        elif not owner:
+            template, member = '', ''
+        else:
+            member, template = '.'.join(owner), self.member_template(owner, node)
+        key = f'{template}.{name}' if template else name
+        found = self.syntax.get(key)
+        if found is None or not isinstance(found[1], n.Declaration):
+            parts = self.parts_of(template) if template else list(self.root)
+            self.fail('unknown_name', f'{".".join(node.path)} names no value' + close(name, parts), node)
+        value = self.value(key)
+        if value.kind != INPUT:
+            self.fail(
+                'option',
+                f'{".".join(node.path)} is a {value.kind} value: an option sets an input (R-A5-04)',
+                node,
+            )
+        evidence = self.evidence(node)
+        given = self.constant(value, node.value)
+        self.recorded(value, evidence, node, 'an option')
+        return DeclaredSetting('.'.join(node.path), name, given, member, instances, evidence, node.line)
+
+    def member_template(self, owner, node):
+        """The template of the member that the steps `owner` name: an entity written once, a member
+        written by hand, or a row of a table by its id (`sites.clinic`)."""
+        id = '.'.join(owner)
+        if id in self.entities:
+            return id
+        if id in self.instances:
+            return self.instances[id].type.name
+        if len(owner) == 2 and owner[0] in self.tables and owner[1] in (self.ids.get(owner[0]) or ()):
+            return self.tables[owner[0]].template
+        names = [
+            *self.entities,
+            *self.instances,
+            *(f'{t}.{i}' for t, ids in self.ids.items() for i in ids or ()),
+        ]
+        self.fail('unknown_name', f'{id} names no member' + close(id, names), node)
+
+    def constant(self, value, node):
+        """The value that an option or an edit gives an input: a number with a unit of its dimension
+        (or bare, in the input's unit), true or false, a member of its enum, a text, or for a
+        distribution-valued input a distribution; written out, and in the input's range."""
+        if isinstance(value.type, Dist):
+            if not (isinstance(node, n.Call) and (node.function in ARITY or node.function == 'categorical')):
+                self.fail(
+                    'type', f'{value.name} holds a distribution: it takes another, as uniform(1 h, 3 h)', node
+                )
+            found = self.distribution(node, value.type.of)
+            if not compatible(found.type.of, value.type.of):
+                self.fail('unit', f'{value.name} is {value.type}, and this is {found.type}', node)
+            return found
+        found = self.expression(node, TOP, value.type if isinstance(value.type, (Num, EnumOf)) else None)
+        if not isinstance(found, Const):
+            self.fail(
+                'value',
+                f'{value.name} takes a value written out (a number with its unit, true or false, a member '
+                'of its enum or a text), not a calculation',
+                node,
+            )
+        if not compatible(found.type, value.type):
+            if not (_zero(found) and isinstance(value.type, Num)):
+                code = 'unit' if isinstance(found.type, Num) and isinstance(value.type, Num) else 'type'
+                self.fail(code, f'{value.name} is {value.type}, and this value is {found.type}', node)
+            found = Const(found.value, value.type)
+        self.within(found, value, node)
+        if isinstance(found.type, Num) and found.type != value.type:
+            # In the input's own unit, so that two equal values are one value of a configuration; a
+            # decimal is converted as written (`0.1 days` is 2.4 h).
+            number = Fraction(str(found.value)) if isinstance(found.value, float) else found.value
+            number = _converted(number, self.scale(found.type), self.scale(value.type))
+            found = Const(float(number) if isinstance(found.value, float) else number, value.type)
+        return found
+
+    def declared_runs(self, lines, options):
+        """The named runs: each a name of its own and known options, at most one of each group, no
+        two of which set one input (R-A5-03)."""
+        by_name, found, seen = {item.name: item for item in options}, [], {}
+        for line in lines:
+            if line.name in seen:
+                self.report(
+                    'run',
+                    f'the run {line.name} is named twice; the first is {self.on_line(seen[line.name])}',
+                    line.line,
+                )
+                continue
+            seen[line.name] = line.line
+            missing = [name for name in line.options if name not in by_name]
+            for name in missing:
+                self.report('run', f'{line.name}: {name!r} is no option' + close(name, by_name), line.line)
+            chosen = [by_name[name] for name in line.options if name in by_name]
+            problem = choice_problem(chosen)
+            if problem is not None:
+                self.report('run', f'{line.name}: {problem}', line.line)
+            try:
+                evidence = self.evidence(line)
+            except Refused as refused:
+                self.report(refused.code, refused.message, refused.line or line.line, refused.column)
+                evidence = ()
+            if not missing and problem is None:
+                found.append(DeclaredRun(line.name, line.options, line.text, evidence, line.line))
+        return tuple(found)
 
     def check_names(self):
         """Two declarations of one scope with one name are an error."""
@@ -3669,7 +4064,7 @@ class Resolver:
                 if name in seen:
                     self.report(
                         'duplicate_name',
-                        f'{name} is declared twice; the first is on line {seen[name]}',
+                        f'{name} is declared twice; the first is {self.on_line(seen[name])}',
                         item.line,
                     )
                 seen.setdefault(name, item.line)
@@ -3682,7 +4077,7 @@ class Resolver:
                             self.report(
                                 'duplicate_name',
                                 f'{item.name}.{member_name} is declared twice; the first is '
-                                f'on line {own[member_name]}',
+                                f'{self.on_line(own[member_name])}',
                                 member.line,
                             )
                         own.setdefault(member_name, member.line)
@@ -3952,6 +4347,60 @@ def _zero(value):
     )
 
 
+# The refusals of the parts of a package that a text alone cannot have, and of a setting by its path.
+USE_ALONE = "use names a module of a package: a model with modules is read from its package's main file"
+VARIANT_ALONE = (
+    "a variant is read with its package's main file, from variants/<name>/model.scn of the package"
+)
+PROPERTY_PATH = (
+    '{} is set by its path, which the language does not do: a value is set where it is declared, '
+    "by a member's own line, or by a change (change name:, with name = value under it)"
+)
+
+
+def merged_notes(earlier, later):
+    """The notes of two blocks: a later note replaces the note of its key, and the notes under one
+    key merge the same way, in the order in which their keys first appear."""
+    out = {note.key: note for note in earlier}
+    for note in later:
+        first = out.get(note.key)
+        out[note.key] = note if first is None else replace(note, notes=merged_notes(first.notes, note.notes))
+    return tuple(out.values())
+
+
+def setting_key(setting):
+    """What a setting sets: (`*Template` for every member of a template, or the member's id, the
+    input's name)."""
+    return (f'*{setting.instances}' if setting.instances is not None else setting.member, setting.name)
+
+
+def choice_problem(options):
+    """Why options cannot make one run, or None: two of one group, or two that set one input (R-A5-03).
+    A member's own line and a line of every member of its template are two values, the member's of
+    which wins."""
+    groups, sets = {}, {}
+    for option in options:
+        first = groups.setdefault(option.group, option)
+        if first is not option:
+            return f'it names two options of the group {option.group}: {first.name} and {option.name}'
+        for setting in option.settings:
+            other = sets.setdefault(setting_key(setting), option)
+            if other is not option:
+                return (
+                    f'the options {other.name} and {option.name} both set {setting.path}: two options of '
+                    'one run set different values (R-A5-03)'
+                )
+    return None
+
+
+def constant(value, node, units):
+    """The value that an edit gives an input, read from its tree (`Resolver.constant`): raises
+    `Refused`."""
+    return Resolver(n.File(), units if isinstance(units, Units) else Units(units), tables.no_tables).constant(
+        value, node
+    )
+
+
 def _converted(value, scale_from, scale_to):
     """A number in one unit written in another: exact for a whole number, a float otherwise."""
     if scale_from == scale_to:
@@ -3962,10 +4411,10 @@ def _converted(value, scale_from, scale_to):
     return float(value * scale_from / scale_to)
 
 
-def declare(tree, units, tables_reader=None):
+def declare(tree, units, tables_reader=None, files=()):
     """The declared model of a parsed text (`nodes.File`) with a table of units (`Units`, or a table
     as `Units` takes it), reading its tables with `tables_reader` (`tables.in_folder`,
-    `tables.in_memory`; a text with none has no table). Raises `LanguageError` with every problem
-    that it finds."""
+    `tables.in_memory`; a text with none has no table). The tree of a package's files has their
+    `files` (`Files`). Raises `LanguageError` with every problem that it finds."""
     reader = tables_reader or tables.no_tables
-    return Resolver(tree, units if isinstance(units, Units) else Units(units), reader).model()
+    return Resolver(tree, units if isinstance(units, Units) else Units(units), reader, files).model()

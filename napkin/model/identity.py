@@ -1,107 +1,61 @@
-"""What the hashes of a model cover: the content that the model reaches (docs/python-api.md).
+"""The identity of a model: its hash, and the version of the language that the hash covers.
 
-The model hash covers the meaning of the files of a model, the units that it uses, the records that it
-reaches and the version of the language. It covers no name, path or storage label: not the names of
-the package and its variants, not the folder of the library, and no unit or record of the library that
-the model does not reach. So a rename keeps the hash, a new variant leaves the hashes of its siblings,
-and a unit that a later prelude adds changes no hash. The library hash covers the same units and
-records. Only the hashed form sorts the records; the order of the compiler is untouched.
+The hash of a model (`model_hash`) names one revision of what the model computes and of how a run
+can configure it: its program (`napkin.program.canonical.program_bytes`), the options and the named
+runs that set its inputs, the horizon and the numerics of its default run, and the version of the
+language. It covers no label: not a text, a title, a menu line, a note or a record, and not the
+places of the lines, the comments or the names of the files, the package and its variants. So a
+corrected label, a moved line or a renamed package keeps the hash, and a saved edit document stays
+valid; a new variant is a model of its own and leaves the hashes of its siblings. The key of a stored
+run reads the program and one configuration (`napkin.store.key`), so a label moves neither.
 """
 
 from __future__ import annotations
 
-import copy
-import re
-from collections.abc import Mapping
+import hashlib
 
-from ..expressions import ExpressionError, UnitSystem
-from .evidence import dependencies, digest
+from ..program.canonical import configuration_bytes, program_bytes, value_bytes
 
-# The record collections of a folder's evidence; a library also holds conventions, which its own file
-# declares (`vocabulary.json`).
+# The version of the language, which the hash of a model covers: a model's identity changes with
+# the language, never with the version of the package.
+LANGUAGE_VERSION = '0.1.0'
+# The record collections of a folder's evidence (`library.py`).
 COLLECTIONS = ('sources', 'claims', 'assumptions')
-RECORDS = (*COLLECTIONS, 'conventions')
-# A number with its unit in an expression of a structure: `q(24, 'h')`.
-_QUANTITY = re.compile(r"\bq\(\s*[^,()]+,\s*'([^']+)'\s*\)")
 
 
-def unit_names(value):
-    """The unit names that a part of a model names: each text of a `unit` or a `type` key, and the
-    unit of each number that an expression writes (`q(24, 'h')`)."""
-    found = set()
-
-    def walk(item, key=None):
-        if isinstance(item, Mapping):
-            for name, child in item.items():
-                walk(child, name)
-        elif isinstance(item, (list, tuple)):
-            for child in item:
-                walk(child, key)
-        elif isinstance(item, str):
-            if key in ('unit', 'type'):
-                found.add(item)
-            found.update(_QUANTITY.findall(item))
-
-    walk(value)
-    return found
-
-
-def declared_units(units, names):
-    """{name: definition} of the declared units of `units` that the unit names `names` reach, sorted by
-    name: a declared name itself, and each declared unit that a composed name is made of
-    (`expressions.UnitRegistry.factors`: `tunings/tuner-year` reaches tunings, tuner and year). A name
-    that is no unit, such as a type `bool`, reaches none."""
-    registry = UnitSystem(units)
-    found = set()
-    for name in names:
-        try:
-            found.update(part for part, _ in registry.factors(name))
-        except ExpressionError:
-            continue
-    return {name: copy.deepcopy(units[name]) for name in sorted(found)}
-
-
-def reached(document, library, *, types=(), structures=()):
-    """(the library of a model: every unit of `library`, which a value or an edit may write, and the
-    records that the model reaches, in the order of `library`; what the hashes of the model cover: those
-    records and the units that the model uses).
-
-    `document` is what the evidence walkers read of the model's files (its records and the units that
-    they write); `types` and `structures` are what the build makes of them: the types of its values,
-    as plain data, and its structures (`structure.Structure`), whose plain data is read
-    (`Structure.plain`: the text of each expression, as the lowering writes it). The model uses each
-    unit that they name, and each unit of the data of the records that it reaches."""
-    found = dependencies(document, library)
-    records = {
-        collection: [
-            copy.deepcopy(record)
-            for record in library.get(collection, ())
-            if record['id'] in set(found[collection])
-        ]
-        for collection in RECORDS
-        if collection in library or collection in COLLECTIONS
-    }
-    effective = {**copy.deepcopy(dict(library)), **records}
-    names = unit_names(document) | unit_names(types) | unit_names(records)
-    for structure in structures:
-        names |= unit_names(structure.plain())
-    return effective, {'units': declared_units(library['units'], names), **copy.deepcopy(records)}
-
-
-def library_content(library):
-    """What a hash covers of a library: its units and its records, each collection sorted by ID; its
-    other keys, such as its ID, title and metadata, are storage labels."""
-    result = {'units': copy.deepcopy(dict(library['units']))}
-    for collection in RECORDS:
-        if collection not in library and collection not in COLLECTIONS:
-            continue
-        result[collection] = sorted(
-            copy.deepcopy(list(library.get(collection, ()))), key=lambda record: record['id']
+def model_hash(declared, program, base=None):
+    """The hash of a declared model, its program and the configuration of its default run (`base`,
+    None for a model with no horizon): see the module."""
+    # A group is named by its place: its name is a label, and only which options share it counts.
+    groups = list(dict.fromkeys(option.group for option in declared.options))
+    options = tuple(
+        (
+            option.name,
+            groups.index(option.group),
+            tuple(
+                (item.member, item.instances, item.name, _constant(item.value)) for item in option.settings
+            ),
         )
-    return result
+        for option in declared.options
+    )
+    runs = tuple((run.name, run.options) for run in declared.runs)
+    parts = [LANGUAGE_VERSION.encode(), program_bytes(program), value_bytes((options, runs))]
+    if base is not None:
+        parts += [configuration_bytes(base), value_bytes(base.request.horizon)]
+    digest = hashlib.sha256(b'napkin model\0')
+    for part in parts:
+        # Each part is length-prefixed, so no two models share their bytes across a boundary.
+        digest.update(b'%d:' % len(part))
+        digest.update(part)
+    return digest.hexdigest()
 
 
-def model_identity(document, library, language):
-    """Hash authored model and effective scenario content and the version of the language, never
-    implementation bytes or the version of the package."""
-    return digest({'document': document, 'library': library_content(library), 'language': language})
+def _constant(value):
+    """A setting's constant as canonical data: its number or yes/no or text and the spelling of its
+    type, or the program's distribution."""
+    from . import semantic as s
+    from .lowering import distribution
+
+    if isinstance(value, s.Distribution):
+        return distribution(value)
+    return (value.value, str(value.type))

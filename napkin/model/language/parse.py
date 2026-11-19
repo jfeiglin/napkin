@@ -1805,16 +1805,32 @@ class Parser:
         cursor.op(':', f'change {name}: with its lines under it')
         cites = cursor.cites()
         cursor.end()
-        rest, text, evidence = [], None, []
-        for child in self.body(line, 'a change'):
-            if child.first.kind == 'at':
-                evidence += self.evidence_row(child)
-            elif child.first.kind == 'text':
-                text = self.text_line(child)
+        rest, labels = [], {}
+
+        def label(child):
+            # `title "Text"` and `role word`, as under an entity; any other line is a value or a link.
+            first, second = child.first, child.tokens[1] if len(child.tokens) > 1 else None
+            if first.is_name('title') and second is not None and second.kind == 'text':
+                sub = Cursor(child)
+                sub.i = 1
+                labels['title'] = sub.text('title is a text in quotes')
+                sub.end()
+                self.no_body(child, 'a title')
+            elif (
+                first.is_name('role')
+                and second is not None
+                and second.kind == 'name'
+                and len(child.tokens) == 2
+            ):
+                labels['role'] = second.value
+                self.no_body(child, 'a role')
             else:
                 rest.append(child)
+
+        text, evidence = self.described(line, label)
+        self.body(line, 'a change')
         return n.Change(
-            name, self.members(rest), cites=cites, text=text, evidence=tuple(evidence), **self.at(line)
+            name, self.members(rest), **labels, cites=cites, text=text, evidence=evidence, **self.at(line)
         )
 
     def options(self, line):
@@ -1826,11 +1842,13 @@ class Parser:
         options = []
         for child in self.body(line, 'options'):
             sub = Cursor(child)
-            name = sub.text('an option is "Name": with its settings under it')
-            sub.op(':', 'an option is "Name": with its settings under it')
+            name = sub.text('an option is "Name": with its text and its settings under it')
+            sub.op(':', 'an option is "Name": with its text and its settings under it')
             sub.end()
-            settings = tuple(self.property(item) for item in self.body(child, 'an option'))
-            options.append(n.Option(name, settings, **self.at(child)))
+            settings = []
+            text, evidence = self.described(child, lambda row: settings.append(self.property(row)))
+            self.body(child, 'an option')
+            options.append(n.Option(name, tuple(settings), text=text, evidence=evidence, **self.at(child)))
         return n.Options(group, tuple(options), **self.at(line))
 
     def runs(self, line):
@@ -1844,8 +1862,8 @@ class Parser:
                 sub.i += 1
                 options.append(sub.text('a run names its options in quotes: "Option" + "Option"'))
             sub.end()
-            self.no_body(child, 'a run')
-            runs.append(n.RunLine(name, tuple(options), **self.at(child)))
+            text, evidence = self.described(child)
+            runs.append(n.RunLine(name, tuple(options), text=text, evidence=evidence, **self.at(child)))
         return n.Runs(tuple(runs), **self.at(line))
 
     def notes_block(self, line):

@@ -1,521 +1,301 @@
-"""The runs of a scenario: each run's input values and start states, under an edit document.
+"""The runs of a model: the configuration of one run, under an edit document (D9, R-A5-03).
 
-A run is a choice of profiles, which the code and the edit documents call options
-(docs/language.md, §2.9). Its values are the values' defaults, then the values that each option of
-the run gives, then the edits of an edit document (napkin/schema/edits.schema.json), whose inputs are named
-`entity.value`. The narrower edit wins: an edit of one run, then of one option, then of every run.
-Every edit wins over the value that an option gives, and that value wins over the default. Two edits
-of one input at one level that meet in one run are an error, because neither is narrower.
+A model declares its options (`options "Group":`, each `"Option":` with the inputs that it sets: only
+an input, by its full path, R-A5-04) and its named runs (`runs:`, each a choice of options, at most
+one of each group). They are part of its declared model (`semantic.DeclaredOption`, `DeclaredRun`).
+One run is one configuration of the model's one program (`napkin.program.config.Configuration`):
+the values of its inputs beside its mode, its seed and its request. A variant or a `change` changes
+the model, so it has a program of its own; an option or an edit only configures a run of it.
 
-An edit document is one transaction over the declared runs. `resolve` checks it in every run; if one
-check fails, it resolves nothing. An edit of an option that no run names changes no run: it applies
-in a combination of options that a caller asks for (`Model.combination`), which is checked when it
-is asked for. The checks here are those of single inputs: names, references, bool values, units
-and ranges, and the edits that meet. The checks that read several inputs, and the checks of the
-structure that runs the values, belong to that structure.
+**Precedence.** The first of these that gives an input its value wins (R-A5-03, the spec's "How
+templates compose into a run"):
 
-The file writes each number with its unit (`72 h`, `3 days`); the table holds it as a number in the
-unit of the input's type (`duration`: hours), a bool as True or False, and a named value as its
-name. An input's value can also be a distribution, which the table holds as a record
-(`model/uncertain.py`) with its numbers in the unit of the input. An edit gives a number in that
-unit, True or False for a bool, a name, or a distribution written as in the file, with its units.
-A start value is a named state, a number or an expression, as the file writes it.
+1. an edit of the run in the edit document (`runs`);
+2. an edit of one of the run's options (`options`);
+3. an edit of every run (`set`);
+4. an option of the run;
+5. the program: a `change`, then a member's own line, then the template.
+
+At each of the first four, a line of one member wins over a line of every member of its template
+(`Pump.instances.rate`). Two options of one run that set one input are an error, and so are two edits
+at the level of the options that meet in one run, even when they are equal: the order of the files or
+of the document never decides.
+
+**The edit document** (`napkin/schema/edits.schema.json`) is one transaction: it is checked whole,
+in every run of the model, before any run takes its values: its shape, the revision of the model
+that it was made for (`model_hash`), the options and the runs that it names, and each edit's input
+and value. An edit of an option that no run names changes no run; it reaches a combination of
+options that names that option (`configuration(..., options=...)`), which is checked when it is
+asked for.
+
+**Values** follow the declared type (D2). An option writes a constant of the input's type with its
+unit (`semantic.Resolver.constant`), and an edit gives a JSON number in the input's own unit, true or
+false for a yes/no, or a text: a number with its unit (`"3 days"`), a member of the input's enum, a
+text for a text input, or a distribution written as in a model (`"pert(48 h, 96 h, 200 h)"`). Each
+value is in the input's range when its bounds are numbers; the engine checks the others at setup. A
+configuration holds each number in the unit of its input, so two equal values give one key of a
+stored run.
 """
 
 from __future__ import annotations
 
-import copy
 import math
-from collections.abc import Mapping
-from dataclasses import asdict, dataclass
-from functools import cached_property
+from dataclasses import replace
 
-from .. import distributions
-from ..expressions import ExpressionError, UnitSystem
-from .ir import ModelError, close_names, diagnostic, freeze, thaw
-from .library import prelude_units
+from ..program.config import InputValue, Quantity
+from ..program.refs import EnumValue
+from . import semantic as s
+from .language import nodes as n
+from .language.parse import parse_expression
+from .language.problems import LanguageError, Problem, SyntaxProblem
 from .load import schema_errors
-from .semantic import path_text
-from .types import BOOL, OWN_TEXT, STARTS, UnitProblem, family_of, number_in, written_unit
-from .uncertain import DistributionProblem, is_distribution, read_distribution, reads
 
-# Where a value comes from, broadest first: the default, the value that an option of the model sets
-# (`option`), then the edits of every run (`set`), of one option (`options`, the edit document's
-# level) and of one run. A later level wins.
-LEVELS = ('default', 'option', 'set', 'options', 'runs')
+# The levels of an edit document, from the widest: every run, the runs of one option, one run.
+LEVELS = ('set', 'options', 'runs')
 
 
-@dataclass(frozen=True)
-class Input:
-    """An input or a fixed value of one entity, `entity.field`."""
-
-    name: str
-    doc: str | None
-    fixed: bool
-    is_bool: bool
-    names: tuple | None  # the named values of an input that takes one of them
-    unit: str | None  # the library unit of a number; None for a bool or a named value
-    value: object  # the default: a number in `unit`, True or False, a name, or a distribution
-    range: tuple | None  # (min, max) of an input of a number
-    basis: object
-    range_basis: object
-    options: dict  # {option: {'value', 'basis', 'path'}}: the options that set it
-    path: str  # where the file writes it
-
-
-@dataclass(frozen=True)
-class Resolved:
-    """The values of one run (`run` None for a combination of options that no run names), by
-    `entity.field`, with where each value comes from: `('default',)`, `('option', P)`, `('set',)`,
-    `('options', P)` or `('runs', R)`."""
-
-    run: str | None
-    options: tuple
-    values: dict  # every input and fixed value
-    starts: dict  # the start value of every named state, stock, tally and number state
-    texts: dict  # every cosmetic and fixed text
-    origins: dict  # the level of each value in `values`
-
-
-def library_units(library=None):
-    """The units of a library, or of the prelude without one."""
-    if isinstance(library, UnitSystem):
-        return library
-    return UnitSystem(prelude_units() if library is None else library['units'])
+def options_of(declared, run=None, options=None):
+    """The options of a run, or of a combination: the named run's options (none without a run), with
+    each option of `options` in place of the run's option of its group. Raises `LanguageError` for an
+    unknown run or option, and for options that cannot make one run (`semantic.choice_problem`)."""
+    problems = []
+    if run is not None and declared.run(run) is None:
+        names = [item.name for item in declared.runs]
+        problems.append(Problem('run', f'{run!r} is no run of the model' + s.close(run, names)))
+    if options is not None and (
+        isinstance(options, str) or not all(isinstance(item, str) for item in options)
+    ):
+        problems.append(Problem('run', 'a combination names its options as a list of names'))
+        options = ()
+    names = [item.name for item in declared.options]
+    for name in options or ():
+        if declared.option(name) is None:
+            problems.append(Problem('run', f'{name!r} is no option of the model' + s.close(name, names)))
+    if problems:
+        raise LanguageError(problems)
+    chosen = [declared.option(name) for name in (declared.run(run).options if run is not None else ())]
+    for name in options or ():
+        option = declared.option(name)
+        if option in chosen:
+            continue
+        # The option takes the place of the run's option of its group; two options of one group in
+        # `options` stay two, which `choice_problem` refuses.
+        place = next((k for k, item in enumerate(chosen) if item.group == option.group), None)
+        if place is not None and chosen[place].name not in options:
+            chosen[place] = option
+        else:
+            chosen.append(option)
+    problem = s.choice_problem(chosen)
+    if problem is not None:
+        raise LanguageError([Problem('run', f'{" + ".join(item.name for item in chosen)}: {problem}')])
+    return tuple(item.name for item in chosen)
 
 
-@dataclass(frozen=True)
-class RunTable:
-    """The immutable result of input/option analysis; no lowering or proofs are performed."""
+def configuration(declared, base, run=None, edits=None, options=None, model_hash=None, file=''):
+    """The configuration of a run of a declared model: `base` (the model's default run, with its
+    request and its numerics) with the values that the run's options and the edit document `edits`
+    give its inputs (see the module). `run` names a run of the model, or None for the run of the
+    defaults; `options` makes a combination (`options_of`). The document is checked whole first
+    (`check`), against `model_hash` when it is given. Raises `LanguageError`."""
+    chosen = options_of(declared, run, options)
+    found = check(declared, edits, model_hash, file)
+    if not found and edits:
+        found = _meetings(declared, edits, {run or '': chosen}, file)
+    if found:
+        raise LanguageError(found, file)
+    table = _Targets(declared)
+    values = {}
+    layers = [
+        ('option', [setting for name in chosen for setting in declared.option(name).settings]),
+        ('set', _edited(declared, (edits or {}).get('set'), table)),
+        (
+            'options',
+            [
+                item
+                for name in chosen
+                for item in _edited(declared, _level(edits, 'options').get(name), table)
+            ],
+        ),
+        ('runs', _edited(declared, _level(edits, 'runs').get(run), table) if run is not None else []),
+    ]
+    for _, settings in layers:
+        # A line of every member of a template first, so that a line of one member wins over it.
+        for setting in sorted(settings, key=lambda item: item.instances is None):
+            given = _given(setting)
+            for member in table.members(setting):
+                values[(member, setting.name)] = given
+    inputs = tuple(InputValue(member, name, values[(member, name)]) for member, name in sorted(values))
+    return replace(base, inputs=inputs)
 
-    data: Mapping
-    units: UnitSystem
 
-
-class Runs:
-    """The menu, the runs and the inputs of one scenario, and the values of its runs under an edit
-    document: of a scenario's semantic model (`from_scenario`), or of the table that a model keeps
-    (`from_table`)."""
-
-    @classmethod
-    def from_scenario(cls, scenario, library=None):
-        """The runs of a scenario's semantic model, as a front end declares it: its profiles, its runs,
-        and its entities with their values and the settings of their profiles. `library` is the
-        scenario's library or its units; without one, the units of the shared vocabulary."""
-        runs = cls.__new__(cls)
-        runs._read(scenario, library_units(library))
-        return runs
-
-    def _read(self, scenario, units):
-        self.units = units
-        self.menu = {group.name: [p.name for p in group.profiles] for group in scenario.groups}
-        self.group_of = {p: g for g, options in self.menu.items() for p in options}
-        self.runs = {run.name: run.profiles for run in scenario.runs}
-        self.problems = []  # the problems of the document's own values
-        self.unread = set()  # the paths of the values that their unit cannot read, with a problem
-        self.inputs, self.starts, self.texts = {}, {}, {}
-        self.option_values, self.option_starts, self.option_texts = {}, {}, {}
-        for entity in scenario.entities:
-            self._entity(entity)
-        for key, item in self.inputs.items():
-            for option, setting in item.options.items():
-                self.option_values.setdefault(option, {})[key] = setting['value']
-
-    @cached_property
-    def table(self):
-        """Freeze the analyzed values once, without retaining or compiling the source document."""
-        keys = (
-            'menu',
-            'group_of',
-            'runs',
-            'starts',
-            'texts',
-            'option_values',
-            'option_starts',
-            'option_texts',
-            'problems',
-        )
-        data = {key: getattr(self, key) for key in keys}
-        data['inputs'] = {name: asdict(item) for name, item in self.inputs.items()}
-        return RunTable(freeze(data), self.units)
-
-    @classmethod
-    def from_table(cls, table):
-        """Read an existing compiled table; do not re-read source, units or option definitions."""
-        result = cls.__new__(cls)
-        for key, value in table.data.items():
-            setattr(result, key, value)
-        result.inputs = {name: Input(**item) for name, item in table.data['inputs'].items()}
-        result.problems = [thaw(item) for item in table.data['problems']]
-        result.units = table.units
-        result.__dict__['table'] = table
-        return result
-
-    # ---- the document --------------------------------------------------------------------------
-
-    def _entity(self, entity):
-        """The values of one entity (a copy is an entity of its own): its texts, inputs and start
-        values, with the values that profiles give them."""
-        for value in entity.values:
-            key = f'{entity.name}.{value.name}'
-            if value.kind == 'text':
-                self.texts[key] = thaw(value.value)
-                for setting in value.settings:
-                    self.option_texts.setdefault(setting.profile, {})[key] = thaw(setting.written)
-            elif value.kind in ('input', 'fixed'):
-                self.inputs[key] = item = self._input(key, value, entity)
-                self._check_document(item, path_text(value.range_where))
-            elif value.kind in STARTS:
-                self.starts[key] = thaw(value.value)
-                for setting in value.settings:
-                    written = thaw(setting.written)
-                    start = written.get('value') if isinstance(written, dict) else written
-                    self.option_starts.setdefault(setting.profile, {})[key] = start
-
-    def _input(self, key, value, entity):
-        written_type = thaw(value.type)
-        is_flag = written_type == BOOL
-        names = tuple(written_type) if isinstance(written_type, list) else None
-        unit = None if is_flag or names else self._unit(written_type, entity, path_text(value.type_where))
-        kind = 'bool' if is_flag else 'names' if names else 'unit'
-        bounds, range_basis = None, None
-        if value.range is not None:
-            range_basis = thaw(value.range.basis)
-            if value.range.edges:
-                bounds = tuple(
-                    None if edge is None else self._number(thaw(edge[0]), unit, entity, path_text(edge[1]))
-                    for edge in value.range.edges
-                )
-        options = {}
-        for setting in value.settings:
-            written = thaw(setting.written)
-            item = written if isinstance(written, dict) else {'value': written}
-            where = path_text(setting.where)
-            options[setting.profile] = {
-                'value': self._value(item.get('value'), kind, unit, names, entity, f'{where}/value'),
-                'basis': copy.deepcopy(item.get('basis')),
-                'path': where,
-            }
-        return Input(
-            name=key,
-            doc=thaw(value.text),
-            fixed=value.kind == 'fixed',
-            is_bool=is_flag,
-            names=names,
-            unit=unit,
-            value=self._value(thaw(value.value), kind, unit, names, entity, path_text(value.value_where)),
-            range=bounds if value.kind == 'input' and kind == 'unit' else None,
-            basis=thaw(value.records),
-            range_basis=range_basis,
-            options=options,
-            path=path_text(value.value_where),
-        )
-
-    def _value(self, written, kind, unit, names, entity, path):
-        """A written value of an input: a number in the input's unit, a bool or a name as written, or
-        the record of a distribution. A value that cannot be read stays as written, with a problem."""
-        if family_of(written) is not None:
-            return self._distribution(written, kind, unit, names, entity, path)
-        if kind != 'unit':
-            return written
-        return self._number(written, unit, entity, path)
-
-    def _distribution(self, written, kind, unit, names, entity, path):
-        """The record of a written distribution, with its numbers in the unit of the input."""
-        if kind == 'unit' and unit is None:
-            return written  # the input's unit is unknown, which is its own problem
-        filled = OWN_TEXT.sub(lambda m: entity.text_of(m.group(1)), written)
-        try:
-            return read_distribution(written, kind, unit, self.units, names, filled)
-        except DistributionProblem as exc:
-            self.problems.append(diagnostic('distribution', path, str(exc)))
-            self.unread.add(path)
-            return written
-
-    def _number(self, written, unit, entity, path):
-        """A written number of an input (`72 h`) as a number in the input's unit. A value that the unit
-        cannot read stays as written, with a problem, so that its checks name it once."""
-        if unit is None:
-            return written
-
-        def fill(text):
-            return written_unit(text, entity.text_of)
-
-        try:
-            return number_in(written, unit, self.units, fill)
-        except (UnitProblem, ValueError, ExpressionError) as exc:
-            self.problems.append(diagnostic('unit', path, str(exc)))
-            self.unread.add(path)
-            return written
-
-    def _unit(self, written, entity, path):
-        """The library unit of a number (`types.written_unit`): its type, with the text field of its entity
-        that braces name filled in. None, with a problem, when the library has no such unit."""
-
-        try:
-            if not isinstance(written, str):
-                raise ValueError('no unit')
-            unit = written_unit(written, entity.text_of)
-            self.units.parse_unit(unit)
-        except (ValueError, ExpressionError):
-            self.problems.append(
-                diagnostic('unit', path, f'The type {written!r} is not a unit of the library')
-            )
-            return None
-        return unit
-
-    def _check_document(self, item, range_path):
-        """The default and the option values of one input: numbers in range, bool values, names,
-        distributions, units. A value that its unit cannot read has its problem already, and an input
-        of an unknown unit has the unit's problem."""
-        if item.unit is None and not item.is_bool and item.names is None:
-            return
-        if any(path.startswith(f'{range_path}/') for path in self.unread):
-            return
-        if item.range is not None:
-            low, high = item.range
-            if not (_number(low) and _number(high)) or low > high:
-                self.problems.append(
-                    diagnostic('bounds', range_path, f'{item.name} needs a range [min, max] of numbers')
-                )
-                return
-        elif not item.fixed and not item.is_bool and item.names is None:
-            self.problems.append(
-                diagnostic('bounds', range_path, f'{item.name} is an input: it needs a range')
-            )
-            return
-        if item.path not in self.unread:
-            self.problems += self.value_errors(item, item.value, item.path)
-        for setting in item.options.values():
-            if f'{setting["path"]}/value' not in self.unread:
-                self.problems += self.value_errors(item, setting['value'], f'{setting["path"]}/value')
-
-    # ---- values --------------------------------------------------------------------------------
-
-    def value_errors(self, item, value, path):
-        """The problems of one value of an input: its kind, its range and its unit, and for a
-        distribution its arguments and its support."""
-        if is_distribution(value):
-            return self.distribution_errors(item, value, path)
-        if item.names is not None:
-            if isinstance(value, str) and value in item.names:
-                return []
-            return [diagnostic('value', path, f'{item.name} takes one of its values {list(item.names)}')]
-        if item.is_bool:
-            if isinstance(value, bool):
-                return []
-            return [diagnostic('bool', path, f'{item.name} is a bool: it takes true or false')]
-        if not _number(value):
-            return [diagnostic('value', path, f'{item.name} takes a finite number')]
-        if item.range is not None and not item.range[0] <= value <= item.range[1]:
-            low, high = item.range
-            return [diagnostic('bounds', path, f'{item.name}: {value} is outside [{low}, {high}]')]
-        if item.unit is None:
-            return []  # the document's problem says that the unit is unknown
-        try:
-            self.units.normalize(value, item.unit)
-        except ExpressionError as exc:
-            return [diagnostic('unit', path, f'{item.name}: {exc}')]
-        return []
-
-    def distribution_errors(self, item, record, path):
-        """The problems of a distribution whose arguments are numbers: their values, and a support
-        inside the input's range. A distribution that reads other values is checked where they are
-        known, in each run and each sample (`model.Model.point_values`)."""
-        if reads(record):
-            return []
-        found = distributions.problems(record['family'], dict(record['args']))
-        if found:
-            return [diagnostic('distribution', path, f'{item.name}: {record["text"]}: {"; ".join(found)}')]
-        if item.range is not None and distributions.FAMILIES[record['family']].kind == 'number':
-            low, high = distributions.support(record['family'], record['args'])
-            if low < item.range[0] or high > item.range[1]:
-                return [
-                    diagnostic(
-                        'bounds',
-                        path,
-                        f'{item.name}: {record["text"]} takes values from {low} to {high}, outside its range '
-                        f'[{item.range[0]}, {item.range[1]}]',
-                    )
-                ]
-        return []
-
-    def edit_value(self, item, value, path):
-        """(value, problems) of one value of an edit: a written distribution becomes its record, and
-        any other value is as the edit gives it."""
-        if family_of(value) is None:
-            return value, []
-        kind = 'bool' if item.is_bool else 'names' if item.names else 'unit'
-        try:
-            record = read_distribution(value, kind, item.unit, self.units, item.names)
-        except DistributionProblem as exc:
-            return value, [diagnostic('distribution', path, f'{item.name}: {exc}')]
-        if reads(record):
-            message = f'{item.name}: a distribution in an edit has numbers only; one that reads other values belongs in the file'
-            return value, [diagnostic('distribution', path, message)]
-        return record, []
-
-    def edit_errors(self, key, value, path):
-        """The problems of one edit: the input that it names and the value that it gives."""
-        item = self.inputs.get(key)
-        if item is None:
-            if key in self.starts:
-                message = f'{key} is a state: profiles set its start value, edits do not'
-            elif key in self.texts:
-                message = f'{key} is a text, which edits do not change'
-            else:
-                message = f'{key} is not an input' + close_names(key, self.inputs)
-            return [diagnostic('input', path, message)]
-        if item.fixed:
-            return [diagnostic('locked', path, f'{key} is a fixed value: it is locked')]
-        value, problems = self.edit_value(item, value, path)
-        return problems or self.value_errors(item, value, path)
-
-    # ---- runs and choices of options ------------------------------------------------------------
-
-    def unnamed(self):
-        """The options of the menu that no run names."""
-        named = {p for options in self.runs.values() for p in options}
-        return [p for options in self.menu.values() for p in options if p not in named]
-
-    def unnamed_choices(self):
-        """Each option that no run names with the other options of each run (the run's option of its
-        group replaced): the choices that the model checks when it is built, so that an option that no
-        run takes is still valid. A choice that a run or an earlier item makes is not repeated."""
-        seen = {frozenset(options) for options in self.runs.values()}
-        out = []
-        for option in self.unnamed():
-            group = self.group_of[option]
-            for options in self.runs.values():
-                choice = (option, *(p for p in options if self.group_of.get(p) != group))
-                if frozenset(choice) not in seen:
-                    seen.add(frozenset(choice))
-                    out.append(choice)
-        return out
-
-    def combination(self, run, options):
-        """(options, problems) of one combination that a caller asks for: the options of `run`, in its
-        order, with each of `options` in place of the run's option of the same group, then each option
-        of a group that the run does not name. An option is one of the menu, and a combination takes
-        one option of each group; else the options are None and the problems say why."""
-        if run not in self.runs:
-            return None, [
-                diagnostic('run', f'runs/{run}', f'{run} is not a run' + close_names(run, self.runs))
-            ]
-        chosen, problems = {}, []
-        for option in options:
-            group = self.group_of.get(option)
-            if group is None:
-                message = f'{option} is not an option' + close_names(option, self.group_of)
-                problems.append(diagnostic('reference', f'options/{option}', message))
-            elif chosen.get(group, option) != option:
-                message = f'{chosen[group]} and {option} are two options of the group {group}'
-                problems.append(diagnostic('combination', f'options/{option}', message))
-            else:
-                chosen[group] = option
-        if problems:
-            return None, problems
-        combined = [chosen.pop(self.group_of[p], p) for p in self.runs[run]]
-        return (*combined, *chosen.values()), []
-
-    def errors(self, edits=None, model_hash=None):
-        """Every problem of the document's values and of one edit document, in every run: the names
-        that the document gives are declared ones, each value fits its input, and no two edits of one
-        level meet in a run. An edit of an option that no run names changes no run, and it is
-        accepted: it applies in a combination that names the option (`Model.combination`)."""
-        errors = list(self.problems)
-        if not edits:
-            return errors
-        edits = thaw(edits)
-        shape = schema_errors(edits, 'edits')
-        if shape:
-            return errors + [{**item, 'path': f'edits/{item["path"]}'.rstrip('/')} for item in shape]
-        if model_hash is not None and edits['model_hash'] != model_hash:
-            errors.append(diagnostic('model_hash', 'edits', 'The edits are for a different model revision'))
-        for key, value in (edits.get('set') or {}).items():
-            errors += self.edit_errors(key, value, f'edits/set/{key}')
-        for option, values in (edits.get('options') or {}).items():
-            if option not in self.group_of:
-                message = f'{option} is not an option' + close_names(option, self.group_of)
-                errors.append(diagnostic('reference', f'edits/options/{option}', message))
-                continue
-            for key, value in values.items():
-                errors += self.edit_errors(key, value, f'edits/options/{option}/{key}')
-        for run, values in (edits.get('runs') or {}).items():
-            if run not in self.runs:
-                message = f'{run} is not a run' + close_names(run, self.runs)
-                errors.append(diagnostic('reference', f'edits/runs/{run}', message))
-                continue
-            for key, value in values.items():
-                errors += self.edit_errors(key, value, f'edits/runs/{run}/{key}')
-        return errors + self._meetings(edits)
-
-    def _meetings(self, edits):
-        """Two edits of one input by two options that meet in one run: neither is narrower."""
-        errors, seen = [], set()
-        by_option = edits.get('options') or {}
-        for run, options in self.runs.items():
-            where = f'run {run}'
-            editors = {}
-            for option in options:
-                for key in by_option.get(option) or {}:
-                    editors.setdefault(key, []).append(option)
-            for name, owners in editors.items():
-                if len(owners) < 2 or (name, frozenset(owners)) in seen:
-                    continue
-                seen.add((name, frozenset(owners)))
-                errors.append(
-                    diagnostic(
-                        'meeting',
-                        f'edits/options/{owners[1]}/{name}',
-                        f'{name} has two edits of one level, options {owners[0]} and {owners[1]}, that meet in {where}',
+def check(declared, edits, model_hash=None, file=''):
+    """The problems of an edit document (None for none) in every run of the model, each a `Problem`
+    whose message starts with the place in the document (`runs/fast/tank.rate`): its shape, the
+    model's revision, the options and runs that it names, each input and value, and edits of the
+    options of one run that meet."""
+    if edits is None:
+        return ()
+    if not isinstance(edits, dict):
+        return (Problem('schema', 'an edit document is an object of edits', 0, 0, file),)
+    found = [
+        Problem('schema', f'{item["path"] or "the document"}: {item["message"]}', 0, 0, file)
+        for item in schema_errors(edits, 'edits')
+    ]
+    if found:
+        return tuple(found)
+    if model_hash is not None and edits['model_hash'] != model_hash:
+        found.append(Problem('model_hash', 'the edits are for another revision of the model', 0, 0, file))
+    for level, names, what in (
+        ('options', [item.name for item in declared.options], 'option'),
+        ('runs', [item.name for item in declared.runs], 'run'),
+    ):
+        for name in edits.get(level, {}):
+            if name not in names:
+                found.append(
+                    Problem(
+                        'reference',
+                        f'{level}/{name}: is no {what} of the model' + s.close(name, names),
+                        0,
+                        0,
+                        file,
                     )
                 )
-        return errors
+    table = _Targets(declared)
+    for place, values in _places(edits):
+        for path, value in values.items():
+            try:
+                _edit(declared, path, value, table)
+            except s.Refused as refused:
+                found.append(Problem(refused.code, f'{place}/{path}: {refused.message}', 0, 0, file))
+    if found:
+        return tuple(found)
+    runs = {item.name: options_of(declared, item.name) for item in declared.runs}
+    return tuple(_meetings(declared, edits, runs, file))
 
-    def values_of(self, options, edits=None, run=None):
-        """The values of one choice of options: the defaults, then each option's values, then the edits
-        from the broadest level to the narrowest. A choice that is no run (`run` None) takes only the
-        edits of every run and of its options. The edits must have no problems (`errors`)."""
-        edits = thaw(edits or {})
-        values = {key: item.value for key, item in self.inputs.items()}
-        origins = dict.fromkeys(values, ('default',))
-        starts = thaw(self.starts)
-        texts = dict(self.texts)
 
-        def put(changes, origin):
-            changes = {key: self.edit_value(self.inputs[key], value, '')[0] for key, value in changes.items()}
-            values.update(changes)
-            origins.update(dict.fromkeys(changes, origin))
+def _level(edits, level):
+    return (edits or {}).get(level) or {}
 
-        for option in options:
-            put(self.option_values.get(option, {}), ('option', option))
-            starts.update(thaw(self.option_starts.get(option, {})))
-            texts.update(self.option_texts.get(option, {}))
-        put(edits.get('set') or {}, ('set',))
-        for option in options:
-            put((edits.get('options') or {}).get(option) or {}, ('options', option))
-        if run is not None:
-            put((edits.get('runs') or {}).get(run) or {}, ('runs', run))
-        return Resolved(run, tuple(options), values, starts, texts, origins)
 
-    def resolve(self, edits=None, runs=None, model_hash=None):
-        """{run: Resolved} of every run (or of `runs`), after checking the edits as one transaction.
-        Raises ModelError with every problem, and resolves nothing, if one check fails."""
-        errors = self.errors(edits, model_hash)
-        errors += [
-            diagnostic('reference', f'runs/{r}', f'{r} is not a run' + close_names(r, self.runs))
-            for r in runs or ()
-            if r not in self.runs
-        ]
-        if errors:
-            raise ModelError(errors)
-        return {
-            run: self.values_of(options, edits, run)
-            for run, options in self.runs.items()
-            if runs is None or run in runs
+def _places(edits):
+    """(the place in the document, its edits) of each level of an edit document."""
+    if edits.get('set'):
+        yield 'set', edits['set']
+    for level in ('options', 'runs'):
+        for name, values in (edits.get(level) or {}).items():
+            yield f'{level}/{name}', values
+
+
+def _meetings(declared, edits, runs, file):
+    """Two edits of the options of one run that set one input (R-A5-03), in each of `runs` (its
+    name: its options)."""
+    found, edited = [], _level(edits, 'options')
+    for run, chosen in runs.items():
+        seen = {}
+        for name in chosen:
+            for path in edited.get(name, {}):
+                first = seen.setdefault(path, name)
+                if first != name:
+                    found.append(
+                        Problem(
+                            'meeting',
+                            f'options/{name}/{path}: the run {run or "of the defaults"} takes the options '
+                            f'{first} and {name}, whose edits both set {path}',
+                            0,
+                            0,
+                            file,
+                        )
+                    )
+    return found
+
+
+class _Targets:
+    """The members of the model by id and by template, for the paths of edits and the lines of every
+    member of a template."""
+
+    def __init__(self, declared):
+        self.template = {entity.path: entity.path for entity in declared.entities}
+        self.of = {}
+        for member in declared.members:
+            self.template[member.path] = member.template
+            self.of.setdefault(member.template, []).append(member.path)
+        self.templates = {
+            entity.path for entity in declared.entities if isinstance(entity, s.DeclaredTemplate)
         }
 
+    def members(self, setting):
+        """The ids of the members that a setting reaches."""
+        if setting.instances is not None:
+            return self.of.get(setting.instances, ())
+        return (setting.member,)
 
-def _number(value):
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+def _edited(declared, values, table):
+    """The edits of one level as settings (`semantic.DeclaredSetting`), checked already."""
+    return [_edit(declared, path, value, table) for path, value in (values or {}).items()]
+
+
+def _edit(declared, path, value, table):
+    """One edit as a setting: the input that its path names and the constant that it gives, or
+    `semantic.Refused`."""
+    *owner, name = path.split('.')
+    member = instances = None
+    if len(owner) == 2 and owner[1] == 'instances' and owner[0] in table.templates:
+        key, instances = f'{owner[0]}.{name}', owner[0]
+    elif not owner:
+        key, member = name, ''
+    else:
+        member = '.'.join(owner)
+        if member not in table.template or member in table.templates:
+            raise s.Refused('input', f'{member} names no member of the model')
+        key = f'{table.template[member]}.{name}'
+    found = declared.part(key)
+    if not isinstance(found, s.DeclaredValue) or (not owner and found not in declared.root):
+        raise s.Refused('input', f'{path} names no input of the model')
+    if found.kind != s.INPUT:
+        raise s.Refused('input', f'{path} is a {found.kind} value: an edit sets an input')
+    return s.DeclaredSetting(path, name, _value(declared, found, value), member, instances)
+
+
+def _value(declared, found, value):
+    """The constant that an edit's JSON value gives an input of the type of `found` (D2)."""
+    if found.type == s.BOOL:
+        if not isinstance(value, bool):
+            raise s.Refused('bool', f'{found.name} is a yes/no: it takes true or false, not {value!r}')
+        return s.Const(value, s.BOOL)
+    if isinstance(value, bool):
+        raise s.Refused('value', f'{found.name} is {found.type}: it takes no true or false')
+    if isinstance(value, (int, float)):
+        if not math.isfinite(value) or not isinstance(found.type, s.Num):
+            raise s.Refused(
+                'value', f'{found.name} is {found.type}: a finite number is in its unit, not {value!r}'
+            )
+        node = n.Number(abs(value))
+        return s.constant(found, n.Unary('-', node) if value < 0 else node, declared.units)
+    if found.type == s.TEXT:
+        return s.Const(value, s.TEXT)
+    if isinstance(found.type, s.EnumOf):
+        if value not in found.type.members:
+            raise s.Refused('value', f'{found.name} is {found.type}: {value!r} is no member of it')
+        return s.Const(value, found.type)
+    try:
+        node = parse_expression(value)
+    except SyntaxProblem as problem:
+        raise s.Refused('value', f'{value!r} is no value: {problem.problem.message}') from None
+    return s.constant(found, node, declared.units)
+
+
+def _given(setting):
+    """The value of a configuration for a setting's constant: a number in the unit of its input, a
+    yes/no, a text, a member of an enum, or a distribution."""
+    from .lowering import distribution
+
+    value = setting.value
+    if isinstance(value, s.Distribution):
+        return distribution(value)
+    if isinstance(value.type, s.EnumOf):
+        return EnumValue(str(value.type), value.value)
+    if isinstance(value.type, s.Num):
+        # The constant is in the input's own unit already (`semantic.Resolver.constant`).
+        return Quantity(value.value, value.type.unit)
+    return value.value

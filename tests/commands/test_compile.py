@@ -46,14 +46,13 @@ def test_compile_summarizes_the_program_of_the_tank(tmp_path, capsys):
     assert (doc['horizon'], doc['inputs'], doc['diagnostics']) == (4, [], [])
 
 
-def test_a_part_of_a_later_slice_is_refused_by_name(tmp_path, capsys):
-    """A property set by its path from the top level comes with S6: the front end names the part
-    and the slice."""
-    model = package(tmp_path / 'tank', TANK + '\nclinic.delivery.request = 2 L/h\n', UNITS)
+def test_a_part_of_a_later_stage_is_refused_by_name(tmp_path, capsys):
+    """A status display comes with stage C: the front end names the part and the stage."""
+    model = package(tmp_path / 'tank', TANK + '\nlamp:\n    status ok\n        "Fine."\n', UNITS)
     found = napkin(capsys, 'compile', model)
     assert found.code == 1
     assert '[later_slice]' in found.err
-    assert 'a property set by its path' in found.err and '(S6)' in found.err
+    assert 'a status display' in found.err and '(C)' in found.err
 
 
 def test_a_report_of_the_setup_is_a_warning_and_refuses_nothing(tmp_path, capsys):

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Edits of the input values of a scenario's runs",
-  "description": "Inputs are named entity.field. `set` edits every run, `options` the runs that name an option, and `runs` one run. The narrower edit wins: one run, then one option, then every run; every edit wins over the value that an option gives and over the default. A bool input takes true or false, a named input one of its names, and a number is in the unit of the input's type. A value can also be a distribution, written as in a scenario file with its units, such as \"pert(48 h, 96 h, 200 h)\"; its arguments are numbers. Fixed fields cannot be edited.",
+  "title": "Edits of the inputs of a model's runs",
+  "description": "An edit sets an input of a model for its runs (napkin/model/runs.py). An input is named by its full path: member.input, where a member is an entity, a member written by hand or a row of a table by its id (sites.clinic.level); Template.instances.input for every member of a template; or input for an input of the top level. `set` edits every run, `options` the runs that take an option, and `runs` one run. The narrower edit wins: one run, then one option, then every run; every edit wins over the value that an option of the run gives and over the model's own. At each level a line of one member wins over a line of every member of its template, and two edits of options that one run takes may not set one input. A value follows the input's type: a number in the input's own unit, true or false for a yes/no, or a text: a number with its unit (\"3 days\"), a member of the input's enum, a text for a text input, or a distribution written as in a model, with numbers for its arguments (\"pert(48 h, 96 h, 200 h)\").",
   "type": "object",
   "properties": {
     "schema_version": {
@@ -45,7 +45,7 @@
   "$defs": {
     "input": {
       "type": "string",
-      "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[0-9]+)?\\.[A-Za-z][A-Za-z0-9_]*$"
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\[[0-9]+\\])?(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
     },
     "values": {
       "type": "object",
@@ -67,7 +67,7 @@
     },
     "run": {
       "type": "string",
-      "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
     }
   }
 }

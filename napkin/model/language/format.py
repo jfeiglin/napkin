@@ -450,16 +450,23 @@ def line_rows(node, depth):
     if isinstance(node, n.Sees):
         return _rows(node, depth, f'sees {expression(node.path, ATOM)}')
     if isinstance(node, n.Change):
-        under = _described(node, depth) + _block(node.members, depth + 1)
+        under = [] if node.text is None else text_rows(inner, node.text, depth + 1)
+        if node.title is not None:
+            under += text_rows(f'{inner}title ', node.title, depth + 1)
+        if node.role is not None:
+            under.append(f'{inner}role {node.role}')
+        under += evidence_rows(node.evidence, depth + 1) + _block(node.members, depth + 1)
         return _rows(node, depth, f'change {node.name}:{_cites(node.cites)}', under)
     if isinstance(node, n.Options):
         return _rows(node, depth, f'options {text_text(node.group)}:', _block(node.options, depth + 1))
     if isinstance(node, n.Option):
-        return _rows(node, depth, f'{text_text(node.name)}:', _block(node.settings, depth + 1))
+        under = _described(node, depth) + _block(node.settings, depth + 1)
+        return _rows(node, depth, f'{text_text(node.name)}:', under)
     if isinstance(node, n.Runs):
         return _rows(node, depth, 'runs:', _block(node.runs, depth + 1))
     if isinstance(node, n.RunLine):
-        return _rows(node, depth, f'{node.name} = {" + ".join(text_text(item) for item in node.options)}')
+        head = f'{node.name} = {" + ".join(text_text(item) for item in node.options)}'
+        return _rows(node, depth, head, _described(node, depth))
     if isinstance(node, n.Notes):
         return _rows(node, depth, 'notes:', _block(node.notes, depth + 1))
     if isinstance(node, n.Note):

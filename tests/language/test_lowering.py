@@ -308,16 +308,10 @@ def test_a_distribution_valued_value_keeps_its_type():
     ('text', 'construct', 'slice_'),
     [
         ('c:\n    status ok\n        "Fine."\n', 'a status display', 'C'),
-        ('use pumps.common\n', 'use', 'S6'),
-        ('change tank:\n    x = 2\n', 'change', 'S6'),
-        ('options "Speed":\n    "Fast":\n        tank.x = 2\n', 'options', 'S6'),
-        ('runs:\n    fast = "Fast"\n', 'runs', 'S6'),
-        ('variant "Wet"\n    horizon 1 h\n', 'a variant', 'S6'),
-        ('tank:\n    x = 1\ntank.x = 3\n', 'a property set by its path', 'S6'),
         ('x = 1\ny = formula(x.mean)\n', None, None),
     ],
 )
-def test_a_construct_of_a_later_slice_is_refused_by_name(text, construct, slice_):
+def test_a_construct_of_a_later_stage_is_refused_by_name(text, construct, slice_):
     with pytest.raises(LanguageError) as caught:
         compiled(text)
     if construct is None:
@@ -327,6 +321,25 @@ def test_a_construct_of_a_later_slice_is_refused_by_name(text, construct, slice_
     message = caught.value.problems[0].message
     assert construct in message and f'({slice_})' in message
     assert caught.value.problems[0].line >= 1
+
+
+@pytest.mark.parametrize(
+    ('text', 'code', 'line'),
+    [
+        # A text alone is one file: it has no module to use, no earlier file to change and no package
+        # whose main file a variant reads.
+        ('use pumps.common\n', 'use', 1),
+        ('tank:\n    x = 2\nchange tank:\n    x = 3\n', 'change', 3),
+        ('variant "Wet"\n    horizon 1 h\n', 'scenario', 1),
+        # A value is set where it is declared, by a member's own line or by a change.
+        ('tank:\n    x = 1\ntank.x = 3\n', 'property', 3),
+        ('tank:\n    x = 1\n    flow out: this.x -> SINK\n    out.request = 1/h\n', 'property', 4),
+    ],
+)
+def test_what_a_text_alone_cannot_have_is_refused_at_its_line(text, code, line):
+    with pytest.raises(LanguageError) as caught:
+        compiled(text)
+    assert [(item.code, item.line) for item in caught.value.problems] == [(code, line)]
 
 
 def test_a_refusal_of_the_checker_is_at_the_line_of_its_part():

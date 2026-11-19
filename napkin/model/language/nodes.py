@@ -546,15 +546,18 @@ class Table(Described):
 
 @dataclass(frozen=True)
 class Change(Described):
-    """`change name:`: lines that change an entity of an earlier file."""
+    """`change name:`: lines that change an entity, a template or a member written by hand of an
+    earlier file: values and links under it, and its text, `title` and `role`."""
 
     name: str
     members: tuple[Line, ...] = ()
+    title: str | None = None
+    role: str | None = None
 
 
 @dataclass(frozen=True)
-class Option(Line):
-    """`"Option":` in an options group, with its settings."""
+class Option(Described):
+    """`"Option":` in an options group, with its text (its line in a menu) and its settings."""
 
     name: str
     settings: tuple[Property, ...] = ()
@@ -569,8 +572,8 @@ class Options(Line):
 
 
 @dataclass(frozen=True)
-class RunLine(Line):
-    """`name = "Option" + "Option"` under `runs:`."""
+class RunLine(Described):
+    """`name = "Option" + "Option"` under `runs:`, with its text."""
 
     name: str
     options: tuple[str, ...] = ()
