@@ -22,9 +22,13 @@ At a time, rounds. One round is:
    held (`held`), and `resume` runs them again from the paused one.
 2. **Settle.** The connected sets that the round touched are built again from the state there
    (`ways.py`): those that hold a store that a commit wrote, or read a value that changed (a written
-   value, a collection of occurrences or of flows whose members changed, a rate of a set built
-   again, a keyed read at its key time), and those that a flow joins or leaves. A store that no
-   flow meets any more holds its value.
+   value, a collection of occurrences or of flows whose members changed, a rate or a result of a set
+   built again, a keyed read at its key time), and those that a flow joins or leaves. A store that no
+   flow meets any more holds its value. So each declared solver that the round affected is solved
+   once, after the stages commit, in dependency order, and its results are published together
+   (`declared.py`); the sets of declared solvers first settle after the setup's commit. Then each
+   delay that a stage reached and that reads a rate or a result takes its value: its other reads
+   were captured when the stage reached it (`occurrences.py`).
 3. **Conditions** (`triggers.py`): triggers, resets and gates are read on the settled state; then
    the firings start their events, and the released gates go on. Then each assertion over state
    must hold, and once the rounds of the time are done, just after it as well.
@@ -104,6 +108,7 @@ class Moment:
         self.held, run.chance.kept = None, set()
         self.commit(tx)
         self.settle()
+        run.occurrences.delays()
         self.phase = 'conditions'
         run.triggers.conditions()
         run.triggers.check()
@@ -151,6 +156,7 @@ class Moment:
                 self.stage(live)
             self.held = None
             self.settle()
+            run.occurrences.delays()
             self.phase = 'conditions'
             run.triggers.conditions()
             run.triggers.check()
@@ -412,20 +418,24 @@ class Moment:
                 ends |= {end for end in (connection.source, connection.sink) if end is not None}
         touched |= {ways.set_of[end] for end in ends if end in ways.set_of}
         touched |= {ways.set_of[flow] for flow in left if flow in ways.set_of}
-        if not touched and not joined:
+        waiting, run.waiting = run.waiting, []
+        if not touched and not joined and not waiting:
             run.settled()
             return
         moving_before = set(ways.set_of)
         while True:
             region = [f for key in touched for f in ways.sets[key][0].flows if f not in left]
             region += [f for f in joined if f not in left and f not in region]
+            region += [f for connected in waiting for f in connected.flows if f not in left and f not in region]
+            solvers = {ways.sets[key][0].solver for key in touched} | {c.solver for c in waiting}
+            solvers.discard(None)
             region_ends = set()
             for flow in region:
                 for connection in plan.flows[flow].connections:
                     region_ends |= {end for end in (connection.source, connection.sink) if end is not None}
             gone = {store for key in touched for store in ways.sets[key][0].stores}
             moving = _Moving(ways.set_of, gone, region_ends)
-            made = plan.connect(region, moving)
+            made = plan.connect(region, moving, sorted(solvers))
             extra = set()
             for connected in made:
                 for store in connected.stores:

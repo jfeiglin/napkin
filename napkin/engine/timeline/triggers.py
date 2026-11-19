@@ -175,6 +175,8 @@ class Triggers:
                 value = plan.values.get(name)
                 if name in run.ways.set_of or (value is not None and value.kind == RATE):
                     found.add(name)
+                elif name in run.ways.result_of and run.ways.sets[run.ways.result_of[name]][0].moves:
+                    found.add(name)  # a result of a solver whose problem moves between moments
                 elif name in plan.delays and plan.delay_moves(name):
                     found.add(name)  # the past of a value that moves
         return found
@@ -458,7 +460,7 @@ class Triggers:
                     return False
                 continue
             instance = ways.instance_of(name.rsplit('.', 1)[0])
-            if instance is not None and not isinstance(instance, Family | Lines):
+            if instance is not None and not (isinstance(instance, Family | Lines) or getattr(instance, 'lines', False)):
                 return False
         return True
 

@@ -14,7 +14,9 @@ Then it goes through its steps in order (spec, "Time, waiting and completion"):
 
 - `after D` captures D when the step is reached, a finite duration from zero, and is due D later:
   its stage commits then (`moment.py`). Stages due together commit in the order in which their
-  occurrences were made (D5);
+  occurrences were made (D5). A D that a stage reaches and that reads a rate or a result of a
+  declared solver takes them after the round's settling, so a solve that the round affects gives
+  its settled answer; what else it reads is captured when the step is reached (`delays`);
 - `until C` is a gate: the occurrence waits there until the conditions of a round find C true
   (`triggers.py`), and goes on in that round.
 
@@ -41,6 +43,8 @@ from ...core.errors import ExpressionError
 from ...program import parts as p
 from ...program.record import Unavailable
 from ..errors import SimulationError
+from .plan import FORMULA, RATE, RESULT
+from .reads import lazily
 
 
 @dataclass(eq=False)
@@ -75,6 +79,8 @@ class Occurrences:
         self.of_event = {}  # (member, event) -> its occurrences, in order
         self.gates = {}  # id -> an occurrence that waits at a gate
         self._nodes = {}  # (id of an expression, owner) -> its node over engine names
+        self.awaiting = []  # delays that wait for the round's settling (`delays`)
+        self._delays = {}  # a delay's node -> the rates and results that it reads
 
     def node(self, expression, scope, origin):
         """The node of an expression of a scope over engine names, made once."""
@@ -188,7 +194,16 @@ class Occurrences:
             live.waiting = True
             self.gates[live.id] = live  # its condition is watched from the end of the moment
             return
-        delay = run.truth(self.node(step.delay, live.plan.scope, step.origin))
+        node = self.node(step.delay, live.plan.scope, step.origin)
+        computed = self._computed(node)
+        if computed and run.moment.phase == 'stages':
+            # The rates and results that it reads settle after the stages of the round (D5).
+            self.awaiting.append((live, live.version, node, step, self._captured(node, computed)))
+            return
+        self._schedule(live, run.truth(node), step)
+
+    def _schedule(self, live, delay, step):
+        run = self.run
         if (
             isinstance(delay, bool)
             or not isinstance(delay, int | float)
@@ -201,6 +216,53 @@ class Occurrences:
             )
         live.due = run.now + float(delay)
         heapq.heappush(self.schedule, (live.due, live.number, live.id, live.version))
+
+    def _computed(self, node):
+        """The rates and results that a delay reads, through formulas, reductions and dynamic reads."""
+        found = self._delays.get(node)
+        if found is None:
+            plan = self.plan
+            leaves = plan.reads_now(plan.expansion(node)).leaves
+            found = self._delays[node] = frozenset(
+                leaf
+                for leaf in leaves
+                if leaf in plan.values and plan.values[leaf].kind in (RATE, RESULT)
+            )
+        return found
+
+    def _captured(self, node, computed):
+        """The values now of what a delay reads other than rates and results: each value that it
+        reads, or the error that reading it raises."""
+        run, plan = self.run, self.plan
+        found = {}
+        for leaf in plan.reads_now(plan.expansion(node)).leaves - computed:
+            try:
+                found[leaf] = run.value(leaf)
+            except (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError) as problem:
+                found[leaf] = problem
+        return found
+
+    def delays(self):
+        """After the settling of a round: each delay that waits for rates and results takes its
+        value, from what it captured and what settled, and its stage is due that much later."""
+        run, plan = self.run, self.plan
+        waiting, self.awaiting = self.awaiting, []
+        for live, version, node, step, captured in waiting:
+            if live.version != version:
+                continue
+
+            def read(name, captured=captured):
+                if name in captured:
+                    found = captured[name]
+                    if isinstance(found, Exception):
+                        raise found
+                    return found
+                value = plan.values.get(name)
+                if value is not None and value.kind == FORMULA and name not in run.frozen:
+                    return lazily(value.node, read, plan.units, run.now)
+                return run.value(name)
+
+            self._schedule(live, lazily(node, read, plan.units, run.now), step)
 
     def next_due(self):
         """The time of the next step that waits for its time, or None."""

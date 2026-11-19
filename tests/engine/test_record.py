@@ -270,13 +270,19 @@ def test_a_negative_request_stops_the_run():
             'S4',
             None,
         ),
-        (
-            (flow('echo', SOURCE, this.water, request=formula(named('clinic').delivery.actual_rate)),),
-            'S5',
-            None,
-        ),
     ],
 )
 def test_a_part_of_a_later_slice_is_refused_by_name(parts, slice_, links):
     with pytest.raises(Outside, match=slice_):
         run(tank(*parts, links=links).finish(), configured(1))
+
+
+def test_a_request_that_reads_an_actual_rate_of_its_own_set_needs_a_declared_solver():
+    """A request that reads the rate of a flow that shares its tank is a relation between two
+    unknowns of one calculation, which local sharing does not state: the run fails at its start,
+    naming the rate that it reads, and says that a declared solver states such a relation."""
+    echo = flow('echo', SOURCE, this.water, request=formula(named('clinic').delivery.actual_rate))
+    record = run(tank(echo).finish(), configured(1))
+    message = record.failure.detail('message')
+    assert record.failure.t == 0
+    assert 'clinic.delivery.actual_rate' in message and 'needs a declared solver' in message

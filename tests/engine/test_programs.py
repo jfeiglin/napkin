@@ -24,9 +24,28 @@ from tests.reference.from_program import run_of, value_at
 # directed flows with a request and a capacity (S0); templates, tables, collections and keyed reads
 # (S1); endpoints, local sharing, junctions and flows across members (S2); reversible routes and flows
 # with legs (S3); events, occurrences, stages, triggers, gates, moves and retirement (the first part
-# of S4); draws, choices and inputs that are distributions (the second part of S4). The other
-# examples need solvers (S5).
-SUBSET = {
+# of S4); draws, choices and inputs that are distributions (the second part of S4); declared solvers
+# (S5, `SOLVED`).
+SOLVED = {
+    'two_junctions_solver',
+    'network',
+    'network_clinic_first',
+    'network_unequal',
+    'network_kw',
+    'two_bottlenecks_fair',
+    'two_bottlenecks_total_unmet',
+    'staffing',
+    'pump_battery',
+    'pump_battery_stocked',
+    'pump_battery_idle',
+    'provider_limit',
+    'provider_limit_east_low',
+    'distance_targets_zero',
+    'distance_targets_five',
+    'distance_equality',
+    'two_writes_one_solve',
+}
+SUBSET = SOLVED | {
     'median_categorical',
     'median_categorical_guarded',
     'dispatcher_forecast',
@@ -93,12 +112,16 @@ def value(record, program, key, t):
     return reading.values[0]
 
 
-def same(found, expected):
+def same(found, expected, solved=False):
     """A yes/no or a text is the same; a number is within 1e-8 of it, relatively: a set whose rates
     move is integrated to the run's tolerance of 1e-9 at each step (the falling ramp's kink at 2.5 h
-    costs it 2e-9)."""
+    costs it 2e-9). A model with a declared solver is within 1e-6: fair sharing holds each claim
+    that it cannot raise to its level less 1e-7 of its request (`napkin/engine/solve/fair.py`, FIX),
+    which the distance step may take (the two bottlenecks give b = 2 W - 6e-7 W)."""
     if isinstance(expected, bool | str):
         return found == expected and type(found) is type(expected)
+    if solved:
+        return found == pytest.approx(float(expected), rel=1e-6, abs=1e-9)
     return found == pytest.approx(float(expected), rel=1e-8, abs=1e-12)
 
 
@@ -124,7 +147,7 @@ def test_an_example_gives_its_results_or_is_refused_by_its_slice(name):
             assert record.failure.t == pytest.approx(float(failure.t))
     for item in example.expected:
         if isinstance(item, At):
-            assert same(value(record, example.program, item.key, item.t), item.value), item
+            assert same(value(record, example.program, item.key, item.t), item.value, name in SOLVED), item
         elif isinstance(item, Traced):
             entries = record.entries(item.kind, item.part)
             assert [entry.t for entry in entries] == pytest.approx([float(t) for t in item.times]), item
@@ -163,4 +186,4 @@ def test_an_example_of_the_subset_agrees_with_the_oracle(name):
             except RunFailed:
                 assert isinstance(found, Unavailable), (key, t)
                 continue
-            assert same(found, expected), (key, t)
+            assert same(found, expected, name in SOLVED), (key, t)

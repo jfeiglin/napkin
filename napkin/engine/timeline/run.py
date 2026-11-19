@@ -69,6 +69,7 @@ from .moment import Moment
 from .occurrences import Occurrences
 from .plan import (
     CHANGED,
+    DECLARED,
     DELAYED,
     DESCRIBED,
     DYNAMIC,
@@ -77,6 +78,7 @@ from .plan import (
     LOOKUP,
     RATE,
     REDUCE,
+    RESULT,
     STARTS,
     STATE,
     Outside,
@@ -143,6 +145,9 @@ class Run:
         self._keyed = None  # {key time: the keyed reads by the time that change there}
         self.changed = set()  # what a commit or an event of the ways changed: names and sources
         self.joined, self.left = [], []  # the flows that join and that leave at this moment
+        # The sets that wait for the settling of the setup: those of declared solvers, and those that
+        # read their rates or results; and what they give.
+        self.waiting, self.waiting_names = [], set()
         self.changes = {}  # a stored value -> the times of the commits that changed it (`elapsed`)
         self.delayed_at = []  # (time, delayed read): when a `delayed` of a held value changes
         self.pause = None  # the `pause` entry of a paused run, until `resume`
@@ -168,6 +173,8 @@ class Run:
             return sorted(read for read in plan.reads(name) if read not in env)
         if value.kind == RATE:
             raise Outside(f'{name}: a starting value that reads an actual rate (S2)')
+        if value.kind == RESULT:
+            raise SimulationError(f'{name} is read before its first solve: a starting value reads it')
         if value.kind in (REDUCE, LOOKUP):
             derived = plan.reductions.get(name) or plan.keyed[name]
             tests = {read for test in derived.tests if test is not None for read in nodes.names(test)} - {'t'}
@@ -409,7 +416,13 @@ class Run:
         if kind is None and (name in plan.draws or name in plan.choices):
             return self.chance.produce(name, None, tx)  # executed: a node of a stage reads it once
         if kind == RATE:
+            if self.moment.phase == 'stages':
+                self.ways.fresh(name, tx)
             return self.ways.rate(name, t)
+        if kind == RESULT:
+            if self.moment.phase == 'stages' or name not in self.ways.result_of:
+                self.ways.fresh(name, tx)
+            return self.ways.result(name, t)
         if kind == CHANGED:
             return self.changed_at(name, tx)
         if kind == DELAYED:
@@ -632,8 +645,33 @@ class Run:
         for flow in plan.flows.values():
             self.tolerate(flow)
         self.started = plan.started = True
-        self.ways.build(plan.sets, self.env, 0.0)
+        self.ways.build(self._now(plan.sets), self.env, 0.0)
         return values, self.sizes, list(self.ways.instances)
+
+    def _now(self, sets):
+        """The sets that start before the setup: those of no declared solver and that read none of
+        their rates and results, which settle after the setup's commit (`waiting`)."""
+        given = set()
+        waiting = [connected for connected in sets if connected.way == DECLARED]
+        for connected in waiting:
+            given |= self._given(connected)
+        while True:
+            more = [
+                connected
+                for connected in sets
+                if connected not in waiting and connected.rates & given
+            ]
+            if not more:
+                break
+            waiting += more
+            for connected in more:
+                given |= self._given(connected)
+        self.waiting, self.waiting_names = waiting, given
+        return [connected for connected in sets if connected not in waiting]
+
+    def _given(self, connected):
+        names = {name for flow in connected.flows for name in self.plan.rates_of_flow(flow)}
+        return names | set(connected.results)
 
     def tolerate(self, flow):
         """The tolerance of what the network gives of a flow, which the record keeps: a rate's error

@@ -1,10 +1,11 @@
 """The ways of a run: the instances that run its connected sets between moments, and what a moment
 does to them.
 
-A connected set runs on one of four ways (`plan.Connected.way`): the family of one-flow sets on
-arrays (`family.py`), lines (`lines.py`), one component of the continuous engine (`component.py`)
-or the sparse integrator (`sparse.py`). `Ways` holds the instances of a run, each of one or more
-sets, and gives every engine of the run the same few operations:
+A connected set runs on one of five ways (`plan.Connected.way`): the family of one-flow sets on
+arrays (`family.py`), lines (`lines.py`), one component of the continuous engine (`component.py`),
+the sparse integrator (`sparse.py`), or the way of a declared solver (`declared.py`). `Ways` holds
+the instances of a run, each of one or more sets, and gives every engine of the run the same few
+operations:
 
 - the value of a store and the rate of a flow at a time inside the present window of its instance;
 - `peek()`, the time of the next event inside an instance (a store that reaches or leaves a bound,
@@ -22,24 +23,34 @@ instance. So a connected set gains and loses members at moments, and each way ta
 - **the family** and **lines** hold many sets in one instance: a retired set's rows are dead in
   it (no event, no refresh), and the touched sets of one moment form one new instance of each of
   those ways for each level (below);
-- **a component** and **a sparse set** are one set each: the instance goes, and a new one starts.
+- **a component**, **a sparse set** and **a declared solver's set** are one set each: the instance
+  goes, and a new one starts. A declared solver keeps its `solve.Solver` for the whole run (`kept`),
+  with its last problem and answer (`last`), and the references of its stored numbers.
 
-**Levels.** A set whose requests or capacities read the actual rates of another set settles after
-it: its level is one more than the levels of the sets that it reads. Instances are made level by
-level, so a setting reads rates that are settled. A rate that another set reads changes at a
-moment or at an event of its instance; the sets that read it are touched then. A set whose settings
-read a rate that moves between moments (of a component or of a sparse set) has no closed answer
-here and is refused (`Outside`).
+**Levels.** A set whose requests or capacities, or whose solver's problem, read the actual rates or
+the results of another set settles after it: its level is one more than the levels of the sets that
+it reads. Instances are made level by level, so a setting reads rates that are settled, and each
+affected solver is solved once, in dependency order. A rate or a result that another set reads
+changes at a moment or at an event of its instance; the sets that read it are touched then. A set
+whose settings read a rate that moves between moments (of a component or of a sparse set) has no
+closed answer here and is refused (`Outside`).
+
+**A result read before it settles** (D5): while the stages of a round run, a rate or a result of a
+declared solver's set whose inputs changed in the round (a write of a commit or of the stage, a store
+that met a bound, a flow that joined or left one of its stores) fails, naming the result and what
+changed (`fresh`), and so does one that has never been solved.
 """
 
 from __future__ import annotations
 
 import math
 
+from ..errors import SimulationError
 from .component import ComponentWay
+from .declared import DeclaredWay, MovingDeclared
 from .family import Family
 from .lines import Lines
-from .plan import COMPONENT, FAMILY, LINES, ROUTE, SPARSE, Outside
+from .plan import COMPONENT, DECLARED, FAMILY, LINES, ROUTE, SPARSE, Outside
 from .sparse import Sparse
 
 
@@ -52,6 +63,9 @@ class Ways:
         self.set_of = {}  # store or flow -> the id of its set
         self.levels = {}  # set id -> its level
         self.readers = {}  # engine name -> the ids of the sets whose settings read it
+        self.result_of = {}  # a result of a declared solver that is no rate -> the id of its set
+        self.kept, self.last = {}, {}  # solver id -> its `solve.Solver`; -> (last problem, answer)
+        self.references = {}  # a stored number that a solver determines -> its reference
         self.instances = []
         self._next = 0
 
@@ -72,6 +86,45 @@ class Ways:
         flow = name.rsplit('.', 1)[0]
         instance = self.instance_of(flow)
         return 0.0 if instance is None else instance.rate_at(name, t)
+
+    def result(self, name, t):
+        """A result of a declared solver that is no rate: a stored number that it determines or an
+        unknown of its own."""
+        return self.sets[self.result_of[name]][1].level_at(name, t)
+
+    def fresh(self, name, tx):
+        """A rate or a result read while the stages of a round run: it fails when it belongs to a
+        declared solver's set whose inputs changed in the round, or that has never been solved
+        (D5: a stale answer is a wrong one)."""
+        plan, run = self.plan, self.run
+        key = self.result_of.get(name)
+        if key is None:
+            key = self.set_of.get(name.rsplit('.', 1)[0])
+        connected = self.sets[key][0] if key is not None else None
+        if connected is None or connected.way != DECLARED:
+            sid = plan.results.get(name) or plan.solved_flows.get(name.rsplit('.', 1)[0])
+            if sid is not None or (connected is None and name in run.waiting_names):
+                raise SimulationError(
+                    f'{name} is read before its first solve: it settles after the stages of the round '
+                    'commit'
+                )
+            return
+        changed = run.changed_names() | set(run.written)
+        if tx is not None:
+            changed |= set(tx.writes)
+        found = sorted(changed & (connected.reads | set(connected.stores)))
+        moved = [
+            flow
+            for flow in (*run.joined, *run.left)
+            for connection in plan.flows[flow].connections
+            if connection.source in connected.stores or connection.sink in connected.stores
+        ]
+        if found or moved:
+            raise SimulationError(
+                f'{name} is read before its solve settles: {", ".join(found + moved[:1])} changed in this '
+                f'round (the solver {connected.solver}). Read it after the stage commits and the solve '
+                'settles.'
+            )
 
     def linear(self, store):
         """(value, rate, since) of a store whose line holds until its instance's next event, or
@@ -125,14 +178,20 @@ class Ways:
         return found
 
     def readers_of_rates(self, ids):
-        """The ids of the sets that read an actual rate or a served fraction of the sets `ids`."""
+        """The ids of the sets that read an actual rate, a served fraction or a result of the sets
+        `ids`."""
         found = set()
         for key in ids:
             connected = self.sets[key][0]
-            for flow in connected.flows:
-                for name in self.plan.rates_of_flow(flow):
-                    found |= self.readers.get(name, set())
+            for name in self._given(connected):
+                found |= self.readers.get(name, set())
         return found - set(ids)
+
+    def _given(self, connected):
+        """What a set gives that other sets may read: the rates of its flows and of its endpoints,
+        and the results of its solver."""
+        found = [name for flow in connected.flows for name in self.plan.rates_of_flow(flow)]
+        return found + list(connected.results)
 
     # ---- rebuilding sets -------------------------------------------------------------------------
 
@@ -147,6 +206,9 @@ class Ways:
             for name in (*connected.stores, *connected.flows):
                 if self.set_of.get(name) == key:
                     del self.set_of[name]
+            for name in connected.results:
+                if self.result_of.get(name) == key:
+                    del self.result_of[name]
             for name in connected.reads:
                 found = self.readers.get(name)
                 if found is not None:
@@ -161,27 +223,27 @@ class Ways:
         instance each, every component and sparse set alone."""
         if not sets:
             return []
-        rate_sets = {}  # the rates of the sets that stay, by the set that gives each
+        rate_sets = {}  # the rates and results of the sets that stay, by the set that gives each
         if any(connected.rates for connected in sets):
             for key, (connected, _) in self.sets.items():
-                for flow in connected.flows:
-                    for name in self.plan.rates_of_flow(flow):
-                        rate_sets[name] = key
+                for name in self._given(connected):
+                    rate_sets[name] = key
         made = list(sets)
         new_rates = {}
         for index, connected in enumerate(made):
-            for flow in connected.flows:
-                for name in self.plan.rates_of_flow(flow):
-                    new_rates[name] = index
+            for name in self._given(connected):
+                new_rates[name] = index
         level = [None] * len(made)
 
         def level_of(index, path):
             if level[index] is not None:
                 return level[index]
             if index in path:
-                raise Outside(
-                    f'{made[index].flows[0]}: requests or capacities of connected sets that read one '
-                    "another's actual rates, which local sharing settles at once (S5: a solver)"
+                raise SimulationError(
+                    f'{(made[index].flows or (made[index].solver,))[0]}: requests or capacities of '
+                    "connected sets that read one another's actual rates or results: a relation between "
+                    'the rates of two calculations needs one declared solver that owns them both, '
+                    'which states it as a constraint'
                 )
             found = 0
             for name in made[index].rates:
@@ -197,11 +259,12 @@ class Ways:
         for connected in made:
             for name in connected.rates:
                 owner = new_rates.get(name)
-                way = made[owner].way if owner is not None else self.sets[rate_sets[name]][0].way
-                if way in (COMPONENT, SPARSE):
+                found = made[owner] if owner is not None else self.sets[rate_sets[name]][0]
+                if found.way in (COMPONENT, SPARSE) or (found.way == DECLARED and found.moves):
                     raise Outside(
-                        f'{connected.flows[0]}: a request or a capacity that reads the rate of a flow '
-                        'that moves between moments (S5: a solver)'
+                        f'{(connected.flows or (connected.solver,))[0]}: a request, a capacity or a '
+                        f'problem that reads {name}, a rate or a result of another connected set that '
+                        'moves between moments: two sets that integrate together (C)'
                     )
         created = []
         for depth in sorted(set(level)):
@@ -209,7 +272,7 @@ class Ways:
             groups = {}
             for index in here:
                 groups.setdefault(made[index].way, []).append(index)
-            for way in (FAMILY, LINES, COMPONENT, SPARSE):
+            for way in (FAMILY, LINES, COMPONENT, SPARSE, DECLARED):
                 members = groups.get(way, [])
                 if not members:
                     continue
@@ -224,6 +287,9 @@ class Ways:
                     key = self._register(made[index], depth)
                     if way == COMPONENT:
                         instance = ComponentWay(self.run, made[index], values, t, key)
+                    elif way == DECLARED:
+                        kind = MovingDeclared if made[index].moves else DeclaredWay
+                        instance = kind(self.run, made[index], values, t, key)
                     else:
                         instance = Sparse(self.run, made[index], values, t, key)
                     self._hold(instance, [key])
@@ -238,6 +304,8 @@ class Ways:
         self.levels[key] = depth
         for name in (*connected.stores, *connected.flows):
             self.set_of[name] = key
+        for name in connected.results:
+            self.result_of[name] = key
         for name in connected.reads:
             self.readers.setdefault(name, set()).add(key)
         return key

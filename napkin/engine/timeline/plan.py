@@ -143,12 +143,13 @@ DYNAMIC = 'dynamic'  # a read of a collection whose members change in a run (`Pl
 CHANGED = 'changed'  # the time at which a stored value last changed at a commit (`elapsed`)
 DELAYED = 'delayed'  # `delayed(x, d)`: the committed value of x at d before the read (`Plan.delays`)
 DESCRIBED = 'described'  # `.mean` or `.std` of a distribution-valued value (`Plan.described`)
+RESULT = 'result'  # a value that a declared solver determines (`Plan.results`): its answer
 STARTS = (INPUT, STATE, CAPTURE, LINK)  # the kinds that the start of a run evaluates once
 FIXED = (INPUT, LINK)  # what an assertion over inputs may read
 BUILTINS = ('started', 'done', 'active')  # the fields of every occurrence
 SIDES = ('outflow', 'inflow')  # the endpoints of a stored number
 # The ways of a connected set (`Connected.way`).
-FAMILY, LINES, COMPONENT, SPARSE = 'family', 'lines', 'component', 'sparse'
+FAMILY, LINES, COMPONENT, SPARSE, DECLARED = 'family', 'lines', 'component', 'sparse', 'declared'
 # The kinds of a flow (`Flow.kind`), and the roles of a connection (`Connection.role`).
 DIRECTED, ROUTE, LEGS = 'directed', 'route', 'legs'
 DIRECT, FORWARD, BACKWARD, LEG = 'direct', 'forward', 'backward', 'leg'
@@ -290,10 +291,12 @@ class End:
 class Connected:
     """A connected set of stores and flows, the formulas and reductions that its rates read, each
     after those that it reads, the keyed reads by the time that they read, and its way: `FAMILY`,
-    `LINES`, `COMPONENT` or `SPARSE` (see the module). `rates` are the actual rates and served
-    fractions of other sets that its settings read, so it settles after them; `reads` is every
-    engine name that its settings read, through formulas, reductions and dynamic reads, so that a
-    moment knows which writes touch it."""
+    `LINES`, `COMPONENT`, `SPARSE` or `DECLARED` (see the module). `rates` are the actual rates
+    and served fractions of other sets, and the results of other declared solvers, that its
+    settings read, so it settles after them; `reads` is every engine name that its settings read,
+    through formulas, reductions and dynamic reads, so that a moment knows which writes touch it. A
+    set of a declared solver has its id (`solver`), its results other than rates (`results`), and
+    whether what its problem reads moves between moments (`moves`)."""
 
     stores: tuple[str, ...]
     flows: tuple[str, ...]
@@ -302,6 +305,9 @@ class Connected:
     way: str = COMPONENT
     rates: frozenset = frozenset()
     reads: frozenset = frozenset()
+    solver: str | None = None
+    results: tuple[str, ...] = ()
+    moves: bool = False
 
 
 @dataclass(frozen=True)
@@ -401,6 +407,33 @@ class Trigger:
 
 
 @dataclass(frozen=True)
+class Declared:
+    """A declared solver of one member (spec, "An entity owns its solver"): its id (`provider.
+    dispatch`), its origin and its member; the flows whose rates or served fractions it determines,
+    and its other results (`values`: the stored numbers that it determines and its own unknowns,
+    values of kind RESULT); its relations (origin, node) and its objectives (sense, node, origin),
+    nodes over engine names, read in the scope of the solver (its inputs and unknowns are its bare
+    names)."""
+
+    id: str
+    origin: str
+    member: str
+    flows: tuple[str, ...]
+    values: tuple[str, ...]
+    constraints: tuple
+    objectives: tuple
+
+    def nodes(self, plan):
+        """Every node of the problem other than the settings of its flows: the relations, the
+        objectives, and the bounds, references and scales of its results."""
+        found = [node for _, node in self.constraints] + [node for _, node, _ in self.objectives]
+        for name in self.values:
+            value = plan.values[name]
+            found += [part for part in (value.node, value.lower, value.upper, value.scale) if part is not None]
+        return found
+
+
+@dataclass(frozen=True)
 class Occurrence:
     """An occurrence of an event as a plan holds it: its id, its receiver, its event and its scope;
     the engine names of its values in the order in which its entry gives them a value (D14: its
@@ -465,6 +498,9 @@ class Plan:
         self.frames = {}  # occurrence id -> its scope (template, row, member, Frame)
         self.end_flows = {}  # (store, side) -> the connections present at a dynamic endpoint
         self.end_history = {}  # (store, side) -> every connection that was ever present there
+        self.solvers = {}  # the id of each declared solver -> its `Declared`
+        self.results = {}  # a value of kind RESULT -> the id of the solver that determines it
+        self.solved_flows = {}  # a flow whose rate a declared solver determines -> its id
         self._settings_index = ({}, {})
         # With flows of events, every endpoint's collection of flows changes in a run.
         self.dynamic_ends = any(
@@ -494,6 +530,9 @@ class Plan:
             for flow in scope[0].flows:
                 self._declare_flow(flow, scope)
         self._declare_ends(members)
+        for scope in members:
+            for solver in scope[0].solvers:
+                self._declare_solver(solver, scope)
         unused = sorted(f'{member}.{name}'.lstrip('.') for member, name in self._given)
         if unused:
             raise ConfigurationError(f'no input of the program has these names: {", ".join(unused)}')
@@ -522,13 +561,10 @@ class Plan:
     # ---- what this slice refuses ----------------------------------------------------------------
 
     def _refuse_parts(self):
-        """Solvers (S5), status displays (C), and the assignment of a formula or a collection in a
-        stage (S4). The controllers and the picks of the configuration must name members and the
-        sites of choices."""
+        """Status displays (C), and the assignment of a formula or a collection in a stage (S4). The
+        controllers and the picks of the configuration must name members and the sites of choices."""
         program = self.program
         for template in program.templates:
-            if template.solvers:
-                raise Outside(f'{template.solvers[0].origin}: a solver (S5)')
             if template.status is not None:
                 raise Outside(f'{template.status.origin or template.name}: a status display (C)')
         for origin, statement in _program_statements(program):
@@ -965,6 +1001,89 @@ class Plan:
 
     # ---- events -------------------------------------------------------------------------------
 
+    def _declare_solver(self, solver, scope):
+        """A declared solver of one member (`Declared`). Its own unknowns are values of kind RESULT
+        under the solver's name (`clinic.staffing.care`): each with its domain, its preferred value
+        (`node`, zero when it has none) and its scale. Its inputs and unknowns are the bare names of
+        its scope (a `Frame` with the solver's id), so its expressions read the values that the
+        inputs name. What `solve_for` names, its relations and its objectives are found once every
+        value of the program is known: a flow's rate or served fraction, or a stored number, which
+        becomes a value of kind RESULT whose initializer is its reference in every solve."""
+        template, row, member = scope
+        sid = f'{member.id}.{solver.name}'
+        frame = Frame(sid, {})
+        inner = (template, row, member, frame)
+        own = []
+        for unknown in solver.unknowns:
+            key = Key(member.id, (solver.name, unknown.name))
+            name = name_of(key)
+            frame.names[unknown.name] = ('value', name)
+            unit = unknown.type.unit if isinstance(unknown.type, p.Number) else ''
+            self._add(Value(name, key, RESULT, None, unit))
+            self.results[name] = sid
+            own.append((name, unknown))
+
+        def make():
+            for binding in solver.inputs:
+                frame.names[binding.name] = self.resolve(binding.source, scope, binding.origin or solver.origin)
+            values = []
+            for name, unknown in own:
+                origin = unknown.origin or solver.origin
+                parts = [
+                    self.node(part, inner, origin) if part is not None else None
+                    for part in (unknown.init, unknown.lower, unknown.upper, unknown.scale)
+                ]
+                self.values[name] = replace(
+                    self.values[name], node=parts[0] or nodes.const(0.0), lower=parts[1], upper=parts[2], scale=parts[3]
+                )
+                values.append(name)
+            flows = []
+            for entry in solver.solve_for:
+                point = self.resolve(entry, inner, solver.origin)
+                points = point[1].points if point[0] == 'many' else (point,)
+                for each in points:
+                    found = self.values.get(each[1]) if each[0] == 'value' else None
+                    taken = self.results.get(each[1]) or self.solved_flows.get(each[1].rsplit('.', 1)[0])
+                    if found is not None and taken is not None and taken != sid:
+                        self.fail(f'{solver.origin}: {each[1]} has two writers: {taken} and {sid}')
+                    elif found is not None and found.kind == RATE:
+                        flow = each[1].rsplit('.', 1)[0]
+                        self.solved_flows[flow] = sid
+                        flows.append(flow)
+                    elif found is not None and found.kind == STATE and not found.boolean:
+                        # The stored number is the solver's result; its initializer is its reference.
+                        self.values[each[1]] = replace(found, kind=RESULT)
+                        self.results[each[1]] = sid
+                        values.append(each[1])
+                    else:
+                        raise Outside(
+                            f'{solver.origin}: a solver cannot determine {spelled(entry)}: name a stored '
+                            "number, a flow's actual_rate, or a served_fraction (a type error)"
+                        )
+            constraints = tuple(
+                (constraint.origin or solver.origin, self.node(constraint.test, inner, constraint.origin or solver.origin))
+                for constraint in solver.constraints
+            )
+            objectives = tuple(
+                (
+                    objective.sense,
+                    self.node(objective.expr, inner, objective.origin or solver.origin),
+                    objective.origin or f'{solver.origin}.objective[{k}]',
+                )
+                for k, objective in enumerate(solver.objective)
+            )
+            self.solvers[sid] = Declared(
+                sid,
+                solver.origin or sid,
+                member.id,
+                tuple(dict.fromkeys(flows)),
+                tuple(dict.fromkeys(values)),
+                constraints,
+                objectives,
+            )
+
+        self._declared.append(make)
+
     def _trigger(self, scope, event, index):
         """A trigger of an event of one receiver (`Trigger`). Its captures are named under the
         trigger's key; each firing sets them."""
@@ -1226,7 +1345,7 @@ class Plan:
         if isinstance(start, Local):
             frame = scope[3] if scope is not None and len(scope) > 3 else None
             if frame is None or start.name not in frame.names:
-                raise Outside(f'{origin}: the bare name {start.name}, of a solver (S5)')
+                raise Outside(f'{origin}: no bare name {start.name} in this scope (a type error)')
             return frame.names[start.name]
         raise Outside(f'{origin}: the start of a path {type(start).__name__} (a later slice)')
 
@@ -1252,7 +1371,14 @@ class Plan:
                 return ('flow', f'{point[1]}.{name}')
             if isinstance(part, p.Event):
                 return ('event', point[1], name)
-            raise Outside(f'{origin}: {point[1]}.{name} names a solver (S5)')
+            if isinstance(part, p.Solver):
+                return ('solver', point[1], name)
+            raise Outside(f'{origin}: {point[1]} has no {name} (a type error)')
+        if kind == 'solver':
+            found = f'{point[1]}.{point[2]}.{name}'
+            if self.results.get(found) != f'{point[1]}.{point[2]}':
+                raise Outside(f'{origin}: the solver {point[1]}.{point[2]} has no unknown {name} (a type error)')
+            return ('value', found)
         if kind == 'event':
             if name != 'occurrences':
                 raise Outside(f'{origin}: the {name} of the event {point[1]}.{point[2]} (a type error)')
@@ -1799,11 +1925,16 @@ class Plan:
                 pending += [leaf for leaf in inner.leaves if leaf in self.dynamic]
         return Expanded.union(parts)
 
-    def connect(self, flows, moving):
+    def connect(self, flows, moving, solvers=None):
         """The connected sets of some flows (`Connected`): a flow joins the stores at its ends and
         the stores of `moving` that its settings read (through formulas, reductions and the members
-        of dynamic reads). A setting that reads an actual rate or a served fraction of another set
-        makes the set settle after that one; of its own set, it has no answer of local sharing."""
+        of dynamic reads), and the flows that one declared solver determines are one set, with the
+        solver, whose way is `DECLARED`; a solver that determines no flow of `flows` is a set of its
+        own when it is one of `solvers` (all of them when that is None). A set that two solvers
+        would share fails, naming both: one solver must own the joint decision. A setting that reads
+        an actual rate, a served fraction or a result of another set makes the set settle after that
+        one; of its own set, it is a relation between the unknowns of one calculation, which only a
+        declared solver can state, as a relation of its own."""
         parent = {}
 
         def root(item):
@@ -1828,7 +1959,33 @@ class Plan:
             for leaf in found.leaves:
                 if leaf in moving:
                     join(('store', leaf), name)
-        sets, stores_of = {}, {}
+            if name in self.solved_flows:
+                join(('solver', self.solved_flows[name]), name)
+        problems = {}  # what the problem of each solver reads beyond the settings of its flows
+        mine = {item[1] for item in parent if isinstance(item, tuple) and item[0] == 'solver'}
+        for sid in sorted(mine | set(self.solvers if solvers is None else solvers)):
+            root(('solver', sid))
+            found = problems[sid] = self.reads_now(
+                Expanded.union(self.expansion(node) for node in self.solvers[sid].nodes(self))
+            )
+            for leaf in found.leaves:
+                if leaf in moving:
+                    join(('store', leaf), ('solver', sid))
+        sets, stores_of, owner = {}, {}, {}
+        for item in list(parent):
+            if isinstance(item, tuple) and item[0] == 'solver':
+                key = root(item)
+                sets.setdefault(key, ([], []))
+                if key in owner:
+                    self.fail(
+                        f'two solvers meet in one calculation: {owner[key]} and {item[1]}; one solver '
+                        'must own the joint decision'
+                    )
+                owner[key] = item[1]
+        for sid, found in problems.items():
+            for leaf in found.leaves:
+                if leaf in moving:
+                    stores_of.setdefault(root(('solver', sid)), set()).add(leaf)
         for name in flows:
             sets.setdefault(root(name), ([], []))[1].append(name)
             for connection in self.flows[name].connections:
@@ -1848,7 +2005,8 @@ class Plan:
                     if end is not None:
                         meets[end, side] = meets.get((end, side), 0) + 1
         made = []
-        for stores, members in sets.values():
+        for key, (stores, members) in sets.items():
+            sid = owner.get(key)
             found = Expanded.union(reads[flow] for flow in members)
             own = {f'{flow}.actual_rate' for flow in members} | {
                 f'{flow}.served_fraction' for flow in members
@@ -1861,18 +2019,39 @@ class Plan:
                         f'{members[0]}: a request or a capacity that reads {leaf}, the past of a value '
                         'that moves between moments or with a delay that is not fixed (a delay equation)'
                     )
-            rates = {leaf for leaf in found.leaves if self._is_rate(leaf)}
+            rates = {leaf for leaf in found.leaves if self._is_rate(leaf) or leaf in self.results}
             rates |= {
                 leaf
                 for leaf in found.leaves
                 if leaf in self.dynamic
                 and self.dynamic[leaf].steps[-1:] in (('actual_rate',), ('served_fraction',))
             }
-            if rates & own or any(self._rate_of_store(leaf, stores) for leaf in rates):
-                raise Outside(
-                    f'{members[0]}: a request or a capacity that reads an actual rate of its own connected '
-                    'set, which local sharing settles at once (S5: a solver)'
+            results = self.solvers[sid].values if sid is not None else ()
+            own |= set(results)
+            mine = sorted(rates & own) + sorted(leaf for leaf in rates if self._rate_of_store(leaf, stores))
+            if mine:
+                self.fail(
+                    f'{members[0] if members else sid}: a request or a capacity that reads {mine[0]}, an '
+                    'unknown of its own calculation: a relation between rates needs a declared solver, '
+                    'which states it as a constraint'
                 )
+            if sid is not None:
+                # The problem of the solver reads its relations, objectives and the domains of its
+                # results too; its own unknowns are no inputs.
+                found = Expanded.union([self.reads_now(found), problems.get(sid) or Expanded()])
+                rates = {
+                    leaf
+                    for leaf in found.leaves
+                    if leaf not in own
+                    and (
+                        self._is_rate(leaf)
+                        or leaf in self.results
+                        or (
+                            leaf in self.dynamic
+                            and self.dynamic[leaf].steps[-1:] in (('actual_rate',), ('served_fraction',))
+                        )
+                    )
+                }
             moves = found.time or any(leaf in moving for leaf in found.leaves)
             settled = any(
                 self.settled(self.ends[(store, side)])
@@ -1882,7 +2061,9 @@ class Plan:
             )
             # A route and a flow with legs are unknowns of the network: lines or the sparse integrator.
             directed = all(self.flows[flow].kind == DIRECTED for flow in members)
-            if not moves:
+            if sid is not None:
+                way = DECLARED
+            elif not moves:
                 way = FAMILY if len(members) == 1 and not settled and directed else LINES
             elif (
                 directed
@@ -1901,7 +2082,10 @@ class Plan:
                     tuple(sorted(found.stepped)),
                     way,
                     frozenset(rates),
-                    frozenset(found.leaves | found.formulas | found.stepped),
+                    frozenset(found.leaves | found.formulas | found.stepped) - own,
+                    sid,
+                    results,
+                    moves,
                 )
             )
         return made
