@@ -5,11 +5,15 @@ second round with a second solve at the same time. Reading a result whose inputs
 before the solve settles fails, naming the result, also through a formula and in a later stage of
 the round; reading it once it has settled does not. A solve that cannot answer stops the run there,
 naming the solver and the step, before a trigger reads a partial answer. Flows of occurrences that
-join and leave a solver's store join and leave its problem, on the solver that the run keeps.
+join and leave a solver's store join and leave its problem, on the solver that the run keeps. A
+problem whose requests follow its tanks is solved at trial states between moments, and one beyond
+the limit of such a set stops by name; two solvers in one calculation, and a relation outside the
+constraint language, fail by name.
 
 The expected numbers are worked by hand from the rules of the spec: the staffing solver of
 "Allocating staff hours" gives care 70% of the staff hours (outreach at its minimum, 30%), and fair
-sharing of one supply of 3 L/h among requests of 2 L/h serves each in full or both at 1.5 L/h.
+sharing of one supply of 3 L/h among requests of 2 L/h serves each in full or both at 1.5 L/h; tanks
+that fill at their headroom per hour follow 10 L - c e^-t once their requests are met.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ from napkin.program.build import (
     constraint,
     event,
     flow,
+    fmin,
     formula,
     given,
     local,
@@ -122,7 +127,7 @@ def test_a_trigger_on_the_result_makes_a_second_round_with_a_second_solve():
 
 
 def test_a_write_that_leaves_the_inputs_as_they_were_solves_nothing():
-    program, record = office(
+    _, record = office(
         event('same', after(q(1, 'h'), assign(this.staff_hours, q(100, 'h')))), setup=('same',)
     )
     assert record.failure is None and solves(record) == [(0, 0)]
@@ -137,7 +142,7 @@ def test_a_write_that_leaves_the_inputs_as_they_were_solves_nothing():
     ids=['direct', 'through a formula'],
 )
 def test_a_result_read_before_its_solve_settles_fails_and_names_it(stage):
-    program, record = office(event('cut', after(q(1, 'h'), *stage)), setup=('cut',))
+    _, record = office(event('cut', after(q(1, 'h'), *stage)), setup=('cut',))
     message = record.failure.detail('message')
     assert record.failure.t == 1
     assert 'office.staffing.care is read before its solve settles' in message
@@ -145,7 +150,7 @@ def test_a_result_read_before_its_solve_settles_fails_and_names_it(stage):
 
 
 def test_a_later_stage_of_the_round_reads_no_stale_result_either():
-    program, record = office(
+    _, record = office(
         event('cut', after(q(1, 'h'), assign(this.staff_hours, q(80, 'h')))),
         event('copy', after(q(1, 'h'), assign(this.note, this.staffing.care))),
         setup=('cut', 'copy'),
@@ -316,3 +321,47 @@ def test_a_moving_solver_beyond_its_limit_of_stores_stops_by_name():
     message = record.failure.detail('message')
     assert record.failure.t == 0
     assert 'the solver provider.share' in message and '21 stores' in message and 'more than 20' in message
+
+
+def test_two_solvers_whose_flows_share_a_store_fail_by_name():
+    """Two providers would each choose a rate out of one tank: one calculation, which one solver
+    must own."""
+    b = Builder(UNITS)
+    tank = b.entity(
+        'tank',
+        value('water', 'L', 0, lower=0),
+        flow('a', this.water, SINK, request=q(1, 'L/h')),
+        flow('b', this.water, SINK, request=q(1, 'L/h')),
+    )
+    b.entity('first', solver('own', given('a', tank.a), solve_for(local.a.actual_rate)))
+    b.entity('second', solver('own', given('b', tank.b), solve_for(local.b.actual_rate)))
+    record = run(b.finish(), Configuration(Request(1)))
+    message = record.failure.detail('message')
+    assert record.failure.t == 0
+    assert 'two solvers meet in one calculation' in message
+    assert 'first.own' in message and 'second.own' in message
+
+
+@pytest.mark.parametrize(
+    'relation, form',
+    [
+        (lambda x: x.actual_rate < q(2, 'L/h'), 'the relation <'),
+        (lambda x: fmin(x.actual_rate, q(2, 'L/h')) >= q(1, 'L/h'), 'min of an unknown'),
+        (lambda x: x.actual_rate * x.actual_rate <= q(4, 'L/h') * q(1, 'L/h'), 'a product of two unknowns'),
+        (lambda x: (x.actual_rate <= q(2, 'L/h')) | (x.actual_rate >= q(3, 'L/h')), 'a disjunction'),
+    ],
+    ids=['strict', 'min', 'product', 'or'],
+)
+def test_a_relation_outside_the_constraint_language_fails_and_names_its_form(relation, form):
+    b = Builder(UNITS)
+    tank = b.entity(
+        'tank', value('water', 'L', 10, lower=0), flow('out', this.water, SINK, request=q(3, 'L/h'))
+    )
+    b.entity(
+        'provider',
+        solver('plan', given('x', tank.out), solve_for(local.x.actual_rate), constraint(relation(local.x))),
+    )
+    record = run(b.finish(), Configuration(Request(1)))
+    message = record.failure.detail('message')
+    assert record.failure.t == 0
+    assert 'unsupported in the solver provider.plan' in message and form in message

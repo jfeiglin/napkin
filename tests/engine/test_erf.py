@@ -3,7 +3,8 @@
 `erf(x)` takes a number without a unit and gives a number without a unit. Its values come from the
 same function in a compiled program and in an evaluation; mpmath, which computes erf with its own
 series, is the independent reference. The domain prover reads that erf rises on the whole line and
-stays between -1 and 1. A tally that fills at `erf(t / tau)` has a closed form: the integral of erf.
+stays between -1 and 1. A tally that fills at `erf(t / tau)` has a closed form, the integral of erf,
+which a program (`napkin/program/build.py`) run on the engine gives.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ import mpmath
 import pytest
 
 from napkin.core.expr import read
+from napkin.engine import read as engine_read
+from napkin.engine import run as engine_run
 from napkin.expressions import (
     ExpressionError,
     UnitSystem,
@@ -22,7 +25,9 @@ from napkin.expressions import (
     evaluate,
     infer,
 )
-from tests.build import UNITS, output, parameter, run, stock, system
+from napkin.program.build import SOURCE, Builder, call, flow, formula, input_, t, this, value
+from napkin.program.config import Configuration, Request
+from tests.units import UNITS
 
 REGISTRY = UnitSystem(UNITS)
 # Arguments from deep in both tails to zero, where erf changes fastest.
@@ -83,15 +88,18 @@ def test_a_tally_that_fills_at_erf_of_time_matches_the_integral_of_erf():
     # The tally fills at erf(t / tau) people an hour, so after T hours it holds
     # T erf(T / tau) + tau (exp(-(T / tau)^2) - 1) / sqrt(pi) people.
     horizon, tau = 10.0, 4.0
-    text = system(
-        parameter('tau', tau, 'h', 1, 20, doc='Time scale'),
-        parameter('flow_unit', 1, 'people/h', 1, 2, doc='Rate unit'),
-        stock('area', 0, 'people', kind='tally', size=10, rate='erf(t / tau) * flow_unit', doc='Area'),
-        horizon=horizon,
-        outputs=(output('area_out', 's.area', 'people', 'level', doc='Area under erf'),),
+    b = Builder({'h': {'time': 1}, 'person': {'people': 1}})
+    b.entity(
+        'area',
+        input_('tau', 'h', tau),
+        input_('flow_unit', 'person/h', 1),
+        value('people', 'person', 0),
+        flow('fill', SOURCE, this.people, request=formula(call('erf', t / this.tau) * this.flow_unit)),
     )
-    _, trajectory = run(text)
-    held = trajectory.env_at(horizon)['s.area']
+    program = b.finish()
+    record = engine_run(program, Configuration(Request(horizon)))
+    assert record.failure is None
+    (reading,) = engine_read(record, program, ['area.people'], [horizon])
     ratio = horizon / tau
     expected = horizon * math.erf(ratio) + tau * (math.exp(-(ratio**2)) - 1) / math.sqrt(math.pi)
-    assert held == pytest.approx(expected, rel=1e-7)
+    assert reading.values[0] == pytest.approx(expected, rel=1e-7)

@@ -1,140 +1,85 @@
-"""Continuous domains, capacities and output limits are proved between reporting samples.
+"""Continuous domains between moments: an assertion over state is watched between moments, so a
+breach inside a segment fails the run there and not at a sample of the report; a guard keeps the
+side that it does not take unread, and a stage's expression is read only when the stage runs.
 
-The transient queue oracle is the closed form for two sequential exponential
-stages, not a replay of the engine or an exported reference trajectory.
+The transient queue oracle is the closed form for two sequential exponential stages, not a replay
+of the engine or an exported reference trajectory.
 """
 
 import math
 
 import pytest
+from scipy.optimize import brentq
 
-from napkin.engine import evaluate_study, sample_result
-from napkin.model import ModelError
-from tests.build import (
-    append,
-    check,
-    compiled,
-    edit,
+from napkin.engine import read, run
+from napkin.program.build import (
+    Builder,
+    after,
+    assertion,
+    assign,
+    event,
     flow,
     formula,
-    library,
-    member,
-    move,
-    output,
-    replace,
-    scenario,
-    share,
-    status,
-    stock,
+    ifelse,
+    q,
+    start,
+    t,
+    this,
+    value,
 )
+from napkin.program.config import Configuration, Request
 
-# A narrow peak at 5 h whose exponential overflows there.
-PEAK = 'exp(1000 - ((t - 5 h) / 0.01 h) ** 2)'
+UNITS = {'h': {'time': 1}, 'person': {'people': 1}}
 
 
-def test_health_domain_failure_cannot_hide_between_report_endpoints():
-    sc = edit(
-        scenario(),
-        member(
-            'service',
-            status(('ok', '1 h / (t - 5 h) > 0', 'Available'), ('inactive', None, 'Not available')),
-        ),
+def queue(check):
+    """Ten people arrive in a queue at A / 1 h and leave it at W / 1 h; `check` is asserted."""
+    b = Builder(UNITS)
+    b.entity(
+        'service',
+        value('arrived', 'person', 10, lower=0),
+        value('waiting', 'person', 0, lower=0),
+        value('served', 'person', 0),
+        flow('join', this.arrived, this.waiting, request=formula(this.arrived / q(1, 'h'))),
+        flow('leave', this.waiting, this.served, request=formula(this.waiting / q(1, 'h'))),
+        assertion(check(this)),
     )
-    try:
-        model = compiled(sc)
-    except ModelError:
-        return  # A conservative domain rejection is an acceptable contract.
-    assert not evaluate_study(model).admissible, (
-        'An admitted study must be reportable at every in-horizon time, including t=5.'
-    )
+    return run(b.finish(), Configuration(Request(12)))
 
 
-def test_transient_capacity_violation_cannot_hide_inside_exact_segment():
-    sc = edit(
-        scenario(),
-        replace('flow serve: stock -> served at delivery', 'flow serve: stock -> waiting at stock / 1 h'),
-        replace('assert stock + served is n', 'assert abs(stock + waiting + served - n) <= 1e-8 people'),
-        member(
-            'service',
-            stock('waiting', 0, size=10),
-            flow('leave', 'waiting -> served', 'waiting / 1 h'),
-            check('waiting <= 3 people', 'Waiting occupancy cannot exceed three places'),
-        ),
-    )
-    # A'=−A, W'=A−W, A(0)=10, W(0)=0: W(t)=10*t*exp(−t).
-    # Both 0h and 12h are safe; the interior peak at 1h breaches capacity.
+def test_a_transient_breach_of_an_assertion_cannot_hide_inside_a_segment():
+    # A' = -A, W' = A - W, A(0) = 10, W(0) = 0: W(t) = 10 t exp(-t), which peaks at 10/e at 1 h.
+    # The assertion W <= 3 holds at 0 h and at 12 h and breaks inside. W rises and falls, so the
+    # engine cannot certify its first contact: the run stops at its start with a diagnostic, and
+    # never reports the 0 h and 12 h samples as if the assertion held.
     assert 10 / math.e > 3 > 120 * math.exp(-12)
-    try:
-        model = compiled(sc)
-    except ModelError:
-        return  # Unsupported continuous invariants may fail closed at compile.
-    assert not evaluate_study(model).admissible, (
-        'The 1h waiting stock is 10/e people, exceeding the declared capacity of three.'
+    record = queue(lambda this: this.waiting <= q(3, 'person'))
+    assert record.failure.t == 0
+    assert 'cannot be certified' in record.failure.detail('message')
+    # The served count only rises: S(t) = 10 (1 - (1 + t) e^-t) reaches 9 at its one root.
+    first = brentq(lambda x: 10 * (1 - (1 + x) * math.exp(-x)) - 9, 1, 12, xtol=1e-14)
+    record = queue(lambda this: this.served <= q(9, 'person'))
+    assert record.failure.t == pytest.approx(first, abs=1e-6)
+    assert 'service.served' in record.failure.detail('message') or 'assertion' in record.failure.detail(
+        'message'
     )
 
 
-def test_transient_output_overflow_cannot_depend_on_reporting_grid():
-    sc = edit(
-        scenario(),
-        append(output('transient', f'1 people * {PEAK}', 'people', 'instantaneous', doc='Transient stress')),
+def test_a_guard_keeps_its_undefined_side_unread_and_a_stage_reads_its_expression_when_it_runs():
+    """`n / stock` is read only while the stock holds something; the stage's `7 h / (t - 5 h)` is
+    read at its one time, 12 h, and gives 1, though it has no value at 5 h."""
+    b = Builder(UNITS)
+    service = b.entity(
+        'service',
+        value('n', 'person', 10),
+        value('stock', 'person', 0),
+        value('safe_ratio', '', formula(ifelse(this.stock > q(0, 'person'), this.n / this.stock, 0))),
+        value('checkpoint_ratio', '', 0),
+        event('stop', after(q(12, 'h'), assign(this.checkpoint_ratio, q(7, 'h') / (t - q(5, 'h'))))),
     )
-    try:
-        model = compiled(sc)
-    except ModelError:
-        return
-    assert not evaluate_study(model).admissible, (
-        'The output overflows near 5h although the 0h and 24h samples are finite.'
-    )
-
-
-@pytest.mark.parametrize(
-    'collection,path',
-    [
-        ('computed', 'service/hidden_peak'),
-        ('rates', 'service/add_unused_counter'),
-        ('flows', 'service/unused_inflow'),
-        ('allocation', 'service/share_stock'),
-    ],
-)
-def test_unreferenced_continuous_expressions_require_global_domains(collection, path):
-    rate = f'1 people/h * {PEAK}'
-    if collection == 'computed':
-        added = [formula('hidden_peak', PEAK, 'fraction')]
-    elif collection == 'rates':
-        # A flow from outside into a var makes it a tally, and its rate is the tally's rate.
-        added = [stock('unused_counter', 0, minimum=None, size=1, kind='state', rate=rate)]
-    elif collection == 'flows':
-        # A flow between two vars of the model is a flow.
-        added = [
-            stock('unused_counter', 0, minimum=None, size=1, kind='state'),
-            stock('unused_source', 0, minimum=None, size=1, kind='state'),
-            flow('unused_inflow', move('unused_source', 'unused_counter'), rate),
-        ]
-    else:
-        # A share shares a stock that two or more flows draw on: a second flow, which moves nothing,
-        # draws on the stock beside `serve`.
-        added = [flow('spill', 'stock -> served', '0 people/h'), share('stock', rate)]
-    with pytest.raises(ModelError) as raised:
-        compiled(edit(scenario(), member('service', *added)))
-    assert any(d['code'] == 'dynamic_domain' and d['path'] == path for d in raised.value.diagnostics), (
-        raised.value.diagnostics
-    )
-
-
-def test_continuous_domain_checks_preserve_lazy_guards_and_event_only_expressions():
-    sc = edit(
-        scenario(),
-        member(
-            'service',
-            formula('safe_ratio', 'n / stock if stock > 0 else 0', 'fraction'),
-            stock('checkpoint_ratio', 0, 'fraction', minimum=None, size=1, kind='state'),
-        ),
-        # This division is meaningful at its sole scheduled evaluation, t=12h. It
-        # need not be defined at every other instant, particularly the unused t=5h.
-        member('service/stop', 'checkpoint_ratio = 7 h / (t - 5 h)'),
-    )
-    result = evaluate_study(compiled(sc, library()))
-    assert result.admissible, result.diagnostics
-    report = sample_result(result, [5, 12])
-    assert report['admissible']
-    assert result.runs['a']['trajectory'].env_at(12)['service.checkpoint_ratio'] == 1
+    b.setup(start(service.stop))
+    program = b.finish()
+    record = run(program, Configuration(Request(12)))
+    assert record.failure is None
+    found = read(record, program, ['service.safe_ratio', 'service.checkpoint_ratio'], [5, 12])
+    assert [reading.values for reading in found] == [(0, 0), (0, 1)]

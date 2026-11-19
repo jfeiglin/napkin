@@ -34,8 +34,8 @@ they are convex: minimized, or on the small side of `<=`. A strict relation, `!=
 division by one, another function of one, and a request or a capacity of the set that reads one fail
 the run with a diagnostic that names the solver and the form.
 
-**Between moments the answer holds**: the rates are constant and each store is a line, as on the
-lines (`lines.py`). A store that reaches a bound is put on it, and the problem is solved again with
+**Between moments the answer holds** where the problem reads nothing that moves between moments:
+the rates are constant and each store is a line, as on the lines (`lines.py`). A store that reaches a bound is put on it, and the problem is solved again with
 its row; that is an event of the instance, and the stores whose lines and the rates and results whose
 values change are a moment when a watched condition or another set reads them (`run.next_moment`).
 A store at its bound whose answer moves it away leaves it. A moment that changes what the problem
@@ -44,6 +44,13 @@ a bound at the moment) builds the set again (`ways.py`), so the problem is solve
 after the stages commit, in the order of the sets' levels. A problem equal to the one that the solver
 answered last is not solved again, as the oracle caches it; each solve is an entry `solve` of the
 trace, at its time and round.
+
+A problem that reads what moves (a store of the set through a setting, a relation or a domain, or
+the time) runs on `MovingDeclared`: its rates follow the state, solved at each trial state of an
+integrator, in a set of at most `MOVING` stores; a larger one stops by name (D3).
+
+The answer is polished (`polished`): put exactly on the bounds and rows that it holds to the
+library's tolerance, so that at a vertex its numbers are the vertex's, as exact arithmetic gives.
 
 One `solve.Solver` serves each declared solver for the whole run (`Ways.kept`): its HiGHS instance
 follows the problem by the keys of its unknowns and rows, so members that join and leave the set add
@@ -64,7 +71,7 @@ import math
 import numpy as np
 import scipy.sparse as sp
 from scipy.integrate import solve_ivp
-from scipy.sparse.linalg import lsqr
+from scipy.sparse.linalg import splu
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
@@ -79,6 +86,7 @@ from .record import fitted
 
 SLACK = 1e-6  # a store at its bound holds there when its answer moves it out by less than this part
 MOVING = 20  # the most stores of a declared solver's set whose problem moves between moments
+ANSWER = 1e-7  # the precision of an answer of the solve library, relative to its size
 # An answer this near a bound or a row's side, relative to their size, holds it exactly: the
 # library keeps each optimum and each fair level to about 1e-7 (`solve/ranked.py` KEPT, `fair.py`
 # FIX), which the distance step may take, and checks its answer to this (`solve/solver.py` CHECK).
@@ -112,7 +120,9 @@ class Affine:
         factor = _number(factor)
         if factor == 0:
             return Affine({}, 0.0)
-        return Affine({column: value * factor for column, value in self.terms.items()}, self.constant * factor)
+        return Affine(
+            {column: value * factor for column, value in self.terms.items()}, self.constant * factor
+        )
 
 
 def _number(value):
@@ -137,7 +147,7 @@ class Former:
         plan = self.plan
         # The engine names that are unknowns of the problem: the value of each flow, and the results.
         self.unknown = {}
-        for f, flow in enumerate(net.flows):
+        for flow in net.flows:
             found = plan.flows[flow]
             self.unknown[f'{flow}.served_fraction' if found.kind == 'legs' else f'{flow}.actual_rate'] = (
                 'flow',
@@ -168,12 +178,15 @@ class Former:
     # ---- the problem -------------------------------------------------------------------------------
 
     def problem(self, t, lower, upper):
-        """The problem at time t, with the stores flagged on their lower and upper bounds; gives
-        (problem, the request of each connection)."""
-        run, plan, net, declared = self.run, self.plan, self.net, self.declared
+        """The problem (`solve.Problem`) at time t, with the stores flagged on their lower and upper
+        bounds; the request of each connection is `requests`."""
+        plan, net, declared = self.plan, self.net, self.declared
         self.t, self.problem_, self.cols, self.convex, self.parts = t, Problem(), {}, set(), {}
+        self.pending, self.rows = [], []  # positive parts (key, Affine), rows (key, terms, lower, upper)
         problem = self.problem_
-        requests = asked_of(net, np.array(self.columns.at([c.request for c in self.connections], t), float), t)
+        requests = asked_of(
+            net, np.array(self.columns.at([c.request for c in self.connections], t), float), t
+        )
         capped = [k for k, c in enumerate(self.connections) if c.capacity is not None]
         capacity = np.full(len(self.connections), math.inf)
         if capped:
@@ -181,7 +194,9 @@ class Former:
         bad = np.isnan(capacity) | (capacity < 0)
         if bad.any():
             k = int(np.flatnonzero(bad)[0])
-            raise SimulationError(f'{self.connections[k].name}: a capacity that is {capacity[k]:g} at {t:g} h')
+            raise SimulationError(
+                f'{self.connections[k].name}: a capacity that is {capacity[k]:g} at {t:g} h'
+            )
         self.requests = requests
         claims = []
         for f, flow in enumerate(net.flows):
@@ -189,10 +204,19 @@ class Former:
             kind = int(net.kinds[f])
             if kind == LEGS:
                 asks = bool((requests[mine] > 0).any())
-                column = problem.unknown(('flow', flow), 0.0, 1.0 if asks else 0.0, FLOW, 1.0 if asks else 0.0)
+                column = problem.unknown(
+                    ('flow', flow), 0.0, 1.0 if asks else 0.0, FLOW, 1.0 if asks else 0.0
+                )
                 for c in mine:
                     if math.isfinite(capacity[c]) and requests[c] > 0:
-                        problem.at_most(('leg', self.connections[c].name), {column: float(requests[c])}, capacity[c])
+                        self.rows.append(
+                            (
+                                ('leg', self.connections[c].name),
+                                {column: float(requests[c])},
+                                -math.inf,
+                                capacity[c],
+                            )
+                        )
                 if asks:
                     claims.append(({column: 1.0}, 1.0, f))
                 self.cols[f'{flow}.served_fraction'] = column
@@ -206,7 +230,9 @@ class Former:
                 if signed != 0:
                     claims.append(({column: 1.0 if signed > 0 else -1.0}, abs(signed), f))
             else:
-                column = problem.unknown(('flow', flow), 0.0, capacity[mine[0]], FLOW, float(requests[mine[0]]))
+                column = problem.unknown(
+                    ('flow', flow), 0.0, capacity[mine[0]], FLOW, float(requests[mine[0]])
+                )
                 if requests[mine[0]] > 0:
                     claims.append(({column: 1.0}, float(requests[mine[0]]), f))
             self.cols[f'{flow}.actual_rate'] = column
@@ -249,6 +275,7 @@ class Former:
                 # A row is named by where it comes from, so it keeps its key while others join or leave.
                 seen[label] = seen.get(label, -1) + 1
                 self._relation(affine, op, ('relation', origin, *label, seen[label]))
+        objectives = []
         for sense, node, origin in declared.objectives:
             found = self.value(node)
             if not isinstance(found, Affine):
@@ -260,11 +287,43 @@ class Former:
                     f'{origin}: an objective that maximizes a positive part, in the solver {declared.id} '
                     '(not convex)'
                 )
-            problem.minimize(terms)
+            objectives.append(terms)
+        made = self._parts()
+        problem.rows(
+            [key for key, _, _, _ in self.rows],
+            _matrix([made(terms) for _, terms, _, _ in self.rows], len(problem.keys)),
+            [low for _, _, low, _ in self.rows],
+            [high for _, _, _, high in self.rows],
+        )
+        for terms in objectives:
+            problem.minimize(made(terms))
         for terms, wanted, f in claims:
             tier = int(net.layer[f]) - 1 if f is not None else 0
-            problem.claim(terms, wanted, tier)
+            problem.claim(made(terms), wanted, tier)
         return problem
+
+    def _parts(self):
+        """Make the positive parts of the problem, in one block for each depth (a part of an
+        expression that holds parts comes after them); gives the map from the terms of an Affine,
+        whose parts are placeholders (negative columns), to terms over the problem's columns."""
+        problem, column = self.problem_, {}
+        depth = {}
+        for p, (_, affine) in enumerate(self.pending):
+            depth[-(p + 1)] = 1 + max((depth[j] for j in affine.terms if j < 0), default=0)
+        for level in sorted(set(depth.values())):
+            places = [p for p in range(len(self.pending)) if depth[-(p + 1)] == level]
+            terms = [{column.get(j, j): v for j, v in self.pending[p][1].terms.items()} for p in places]
+            found = problem.positive_parts(
+                [self.pending[p][0] for p in places],
+                _matrix(terms, len(problem.keys)),
+                [self.pending[p][1].constant for p in places],
+            )
+            column.update({-(p + 1): int(j) for p, j in zip(places, found.tolist())})
+
+        def made(terms):
+            return {column.get(j, j): v for j, v in terms.items()}
+
+        return made
 
     def _result(self, name):
         """The column of a result that is no flow: its domain, its reference and its scale."""
@@ -309,7 +368,9 @@ class Former:
         if not names:
             return found
         values = self.columns.at(
-            [end.request for _, end in names] + [end.capacity for _, end in names if end.capacity is not None], t
+            [end.request for _, end in names]
+            + [end.capacity for _, end in names if end.capacity is not None],
+            t,
         ).tolist()
         requests, caps = values[: len(names)], iter(values[len(names) :])
         for (where, end), wanted in zip(names, requests):
@@ -356,13 +417,14 @@ class Former:
         return f'{flow}.served_fraction' if int(self.net.kinds[f]) == LEGS else f'{flow}.actual_rate'
 
     def _positive(self, key, affine):
-        """max(0, affine) as an INTERNAL unknown of the problem, one for each key."""
+        """max(0, affine) as an INTERNAL unknown of the problem, one for each key: a placeholder (a
+        negative column) until the problem's parts are made together (`_parts`)."""
         if not affine.terms:
             return max(affine.constant, 0.0)
         column = self.parts.get(key)
         if column is None:
-            column = self.problem_.positive_part(key, affine.terms, affine.constant)
-            self.parts[key] = column
+            column = self.parts[key] = -(len(self.pending) + 1)
+            self.pending.append((key, affine))
             self.convex.add(column)
         return Affine({column: 1.0})
 
@@ -376,10 +438,7 @@ class Former:
                 f'{key[1] if len(key) > 1 else key}: a positive part on the large side of a relation, in the '
                 f'solver {self.declared.id} (not convex)'
             )
-        if op == '==':
-            self.problem_.row(key, affine.terms, -affine.constant, -affine.constant)
-        else:
-            self.problem_.row(key, affine.terms, -math.inf, -affine.constant)
+        self.rows.append((key, affine.terms, -affine.constant if op == '==' else -math.inf, -affine.constant))
 
     # ---- expressions with unknowns ----------------------------------------------------------------
 
@@ -430,7 +489,7 @@ class Former:
             found = []
             for part in node.values:
                 value = self.value(part, label)
-                if node.op == 'or' and (isinstance(value, list) or isinstance(value, Affine)):
+                if node.op == 'or' and isinstance(value, list | Affine):
                     raise self._refused('a disjunction')
                 if isinstance(value, list):
                     found += value
@@ -897,22 +956,37 @@ class MovingDeclared(DeclaredWay):
         return self._held(segment.solution(min(t, segment.end)))
 
     def _commit(self, end):
-        """The pending segment to `end`: its pieces are recorded and the state is there."""
+        """The pending segment to `end`: its pieces are recorded and the state is there. The stores
+        are fitted to the integrator's dense output, to their tolerances; the rates and the results,
+        each value of which is a solve, to the precision of the solver (`ANSWER` of their size)."""
         segment = self.pending
-        names = [*self.stores, *self.recorded, *self.connected.results]
-        tolerance = np.array([self.recorder.tolerance.get(name, 1e-9) for name in names])
-
-        def values(times):
-            rows = []
-            for at in np.asarray(times, dtype=float).tolist():
-                y = self._state(at)
-                flows, results, _ = self._at(at, y)
-                rows.append([*y, *flows, *(results[name] for name in self.connected.results)])
-            return np.array(rows, dtype=float)
-
         if end > segment.start:
-            for name, pieces in zip(names, fitted(values, segment.start, end, tolerance)):
+            tolerance = np.array([self.recorder.tolerance.get(name, 1e-9) for name in self.stores])
+
+            def states(times):
+                return np.array([self._state(at) for at in np.asarray(times).tolist()])
+
+            for name, pieces in zip(self.stores, fitted(states, segment.start, end, tolerance)):
                 self.recorder.add_pieces(name, pieces)
+            names = [*self.recorded, *self.connected.results]
+
+            def answers(times):
+                rows = []
+                for at in np.asarray(times, dtype=float).tolist():
+                    flows, results, _ = self._at(at, self._state(at))
+                    rows.append([*flows, *(results[name] for name in self.connected.results)])
+                return np.array(rows, dtype=float)
+
+            first = answers([segment.start])[0]
+            tolerance = np.array(
+                [
+                    max(self.recorder.tolerance.get(name, 0.0), ANSWER * (1.0 + abs(v)))
+                    for name, v in zip(names, first)
+                ]
+            )
+            if names:
+                for name, pieces in zip(names, fitted(answers, segment.start, end, tolerance)):
+                    self.recorder.add_pieces(name, pieces)
         self.y = self._state(end)
         self.time = end
         self.pending = None
@@ -999,7 +1073,7 @@ def polished(arrays, x, levels):
     """The answer put exactly on the bounds and rows that it holds to within `NEAR` of their size,
     its claims that fair sharing held together at one level on one fraction, and its claims served in
     full that it leaves at most at their requests on them, by the least change of the other unknowns
-    (the least-norm solution of those rows).
+    (the least-norm solution of those rows, by one sparse factorization).
 
     The library meets its rows to 1e-9 of their size, keeps an optimum to 1e-7 of its size, which
     the later ranks may take, and holds a claim that it cannot serve in full at its level less 1e-7
@@ -1047,8 +1121,15 @@ def polished(arrays, x, levels):
         B = sp.csr_array(sp.vstack(blocks))
         residual = np.concatenate(sides) - B @ found
         if len(residual) and np.abs(residual).max() > 0:
-            B = sp.csr_array(B[:, free])
-            move = lsqr(B, residual, atol=1e-16, btol=1e-16, iter_lim=10 * (B.shape[0] + len(free)))[0]
+            # The least change d with B d = r: [[I, B'], [B, -eps I]] [d; m] = [0; r], which a
+            # dependent row of B leaves nonsingular.
+            B = sp.csc_array(B[:, free])
+            m, n = B.shape
+            K = sp.block_array([[sp.eye_array(n), B.T], [B, -1e-12 * sp.eye_array(m)]], format='csc')
+            try:
+                move = splu(K).solve(np.r_[np.zeros(n), residual])[:n]
+            except RuntimeError:  # a singular system: the answer stays as the library gave it
+                return x
             found[free] += move
     found = arrays.positive_parts(found)
     if _missed(arrays, found) > max(_missed(arrays, x), 1e-9):
@@ -1066,6 +1147,20 @@ def _missed(arrays, x):
         missed = np.maximum(arrays.row_lower - value, value - arrays.row_upper) / size
         worst = max(worst, float(missed.max(initial=0.0)))
     return worst
+
+
+def _matrix(rows, width):
+    """A sparse matrix of the rows given as {column: coefficient}, `width` columns wide."""
+    count = sum(len(terms) for terms in rows)
+    at, columns, values = np.empty(count, np.int64), np.empty(count, np.int64), np.empty(count)
+    k = 0
+    for i, terms in enumerate(rows):
+        n = len(terms)
+        at[k : k + n] = i
+        columns[k : k + n] = np.fromiter(terms.keys(), np.int64, n)
+        values[k : k + n] = np.fromiter(terms.values(), float, n)
+        k += n
+    return sp.csr_array((values, (at, columns)), shape=(len(rows), width))
 
 
 def _signature(arrays):

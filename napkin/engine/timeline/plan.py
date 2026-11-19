@@ -84,11 +84,19 @@ continuous engine and the record read these names; nothing reads the spelling of
   reads anything else is over state (`checks`), and the run checks it after every round, just after
   every moment and between moments (`triggers.py`). Enum members and texts are values that compare
   with `==` and `!=`.
+- **Declared solvers** (`Declared`, `solvers`): a solver of a member is named `member.solver`; its
+  inputs and its own unknowns are the bare names of its scope, so its relations and objectives are
+  nodes over engine names. Its own unknowns, and the stored numbers that its `solve_for` names, are
+  values of kind RESULT (`results`), and the flows whose rates it determines are `solved_flows`.
+  `connect` makes its set (way `DECLARED`, `declared.py`): its flows, every flow that shares a store
+  with them, and the stores that its problem reads and that move. A request or a capacity that reads
+  a rate of its own set is a relation between unknowns of one calculation, which only a declared
+  solver states, as a relation of its own: the run fails, naming the rate.
 
 What a later slice runs is refused by name (`Outside`), with the slice that brings it: the
 assignment of a formula or a collection in a stage, a key of `.at(...)` that moves or is a function
-of the time other than `t`, and a keyed read of a value that moves (S4); solvers (S5). A
-configuration's controllers name members, and its picks the sites of choices.
+of the time other than `t`, and a keyed read of a value that moves (S4). A configuration's
+controllers name members, and its picks the sites of choices.
 """
 
 from __future__ import annotations
@@ -429,7 +437,9 @@ class Declared:
         found = [node for _, node in self.constraints] + [node for _, node, _ in self.objectives]
         for name in self.values:
             value = plan.values[name]
-            found += [part for part in (value.node, value.lower, value.upper, value.scale) if part is not None]
+            found += [
+                part for part in (value.node, value.lower, value.upper, value.scale) if part is not None
+            ]
         return found
 
 
@@ -1025,7 +1035,9 @@ class Plan:
 
         def make():
             for binding in solver.inputs:
-                frame.names[binding.name] = self.resolve(binding.source, scope, binding.origin or solver.origin)
+                frame.names[binding.name] = self.resolve(
+                    binding.source, scope, binding.origin or solver.origin
+                )
             values = []
             for name, unknown in own:
                 origin = unknown.origin or solver.origin
@@ -1034,7 +1046,11 @@ class Plan:
                     for part in (unknown.init, unknown.lower, unknown.upper, unknown.scale)
                 ]
                 self.values[name] = replace(
-                    self.values[name], node=parts[0] or nodes.const(0.0), lower=parts[1], upper=parts[2], scale=parts[3]
+                    self.values[name],
+                    node=parts[0] or nodes.const(0.0),
+                    lower=parts[1],
+                    upper=parts[2],
+                    scale=parts[3],
                 )
                 values.append(name)
             flows = []
@@ -1061,7 +1077,10 @@ class Plan:
                             "number, a flow's actual_rate, or a served_fraction (a type error)"
                         )
             constraints = tuple(
-                (constraint.origin or solver.origin, self.node(constraint.test, inner, constraint.origin or solver.origin))
+                (
+                    constraint.origin or solver.origin,
+                    self.node(constraint.test, inner, constraint.origin or solver.origin),
+                )
                 for constraint in solver.constraints
             )
             objectives = tuple(
@@ -1377,7 +1396,9 @@ class Plan:
         if kind == 'solver':
             found = f'{point[1]}.{point[2]}.{name}'
             if self.results.get(found) != f'{point[1]}.{point[2]}':
-                raise Outside(f'{origin}: the solver {point[1]}.{point[2]} has no unknown {name} (a type error)')
+                raise Outside(
+                    f'{origin}: the solver {point[1]}.{point[2]} has no unknown {name} (a type error)'
+                )
             return ('value', found)
         if kind == 'event':
             if name != 'occurrences':

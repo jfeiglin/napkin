@@ -105,8 +105,7 @@ class Ways:
             sid = plan.results.get(name) or plan.solved_flows.get(name.rsplit('.', 1)[0])
             if sid is not None or (connected is None and name in run.waiting_names):
                 raise SimulationError(
-                    f'{name} is read before its first solve: it settles after the stages of the round '
-                    'commit'
+                    f'{name} is read before its first solve: it settles after the stages of the round commit'
                 )
             return
         changed = run.changed_names() | set(run.written)
@@ -264,7 +263,8 @@ class Ways:
                     raise Outside(
                         f'{(connected.flows or (connected.solver,))[0]}: a request, a capacity or a '
                         f'problem that reads {name}, a rate or a result of another connected set that '
-                        'moves between moments: two sets that integrate together (C)'
+                        'moves between moments: two connected sets that integrate together, which this '
+                        'engine does not do (no stage of the plan brings it)'
                     )
         created = []
         for depth in sorted(set(level)):

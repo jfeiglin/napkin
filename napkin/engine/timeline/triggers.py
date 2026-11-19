@@ -460,7 +460,9 @@ class Triggers:
                     return False
                 continue
             instance = ways.instance_of(name.rsplit('.', 1)[0])
-            if instance is not None and not (isinstance(instance, Family | Lines) or getattr(instance, 'lines', False)):
+            if instance is not None and not (
+                isinstance(instance, Family | Lines) or getattr(instance, 'lines', False)
+            ):
                 return False
         return True
 

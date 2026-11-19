@@ -224,9 +224,7 @@ class Occurrences:
             plan = self.plan
             leaves = plan.reads_now(plan.expansion(node)).leaves
             found = self._delays[node] = frozenset(
-                leaf
-                for leaf in leaves
-                if leaf in plan.values and plan.values[leaf].kind in (RATE, RESULT)
+                leaf for leaf in leaves if leaf in plan.values and plan.values[leaf].kind in (RATE, RESULT)
             )
         return found
 

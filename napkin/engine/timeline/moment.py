@@ -426,7 +426,9 @@ class Moment:
         while True:
             region = [f for key in touched for f in ways.sets[key][0].flows if f not in left]
             region += [f for f in joined if f not in left and f not in region]
-            region += [f for connected in waiting for f in connected.flows if f not in left and f not in region]
+            region += [
+                f for connected in waiting for f in connected.flows if f not in left and f not in region
+            ]
             solvers = {ways.sets[key][0].solver for key in touched} | {c.solver for c in waiting}
             solvers.discard(None)
             region_ends = set()

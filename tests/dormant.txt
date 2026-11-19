@@ -15,10 +15,8 @@ tests/acceptance/test_every_construct.py
 tests/engine/test_admission_scope.py
 tests/engine/test_binary_controls.py
 tests/engine/test_combinations.py
-tests/engine/test_continuous_domains.py
 tests/engine/test_decision_resolver.py
 tests/engine/test_distributions_deep.py
-tests/engine/test_erf.py
 tests/engine/test_evidence_trail.py
 tests/engine/test_expectations.py
 tests/engine/test_monte_carlo_study.py

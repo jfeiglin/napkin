@@ -33,7 +33,6 @@ from napkin.program.build import (
     flow,
     fmax,
     formula,
-    fsum,
     given,
     local,
     maximize,
@@ -86,11 +85,17 @@ def program(seed):
             flows.append((name, f'f{k}', capacity is not None))
             if rng.random() < 0.25:
                 at = q(rng.choice((1, Fraction(3, 2), 2, 3)), 'h')
-                parts[name].append(event(f'change{k}', after(at, assign(getattr(this, want), q(_half(rng, 0, 4), 'L/h')))))
+                parts[name].append(
+                    event(f'change{k}', after(at, assign(getattr(this, want), q(_half(rng, 0, 4), 'L/h'))))
+                )
     for name in tanks:
         cap = _half(rng, 4, 12) if rng.random() < 0.6 else None
         level = rng.choice((Fraction(0), _half(rng, 0, 8), cap if cap is not None else Fraction(3)))
-        b.entity(name, value('water', 'L', min(level, cap) if cap is not None else level, lower=0, upper=cap), *parts[name])
+        b.entity(
+            name,
+            value('water', 'L', min(level, cap) if cap is not None else level, lower=0, upper=cap),
+            *parts[name],
+        )
     chosen = rng.sample(flows, rng.randint(1, min(3, len(flows))))
     names = {f'x{k}': (tank, made, capped) for k, (tank, made, capped) in enumerate(chosen)}
     solving = [given(key, getattr(named(tank), made)) for key, (tank, made, _) in names.items()]

@@ -656,11 +656,7 @@ class Run:
         for connected in waiting:
             given |= self._given(connected)
         while True:
-            more = [
-                connected
-                for connected in sets
-                if connected not in waiting and connected.rates & given
-            ]
+            more = [connected for connected in sets if connected not in waiting and connected.rates & given]
             if not more:
                 break
             waiting += more
