@@ -42,7 +42,10 @@ E: nothing compared a value with its cited datum (`compile.load_scenario` holds 
 - Runs convert literals exactly (core), since a run's `==` is a comparison too.
 - A test's interval is checked when both ends are fixed when the model compiles; an end that only a
   run knows is tested as written (the program has no membership operation to fail on).
-- Precision of a datum: half a unit in its last written digit. `by` keys count only as starting values.
+- Precision of a datum: half a unit in its last written digit. Changed by the main session at merge:
+  a datum states a number and a unit and no precision, so a value that cites it equals it exactly
+  (read as rationals), as `docs/language.md` 2.10 and the old compiler had it.
+- `by` keys count only as starting values.
 
 ## For B
 - plan.py `occurrence()`: bind a local of `OccurrenceType` when its occurrence enters, in written
