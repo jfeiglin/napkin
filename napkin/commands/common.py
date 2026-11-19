@@ -134,32 +134,104 @@ def unreadable(entry, error):
     return problem('source', error, entry)
 
 
-def times_of(model, items):
-    """[(text, hours)] of the `--at` items (each a list such as `2h,160min`), each time once, in time
-    order: a number and a unit of time of the model (`model.declared.units`), from 0 to the horizon
-    of its default run. With no item, the start and the horizon. A time that is not one is a
-    UsageError, with the closest units of time."""
+def hours(model, item, flag):
+    """(the text as the command shows it, the hours) of one time of a command line, `2h` or `3 days`:
+    a number and a unit of time of the model (`model.declared.units`). A time that is not one is a
+    UsageError that names `flag`, with the closest units of time."""
     units = model.declared.units
-    horizon = float(model.configuration.request.horizon)
+    match = TIME.fullmatch(item)
+    if match is None:
+        raise UsageError(f'{flag} {item!r}: give a number and a unit of time, such as 2h or 3 days')
+    written, unit = match.group(1), match.group(2).replace(' ', '')
+    if not unit:
+        raise UsageError(f'{flag} {item}: give the unit of time, such as {written}h')
+    dimension, scale = units.of(unit) or (None, None)
+    if dimension != TIME_DIMENSION:
+        times = [name for name, (kind, _) in units.base.items() if kind == TIME_DIMENSION]
+        raise UsageError(f'{flag} {item}: {unit} is not a unit of time of the model' + close(unit, times))
+    return f'{written} {unit}', float(Fraction(written) * scale)
+
+
+def times_of(model, items, horizon):
+    """[(text, hours)] of the `--at` items (each a list such as `2h,160min`), each time once, in time
+    order: a number and a unit of time of the model (`hours`), from 0 to `horizon` (h). With no item,
+    the start and the horizon. A time that is not one is a UsageError."""
     if not items:
         return [('0 h', 0.0), (f'{number(horizon)} h', horizon)]
     found = {}
     for item in (piece.strip() for text in items for piece in text.split(',')):
-        match = TIME.fullmatch(item)
-        if match is None:
-            raise UsageError(f'--at {item!r}: give a number and a unit of time, such as 2h or 3 days')
-        written, unit = match.group(1), match.group(2).replace(' ', '')
-        if not unit:
-            raise UsageError(f'--at {item}: give the unit of time, such as {written}h')
-        dimension, scale = units.of(unit) or (None, None)
-        if dimension != TIME_DIMENSION:
-            times = [name for name, (kind, _) in units.base.items() if kind == TIME_DIMENSION]
-            raise UsageError(f'--at {item}: {unit} is not a unit of time of the model' + close(unit, times))
-        t = float(Fraction(written) * scale)
+        text, t = hours(model, item, '--at')
         if not 0 <= t <= horizon:
             raise UsageError(f'--at {item}: the run goes from 0 h to {number(horizon)} h')
-        found.setdefault(t, f'{written} {unit}')
+        found.setdefault(t, text)
     return [(text, t) for t, text in sorted(found.items())]
+
+
+def edits_of(model, path):
+    """The edit document of `--edits FILE`, or None without a FILE: a JSON object, read as the front
+    end reads JSON (`napkin.model.load.load_json`: no key twice, no number that is not finite), with
+    the `schema_version` and the `model_hash` of this model where it gives none, so that a document
+    made for another revision keeps its hash and is refused. Raises Failed, with the file, for a file
+    that cannot be read or that is no JSON object."""
+    if path is None:
+        return None
+    from .. import SCHEMA_VERSION
+    from ..model.load import SourceError, load_json
+
+    try:
+        body = load_json(path)
+    except SourceError as error:
+        text, prefix = str(error), f'{error.path}: '
+        raise Failed([problem('edits', text.removeprefix(prefix), path)]) from None
+    except json.JSONDecodeError as error:
+        raise Failed([problem('edits', error.msg, path, error.lineno, error.colno)]) from None
+    except UnicodeDecodeError as error:
+        raise Failed([problem('edits', f'not UTF-8 text: {error.reason} at byte {error.start}', path)]) from None
+    except OSError as error:
+        raise Failed([problem('file', error.strerror or str(error), path)]) from None
+    if not isinstance(body, dict):
+        raise Failed([problem('edits', 'an edit document is a JSON object', path)])
+    return {'schema_version': SCHEMA_VERSION, 'model_hash': model.model_hash, **body}
+
+
+def configured(model, run=None, edits=None, path=None):
+    """The configuration of the run `run` (None for the default run) of a compiled model under the
+    edit document `edits` of the file `path` (`Compiled.configure`, which checks the document whole).
+    A run that the model does not have is a UsageError, with the closest names; a problem of the
+    document is a Failed, at its file."""
+    from ..model.language.problems import LanguageError
+
+    if run is not None and model.declared.run(run) is None:
+        names = [item.name for item in model.declared.runs]
+        known = f'; its runs are {listed(names)}' if names else '; it has no named run'
+        raise UsageError(f'--run {run}: no run of the model' + (close(run, names) or known))
+    if run is None and edits is None:
+        return model.configuration
+    try:
+        return model.configure(run, edits)
+    except LanguageError as error:
+        raise Failed(
+            [item if item.file else problem(item.code, item.message, path or '') for item in error.problems]
+        ) from None
+
+
+def listed(names):
+    """Names as a text lists them: `a`, `a and b`, `a, b and c`."""
+    names = list(names)
+    return ', '.join(names[:-1]) + (' and ' if len(names) > 1 else '') + (names[-1] if names else '')
+
+
+def unit_shown(units, spelling):
+    """A unit as the commands show it: a spelling that composes names (`Wh/h`) is the first name of
+    the model's table of units (`model.declared.units`) with the same dimension and the same scale
+    (`W`), when there is one, so that a number is the same in either; any other spelling as it is. A
+    plain number stays plain: no name of a ratio stands for it."""
+    if not any(sign in spelling for sign in '*/'):
+        return spelling
+    found = units.of(spelling)
+    if found is None or not found[0]:
+        return spelling
+    return next((name for name, base in units.base.items() if base == found), spelling)
 
 
 def close(name, names):

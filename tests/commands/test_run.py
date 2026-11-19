@@ -257,7 +257,8 @@ def test_a_formula_reads_its_value_at_the_time_asked(tmp_path, capsys):
     model = package(tmp_path / 'narrow', text, UNITS)
     found = napkin(capsys, 'run', model, '--json', '--value', 'tank.narrow', '--at', '0.89h,0.9017h,0.91h')
     assert found.code == 0, found.err
-    assert found.doc['values']['tank.narrow'] == {'unit': '', 'label': None, 'values': [False, True, False]}
+    narrow = found.doc['values']['tank.narrow']
+    assert (narrow['unit'], narrow['label'], narrow['values']) == ('', None, [False, True, False])
 
 
 def test_a_model_that_does_not_compile_prints_its_problem_with_its_place(tmp_path, capsys):
@@ -276,8 +277,8 @@ def test_a_model_that_does_not_compile_prints_its_problem_with_its_place(tmp_pat
 
 def test_a_run_that_stops_prints_the_values_before_it_stopped_then_why(tmp_path, capsys):
     """A request of 3 L/h * 2 L / (water - 2 L) has no bound as the tank nears 2 L: (water - 2 L)^2
-    is 36 - 12 t, so 2 L at 3 h, and the run stops before its horizon. At the start the request is
-    3 * 2 / 6 = 1 L/h."""
+    is 36 - 12 t, so 2 L at 3 h, and the run stops before its horizon (the engine times a failure
+    in a numerical segment at the segment's start). At the start the request is 3 * 2 / 6 = 1 L/h."""
     text = TANK.replace(
         '        capacity = 5 L/h\n        request = 3 L/h\n',
         '        request = formula(3 L/h * (2 L / (tank.water - 2 L)))\n',
@@ -288,7 +289,8 @@ def test_a_run_that_stops_prints_the_values_before_it_stopped_then_why(tmp_path,
     doc = found.doc
     (problem,) = doc['diagnostics']
     assert problem['code'] == 'run'
-    assert problem['message'].startswith('the run stops at ')
+    assert problem['message'].startswith('the run failed at ')
+    assert doc['stopped'] == problem['message']
     assert doc['times'][0] == 0
     assert 3.5 not in doc['times']
     assert doc['values']['tank.water']['values'][0] == 8

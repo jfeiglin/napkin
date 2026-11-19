@@ -107,6 +107,10 @@ def method(state, label):
 if __name__ == '__main__':
     args = sys.argv[1:]
     run_method = '--method' in args
+    if '--ldl' in args:  # the method with qdldl factorizations (`ldl.py`)
+        import ldl
+
+        ldl.use()
     candidate = None
     if '--candidate' in args:
         i = args.index('--candidate')
@@ -121,7 +125,7 @@ if __name__ == '__main__':
             joined, count = merged(state)
             factor(joined, f'store rows merged ({count} pairs)')
             if run_method:
-                method(joined, 'store rows merged')
+                method(joined, 'store rows merged' + (', qdldl' if '--ldl' in args else ''))
             if candidate:
                 import qp
 

@@ -1,4 +1,20 @@
-"""`napkin draw`: draw a static picture of the model as SVG (docs/cli.md, docs/draw.md)."""
+"""`napkin draw`: draw a static picture of the model as SVG (docs/cli.md, docs/draw.md).
+
+The command compiles the model (`common.compiled`), reads its stylesheet (`--style FILE`, else the
+`style.toml` of the variant, else of its package: `napkin.draw.style.of`), makes its picture
+(`napkin.draw.model_map.picture`), lays it out and writes the SVG. A stylesheet with a problem gives
+its diagnostics, each with its file and its key, and the command writes no file (exit 1).
+
+The runs of a model are its named runs, else its default run (`napkin.draw.things.Things.runs`).
+`--run NAME` draws one run: the events that reachability proves cannot start in it are left out, with
+their lines and arrows (D16). A model with one named run is drawn as that run; a model with several,
+and no `--run`, is drawn with its runs joined, each event drawn when it can start in one of them.
+
+The default file is `<package>[.<variant>][.<run>].svg` in the current folder. `--latex FILE` also
+writes the equations, symbols and references of the stylesheet's `[equations]` as a LaTeX fragment
+(`napkin.draw.panels.latex`); a stylesheet whose `[equations] things` names nothing gives a fragment
+of comments only, and a note says so. A picture taller than a PDF page holds gets a note.
+"""
 
 from pathlib import Path
 
@@ -8,27 +24,25 @@ SUMMARY = 'draw a static picture of the model as SVG'
 
 DESCRIPTION = """\
 Draw a static picture of the model as SVG:
-  - each thing as a box, with its stocks and the flows between them
-  - each named-state var as a small state machine, its events on the transitions
-  - arrows for what each thing reads, follows, changes, fires and moves of the others, and a legend
+  - each thing as a card, with its stocks and the flows between them
+  - each enum state of a thing as a small state machine, its events on the transitions
+  - arrows for what each thing reads, follows, changes, starts and moves of the others, and a legend
 The style.toml of the variant, else of the package (or --style FILE), places, groups, hides and
 labels things, sets their icons, where each state machine goes, the looks of the arrows and the
 events that a card shows. Everything else lays itself out, the same way every time. --latex FILE
 also writes the equations, symbols and references of the stylesheet's [equations] as a LaTeX
-fragment (amsmath, longtable, hyperref)."""
+fragment (amsmath, longtable, hyperref). Exit 0 ok, 1 diagnostics, 2 usage."""
 
 EXAMPLES = """\
 example:
-  napkin draw scenarios/water_controls_wipe --variant juneau -o juneau.svg"""
+  napkin draw examples/piano_tuners -o tuners.svg"""
 
 
 def configure(parser):
-    """The description, the example and the arguments of `napkin draw`: `args.variant` and `args.run`
-    (None when not given); `args.style`, `args.output` (`-o`) and `args.latex` (Paths, or None); and
-    `args.target`."""
+    """The description, the example and the arguments of `napkin draw`: `args.run` (None when not
+    given); `args.style`, `args.output` (`-o`) and `args.latex` (Paths, or None); and `args.model`."""
     parser.description = DESCRIPTION
     parser.epilog = EXAMPLES
-    common.add_variant(parser)
     parser.add_argument(
         '--run', metavar='NAME', help='draw that run: leave out the parts that cannot act in it'
     )
@@ -40,7 +54,7 @@ def configure(parser):
         dest='output',
         type=Path,
         metavar='FILE',
-        help='the SVG to write (default: <name>.svg in the current folder)',
+        help='the SVG to write (default: <package>[.<variant>][.<run>].svg in the current folder)',
     )
     parser.add_argument(
         '--latex',
@@ -48,25 +62,37 @@ def configure(parser):
         metavar='FILE',
         help='also write the equations, symbols and references as a LaTeX fragment',
     )
-    common.add_target(parser)
+    common.add_model(parser)
 
 
-def output_name(target, run=None):
-    """The default file of `napkin draw`: `<package>[.<variant>][.<run>].svg`, in the current folder;
-    `run` is the run that `--run` names."""
-    return Path(target.name.replace(':', '.') + (f'.{run}' if run is not None else '') + '.svg')
+def output_name(entry, run=None):
+    """The default file of `napkin draw`: `<package>[.<variant>][.<run>].svg`, in the current folder,
+    by the folders of the entry file (`napkin.package.name_of`); `run` is the run that `--run`
+    names."""
+    from ..package import name_of
+
+    return Path(name_of(entry).replace(':', '.') + (f'.{run}' if run is not None else '') + '.svg')
 
 
 def stylesheet(model, path=None):
-    """The stylesheet of a model (`napkin.draw.style.of`): the file at `path`, else the variant's or the
-    package's `style.toml`, else none. A file with a problem is a `common.Failed` with its
-    diagnostics."""
+    """The stylesheet of a compiled model (`napkin.draw.style.of`): the file at `path`, else the
+    variant's or the package's `style.toml`, else none. A file with a problem is a `common.Failed`
+    with its diagnostics (`style_problems`)."""
     from ..draw import style as styles
 
     try:
         return styles.of(model, path)
-    except styles.StyleError as exc:
-        raise common.Failed(exc.diagnostics) from None
+    except styles.StyleError as error:
+        raise common.Failed(style_problems(error)) from None
+
+
+def style_problems(error):
+    """The diagnostics of a `StyleError`, as the front end writes them: each with its file and, for
+    a text that is not TOML, its line; the message starts with the key."""
+    return [
+        common.problem(item.get('code', 'style'), item['message'], item['file'], item.get('line') or 0)
+        for item in error.diagnostics
+    ]
 
 
 def latex_line(path, found):
@@ -96,41 +122,36 @@ def height_note(path, height):
     )
 
 
+def written(path, text):
+    """Write a text file, or raise Failed with the file."""
+    try:
+        Path(path).write_text(text, encoding='utf-8')
+    except OSError as error:
+        raise common.Failed([common.problem('file', error.strerror or str(error), path)]) from None
+
+
 def main(args):
-    """Draw the model of the TARGET: load it (with `--run`, checked for that run only, as `napkin run`
-    loads it: a run that the model does not have is a usage error), read its stylesheet (`--style
-    FILE`, else the variant's or the package's `style.toml`), make its picture, lay it out and write
-    the SVG. The run is `--run`, else the only run of a model that has one; a model with several runs
-    and no `--run` is drawn with every run joined. A stylesheet with a problem gives its diagnostics
-    (exit 1). With `--latex FILE`, it also writes the LaTeX fragment of the picture's panels
-    (`panels.latex`, D-57); a stylesheet whose `[equations] things` names nothing gives a fragment of
-    comments only, and a note says so. A picture taller than a PDF page holds gets a note
-    (`height_note`)."""
+    """Draw the model of MODEL (see the module) and write its SVG, then its LaTeX with `--latex`;
+    give the exit code. A run that the model does not have is a usage error."""
     from ..draw import layout as layouts
     from ..draw import model_map, panels
     from ..draw import svg as svgs
-    from .run import load
+    from ..draw import style as styles
 
-    target = common.one_target(args.target, args.variant)
-    model = load(target, [args.run] if args.run is not None else None)
+    entry = common.entry_of(args.model)
+    model = common.compiled(entry)
+    runs = [name for name in styles.things_of(model).runs if name is not None]
+    if args.run is not None and args.run not in runs:
+        known = f'; its runs are {common.listed(runs)}' if runs else '; it has no named run'
+        raise common.UsageError(f'--run {args.run}: no run of the model' + (common.close(args.run, runs) or known))
     style = stylesheet(model, args.style)
-    run = args.run if args.run is not None or len(model.runs) != 1 else next(iter(model.runs))
+    run = args.run if args.run is not None or len(runs) != 1 else runs[0]
     picture = model_map.picture(model, style, run=run)
     found = layouts.layout(picture, style)
-    text = svgs.svg(picture, found)
-    output = args.output if args.output is not None else output_name(target, args.run)
-    try:
-        Path(output).write_text(text, encoding='utf-8')
-    except OSError as exc:
-        raise common.Failed([common.os_diagnostic(exc, output)]) from None
+    output = args.output if args.output is not None else output_name(entry, args.run)
+    written(output, svgs.svg(picture, found))
     if args.latex is not None:
-        try:
-            Path(args.latex).write_text(panels.latex(picture), encoding='utf-8')
-        except OSError as exc:
-            raise common.Failed([common.os_diagnostic(exc, args.latex)]) from None
-    note = common.scope_note(model)
-    if note:
-        print(f'note: {note}')
+        written(args.latex, panels.latex(picture))
     if found.height > layouts.PAGE_HEIGHT:
         print(f'note: {height_note(output, found.height)}')
     cards, routes = len(found.cards), len(found.routes)
