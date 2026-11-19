@@ -983,7 +983,8 @@ class Proofs:
             places.setdefault(part, point)
             return [part]
         if kind in ('flow', 'rate', 'leg'):
-            flow, at = point[2], point[4] if kind in ('rate', 'leg') else point[3]
+            # A rate's point is (kind, owner, flow, name, at); a flow's and a leg's keep `at` fourth.
+            flow, at = point[2], point[4] if kind == 'rate' else point[3]
             owner = at.member.id if at.member is not None else ''
             return [Part('flow', each.origin, owner) for each in (flow.legs or (flow,))]
         if kind in ('event', 'occurrences', 'occurrence'):

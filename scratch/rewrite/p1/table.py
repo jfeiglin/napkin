@@ -25,7 +25,50 @@ def e(v):
     return '-' if v is None else f'{v:.0e}' if isinstance(v, float) and v else ('0' if v == 0 else str(v))
 
 
+def exact_errors():
+    """The largest error against the exact references of each method (correct.jsonl)."""
+    out = {}
+    try:
+        with open(f'{DATA}/correct.jsonl') as f:
+            for line in f:
+                r = json.loads(line)
+                out.setdefault(r['method'], f"{r['worst_error']:.0e} ({r['failed']} of {r['passed'] + r['failed']} out)")
+    except FileNotFoundError:
+        pass
+    return out
+
+
+ALIAS = {'library-ldl': 'ldl', 'piqp+polish': 'polish:piqp', 'clarabel+polish': 'polish:clarabel'}
+
+
 def distance(tags, methods):
+    found = last(f'{DATA}/distance.jsonl', lambda r: (r['tag'], r['method']))
+    exact = exact_errors()
+    print('| problem | method | s | steps (stages) | status | rows | optima | level short | diff flows, levels '
+          '| exact ref. | after polish: books W, equal, bounds | bitwise | load |')
+    print('|' + '---|' * 13)
+    for tag in tags:
+        for method in methods:
+            r = found.get((tag, method))
+            if r is None:
+                continue
+            m, infos = r['measures'], r['infos']
+            if isinstance(infos, dict):
+                steps = '+'.join(str(s) for s in infos.get('newton', []))
+                status = ','.join(sorted(set(infos.get('methods', []))))
+            else:
+                steps = '+'.join(str(i.get('iterations')) for i in infos)
+                status = ','.join(str(i.get('status')).replace('PIQP_', '').lower() for i in infos)
+            diff = '-' if m.get('diff flows') is None else f'{e(m.get("diff flows"))}, {e(m.get("diff others"))}'
+            polished = f'{e(m.get("p books abs"))}, {e(m.get("p equal spread"))}, {e(m.get("p bounds abs"))}'
+            print(
+                f'| {tag} | {method} | {r["seconds"]:.2f} | {steps} | {status} | {e(m["rows"])} | {e(m["optima"])} | '
+                f'{e(m.get("level short"))} | {diff} | {exact.get(ALIAS.get(method, method), "-")} | {polished} | '
+                f'{r["bitwise"]} | {r["load"]} |'
+            )
+
+
+def distance_full(tags, methods):
     found = last(f'{DATA}/distance.jsonl', lambda r: (r['tag'], r['method']))
     print('| problem | method | s | iterations (stages) | status | rows | bounds | optima | level short | '
           'equal spread | books | diff flows | diff levels | bitwise | load |')
@@ -69,8 +112,8 @@ if __name__ == '__main__':
     bench = [f'bench-{n}-{s}' for n in (3000, 30000) for s in ('normal', 'shortage', 'damaged', 'global')]
     engine = ['engine-3000-normal', 'engine-30000-normal']
     if sys.argv[1] == 'distance':
-        methods = ['library', 'library-loose', 'clarabel', 'clarabel-box', 'piqp', 'piqp-box', 'piqp-long-box',
-                   'osqp', 'osqp-tight']  # fmt: skip
+        methods = ['library', 'library-ldl', 'library-loose', 'clarabel', 'clarabel-box', 'piqp', 'piqp-box',
+                   'piqp-long-box', 'piqp+polish', 'osqp', 'osqp-tight']  # fmt: skip
         distance(bench[:4] + engine[:1] + bench[4:] + engine[1:], methods)
     else:
         fair(bench[:4] + engine[:1] + bench[4:] + engine[1:])
