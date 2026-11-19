@@ -17,6 +17,7 @@ from tests.reference.model import (
     any_,
     calc,
     count,
+    delayed,
     event,
     flow,
     fmax,
@@ -344,6 +345,30 @@ def test_history_reads_before_the_first_start(history):
         history.read(OCC.at(t).status, HALF)
     assert history.read((count(OCC) > 0) & (since(N.grinder.refill) >= 3), HALF) is False  # short-circuit
     assert isinstance(history.report(since(N.grinder.refill), [HALF])[0], Unavailable)
+
+
+def test_a_delayed_value_is_read_back_from_the_time_of_the_read():
+    """A tank holds 2 L and fills at 1 L/h: 2 + t litres. After an 8 h run, the formula
+    `delayed(water, 2 h)` read at 2, 5 and 8 h gives the water of 0, 3 and 6 h, 2, 5 and 8 L, not
+    the 8 L of two hours before the end; `delayed(water, 0 h)` read at 5 h gives 7 L. A stage at
+    5 h that keeps `delayed(water, 2 h)` keeps 5 L."""
+    m = Model()
+    m.entity(
+        'tank',
+        fields=[
+            value('water', 2, 0),
+            calc('lagged', delayed(this.water, 2)),
+            calc('current', delayed(this.water, 0)),
+            value('seen', 0),
+        ],
+        flows=[flow('fill', SOURCE, this.water, request=1)],
+        events=[event('look', steps=[after(5, [set_(this.seen, delayed(this.water, 2))])])],
+    )
+    m.setup = [start(N.tank.look)]
+    r = Run(m, horizon=8).run()
+    assert [r.read(N.tank.lagged, at) for at in (2, 5, 8)] == [2, 5, 8]
+    assert r.read(N.tank.current, 5) == 7
+    assert r.read(N.tank.seen) == 5
 
 
 def reserve(at_outset):

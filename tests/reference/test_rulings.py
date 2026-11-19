@@ -1,8 +1,9 @@
-"""One test for each ruling that prototype A2 proposed (`scratch/rewrite/a2/FINDINGS.md`), on its own
+"""A test for each ruling that prototype A2 proposed (`scratch/rewrite/a2/FINDINGS.md`), on its own
 example. Gate G0 settled them all, so each test now asserts the settled rule; where G0 overturned
 the proposal (R-A2-06, 07, 13, 14, 20, 22) or changed its numbers (R-A2-04, 23), the test asserts
-the decision of G0 and names it."""
+the decision of G0 and names it. R-A2-17 has more: each owner of a draw that it names."""
 
+import hashlib
 from fractions import Fraction as F
 
 import pytest
@@ -334,6 +335,50 @@ def test_17_draws():
     sampled = [run(draws(extra), 2, mode='sampled', seed=7).read(N.pump.x) for extra in (True, False)]
     assert sampled[0] == sampled[1]
     assert run(draws(True), 2).read(N.pump.x) == 5
+
+
+def keyed_uniform(seed, key):
+    """The uniform number of the draw keyed `site|owner` in a sampled run with this seed:
+    (2k + 1) / 2^65, for k the first 64 bits of the SHA-256 of `seed|site|owner`."""
+    k = int.from_bytes(hashlib.sha256(f'{seed}|{key}'.encode()).digest()[:8], 'big')
+    return F(2 * k + 1, 2**65)
+
+
+def test_17_a_firing_owns_its_draws():
+    """The n-th firing of a trigger, from 1, owns the draws of its body and of its `reset after`:
+    `pump.work.when[0]!n`. `when t >= 1 h` starts `work` with an amount from uniform(0, 10) and
+    rearms after a pause from uniform(1 h, 2 h). With u1..u4 the numbers of the keys below, it
+    fires at 1 h and at 1 h + (1 + u2) h, which is before the 3 h horizon, and not again; the two
+    amounts are 10 u1 and 10 u3."""
+    amount, pause = uniform(0, 10).draw(), uniform(1, 2).draw()
+    work = event(
+        'work',
+        params=['amount'],
+        steps=[after(0, [add(this.total, N.amount)])],
+        triggers=[trigger(t >= 1, [start(this.work, amount)], reset=('after', pause))],
+    )
+    m = Model()
+    m.entity('pump', fields=[value('total', 0)], events=[work])
+    m.sites.update({id(amount): 'amount', id(pause): 'pause'})
+    r = run(m, 3, mode='sampled', seed=5)
+    keys = [f'{site}|pump.work.when[0]!{n}' for n in (1, 2) for site in ('amount', 'pause')]
+    u = [keyed_uniform(5, key) for key in keys]
+    assert r.draws == list(zip(keys, (10 * u[0], 1 + u[1], 10 * u[2], 1 + u[3])))
+    assert r.times('fire') == [1, 2 + u[1]]
+    assert r.read(N.pump.total) == 10 * (u[0] + u[2])
+
+
+def test_17_the_setup_owns_its_draws_as_the_root():
+    """A draw in the setup belongs to the root, whose id is `''`, as a program names it."""
+    amount = uniform(0, 10).draw()
+    work = event('work', params=['amount'], steps=[after(0, [add(this.total, N.amount)])])
+    m = Model()
+    m.entity('pump', fields=[value('total', 0)], events=[work])
+    m.sites[id(amount)] = 'amount'
+    m.setup = [start(N.pump.work, amount)]
+    r = run(m, 1, mode='sampled', seed=5)
+    assert r.draws == [('amount|', 10 * keyed_uniform(5, 'amount|'))]
+    assert r.read(N.pump.total) == 10 * keyed_uniform(5, 'amount|')
 
 
 def test_18_opening():

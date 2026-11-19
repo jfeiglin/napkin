@@ -266,6 +266,7 @@ class Ev:
         shared=None,
         may_draw=False,
         defer=False,
+        owner=None,
     ):
         self.run, self.view, self.scope, self.mode, self.tx = run, view, scope or Scope(), mode, tx
         self.unknowns = unknowns
@@ -279,7 +280,7 @@ class Ev:
             may_draw=may_draw,
             defer=defer,
             in_formula=0,
-            context=None,
+            owner=owner,  # the firing of a trigger that executes this evaluation, if any (R-A2-17)
         )
 
     def fork(self, scope):
@@ -679,12 +680,18 @@ class Ev:
         return Dist(kind, tuple(self.num(p) for p in params))
 
     def _categorical(self, outcomes):
+        """`categorical(FIXED: 1, FAILED: 3)`: nonnegative weights, scaled by their sum to the
+        probabilities 1/4 and 3/4. Weights that are all zero stay as they are: a draw from them
+        fails, as for eligible outcomes whose total is zero (`Run._outcome`), and a person may still
+        pick an eligible outcome, since eligibility and probability are independent (D1)."""
         params = tuple((member, self.num(p)) for member, p in outcomes)
-        if any(p < 0 for _, p in params) or sum(p for _, p in params) != 1:
+        if any(p < 0 for _, p in params):
             raise Diagnostic(
-                f'categorical({", ".join(f"{m}: {p}" for m, p in params)}): the probabilities must be '
-                'nonnegative and add up to one'
+                f'categorical({", ".join(f"{m}: {p}" for m, p in params)}): the weights must be nonnegative'
             )
+        total = sum(p for _, p in params)
+        if total > 0:
+            params = tuple((member, p / total) for member, p in params)
         return Dist('categorical', params)
 
     def _priority(self, items):

@@ -184,14 +184,7 @@ class Run:
                 self._make_flow(decl, ent, Scope(ent))
         for ent in self.ents.values():
             for f in ent.template.fields:
-                for side in ('outflow', 'inflow'):
-                    ep = getattr(f, side)
-                    if ep is not None:
-                        end = End(Cell(ent, f.name), side)
-                        cells[Cell(end, 'capacity')] = self._prop(ep.capacity, Scope(ent))
-                        cells[Cell(end, 'request')] = self._prop(ep.request, Scope(ent))
-                        alloc = None if ep.allocation is None else FormulaV(ep.allocation, Scope(ent))
-                        cells[Cell(end, 'allocation')] = alloc
+                self._endpoints(Cell(ent, f.name), f, Scope(ent))
             for ev in ent.template.events:
                 self.view.occs[ent, ev.name] = []
                 self.triggers += [Trig(ent, ev, tr, i) for i, tr in enumerate(ev.triggers)]
@@ -251,6 +244,24 @@ class Run:
         """A setting of a flow or of an endpoint: a captured value, or a formula that stays live.
         None when the model left it out."""
         return None if expr is None else Ev(self, self.view, scope, may_draw=True).val(expr)
+
+    def _endpoints(self, cell, decl, scope):
+        """The settings of `outflow` and `inflow` written under a store, of a member or of an
+        occurrence alike: a capacity and a request as `_prop` gives them, and an allocation that
+        stays live (left out, it is proportional)."""
+        for side in ('outflow', 'inflow'):
+            ep = getattr(decl, side)
+            if ep is None:
+                continue
+            end = End(cell, side)
+            settings = {
+                'capacity': self._prop(ep.capacity, scope),
+                'request': self._prop(ep.request, scope),
+                'allocation': None if ep.allocation is None else FormulaV(ep.allocation, scope),
+            }
+            for name, v in settings.items():
+                self.view.cells[Cell(end, name)] = v
+                self.view.entered[Cell(end, name)] = self.view.t
 
     def _make_flow(self, decl, owner, scope):
         ev = Ev(self, self.view, scope)
@@ -481,9 +492,11 @@ class Run:
         self._commit(tx)
         self._reach(occ, occ.step + 1)
 
-    def _execute(self, statements, tx, scope):
+    def _execute(self, statements, tx, scope, owner=None):
+        """Run statements in written order into `tx`. `owner` names the firing of a trigger that
+        runs its body; elsewhere the scope's occurrence or member owns the draws (R-A2-17)."""
         for s in statements:
-            ev = Ev(self, self.view, scope, tx=tx, may_draw=True)
+            ev = Ev(self, self.view, scope, tx=tx, may_draw=True, owner=owner)
             if isinstance(s, Assign):
                 self._assign(s, ev, tx)
             elif isinstance(s, Start):
@@ -491,9 +504,9 @@ class Run:
             elif isinstance(s, Move):
                 self._move(s, ev, tx)
             elif isinstance(s, Branch):  # decision D11
-                self._execute(s.then if ev.truth(s.condition) else s.other, tx, scope)
+                self._execute(s.then if ev.truth(s.condition) else s.other, tx, scope, owner)
             elif isinstance(s, Switch):
-                self._execute(self._select(s, ev), tx, scope)
+                self._execute(self._select(s, ev), tx, scope, owner)
             else:
                 raise RunFailed(f'{s!r} is not a statement')
 
@@ -659,6 +672,7 @@ class Run:
                 view.cells[cell] = UNSET if d.init is None else ev.val(d.init)
                 self._range(cell, d, ev, view.cells[cell])
             view.entered[cell] = t
+            self._endpoints(cell, d, scope)  # an occurrence's own store has endpoints as a member's has
         occs.append(occ)
         self._note('start', occ.label, origin=event.origin)
         if self.phase == 'conditions':
@@ -803,21 +817,20 @@ class Run:
         return Ev(self, self.view, scope, mode='germ').truth(condition)
 
     def _fire(self, trig):
+        """One firing: its captures, its body, then a `reset after` duration, captured now. The
+        firing owns their draws (R-A2-17): `pump.work.when[0]!2` is the second firing, from 1."""
         t = self.view.t
+        firing = f'{trig.label}!{trig.firings + 1}'
         caps = {}
         for name, expr in trig.decl.captures:
-            ev = Ev(self, self.view, Scope(trig.ent, None, dict(caps)), may_draw=True)
-            ev.shared.context = f'{trig.label}!{trig.firings + 1}'
+            ev = Ev(self, self.view, Scope(trig.ent, None, dict(caps)), may_draw=True, owner=firing)
             caps[name] = ev.val(expr)
         tx = Tx()
-        self._execute(trig.decl.starts, tx, Scope(trig.ent, None, caps))
+        self._execute(trig.decl.starts, tx, Scope(trig.ent, None, caps), firing)
         trig.caps, trig.armed, trig.firings = caps, False, trig.firings + 1
-        if (
-            trig.decl.reset is not None and trig.decl.reset[0] == 'after'
-        ):  # the duration is captured at firing
-            trig.rearm_at = t + Ev(self, self.view, Scope(trig.ent, None, caps), may_draw=True).num(
-                trig.decl.reset[1]
-            )
+        if trig.decl.reset is not None and trig.decl.reset[0] == 'after':
+            ev = Ev(self, self.view, Scope(trig.ent, None, caps), may_draw=True, owner=firing)
+            trig.rearm_at = t + ev.num(trig.decl.reset[1])
         self._note('fire', trig.label, origin=trig.decl.origin)
         self.again = True
         self._commit(tx)
@@ -891,13 +904,16 @@ class Run:
         return view.entered.get(cell, Fraction(0))
 
     def read_past(self, expr, delay, ev):
-        """`delayed(x, D)`: x as the run recorded it D ago. With D = 0 inside a stage that is the
-        committed value, never a value that the stage itself has written and not yet committed."""
+        """`delayed(x, D)`: x as the run recorded it D before the time of the state that `ev`
+        reads: the present inside the run, the time of the read for a report after it. With D = 0
+        inside a stage that is the committed value, never a value that the stage itself has
+        written and not yet committed. A time before the start reads the record at 0 h, which does
+        not exist during the first moment; the spec does not say what such a read gives."""
         if not isinstance(delay, Fraction) or delay < 0:
             raise RunFailed(f'delayed({show(expr)}, ...): the delay must be a duration that is not negative')
         if delay == 0:
-            return plain(Ev(self, self.view, ev.scope).val(expr))
-        return self.read(expr, max(self.view.t - delay, Fraction(0)), scope=ev.scope)
+            return plain(Ev(self, ev.view, ev.scope).val(expr))
+        return self.read(expr, max(ev.view.t - delay, Fraction(0)), scope=ev.scope)
 
     # --- draws and choices ---------------------------------------------------------------------------
 
@@ -906,11 +922,13 @@ class Run:
         return self.sites.get(id(node), show(node))
 
     def _owner(self, ev):
-        """Who executes a draw or a choice: the occurrence, the firing, or the member."""
+        """Who executes a draw or a choice (R-A2-17): the occurrence (`pump.work#0`), the firing of
+        a trigger (`pump.work.when[0]!1`), or the member; the setup belongs to the root, whose id
+        is `''` as in a program."""
         s = ev.scope
         if s.occ is not None:
             return s.occ.label
-        return ev.shared.context or (s.this.id if s.this is not None else 'model')
+        return ev.shared.owner or (s.this.id if s.this is not None else '')
 
     def _key(self, node, ev):
         """The key of a draw or a choice: its site and its owner, never its place in a stream."""
@@ -1084,11 +1102,14 @@ def _in_unit(x, size):
 
 
 def _holder(owner):
-    """The entity or occurrence that holds a cell: a flow's settings belong to the flow's owner."""
+    """The entity or occurrence that holds a cell: a flow's settings belong to the flow's owner,
+    an endpoint's settings to the holder of its store."""
     if isinstance(owner, LegRT):
         return owner.flow.owner
     if isinstance(owner, FlowRT):
         return owner.owner
+    if isinstance(owner, End):
+        return _holder(owner.cell.owner)
     return owner
 
 
@@ -1104,8 +1125,9 @@ def _plain_names(e):
 
 
 def _forward(d, later):
-    """The later declarations of an event that the plain initializers of `d` read (decision D14).
-    A formula local, or a formula setting of a flow, may name them."""
+    """The later declarations of an event that the plain initializers of `d` read (decision D14):
+    those of a flow, and of a local with the settings of its endpoints. A formula local, a formula
+    setting, or an allocation (read when the rates settle) may name them."""
     if isinstance(d, Flow):
         parts = [d.source, d.sink, d.request, d.capacity]
         parts += [p for one in d.legs for p in (one.source, one.sink, one.request, one.capacity)]
@@ -1113,6 +1135,7 @@ def _forward(d, later):
         return set()
     else:
         parts = [d.init, d.lo, d.hi]
+        parts += [p for ep in (d.outflow, d.inflow) if ep is not None for p in (ep.capacity, ep.request)]
     return {x.name for x in later} & _plain_names(parts)
 
 

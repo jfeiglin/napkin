@@ -8,6 +8,7 @@ from fractions import Fraction as F
 
 import pytest
 
+from tests.reference.errors import RunFailed
 from tests.reference.model import (
     SINK,
     SOURCE,
@@ -431,6 +432,80 @@ def test_each_moment_equals_a_problem_formed_fresh():
     fresh = Run(shared_limit(), horizon=4)
     fresh.cache = NoCache()
     assert rates(fresh.run()) == rates(Run(shared_limit(), horizon=4).run())
+
+
+def batch(endpoint, request=2, later=()):
+    """An occurrence of `job` whose own store `stock` holds 10 L, with `endpoint` as its outflow;
+    two flows, `first` into a and `second` into b, each request `request` (None: nothing). The
+    occurrence waits for its store to be empty. At 11 h the plant runs the statements `later`."""
+    job = event(
+        'job',
+        locals=[
+            value('stock', 10, 0, outflow=endpoint),
+            flow('first', N.stock, this.a, request=request),
+            flow('second', N.stock, this.b, request=request),
+        ],
+        steps=[until(N.stock <= 0)],
+    )
+    plant = [value('a', 0), value('b', 0), value('limit', 1)]
+    m = Model()
+    m.entity('plant', fields=plant, events=[job, event('later', steps=[after(11, list(later))])])
+    m.setup = [start(N.plant.job), start(N.plant.later)]
+    return Run(m, horizon=12)
+
+
+JOB = N.plant.job.occurrences.at(t)
+
+
+@pytest.mark.parametrize(
+    'endpoint, asks, first, second',
+    [
+        (Endpoint(capacity=lit(1)), 2, F(1, 2), F(1, 2)),
+        (Endpoint(capacity=lit(1), allocation=priority(N.second)), 2, 0, 1),
+        (Endpoint(request=lit(1)), None, F(1, 2), F(1, 2)),
+    ],
+)
+def test_an_endpoint_of_an_occurrences_own_store(endpoint, asks, first, second):
+    """The store of an occurrence has endpoints as a member's store has. Its 10 L leave at 1 L/h in
+    all: a capacity of 1 L/h shared by two requests of 2 L/h gives 1/2 and 1/2 L/h; with
+    `priority(second)`, second takes the whole 1 L/h; a request of 1 L/h on the endpoint, whose
+    flows ask nothing, is split equally. So at 4 h the store holds 6 L, a holds 4 h * first and b
+    4 h * second; the store is empty at 10 h, and the occurrence finishes then."""
+    r = batch(endpoint, asks).run()
+    assert (r.read(JOB.first.actual_rate, 4), r.read(JOB.second.actual_rate, 4)) == (first, second)
+    assert (r.read(JOB.stock, 4), r.read(N.plant.a, 4), r.read(N.plant.b, 4)) == (6, 4 * first, 4 * second)
+    assert r.times('done', 'plant.job#0') == [10]
+    assert (r.read(N.plant.a), r.read(N.plant.b)) == (10 * first, 10 * second)
+
+
+def test_the_inflow_of_an_occurrences_own_store():
+    """An occurrence's empty store with `inflow.capacity = 1 L/h` receives from two flows out of
+    SOURCE that ask 2 L/h each: 1/2 L/h each, so it holds 4 L at 4 h."""
+    job = event(
+        'job',
+        locals=[
+            value('stock', 0, 0, inflow=Endpoint(capacity=lit(1))),
+            flow('first', SOURCE, N.stock, request=2),
+            flow('second', SOURCE, N.stock, request=2),
+        ],
+        steps=[after(10, [])],
+    )
+    m = Model()
+    m.entity('plant', events=[job])
+    m.setup = [start(N.plant.job)]
+    r = Run(m, horizon=4).run()
+    assert (r.read(JOB.first.actual_rate, 2), r.read(JOB.second.actual_rate, 2)) == (F(1, 2), F(1, 2))
+    assert r.read(JOB.stock, 4) == 4
+
+
+def test_the_endpoint_of_a_finished_occurrence_is_frozen():
+    """D7: the capacity `formula(this.limit)` of the store keeps the 1 L/h that it had at the finish
+    (10 h) when the limit becomes 5 L/h at 11 h, and a stage that writes it after the finish fails."""
+    r = batch(Endpoint(capacity=formula(this.limit)), later=[set_(this.limit, 5)]).run()
+    assert (r.read(JOB.stock.outflow.capacity), r.read(N.plant.limit)) == (1, 5)
+    write = set_(this.job.occurrences.at(t).stock.outflow.capacity, 3)
+    with pytest.raises(RunFailed, match=r'plant\.job#0\.stock\.outflow\.capacity belongs to the finished'):
+        batch(Endpoint(capacity=lit(1)), later=[write]).run()
 
 
 def delivery_table(shared, b_at=0):

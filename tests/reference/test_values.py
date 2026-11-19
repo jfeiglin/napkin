@@ -9,6 +9,7 @@ from tests.reference.errors import Diagnostic, RunFailed
 from tests.reference.model import (
     SINK,
     SOURCE,
+    Endpoint,
     Model,
     N,
     add,
@@ -187,6 +188,19 @@ def test_a_flow_property_follows_the_written_order_and_a_formula_may_look_ahead(
         flow('out', this.water, SINK, request=formula(N.left / 2)), value('left', N.amount)
     ).run()
     assert r.read(N.tank.water) == 97
+
+
+def test_an_endpoint_setting_follows_the_written_order():
+    """A plain `outflow.capacity = cap` written under a local store needs `cap` above it; a formula
+    may name a later local, and keeps the 6 L/h that it read when the occurrence finished."""
+
+    def store(capacity):
+        return value('stock', 0, 0, outflow=Endpoint(capacity=capacity))
+
+    with pytest.raises(Diagnostic, match='names cap, declared below it'):
+        locals_in_order(store(N.cap), value('cap', N.amount)).run()
+    r = locals_in_order(store(formula(N.cap)), value('cap', N.amount)).run()
+    assert r.read(N.tank.job.occurrences.at(t).stock.outflow.capacity) == 6
 
 
 def test_the_water_model_keeps_the_loss():
