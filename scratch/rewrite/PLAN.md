@@ -151,6 +151,33 @@ These override the text of this plan below, wherever the two differ. The owner's
    are made again then. No drift check is required. Stage C does not port it.
 14. **Tallies (owner, 2026-11-19).** A tally is known by use: a store that nothing drains. No mark.
    A store at a route's end is a stock by use, so only `SOURCE` and `SINK` are refused there.
+15. **Breakpoints, checkpoints and edits replace player machinery (owner, 2026-11-19).** The compiler
+   gives a versioned, loadable program that the engine runs without the parser, with a side table
+   that maps each executable location to its event, stage, statement and source place, and values to
+   names, labels and evidence. A caller sets a breakpoint at a location of that compiled program
+   (event, occurrence, stage, statement); the engine stops there and gives a resumable checkpoint
+   (why, where, which entity and occurrence, what runs next) that a fresh process can load, inspect,
+   edit through a documented representation, and resume. The edit is the action: no answer channel.
+   `choose(...)`, `sees`, actor controllers and picks leave the language, the program, the engine and
+   the oracle; this revises the actor half of D1, the G0 part "A human prompt pauses one atomic
+   stage", and R-A5-14. Ordinary events, branches, guards, distributions and draws stay; eligibility
+   is an ordinary guard; `readonly` keeps its meaning for the model's own assignments only.
+   - Exact resume is a rule: on one supported platform, with the same compiled program, engine
+     version, numerical settings and seed, stopping and resuming an untouched run gives the same
+     recorded values, draw results, event times and event order as running straight through; a
+     breakpoint alone never changes which branch fires. Tested three ways (no breakpoint; pause and
+     resume in one process; save and resume in a fresh process), with a continuously changing value
+     near a trigger threshold. No numerical state may be restarted only on the resume path.
+   - Edits in v1 are to live stored values. Types and bounds hold, derived rates are recomputed, a
+     finished occurrence stays frozen. An edit of a store is recorded as an external transfer; an
+     edit that breaks a never-falls proof withdraws that proof for the edited run. Each edit is in
+     the trace (time, breakpoint, target, old and new value). Resuming by replaying a stage's prefix
+     keeps earlier edits: two pauses in one stage neither lose the first edit nor apply it twice.
+   - Acceptance: the pump dispatch run unattended; paused before its branch, saved, reopened in a
+     fresh process and resumed untouched, with the same values, draws and events; and resumed with
+     `order` changed from `WAIT` to `SEND`, where the send branch runs once, the original draw stays
+     in the history and the edit explains the divergence. "About one slice" is provisional until
+     the numerical resume case passes. A wrapper such as `napkin play` is a client of this.
 
 ### If the session is cut off
 
