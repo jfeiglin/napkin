@@ -3,8 +3,9 @@
 The rate of such a store can read the store, so its set runs on a curve: here the continuous engine's
 closed form of an exponential decay. Between moments the store less its threshold changes its sign
 once at most, so a trigger's first contact is bracketed on the curve and located by bisection
-(`timeline/triggers.py`). A comparison on a curve that the engine cannot certify stops the run with a
-diagnostic. The expected times come from the closed form of exponential decay, not from the engine.
+(`timeline/triggers.py`); a store with an inflow and an outflow is certified step by step from the
+form of its segment (PLAN, change 20). The expected times come from the closed form of exponential
+decay, not from the engine.
 """
 
 from __future__ import annotations
@@ -93,13 +94,15 @@ def test_a_store_that_only_approaches_its_value_triggers_within_its_tolerance():
     assert at < horizon
 
 
-def test_a_store_that_both_rises_and_falls_on_a_curve_is_a_diagnostic():
+def test_a_store_with_an_inflow_and_an_outflow_on_a_curve_triggers_where_it_reaches_its_value():
     # An inflow and an outflow that reads the water: no rule of its set says which way the water
-    # moves, so the first contact of the trigger cannot be certified, and the run says so.
+    # moves, and the engine certifies the contact step by step (PLAN, change 20). W' = 5 - W / 10
+    # from 100 gives W(t) = 50 + 50 exp(-t / 10), which reaches 60 at 10 ln 5 h.
     record = run(
         *tank(
             flow('fill', SOURCE, this.water, request=q(5, 'person/h')), alarm(this.water <= q(60, 'person'))
         )
     )
-    assert 'cannot be certified' in record.failure.detail('message')
-    assert record.failure.t == 0
+    assert record.failure is None
+    (at,) = fired(record)
+    assert at == pytest.approx(10 * math.log(5), rel=1e-6)

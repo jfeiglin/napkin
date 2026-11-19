@@ -37,24 +37,49 @@ contact to predict until it can be read.
 the moments, and every condition is read in every round. Between moments, each watched condition
 (the condition of every trigger, the reset of a disarmed trigger, the gate of a waiting occurrence,
 each assertion over state) gives the first time after now at which one of its comparisons on moving
-values can change its answer (`predict`): on lines, where a comparison is affine in what it reads,
-the root of a line (of a clock, the time that its other side gives; of one store on its line, its
-start plus its distance over its rate: their closed forms; `since(e)` is the time less the newest
-start, so it moves as the time does); else,
-where the comparison is affine in one store that only rises or only falls through the window
-(it only supplies or only receives the flows of its set), or is a sum of stores whose total only
-rises or only falls (each flow that crosses the boundary of the group crosses it one way, or none
-does, as for the books of a transfer, `waiting + served`), against what holds between moments, the
-first change of sign along its trajectory, found by sampling and bisection to the crossing
-tolerance; any other comparison on a curve has no first contact that the engine can certify, and the
-run stops with a diagnostic that says what it certifies. Where the stores hold their rates between
-moments, a sum of them is a line, whose ends in the window certify its root. `any` and `all` of yes/no values are read through their members'
-comparisons; a sum is affine where its members are, and a count, a least or a greatest value of what
-moves is not. A keyed read whose key or members move changes by steps that the engine does not
-locate: a watched condition that reads one stops the run with a diagnostic. That time is a moment, and so is an event of a way that changes what a
-watched condition reads (a rate that jumps). The prediction holds within the window of the ways that
-it reads and is made again after it. A strict comparison whose difference moves has no first
-instant: the run stops with a diagnostic when such a condition is watched, never polling.
+values can change its answer (`predict`). Where a comparison is affine in what it reads and each
+read is a line (the time; a store on its line; a rate of the family or of the lines, which holds
+between their events), that is the root of its line: of a clock, the time that its other side
+gives; of one store on its line, its start plus its distance over its rate (their closed forms);
+`since(e)` is the time less the newest start, so it moves as the time does. So a condition on sets
+whose rates hold between moments is exact.
+
+**Values that turn** (PLAN, change 20). Where a read moves on a curve, the comparison is certified
+step by step (`_contact`). Its difference d, the left side less the right, is a sum of what moves
+with weights that hold between moments (`_weights`, which reads the still parts now), and its
+answer, read within its band b, can change only where d crosses -b (for `>=`, `<`, `==`, `!=`) or b
+(for `<=`, `>`, `==`, `!=`). The window is cut at the ends of the steps of the sets that it reads
+(`breaks`), and each piece is read from the form of their solutions (`motion`,
+`continuous/dense.py`: the cubic of a step of Radau's dense output, the closed form of compartments,
+or a line). The form gives the rate of d at the start of the piece, how far that rate can move over
+the piece, and the most that d can move over it (the bound on its rate over the piece, integrated
+over the piece), so:
+
+- an edge farther from d than the most that d can move over the piece, with the margins of what the
+  run reads and of roundoff, is not reached there: d at the start of the piece is the form's sum
+  and the parts that hold, read once at now, so a far piece costs no read;
+- where the rate of d keeps its sign over the piece, its ends decide, and a crossing is found by
+  bisection on the dense output to the crossing tolerance;
+- elsewhere d may turn near an edge: the piece is halved, and each half is read again from the same
+  output (no step of the integrator, no evaluation of a rate), until each piece is certain or
+  shorter than the crossing tolerance, whose end then decides.
+
+So an excursion inside one step is found, though the step's ends do not show it. A value that comes
+within b of its threshold without crossing it enters the band, and the moment there reads the
+condition within tolerance: a trigger fires there marked as a near-tie (below), or misses within
+tolerance. The run stops with a diagnostic that names what it cannot certify: a side that is no such
+sum (a product of moving values, a branch on one), a rate of a set that moves, a store of a set
+whose way gives no form (a declared solver whose problem moves: unless it alone is read and only
+rises or only falls, when the ends of the window decide), and a value that stays within roundoff of
+an edge for more than `_HALVINGS` halvings of one step. `any` and `all` of yes/no values are read
+through their members' comparisons; a sum is affine where its members are, and a count, a least or
+a greatest value of what moves is not. A keyed read whose key or members move changes by steps that
+the engine does not locate: a watched condition that reads one stops the run with a diagnostic.
+
+That time is a moment, and so is an event of a way that changes what a watched condition reads (a
+rate that jumps). The prediction holds within the window of the ways that it reads and is made again
+after it. A strict comparison whose difference moves has no first instant: the run stops with a
+diagnostic when such a condition is watched, never polling.
 
 **Near-ties** (change 10). A tiny difference can flip a discrete outcome; the engine does not
 compute it more precisely, it marks it. A condition whose answer was decided by a numeric comparison
@@ -85,16 +110,20 @@ from __future__ import annotations
 
 import heapq
 import math
+import sys
 from dataclasses import dataclass
+from itertools import pairwise
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...program.record import Unavailable
+from ..continuous import dense
+from ..continuous.dense import Motion
 from ..errors import SimulationError
 from .family import Family
 from .lines import Lines
 from .moment import Tx, near_ties
-from .plan import FORMULA, LOOKUP, RATE, REDUCE, ROUTE
+from .plan import FORMULA, LOOKUP, RATE, REDUCE
 from .reads import lazily
 
 # The comparisons of `napkin/core/expr`, as functions of the difference of their sides and of the
@@ -108,7 +137,18 @@ _COMPARE = {
     'ne': lambda d, band: abs(d) > band,
 }
 _CLOSED = {'le', 'ge', 'eq'}
-_SAMPLES = 32  # the points at which a curved difference is read in its window
+# The edges of the band at which the answer of each comparison can change: `low` where the difference
+# crosses -band (the answer of `d >= -band`), `high` where it crosses band (of `d <= band`).
+_EDGES = {
+    'ge': ('low',),
+    'lt': ('low',),
+    'le': ('high',),
+    'gt': ('high',),
+    'eq': ('low', 'high'),
+    'ne': ('low', 'high'),
+}
+_ROUNDOFF = 64 * sys.float_info.epsilon  # the roundoff of a difference, relative to its terms
+_HALVINGS = 4096  # the most halvings of one step that the prediction of a comparison reads
 AFTER = 1e-6  # hours after now at which a condition is read "just after"
 
 
@@ -493,14 +533,14 @@ class Triggers:
                 continue
             try:
                 start = self.side(left, now) - self.side(right, now)
-                end = self.side(left, until) - self.side(right, until)
+                linear = (
+                    self._linear(moving)
+                    and _affine(left, moving, self.plan)
+                    and _affine(right, moving, self.plan)
+                )
+                end = self.side(left, until) - self.side(right, until) if linear else None
             except (TypeError, ValueError):
                 continue  # sides that are no numbers
-            linear = (
-                self._linear(moving)
-                and _affine(left, moving, self.plan)
-                and _affine(right, moving, self.plan)
-            )
             if linear and start == end:
                 continue
             if strict and (op in _CLOSED) != positive:
@@ -518,18 +558,190 @@ class Triggers:
                 if abs(start) > self.band(left, right) and now < root <= until:
                     earliest = min(earliest, root)
                 continue
-            if not self._certified(left, right, moving):
-                raise SimulationError(
-                    f'the first contact of {nodes.text(left)} {_SPELLING[op]} {nodes.text(right)} cannot be '
-                    'certified: it reads a value that moves on a curve, and the engine certifies on a '
-                    'curve only a store, or a sum of stores, that only rises or only falls between '
-                    'moments, compared with what holds between them; use such a threshold or an '
-                    'inspection schedule'
-                )
-            root = self._search(left, right, now, until, self.band(left, right))
+            root = self._contact(left, op, right, moving, now, until, float(start))
             if root is not None:
                 earliest = min(earliest, root)
         return earliest, window
+
+    def _contact(self, left, op, right, moving, now, until, start):
+        """The first time in (now, until] at which a comparison of values on curves can change its
+        answer, read within its band, or None: step by step, each piece of a step skipped, decided by
+        its ends, or halved (see the module). `start` is its difference now."""
+        spelled = f'{nodes.text(left)} {_SPELLING[op]} {nodes.text(right)}'
+        band, crossing = self.band(left, right), self.plan.numerics.crossing
+        read = {now: start}
+
+        def difference(t):
+            # The difference as the run reads it at time t, on the dense output of its sets.
+            found = read.get(t)
+            if found is None:
+                found = read[t] = float(self.side(left, t)) - float(self.side(right, t))
+            return found
+
+        edges = _EDGES[op]
+        before = {edge: _side(edge, start, band) for edge in edges}
+        motion, breaks = self._forms(left, right, moving, now, until, spelled)
+        halvings, offset = [0], None
+
+        def first(s, e):
+            """The first change in (s, e], a piece inside one form of each read, where the answer has
+            not changed before s."""
+            piece = motion(s, e)
+            # The difference at s is the form's sum and the parts that hold, which the read now gives:
+            # within twice the margin of what the run reads, and the roundoff of each.
+            at = piece.value + offset
+            roundoff = _ROUNDOFF * (piece.size + abs(at) + abs(offset) + band)
+            reach = piece.change * (1 + _ROUNDOFF) + 2 * piece.margin + roundoff
+            near = [edge for edge in edges if abs(at - _EDGE[edge] * band) <= reach]
+            if not near:
+                return None  # every edge is farther than the difference can move here
+            if piece.spread == 0 or abs(piece.rate) > piece.spread or e - s <= crossing:
+                # Its rate keeps its sign (or the piece is within the crossing tolerance): its ends decide.
+                changed = [edge for edge in near if _side(edge, difference(e), band) != before[edge]]
+                if not changed or e - s <= crossing:
+                    return e if changed else None
+                return min(self._bisect(difference, edge, band, before[edge], s, e) for edge in changed)
+            halvings[0] += 1
+            if halvings[0] > _HALVINGS:
+                raise SimulationError(
+                    f'the first contact of {spelled} cannot be certified: its difference stays within '
+                    f'the roundoff of its threshold through {_HALVINGS} halvings of a step from '
+                    f't = {s:g} h; compare a value that moves away from its threshold, or use an '
+                    'inspection schedule'
+                )
+            middle = 0.5 * (s + e)
+            found = first(s, middle)
+            return found if found is not None else first(middle, e)
+
+        found = None
+        if motion is None:
+            # One store that only rises or only falls, whose way gives no form: the ends decide.
+            changed = [edge for edge in edges if _side(edge, difference(until), band) != before[edge]]
+            found = min(
+                (self._bisect(difference, edge, band, before[edge], now, until) for edge in changed),
+                default=None,
+            )
+        else:
+            points = [now, *breaks, until]
+            offset = start - motion(now, points[1]).value
+            for s, e in pairwise(points):
+                halvings[0] = 0
+                found = first(s, e)
+                if found is not None:
+                    break
+        # Two moments nearer than the crossing tolerance are one: a change just after now is read at
+        # the first instant that the engine tells apart from now.
+        return None if found is None else min(max(found, now + crossing), until)
+
+    def _forms(self, left, right, moving, now, until, spelled):
+        """How the difference of a comparison's sides moves through the window (see the module): a
+        function (s, e) -> its `Motion` over a piece inside one form of each read, and the times
+        inside the window at which a form changes; (None, ()) for one store that only rises or only
+        falls, of a way that gives no form. What the engine cannot bound stops the run by name."""
+        plan, ways = self.plan, self.run.ways
+        if not (_affine(left, moving, plan) and _affine(right, moving, plan)):
+            raise SimulationError(
+                f'the first contact of {spelled} cannot be certified: a side is no sum of what moves '
+                'between moments with weights that hold between them (it multiplies, divides by or '
+                'branches on such a value), so the engine has no bound on how far it moves in a step; '
+                'compare such a sum, or use an inspection schedule'
+            )
+        weights = self._weights(left, moving, now)
+        for name, weight in self._weights(right, moving, now).items():
+            weights[name] = weights.get(name, 0.0) - weight
+        live = [name for name, weight in weights.items() if weight != 0]
+        lines, curved, formless = [], {}, []  # lines: (weight, value, rate, since)
+        for name in live:
+            weight = weights[name]
+            if name == 't':
+                lines.append((weight, 0.0, 1.0, 0.0))
+                continue
+            if name in ways.set_of:
+                line = ways.linear(name)
+                instance = ways.instance_of(name)
+                if line is not None:
+                    lines.append((weight, *line))
+                elif hasattr(instance, 'motion'):
+                    curved.setdefault(instance, {})[name] = weight
+                else:
+                    formless.append(name)
+                continue
+            value = plan.values.get(name)
+            instance = ways.instance_of(name.rsplit('.', 1)[0])
+            held = (
+                instance is None or isinstance(instance, Family | Lines) or getattr(instance, 'lines', False)
+            )
+            if value is not None and value.kind == RATE and held:
+                continue  # a rate of the family or of the lines holds through the window
+            raise SimulationError(
+                f'the first contact of {spelled} cannot be certified: it reads {name}, which moves on a '
+                'curve that the engine does not bound between moments (a rate of a set whose rates move, '
+                'or a result of a solver whose problem moves); compare the stores that it moves, or use '
+                'an inspection schedule'
+            )
+        if formless:
+            if live == formless[:1] and ways.monotone(formless[0]):
+                return None, ()
+            raise SimulationError(
+                f'the first contact of {spelled} cannot be certified: it reads {formless[0]}, a store of a '
+                'set whose way gives the engine no form of its steps (a declared solver whose problem '
+                'moves), and is not one store that only rises or only falls; compare such a store, or use '
+                'an inspection schedule'
+            )
+        breaks = sorted({at for instance in curved for at in instance.breaks(now, until)})
+
+        def motion(s, e):
+            found = Motion()
+            for weight, value, rate, since in lines:
+                found += dense.line(weight * (value + rate * (s - since)), weight * rate, e - s)
+            for instance, part in curved.items():
+                found += instance.motion(part, s, e)
+            return found
+
+        return motion, breaks
+
+    def _weights(self, node, moving, t, scale=1.0, found=None):
+        """The weight of each moving name in an affine node (`_affine`), through formulas and the sums
+        of their kept entries: {name: weight}, with what holds between moments read at time t."""
+        plan = self.plan
+        found = {} if found is None else found
+        if not (_reads(node, plan) & (moving | {'t'})):
+            return found
+        if isinstance(node, nodes.Ref):
+            value = plan.values.get(node.name)
+            if node.name in moving or node.name == 't':
+                found[node.name] = found.get(node.name, 0.0) + scale
+            elif value is not None and value.kind == FORMULA and node.name not in self.run.frozen:
+                self._weights(value.node, moving, t, scale, found)
+            elif value is not None and value.kind == REDUCE:
+                names = plan.reductions[node.name].names  # a sum, which `_affine` admits
+                for k in self.run.kept_of(node.name):
+                    self._weights(nodes.ref(names[k]), moving, t, scale, found)
+        elif isinstance(node, nodes.Unary):
+            self._weights(node.operand, moving, t, -scale if node.op == 'neg' else scale, found)
+        elif node.op in ('add', 'sub'):
+            self._weights(node.left, moving, t, scale, found)
+            self._weights(node.right, moving, t, -scale if node.op == 'sub' else scale, found)
+        elif node.op == 'div':
+            self._weights(node.left, moving, t, scale / float(self.side(node.right, t)), found)
+        elif _reads(node.left, plan) & (moving | {'t'}):  # a product with one side that holds
+            self._weights(node.left, moving, t, scale * float(self.side(node.right, t)), found)
+        else:
+            self._weights(node.right, moving, t, scale * float(self.side(node.left, t)), found)
+        return found
+
+    def _bisect(self, difference, edge, band, before, low, high):
+        """The first time in (low, high] at which a difference that moves one way leaves the side
+        `before` of an edge, to within the crossing tolerance: bisection, which keeps the change
+        between its ends (the side at `low` is `before`, at `high` the other)."""
+        crossing = self.plan.numerics.crossing
+        while high - low > crossing:
+            middle = 0.5 * (low + high)
+            if _side(edge, difference(middle), band) == before:
+                low = middle
+            else:
+                high = middle
+        return high
 
     def _exact_root(self, left, right, moving, now):
         """The root of a clock (`t` against what holds between moments), which is the time that the
@@ -555,45 +767,6 @@ class Triggers:
             leaves = plan.reads_now(plan.expansion(part)).leaves | plan.expansion(part).stepped
             found |= {leaf for leaf in leaves if leaf in plan.keyed and plan.lookup_moves(leaf, ways.set_of)}
         return sorted(found)
-
-    def _certified(self, left, right, moving):
-        """Whether the first contact of a comparison on a curve is certain to be found, so that the
-        difference changes its sign once at most: one side holds between moments, and the other is
-        affine in a single store that only rises or only falls through the window, or is a sum of
-        stores (each added, or each subtracted) whose total only rises or only falls (`_monotone`),
-        as the books of a transfer are (`waiting + served`)."""
-        plan, ways = self.plan, self.run.ways
-        if not moving or any(name not in ways.set_of for name in moving):
-            return False
-        sides = [part for part in (left, right) if _reads(part, plan) & moving]
-        if len(sides) != 1 or not _affine(sides[0], moving, plan):
-            return False
-        if len(moving) == 1:
-            return ways.monotone(next(iter(moving)))
-        signs = _signs(sides[0], moving, plan)
-        return signs is not None and len(set(signs.values())) == 1 and self._monotone(set(signs))
-
-    def _monotone(self, stores):
-        """Whether the total of some stores only rises or only falls between moments: every
-        connection of their sets that meets one of them and no other crosses the boundary of the
-        group in one direction, or none does, and no route crosses it (its signed rate moves the
-        total either way). What moves inside the group leaves the total as it is."""
-        ways, plan = self.run.ways, self.plan
-        directions = set()
-        for key in {ways.set_of[store] for store in stores}:
-            for flow in ways.sets[key][0].flows:
-                found = plan.flows[flow]
-                if found.kind == ROUTE:
-                    if (found.source in stores) != (found.sink in stores):
-                        return False
-                    continue
-                for connection in found.connections:
-                    inside = (connection.source in stores, connection.sink in stores)
-                    if inside == (True, False):
-                        directions.add('out')
-                    elif inside == (False, True):
-                        directions.add('in')
-        return len(directions) <= 1
 
     def _window(self, moving):
         """The time until which the trajectories of the moving reads hold: the next moment that the
@@ -627,35 +800,15 @@ class Triggers:
                 return False
         return True
 
-    def _search(self, left, right, now, until, band):
-        """The first change of sign of a curved difference in (now, until]: sampled, then bisected to
-        the crossing tolerance; None when none is found."""
-        crossing = self.plan.numerics.crossing
-
-        def sign(t):
-            d = float(self.side(left, t)) - float(self.side(right, t))
-            return 0 if abs(d) <= band else (1 if d > 0 else -1)
-
-        times = [now + (until - now) * k / _SAMPLES for k in range(1, _SAMPLES + 1)]
-        first = sign(now)
-        if first == 0:
-            first = sign(times[0])
-        before = now
-        for at in times:
-            if sign(at) != first:
-                low, high = before, at
-                while high - low > crossing:
-                    middle = 0.5 * (low + high)
-                    if sign(middle) == first:
-                        low = middle
-                    else:
-                        high = middle
-                return high if high > now else None
-            before = at
-        return None
-
 
 _SPELLING = {'le': '<=', 'ge': '>=', 'lt': '<', 'gt': '>', 'eq': '==', 'ne': '!='}
+_EDGE = {'low': -1.0, 'high': 1.0}  # the place of each edge of a band, in bands
+
+
+def _side(edge, difference, band):
+    """The side of an edge of the band on which a difference lies: whether `difference >= -band` for
+    the low edge, and whether `difference <= band` for the high one (`_COMPARE`)."""
+    return difference >= -band if edge == 'low' else difference <= band
 
 
 def _affine(node, moving, plan):
@@ -689,37 +842,6 @@ def _affine(node, moving, plan):
         if node.op == 'div':
             return still[1] and _affine(node.left, moving, plan)
     return not (_reads(node, plan) & (moving | {'t'}))
-
-
-def _signs(node, moving, plan):
-    """The sign with which a node that is a sum adds each moving name that it reads, through formulas
-    and sums of collections: +1 or -1, or None when it is no plain sum of them (a name read twice,
-    or scaled, or under any operation but `+` and `-`)."""
-    found = {}
-    pending = [(node, 1)]
-    while pending:
-        part, sign = pending.pop()
-        if not (_reads(part, plan) & moving):
-            continue
-        if isinstance(part, nodes.Ref):
-            value = plan.values.get(part.name)
-            if part.name in moving:
-                if part.name in found:
-                    return None
-                found[part.name] = sign
-            elif value is not None and value.kind == FORMULA:
-                pending.append((value.node, sign))
-            elif value is not None and value.kind == REDUCE and plan.reductions[part.name].op == 'sum':
-                pending += [(nodes.ref(name), sign) for name in plan.reductions[part.name].names or ()]
-            else:
-                return None
-        elif isinstance(part, nodes.Unary) and part.op in ('neg', 'pos'):
-            pending.append((part.operand, -sign if part.op == 'neg' else sign))
-        elif isinstance(part, nodes.Binary) and part.op in ('add', 'sub'):
-            pending += [(part.left, sign), (part.right, -sign if part.op == 'sub' else sign)]
-        else:
-            return None
-    return found
 
 
 def _reads(node, plan):

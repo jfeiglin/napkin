@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 
+import mpmath
 import pytest
 
 from napkin.engine import read, run
@@ -187,8 +188,8 @@ def test_the_capacity_of_a_store_with_one_flow_caps_that_flow(limit, rate):
 
 BOOKS = 'assert service.waiting + service.served in [service.users - 0.001 person, service.users + 0.001 person]\n'
 # The spec writes a sum that must hold as such an assertion ("Assertions and their timing"). The serve
-# moves the users on a curve; the engine certifies the first contact of the sum, whose total only falls
-# or only rises (`triggers.py`, `_monotone`).
+# moves the users on a curve; the engine certifies the first contact of the sum step by step
+# (`PLAN.md`, change 20), also where its total rises and falls.
 
 
 def test_an_assertion_of_a_sum_holds_while_the_flows_keep_their_stores():
@@ -219,9 +220,12 @@ def test_an_assertion_of_a_sum_of_stores_on_lines_is_certified_by_its_ends():
     assert record.failure is not None and record.failure.t == pytest.approx(0.001, rel=1e-9)
 
 
-def test_a_sum_of_stores_whose_total_moves_both_ways_is_not_certified():
+def test_a_sum_of_stores_whose_total_moves_both_ways_fails_where_it_leaves_its_range():
     """A fill into the waiting users and a leak out of the served: the total rises by one flow and
-    falls by the other, so its sign may change more than once, and the run stops by name."""
+    falls by the other, and the engine certifies it step by step (change 20). By hand, waiting =
+    1000 e^(0.05 t) and served = 1000 (e^(0.05 t) - 1) - t, so the total less the users is
+    2000 (e^(0.05 t) - 1) - t, which leaves the range of 0.001 person, widened by the comparison's
+    tolerance of 1e-7, at its first root: about 1.0102e-5 h."""
     both = (
         SERVE
         + '    flow fill: SOURCE -> this.waiting\n        request = formula(this.waiting / 10 h)\n'
@@ -229,7 +233,6 @@ def test_a_sum_of_stores_whose_total_moves_both_ways_is_not_certified():
     )
     model = compile_text(SERVICE.format(parts=both) + BOOKS, UNITS)
     record = run(model.program, model.configuration)
-    assert record.failure is not None and record.failure.t == 0
-    assert 'only a store, or a sum of stores, that only rises or only falls' in record.failure.detail(
-        'message'
-    )
+    root = float(mpmath.findroot(lambda t: 2000 * (mpmath.exp(0.05 * t) - 1) - t - (0.001 + 1e-7), 1e-5))
+    assert record.failure is not None
+    assert float(record.failure.t) == pytest.approx(root, abs=1e-8)

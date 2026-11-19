@@ -6,5 +6,7 @@
 - `bounds`: state checks, balanced roundoff, active bounds and stock faces;
 - `kernels`: the segment classifier and the exact affine and compartment solutions;
 - `integrate`: roots and the numerical segment;
-- `segment`: the step between two moments, which chooses among them.
+- `segment`: the step between two moments, which chooses among them;
+- `dense`: how a weighted sum of stores moves over a piece of a segment, from the form of its
+  solution, which bounds the first contact of a condition on values that turn.
 """

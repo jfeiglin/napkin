@@ -49,13 +49,14 @@ def queue(check):
 
 def test_a_transient_breach_of_an_assertion_cannot_hide_inside_a_segment():
     # A' = -A, W' = A - W, A(0) = 10, W(0) = 0: W(t) = 10 t exp(-t), which peaks at 10/e at 1 h.
-    # The assertion W <= 3 holds at 0 h and at 12 h and breaks inside. W rises and falls, so the
-    # engine cannot certify its first contact: the run stops at its start with a diagnostic, and
-    # never reports the 0 h and 12 h samples as if the assertion held.
+    # The assertion W <= 3 holds at 0 h and at 12 h and breaks inside. W rises and falls, and the
+    # engine certifies its first contact step by step (PLAN, change 20): the run fails at the first
+    # root of 10 t exp(-t) = 3, and never reports the 0 h and 12 h samples as if the assertion held.
     assert 10 / math.e > 3 > 120 * math.exp(-12)
     record = queue(lambda this: this.waiting <= q(3, 'person'))
-    assert record.failure.t == 0
-    assert 'cannot be certified' in record.failure.detail('message')
+    breach = brentq(lambda x: 10 * x * math.exp(-x) - 3, 0, 1, xtol=1e-14)
+    assert record.failure.t == pytest.approx(breach, abs=1e-6)
+    assert 'the assertion does not hold' in record.failure.detail('message')
     # The served count only rises: S(t) = 10 (1 - (1 + t) e^-t) reaches 9 at its one root.
     first = brentq(lambda x: 10 * (1 - (1 + x) * math.exp(-x)) - 9, 1, 12, xtol=1e-14)
     record = queue(lambda this: this.served <= q(9, 'person'))

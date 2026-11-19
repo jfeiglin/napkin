@@ -65,6 +65,18 @@ JUNCTIONS = """
                 b.actual_rate
                 c.actual_rate
     """
+# The worked junctions with a solver that names only the upstream feed (change 19): the solver decides
+# the feed, and the two junctions keep their local sharing, so A, B and C get 1/2, 1/4 and 1/4.
+UPSTREAM = (
+    JUNCTIONS[: JUNCTIONS.index('    provider:')]
+    + """    provider:
+        upstream = solver:
+            inputs:
+                feed = first.feed
+            solve_for:
+                feed.actual_rate
+    """
+)
 NETWORK = """
     Reading:
         input hour: h = 0
@@ -296,6 +308,7 @@ DISTANCE = """
     """
 SOURCES = {
     'two_junctions_solver': (JUNCTIONS, None),
+    'two_junctions_upstream_solver': (UPSTREAM, None),
     'network': network(),
     'network_clinic_first': network(clinic_first=True),
     'network_unequal': network(supply=4, clinic=2),

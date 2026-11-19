@@ -23,21 +23,26 @@ the segments of the set one after the other.
   that gives the state through it and the states at its two ends, the last with the bounds that it
   reaches settled. While the segment is the present one, `delivered` gives the rates that its flows
   deliver at times inside it: the bounds and faces of the segment hold then.
+- `ComponentWay`: the set as a way of a run. Beside the values of its next segment, it gives the
+  form of that segment to the reader of a condition that watches its stores (`breaks`, `motion`;
+  `continuous/dense.py`): a line, the closed form of compartments, or the solver's steps, each the
+  cubic of its dense output.
 """
 
 from __future__ import annotations
 
 import copy
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
 from ...core.errors import ExpressionError
 from ..allocation import Allocation
+from ..continuous import dense
 from ..continuous.bounds import check_bounds, correct_boundary_roundoff, refresh_bounds
 from ..continuous.fields import Field
-from ..continuous.kernels import Affine
+from ..continuous.kernels import Affine, MatrixExponential
 from ..continuous.segment import advance
 from ..continuous.system import Context, solver_step
 from ..continuous.system import Run as State
@@ -379,6 +384,7 @@ class ComponentWay:
         self.run, self.key, self.connected = run, key, connected
         self.stores, self.flows = list(connected.stores), list(connected.flows)
         self.alive, self.pending, self.still = True, None, 0
+        self._drift = None  # the rates of the stores at the present state, once read (`drift`)
         stores = connected.stores
         sources = {plan.flows[flow].source for flow in connected.flows}
         sinks = {plan.flows[flow].sink for flow in connected.flows}
@@ -487,6 +493,7 @@ class ComponentWay:
         """At a key time: the keyed reads by the time take their values there."""
         self.cut(t)
         self._stepped(t)
+        self._drift = None
 
     def retire(self, key):
         """The set leaves the run's ways."""
@@ -515,6 +522,7 @@ class ComponentWay:
         component = self.component
         self.run.recorder.segment(component, segment, component.system.state_ids, self.rates)
         component.proceed(segment)
+        self._drift = None
 
     def snap(self):
         """The next event at the time of a moment: committed as any other, with what it changes."""
@@ -539,12 +547,28 @@ class ComponentWay:
         return segment.last if segment.end <= segment.start else segment.solution(t)
 
     def level_at(self, store, t):
-        """The value of a store at time t: at the present time, or inside the next segment."""
+        """The value of a store at time t: at the present time, inside the next segment, or, before
+        that segment is made (at a moment), along the store's present rate (`drift`)."""
         segment, state = self.pending, self.component.state
         k = self.place[store]
+        if segment is None and t > state.time:
+            return float(state.y[k] + (t - state.time) * self.drift()[k])
         if segment is None or t <= segment.start:
             return float(state.y[k])
         return float(self.component.context.project(self._state(segment, min(t, segment.end)))[k])
+
+    def drift(self):
+        """The rate of each store at the present state: what a condition read an instant after a moment
+        (`triggers.AFTER`) follows before the next segment is made, as a line follows its rate. The
+        evaluation counts for no budget of the run."""
+        if self._drift is None:
+            state = self.component.state
+            evaluations = state.evaluations
+            try:
+                self._drift = np.array(self.component.field.rates(state.time, state.y), dtype=float)
+            finally:
+                state.evaluations = evaluations
+        return self._drift
 
     def rate_at(self, name, t):
         """The actual rate of a flow at time t."""
@@ -570,6 +594,40 @@ class ComponentWay:
         if isinstance(segment.solution, Affine):
             return float(segment.first[k]), float(segment.solution.slope[k]), float(segment.start)
         return None
+
+    def breaks(self, start, end):
+        """The times strictly between start and end at which the form of the next segment changes: the
+        ends of the steps of its solver."""
+        segment = self.pending
+        if segment is None or segment.numerical is None:
+            return []
+        return [float(at) for at in segment.numerical.t.tolist() if start < at < end]
+
+    def motion(self, weights, start, end):
+        """How the sum of the stores of `weights` ({store: weight}) moves from start to end, a piece
+        inside one form of the next segment (`continuous/dense.py`). The run reads a store within its
+        slack of a bound on the bound (`Context.project`): that is the margin of what it reads."""
+        segment, state = self.pending, self.component.state
+        rows = np.array([self.place[name] for name in weights], dtype=np.int64)
+        w = np.array(list(weights.values()), dtype=float)
+        _, _, slack, atol = self.component.system.bounds
+        margin = float(np.abs(w) @ np.maximum(slack[rows], atol[rows]))
+        if segment is None or segment.end <= segment.start:
+            found = dense.held((state.y if segment is None else segment.last)[rows], w)
+        elif isinstance(segment.solution, Affine):
+            rate = float(w @ segment.solution.slope[rows])
+            found = replace(
+                dense.held(segment.solution(start)[rows], w), rate=rate, change=abs(rate) * (end - start)
+            )
+        elif isinstance(segment.solution, MatrixExponential):
+            found = dense.of_exponential(segment.solution, rows, w, start, end)
+        else:
+            # The step of the solver that holds the piece: the one around its middle.
+            solution = segment.solution
+            k = int(np.searchsorted(solution.ts, 0.5 * (start + end), side='right')) - 1
+            output = solution.interpolants[min(max(k, 0), len(solution.interpolants) - 1)]
+            found = dense.of_step(output, rows, w, start, end)
+        return replace(found, margin=margin)
 
 
 def _cut(numerical, t):

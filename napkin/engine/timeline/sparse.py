@@ -33,7 +33,8 @@ says that the rates chatter there and names the stores and the flows.
 
 The recorder takes the pieces of the stores and of what the network gives of each flow (an actual
 rate, a route's signed rate, a served fraction) that the record keeps, fitted step by step to the
-step's dense output (`record.fitted`).
+step's dense output (`record.fitted`). A reader of a condition that watches the stores reads the
+form of the next step (`motion`: the cubic of its dense output, `continuous/dense.py`).
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ from scipy.integrate import Radau
 from ...core import arrays
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
-from ..continuous import integrate
+from ..continuous import dense, integrate
 from ..errors import SimulationError
 from .collections import combined, looked_up, selected
 from .lines import asked_of
@@ -265,6 +266,7 @@ class Sparse:
         self.sets, self.set_levels = sets, levels  # which a checkpoint names (`saved.py`)
         self.key, self.alive = key, True
         self.solver, self.pending = None, None
+        self._drift = None  # the rates of the stores at the present state, once read (`drift`)
         self.run, self.recorder = run, run.recorder
         stores = [store for connected in sets for store in connected.stores]
         place = self.place = {name: k for k, name in enumerate(stores)}
@@ -641,7 +643,7 @@ class Sparse:
     def step(self):
         """Commit the next step: the stores and the rates of the set move through it."""
         start, end, solution, y, ended = self.pending
-        self.pending = None
+        self.pending, self._drift = None, None
         self._record(solution, start, end)
         self.t, self.y = end, y
         self.run.now = end
@@ -658,7 +660,7 @@ class Sparse:
         """The run stands at time t inside the next step: the step up to t is committed, and the
         solver starts again from there. It starts again at every moment, even at the end of one of its
         steps, so that no state of the solver crosses a moment (`saved.py`)."""
-        self.solver = None
+        self.solver, self._drift = None, None
         if self.pending is None or t >= self.pending[1]:
             return
         start, _, solution, _, _ = self.pending
@@ -669,11 +671,26 @@ class Sparse:
         self.t, self.y = float(t), np.array(solution(t), dtype=float)
 
     def level_at(self, store, t):
-        """The value of a store at time t: at the present time, or inside the next step."""
+        """The value of a store at time t: at the present time, inside the next step, or, before that
+        step is made (at a moment), along the store's present rate (`drift`)."""
         k = self.place[store]
+        if self.pending is None and t > self.t:
+            return float(self.y[k] + (t - self.t) * self.drift()[k])
         if self.pending is None or t <= self.pending[0]:
             return float(self.y[k])
         return float(self.pending[2](min(t, self.pending[1]))[k])
+
+    def drift(self):
+        """The rate of each store at the present state: what a condition read an instant after a moment
+        (`triggers.AFTER`) follows before the next step is made, as a line follows its rate. The
+        evaluation counts for no budget of the run."""
+        if self._drift is None:
+            evaluations = self.evaluations
+            try:
+                self._drift = self.field(self.t, self.y)
+            finally:
+                self.evaluations = evaluations
+        return self._drift
 
     def rate_at(self, name, t):
         """What the network gives of a flow at time t (an actual rate, a route's signed rate or a
@@ -692,6 +709,19 @@ class Sparse:
     def linear(self, store):
         """A store of the sparse integrator moves on a curve."""
         return None
+
+    def breaks(self, start, end):
+        """None: the next step of the solver is one form, the cubic of its dense output."""
+        return []
+
+    def motion(self, weights, start, end):
+        """How the sum of the stores of `weights` ({store: weight}) moves from start to end inside the
+        next step, from its dense output (`continuous/dense.py`), which the run reads as it is."""
+        rows = np.array([self.place[name] for name in weights], dtype=np.int64)
+        w = np.array(list(weights.values()), dtype=float)
+        if self.pending is None:
+            return dense.held(self.y[rows], w)
+        return dense.of_step(self.pending[2], rows, w, start, end)
 
     def advance(self, until):
         """The set from its time to `until`, step by step."""
