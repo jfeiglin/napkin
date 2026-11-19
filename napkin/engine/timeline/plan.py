@@ -75,7 +75,9 @@ continuous engine and the record read these names; nothing reads the spelling of
   (`tank.receive#0.remaining`), its flows and their legs take the next creation numbers, and its
   bare names are its `Frame`. `replay` makes the occurrences of a record again, for a reader.
 - **Dynamic reads.** A read of a collection whose members change in a run (`Dynamic`): the
-  occurrences of an event (`count(this.refill.occurrences)`, `.occurrences.at(t)`, `since(e)`) and,
+  occurrences of an event (`count(this.refill.occurrences)`, `.occurrences.at(t)`, the time of the
+  newest start, which `since(e)` reads: `since(e)` is the node `t - ` that time, so it moves as the
+  time does) and,
   when events own flows, the flows of an endpoint and its actual rate. `members` gives the members
   now, `members_at` at a time of a record, and `project` the value that a member projects.
 - **Assertions** over inputs (`asserts`) are checked once, at the start of the run; an assertion that
@@ -1126,11 +1128,15 @@ class Plan:
         names, binding = {}, {}
         for name, read in expression.reads:
             if isinstance(read, Time):
-                names[name], binding[name] = nodes.ref('t'), 't'
+                names[name] = nodes.ref('t')
+                if binding is not None:
+                    binding[name] = 't'
             elif isinstance(read, Path):
                 point = self.resolve(read, scope, origin, item)
                 if point[0] == 'value':
-                    names[name], binding[name] = nodes.ref(point[1]), point[1]
+                    names[name] = nodes.ref(point[1])
+                    if binding is not None:
+                        binding[name] = point[1]
                 elif point[0] in ('member', 'occurrence'):
                     names[name], binding = nodes.const(point[1]), None
                 else:
@@ -1161,8 +1167,9 @@ class Plan:
                 point = self.resolve(read.event, scope, origin, item)
                 if point[0] != 'event':
                     raise Outside(f'{origin}: {spelled(read)} of what is no event (a type error)')
-                found = self._dynamic(read, 'since', ('occurrences', point[1], point[2]), (), scope, item)
-                names[name], binding = nodes.ref(found), None
+                # The time since the newest start moves as the time does: the time less that start.
+                found = self._dynamic(read, 'latest', ('occurrences', point[1], point[2]), (), scope, item)
+                names[name], binding = nodes.binary('sub', nodes.ref('t'), nodes.ref(found)), None
             else:
                 raise Outside(f'{origin}: the read {spelled(read)} (S4)')
         node = _renamed(expression.node, names)
@@ -1626,7 +1633,7 @@ class Plan:
         dynamic = self.dynamic[name]
         found = set()
         for point in self.members_ever(dynamic.source):
-            if dynamic.steps and dynamic.op != 'since':
+            if dynamic.steps:
                 found.add(self.project(point, dynamic.steps))
             owner = point[1] if point[0] == 'occurrence' else self.occurrence_of(point[1])
             if owner is not None:
@@ -1784,7 +1791,7 @@ class Plan:
                 continue
             seen.add(name)
             dynamic = self.dynamic[name]
-            if dynamic.op == 'since' or not dynamic.steps:
+            if not dynamic.steps:
                 continue
             for point in self.members(dynamic.source):
                 inner = self.expanded(self.project(point, dynamic.steps))

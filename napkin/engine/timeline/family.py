@@ -21,8 +21,10 @@ piece of a request or a capacity that is a formula at each change of its value: 
 
 `Columns` gives the values of engine names at a time as arrays: a formula that the members of a
 template share is evaluated once over the rows (`napkin/core/arrays.values`) with each of its names
-read as a column, and any other value is read from the start of the run, or from the keyed read by
-the time that holds it.
+read as a column when the evaluation first reads it, and any other value is read from the start of
+the run, or from the keyed read by the time that holds it. A column with no value for a row that
+another row's branch reads makes each row evaluate by itself, reading only its own branch
+(`reads.py`).
 """
 
 from __future__ import annotations
@@ -33,10 +35,11 @@ import math
 import numpy as np
 
 from ...core import arrays
-from ...expressions import evaluate
+from ...core.errors import ExpressionError
 from ..errors import SimulationError
 from .collections import combined
 from .plan import FORMULA, LOOKUP, REDUCE
+from .reads import Reads, lazily
 
 
 class Columns:
@@ -53,9 +56,7 @@ class Columns:
         value = plan.values.get(name)
         kind = value.kind if value is not None else None
         if kind == FORMULA:
-            env = {read: self.one(read, t) for read in sorted(plan.reads(name))}
-            env['t'] = float(t)
-            return evaluate(value.node, env, plan.units)
+            return lazily(value.node, lambda read: self.one(read, t), plan.units, t)
         if kind == REDUCE:
             reduction = plan.reductions[name]
             entries = run.kept_of(name)
@@ -80,11 +81,17 @@ class Columns:
                 found[name] = self.one(name, t)
         for members in groups.values():
             first = plan.values[members[0]]
-            env = {}
-            for read, _ in first.binding:
-                column = self.at([dict(plan.values[name].binding)[read] for name in members], t)
-                env[read] = column
-            computed = arrays.values(first.shape, env, plan.units, len(members))
+            columns = {
+                read: [dict(plan.values[name].binding)[read] for name in members] for read, _ in first.binding
+            }
+            # A column is made when the evaluation over the rows first reads it (`reads.py`).
+            env = Reads(frozenset(columns), lambda read, columns=columns: self.at(columns[read], t))
+            try:
+                computed = arrays.values(first.shape, env, plan.units, len(members))
+            except ExpressionError:
+                # A column with no value for some row, which another row's branch reads: each row by
+                # itself reads only its own branch.
+                computed = [self.one(name, t) for name in members]
             computed = np.broadcast_to(np.asarray(computed), (len(members),))
             for name, number in zip(members, computed.tolist()):
                 found[name] = number

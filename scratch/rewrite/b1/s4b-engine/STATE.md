@@ -39,6 +39,20 @@ Baseline: part one committed (8d5ae95); 3,472 live tests.
 - oracle demands categorical weights that add up to one; the checker admits any nonnegative weights.
 - part one: a rate that reads `since(e)` is held between moments; its actual rate is not recorded.
 
+## Fixes after the join (fcbf97a; coordinator's two bugs) — done
+- `since(e)` is the node `t - latest` (Dynamic op `latest`: the newest start, fails before the
+  first): its set moves, its contact is predicted as one on `t`, its rate is recorded.
+- Every evaluation reads lazily (`timeline/reads.py`, `Reads`/`lazily`): run (stage, formula,
+  delay; the start retries on `_Unknown`), triggers' sides, collections' tests and keys, recorder
+  and reader, family/lines `Columns` (lazy columns; per-row fallback), sparse `Vector` (lazy
+  columns and reads, NaN for constants with none, per-row fallback), component (a parameter with
+  none is left out with its reason; `continuous/system.Formulas` evaluates formulas where read;
+  the zero proof and the closed forms fall back where a fixed part has none).
+- Fixed in passing: `plan._bound` crashed when a read with no shape preceded a path or `t`.
+- tests: test_lazy_reads.py (11; each way; oracle where it can); random event programs now guard
+  stages and triggers with `count(e) > 0 and since(e) >= d` (300, 2000 deep, all pass).
+- oracle departure seen: it does not move a store whose rate reads `t` (holds the rate of the moment).
+
 ## Not done
 - assignment of a formula or a collection in a stage (refused "(S4)"); keyed reads of moving values
   and keys (part one's refusals, "(S4)").

@@ -27,16 +27,20 @@ watched too, since the first instant at which an assertion fails exists for eith
 an actual rate, the time) holds within the tolerance of what it reads (spec: a crossing counts as
 reached within the numerical tolerance of the quantity that it reads): `x <= c` holds while
 `x - c` is at most that tolerance. A comparison of what holds between moments is exact. A boolean
-formula is read through its expression, so its comparisons are read the same way.
+formula is read through its expression, so its comparisons are read the same way. `and` and `or`
+read their terms left to right up to the one that decides, a conditional its selected side, and a
+side its names as its evaluation asks for them (`reads.py`): a read with no value on a side that is
+not taken (`since(e)` before the first start) fails nothing, and a comparison on such a side has no
+contact to predict until it can be read.
 
 **When an answer can change.** What holds between moments changes at the commits and settlings of
 the moments, and every condition is read in every round. Between moments, each watched condition
 (the condition of every trigger, the reset of a disarmed trigger, the gate of a waiting occurrence,
 each assertion over state) gives the first time after now at which one of its comparisons on moving
-values can change its
-answer (`predict`): on lines, where a comparison is affine in what it reads, the root of a line
-(of a clock, the time that its other side gives; of one store on its line, its start plus its
-distance over its rate: their closed forms; the time since a start moves as the time does); else,
+values can change its answer (`predict`): on lines, where a comparison is affine in what it reads,
+the root of a line (of a clock, the time that its other side gives; of one store on its line, its
+start plus its distance over its rate: their closed forms; `since(e)` is the time less the newest
+start, so it moves as the time does); else,
 where the comparison is affine in one store that only rises or only falls through the window
 (it only supplies or only receives the flows of its set) against what holds between moments, the
 first change of sign along its trajectory, found by sampling and bisection to the crossing
@@ -56,13 +60,13 @@ from dataclasses import dataclass
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
-from ...expressions import evaluate
 from ...program.record import Unavailable
 from ..errors import SimulationError
 from .family import Family
 from .lines import Lines
 from .moment import Tx
 from .plan import FORMULA, RATE
+from .reads import lazily
 
 # The comparisons of `napkin/core/expr`, as functions of the difference of their sides and of the
 # tolerance of what they read.
@@ -141,11 +145,9 @@ class Triggers:
         return self.side(node, t)
 
     def side(self, node, t):
-        """The value of a side of a comparison at time t."""
-        run = self.run
-        env = {name: _known(run.value(name, t)) for name in nodes.names(node) if name != 't'}
-        env['t'] = float(t)
-        return evaluate(node, env, self.plan.units)
+        """The value of a side of a comparison at time t, which reads only what its evaluation takes
+        (`reads.py`)."""
+        return lazily(node, lambda name: self.run.value(name, t), self.plan.units, t)
 
     def band(self, *parts):
         """The tolerance of what the sides of a comparison read that moves between moments: the
@@ -173,8 +175,6 @@ class Triggers:
                 value = plan.values.get(name)
                 if name in run.ways.set_of or (value is not None and value.kind == RATE):
                     found.add(name)
-                elif name in plan.dynamic and plan.dynamic[name].op == 'since':
-                    found.add(name)  # the time since a start moves as the time does
                 elif name in plan.delays and plan.delay_moves(name):
                     found.add(name)  # the past of a value that moves
         return found

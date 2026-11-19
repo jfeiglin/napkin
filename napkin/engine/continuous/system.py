@@ -8,7 +8,10 @@ them:
 - the numerical settings: the step cap of a numerical segment (`step_cap`), the longest step of its
   solver (`solver_step`) and the settings as the record of the run gives them (`run_settings`);
 - a `Context`: the formulas at a time and a state (`environment`, in their order), the projection
-  of a dense state onto the bounds that its accuracy admits, the diagnostics, and the settings;
+  of a dense state onto the bounds that its accuracy admits, the diagnostics, and the settings. A
+  formula is evaluated by one generated program of them all; where that fails, each is evaluated
+  where a rate reads it (`Formulas`), so a formula or a value of the run on a side that the rate does
+  not take fails nothing (spec: a conditional evaluates only its selected side);
 - the `Run`: the time, the state, the store of the values that do not move, and the bounds and
   faces that hold the state in the present segment.
 
@@ -19,10 +22,12 @@ run's own: `Numerics.crossing` of its configuration, which a system holds as `cf
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import numpy as np
 
+from ...core.errors import ExpressionError
 from ...expressions import compile_program, evaluate
 
 
@@ -61,12 +66,15 @@ class Context:
     diagnostics of the run and its numerical settings.
 
     `formulas` are (name, node) in an order in which each formula comes after those that it reads.
-    `values` are the inputs and the other values that do not move."""
+    `values` are the inputs and the other values that do not move; `missing` are those that have no
+    value, with the reason, which a rate that reads one fails with."""
 
-    def __init__(self, states, values, formulas, units, bounds, settings):
+    def __init__(self, states, values, formulas, units, bounds, settings, missing=None):
         self.states = tuple(states)
         self.values = dict(values)
+        self.missing = dict(missing or {})
         self.order = list(formulas)
+        self._formulas = dict(self.order)
         self.units = units
         self.bounds = bounds  # (lower, upper, lower slack, upper slack)
         self.settings = settings
@@ -86,7 +94,7 @@ class Context:
 
     def environment(self, t, y, store):
         """The values that a rate reads at time t and state y: the inputs, the store, the state and
-        each formula."""
+        each formula, all of them from the generated program, or else each when it is read."""
         env = {**self.values, **dict(zip(self.states, map(float, y))), **store, 't': float(t)}
         if self._program is None:
             self._program = self._compile(store)
@@ -95,11 +103,9 @@ class Context:
                 self._program(env, self.units)
                 return env
             except (ArithmeticError, ValueError, TypeError, KeyError):
-                # The interpreter names the formula that fails.
+                # A formula on a side that no rate takes may fail: each is evaluated where it is read.
                 env = {**self.values, **dict(zip(self.states, map(float, y))), **store, 't': float(t)}
-        for name, node in self.order:
-            env[name] = evaluate(node, env, self.units)
-        return env
+        return Formulas(env, self._formulas, self.missing, self.units)
 
     def project(self, state):
         """A dense state with its roundoff at a bound put on the bound: within the lower slack below
@@ -109,6 +115,34 @@ class Context:
         state = np.array(state, dtype=float)
         state = np.where((state < lower) & (state >= lower - lower_slack), lower, state)
         return np.where((state > upper) & (state <= upper + upper_slack), upper, state)
+
+
+class Formulas(Mapping):
+    """The values that a rate reads (`env`), with each formula evaluated when it is first read and
+    then kept; a value that the run has none of (`missing`) raises its reason where it is read."""
+
+    def __init__(self, env, formulas, missing, units):
+        self.env, self.formulas, self.missing, self.units = env, formulas, missing, units
+
+    def __getitem__(self, name):
+        if name in self.env:
+            return self.env[name]
+        if name in self.formulas:
+            found = self.env[name] = evaluate(self.formulas[name], self, self.units)
+            return found
+        if name in self.missing:
+            raise ExpressionError(self.missing[name])
+        raise KeyError(name)
+
+    def __contains__(self, name):
+        return name in self.env or name in self.formulas or name in self.missing
+
+    def __iter__(self):
+        # The names that have values: a value that has none is no name that a proof may take.
+        return iter({*self.env, *self.formulas})
+
+    def __len__(self):
+        return len({*self.env, *self.formulas})
 
 
 @dataclass

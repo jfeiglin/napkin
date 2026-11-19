@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from ...core.errors import ExpressionError
 from .bounds import depart_faces, hold_zero_faces, rounded_faces
 from .integrate import numerical_segment, release_root, segment_roots
 from .kernels import Classifier, affine_segment, compartment_solution
@@ -56,11 +57,17 @@ def advance(system, run, field, watcher, context, end):
             descriptors.append(('release', (i, 'min')))
     hold_zero_faces(s, run, velocity)
     classifier = Classifier(s, run, environment)
-    exact = affine_segment(s, run, classifier, departures, derivative, descriptors, end, environment)
-    if exact is None:
-        exact, repayment_surfaces = compartment_solution(
-            s, run, field, classifier, departures, end, descriptors
-        )
+    try:
+        exact = affine_segment(s, run, classifier, departures, derivative, descriptors, end, environment)
+        if exact is None:
+            exact, repayment_surfaces = compartment_solution(
+                s, run, field, classifier, departures, end, descriptors
+            )
+    except ExpressionError:
+        # A closed form reads a fixed part that has no value now, on a side that the rates do not
+        # take (spec: a conditional evaluates only its selected side): the solver integrates the
+        # segment, and its rates read only what they take.
+        exact, repayment_surfaces = None, []
     if exact is not None:
         reached, solution, targets, due = exact
         return Advance(end=reached, solution=solution, targets=targets, due=tuple(due), exact=True)

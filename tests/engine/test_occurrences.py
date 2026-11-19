@@ -6,7 +6,10 @@ setup and from triggers: a clock (`when t >= T`, with `reset after P` or once), 
 (`when water <= L` or `>= H`, with a reset or none). An event's occurrence may own a pipe from its
 tank (to the outside or to another tank), whose flow joins the network at its start and leaves at
 its finish; own a batch that a move fills and a flow empties; wait a delay or at a gate on a level;
-and run stages that add to its tank, take from it, move water between tanks and count. Requests and levels are whole numbers and halves, and rates are
+and run stages that add to its tank, take from it, move water between tanks and count; a stage may
+be guarded, and a trigger may watch, the time since a start of another tank's work, behind a count of
+its occurrences that is false before the first (the guard short-circuits). Requests and levels are
+whole numbers and halves, and rates are
 powers of two, so every time at which something happens is a sum of powers of two: the engine's
 times are exact, and the order of what happens at one time is the oracle's.
 
@@ -33,6 +36,7 @@ from napkin.program.build import (
     add,
     after,
     assign,
+    count,
     endpoint,
     event,
     flow,
@@ -45,6 +49,7 @@ from napkin.program.build import (
     q,
     reset_after,
     reset_when,
+    since,
     start,
     subtract,
     t,
@@ -73,8 +78,8 @@ def program(seed):
     """A random program with events (see the module), and the keys of the values to compare."""
     rng = random.Random(seed)
     b = Builder(UNITS)
-    count = rng.randint(1, 3)
-    tanks = [f't{k}' for k in range(count)]
+    number = rng.randint(1, 3)
+    tanks = [f't{k}' for k in range(number)]
     caps = {name: (_level(rng, 8, 16) if rng.random() < 0.5 else None) for name in tanks}
     events = {name: [] for name in tanks}
     flows = {name: [] for name in tanks}
@@ -85,7 +90,7 @@ def program(seed):
             flows[name].append(flow('fill', SOURCE, this.water, request=rate))
         elif kind == 'drain':
             flows[name].append(flow('drain', this.water, SINK, request=rate))
-        elif kind == 'pass' and count > 1:
+        elif kind == 'pass' and number > 1:
             other = rng.choice([each for each in tanks if each != name])
             flows[name].append(flow('pass', this.water, named(other).water, request=rate))
     for name in tanks:
@@ -113,7 +118,9 @@ def program(seed):
                 body.append(move(q(_level(rng, 0, 3), 'L'), this.water, other.water))
             else:
                 body.append(add(this.served, 1))
-        steps = [after(delay, *body)]
+        # A guard that short-circuits: `since` of another tank's work has no value before its start.
+        started = (count(other.work.occurrences) > 0) & (since(other.work) >= q(rng.choice((1, 2)), 'h'))
+        steps = [after(delay, *body, when=started if rng.random() < 0.2 else None)]
         if rng.random() < 0.3:
             steps.append(until(this.water >= q(_level(rng, 0, 10), 'L')))
         if rng.random() < 0.3:
@@ -135,6 +142,11 @@ def program(seed):
             else:
                 reset = reset_after(q(rng.choice((1, 2)), 'h'))
             triggers.append(when(test, start(this.work), reset=reset))
+        elif trigger < 0.85:
+            # A condition on the time since a start of another tank's work, false before its first.
+            mark = q(rng.choice((Fraction(1, 2), 1, 2)), 'h')
+            test = (count(other.work.occurrences) > 0) & (since(other.work) >= mark)
+            triggers.append(when(test, start(this.work), reset=reset_after(q(rng.choice((1, 2)), 'h'))))
         events[name].append(event('work', *parts, *steps, *triggers))
     for name in tanks:
         outflow = endpoint(capacity=q(rng.choice((1, 2, 3)), 'L/h')) if rng.random() < 0.25 else None

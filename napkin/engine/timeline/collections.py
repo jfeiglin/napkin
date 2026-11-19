@@ -32,9 +32,9 @@ import numpy as np
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
-from ...expressions import evaluate
 from ...program.record import Curve, Unavailable
 from .pools import Keys
+from .reads import lazily
 from .trees import Pairwise
 
 
@@ -103,8 +103,9 @@ class Dynamic:
     (`source` is `('occurrences', member, event)`, members in their order of creation), or the
     connections present at an endpoint (`('flows', store, side)`). `op` is a reduction (`sum`,
     `count`, `any`, `all`, `min`, `max`), `at` (`.occurrences.at(t)`: the newest occurrence that has
-    started, which is the one created last) or `since` (the time since the newest start); `steps`
-    go from each member to the value that it projects."""
+    started, which is the one created last) or `latest` (the time of the newest start, which
+    `since(e)` subtracts from the time; `spelled` is the `since`); `steps` go from each member to
+    the value that it projects."""
 
     name: str
     op: str
@@ -117,10 +118,10 @@ def dynamic_value(dynamic, members, project, value, t):
     """The value of a dynamic read at time t from its members at t (their points, in order), the
     engine name that each projects (`project(point)`) and the values of engine names."""
     op = dynamic.op
-    if op == 'since':
+    if op == 'latest':
         if not members:
             raise ExpressionError(f'{dynamic.spelled}: the event has not started')
-        return float(t) - float(known(value(f'{members[-1][1]}.started')))
+        return float(known(value(f'{members[-1][1]}.started')))
     if op == 'at':
         if not members:
             raise ExpressionError(f'{dynamic.spelled}: no occurrence has started')
@@ -138,9 +139,9 @@ def known(value):
 
 
 def holds(node, value, units):
-    """The value of a node over engine names, from the values of the names it reads."""
-    env = {name: known(value(name)) for name in nodes.names(node) if name != 't'}
-    return evaluate(node, env, units)
+    """The value of a node over engine names, from the values of the names that its evaluation reads
+    (`reads.py`)."""
+    return lazily(node, value, units)
 
 
 def kept(tests, value, units):
@@ -186,9 +187,7 @@ def index_of(keyed, value, units, entries=None):
 def looked_up(keyed, value, units, t, index=None):
     """The value of a keyed read at time t (the time matters only to a read by the time)."""
     index, entries = index_of(keyed, value, units) if index is None else index
-    env = {name: known(value(name)) for name in nodes.names(keyed.key) if name != 't'}
-    env['t'] = float(t)
-    x = float(evaluate(keyed.key, env, units))
+    x = float(lazily(keyed.key, value, units, t))
     place = index.find(x)
     if place is None:
         raise ExpressionError(f'{keyed.spelled}: no member has a key at or below {x:g}')

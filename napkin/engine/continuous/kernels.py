@@ -11,6 +11,7 @@ import numpy as np
 from scipy.linalg import expm
 
 from ...core import expr as nodes
+from ...core.errors import ExpressionError
 from ...expressions import evaluate, names_in, stock_face_dependencies
 
 
@@ -140,7 +141,12 @@ class Classifier:
         node = nodes.read(expr)
         key = (node, assumptions, seen)
         if key not in self._zero:
-            self._zero[key] = self._proven_zero(node, assumptions, seen)
+            try:
+                self._zero[key] = self._proven_zero(node, assumptions, seen)
+            except ExpressionError:
+                # A fixed part that reads a value with none now (on a side that the rate does not
+                # take): nothing is proved.
+                self._zero[key] = False
         return self._zero[key]
 
     def _proven_zero(self, node, assumptions=frozenset(), seen=frozenset()):

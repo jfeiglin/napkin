@@ -3,7 +3,9 @@
 1. **The start** evaluates each input, draw, link, stored value and captured request or capacity once,
    in the order of what it reads, across members (a formula, a reduction or a keyed read that one of
    them reads is evaluated there and then, at time 0). The order is found as the values are asked,
-   with no recursion, so a chain through the rows of a large table is no limit. A draw and a choice
+   with no recursion, so a chain through the rows of a large table is no limit: an evaluation that
+   asks for a read that is not known yet waits while that read is computed (`_Unknown`), so a side
+   that its evaluation does not take is never read (`reads.py`). A draw and a choice
    are executed there, keyed by their site and their member (`chance.py`); each is an entry of the
    trace. An input that the configuration sets must lie in its admitted range. The entries that each `where`
    keeps are found from fixed values, once (`kept_of`), and so is the sorted index of the keys of
@@ -79,6 +81,7 @@ from .plan import (
     STATE,
     Outside,
 )
+from .reads import lazily
 from .record import Recorder, remember
 from .triggers import Triggers
 from .ways import Ways
@@ -152,15 +155,15 @@ class Run:
     # ---- the start --------------------------------------------------------------------------------
 
     def _missing(self, name):
-        """The names that `name` reads and that are not known yet: the tests of a collection before
-        its members' values, and of a keyed read the keys of its kept entries and its key, then the
-        value of the entry that it finds."""
+        """The names that a reduction, a keyed read or a `delayed` read needs and that are not known
+        yet: the tests of a collection before its members' values, and of a keyed read the keys of
+        its kept entries and its key, then the value of the entry that it finds. Any other value asks
+        for what it reads as its expression is evaluated (`_compute`): a branch that is not taken
+        reads nothing, and a read that is not known yet stops the evaluation (`_Unknown`)."""
         plan, env = self.plan, self.env
         if name in plan.draws or name in plan.choices:
             return []
         value = plan.values[name]
-        if value.kind in (DYNAMIC, CHANGED, DESCRIBED):
-            return []  # no occurrence has started, and no flow of one is present; nothing changed
         if value.kind == DELAYED:
             return sorted(read for read in plan.reads(name) if read not in env)
         if value.kind == RATE:
@@ -179,24 +182,24 @@ class Run:
                     else []
                 )
             reads = {derived.keys[k] for k in entries if isinstance(derived.keys[k], str)}
-            reads |= set(nodes.names(derived.key)) - {'t'}
             missing = sorted(read for read in reads if read not in env)
             if missing:
                 return missing
             found = self._found(name)
             return [] if found is None or found in env else [found]
-        return sorted(read for read in set(nodes.names(value.node)) - {'t'} if read not in env)
+        return []
 
     def _found(self, name):
         """The engine name of the value that a keyed read finds at the start, or None."""
         keyed, entries = self.plan.keyed[name], self.kept_of(name)
         index = self._index(name)
-        x = 0.0 if keyed.by_time else float(evaluate(keyed.key, self.env, self.plan.units))
+        x = 0.0 if keyed.by_time else float(lazily(keyed.key, self.value_of, self.plan.units, 0.0))
         place = index.find(x)
         return None if place is None else keyed.names[entries[place]]
 
     def _compute(self, name):
-        """The value of a name whose reads are known."""
+        """The value of a name at the start, from the values known so far; `_Unknown` names a read
+        that its evaluation asks for and that is not known yet."""
         plan, env = self.plan, self.env
         if name in plan.draws or name in plan.choices:
             return self.chance.produce(name)
@@ -208,7 +211,10 @@ class Run:
         if kind == DESCRIBED:
             return self.chance.described(name)
         if kind == DELAYED:
-            return env[plan.delays[name][0]]  # at the start, the value at the start
+            stored = plan.delays[name][0]
+            if stored not in env:
+                raise _Unknown(stored)
+            return env[stored]  # at the start, the value at the start
         found = _literal(plan.values[name].node, plan.units)
         if found is not None:
             return found
@@ -219,8 +225,10 @@ class Run:
             return looked_up(plan.keyed[name], env.__getitem__, plan.units, 0.0, index)
         node = plan.values[name].node
         if isinstance(node, nodes.Ref):
+            if node.name not in env:
+                raise _Unknown(node.name)
             return env[node.name]  # a value that names another: no expression to compile
-        return evaluate(node, env, plan.units)
+        return evaluate(node, _Known(env), plan.units)
 
     def value_of(self, name):
         """The value of an engine name at the start, evaluated once, after what it reads; once the
@@ -235,7 +243,10 @@ class Run:
         if found is not None:
             env[name] = found  # a table's cell, a constant: it reads nothing
             return found
-        stack, expanded = [name], set()
+        # Depth first, with no recursion: a value whose evaluation asks for a read that is not
+        # known yet waits on the stack while that read is computed, and is evaluated again. A read
+        # that waits already is one of the values that wait for this one: a cycle.
+        stack, waiting = [name], set()
         while stack:
             top = stack[-1]
             if top in env:
@@ -243,14 +254,16 @@ class Run:
                 continue
             missing = self._missing(top)
             if not missing:
-                env[top] = self._compute(top)
-                stack.pop()
-                continue
-            if top in expanded:
-                raise SimulationError(f'{top}: a starting value that reads itself')
-            expanded.add(top)
+                try:
+                    env[top] = self._compute(top)
+                except _Unknown as unknown:
+                    missing = [unknown.name]
+                else:
+                    stack.pop()
+                    continue
+            waiting.add(top)
             for read in missing:
-                if read in expanded:
+                if read in waiting and read not in env:
                     raise SimulationError(f'{read}: a starting value that reads itself')
                 stack.append(read)
         return env[name]
@@ -313,9 +326,7 @@ class Run:
             found = _literal(node, plan.units)
             if found is not None:
                 return float(found)
-            for read in sorted(set(nodes.names(node)) - {'t'}):
-                self.value_of(read)
-            return float(evaluate(node, self.env, plan.units))
+            return float(lazily(node, self.value_of, plan.units, 0.0))
 
         self.bounds, self.scales = {}, {}
         for name, value in plan.values.items():
@@ -339,9 +350,7 @@ class Run:
         if plan.failures:
             raise SimulationError(plan.failures[0])
         for origin, member, node in plan.asserts:
-            for read in sorted(set(nodes.names(node)) - {'t'}):
-                self.value_of(read)
-            if not evaluate(node, self.env, plan.units):
+            if not lazily(node, self.value_of, plan.units, 0.0):
                 raise SimulationError(
                     f'{origin}: the assertion does not hold{f" for {member}" if member else ""}'
                 )
@@ -416,9 +425,7 @@ class Run:
             node = found.node
             if isinstance(node, nodes.Ref):
                 return self.value(node.name, t, tx)
-            env = {read: _known(self.value(read, t, tx)) for read in nodes.names(node) if read != 't'}
-            env['t'] = t
-            return evaluate(node, env, plan.units)
+            return lazily(node, lambda read: self.value(read, t, tx), plan.units, t)
         if kind == REDUCE:
             return reduced(
                 plan.reductions[name], lambda read: self.value(read, t, tx), plan.units, self.kept_of(name)
@@ -450,8 +457,8 @@ class Run:
 
     def truth(self, node, tx=None):
         """The value of a node over engine names now, through a stage's own writes. Each name is read
-        when the evaluation asks for it, so a branch that is not taken executes no draw (`_Reads`)."""
-        return evaluate(node, _Reads(self, nodes.names(node), tx), self.plan.units)
+        when the evaluation asks for it, so a branch that is not taken executes no draw (`reads.py`)."""
+        return lazily(node, lambda read: self.value(read, tx=tx), self.plan.units, self.now)
 
     def changed_at(self, name, tx=None):
         """The time at which a stored value last changed at a commit: of a write of this stage that
@@ -471,9 +478,7 @@ class Run:
         """`delayed(x, d)` at time t: the committed value of x at t - d, from 0 (R-A2-09: with d = 0
         the committed value, never a stage's own write)."""
         stored, delay = self.plan.delays[name]
-        env = {read: _known(self.value(read, t)) for read in nodes.names(delay) if read != 't'}
-        env['t'] = t
-        d = evaluate(delay, env, self.plan.units)
+        d = lazily(delay, lambda read: self.value(read, t), self.plan.units, t)
         if isinstance(d, bool) or not isinstance(d, int | float) or not d >= 0:
             raise ExpressionError(f'{name}: the delay must be a duration that is not negative, not {d!r}')
         at = max(t - float(d), 0.0)
@@ -748,37 +753,34 @@ class Run:
             return moment, changed
 
 
-def _known(value):
-    """A value that an expression can read: an `Unavailable` one raises its reason (D7)."""
-    if isinstance(value, Unavailable):
-        raise ExpressionError(value.reason)
-    return value
+class _Unknown(Exception):
+    """A read that the evaluation of a starting value asks for and that is not known yet."""
+
+    def __init__(self, name):
+        super().__init__(name)
+        self.name = name
 
 
-class _Reads(Mapping):
-    """The names of a node as an evaluation reads them: each is read from the run when the evaluation
-    first asks for it (the code of a node reads the branch of `a if c else b`, and of `and` and `or`,
-    that it takes), then kept."""
+class _Known(Mapping):
+    """The values known at the start, as an evaluation of a starting value reads them: a read that
+    is not known yet raises `_Unknown`, so that the start computes it first."""
 
-    __slots__ = ('found', 'names', 'run', 'tx')
+    __slots__ = ('env',)
 
-    def __init__(self, run, names, tx):
-        self.run, self.names, self.tx = run, names, tx
-        self.found = {'t': float(run.now)}
+    def __init__(self, env):
+        self.env = env
 
     def __getitem__(self, name):
-        found = self.found.get(name, _MISSING)
-        if found is _MISSING:
-            if name not in self.names:
-                raise KeyError(name)
-            found = self.found[name] = _known(self.run.value(name, tx=self.tx))
-        return found
+        try:
+            return self.env[name]
+        except KeyError:
+            raise _Unknown(name) from None
 
     def __contains__(self, name):
-        return name == 't' or name in self.names
+        return True  # each read of the evaluation asks, so that an unknown one is named
 
     def __iter__(self):
-        return iter({'t', *self.names})
+        return iter(self.env)
 
     def __len__(self):
-        return len({'t', *self.names})
+        return len(self.env)

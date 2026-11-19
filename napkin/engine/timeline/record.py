@@ -71,6 +71,7 @@ from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
 from .plan import CHANGED, DELAYED, DYNAMIC, FORMULA, LOOKUP, REDUCE, Plan, name_of
+from .reads import Reads, lazily
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
 FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError)
@@ -471,15 +472,13 @@ class Recorder:
         readers = {read: _reader(histories[read]) for read in reads}
         holders = {read: _holder(histories[read]) for read in reads}
 
+        names = frozenset(reads)
+
         def at(t):
             if point is not None:
                 return point(t, readers)
-            env = {read: readers[read](t) for read in reads}
-            env['t'] = float(t)
-            for found in env.values():
-                if isinstance(found, Unavailable):
-                    raise ExpressionError(found.reason)
-            return compute(env)
+            # Each read is taken from its history where the evaluation asks for it (`reads.py`).
+            return compute(Reads(names, lambda read: readers[read](t), t))
 
         firsts = []
         for time in times:
@@ -690,14 +689,13 @@ class _Values:
                 raise LookupError(f'the record holds no value of {name}')
             found = history.at(t)
         else:
-            env = {read: self.at(read, t) for read in sorted(self.plan.reads(name))}
-            env['t'] = float(t)
+            # What the formula reads is read where its evaluation asks for it (`reads.py`); a read
+            # that the record does not hold is a LookupError of the reader, as before.
             try:
-                for item in env.values():
-                    if isinstance(item, Unavailable):
-                        raise ExpressionError(item.reason)
-                found = evaluate(value.node, env, self.plan.units)
+                found = lazily(value.node, lambda read: self.at(read, t), self.plan.units, t)
                 found = bool(found) if value.boolean else found if isinstance(found, str) else float(found)
+            except LookupError:
+                raise
             except FAILURES as problem:
                 found = Unavailable(str(problem))
         self.done[name, t] = found
@@ -730,13 +728,8 @@ class _Values:
     def _delayed(self, name, t):
         """`delayed(x, d)` at time t: x at max(t - d, 0), from its history."""
         stored, delay = self.plan.delays[name]
-        env = {read: self.at(read, t) for read in sorted(set(nodes.names(delay)) - {'t'})}
-        env['t'] = float(t)
         try:
-            for item in env.values():
-                if isinstance(item, Unavailable):
-                    raise ExpressionError(item.reason)
-            d = evaluate(delay, env, self.plan.units)
+            d = lazily(delay, lambda read: self.at(read, t), self.plan.units, t)
             if isinstance(d, bool) or not d >= 0:
                 raise ExpressionError(f'{name}: the delay must be a duration that is not negative')
             return self._stored(stored).at(max(float(t) - float(d), 0.0))

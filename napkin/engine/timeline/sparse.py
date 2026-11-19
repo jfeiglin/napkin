@@ -8,7 +8,10 @@ the local sharing of the network (`network.Instant`) of what its connections and
 there. One evaluation touches only the nonzeros: the settings are evaluated as arrays (`Vector`: a
 formula that a template's members share is evaluated once over their rows, with
 `napkin/core/arrays`), the sharing of the flows that meet no bound is one array operation, and the
-change of each store is one product with the sparse incidence of the connections. A route's signed
+change of each store is one product with the sparse incidence of the connections. A setting reads
+only the sides that it takes (`reads.py`): a value that has none now (`since(e)` before the first
+start) fails where an evaluation takes it, and a column with no value for a row that another row's
+branch reads makes each row evaluate by itself. A route's signed
 request may cross zero: its legs carry the positive parts of its rate, which stays continuous.
 
 SciPy's Radau integrates it step by step, with the sparse pattern of its Jacobian: the stores that the
@@ -37,13 +40,13 @@ from scipy.integrate import Radau
 from ...core import arrays
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
-from ...expressions import evaluate
 from ..continuous import integrate
 from ..errors import SimulationError
 from .collections import combined
 from .lines import asked_of
 from .network import SIDES, Asked, Instant, network_of
 from .plan import FORMULA, LOOKUP, REDUCE
+from .reads import Reads, lazily
 from .record import fitted
 
 
@@ -61,7 +64,7 @@ class Vector:
         unique = list(dict.fromkeys(names))
         back = np.array([unique.index(name) for name in names], dtype=np.int64)
         held_at, held_from, constant_at, constants, steps = [], [], [], [], []
-        groups = {}
+        groups, failed = {}, []
         for k, name in enumerate(unique):
             value = plan.values.get(name)
             kind = value.kind if value is not None else None
@@ -81,7 +84,13 @@ class Vector:
                 steps.append(([k], lambda t, y, stepped=stepped: stepped.at(t)))
             else:
                 constant_at.append(k)
-                constants.append(float(run.value_of(name)))
+                try:
+                    constants.append(float(run.value_of(name)))
+                except ExpressionError as problem:
+                    # A value that has none now (`since(e)` before the first start): what reads it
+                    # fails where its evaluation takes it, and no sooner.
+                    constants.append(math.nan)
+                    failed.append(str(problem))
         for members in groups.values():
             steps.append(([k for k, _ in members], self._group([name for _, name in members])))
         held_at, held_from = np.array(held_at, dtype=np.int64), np.array(held_from, dtype=np.int64)
@@ -89,6 +98,8 @@ class Vector:
         size = len(unique)
 
         def values(t, y):
+            if failed:
+                raise ExpressionError(failed[0])
             found = np.empty(size)
             found[held_at] = y[held_from]
             found[constant_at] = constants
@@ -107,11 +118,20 @@ class Vector:
         timed = {read for read, column in columns.items() if all(name == 't' for name in column)}
         subs = {read: self.compiled(column) for read, column in columns.items() if read not in timed}
         count, units, shape = len(members), plan.units, first.shape
+        alone = []  # each member by itself, made when a column has no value for some member
 
         def values(t, y):
-            env = {read: sub(t, y) for read, sub in subs.items()}
-            env.update({read: float(t) for read in timed})
-            return np.broadcast_to(np.asarray(arrays.values(shape, env, units, count), dtype=float), (count,))
+            # A column is made when the evaluation over the rows first reads it (`reads.py`).
+            env = Reads(frozenset(columns), lambda read: float(t) if read in timed else subs[read](t, y))
+            try:
+                found = arrays.values(shape, env, units, count)
+            except ExpressionError:
+                # A column with no value for some member, which another member's branch reads: each
+                # member by itself reads only its own branch.
+                if not alone:
+                    alone.extend(self._single(name) for name in members)
+                found = [value(t, y) for value in alone]
+            return np.broadcast_to(np.asarray(found, dtype=float), (count,))
 
         return values
 
@@ -119,13 +139,12 @@ class Vector:
         """A formula that no template shares (it reads an entity): evaluated by itself."""
         plan = self.plan
         reads = sorted(plan.reads(name))
-        sub = self.compiled(reads) if reads else None
+        subs = {read: self.compiled([read]) for read in reads}
         node = plan.values[name].node
 
         def value(t, y):
-            env = dict(zip(reads, sub(t, y).tolist())) if sub is not None else {}
-            env['t'] = float(t)
-            return float(evaluate(node, env, plan.units))
+            # Each read is made when the evaluation asks for it (`reads.py`).
+            return float(lazily(node, lambda read: float(subs[read](t, y)[0]), plan.units, t))
 
         return value
 

@@ -8,7 +8,9 @@ the segments of the set one after the other.
 - `Network`: what the continuous engine reads of a system, for the stores, flows and formulas of
   one connected set. A plan's set gives it (`run.py`), with its expressions over engine names: the
   stores are its state, the inputs and the other values that do not move between moments are
-  literals, and each formula that a rate reads is in `computed`. `Network.of` gives the system of
+  literals, and each formula that a rate reads is in `computed`. A value that has none now
+  (`since(e)` before the first start) is no literal: a rate fails where it reads it, on a side that
+  it takes (`continuous/system.Formulas`), and nowhere else. `Network.of` gives the system of
   one run: its tolerances, its inputs and its numerical settings.
 - `Held`: the allocation of a component, which cuts a flow at a bound to what the store can pass.
   That is local sharing (`network.py`) where each store meets one flow on each side, unless a flow
@@ -406,8 +408,15 @@ class ComponentWay:
         for flow in flows.values():
             leaves |= plan.expansion(flow.rate).leaves
         stepped = set(connected.stepped)
-        parameters = sorted(name for name in leaves if name not in stores and name not in stepped)
-        known = {**{name: values[name] for name in stores}, **{name: run.held(name) for name in parameters}}
+        known, missing = {name: values[name] for name in stores}, {}
+        for name in sorted(name for name in leaves if name not in stores and name not in stepped):
+            try:
+                known[name] = run.held(name)
+            except ExpressionError as problem:
+                # A value that has none now (`since(e)` before the first start): a rate fails where
+                # it reads it, on a side that it takes (`continuous/system.Formulas`).
+                missing[name] = str(problem)
+        parameters = sorted(name for name in known if name not in stores)
         network = Network(
             stores[0],
             stores,
@@ -441,6 +450,7 @@ class ComponentWay:
             plan.units,
             system.bounds,
             run.settings,
+            missing,
         )
         rigid = [name for name in connected.flows if plan.rigid(plan.flows[name])]
         self.component = Component(system, context, [values[name] for name in stores], rigid)
