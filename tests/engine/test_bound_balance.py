@@ -1,10 +1,10 @@
-"""The balance of a stock that rests on a bound (`engine/allocation.Allocation.balance`).
+"""A stock that rests on its upper bound, and the balance of a stock on a bound
+(`engine/allocation.Allocation.balance`).
 
 A stock on a bound whose inflow equals its outflows has a rate of zero. The sum of its flows keeps
-the roundoff of its terms, so the computed rate is a few units in the last place of those flows,
-of either sign. On the lower bound the balance sets the rate to exactly zero and gives the
-residual to a leg of the stock. This file is for the upper bound: without the balance, a residual
-above zero carries the stock past its bound in an exact segment, and the run stops.
+the roundoff of its terms, so the computed rate is a few units in the last place of those flows, of
+either sign. Local sharing holds such a stock on its bound exactly (`timeline/lines.py`), and the
+continuous engine's balance gives the residual to a leg of the stock (the tests of the rule, below).
 
 The model is a tank that starts full, with one inflow from outside and two outflows that share it.
 The inflow is 1.1 times the first outflow, the second outflow is a tenth of the first, and all the
@@ -16,44 +16,69 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from napkin.engine import read, run
 from napkin.engine.allocation import Allocation
-from napkin.engine.runtime import simulate
-from tests import build as b
+from napkin.program.build import (
+    SOURCE,
+    Builder,
+    endpoint,
+    flow,
+    input_,
+    priority,
+    proportional,
+    q,
+    this,
+    value,
+)
+from napkin.program.config import Configuration, Request
 
 HORIZON = 40
 EPS = np.finfo(float).eps
+UNITS = {'h': {'time': 1}, 'person': {'people': 1}}
 
 
-def tank(demand, order='proportional'):
-    text = b.system(
-        b.parameter('demand', demand, 'people/h', 0, 1e9),
-        b.stock('tank', 100, maximum=100),
-        b.stock('used', 0, kind='tally', size=None),
-        b.stock('lost', 0, kind='tally', size=None),
-        b.flow('fill', b.move(None, 'tank'), 'demand * 1.1'),
-        b.flow('deliver', b.move('tank', 'used'), 'demand'),
-        b.flow('leak', b.move('tank', 'lost'), 'demand / 10'),
-        b.share('tank', '1e12 people/h', order),
-        horizon=HORIZON,
-        outputs=(b.output('used', 's.used', 'people'),),
+def tank(demand, order=None):
+    """The full tank; `order` names the outflows of a priority allocation, first to last."""
+    allocation = proportional() if order is None else priority(*(getattr(this, name) for name in order))
+    b = Builder(UNITS)
+    b.entity(
+        's',
+        input_('demand', 'person/h', demand, lower=0, upper=1e9),
+        value(
+            'tank',
+            'person',
+            100,
+            lower=0,
+            upper=100,
+            outflow=endpoint(capacity=q(1e12, 'person/h'), allocation=allocation),
+        ),
+        value('used', 'person', 0, lower=0),
+        value('lost', 'person', 0, lower=0),
+        flow('fill', SOURCE, this.tank, request=this.demand * 1.1),
+        flow('deliver', this.tank, this.used, request=this.demand),
+        flow('leak', this.tank, this.lost, request=this.demand / 10),
     )
-    model = b.compiled(text)
-    return model.resolve(next(iter(model.runs))), model.library
+    return b.finish(), Configuration(Request(HORIZON))
 
 
 # The first demand leaves a residual above zero (1.1 d - d - d / 10 is 1.9e-9 in doubles): the run
 # stopped with it. The others leave none, or one below zero.
 @pytest.mark.parametrize('demand', [10304732.104954248, 1e7 / 3, 12345.678, 0.7, 7.0])
-@pytest.mark.parametrize('order', ['proportional', ['deliver', 'leak'], ['leak', 'deliver']])
+@pytest.mark.parametrize('order', [None, ('deliver', 'leak'), ('leak', 'deliver')])
 def test_a_full_tank_whose_inflow_equals_its_outflows_stays_full(demand, order):
     """The tank stays at its bound, exactly, and each outflow moves its rate times the time. What
-    came in is what went out: the residual of the roundoff is in one of the outflows, and it is far
-    below the last place that the closed form can tell."""
-    end = simulate(*tank(demand, order)).env_at(float(HORIZON))
-    assert end['s.tank'] == 100.0
-    assert end['s.used'] == pytest.approx(demand * HORIZON, rel=1e-12)
-    assert end['s.lost'] == pytest.approx(demand / 10 * HORIZON, rel=1e-12)
-    assert end['s.used'] + end['s.lost'] == pytest.approx(demand * 1.1 * HORIZON, rel=1e-12)
+    came in is what went out: the residual of the roundoff is far below the last place that the
+    closed form can tell."""
+    program, configuration = tank(demand, order)
+    record = run(program, configuration)
+    assert record.failure is None
+    tank_, used, lost = (
+        reading.values[0] for reading in read(record, program, ['s.tank', 's.used', 's.lost'], [HORIZON])
+    )
+    assert tank_ == 100.0
+    assert used == pytest.approx(demand * HORIZON, rel=1e-12)
+    assert lost == pytest.approx(demand / 10 * HORIZON, rel=1e-12)
+    assert used + lost == pytest.approx(demand * 1.1 * HORIZON, rel=1e-12)
 
 
 # ---- the rule, on one stock with one inflow from outside and one outflow to a tally ---------------

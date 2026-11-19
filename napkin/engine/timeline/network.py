@@ -80,10 +80,10 @@ def layers(count, rankings):
     changed = True
     while changed:  # what is ahead of something ahead of f is ahead of f
         changed = False
-        for f, before in ahead.items():
+        for before in ahead.values():
             more = set().union(*(ahead.get(g, set()) for g in before)) - before
             if more:
-                before |= more
+                before.update(more)
                 changed = True
     layer = np.ones(count, dtype=np.int64)
     done = {}
@@ -233,16 +233,15 @@ class Instant:
 
     def rates(self):
         """The rate of every flow."""
-        net = self.net
+        net, asked = self.net, self.asked
         rates = self.alone(np.arange(len(net.flows)))
-        stores = np.flatnonzero(
-            (self.lower & (net.counts[OUT] > 0)) | (self.upper & (net.counts[IN] > 0))
-        ).tolist()
-        seeds = [int(f) for s in stores for side in (OUT, IN) for f in net.ends[side].of(s)[:1]]
-        for side in (OUT, IN):
-            for s in np.flatnonzero(net.counts[side] >= 2).tolist():
-                if self.end_couples(side, s):
-                    seeds.append(int(net.ends[side].of(s)[0]))
+        stores = np.flatnonzero((self.lower & (net.counts[OUT] > 0)) | (self.upper & (net.counts[IN] > 0)))
+        ends = (net.counts >= 2) & (np.isfinite(asked.end_capacity) | (asked.end_request > 0))
+        if not len(stores) and not ends.any():
+            return rates  # no flow meets a bound or shares an endpoint
+        seeds = [int(f) for s in stores.tolist() for side in (OUT, IN) for f in net.ends[side].of(s)[:1]]
+        for side, s in np.argwhere(ends).tolist():
+            seeds.append(int(net.ends[side].of(s)[0]))
         for part in self.parts(seeds):
             rates[part] = self.solve(part)
         return rates
@@ -265,7 +264,14 @@ class Instant:
         net, lower, upper = self.net, self.lower, self.upper
         for f in part:
             s, d = net.source[f], net.sink[f]
-            if s >= 0 and d >= 0 and upper[s] and not lower[s] and upper[d] and self.claimed[net.flow_sets[f]]:
+            if (
+                s >= 0
+                and d >= 0
+                and upper[s]
+                and not lower[s]
+                and upper[d]
+                and self.claimed[net.flow_sets[f]]
+            ):
                 raise SimulationError(
                     f'{self._name(s)} and {self._name(d)}: room passed upstream through two full stores; '
                     'local sharing settles in the direction of supply and has no answer here'
@@ -293,7 +299,7 @@ class Instant:
                         best[s] = max(best[s], memo[t])
                         continue
                     if t in best:
-                        ring = on[on.index(t) :] + [t]
+                        ring = [*on[on.index(t) :], t]
                         raise SimulationError(
                             'a ring of stores at their lower bound passes supply around: '
                             + ' -> '.join(self._name(r) for r in ring)
@@ -327,7 +333,9 @@ class Instant:
             outs, ins = net.ends[OUT].of(s), net.ends[IN].of(s)
             if upper[s] and len(ins):
                 return None  # a full store passes room upstream
-            if any(len(here) >= 2 and asked.end_request[side][s] > 0 for side, here in ((OUT, outs), (IN, ins))):
+            if any(
+                len(here) >= 2 and asked.end_request[side][s] > 0 for side, here in ((OUT, outs), (IN, ins))
+            ):
                 return None  # an aggregate request
             if lower[s] and len(outs):
                 if not all(capacity[g] <= request[g] or capacity[g] == 0 for g in ins.tolist()):
@@ -350,14 +358,16 @@ class Instant:
             order.append((0 if kind != 'supply' or not claimed else depth(s), k))
         for _, k in sorted(order):
             kind, s, members = groups[k]
-            side = IN if kind == 'in' else OUT
-            available = float(asked.end_capacity[side][s])
-            if kind == 'supply':
-                available = min(available, sum(rates[g] for g in net.ends[IN].of(s).tolist()))
             members = members.tolist()
             for f in members:
                 rates[f] = 0.0
             claims = [f for f in members if request[f] > 0]
+            if not claims:
+                continue  # nothing asks: what flows in does not matter
+            side = IN if kind == 'in' else OUT
+            available = float(asked.end_capacity[side][s])
+            if kind == 'supply':
+                available = min(available, sum(rates[g] for g in net.ends[IN].of(s).tolist()))
             for layer in sorted({int(net.layer[f]) for f in claims}):
                 tier = np.array([f for f in claims if net.layer[f] == layer], dtype=np.int64)
                 given = water(request[tier], capacity[tier], available)
@@ -407,7 +417,9 @@ class Instant:
                             prefs.append((carried, wanted))
         for f in part:
             if asked.request[f] > 0:
-                claims.append(((depth(int(net.source[f])), int(net.layer[f])), vector([f]), float(asked.request[f])))
+                claims.append(
+                    ((depth(int(net.source[f])), int(net.layer[f])), vector([f]), float(asked.request[f]))
+                )
         tiers = {}
         for tier, a, wanted in claims:
             tiers.setdefault(tier, []).append((a, wanted))

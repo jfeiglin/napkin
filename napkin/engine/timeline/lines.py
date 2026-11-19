@@ -11,7 +11,8 @@ grow with the number of rows.
 
 The flags of a part are the state at the moment, as the oracle reads them: a store rests on its lower
 (upper) bound while it holds exactly that value. A store at its bound whose sharing gives it a rate
-away from the bound leaves it; it is solved again at the next moment, from where it is then.
+away from the bound leaves it; its part is solved again at the next moment of the run (the horizon
+is one), from where it is then, as the oracle settles every part at each of its moments.
 
 The recorder takes a piece of each store at each change of its line, and a piece of each actual rate
 at each change of its rate: all are exact.
@@ -97,7 +98,11 @@ class Lines:
             bad = np.isnan(numbers) | (numbers < 0) | (np.isinf(numbers) if finite else False)
             if bad.any():
                 where = np.argwhere(bad)[0]
-                part = self.flows[where[0]] if numbers.ndim == 1 else f'{self.stores[where[1]]}.{SIDES[where[0]]}'
+                part = (
+                    self.flows[where[0]]
+                    if numbers.ndim == 1
+                    else f'{self.stores[where[1]]}.{SIDES[where[0]]}'
+                )
                 raise SimulationError(f'{part}: a {what} that is {numbers[tuple(where)]:g} at {t:g} h')
         return Asked(request, capacity, end_request, end_capacity)
 
@@ -153,13 +158,18 @@ class Lines:
             outflow = float(self.rate[net.ends[OUT].of(s)].sum())
             slope = inflow - outflow
             value = self._value(s, t)
-            low, high = instant.lower[s] and value <= self.lower[s], instant.upper[s] and value >= self.upper[s]
+            low, high = (
+                instant.lower[s] and value <= self.lower[s],
+                instant.upper[s] and value >= self.upper[s],
+            )
             if low or high:
                 # A store at its bound: a rate within the roundoff of its flows holds it there.
                 if abs(slope) <= 1e-12 * (inflow + outflow):
                     slope = 0.0
                 if (low and slope < 0) or (high and slope > 0):
-                    raise SimulationError(f'{self.stores[s]}: local sharing moves it past its bound at {t:g} h')
+                    raise SimulationError(
+                        f'{self.stores[s]}: local sharing moves it past its bound at {t:g} h'
+                    )
                 if slope != 0.0:
                     self.stale.add(s)  # it leaves its bound: solved again at the next moment
             if slope == self.slope[s] and s not in forced:
@@ -212,6 +222,11 @@ class Lines:
             seeds.update(net.ends[IN].of(s).tolist())
         touched = self._solve(t, sorted(seeds)) if seeds else set()
         self._lines(t, touched, forced)
+
+    def finish(self, t):
+        """At the horizon, as at any moment: the parts of the stores that left a bound are solved
+        again, so the values read at the horizon follow the state there."""
+        self._moment(t, ())
 
     def advance(self, until):
         """Each line that reaches its bound at or before `until`, in time order: the store is put on

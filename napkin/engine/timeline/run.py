@@ -51,6 +51,7 @@ from .family import Family
 from .lines import Lines
 from .plan import COMPONENT, FAMILY, LINES, LOOKUP, RATE, REDUCE, SPARSE, STARTS, STATE, Outside
 from .record import Recorder, remember
+from .sparse import Sparse
 
 
 def drawn(distribution, units, mode, seed, key):
@@ -118,6 +119,7 @@ class Run:
         self.env = {'t': 0.0}  # the values at the start, by engine name
         self._kept, self._stepped, self._indexes = {}, {}, {}
         self.family = self.lines = None
+        self.sparse = []
 
     # ---- the start --------------------------------------------------------------------------------
 
@@ -223,10 +225,12 @@ class Run:
             else:
                 keyed = {}
                 for key, flow in item:
-                    keyed.setdefault(float(self.value_of(key) if isinstance(key, str) else key), []).append(flow)
+                    keyed.setdefault(float(self.value_of(key) if isinstance(key, str) else key), []).append(
+                        flow
+                    )
                 found = [keyed[key] for key in sorted(keyed)]
-            for members in found:
-                members = [flow for flow in members if flow in mine]
+            for written in found:
+                members = [flow for flow in written if flow in mine]
                 if members:
                     classes.append(tuple(number[flow] for flow in members))
                     named.update(members)
@@ -404,7 +408,8 @@ class Run:
             system.bounds,
             self.settings,
         )
-        component = Component(system, context, [values[name] for name in stores])
+        rigid = [name for name in connected.flows if plan.rigid(plan.flows[name])]
+        component = Component(system, context, [values[name] for name in stores], rigid)
         self._set_stepped(component, connected, 0.0)
         return component
 
@@ -440,10 +445,14 @@ class Run:
         if outside:
             raise SimulationError(f'State bounds violated: {outside}')
         kinds = self.kinds()
-        ways = {way: [connected for connected in plan.sets if connected.way == way] for way in (FAMILY, LINES, COMPONENT, SPARSE)}
-        if ways[SPARSE]:
-            raise Outside(f'{ways[SPARSE][0].flows[0]}: a rate that moves in a set of shared stores (S2)')
-        components = [(self.component(connected, values, sizes, kinds), connected) for connected in ways[COMPONENT]]
+        ways = {
+            way: [connected for connected in plan.sets if connected.way == way]
+            for way in (FAMILY, LINES, COMPONENT, SPARSE)
+        }
+        components = [
+            (self.component(connected, values, sizes, kinds), connected) for connected in ways[COMPONENT]
+        ]
+        self.sparse = [Sparse(self, connected, values, sizes) for connected in ways[SPARSE]]
         self.family = Family(self, ways[FAMILY], values)
         self.lines = Lines(self, ways[LINES], values)
         for name in plan.moving:
@@ -468,6 +477,8 @@ class Run:
         names |= set(self.lines.stepped if self.lines is not None else ())
         for _, connected in components:
             names |= set(connected.stepped)
+        for one in self.sparse:
+            names |= set(one.stepped)
         found = set()
         for name in names:
             found |= {float(t) for t in self.stepped_of(name).times if 0 < t < self.plan.horizon}
@@ -485,6 +496,8 @@ class Run:
         for end in [*self.key_times(components), horizon]:
             family.advance(end)
             lines.advance(end)
+            for one in self.sparse:
+                one.advance(end)
             while standing and standing[0][0] < end:
                 t, k = heapq.heappop(standing)
                 self.now = t
@@ -502,6 +515,7 @@ class Run:
                     raise SimulationError(f'{connected.flows[0]}: {limit} segments of no length at {t:g} h')
                 heapq.heappush(standing, (segment.end, k))
             if end >= horizon:
+                lines.finish(horizon)
                 break
             self.now = end
             for component, connected in components:

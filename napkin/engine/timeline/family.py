@@ -6,7 +6,9 @@ of the run, since its request and its capacity read inputs, fixed values and key
 only at their key times. So each of its stores is a line between moments, and the flow delivers what
 it asks until a store at one of its ends reaches the bound that holds it back: its source at a lower
 bound, or its sink at an upper bound. From then on the flow delivers nothing, as the continuous
-engine has it for one flow at a bound. Each flow is a row of the family:
+engine has it for one flow at a bound. A flow that asks something of a full store, into a store at
+its upper bound, passes room upstream through two full stores, where local sharing has no answer:
+the run stops there (`network.py`). Each flow is a row of the family:
 
 - `begin(t)` evaluates the rates of every row as columns (`Columns`) and starts their lines;
 - `advance(until)` takes, in time order, each row whose store reaches its bound before `until`: the
@@ -120,6 +122,7 @@ class Family:
         self.recorder.formulas.update(name for _, name in self.recorded)
         self.stepped = frozenset(name for connected in sets for name in connected.stepped)
         self.asked = np.full(len(flows), np.nan)
+        self.wanted = np.zeros(len(flows))  # the request of each flow, before its capacity
         self.rate = np.zeros(len(flows))
         self.version = np.zeros(len(flows), dtype=np.int64)
         self.due = []  # (time, row, version) of the rows whose store reaches its bound
@@ -133,6 +136,7 @@ class Family:
     def _asked(self, t):
         """What each flow asks at time t: its request, within its capacity."""
         asked = np.array(self.columns.at(self.requests, t), dtype=float)
+        self.wanted = asked.copy()
         if self.capped:
             capacities = np.array(self.columns.at(self.capacities, t), dtype=float)
             asked[self.capped] = np.minimum(asked[self.capped], capacities)
@@ -163,6 +167,17 @@ class Family:
         held = (source >= 0 and self.y[source] <= self.lower[source]) or (
             sink >= 0 and self.y[sink] >= self.upper[sink]
         )
+        if (
+            held
+            and self.wanted[k] > 0
+            and source >= 0
+            and sink >= 0
+            and self.lower[source] < self.y[source] >= self.upper[source]
+        ):
+            raise SimulationError(
+                f'{self.stores[source]} and {self.stores[sink]}: room passed upstream through two full '
+                'stores; local sharing settles in the direction of supply and has no answer here'
+            )
         rate = 0.0 if held else float(asked)
         self.rate[k] = rate
         self.version[k] += 1

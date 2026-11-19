@@ -10,6 +10,11 @@ the segments of the set one after the other.
   stores are its state, the inputs and the other values that do not move between moments are
   literals, and each formula that a rate reads is in `computed`. `Network.of` gives the system of
   one run: its tolerances, its inputs and its numerical settings.
+- `Held`: the allocation of a component, which cuts a flow at a bound to what the store can pass.
+  That is local sharing (`network.py`) where each store meets one flow on each side, unless a flow
+  into a store at its lower bound, or out of a store at its upper bound, could carry more than its
+  request: local sharing would then raise it (a request is soft, D15). Where that can be, the run
+  stops with a failure that names the store, never with the other answer.
 - `Component`: the set in a run. From its start, it makes its segments one after the other, each
   from where the one before it ended: a segment ends at the horizon, where a store reaches or leaves
   a bound, or where a rate changes its branch. Each segment (`Segment`) has the function of the time
@@ -25,6 +30,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..allocation import Allocation
 from ..continuous.bounds import check_bounds, correct_boundary_roundoff, refresh_bounds
 from ..continuous.fields import Field
 from ..continuous.segment import advance
@@ -266,13 +272,42 @@ class Segment:
     numerical: object = None
 
 
+class Held(Allocation):
+    """See the module. `rigid` holds the flows that never carry more than their request."""
+
+    def __init__(self, system, rigid):
+        super().__init__(system)
+        self.rigid = frozenset(rigid)
+
+    def bound_allocation(self, state, base, requested, unconstrained, bound_key):
+        found, faces = super().bound_allocation(state, base, requested, unconstrained, bound_key)
+        if found is requested:
+            return found, faces
+        s = self.system
+        for j in np.flatnonzero(found < requested - 1e-12 * np.maximum(1.0, requested)).tolist():
+            flow = s.flows[s.flow_ids[j]]
+            for store, near in ((flow.source, 1), (flow.target, 0)):
+                if not store:
+                    continue
+                # The flow on the other side of the store, which local sharing could raise.
+                others = [k for k, _ in s.legs[store][near]]
+                if any(s.flow_ids[k] not in self.rigid for k in others):
+                    raise SimulationError(
+                        f'{store}: rests on a bound between a flow in and a flow out whose rates move, '
+                        'where local sharing could raise a flow above its request; give the flows of '
+                        'this store capacities at their requests'
+                    )
+        return found, faces
+
+
 class Component:
     """See the module."""
 
-    def __init__(self, system, context, start):
+    def __init__(self, system, context, start, rigid=()):
         self.system, self.context = system, context
         self.state = State(0.0, np.array(start, dtype=float), {})
         self.field = Field(system, self.state, context)
+        self.field.allocation = Held(system, rigid)
 
     def guards(self, env):
         """The level rules that a segment watches: none, in this slice."""

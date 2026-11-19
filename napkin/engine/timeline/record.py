@@ -144,6 +144,7 @@ class Recorder:
         self.trace = []
         self.formulas = set()  # the formulas whose pieces the run gives (the family's settings)
         self.run = None  # the run, which knows the entries that each collection keeps
+        self._wanted = None  # the engine names whose histories a record of some keys needs
 
     def entry(self, t, kind, part, owner='', **details):
         """One entry of the trace. Its round is 0 at the setup, and 1 at a later time: this slice
@@ -208,6 +209,23 @@ class Recorder:
     def add(self, name, t, value, rate):
         """One piece of a value, which a run gives as it goes."""
         self.pieces.setdefault(name, []).append((t, value, rate))
+
+    def add_pieces(self, name, pieces):
+        """Pieces of a value, which a run gives as it goes."""
+        self._add(name, pieces)
+
+    def wanted(self, name):
+        """Whether the record keeps the history of an engine name (or what a kept formula reads)."""
+        request = self.plan.configuration.request
+        if request.everything:
+            return True
+        if self._wanted is None:
+            self._wanted = self._needed(request.keys)
+            for key in request.keys:
+                value = self.plan.values.get(name_of(key))
+                if value is not None and value.kind == FORMULA:
+                    self._wanted |= self.plan.formula_reads(value.node)[0]
+        return name in self._wanted
 
     # ---- after the run ----------------------------------------------------------------------------
 
@@ -482,8 +500,9 @@ def key_of(program, path):
 
 
 def unit_of(program, key):
-    """The spelling of the declared unit of the value at a key: of a value, its type's unit; of a
-    flow's actual rate, request or capacity, the flow's unit; `''` for a plain number or a yes/no."""
+    """The spelling of the declared unit of the value at a key and its scale: of a value, its type's
+    unit; of a flow's actual rate, request or capacity, the flow's unit; of an endpoint's, its
+    store's unit per hour (time is in hours, at scale 1); `''` for a plain number or a yes/no."""
     if key.owner:
         template = program.member(key.owner)[0]
         part = template.part(key.steps[0])
@@ -491,9 +510,11 @@ def unit_of(program, key):
         part = program.root_value(key.steps[0])
     if part is None:
         raise KeyError(f'{key}: no value of the program')
-    if hasattr(part, 'unit'):  # a flow
-        return part.unit
-    return getattr(part.type, 'unit', '')
+    unit = part.unit if hasattr(part, 'unit') else getattr(part.type, 'unit', '')  # a flow has a unit
+    scale = 1.0 if unit == '' else float(program.unit(unit).scale)
+    if len(key.steps) >= 3 and key.steps[1] in ('outflow', 'inflow'):
+        return (f'{unit}/h' if unit else '1/h'), scale
+    return unit, scale
 
 
 # The plan of the program that a reader or a run used last: a program is read again and again.
@@ -585,8 +606,7 @@ def read(record, program, paths, times):
     found = []
     for path in paths:
         key = key_of(program, path)
-        unit = unit_of(program, key)
-        scale = 1.0 if unit == '' else float(program.unit(unit).scale)
+        unit, scale = unit_of(program, key)
         values = []
         for t in times:
             if not record.manifest.holds(key, t):

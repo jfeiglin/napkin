@@ -22,7 +22,6 @@ from napkin.program.build import (
     after,
     assertion,
     draw,
-    endpoint,
     event,
     flow,
     formula,
@@ -238,13 +237,11 @@ def test_a_negative_request_stops_the_run():
     'parts, slice_, links',
     [
         ((event('refill', after(q(1, 'h'))),), 'S4', None),
-        ((value('reserve', 'L', 4, outflow=endpoint(capacity=q(1, 'L/h'))),), 'S2', None),
-        ((flow('spill', this.water, SINK, request=q(1, 'L/h')),), 'S2', None),
         ((assertion(this.water >= q(0, 'L')),), 'S4', None),
         ((value('level', 'L', 0), route('mix', this.water, this.level)), 'S3', None),
         (
             (flow('echo', SOURCE, this.water, request=formula(named('clinic').delivery.actual_rate)),),
-            'S2',
+            'S4',
             None,
         ),
     ],

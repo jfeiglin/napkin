@@ -22,8 +22,22 @@ from tests.reference.from_program import run_of, value_at
 
 # The examples of the subsets of the slices so far: inputs, stored values with bounds, formulas and
 # directed flows with a request and a capacity (S0); templates, tables, collections and keyed reads
-# (S1). The other examples with collections also need a later slice: events, sharing, legs, solvers.
-SUBSET = {'tank_delivery', 'unit_division', 'unit_product', 'keyed_lookup'}
+# (S1); endpoints, local sharing, junctions and flows across members (S2). The other examples need a
+# later slice: events, legs and routes, solvers.
+SUBSET = {
+    'tank_delivery',
+    'unit_division',
+    'unit_product',
+    'keyed_lookup',
+    'reservoir_priority',
+    'reservoir_proportional',
+    'common_sink',
+    'one_pipe',
+    'one_pipe_capped_at_source',
+    'one_pipe_capped_at_pipe',
+    'one_pipe_capped_at_sink',
+    'two_junctions',
+}
 SLICE = re.compile(r'\((S[0-6]|C)(, S[0-6])*\)$')
 
 

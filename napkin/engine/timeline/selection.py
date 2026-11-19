@@ -209,4 +209,12 @@ def select(rows, upper, tiers, prefs, target):
         if not found.success:
             _failed(found, 'the rows of fair sharing')
         start = found.x[:n]
-    return nearest(rows, lower, upper, np.asarray(target, dtype=float), start)
+    found = nearest(rows, lower, upper, np.asarray(target, dtype=float), start)
+    # The roundoff of the linear algebra is no rate: a rate within it of zero or of its capacity is
+    # put there, so that a junction or a store at its bound is held exactly.
+    finite = upper[np.isfinite(upper)]
+    size = 1.0 + max(float(np.abs(target).max(initial=0.0)), float(finite.max(initial=0.0)))
+    found[np.abs(found) <= 1e-12 * size] = 0.0
+    near = np.isfinite(upper) & (np.abs(found - upper) <= 1e-12 * size)
+    found[near] = upper[near]
+    return found
