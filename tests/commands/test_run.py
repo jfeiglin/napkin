@@ -168,6 +168,60 @@ def test_napkin_run_lists_a_route_and_a_flow_with_legs_in_the_order_of_the_file(
     assert rows['site.charge'] == ['Wh', '100', '92']
 
 
+DELIVERIES = """\
+scenario "Deliveries"
+    horizon 5 h
+
+tank:
+    water: L = 100 in [0,]
+    deliver = event():
+        flow pipe: this.water -> SINK
+            request = 2 L/h
+        after 1 h
+        when t >= 1 h:
+            this.deliver.start()
+            reset when false
+        when t >= 3 h:
+            this.deliver.start()
+            reset when false
+
+started = formula(count(tank.deliver.occurrences))
+current = formula(count(tank.water.outflow.flows))
+requested = formula(sum(tank.water.outflow.flows.request))
+"""
+
+
+def test_napkin_run_lists_no_occurrence_and_reads_one_by_its_id(tmp_path, capsys):
+    """Spec, "Occurrences and their history": two deliveries of 2 L/h, each for an hour, from 1 h and
+    3 h. The default listing holds the named values only (the history table of the spec: 0, 1, 0, 1
+    current flows); `--value` reads the second start, `tank.deliver#1`, which is `unavailable`
+    before it starts and keeps its request after it finishes."""
+    model = package(tmp_path / 'deliveries', DELIVERIES, UNITS)
+    found = napkin(capsys, 'run', model, '--at', '0h,1h,2h,3h,4h')
+    assert found.code == 0, found.err
+    rows = {line.split()[0]: line.split()[1:] for line in found.out.splitlines()[2:]}
+    assert list(rows) == [
+        'tank.water',
+        'started',
+        'current',
+        'requested',
+        'tank.water.outflow.request',
+        'tank.water.outflow.actual_rate',
+    ]
+    assert rows['tank.water'] == ['L', '100', '100', '98', '98', '96']
+    assert rows['current'] == ['0', '1', '0', '1', '0']
+    assert rows['requested'] == ['L/h', '0', '2', '0', '2', '0']
+    second = napkin(
+        capsys, 'run', model, '--json', '--value', 'tank.deliver#1.pipe.request', '--at', '2h,3h,5h'
+    )
+    assert second.code == 0, second.err
+    assert second.doc['values']['tank.deliver#1.pipe.request']['values'] == [
+        {'unavailable': 'tank.deliver#1 has not started at 2 h'},
+        2,
+        2,
+    ]
+
+
 def test_the_tank_of_the_spec_delivers_3_litres_an_hour_until_2_h_40_min(tmp_path, capsys):
     """8 L at 3 L/h: empty at 8/3 h = 2 h 40 min; the request stays 3 L/h and the capacity 5 L/h."""
     model = package(tmp_path / 'tank', TANK, UNITS)

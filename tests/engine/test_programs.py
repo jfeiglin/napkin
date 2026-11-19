@@ -23,8 +23,32 @@ from tests.reference.from_program import run_of, value_at
 # The examples of the subsets of the slices so far: inputs, stored values with bounds, formulas and
 # directed flows with a request and a capacity (S0); templates, tables, collections and keyed reads
 # (S1); endpoints, local sharing, junctions and flows across members (S2); reversible routes and flows
-# with legs (S3). The other examples need a later slice: events and solvers.
+# with legs (S3); events, occurrences, stages, triggers, gates, moves and retirement (the first part
+# of S4). The other examples need a later slice: draws and choices (S4) and solvers (S5).
 SUBSET = {
+    'grinder_refill',
+    'grinder_trigger_and_manual',
+    'deliveries_current_flows',
+    'deliveries_separate_batches',
+    'deliveries_shared_supply',
+    'deliveries_late_start',
+    'shared_limit',
+    'same_round_writes',
+    'stage_sees_writes',
+    'inspect_guard_read_once',
+    'inspect_guard_false',
+    'clock_trigger',
+    'alarm_cooldown',
+    'crossing_drain',
+    'crossing_rejoin',
+    'retirement_failure',
+    'rising_ramp',
+    'falling_ramp',
+    'move_within_bounds',
+    'move_over_bound',
+    'frozen_formula',
+    'lookup_below_first_key',
+    'water_service_returns',
     'reversible_route',
     'legs_half_service',
     'legs_zero_leg',
@@ -60,9 +84,12 @@ def value(record, program, key, t):
 
 
 def same(found, expected):
-    if isinstance(expected, bool):
-        return found is expected
-    return found == pytest.approx(float(expected), rel=1e-9, abs=1e-12)
+    """A yes/no or a text is the same; a number is within 1e-8 of it, relatively: a set whose rates
+    move is integrated to the run's tolerance of 1e-9 at each step (the falling ramp's kink at 2.5 h
+    costs it 2e-9)."""
+    if isinstance(expected, bool | str):
+        return found == expected and type(found) is type(expected)
+    return found == pytest.approx(float(expected), rel=1e-8, abs=1e-12)
 
 
 def test_the_subset_of_this_slice_runs():
@@ -97,18 +124,30 @@ def test_an_example_gives_its_results_or_is_refused_by_its_slice(name):
 
 @pytest.mark.parametrize('name', sorted(SUBSET))
 def test_an_example_of_the_subset_agrees_with_the_oracle(name):
-    """Each value that the example states, at its own times and at the quarters of the horizon. A
-    value that the oracle cannot read (a keyed read below its first key) is unavailable."""
+    """Each value that the example states, at its own times and at the quarters of the horizon, up
+    to the time of a failure, which both runs meet at the same time. A value that the oracle cannot
+    read (a keyed read below its first key) is unavailable; a value of an occurrence before its
+    start is no value of either."""
     example, record = outcome(name)
     oracle, failed = run_of(example.program, example.configuration)
-    assert failed is None
+    assert (failed is None) == (record.failure is None), (failed, record.failure)
     horizon = Fraction(example.configuration.request.horizon)
+    if failed is not None:
+        assert record.failure.t == pytest.approx(float(oracle.view.t))
+        horizon = oracle.view.t
     keys = {item.key for item in example.expected if isinstance(item, At)}
-    times = {Fraction(item.t) for item in example.expected if isinstance(item, At)}
+    times = {Fraction(item.t) for item in example.expected if isinstance(item, At) and item.t <= horizon}
     times |= {horizon * k / 4 for k in range(5)}
     for key in sorted(keys, key=str):
         for t in sorted(times):
-            found = value(record, example.program, key, t)
+            if failed is not None and t >= horizon:
+                continue  # the oracle's state at its failure is not the record's
+            try:
+                found = value(record, example.program, key, t)
+            except LookupError:
+                with pytest.raises(RunFailed):
+                    value_at(oracle, example.program, key, t)
+                continue
             try:
                 expected = value_at(oracle, example.program, key, t)
             except RunFailed:

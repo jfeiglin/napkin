@@ -6,7 +6,10 @@ The default run of a model is a median run to the horizon of its scenario line
 each in its declared unit. The command prints the value of each path of `--value`, or of every named
 value of the model in the order of the file (a flow's actual rate, request and capacity under its
 line, a route's then those of its legs `forward` and `backward`, a flow with legs' `served_fraction`
-then each leg's), at each time of `--at`, or at the start and at the horizon. A number has six
+then each leg's), at each time of `--at`, or at the start and at the horizon. The values of an
+occurrence (`tank.deliver#0.pipe.request`, the first start of `tank.deliver`) are not in that list,
+as a run can start many: `--value` names them, and before its start such a value is `unavailable`.
+A number has six
 significant figures, a yes/no is `true` or `false`, a link the name of the member it names, and a
 value that cannot be evaluated is `unavailable`, with its reason under the table. `--json` prints one JSON document instead: the model, its title, the
 times in hours and, for each path, its unit, its label and its values, each number in full and
@@ -82,7 +85,7 @@ def main(args):
         )
         return 1
     times = common.times_of(model, args.at)
-    paths = chosen(named(model, record), args.value)
+    paths = chosen(named(model, record), held(record), args.value)
     stop = None if record.failure is None else float(record.failure.t)
     times = [(text, t) for text, t in times if stop is None or t <= stop]
     readings = read(model, record, paths, times)
@@ -124,10 +127,17 @@ def recorded(model, entry):
         raise common.Failed([common.problem('configuration', error, entry)]) from None
 
 
+def held(record):
+    """The path of every value that a record holds, an occurrence's included, in its order."""
+    from ..engine.timeline.plan import name_of
+
+    return [name_of(history.key) for history in record.histories]
+
+
 def named(model, record):
     """The path of every named value of a model that its record holds, in the order of the file: each
-    value of an entity and of the top level, and each recorded field of a flow under its line."""
-    from ..engine.timeline.plan import name_of
+    value of an entity and of the top level, and each recorded field of a flow under its line; then
+    the other values that it holds (of the members of a table), but not those of an occurrence."""
     from ..model.semantic import DeclaredFlow, DeclaredLegs, DeclaredRoute
 
     declared = model.declared
@@ -146,22 +156,22 @@ def named(model, record):
                 written += [f'{part.path}.{leg}.{field}' for leg in ROUTE_LEGS for field in ROUTE_LEG_FIELDS]
         else:
             written.append(part.path)
-    held = [name_of(history.key) for history in record.histories]
-    found = [path for path in written if path in held]
-    return found + [path for path in held if path not in found]
+    kept = held(record)
+    found = [path for path in written if path in kept]
+    return found + [path for path in kept if path not in found and '#' not in path]
 
 
-def chosen(paths, items):
+def chosen(paths, known, items):
     """The paths of the `--value` items (each a list with commas), each once, in the order given; all
-    of `paths` with no item. A path that names no value of the model is a UsageError, with the
-    closest paths."""
+    of `paths` with no item. A path that names no value of `known` is a UsageError, with the closest
+    paths."""
     if not items:
         return paths
     found = []
     for path in (piece.strip() for text in items for piece in text.split(',')):
-        if path not in paths:
+        if path not in known:
             raise common.UsageError(
-                f'--value {path}: no named value of the model' + common.close(path, paths)
+                f'--value {path}: no named value of the model' + common.close(path, known)
             )
         if path not in found:
             found.append(path)

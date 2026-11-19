@@ -5,7 +5,9 @@ A piece reads `value + rate * (time - t)` from its time until the next piece. Th
 pieces of each value of a run:
 
 - **An input, a stored value that does not move, a draw and a captured request or capacity** has one
-  constant piece at the start.
+  constant piece at the start, and a piece at each commit that writes it. A value of an occurrence
+  has its pieces from the occurrence's start; a store that a flow of an occurrence meets has the
+  pieces of its set while it moves and holds its value after.
 - **A store and the actual rate of a flow** take their pieces from the segments of their component,
   as the run makes them, while the bounds and the faces of each segment hold (`Recorder.segment`).
   On a straight segment (a closed form of constant rates) a store has one exact piece of its rate,
@@ -24,8 +26,12 @@ pieces of each value of a run:
   an any, an all, a least or a greatest value of values that hold between moments are exact; any
   other is fitted as a formula is. Neither has a key in the record: the formulas that read them read
   their histories.
+- **A dynamic read** (the occurrences of an event, the flows present at an endpoint) has its pieces
+  from the histories of what its members project and of the fields that say when each is a member:
+  an occurrence is a member from its start, a flow of an occurrence while it is active.
 - **A formula, and a request or a capacity written as one,** is made after the run from the
-  histories of what it reads: between two times at which one of them has a piece, it is one piece
+  histories of what it reads (a formula of an occurrence from its start, and from its finish the
+  frozen value that the run gave it, D7): between two times at which one of them has a piece, it is one piece
   where each of them holds its value, else it is fitted as a curve is, and a yes/no takes a piece at
   each change, located to within the crossing tolerance of the run (`Numerics.crossing`). A formula
   that only names another value has that value's history. A formula that cannot be evaluated holds
@@ -33,10 +39,12 @@ pieces of each value of a run:
   too.
 
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of
-each path. It evaluates a formula, a reduction and a keyed read at each time that it is asked from
-the recorded values of what it reads, and never reads a formula's fitted pieces: a fit is checked at
-a few points of each piece only, so it could lose a kink between two of them, or a yes/no that
-changes and changes back.
+each path. It evaluates a formula, a reduction, a keyed read and a dynamic read at each time that it
+is asked from the recorded values of what it reads (a formula of a finished occurrence reads its
+frozen piece), and never reads a formula's fitted pieces: a fit is checked at a few points of each
+piece only, so it could lose a kink between two of them, or a yes/no that changes and changes back.
+It reads a record with the plan of the run that made it, or makes the record's occurrences again
+from the starts of its trace (`Plan.replay`).
 """
 
 from __future__ import annotations
@@ -55,8 +63,8 @@ from ...program.config import Configuration, Request
 from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Record, Unavailable
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
-from .collections import history_of, index_of, kept, looked_up, reduced
-from .plan import FORMULA, LOOKUP, RATE, REDUCE, Plan, name_of
+from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
+from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE, Plan, name_of
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
 FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError)
@@ -144,17 +152,16 @@ class Recorder:
         self.trace = []
         self.formulas = set()  # the formulas whose pieces the run gives (the family's settings)
         self.run = None  # the run, which knows the entries that each collection keeps
+        self.round = 0  # the round of the moment where the run is
         self._wanted = None  # the engine names whose histories a record of some keys needs
 
     def entry(self, t, kind, part, owner='', **details):
-        """One entry of the trace. Its round is 0 at the setup, and 1 at a later time: this slice
-        has one round at a time."""
-        self.trace.append(Entry(t, 0 if t == 0 else 1, kind, part, owner, tuple(details.items())))
+        """One entry of the trace, in the round where the run is (`round`: 0 is the setup)."""
+        self.trace.append(Entry(t, self.round, kind, part, owner, tuple(details.items())))
 
-    @staticmethod
-    def failure(t, message):
+    def failure(self, t, message):
         """The entry of the failure that stopped a run at time t."""
-        return Entry(t, 0 if t == 0 else 1, 'failure', '', '', (('message', message),))
+        return Entry(t, self.round, 'failure', '', '', (('message', message),))
 
     def segment(self, component, segment, stores, flows):
         """The pieces of the stores and the flows of a component over one of its segments."""
@@ -232,22 +239,19 @@ class Recorder:
     def record(self, end, failure=None):
         """The record of the run, to the time `end` at which it stopped (the horizon, or the time of
         its failure)."""
-        plan = self.plan
+        plan, run = self.plan, self.run
         request = plan.configuration.request
         needed = None if request.everything else self._needed(request.keys)
         histories = {}
         for name, value in plan.values.items():
             if needed is not None and name not in needed:
                 continue
-            if value.kind == RATE or name in plan.moving:
-                pieces = [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
-                if not pieces and name in self.constants:
-                    # A store whose first segment failed holds its start value.
-                    pieces = [(0.0, self.constants[name], 0.0)]
-            elif value.kind in (FORMULA, REDUCE, LOOKUP):
+            if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC):
                 continue
-            else:
-                pieces = [(0.0, self.constants[name], 0.0)] if name in self.constants else []
+            # The value at the start, then the pieces that the run gave it: a store's lines and
+            # curves, a value that a commit wrote, an occurrence's values from its start.
+            pieces = [(0.0, self.constants[name], 0.0)] if name in self.constants else []
+            pieces += [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
             histories[name] = self._history(value.key, pieces)
         for name in plan.keyed:
             if needed is None or name in needed:
@@ -255,26 +259,42 @@ class Recorder:
         calculated = {
             name
             for name, value in plan.values.items()
-            if value.kind in (FORMULA, REDUCE) and (needed is None or name in needed)
+            if value.kind in (FORMULA, REDUCE, DYNAMIC) and (needed is None or name in needed)
         }
         for name in plan.ordered(calculated):
             value = plan.values[name]
+            owner = plan.occurrence_of(name)
+            start = 0.0
+            if owner is not None:
+                # A formula of an occurrence exists from its start, and keeps after its finish the
+                # value that it had then (D7).
+                start = histories[f'{owner}.started'].pieces[0].t
             if name in self.formulas:
                 pieces = [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
             elif value.kind == REDUCE:
                 pieces = self._reduction(name, histories, end)
-            elif isinstance(value.node, nodes.Ref) and value.node.name in histories:
+            elif value.kind == DYNAMIC:
+                pieces = self._dynamic(name, histories, end)
+            elif (
+                isinstance(value.node, nodes.Ref) and value.node.name in histories and name not in run.frozen
+            ):
                 # A formula that names another value has its history.
-                histories[name] = History(value.key, histories[value.node.name].pieces)
+                found = histories[value.node.name].pieces
+                histories[name] = History(
+                    value.key, tuple(piece for piece in found if piece.t >= start) or found
+                )
                 continue
             else:
-                pieces = self.formula(name, histories, end)
+                pieces = self.formula(name, histories, end, start=start)
+            if name in run.frozen:
+                finish = next(piece[0] for piece in self.pieces[name])
+                pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, run.frozen[name], 0.0)]
             histories[name] = self._history(value.key, pieces)
-        # What a kept formula reads is kept too, so that `read` can evaluate it.
+        # What a kept formula, reduction or dynamic read reads is kept too, so that `read` can
+        # evaluate it (`_needed`).
         keys = set(request.keys)
-        for value in plan.values.values():
-            if value.kind == FORMULA and value.key in request.keys:
-                keys |= {plan.values[read].key for read in plan.formula_reads(value.node)[0]}
+        if needed is not None:
+            keys |= {plan.values[name].key for name in needed if plan.values[name].key is not None}
         kept = [
             history
             for history in histories.values()
@@ -288,13 +308,21 @@ class Recorder:
         """The engine names whose histories a record of only these keys needs: theirs, and what
         their formulas and reductions read."""
         plan, found = self.plan, set()
-        for key in keys:
-            name = name_of(key)
-            if name in plan.values:
-                found.add(name)
-                if plan.values[name].kind in (FORMULA, REDUCE):
-                    reads = plan.expanded(name)
-                    found |= reads.leaves | reads.formulas | reads.stepped
+        pending = [name_of(key) for key in keys]
+        while pending:
+            name = pending.pop()
+            if name in found or name not in plan.values:
+                continue
+            found.add(name)
+            kind = plan.values[name].kind
+            if kind in (FORMULA, REDUCE):
+                reads = plan.expanded(name)
+                pending += [*reads.leaves, *reads.formulas, *reads.stepped]
+            elif kind == DYNAMIC:
+                pending += sorted(plan.dynamic_reads(name))  # what its members project, and when
+            owner = plan.occurrence_of(name)
+            if owner is not None:
+                pending += [f'{owner}.started', f'{owner}.active']
         return found
 
     @staticmethod
@@ -363,13 +391,32 @@ class Recorder:
             boolean,
         )
 
-    def formula(self, name, histories, end, reads=None, compute=None, boolean=None):
-        """The pieces of a formula from the histories of what it reads (of a reduction, when `reads`
-        and `compute` are given: the names of its kept entries, and its value from theirs)."""
+    def _dynamic(self, name, histories, end):
+        """The pieces of a dynamic read from the histories of what its members project and of the
+        fields that say when each is a member."""
+        plan = self.plan
+        dynamic = plan.dynamic[name]
+
+        def point(t, readers):
+            def value(read):
+                if read not in readers:
+                    raise LookupError(f'the record holds no value of {read}')
+                return known(readers[read](t))
+
+            members = plan.members_at(dynamic.source, value)
+            return dynamic_value(dynamic, members, lambda each: plan.project(each, dynamic.steps), value, t)
+
+        return self.formula(name, histories, end, sorted(plan.dynamic_reads(name)), point=point)
+
+    def formula(self, name, histories, end, reads=None, compute=None, boolean=None, start=0.0, point=None):
+        """The pieces of a formula from the histories of what it reads, from `start` on (of a
+        reduction, when `reads` and `compute` are given: the names of its kept entries, and its value
+        from theirs; of a dynamic read, when `point` gives its value at a time)."""
         plan = self.plan
         value = plan.values[name]
-        timed = compute is None and 't' in nodes.names(value.node)
+        timed = compute is None and point is None and 't' in nodes.names(value.node)
         reads = sorted(plan.reads(name)) if reads is None else reads
+        reads = [read for read in reads if read in histories]
         if compute is None:
 
             def compute(env):
@@ -377,13 +424,18 @@ class Recorder:
 
         boolean = value.boolean if boolean is None else boolean
         times = sorted(
-            {0.0, *(piece.t for read in reads for piece in histories[read].pieces if piece.t <= end)}
+            {
+                float(start),
+                *(piece.t for read in reads for piece in histories[read].pieces if start <= piece.t <= end),
+            }
         )
         bounds = [*times, max(end, times[-1])]
         readers = {read: _reader(histories[read]) for read in reads}
         holders = {read: _holder(histories[read]) for read in reads}
 
         def at(t):
+            if point is not None:
+                return point(t, readers)
             env = {read: readers[read](t) for read in reads}
             env['t'] = float(t)
             for found in env.values():
@@ -483,11 +535,15 @@ class Reading:
 
 
 def key_of(program, path):
-    """The record key of a path: a `Key` as it is, or a text that starts with a member's id (the
-    longest that matches) or with a name of the root (`tank.water`, `clinic.delivery.actual_rate`,
-    `effort`)."""
+    """The record key of a path: a `Key` as it is, or a text that starts with an occurrence's id
+    (`tank.receive#0.remaining`), a member's id (the longest that matches) or a name of the root
+    (`tank.water`, `clinic.delivery.actual_rate`, `effort`)."""
     if isinstance(path, Key):
         return path
+    head, mark, rest = path.partition('#')
+    if mark:
+        number, _, steps = rest.partition('.')
+        return Key(f'{head}#{number}', tuple(steps.split('.')) if steps else ())
     parts = path.split('.')
     for cut in range(len(parts) - 1, 0, -1):
         owner = '.'.join(parts[:cut])
@@ -504,7 +560,13 @@ def unit_of(program, key):
     unit; of a flow's actual rate, request or capacity, the flow's unit, and of a leg's, the leg's;
     of an endpoint's, its store's unit per hour (time is in hours, at scale 1); `''` for a plain
     number or a yes/no, such as a `served_fraction`."""
-    if key.owner:
+    if '#' in key.owner:
+        receiver, event = key.owner.rsplit('#', 1)[0].rsplit('.', 1)
+        found = program.member(receiver)[0].part(event)
+        if key.steps[0] in ('started', 'done', 'active'):
+            return '', 1.0  # the time of the start is in hours; the others are yes/no values
+        part = next((each for each in (*found.params, *found.locals) if each.name == key.steps[0]), None)
+    elif key.owner:
         template = program.member(key.owner)[0]
         part = template.part(key.steps[0])
     else:
@@ -532,14 +594,21 @@ def remember(plan):
     _PLANS[id(plan.program)] = (plan.program, plan)
 
 
-def _plan_of(program):
+def _plan_of(program, record=None):
     """A plan of a program, which names each formula with its node: the plan that a run of it
-    kept, else the plan of a bare request."""
+    kept, else the plan of a bare request. A record whose occurrences that plan does not hold has
+    them made again in a plan of its own, from the starts of its trace (`Plan.replay`)."""
     found = _PLANS.get(id(program))
     if found is None or found[0] is not program:
         remember(Plan.of(program, Configuration(Request(0))))
         found = _PLANS[id(program)]
-    return found[1]
+    plan = found[1]
+    if record is not None:
+        starts = {entry.owner for entry in record.trace if entry.kind == 'start'}
+        if starts != {occ for occurrences in plan.occurrences.values() for occ in occurrences}:
+            plan = Plan.of(program, Configuration(Request(0)))
+            plan.replay(record.trace)
+    return plan
 
 
 class _Values:
@@ -550,7 +619,7 @@ class _Values:
     def __init__(self, record, program):
         self.record = record
         self.histories = {history.key: history for history in record.histories}
-        self.plan = _plan_of(program)
+        self.plan = _plan_of(program, record)
         self.done = {}
         self.kept = {}
 
@@ -561,9 +630,13 @@ class _Values:
         if (name, t) in self.done:
             return self.done[name, t]
         value = self.plan.values[name]
+        owner = self.plan.occurrence_of(name)
         if value.kind in (REDUCE, LOOKUP):
             found = self._derived(name, t)
-        elif value.kind != FORMULA:
+        elif value.kind == DYNAMIC:
+            found = self._dynamic(name, t)
+        elif value.kind != FORMULA or (owner is not None and self._finished(owner, t)):
+            # A value, or a formula of a finished occurrence, which keeps its value (D7).
             history = self.histories.get(value.key)
             if history is None:
                 raise LookupError(f'the record holds no value of {name}')
@@ -576,11 +649,33 @@ class _Values:
                     if isinstance(item, Unavailable):
                         raise ExpressionError(item.reason)
                 found = evaluate(value.node, env, self.plan.units)
-                found = bool(found) if value.boolean else float(found)
+                found = bool(found) if value.boolean else found if isinstance(found, str) else float(found)
             except FAILURES as problem:
                 found = Unavailable(str(problem))
         self.done[name, t] = found
         return found
+
+    def _finished(self, owner, t):
+        """Whether an occurrence has finished at time t."""
+        history = self.histories.get(Key(owner, ('active',)))
+        try:
+            return history is not None and history.at(t) is False
+        except LookupError:
+            return False  # it has not started
+
+    def _dynamic(self, name, t):
+        """A dynamic read at a time, from the recorded values of its members."""
+        plan = self.plan
+        dynamic = plan.dynamic[name]
+
+        def value(read):
+            return self.at(read, t)
+
+        try:
+            members = plan.members_at(dynamic.source, value)
+            return dynamic_value(dynamic, members, lambda each: plan.project(each, dynamic.steps), value, t)
+        except FAILURES as problem:
+            return Unavailable(str(problem))
 
     def _derived(self, name, t):
         """A reduction or a keyed read at a time, from the recorded values of what it reads."""
@@ -605,7 +700,8 @@ def read(record, program, paths, times):
     """The values of named paths at chosen times, each in its declared unit: one `Reading` for each
     path, in order. A formula, and a request, a capacity or an actual rate that is one, is evaluated
     at each time from the recorded values of what it reads (see the module). A time that the record
-    does not hold is a LookupError, and so is a formula whose reads it does not hold."""
+    does not hold is a LookupError, and so is a formula whose reads it does not hold. A value of an
+    occurrence before its start is `Unavailable`."""
     values_at = _Values(record, program)
     found = []
     for path in paths:
@@ -615,7 +711,12 @@ def read(record, program, paths, times):
         for t in times:
             if not record.manifest.holds(key, t):
                 raise LookupError(f'{path}: the record holds no value at {t} h')
-            value = values_at.at(name_of(key), t)
+            try:
+                value = values_at.at(name_of(key), t)
+            except LookupError:
+                if '#' not in key.owner:
+                    raise
+                value = Unavailable(f'{key.owner} has not started at {float(t):g} h')
             if not isinstance(value, (bool, str, Unavailable)):
                 value = float(value) / scale
             values.append(value)

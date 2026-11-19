@@ -77,10 +77,11 @@ class Occurrences:
 
     def node(self, expression, scope, origin):
         """The node of an expression of a scope over engine names, made once."""
-        owner = self.plan._owner(scope)
+        owner = self.plan.owner_of(scope)
         key = (id(expression), owner)
         found = self._nodes.get(key)
         if found is None:
+            # The expression is kept with its node, so that its id names it while the run lasts.
             found = self._nodes[key] = (self.plan.node(expression, scope, origin), expression)
         return found[0]
 
@@ -181,11 +182,15 @@ class Occurrences:
             run.moment.again = True
         if isinstance(step, p.Until):
             live.waiting = True
-            self.gates[live.id] = live
-            run.triggers.gate(live)
+            self.gates[live.id] = live  # its condition is watched from the end of the moment
             return
         delay = run.truth(self.node(step.delay, live.plan.scope, step.origin))
-        if isinstance(delay, bool) or not isinstance(delay, int | float) or not math.isfinite(delay) or delay < 0:
+        if (
+            isinstance(delay, bool)
+            or not isinstance(delay, int | float)
+            or not math.isfinite(delay)
+            or delay < 0
+        ):
             raise SimulationError(
                 f'the delay {nodes.text(step.delay.node)} of {live.id} must be a duration that is not '
                 f'negative, and is {delay!r} at t = {run.now:g} h'
@@ -207,6 +212,13 @@ class Occurrences:
             _, _, occ, _ = heapq.heappop(self.schedule)
             found.append(self.live[occ])
         return found
+
+    def met(self, store):
+        """A move meets a store: one of an occurrence must be empty when it finishes."""
+        found = self.plan.values.get(store)
+        owner = found.key.owner if found is not None and found.key is not None else ''
+        if owner in self.live:
+            self.live[owner].met.add(store)
 
     def waiting(self):
         """The occurrences that wait at a gate, in the order in which they were made."""
@@ -234,7 +246,9 @@ class Occurrences:
             try:
                 frozen = run.value(name)
             except (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError) as problem:
-                frozen = Unavailable(f'{name} was not available when {made.id} finished at t = {t:g} h: {problem}')
+                frozen = Unavailable(
+                    f'{name} was not available when {made.id} finished at t = {t:g} h: {problem}'
+                )
             run.frozen[name] = frozen
             run.recorder.add(name, t, frozen, 0.0)
         for flow in made.flows:

@@ -489,12 +489,17 @@ class ComponentWay:
         limit = self.run.plan.configuration.limits.max_rounds
         if self.still > limit:
             raise SimulationError(f'{self.flows[0]}: {limit} segments of no length at {segment.start:g} h')
-        return list(self.stores), list(self.rates)
+        return list(self.stores), list(self.rates), True
 
     def _commit(self, segment):
         component = self.component
         self.run.recorder.segment(component, segment, component.system.state_ids, self.rates)
         component.proceed(segment)
+
+    def snap(self):
+        """The next event at the time of a moment: committed as any other, with what it changes."""
+        stores, rates, _ = self.step()
+        return stores + rates
 
     def cut(self, t):
         """The run stands at time t inside the next segment: the segment up to t is committed."""

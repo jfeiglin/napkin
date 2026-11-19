@@ -39,7 +39,7 @@ import math
 from .component import ComponentWay
 from .family import Family
 from .lines import Lines
-from .plan import COMPONENT, FAMILY, LINES, SPARSE, Outside
+from .plan import COMPONENT, FAMILY, LINES, ROUTE, SPARSE, Outside
 from .sparse import Sparse
 
 
@@ -78,6 +78,22 @@ class Ways:
         None for a store that moves on a curve."""
         return self.instance_of(store).linear(store)
 
+    def monotone(self, store):
+        """Whether a store of a set only supplies or only receives the connections of its set, so
+        that it only falls or only rises between moments."""
+        connected = self.sets[self.set_of[store]][0]
+        sides = set()
+        for flow in connected.flows:
+            found = self.plan.flows[flow]
+            if found.kind == ROUTE and store in (found.source, found.sink):
+                return False  # a signed rate moves it either way
+            for connection in found.connections:
+                if connection.source == store:
+                    sides.add('out')
+                if connection.sink == store:
+                    sides.add('in')
+        return len(sides) <= 1
+
     def peek(self):
         """(the time of the next event of an instance, the instance), or (inf, None)."""
         found = (math.inf, None)
@@ -91,6 +107,13 @@ class Ways:
         """Every instance stands at time t."""
         for instance in self.instances:
             instance.cut(t)
+
+    def finish(self, t):
+        """At the horizon: each instance stands there, and the lines settle what left a bound."""
+        self.cut(t)
+        for instance in self.instances:
+            if isinstance(instance, Lines):
+                instance.finish(t)
 
     def touched_by(self, names):
         """The ids of the sets that hold or read any of `names`."""
@@ -138,11 +161,12 @@ class Ways:
         instance each, every component and sparse set alone."""
         if not sets:
             return []
-        rate_sets = {}
-        for key, (connected, _) in self.sets.items():
-            for flow in connected.flows:
-                for name in self.plan.rates_of_flow(flow):
-                    rate_sets[name] = key
+        rate_sets = {}  # the rates of the sets that stay, by the set that gives each
+        if any(connected.rates for connected in sets):
+            for key, (connected, _) in self.sets.items():
+                for flow in connected.flows:
+                    for name in self.plan.rates_of_flow(flow):
+                        rate_sets[name] = key
         made = list(sets)
         new_rates = {}
         for index, connected in enumerate(made):

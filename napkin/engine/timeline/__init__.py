@@ -17,14 +17,18 @@ templates with members written by hand and table rows, links and paths through t
 keyed reads `.at(x)` with their key times, assertions over inputs, and starting values in the order
 of what they read across members (S1); endpoints with their capacities, requests and allocations,
 local sharing across junctions and stores at their bounds, and flows across members (S2); reversible
-routes with one signed rate and their legs, and flows with legs at one served fraction (S3). The
-members of each template are rows of a pool (`pools.py`); collections and reductions are in
-`collections.py`. The flows and the stores are one network (`network.py`), whose local sharing at an
-instant is a closed form or the selection order (`selection.py`). A connected set of one directed
-flow whose rate reads nothing that moves runs with every other such set on arrays (`family.py`);
-any other set whose rates read nothing that moves runs on lines (`lines.py`); a set whose rates move
-is a component of the continuous engine (`component.py`) when it is small and simple, else it runs
-on the sparse integrator (`sparse.py`).
+routes with one signed rate and their legs, and flows with legs at one served fraction (S3); events
+with their occurrences, stages, triggers, gates, moves and the retirement of an occurrence's stores
+(S4, its first part). The members of each template are rows of a pool (`pools.py`); collections and
+reductions are in `collections.py`. The flows and the stores are one network (`network.py`), whose
+local sharing at an instant is a closed form or the selection order (`selection.py`). A connected
+set of one directed flow whose rate reads nothing that moves runs with every other such set on
+arrays (`family.py`); any other set whose rates read nothing that moves runs on lines (`lines.py`);
+a set whose rates move is a component of the continuous engine (`component.py`) when it is small and
+simple, else it runs on the sparse integrator (`sparse.py`); `ways.py` holds them, and builds again
+the sets that a moment changes. A run (`run.py`) goes from moment to moment: the rounds of a moment
+(`moment.py`), the occurrences (`occurrences.py`), and the conditions with the times at which their
+answers can change (`triggers.py`).
 """
 
 from __future__ import annotations

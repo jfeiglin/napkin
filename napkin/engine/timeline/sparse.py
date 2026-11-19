@@ -447,7 +447,12 @@ class Sparse:
         self.run.now = end
         if ended:
             self.solver = None
-        return list(self.stores), list(self.recorded)
+        return list(self.stores), list(self.recorded), ended
+
+    def snap(self):
+        """The next event at the time of a moment: committed as any other, with what it changes."""
+        stores, rates, _ = self.step()
+        return stores + rates
 
     def cut(self, t):
         """The run stands at time t inside the next step: the step up to t is committed, and the

@@ -56,17 +56,30 @@ continuous engine and the record read these names; nothing reads the spelling of
   set whose rates read nothing that moves runs on lines (`lines.py`), at any size; a set whose rates
   move runs as one component of the continuous engine (`component.py`) when its flows are directed,
   each store meets at most one flow on each side, it has no endpoint settings and at most `LIMIT`
-  stores, and on the sparse integrator otherwise (`sparse.py`). A stored value that no flow touches
-  does not move in this slice, since no stage writes it. A directed flow with no store at either end
-  moves nothing, and its actual rate is the formula `min(request, capacity)`.
-- **Assertions** over inputs are checked once, at the start of the run.
+  stores, and on the sparse integrator otherwise (`sparse.py`). A stored value that no flow meets
+  holds its value between moments. A directed flow with no store at either end moves nothing, and
+  its actual rate is the formula `min(request, capacity)`. A request or a capacity may read an
+  actual rate or a served fraction of another set (`Connected.rates`), which settles first; of its
+  own set it has no answer of local sharing, and is refused. `connect` finds the sets of any flows,
+  at the start and at each moment that changes them.
+- **Events.** Each member's events (`events`) and the triggers of each of them on it (`Trigger`,
+  with its condition, captures and reset as nodes) are known from the start. An occurrence is
+  made in a run (`occurrence`): its parameters, its built-in fields `started`, `done` and `active`,
+  its locals and the requests and capacities of its flows are values named under its id
+  (`tank.receive#0.remaining`), its flows and their legs take the next creation numbers, and its
+  bare names are its `Frame`. `replay` makes the occurrences of a record again, for a reader.
+- **Dynamic reads.** A read of a collection whose members change in a run (`Dynamic`): the
+  occurrences of an event (`count(this.refill.occurrences)`, `.occurrences.at(t)`, `since(e)`) and,
+  when events own flows, the flows of an endpoint and its actual rate. `members` gives the members
+  now, `members_at` at a time of a record, and `project` the value that a member projects.
+- **Assertions** over inputs are checked once, at the start of the run. Enum members and texts are
+  values that compare with `==` and `!=`.
 
-What a later slice runs is refused by name (`Outside`), with the slice that brings it: events,
-triggers, the starts of the setup and assertions over state (S4); a key of `.at(...)` that moves or
-is a function of the time other than `t`, and a keyed read of a value that moves (S4); a request or
-a capacity that reads an actual rate or a served fraction, which needs the rates of other flows
-settled first (S4); solvers (S5). Enums and texts are refused too: a value of this slice is a
-number or a yes/no.
+What a later slice runs is refused by name (`Outside`), with the slice that brings it: draws in
+events, choices, `elapsed`, `delayed`, the assignment of a formula, a distribution, a collection or
+an allocation, controllers, and assertions over state (S4, its second part); a key of `.at(...)`
+that moves or is a function of the time other than `t`, and a keyed read of a value that moves
+(S4); solvers (S5).
 """
 
 from __future__ import annotations
@@ -411,6 +424,8 @@ class Plan:
         self.occurrences = {}  # (member id, event name) -> the ids of its occurrences, in order
         self.frames = {}  # occurrence id -> its scope (template, row, member, Frame)
         self.end_flows = {}  # (store, side) -> the connections present at a dynamic endpoint
+        self.end_history = {}  # (store, side) -> every connection that was ever present there
+        self._settings_index = ({}, {})
         # With flows of events, every endpoint's collection of flows changes in a run.
         self.dynamic_ends = any(
             isinstance(part, p.Flow)
@@ -532,7 +547,7 @@ class Plan:
         self.values[value.name] = value
 
     @staticmethod
-    def _owner(scope):
+    def owner_of(scope):
         """The owner of the values of a scope: an occurrence's id, a member's id, or the root's."""
         if scope is None:
             return ''
@@ -543,7 +558,7 @@ class Plan:
         occurrence ((template, row, member, frame))."""
         member = scope[2] if scope is not None else None
         local = scope is not None and len(scope) > 3
-        key = Key(self._owner(scope), (value.name,))
+        key = Key(self.owner_of(scope), (value.name,))
         name = name_of(key)
         if value.kind == p.COLLECTION:
             return  # a collection has no value of its own: a path that steps into it reads its init
@@ -643,7 +658,7 @@ class Plan:
         these: `max(rate, 0)` forward and `max(-rate, 0)` backward on a route (and so are their
         requests, of the route's signed request), and the fraction times the leg's request on a flow
         with legs."""
-        owner = self._owner(scope)
+        owner = self.owner_of(scope)
         name = name_of(Key(owner, (flow.name,)))
         self._numbers[name] = len(self._numbers) + 1
         if flow.kind == p.LEGS:
@@ -696,7 +711,7 @@ class Plan:
     def _settings(self, flow, steps, scope, origin):
         """The engine names of the request (zero when left out) and of the capacity (None when left
         out) of a flow or a leg, declared as values under the key steps `steps`."""
-        owner = self._owner(scope)
+        owner = self.owner_of(scope)
         names = {}
         for which in ('request', 'capacity'):
             setting = getattr(flow, which)
@@ -726,7 +741,7 @@ class Plan:
         """The engine name of a stored number at an end of a flow, or None for SOURCE and SINK."""
         if isinstance(end, p.Outside):
             return None
-        point = self._resolve(end, scope, origin)
+        point = self.resolve(end, scope, origin)
         found = self.values.get(point[1]) if point[0] == 'value' else None
         if found is None or found.kind != STATE or found.boolean:
             raise Outside(f'{origin}: an end of a flow that is no stored number of this slice')
@@ -744,6 +759,7 @@ class Plan:
                         self._incident.setdefault((end, side), []).append(connection.name)
         if self.dynamic_ends:
             self.end_flows = {pair: list(flows) for pair, flows in self._incident.items()}
+            self.end_history = {pair: list(flows) for pair, flows in self._incident.items()}
         scopes = [(value, None) for value in self.program.root]
         scopes += [(value, scope) for scope in members for value in scope[0].values]
         for value, scope in scopes:
@@ -769,7 +785,7 @@ class Plan:
         return self.ends[(store, side)]
 
     def _declare_end(self, store, value, scope, side, setting, flows):
-        owner = self._owner(scope)
+        owner = self.owner_of(scope)
         # With no flow yet, the unit of the store per hour.
         unit = self.connections[flows[0]].unit if flows else f'{getattr(value.type, "unit", "") or "1"}/h'
         origin = setting.origin or value.origin
@@ -822,7 +838,7 @@ class Plan:
         ((key, connection), ...)), where a key is the engine name of a value or a creation number."""
         items = []
         for path in allocation.items:
-            point = self._resolve(path, scope, origin)
+            point = self.resolve(path, scope, origin)
             if point[0] == 'flow':
                 items.append(('one', point[1]))
             elif point[0] == 'many' and all(each[0] == 'flow' for each in point[1].points):
@@ -936,6 +952,21 @@ class Plan:
         flows = tuple(name for name in flows if name in self.flows)
         return Occurrence(occ, member, event, scope, tuple(initial), tuple(stores), flows, tuple(formulas))
 
+    def replay(self, trace):
+        """The occurrences of a run made again from the starts of its trace, in their order, so
+        that a reader of its record names what the run named."""
+        for entry in trace:
+            if entry.kind != 'start':
+                continue
+            head, number = entry.owner.rsplit('#', 1)
+            member, event = head.rsplit('.', 1)
+            made = self.occurrence(member, event, int(number), entry.detail('args'), entry.t)
+            for flow in made.flows:
+                for connection in self.flows[flow].connections:
+                    for side, store in zip(SIDES, (connection.source, connection.sink)):
+                        if store is not None:
+                            self.end_history.setdefault((store, side), []).append(connection.name)
+
     def _flow_settings(self, name):
         """The engine names of the requests and capacities of a flow (or of its legs), in order."""
         found = []
@@ -968,7 +999,7 @@ class Plan:
             if isinstance(read, Time):
                 names[name], binding[name] = nodes.ref('t'), 't'
             elif isinstance(read, Path):
-                point = self._resolve(read, scope, origin, item)
+                point = self.resolve(read, scope, origin, item)
                 if point[0] == 'value':
                     names[name], binding[name] = nodes.ref(point[1]), point[1]
                 elif point[0] in ('member', 'occurrence'):
@@ -988,7 +1019,7 @@ class Plan:
             elif isinstance(read, EnumValue):
                 names[name] = nodes.const(read.member)
             elif isinstance(read, Since):
-                point = self._resolve(read.event, scope, origin, item)
+                point = self.resolve(read.event, scope, origin, item)
                 if point[0] != 'event':
                     raise Outside(f'{origin}: {spelled(read)} of what is no event (a type error)')
                 found = self._dynamic(read, 'since', ('occurrences', point[1], point[2]), (), scope, item)
@@ -1000,7 +1031,7 @@ class Plan:
 
     # ---- paths ------------------------------------------------------------------------------------
 
-    def _resolve(self, path, scope, origin, item=None):
+    def resolve(self, path, scope, origin, item=None):
         """What a path names, for a member's (`scope` = (template, row, member)) or the root's
         expression: `('value', engine name)`, `('member', id)`, `('flow', engine name)` of a flow or
         a connection, or `('many', Entries)`."""
@@ -1069,7 +1100,7 @@ class Plan:
                     return ('member', target.members[template.members[row].link(name)].id)
                 if part.kind == p.COLLECTION:
                     member = template.members[row]
-                    return self._resolve(member.value(name) or part.init, (template, row, member), origin)
+                    return self.resolve(member.value(name) or part.init, (template, row, member), origin)
                 return ('value', f'{point[1]}.{name}')
             if isinstance(part, p.Flow):
                 return ('flow', f'{point[1]}.{name}')
@@ -1154,7 +1185,7 @@ class Plan:
         return ('value', f'{name}.{step}')
 
     def _many(self, path, scope, origin, item):
-        point = self._resolve(path, scope, origin, item)
+        point = self.resolve(path, scope, origin, item)
         if point[0] != 'many':
             raise Outside(f'{origin}: {spelled(path)} is no collection')
         return point[1]
@@ -1163,7 +1194,7 @@ class Plan:
         """`<a, b>`: the members that the paths name, in their order of creation, each once."""
         found, template = {}, None
         for path in literal.items:
-            point = self._resolve(path, scope, origin, item)
+            point = self.resolve(path, scope, origin, item)
             if point[0] != 'member':
                 raise Outside(f'{origin}: {spelled(path)} in a literal is no member')
             owner, row = self.program.member(point[1])
@@ -1244,7 +1275,7 @@ class Plan:
         key, name = self._derived_name(read, scope, item)
         if key in self._derived:
             return name
-        point = self._resolve(read.source, scope, origin, item)
+        point = self.resolve(read.source, scope, origin, item)
         if point[0] == 'dynamic':
             return self._dynamic(read, read.op, point[1], point[2], scope, item)
         entries = self._many(read.source, scope, origin, item)
@@ -1271,7 +1302,7 @@ class Plan:
         by_time = isinstance(lookup.key.node, nodes.Ref) and isinstance(
             lookup.key.read(lookup.key.node.name), Time
         )
-        source = self._resolve(lookup.source, scope, origin, item)
+        source = self.resolve(lookup.source, scope, origin, item)
         if source[0] == 'dynamic':
             if source[1][0] != 'occurrences' or source[2] or not by_time:
                 raise Outside(f'{origin}: {spelled(path)}: occurrences are read at the time t only')
@@ -1335,7 +1366,7 @@ class Plan:
         if isinstance(read.source, Distribution):
             distribution = read.source
         else:
-            point = self._resolve(read.source, scope, origin)
+            point = self.resolve(read.source, scope, origin)
             if point[0] != 'value' or point[1] not in self.distributions:
                 raise Outside(
                     f'{origin}: a draw of {spelled(read.source)}, which is no distribution of this slice'
@@ -1356,8 +1387,61 @@ class Plan:
             return self.reductions[name].reads()
         if name in self.keyed:
             return self.keyed[name].reads()
+        if name in self.dynamic:
+            return self.dynamic_reads(name)
         node = self.values[name].node
         return set() if node is None else set(nodes.names(node)) - {'t'}
+
+    def dynamic_reads(self, name):
+        """The engine names that a dynamic read reads over the whole run: what each member that it
+        ever had projects, and the fields that say when each is a member."""
+        dynamic = self.dynamic[name]
+        found = set()
+        for point in self.members_ever(dynamic.source):
+            if dynamic.steps and dynamic.op != 'since':
+                found.add(self.project(point, dynamic.steps))
+            owner = point[1] if point[0] == 'occurrence' else self.occurrence_of(point[1])
+            if owner is not None:
+                found |= {f'{owner}.started', f'{owner}.active'}
+        return found
+
+    def members_ever(self, source):
+        """The points of every member that a dynamic collection had in the run so far."""
+        if source[0] == 'occurrences':
+            return self.members(source)
+        return [('flow', connection) for connection in self.end_history.get((source[1], source[2]), ())]
+
+    def occurrence_of(self, name):
+        """The id of the occurrence that owns an engine name (a value, a flow or a connection), or
+        None for one of a member or of the root."""
+        head, mark, rest = name.partition('#')
+        if not mark:
+            return None
+        return f'{head}#{rest.split(".", 1)[0]}'
+
+    def members_at(self, source, value):
+        """The points of the members of a dynamic collection at the time at which `value` reads: the
+        occurrences that have started, or the connections of members and of active occurrences.
+        `value(name)` raises LookupError for a value that does not exist yet."""
+        found = []
+        if source[0] == 'occurrences':
+            for point in self.members(source):
+                try:
+                    value(f'{point[1]}.started')
+                except LookupError:
+                    break  # the later ones started later
+                found.append(point)
+            return found
+        for point in self.members_ever(source):
+            owner = self.occurrence_of(point[1])
+            if owner is not None:
+                try:
+                    if not value(f'{owner}.active'):
+                        continue
+                except LookupError:
+                    continue
+            found.append(point)
+        return found
 
     def expanded(self, name):
         """What a value reads through formulas and reductions (`Expanded`): a formula, a reduction
@@ -1457,9 +1541,13 @@ class Plan:
         return [('flow', connection) for connection in self.end_flows.get((source[1], source[2]), ())]
 
     def settings_reads(self, flow):
-        """What the settings of a flow read (`Expanded`), with the projections of the members that
-        its dynamic reads have now, and the names of those dynamic reads among the leaves."""
-        found = self.expansion_of(self.settings_of(flow))
+        """What the settings of a flow read (`Expanded`), through the members of their dynamic reads
+        now (`reads_now`)."""
+        return self.reads_now(self.expansion_of(self.settings_of(flow)))
+
+    def reads_now(self, found):
+        """An expansion with what the members of its dynamic reads project now, and what those read,
+        beside the names of the dynamic reads themselves."""
         seen, pending = set(), [leaf for leaf in found.leaves if leaf in self.dynamic]
         parts = [found]
         while pending:
@@ -1544,7 +1632,7 @@ class Plan:
                     f'{members[0]}: a request or a capacity that reads an actual rate of its own connected '
                     'set, which local sharing settles at once (S5: a solver)'
                 )
-            moves = found.time or bool(found.leaves & moving)
+            moves = found.time or any(leaf in moving for leaf in found.leaves)
             settled = any(
                 self.settled(self.ends[(store, side)])
                 for store in stores
@@ -1576,6 +1664,19 @@ class Plan:
                 )
             )
         return made
+
+    def setting_ends(self, name):
+        """The endpoints (store, side) of the connections whose request or capacity is `name`."""
+        if len(self._settings_index[0]) != len(self.connections):
+            index = {}
+            for connection in self.connections.values():
+                for setting in (connection.request, connection.capacity):
+                    if setting is not None:
+                        for side, store in zip(SIDES, (connection.source, connection.sink)):
+                            if store is not None:
+                                index.setdefault(setting, []).append((store, side))
+            self._settings_index = (dict(self.connections), index)
+        return self._settings_index[1].get(name, ())
 
     def rates_of_flow(self, flow):
         """The engine names of what the network gives of a flow, which other sets may read: its

@@ -68,7 +68,8 @@ def test_the_surfaces_of_a_run_are_those_of_each_form_with_a_side_that_moves():
     people = [input_(name, 'person', number) for name, number in (('cap', 9), ('low', 1), ('high', 8))]
     people += [input_('mid', 'person', 4), input_('mark', 'person', 6), input_('gain', 'person/h', 2)]
     program, configuration = level_of(rate, *people)
-    _, _, ((component, _),) = Run(Plan.of(program, configuration)).prepare()
+    _, _, (way,) = Run(Plan.of(program, configuration)).prepare()
+    component = way.component
     found = [(expr.text(a), expr.text(b_)) for a, b_ in switching_surfaces(component.system)]
     assert len(found) == len(set(found))
     assert set(found) == {

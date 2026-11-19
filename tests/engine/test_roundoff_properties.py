@@ -13,30 +13,44 @@ tallies together hold what came in). No expectation comes from a run of the engi
 3. With rates that rise with time (`timeline/sparse.py`), a full or an empty store stays on its
    bound and each tally moves its exact share of the integral of its rate.
 
-The arguments of the old engine about moves, about a stock face that runs out within the ulp of the
-time, about a stock that leaves its zero face, and about the closed-form times of timers, delays and
-crossings need events (S4), and come back with them.
+4. A series of moves that takes the whole of a store leaves it exactly empty, and the times of
+   clocks, delays and a crossing are their exact times within the roundoff of their arithmetic.
+
+The arguments of the old engine about a stock face that runs out within the ulp of the time and
+about a stock that leaves its zero face read the faces of its continuous tier, which local sharing
+and the lines replace (S2, S3); they are not ported.
 """
 
+import math
 from fractions import Fraction
+from itertools import pairwise
 
 import numpy as np
 import pytest
 
 from napkin.engine import read, run
+from napkin.program import build
 from napkin.program.build import (
+    BOOL,
     SOURCE,
     Builder,
+    after,
+    assign,
     endpoint,
+    event,
     flow,
     formula,
+    ifelse,
     input_,
+    move,
     priority,
     proportional,
     q,
+    reset_when,
     t,
     this,
     value,
+    when,
 )
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
@@ -199,3 +213,173 @@ def test_a_store_on_its_bound_with_rising_rates_moves_each_tally_its_exact_share
             assert found[0] == pytest.approx(start, abs=1e-9 * top)
             for i, rate in enumerate(served(demand, factors, fill_factor, order)):
                 assert found[1 + i] == pytest.approx(float(rate * RISEN), rel=1e-7)
+
+
+# ---- 4. Moves and the times of events ---------------------------------------------------------------------
+
+# How a whole is cut into the parts that a series of moves takes: (the number of moves, the part).
+PARTS = {
+    '/ 7': (7, lambda whole: whole / 7),
+    '/ 21': (21, lambda whole: whole / 21),
+    '* 0.1': (10, lambda whole: whole * 0.1),
+    '* (1 / 3)': (3, lambda whole: whole * (1 / 3)),
+}
+TANKS = 12
+
+
+def clock(name, at, *body):
+    """An event that a clock starts once, at `at` hours, and whose stage runs `body` then."""
+    return event(
+        name,
+        when(t >= q(at, 'h'), build.start(getattr(this, name)), reset=reset_when(False)),
+        after(q(0, 'h'), *body),
+    )
+
+
+def emptied(wholes, parts, begin):
+    """Tanks that a series of moves empties into their sinks: tank i holds `wholes[i]`, and at
+    `begin + k / 3` h the k-th move takes its part of the whole (`whole / 7`, for example)."""
+    members, moves = [], {}
+    for i, (whole, part) in enumerate(zip(wholes, parts)):
+        members += [
+            input_(f'whole{i}', 'people', whole),
+            value(f'tank{i}', 'people', whole, lower=0, scale=whole),
+            value(f'sink{i}', 'people', 0, lower=0, scale=whole),
+        ]
+        piece = PARTS[part][1](getattr(this, f'whole{i}'))
+        for k in range(PARTS[part][0]):
+            moves.setdefault(k, []).append(move(piece, getattr(this, f'tank{i}'), getattr(this, f'sink{i}')))
+    events = [clock(f'move{k}', begin + k / 3, *rows) for k, rows in sorted(moves.items())]
+    b = Builder(UNITS)
+    b.entity('s', *members, *events)
+    return b.finish()
+
+
+@pytest.mark.parametrize('seed', [1, 2])
+def test_a_series_of_moves_that_takes_the_whole_leaves_a_store_exactly_empty(seed):
+    """The parts of each whole add up to the whole in exact arithmetic, so the tank is empty after
+    the last move. In doubles the parts leave a residue of a few units in the last place in most
+    tanks (the generator checks it), always below the tank's absolute tolerance, 1e-10 times its
+    size. The last move takes the residue too (`moment.py`): the tank is exactly zero, it never falls
+    below zero, and the sink holds the whole within one rounding for each move."""
+    rng = np.random.default_rng(seed)
+    left, count = 0, 0
+    for _ in range(4):
+        wholes = [ratio(rng, 10**6) * 10 ** float(rng.integers(-6, 4)) for _ in range(TANKS)]
+        parts = [str(rng.choice(list(PARTS))) for _ in range(TANKS)]
+        begin = ratio(rng, 10**6) / 1000
+        for whole, part in zip(wholes, parts):
+            moves, one = PARTS[part]
+            residue = exact(whole) - moves * exact(one(whole))
+            # The argument applies: the residue is below the tolerance of the tank.
+            assert abs(residue) < Fraction(1, 10**10) * exact(whole)
+            left += residue != 0
+        count += TANKS
+        program = emptied(wholes, parts, begin)
+        horizon = begin + 12
+        names = [name for i in range(TANKS) for name in (f'tank{i}', f'sink{i}')]
+        times = [begin + k / 3 + 1 / 6 for k in range(21)]
+        found = values(program, horizon, names, times)
+        for i, (whole, part) in enumerate(zip(wholes, parts)):
+            moves = PARTS[part][0]
+            tank, sink = found[2 * i], found[2 * i + 1]
+            assert min(tank) >= 0
+            assert tank[moves - 1] == 0.0
+            bound = moves * EPS * exact(whole)
+            assert abs(exact(sink[moves - 1]) - exact(whole)) <= bound
+    assert left > count / 2
+
+
+def timed(first, delay1, delay2, switch, level, rate, threshold, tick):
+    """`a` at its clock `first`, `b` `delay1` after it, `c` `delay2` after that; a switch at its clock
+    that starts a level rising at `rate` from `level`; `crossed` when the level reaches `threshold`,
+    which starts a tally at `tick`."""
+    b = Builder(UNITS)
+    b.entity(
+        's',
+        value('on', BOOL, False),
+        value('ticking', BOOL, False),
+        value('level', 'people', level),
+        value('after', 'people', 0),
+        flow(
+            'rise',
+            SOURCE,
+            this.level,
+            request=formula(ifelse(this.on, q(rate, 'people/h'), q(0, 'people/h'))),
+        ),
+        flow(
+            'tally',
+            SOURCE,
+            this.after,
+            request=formula(ifelse(this.ticking, q(tick, 'people/h'), q(0, 'people/h'))),
+        ),
+        clock('a', first, build.start(this.b)),
+        event('b', after(q(delay1, 'h'), build.start(this.c))),
+        event('c', after(q(delay2, 'h'))),
+        clock('switch', switch, assign(this.on, True)),
+        event(
+            'crossed',
+            when(this.level >= q(threshold, 'people'), build.start(this.crossed), reset=reset_when(False)),
+            after(q(0, 'h'), assign(this.ticking, True)),
+        ),
+    )
+    return b.finish()
+
+
+@pytest.mark.parametrize('seed', [11, 12])
+def test_the_times_of_clocks_delays_and_a_crossing_are_the_exact_times_within_their_roundoff(seed):
+    """The exact times: a clock at its double; a delay after the time of the stage before it, so `c`
+    finishes at first + delay1 + delay2; the crossing at switch + (threshold - level) / rate. The
+    bounds are of the arithmetic of doubles, far inside the crossing tolerance of 1e-8 h: each sum of
+    a delay rounds once, to half an ulp of a time no later than the event, so a chain of k delays is
+    within k / 2 ulps; the crossing rounds the difference, the quotient and the sum, each to half a
+    unit of roundoff of the threshold over the rate or of the time (`triggers.py`, the root of a line).
+    At the horizon the level and the tally are their exact values within 1e-13 of them."""
+    rng = np.random.default_rng(seed)
+    checked = 0
+    for _ in range(30):
+        scale = 10 ** float(rng.integers(0, 5))
+        first, switch = ratio(rng, 1000) * scale, ratio(rng, 1000) * scale
+        delay1, delay2 = ratio(rng, 1000) * scale / 10, ratio(rng, 1000) * scale / 10
+        rate = ratio(rng, 10**4) * 10 ** float(rng.integers(-3, 4))
+        level = ratio(rng, 1000) * rate
+        threshold = level + rate * ratio(rng, 1000) * scale / 10
+        tick = ratio(rng, 1000)
+        crossing = exact(switch) + (exact(threshold) - exact(level)) / exact(rate)
+        times = {
+            'a': exact(first),
+            'b': exact(first) + exact(delay1),
+            'c': exact(first) + exact(delay1) + exact(delay2),
+            'switch': exact(switch),
+            'crossed': crossing,
+        }
+        ordered = sorted(times.values())
+        if min(later - earlier for earlier, later in pairwise(ordered)) < Fraction(1, 10**6):
+            continue  # two events at one moment: the cases test times, not the order of a moment
+        checked += 1
+        horizon = float(max(ordered)) * 1.5 + 1
+        record = run(
+            timed(first, delay1, delay2, switch, level, rate, threshold, tick),
+            Configuration(Request(horizon)),
+        )
+        assert record.failure is None, record.failure
+        fired = {entry.part.split('.')[1]: entry.t for entry in record.entries('fire')}
+        finished = {entry.part.split('.')[1]: entry.t for entry in record.entries('finish')}
+        assert fired['a'] == first and fired['switch'] == switch
+        for name, delays in (('b', 1), ('c', 2)):
+            ulp = exact(math.ulp(float(times[name])))
+            assert abs(exact(finished[name]) - times[name]) <= Fraction(delays, 2) * ulp
+        between = sum(exact(switch) < times[name] < crossing for name in ('a', 'b', 'c'))
+        roundoff = exact(EPS) * (crossing + exact(threshold) / exact(rate))
+        assert abs(exact(fired['crossed']) - crossing) <= (1 + between) * roundoff
+        risen = exact(level) + exact(rate) * (exact(horizon) - exact(switch))
+        ticked = exact(tick) * (exact(horizon) - crossing)
+        ends = read(
+            record,
+            timed(first, delay1, delay2, switch, level, rate, threshold, tick),
+            ['s.level', 's.after'],
+            [horizon],
+        )
+        assert abs(exact(ends[0].values[0]) - risen) <= Fraction(1, 10**13) * risen
+        assert abs(exact(ends[1].values[0]) - ticked) <= Fraction(1, 10**13) * ticked
+    assert checked >= 25

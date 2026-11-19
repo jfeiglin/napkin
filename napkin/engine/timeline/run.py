@@ -19,9 +19,12 @@
    (`triggers.py`). Occurrences are in `occurrences.py`.
 4. **Between moments** each instance of a way runs its sets (`ways.py`). The next moment is the
    earliest of a stage that is due, a reset timer, a key time of a keyed read by the time, the
-   horizon (`limit`) and the first contact of a watched condition; an event inside an instance
+   horizon (`limit`) and the first contact of a watched condition (a contact within the crossing
+   tolerance before a known moment is in that moment); an event inside an instance
    (a store that reaches a bound, the end of a segment) before it is committed first, and is itself
-   a moment when it changes what a watched condition or another set's setting reads.
+   a moment when it changes what a watched condition or another set's setting reads. An event at
+   the time of a moment only puts its store on its bound: the moment's settling solves its set after
+   the stages of the moment, as the oracle settles once.
 5. **The horizon** is an inclusive cutoff: the work due there settles as at any moment, and the
    record holds the state that its last round committed.
 
@@ -39,7 +42,7 @@ histories to the time at which it stopped.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -129,6 +132,9 @@ class Run:
         self.written = {}  # a store of a set that a commit of this moment wrote, and its value
         self.frozen = {}  # a formula of a finished occurrence -> its value or `Unavailable` (D7)
         self.limit = plan.horizon  # the next moment that the run knows (`next_moment`)
+        self._keyed = None  # {key time: the keyed reads by the time that change there}
+        self.changed = set()  # what a commit or an event of the ways changed: names and sources
+        self.joined, self.left = [], []  # the flows that join and that leave at this moment
         self.ways = Ways(self)
         self.occurrences = Occurrences(self)
         self.triggers = Triggers(self)
@@ -326,9 +332,15 @@ class Run:
                 )
 
     def sizes_of(self, values):
-        """The size of each store (see the module)."""
+        """The size of each stored number (see the module): of a store that a flow meets, and of one
+        that a flow of an occurrence or a move may meet later."""
         plan = self.plan
-        parent = {name: name for name in plan.moving}
+        stores = [
+            name
+            for name, value in plan.values.items()
+            if value.kind == STATE and not value.boolean and isinstance(values.get(name), int | float)
+        ]
+        parent = {name: name for name in stores}
 
         def root(name):
             while parent[name] != name:
@@ -340,10 +352,10 @@ class Run:
             if connection.source is not None and connection.sink is not None:
                 parent[root(connection.source)] = root(connection.sink)
         largest = {}
-        for name in plan.moving:
+        for name in stores:
             largest[root(name)] = max(largest.get(root(name), 0.0), abs(values[name]))
         found = {}
-        for name in plan.moving:
+        for name in stores:
             if self.scales[name] is not None:
                 found[name] = abs(self.scales[name])
                 continue
@@ -354,7 +366,6 @@ class Run:
                     size = max(size, abs(bound))
             found[name] = size
         return found
-
 
     # ---- the present ----------------------------------------------------------------------------------
 
@@ -417,14 +428,93 @@ class Run:
     def truth(self, node, tx=None):
         """The value of a node over engine names now, through a stage's own writes."""
         env = {read: _known(self.value(read, tx=tx)) for read in nodes.names(node) if read != 't'}
-        env['t'] = self.now
+        env['t'] = float(self.now)
         return evaluate(node, env, self.plan.units)
+
+    # ---- what a moment changes ---------------------------------------------------------------------
+
+    def write(self, name, value):
+        """A commit writes a value: a store of a set waits for the settling, any other value holds
+        it from now on."""
+        plan = self.plan
+        if name in self.ways.set_of:
+            self.written[name] = value
+        else:
+            self.env[name] = value
+            self.recorder.add(name, self.now, value, 0.0)
+        self.changed.add(name)
+        found = plan.values.get(name)
+        owner = found.key.owner if found is not None and found.key is not None else ''
+        if '#' in owner:
+            receiver, event = owner.rsplit('#', 1)[0].rsplit('.', 1)
+            self.changed.add(('occurrences', receiver, event))
+        for end in plan.setting_ends(name):
+            self.changed.add(('flows', *end))
+
+    def hold(self, store, value):
+        """A store that no flow meets any more holds its value."""
+        self.env[store] = value
+        self.recorder.add(store, self.now, value, 0.0)
+
+    def flow_joins(self, flow):
+        """A flow of an occurrence joins its endpoints' collections; the settling builds its set."""
+        self.joined.append(flow)
+        self._present(flow, True)
+
+    def flow_leaves(self, flow):
+        """A flow of a finished occurrence leaves its endpoints' collections, all together."""
+        self.left.append(flow)
+        self._present(flow, False)
+
+    def _present(self, flow, joins):
+        plan = self.plan
+        for connection in plan.flows[flow].connections:
+            for side, store in zip(('outflow', 'inflow'), (connection.source, connection.sink)):
+                if store is None:
+                    continue
+                present = plan.end_flows.setdefault((store, side), [])
+                if joins:
+                    present.append(connection.name)
+                    plan.end_history.setdefault((store, side), []).append(connection.name)
+                else:
+                    present.remove(connection.name)
+                end = plan.ends.get((store, side))
+                if end is not None:
+                    plan.ends[(store, side)] = replace(end, flows=tuple(present))
+                self.changed.add(('flows', store, side))
+
+    def flow_left(self, flow):
+        """A flow that left reads zero from now on: its actual rate, or its served fraction."""
+        found = self.plan.flows[flow]
+        name = f'{flow}.served_fraction' if found.kind == LEGS else f'{flow}.actual_rate'
+        self.recorder.add(name, self.now, 0.0, 0.0)
+
+    def changed_names(self):
+        """The engine names that changed at this moment so far, with the dynamic reads of the
+        collections whose members changed."""
+        names = {item for item in self.changed if isinstance(item, str)}
+        sources = {item for item in self.changed if isinstance(item, tuple)}
+        if sources:
+            names |= {name for name, dynamic in self.plan.dynamic.items() if dynamic.source in sources}
+        return names
+
+    def settled(self):
+        """The changes of a round are settled."""
+        self.written.clear()
+        self.joined.clear()
+        self.left.clear()
+        self.changed.clear()
+
+    def kept_entries(self, entries):
+        """The places of the entries of a collection that its where tests keep."""
+        return kept(entries.tests, self.value_of, self.plan.units)
 
     # ---- the run ----------------------------------------------------------------------------------
 
     def prepare(self):
         """The values at the start, the checks of the setup, the size and the bounds of each store,
-        and the tolerances that the record keeps."""
+        the tolerances that the record keeps, and the instances of the ways of the connected sets
+        at time 0: (the values, the sizes, the instances)."""
         plan = self.plan
         values = self.start()
         self.recorder.constants = values
@@ -443,11 +533,13 @@ class Run:
         ]
         if outside:
             raise SimulationError(f'State bounds violated: {outside}')
-        for name in plan.moving:
-            self.recorder.tolerance[name] = factor * self.sizes[name]
+        for name, size in self.sizes.items():
+            self.recorder.tolerance[name] = factor * size
         for flow in plan.flows.values():
             self.tolerate(flow)
         self.started = True
+        self.ways.build(plan.sets, self.env, 0.0)
+        return values, self.sizes, list(self.ways.instances)
 
     def tolerate(self, flow):
         """The tolerance of what the network gives of a flow, which the record keeps: a rate's error
@@ -487,34 +579,54 @@ class Run:
 
     def key_times(self):
         """The key times inside the run of the keyed reads by the time that the run reads."""
-        if not hasattr(self, '_key_times'):
-            found = set()
+        return sorted(self._keyed_at())
+
+    def keyed_changes(self, t):
+        """The keyed reads by the time whose value changes at time t, a key time."""
+        return self._keyed_at().get(t, ())
+
+    def _keyed_at(self):
+        """{key time inside the run: the keyed reads by the time that change there}, made once."""
+        if self._keyed is None:
+            self._keyed = {}
             for name, keyed in self.plan.keyed.items():
                 if keyed.by_time:
-                    found |= {float(at) for at in self.stepped_of(name).times if 0 < at <= self.plan.horizon}
-            self._key_times = sorted(found)
-        return self._key_times
+                    for at in self.stepped_of(name).times.tolist():
+                        if 0 < at <= self.plan.horizon:
+                            self._keyed.setdefault(float(at), []).append(name)
+        return self._keyed
 
     def next_moment(self):
         """Run the ways to the next moment; gives its time and the engine names that changed in the
         ways at that time (an event of an instance that a condition or a set reads)."""
-        limit = self.limit = self.discrete()
+        limit = self.limit = float(self.discrete())
         while True:
             at, instance = self.ways.peek()
-            contact = self.triggers.next_contact()
-            if at <= limit and at <= contact:
+            at = float(at)
+            contact = float(self.triggers.next_contact())
+            moment = min(limit, contact)
+            if contact < limit <= contact + self.plan.numerics.crossing:
+                # Two moments nearer than the crossing tolerance are one (`Numerics.crossing`): a
+                # contact just before a known moment is in it, where it holds within its tolerance.
+                moment = limit
+            if at < moment:
                 self.now = at
-                stores, rates = instance.step()
+                stores, rates, jumped = instance.step()
                 changed = set(stores) | set(rates)
-                if self.triggers.reads_any(changed) or self.ways.touched_by(rates):
+                if (jumped and self.triggers.reads_any(changed)) or self.ways.touched_by(rates):
                     self.ways.cut(at)
                     return at, changed
                 self.triggers.predict(changed)
                 continue
-            at = min(limit, contact)
-            self.now = at
-            self.ways.cut(at)
-            return at, set()
+            self.now = moment
+            # An event of an instance at the time of the moment puts its store on its bound, and the
+            # moment's settling, after its stages, solves the set again (as the oracle settles once).
+            changed = set()
+            while at == moment:
+                changed |= set(instance.snap())
+                at, instance = self.ways.peek()
+            self.ways.cut(moment)
+            return moment, changed
 
 
 def _known(value):

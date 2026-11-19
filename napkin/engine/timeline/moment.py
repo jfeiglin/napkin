@@ -76,7 +76,6 @@ class Moment:
         """Round zero at time 0, then the rounds of time 0."""
         run = self.run
         self._round(0)
-        run.ways.build(run.plan.sets, run.env, 0.0)
         self.phase = 'stages'
         tx = Tx('')
         self.execute(self.plan.program.setup, tx, None)
@@ -91,7 +90,7 @@ class Moment:
         run = self.run
         run.now = t
         run.changed |= changed
-        run.changed |= {name for name in run.plan.keyed if t in run.stepped_times(name)}
+        run.changed.update(run.keyed_changes(t))
         self._round(0)
         self.rounds(t)
 
@@ -117,6 +116,7 @@ class Moment:
             if not self.again and run.occurrences.next_due() != t:
                 break
         self.phase = 'between'
+        run.limit = run.discrete()
         run.triggers.predict_all()
 
     def _round_limit(self, t, limit):
@@ -172,10 +172,10 @@ class Moment:
 
     def resolved(self, path, scope, origin):
         """What a path of a scope names, found once."""
-        key = (id(path), self.plan._owner(scope))
+        key = (id(path), self.plan.owner_of(scope))
         found = self._paths.get(key)
         if found is None:
-            found = self._paths[key] = (self.plan._resolve(path, scope, origin), path)
+            found = self._paths[key] = (self.plan.resolve(path, scope, origin), path)
         return found[0]
 
     def target(self, path, scope, origin):
@@ -235,7 +235,12 @@ class Moment:
         changes, and a move that would leave less than the tolerance of its source moves all."""
         run, origin = self.run, statement.origin
         amount = self.truth(statement.amount, scope, origin, tx)
-        if isinstance(amount, bool) or not isinstance(amount, int | float) or not math.isfinite(amount) or amount < 0:
+        if (
+            isinstance(amount, bool)
+            or not isinstance(amount, int | float)
+            or not math.isfinite(amount)
+            or amount < 0
+        ):
             raise SimulationError(f'{origin}: a move takes a finite amount from 0, not {amount!r}')
         amount = float(amount)
         source = self.target(statement.source, scope, origin)
@@ -270,7 +275,9 @@ class Moment:
         run = self.run
         point = self.resolved(statement.event, scope, statement.origin)
         args = tuple(self.truth(arg, scope, statement.origin, tx) for arg in statement.args)
-        args = tuple(float(arg) if isinstance(arg, int) and not isinstance(arg, bool) else arg for arg in args)
+        args = tuple(
+            float(arg) if isinstance(arg, int) and not isinstance(arg, bool) else arg for arg in args
+        )
         if point[0] == 'event':
             tx.starts.append((point[1], point[2], args))
             return
@@ -292,7 +299,8 @@ class Moment:
         """The body that a `switch` runs: the guards are read once, before the selector; the case of
         the selector's value runs if it is eligible, else the `else` body."""
         eligible = [
-            case.guard is None or bool(self.truth(case.guard, scope, case.origin, tx)) for case in statement.cases
+            case.guard is None or bool(self.truth(case.guard, scope, case.origin, tx))
+            for case in statement.cases
         ]
         chosen = self.truth(statement.selector, scope, statement.origin, tx)
         for case, ok in zip(statement.cases, eligible):

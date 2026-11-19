@@ -191,11 +191,12 @@ class Family:
         if source >= 0:
             self.slope[source] = -rate
         if sink >= 0:
-            self.slope[sink] = rate
+            # A flow from a store into itself moves nothing.
+            self.slope[sink] = 0.0 if sink == source else rate
         for end in ends:
             self.recorder.add(self.stores[end], t, float(self.y[end]), float(self.slope[end]))
         self.recorder.add(f'{self.flows[k]}.actual_rate', t, rate, 0.0)
-        if rate > 0:
+        if rate > 0 and source != sink:
             # The store that reaches its bound first; on a tie, both.
             reach, bounded = math.inf, ()
             for end, room in (
@@ -267,7 +268,21 @@ class Family:
             self.y[end] = self.lower[end] if end == self.source[k] else self.upper[end]
         self._start(k, reach)
         stores = [self.stores[end] for end in (self.source[k], self.sink[k]) if end >= 0]
-        return stores, [f'{self.flows[k]}.actual_rate']
+        return stores, [f'{self.flows[k]}.actual_rate'], True
+
+    def snap(self):
+        """The next row reaches its bound at the time of a moment: its stores stand there, the one
+        that reaches its bound on it, and the moment's settling starts the row again (`ways.py`).
+        Gives its stores."""
+        reach, k, _, bounded = heapq.heappop(self.due)
+        for end in (self.source[k], self.sink[k]):
+            if end >= 0:
+                self.y[end], self.since[end] = self._value(end, reach), reach
+                self.slope[end] = 0.0
+        for end in bounded:
+            self.y[end] = self.lower[end] if end == self.source[k] else self.upper[end]
+        self.version[k] += 1
+        return [self.stores[end] for end in (self.source[k], self.sink[k]) if end >= 0]
 
     def cut(self, t):
         """Nothing to commit: a line holds to its next event."""

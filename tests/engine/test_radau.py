@@ -465,7 +465,8 @@ def roots_of_each_kind(busy=False):
         b.flow('pay', b.this.cash, b.this.debt, request=b.formula(b.this.rate + 0 * b.this.a / b.q(1, 'h'))),
     )
     configuration = Configuration(Request(10), inputs=(InputValue('s', 'busy', busy),))
-    _, _, ((component, _),) = Run(Plan.of(p.finish(), configuration)).prepare()
+    _, _, (way,) = Run(Plan.of(p.finish(), configuration)).prepare()
+    component = way.component
     s = component.system
 
     def environment(at, state):

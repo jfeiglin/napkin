@@ -120,17 +120,17 @@ def dynamic_value(dynamic, members, project, value, t):
     if op == 'since':
         if not members:
             raise ExpressionError(f'{dynamic.spelled}: the event has not started')
-        return float(t) - float(_known(value(f'{members[-1][1]}.started')))
+        return float(t) - float(known(value(f'{members[-1][1]}.started')))
     if op == 'at':
         if not members:
             raise ExpressionError(f'{dynamic.spelled}: no occurrence has started')
-        return _known(value(project(members[-1])))
+        return known(value(project(members[-1])))
     if not dynamic.steps:
         return combined(op, [None] * len(members), dynamic.spelled)
-    return combined(op, [_known(value(project(member))) for member in members], dynamic.spelled)
+    return combined(op, [known(value(project(member))) for member in members], dynamic.spelled)
 
 
-def _known(value):
+def known(value):
     """A value that a reduction can take: an `Unavailable` one raises its reason (D7)."""
     if isinstance(value, Unavailable):
         raise ExpressionError(value.reason)
@@ -139,7 +139,7 @@ def _known(value):
 
 def holds(node, value, units):
     """The value of a node over engine names, from the values of the names it reads."""
-    env = {name: _known(value(name)) for name in nodes.names(node) if name != 't'}
+    env = {name: known(value(name)) for name in nodes.names(node) if name != 't'}
     return evaluate(node, env, units)
 
 
@@ -170,14 +170,14 @@ def reduced(reduction, value, units, entries=None):
     entries = kept(reduction.tests, value, units) if entries is None else entries
     if reduction.names is None:
         return combined(reduction.op, [None] * len(entries), reduction.spelled)
-    return combined(reduction.op, [_known(value(reduction.names[k])) for k in entries], reduction.spelled)
+    return combined(reduction.op, [known(value(reduction.names[k])) for k in entries], reduction.spelled)
 
 
 def index_of(keyed, value, units, entries=None):
     """The sorted index of the keys of the kept entries of a keyed read, and those entries."""
     entries = kept(keyed.tests, value, units) if entries is None else entries
     keys = [
-        float(_known(value(keyed.keys[k]))) if isinstance(keyed.keys[k], str) else keyed.keys[k]
+        float(known(value(keyed.keys[k]))) if isinstance(keyed.keys[k], str) else keyed.keys[k]
         for k in entries
     ]
     return Keys(keys), entries
@@ -186,7 +186,7 @@ def index_of(keyed, value, units, entries=None):
 def looked_up(keyed, value, units, t, index=None):
     """The value of a keyed read at time t (the time matters only to a read by the time)."""
     index, entries = index_of(keyed, value, units) if index is None else index
-    env = {name: _known(value(name)) for name in nodes.names(keyed.key) if name != 't'}
+    env = {name: known(value(name)) for name in nodes.names(keyed.key) if name != 't'}
     env['t'] = float(t)
     x = float(evaluate(keyed.key, env, units))
     place = index.find(x)

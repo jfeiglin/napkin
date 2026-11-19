@@ -89,9 +89,9 @@ def test_a_dense_value_takes_the_roundoff_of_each_authored_bound_onto_it(coordin
     """A dense value within the slack of a bound is put on it: the lower slack of the tally is 1.1,
     that of the drained account its tolerance 0.1, and an upper bound's is the tolerance. A larger
     excursion stays, for the checks to see."""
-    _, _, components = Run(Plan.of(*dense_fixture())).prepare()
+    _, _, ways = Run(Plan.of(*dense_fixture())).prepare()
     name = f's.{coordinate}'
-    component = next(item for item, _ in components if name in item.system.index)
+    component = next(way.component for way in ways if name in way.component.system.index)
     state = component.state.y.copy()
     state[component.system.index[name]] = raw
     assert component.context.project(state)[component.system.index[name]] == reported

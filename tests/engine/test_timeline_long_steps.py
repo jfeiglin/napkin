@@ -58,9 +58,9 @@ def solver_steps(program, hours):
     """The steps (start, end) that the solver accepted in the numerical segments of the components
     of a run, from a run of the components alone."""
     made = Run(Plan.of(program, configured(hours)))
-    _, _, components = made.prepare()
+    _, _, ways = made.prepare()
     steps = []
-    for component, _ in components:
+    for component in (way.component for way in ways if hasattr(way, 'component')):
         while component.state.time < hours:
             segment = component.next(hours)
             if segment.numerical is not None:
@@ -135,7 +135,7 @@ def test_a_short_pulse_of_a_rate_in_a_long_quiet_time_is_not_jumped_over(monkeyp
     assert found == pytest.approx(areas, rel=1e-6)
     assert at(record, program, 'total', 42 * DAY) == pytest.approx([sum(areas)], rel=1e-7)
     long = solver_steps(program, 42 * DAY)
-    running = importlib.import_module('napkin.engine.timeline.run')
+    running = importlib.import_module('napkin.engine.timeline.component')
     monkeypatch.setattr(running, 'solver_step', lambda numerics: numerics.max_step)
     limited = solver_steps(program, 42 * DAY)
     assert max(b - a for a, b in limited) <= 1.0 + 1e-12 < max(b - a for a, b in long)
@@ -240,6 +240,7 @@ def test_a_value_that_is_over_a_mark_only_for_a_short_time_is_read_there():
     )
     assert at(record, program, 'cells[0].high', peak, over - DAY, under + DAY) == (True, False, False)
     assert under - over > 1.0
-    _, _, ((component, _),) = Run(Plan.of(program, configured(300 * DAY))).prepare()
+    _, _, (way,) = Run(Plan.of(program, configured(300 * DAY))).prepare()
+    component = way.component
     segment = component.next(300 * DAY)
     assert isinstance(segment.solution, MatrixExponential) and segment.end == 300 * DAY
