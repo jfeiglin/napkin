@@ -430,8 +430,8 @@ def facts(entry, times=()):
     - `unestimated`: the outputs that have no estimate, which have no declaration now (D4);
     - `proven`: {run: the paths of the outputs that the old compiler proved cumulative in it}, with
       `''` for a model that has no runs (the old `base` run);
-    - `runs`: the values of the outputs in each run of the old engine, at the start, at `times` and
-      at the horizon (`runs_of`)."""
+    - `runs`: how each run of the old engine ended, and the values of its outputs at the start, at
+      `times` and at that end (`runs_of`)."""
     from napkin.core.units import UnitSystem
     from napkin.model.library import load_library
     from napkin.model.model import build_model
@@ -531,23 +531,29 @@ def run_name(model, run):
 
 
 def runs_of(model, symbols, times=()):
-    """The values of the outputs of an old model in the runs of its default study (`evaluate_study`).
+    """How each run of an old model's default study (`evaluate_study`) ended, and the values of its
+    outputs up to that end.
 
     Each run of that study is the old central run: each distribution takes its median and each event
     its likeliest outcome (`distributions.central`), as in the central study of a Monte Carlo study,
-    whose samples are not run here. For each run: its horizon; the inputs that a sampled study would
-    draw (`draws`) and whether its events go by chance (`chance`); its times (the start, each of
-    `times` that the run reaches, in hours, and the horizon, which is the old report's `final`); and
-    for each output, by its name in the model: the path that declares it (`T.x` for an output of the
-    members of a template, which a rename names), whether it has an estimate, its unit with that
-    unit's scale and dimension, its lag in hours (`[shortest, longest]`, equal for a fixed delay, or
-    `'mixture'`), and its value in its unit and its status at each time, as the old report gives
-    them (`evaluate_outputs`, which applies the lag). Gives {'refused': the messages of a study that
-    the old engine does not admit, or None; 'runs': {run: as above}}, with a run's `refused` for a run
-    that the old report cannot read."""
+    whose samples are not run here. For each run: its horizon; its outcome, as `check.py` compares
+    it with the new run's (`newmodel.outcome_of`): {'kind', 'at', 'why'}, read from the trajectory,
+    `finished` at the end that it reached (`end_time`, its horizon), or `paused` there at a decision
+    that waits for a pick (only a played run pauses, and the default study plays none); the inputs
+    that a sampled study would draw (`draws`) and whether its events go by chance (`chance`); its
+    times (the start, each of `times` that the run reaches, in hours, and its end, which is the old
+    report's `final`); and for each output, by its name in the model: the path that declares it
+    (`T.x` for an output of the members of a template, which a rename names), whether it has an
+    estimate, its unit with that unit's scale and dimension, its lag in hours (`[shortest,
+    longest]`, equal for a fixed delay, or `'mixture'`), and its value in its unit and its status at
+    each time, as the old report gives them up to the run's end (`outputs_until`, which applies the
+    lag). Gives {'refused': the messages of a study that the old engine does not admit, or None;
+    'runs': {run: as above}}, with a run's `refused` for a run that the old report cannot read. A run
+    that fails refuses the whole study, and the old engine keeps no trajectory of it: such a run has
+    no values to compare, only the study's refusal."""
     from napkin.core.units import UnitSystem
     from napkin.engine import evaluate_study
-    from napkin.engine.report import _OfTrajectory, evaluate_outputs
+    from napkin.engine.report import _OfTrajectory, outputs_until
     from napkin.engine.sampling import uncertain
     from napkin.engine.uncertainty import chancy, written_values
     from napkin.model.ir import thaw
@@ -561,10 +567,17 @@ def runs_of(model, symbols, times=()):
     found = {}
     for run, completed in study.runs.items():
         resolved, trajectory = completed['resolved'], completed['trajectory']
-        horizon = float(trajectory.horizon)
-        at = sorted({0.0, horizon, *(float(t) for t in times if 0 <= float(t) <= horizon)})
+        end = float(trajectory.end_time)
+        decision = (trajectory.decision or {}).get('event')
+        outcome = {
+            'kind': 'paused' if trajectory.paused else 'finished',
+            'at': end,
+            'why': f'at a decision of {decision}, which waits for a pick' if trajectory.paused else None,
+        }
+        at = sorted({0.0, end, *(float(t) for t in times if 0 <= float(t) <= end)})
         entry = {
-            'horizon': horizon,
+            'horizon': float(trajectory.horizon),
+            'outcome': outcome,
             'draws': uncertain(written_[run]),
             'chance': chancy(resolved),
             'times': at,
@@ -572,7 +585,7 @@ def runs_of(model, symbols, times=()):
         }
         found[run_name(model, run)] = entry
         try:
-            rows = evaluate_outputs(completed, library, at, unit_registry=registry)
+            rows = outputs_until(completed, library, at, unit_registry=registry)
         except Exception as error:  # the old report's refusals: a value that is not finite, or below zero
             entry['refused'] = f'{type(error).__name__}: {error}'
             continue

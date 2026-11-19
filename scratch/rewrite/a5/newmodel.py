@@ -10,7 +10,8 @@ the same package name: `translate.py` calls it in a process of its own, and `che
   as a value in base units and a dimension, each text, the kind and dimension of each declared name,
   the ends of each flow, the events, for each path in `proven` (a value that the old compiler proved
   cumulative) whether `napkin/program/proofs.py` proves that it never falls under each run, and the
-  values that `reads` asks for in runs of the engine of now (`outcomes`).
+  runs that `reads` asks for under the engine of now (`results`): how each ended, its outcome
+  (`outcome_of`), and the values that `reads` names up to that end.
 
     /home/user/napkin/.venv/bin/python newmodel.py --compile ENTRY.scn...    # JSON on stdout
 """
@@ -344,20 +345,45 @@ def proofs(compiled_, paths, runs):
     return out
 
 
-def outcomes(compiled_, reads):
-    """The values that `reads` asks for, in runs of the engine of now: `reads` is {run: {'paths':
-    [path], 'times': [hours], 'lags': {path: [shortest, longest]}}}, with `''` for the default run.
+def outcome_of(record):
+    """How a run ended, from its record (`Record.stop`), as `check.py` compares it: {'kind', 'at',
+    'why'}. The kind is `finished` (the run reached its horizon, and `why` is None), `failed` (`why`
+    is the failure's message, which names the statement and the occurrence) or `paused` (a breakpoint
+    stopped it: `why` names the breakpoint and the stage or statement before which it stopped); `at`
+    is the time in hours to which the record reaches: the horizon, or the time of the stop."""
+    stop = record.stop
+    if stop is None:
+        kind, why = 'finished', None
+    elif stop.kind == 'failure':
+        kind, why = 'failed', stop.detail('message') or 'the run failed'
+    else:
+        kind, why = 'paused', f'at the breakpoint {stop.detail("breakpoint")}, before {stop.part}'
+    return {'kind': kind, 'at': float(record.end), 'why': why}
+
+
+def results(compiled_, reads):
+    """The runs that `reads` asks for, under the engine of now: `reads` is {run: {'paths': [path],
+    'times': [hours], 'lags': {path: [shortest, longest]}}}, with `''` for the default run.
 
     Each run is the model's run of that name in the mode `median` (each draw its distribution's
     median, each categorical draw its likeliest outcome: the old central run), to its horizon
-    (`napkin.run`); its values are read by `napkin.report`, with the lags that the caller selects
-    (D10). Gives {run: {'error': why the run has no record, or None; 'horizon'; 'stopped': why the
-    record ends before the horizon, or None; 'values': {path: {'dims', 'note', 'values'}}}}: each
-    value in base units, a yes/no or a text, or `{'unavailable': reason}` (a time after the record's
-    end, or after the horizon of the run); a path that names no value of the program has `missing`."""
+    (`napkin.run`). Gives {run: {'outcome', 'error', 'values'}}:
+
+    - `outcome`: how the run ended (`outcome_of`); for a run that the engine does not run (a part that
+      it refuses, a configuration, or any error of the engine) `failed`, with no time (`at` is None,
+      as there is no record) and the error; None for a run that does not configure;
+    - `error`: why the run has no values: it does not configure (the model has no such run), or the
+      report of its record fails; else None;
+    - `values`: {path: {'dims', 'note', 'values'}}, read by `napkin.report` with the lags that the
+      caller selects (D10) at each time up to the record's end: each value in base units, a yes/no or
+      a text, or `{'unavailable': reason}`. A time after the end is `{'unavailable': the outcome}`,
+      never a value. A path that names no value of the program has `missing`.
+
+    The outcome comes from the record before any value is read, so a run's values never come
+    without it, and a report that fails keeps it."""
     out = {}
     for run, asked in reads.items():
-        found = out[run] = {'error': None, 'horizon': None, 'stopped': None, 'values': {}}
+        found = out[run] = {'outcome': None, 'error': None, 'values': {}}
         try:
             configuration = compiled_.configuration if not run else compiled_.configure(run)
         except LanguageError as error:
@@ -369,9 +395,11 @@ def outcomes(compiled_, reads):
         try:
             record = run_program(program, configuration)
         except Exception as error:  # the engine's refusals: a part that it does not run, a configuration
-            found['error'] = f'the engine does not run it: {type(error).__name__}: {error}'
+            why = f'the engine does not run it: {type(error).__name__}: {error}'
+            found['outcome'] = {'kind': 'failed', 'at': None, 'why': why}
             continue
-        horizon = found['horizon'] = float(record.manifest.horizon)
+        outcome = found['outcome'] = outcome_of(record)
+        end = outcome['at']
         units, paths = {}, []
         for path in asked['paths']:
             try:
@@ -381,20 +409,18 @@ def outcomes(compiled_, reads):
                 continue
             units[path] = (scale, dims_text(program.unit(spelling).dimension))
             paths.append(path)
-        times = [t for t in asked['times'] if t <= horizon]
+        times = [t for t in asked['times'] if t <= end]
         lags = {path: Lag(*ends) for path, ends in asked['lags'].items() if path in units}
         try:
             read = report(record, program, configuration, paths, times, lags)
         except (KeyError, LookupError, ValueError) as error:
             found['error'] = f'the report of the run fails: {type(error).__name__}: {error}'
             continue
-        found['stopped'] = read.stopped
+        after = {'unavailable': f'the run {outcome["kind"]} at {end:g} h'}
         for path, reported in zip(paths, read.values):
             scale, dimension = units[path]
             values = [plain(value, scale) for value in reported.values]
-            values += [{'unavailable': f'the run ends at its horizon, {horizon:g} h'}] * (
-                len(asked['times']) - len(times)
-            )
+            values += [after] * (len(asked['times']) - len(times))
             found['values'][path] = {'dims': dimension, 'note': reported.note, 'values': values}
     return out
 
@@ -413,7 +439,7 @@ def plain(value, scale):
 
 def facts(entry, proven=(), runs=(), reads=None):
     """What `check.py` compares of a model in the language of now (see the module), or the problems
-    that refuse its compile. `reads` asks for the values of runs (`outcomes`)."""
+    that refuse its compile. `reads` asks for runs, their outcomes and values (`results`)."""
     try:
         found = load_scenario(entry)
     except LanguageError as error:
@@ -442,7 +468,7 @@ def facts(entry, proven=(), runs=(), reads=None):
         'proofs': proofs(
             found, list(proven), [run.name for run in declared.runs if run.name in runs or not runs]
         ),
-        'outcomes': outcomes(found, reads or {}),
+        'results': results(found, reads or {}),
     }
 
 

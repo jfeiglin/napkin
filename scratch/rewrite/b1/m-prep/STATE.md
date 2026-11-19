@@ -27,15 +27,24 @@ All done: 1 a5/translate.py; 2 a5/check.py by meaning (and its run step); 3 the 
   parts are no unit (translate.py lists them).
 - Reservoir translation: the whole check PASSES, run included (change 20 certifies its trigger).
 
-## The run step (check.py group `run`, by the run-step agent)
-- Each run of the old default study under the old engine (oldmodel.runs_of) against the new run of
-  the same name (newmodel.outcomes: napkin.run in mode `median`, napkin.report with the old lags),
-  to the horizon; each old output with an estimate (D4) at 0 h, the horizon, `--at` times and the
-  times that rows name. Tolerance 1e-6 of the larger, floor 1e-8 of the old unit. A model that
-  draws: its old central run against the new median run only.
-- The list: b1/m-<package>/changed.md (or `--changed`), table `| test | quantity | old | new | cause |
-  evidence |`, test `check run ENTRY[:RUN]`, quantity `OUTPUT at T h`. Fails on an unlisted
-  difference, numbers that disagree, a stale row, a row that does not read, an empty cause.
+## The run step (check.py group `run`; its outcomes by agent K, re-audit 19)
+- Each run of the old default study (oldmodel.runs_of) against the new run of that name
+  (newmodel.results: napkin.run in mode `median`, napkin.report with the old lags): first how it
+  ended, {kind finished|failed|paused, at, why} (newmodel.outcome_of reads `Record.stop`), then each
+  old output with an estimate (D4) at 0 h, the end, `--at` and row times that the new run reaches.
+  Tolerance 1e-6 of the larger, floor 1e-8 of the unit. A model that draws: its median run only.
+- The list: b1/m-<package>/changed.md (or `--changed`), `| test | quantity | old | new | cause |
+  evidence |`, test `check run ENTRY[:RUN]`, quantity `OUTPUT at T h` or `outcome` (`finished at T h`,
+  `failed at T h: WHY` in full, `paused at T h: WHY`); fails on a difference no row lists, a row that
+  disagrees, a stale row, a row that does not read, an empty cause.
+
+## Run outcomes (agent K, briefs/audit2.md K): DONE
+- Where the cause acted: check.py `compare_runs` (the new end unread), newmodel.py `outcomes` (the end
+  only as report text, cut at the horizon asked), oldmodel.py `runs_of` (`end_time`, `paused` unread).
+- Decisions: reasons compare word for word; an engine refusal is `failed` with no time; no value after
+  the end of a run that ends otherwise (its outcome row stands for them); a refused old study stays a
+  hard fail (no old trajectory of a failed run). a5/test_outcomes.py: 14 passed, 12 fail on a mutant
+  that compares values only; translated/wrong/piano_tuners_outcome FAILS "1 run", PASSES listed.
 
 ## Decisions
 - What the language has no place for goes into notes: `reporting`, `not_estimated` (D4),

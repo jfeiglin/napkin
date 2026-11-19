@@ -25,18 +25,37 @@ every file that it reads. The old side is read by the old compiler, in a process
 5. `flow`: a flow joins other stores than it did (the pairs of an old flow are the legs of a new one);
 6. `cumulative`: a value that the old compiler proved cumulative in a run is not proved never to fall
    by `napkin/program/proofs.py` under the same run (the old `base` run is the default run);
-7. `run`: an output of the old model has another value in the new one, and the package's list of
-   changes does not list the difference (m.md, "No change is silent").
+7. `run`: a run of the new model ends otherwise than the old one (it fails, it pauses, or it ends at
+   another time or for another reason), or an output of the old model has another value in the new
+   one, and the package's list of changes does not list the difference (m.md, "No change is
+   silent").
 
 The run step runs each run of the old model's default study under the old engine and the run of the
-same name of the new model under the engine of now, each to its horizon, and compares each output of
-the old model (one with an estimate, D4) with the new value of the same name (through `--rename`, by
-its own path or by the template's path that declares it) at the old report's reporting times: the
-start, the horizon (the old `final`) and each time that `--at` or a row of the list names. An old
-output with a reporting lag is read in the new run with the same lag, which a caller selects now
-(D10). Where the old model draws (a distribution, an event by chance), the old study's run is its
-central run (each distribution at its median, each event at its likeliest outcome), and the new run
-is in the mode `median`: the check compares this median run only, never a sample, and says so.
+same name of the new model under the engine of now, each to its horizon, and compares first their
+outcomes, then their values. A run's outcome is how it ended: `finished` at its horizon, `failed` (a
+statement that cannot hold, an engine that cannot go on) or `paused` (a breakpoint stopped it); at
+what time, the end of its record; and why, the failure's message, which names the statement and the
+occurrence, or the breakpoint and the place before which the run stopped
+(`newmodel.outcome_of`, `oldmodel.runs_of`). A run that the new engine does not run has no record:
+it `failed`, with no time, for the engine's reason. Two outcomes agree when their kinds and their
+reasons are the same (the words of each, as `read_changed` reads a cell) and their times agree
+within the tolerance below, in hours. A new failure or pause, or one at another time or for another
+reason, is a difference even when every value agrees: `napkin run` exits 1 on a run that failed,
+whatever it held when it failed (re-audit 19: a run that failed at its horizon passed the step). The
+old engine pauses only a played run, which the default study is not, and refuses the whole study when
+one of its runs fails, keeping no trajectory of it: the step fails on such a study, as it has nothing
+to compare (`compare_runs`).
+
+Then each output of the old model (one with an estimate, D4) is compared with the new value of the
+same name (through `--rename`, by its own path or by the template's path that declares it) at the old
+report's reporting times: the start, the old run's end (the old `final`, its horizon) and each time
+that `--at` or a row of the list names, each that the new run reaches. A time after the end of a new
+run that ends otherwise than the old one is not compared: the outcome's difference stands for its
+values there, and its row lists it once. An old output with a reporting lag is read in the new run
+with the same lag, which a caller selects now (D10). Where the old model draws (a distribution, an
+event by chance), the old study's run is its central run (each distribution at its median, each event
+at its likeliest outcome), and the new run is in the mode `median`: the check compares this median run
+only, never a sample, and says so.
 
 Two values agree when they differ by at most `RELATIVE` (1e-6) of the larger, or by `FLOOR` (1e-8)
 of the old output's unit. Both engines integrate a curve to a relative 1e-9 (`rtol`, with an absolute
@@ -52,21 +71,27 @@ The list of changes is `scratch/rewrite/b1/m-<package>/changed.md` of the old en
 `| test | quantity | old | new | cause | evidence |`:
 
     | check run examples/piano_tuners/model.scn | tunings_done at 8760 h | 2923.537487 tunings | 0 tunings | ... | ... |
+    | check run examples/piano_tuners/model.scn | outcome | finished at 8760 h | failed at 8760 h: tuners.audit.step[0].do[0]: the move ... [stage 1 of tuners.audit#0, t = 8760 h] | ... | ... |
 
 - `test`: `check run ENTRY` for the default run of the old entry ENTRY (its path in the base commit),
   `check run ENTRY:RUN` for its run RUN. A row of another test (a scenario test that a package's
   agent ports) is the agent's own: the run step leaves it alone;
-- `quantity`: `OUTPUT at T h`, the old output's name and the time in hours;
-- `old`, `new`: a number in the old output's unit, which the cell may write after it; or a word:
-  `unavailable` (the new run has no value: it failed or stopped first, or its engine does not run
-  it), or the old report's status (`unestimated`, `not_applicable`);
+- `quantity`: `OUTPUT at T h`, the old output's name and the time in hours; or `outcome`, how the
+  run ended;
+- `old`, `new` of a value: a number in the old output's unit, which the cell may write after it; or
+  a word: `unavailable` (the new run has no value at a time that it reaches), or the old report's
+  status (`unestimated`, `not_applicable`);
+- `old`, `new` of an outcome, as the check's line writes it: `finished at T h`, `failed at T h: WHY`
+  or `paused at T h: WHY`, the time in hours and the reason in full (`failed: WHY` for a run that the
+  new engine does not run, which has no time); a bar in the reason is written `\\|`;
 - `cause`: the rule of the spec or the change after G0 that makes the difference; `evidence`: the
   trace or the check line. Neither is empty.
 
-A difference passes only when a row of its test lists it and the row's numbers agree with the runs'
-within the tolerance. The step fails on a difference that no row lists, on a row whose numbers do not
-agree, on a row of the entry that lists no difference (its values agree, or the check compares no
-such run, output or time), and on a row of the entry that does not read.
+A difference passes only when a row of its test lists it and the row's cells agree with the runs':
+its numbers within the tolerance, an outcome's kind and reason as the runs give them and its time
+within the tolerance. The step fails on a difference that no row lists, on a row that does not agree,
+on a row of the entry that lists no difference (its values or its outcomes agree, or the check
+compares no such run, output or time), and on a row of the entry that does not read.
 
 It notes, without failing, the numbers, names and flows that only the new model has, and the
 warnings of the evidence rule (`no_record`, change 16), which `tools.check` refuses for a package.
@@ -279,14 +304,52 @@ def read_changed(path):
     return rows, problems
 
 
-QUANTITY = re.compile(r'(?P<name>\S+) at (?P<t>[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?) h')
-NUMBER = re.compile(r'(?P<n>[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)(?: +(?P<unit>.+))?')
+NUM = r'[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?'
+QUANTITY = re.compile(rf'(?P<name>\S+) at (?P<t>{NUM}) h')
+NUMBER = re.compile(rf'(?P<n>{NUM})(?: +(?P<unit>.+))?')
+OUTCOME = re.compile(rf'(?P<kind>finished|failed|paused)(?: at (?P<t>{NUM}) h)?(?:: (?P<why>.+))?')
 
 
 def quantity_of(row):
-    """(output, time in hours) of a row, or None for a quantity that does not read."""
+    """(output, time in hours) of a row of a value, or None for a quantity that does not read as one."""
     found = QUANTITY.fullmatch(row.quantity)
     return (found['name'], float(found['t'])) if found else None
+
+
+def lists_outcome(row):
+    """Whether a row lists the outcome of its run (its quantity is `outcome`)."""
+    return row.quantity.lower() == 'outcome'
+
+
+def words(text):
+    """A reason as the check compares it: its words with one space between them, without the
+    backticks that a cell drops (`read_changed`); None stays None."""
+    return None if text is None else ' '.join(text.replace('`', '').split())
+
+
+def outcome_text(outcome):
+    """An outcome as the check writes it, and as a row's cell names it (see the module)."""
+    text = outcome['kind'] if outcome['at'] is None else f'{outcome["kind"]} at {outcome["at"]:.10g} h'
+    return text if outcome['why'] is None else f'{text}: {words(outcome["why"])}'
+
+
+def outcome_cell(cell):
+    """The outcome that an `old` or `new` cell of an outcome row names, or None with the problem, as
+    (outcome, problem)."""
+    found = OUTCOME.fullmatch(cell)
+    if found is None:
+        return None, f'"{cell[:80]}" is no outcome: finished at T h, failed at T h: WHY or paused at T h: WHY'
+    at = None if found['t'] is None else float(found['t'])
+    return {'kind': found['kind'], 'at': at, 'why': found['why']}, None
+
+
+def same_outcome(a, b):
+    """Whether two outcomes agree: the same kind, the same reason in its words, and times that agree
+    within the tolerance (`agree`, in hours), or no time on either side."""
+    if (a['at'] is None) != (b['at'] is None):
+        return False
+    times = a['at'] is None or agree(a['at'], b['at'])
+    return a['kind'] == b['kind'] and times and words(a['why']) == words(b['why'])
 
 
 def cell_value(cell, unit):
@@ -338,7 +401,7 @@ def new_path(name, declared, renames):
 
 
 def reads_of(old, renames):
-    """What the new side reads for the run step: {run: {'paths', 'times', 'lags'}} (`newmodel.outcomes`)."""
+    """What the new side reads for the run step: {run: {'paths', 'times', 'lags'}} (`newmodel.results`)."""
     reads = {}
     for run, entry in old['runs']['runs'].items():
         outputs = {name: info for name, info in entry['outputs'].items() if info['estimated']}
@@ -353,10 +416,43 @@ def reads_of(old, renames):
     return reads
 
 
+def compare_outcomes(old, new, rows, label, used, report):
+    """The outcome of a run of the run step (see the module): the old run's against the new run's,
+    and the difference against the outcome row of the run's test among `rows`, which `used` gets.
+    Gives (whether the runs end alike, 1 for a difference that the row lists as the runs give it)."""
+    row = next((each for each in rows if lists_outcome(each)), None)
+    if row is not None:
+        used.add(row)
+    texts = f'old {outcome_text(old)}, new {outcome_text(new)}'
+    if same_outcome(old, new):
+        if row is not None:
+            report.error(
+                'run',
+                f'{label}outcome: changed.md:{row.line} lists it, but the runs end alike: {outcome_text(old)}',
+            )
+        return True, 0
+    if row is None:
+        report.error('run', f'{label}outcome: {texts}; no row of the list of changes lists it')
+        return False, 0
+    (old_cell, problem), (new_cell, other) = outcome_cell(row.old), outcome_cell(row.new)
+    problem = problem or other
+    if problem is None and not (row.cause and row.evidence):
+        problem = 'its cause or its evidence is empty'
+    if problem is None and same_outcome(old_cell, old) and same_outcome(new_cell, new):
+        return False, 1
+    report.error(
+        'run',
+        f'{label}outcome: changed.md:{row.line} lists old {row.old}, new {row.new}; the runs give {texts}'
+        + (f'; {problem}' if problem else ''),
+    )
+    return False, 0
+
+
 def compare_runs(old, new, renames, entry, rows, report):
-    """The run step (see the module): each output of each old run against the new value of the same
-    name at the same times, the differences against the rows of the list of changes. Gives the
-    number of differences that rows list, with numbers that agree."""
+    """The run step (see the module): the outcome of each old run against the new run of the same
+    name, then each of its outputs against the new value of the same name at the same times, each
+    that the new run reaches; the differences against the rows of the list of changes. Gives the
+    number of differences that rows list as the runs give them."""
     if old['runs']['refused']:
         report.error('run', f'the old engine does not admit the study: {old["runs"]["refused"][0][:200]}')
         return 0
@@ -364,23 +460,29 @@ def compare_runs(old, new, renames, entry, rows, report):
     listed, used = 0, set()
     for run, entry_ in old['runs']['runs'].items():
         label = f'run {run}: ' if run else ''
-        outcome = new['outcomes'][run]
+        result = new['results'][run]
         if entry_.get('refused'):
             report.error('run', f'{label}the old report cannot read the run: {entry_["refused"][:200]}')
             continue
-        if outcome['error'] and outcome['error'].startswith('the run does not configure'):
-            report.error('run', f'{label}the new model has no such run: {outcome["error"][:200]}')
+        if result['outcome'] is None:
+            report.error('run', f'{label}the new model has no such run: {result["error"][:200]}')
             continue
+        ours = [row for row in mine if row.test == test_of(entry, run)]
+        alike, counted = compare_outcomes(entry_['outcome'], result['outcome'], ours, label, used, report)
+        listed += counted
+        # The time to which the new run reaches; after it, a run that ends otherwise has its outcome's
+        # difference for its values. A run that the engine does not run reaches no time.
+        end = result['outcome']['at']
         by_place = {}
-        for row in mine:
+        for row in ours:
             place = quantity_of(row)
-            if row.test == test_of(entry, run) and place is not None:
+            if place is not None:
                 by_place.setdefault(place[0], []).append((place[1], row))
         for name, info in sorted(entry_['outputs'].items()):
             if not info['estimated']:
                 continue  # an output with no estimate has no declaration now (D4)
             path = new_path(name, info['declared'], renames)
-            found = outcome['values'].get(path) if not outcome['error'] else None
+            found = result['values'].get(path) if not result['error'] else None
             if found is not None and 'missing' in found:
                 report.error(
                     'run', f'{label}{name}: no value {path} in the new model (name it with --rename)'
@@ -393,10 +495,12 @@ def compare_runs(old, new, renames, entry, rows, report):
                 )
                 continue
             for k, t in enumerate(entry_['times']):
+                if not alike and (end is None or t > end):
+                    continue
                 a = info['values'][k] if info['statuses'][k] == 'estimated' else info['statuses'][k]
                 a = float(a) if isinstance(a, (int, float)) and not isinstance(a, bool) else a
                 b, why = (
-                    ('unavailable', outcome['error'])
+                    ('unavailable', result['error'])
                     if found is None
                     else in_old_unit(found['values'][k], info)
                 )
@@ -436,25 +540,30 @@ def compare_runs(old, new, renames, entry, rows, report):
     for row in mine:
         if row in used:
             continue
-        if quantity_of(row) is None:
+        if quantity_of(row) is None and not lists_outcome(row):
             report.error(
-                'run', f'changed.md:{row.line}: the quantity "{row.quantity}" does not read as OUTPUT at T h'
+                'run',
+                f'changed.md:{row.line}: the quantity "{row.quantity}" does not read as OUTPUT at T h, or outcome',
             )
         else:
             report.error(
                 'run',
                 f'changed.md:{row.line} lists {row.quantity} of "{row.test}", which the check does not compare '
-                '(no such run, output or time, or another row lists it)',
+                '(no such run, output or time; a time after the end of a new run that ends otherwise, which '
+                'the row of its outcome lists; or another row lists it)',
             )
     return listed
 
 
 def runs_line(old):
-    """What the run step compares, in a line: the runs, their times, and what the old model draws."""
+    """What the run step compares, in a line: the runs with their old outcomes, their times, and what
+    the old model draws."""
     if old['runs']['refused']:
         return 'runs: none (the old engine does not admit the study)'
     runs = old['runs']['runs']
-    names = ', '.join(run or 'the default run' for run in runs)
+    names = ', '.join(
+        f'{run or "the default run"} ({outcome_text(entry["outcome"])})' for run, entry in runs.items()
+    )
     times = sorted({t for entry in runs.values() for t in entry['times']})
     line = f'runs: {names}, at {", ".join(f"{t:g}" for t in times)} h'
     draws = sorted({name for entry in runs.values() for name in entry['draws']})
@@ -501,7 +610,7 @@ def run(old_entry, new_entry, renames=None, quiet=False, out=sys.stdout, changed
     )
     print(f'  {runs_line(old)}', file=out)
     if listed:
-        print(f'  run: {changed} lists {listed} of the differences, with their numbers', file=out)
+        print(f'  run: {changed} lists {listed} of the differences, as the runs give them', file=out)
     if not quiet:
         for message in report.notes:
             print(f'  note: {message}', file=out)
@@ -516,8 +625,8 @@ def run(old_entry, new_entry, renames=None, quiet=False, out=sys.stdout, changed
     else:
         print(
             '  PASSED: every number with its unit and every text is there, every name keeps its kind and '
-            'its flows, every value proved cumulative is proved never to fall, and every output keeps its '
-            'values in each run or its list of changes lists the difference',
+            'its flows, every value proved cumulative is proved never to fall, and each run ends as it did '
+            'and keeps the values of every output, or its list of changes lists the difference',
             file=out,
         )
     return report
