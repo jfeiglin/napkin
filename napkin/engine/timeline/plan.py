@@ -354,6 +354,15 @@ class Pending(Exception):
         self.names = names
 
 
+class _Unnamed(Exception):
+    """The resolution of a named collection needs another that is not resolved yet (`Plan._named`):
+    its key, its init, the scope that declares it and the origin that reads it."""
+
+    def __init__(self, key, init, scope, origin):
+        super().__init__(key)
+        self.key, self.init, self.scope, self.origin = key, init, scope, origin
+
+
 def walked(computation):
     """The result of a computation over the dependency graph, with no recursion (re-audit 15): a
     computation is a generator that yields each computation that it needs and is sent its result,
@@ -535,6 +544,11 @@ class Plan:
         self.failures = []  # the errors of the setup that the plan finds: the run fails with them
         self.started = False  # once the run has started, an error that the plan finds stops it
         self._derived = {}  # (owner, read) -> the engine name of a reduction or a keyed read
+        # (the id of a named collection's init, the owner of its scope) -> what it names (`_named`),
+        # and whether a resolution of one is under way, which a nested one waits for.
+        self._collection_points, self._naming = {}, False
+        self._chosen_of = {}  # the id of the keys of a keyed read's entries -> (whole numbers, `Keys`)
+        self._fixed_lookups = {}  # a keyed read -> whether the inputs fix what it reads (`_fixed`)
         self._expanded = {}
         self._expanding = False  # while an expansion is found: a read of one not found yet asks for it
         self._places = {}  # the place of each value in `values`, for `ordered`
@@ -543,7 +557,7 @@ class Plan:
         # A value that a commit gave a new definition -> [(time, its `Value` from then on)], the
         # first its own from its start (`define`); `version` counts the definitions.
         self.defined, self.version = {}, 0
-        # (the id of a collection that reads no `this`, steps) -> its members' tests, keys, values and
+        # (a collection that reads no `this`, steps) -> its members' tests, keys, values and
         # the collection (`_keyed`); (ids of those) -> what they read that can change (`_members_part`)
         self._collections, self._members = {}, {}
         self._statements = None  # the statements of the program by their origin (`definitions_of`)
@@ -702,45 +716,53 @@ class Plan:
 
     def _fixed(self, found):
         """Whether what an expansion reads is fixed by the inputs: inputs, links, and keyed reads
-        with a fixed key of what is fixed (followed on a list, with no recursion)."""
-        todo, seen = [found], set()
+        with a fixed key of what is fixed (followed on a list, with no recursion). A read that is
+        none of these decides at once, and what a keyed read was found to read is known after (a
+        chain of keyed reads costs no walk of each link's chain)."""
+        todo, seen = [found], []
         while todo:
             part = todo.pop()
             if part.time or part.stepped:
                 return False
+            lookups = []
             for leaf in part.leaves:
                 value = self.values.get(leaf)
                 if value is None or value.kind in FIXED:
                     continue  # a draw, which only an input's initializer executes
-                if value.kind != LOOKUP:
+                if value.kind != LOOKUP or self._fixed_lookups.get(leaf) is False:
                     return False
-                if leaf not in seen:
-                    seen.add(leaf)
+                lookups.append(leaf)
+            for leaf in lookups:
+                if leaf not in self._fixed_lookups and leaf not in seen:
+                    seen.append(leaf)
                     todo.append(self.lookup_reads(leaf))
+        self._fixed_lookups.update(dict.fromkeys(seen, True))
         return True
 
-    def _members_part(self, keyed):
+    def _members_part(self, keyed, values):
         """What the members of a keyed read read that the inputs do not fix (`Expanded`): of their
-        keys and their tests, and of the values that they project; found once for members that
-        several keyed reads share. What the inputs fix never changes, so nothing needs to know
-        that it is read."""
-        key = (id(keyed.tests), id(keyed.keys), id(keyed.names))
+        keys and their tests, or (`values`) of the values that they project; each found once for
+        members that several keyed reads share, and only when it is asked for (whether the keys
+        are fixed reads no value). What the inputs fix never changes, so nothing needs to know that
+        it is read."""
+        key = (id(keyed.tests), id(keyed.keys), id(keyed.names), values)
         found = self._members.get(key)
         if found is None:
-            ordering = {name for test in keyed.tests if test is not None for name in nodes.names(test)}
-            ordering |= {each for each in keyed.keys if isinstance(each, str)}
-            parts = []
-            for reads in (ordering, set(keyed.names)):
-                expansions = [self.expanded(read) for read in sorted(reads - {'t'})]
-                parts.append(Expanded.union([part for part in expansions if not self._fixed(part)]))
-            found = (tuple(parts), keyed)  # the keyed read keeps the ids of its tuples
+            if values:
+                reads = set(keyed.names)
+            else:
+                reads = {name for test in keyed.tests if test is not None for name in nodes.names(test)}
+                reads |= {each for each in keyed.keys if isinstance(each, str)}
+            expansions = [self.expanded(read) for read in sorted(reads - {'t'})]
+            found = Expanded.union([part for part in expansions if not self._fixed(part)])
+            found = (found, keyed)  # the keyed read keeps the ids of its tuples
             self._members[key] = found
         return found[0]
 
     def fixed_keys(self, name):
         """Whether the inputs fix the keys and the tests of the members of a keyed read: its index of
         keys is then the same for the whole run."""
-        found = self._members_part(self.keyed[name])[0]
+        found = self._members_part(self.keyed[name], False)
         return not (found.leaves or found.formulas or found.stepped or found.time)
 
     def stepped(self, name):
@@ -758,19 +780,26 @@ class Plan:
         chosen = self._chosen(keyed)
         if chosen is not None:
             return Expanded() if chosen is False else self.expanded(chosen)
-        ordering, values = self._members_part(keyed)
+        values = self._members_part(keyed, True)
         if self.stepped(name):
             return values
-        return Expanded.union([ordering, values, self.expansion(keyed.key)])
+        return Expanded.union([self._members_part(keyed, False), values, self.expansion(keyed.key)])
 
     def _chosen(self, keyed):
         """The engine name of the entry that a keyed read selects when the plan is made (`lookup_reads`),
-        False when its key is below the first, or None when only a run selects it."""
+        False when its key is below the first, or None when only a run selects it. Whether the
+        entries have natural keys and no test, and their index, are found once for the entries
+        that keyed reads share."""
         if not isinstance(keyed.key, nodes.Const) or isinstance(keyed.key.value, bool | str):
             return None
-        if any(test is not None for test in keyed.tests) or not all(type(key) is int for key in keyed.keys):
+        found = self._chosen_of.get(id(keyed.keys))
+        if found is None or found[0] is not keyed.keys:
+            natural = all(test is None for test in keyed.tests) and all(type(key) is int for key in keyed.keys)
+            found = (keyed.keys, natural, Keys(keyed.keys) if natural and keyed.keys else None)
+            self._chosen_of[id(keyed.keys)] = found
+        if not found[1]:
             return None
-        place = Keys(keyed.keys).find(float(keyed.key.value)) if keyed.keys else None
+        place = found[2].find(float(keyed.key.value)) if found[2] is not None else None
         return False if place is None else keyed.names[place]
 
     def lookup_moves(self, name, moving):
@@ -1183,6 +1212,8 @@ class Plan:
         self.values[name] = made
         found.append((t, made))
         self._expanded.clear()
+        self._fixed_lookups.clear()
+        self._members.clear()  # what the members of a keyed read read is found again too
         self.version += 1
 
     def original(self, name):
@@ -1399,6 +1430,10 @@ class Plan:
             if isinstance(part, p.Value) and isinstance(part.type, p.OccurrenceType):
                 frame.names[part.name] = self._referred(part, scope, occ)
                 continue
+            if isinstance(part, p.Value) and part.kind == p.COLLECTION:
+                # A named collection is the collection that its init names, in this scope (`_named`).
+                frame.names[part.name] = (p.COLLECTION, part.init)
+                continue
             kind = 'flow' if isinstance(part, p.Flow) else 'value'
             frame.names[part.name] = (kind, name_of(Key(occ, (part.name,))))
         first = len(self._declared)
@@ -1441,8 +1476,10 @@ class Plan:
         stores, formulas = [], []
         for part in event.locals:
             name = name_of(Key(occ, (part.name,)))
-            if isinstance(part, p.Value) and isinstance(part.type, p.OccurrenceType):
-                continue  # a reference holds no value: it names an occurrence
+            if isinstance(part, p.Value) and (
+                isinstance(part.type, p.OccurrenceType) or part.kind == p.COLLECTION
+            ):
+                continue  # a reference names an occurrence, and a collection its members: no value
             if isinstance(part, p.Value):
                 initial.append(name)
                 for side in SIDES:
@@ -1452,7 +1489,7 @@ class Plan:
                             (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
                 value = self.values.get(name)
                 if value is None:
-                    continue  # a distribution or a collection
+                    continue  # a distribution
                 if value.kind == STATE and isinstance(part.type, p.Number):
                     stores.append(name)
                     self._stores[name] = (part, scope)
@@ -1641,15 +1678,53 @@ class Plan:
             frame = scope[3] if scope is not None and len(scope) > 3 else None
             if frame is None or start.name not in frame.names:
                 raise Outside(f'{origin}: no bare name {start.name} in this scope (a type error)')
-            return frame.names[start.name]
+            return self._bare(frame.names[start.name], scope, origin)
         raise Outside(f'{origin}: the start of a path {type(start).__name__} (a type error)')
+
+    def _bare(self, point, scope, origin):
+        """The point that a bare name of a scope stands for: what it names, or, for a named
+        collection, the collection that its init names in that scope (`_named`)."""
+        return self._named(point[1], scope, origin) if point[0] == p.COLLECTION else point
+
+    def _named(self, init, scope, origin):
+        """A named collection (`tanks = Tank.instances`, of the root, of a member or of an event) is
+        the collection that its init names, resolved in the scope that declares it, once: every read
+        over it is the read over the collection written in its place (re-audit 15). A collection
+        named from another (`c2 = c1.where(...)`, a node's `kids` from its child's) resolves on an
+        explicit stack, so a chain of them is no limit: a resolution that needs one not resolved yet
+        stops (`_Unnamed`), that one resolves first, and it starts again."""
+        key = (id(init), self.owner_of(scope))
+        found = self._collection_points.get(key)
+        if found is not None:
+            return found
+        if self._naming:
+            raise _Unnamed(key, init, scope, origin)
+        stack, self._naming = [(key, init, scope, origin)], True
+        try:
+            while stack:
+                top = stack[-1]
+                try:
+                    point = self.resolve(top[1], top[2], top[3])
+                except _Unnamed as needed:
+                    if any(needed.key == each[0] for each in stack):
+                        raise Outside(f'{needed.origin}: a collection that names itself (a cycle)') from None
+                    stack.append((needed.key, needed.init, needed.scope, needed.origin))
+                    continue
+                self._collection_points[top[0]] = point
+                stack.pop()
+        finally:
+            self._naming = False
+        return self._collection_points[key]
 
     def _step(self, point, name, origin):
         """The point that a step from a point names."""
         kind = point[0]
         if kind == 'root':
-            if self.program.root_value(name) is None:
+            part = self.program.root_value(name)
+            if part is None:
                 raise Outside(f'{origin}: no value {name} of the root')
+            if part.kind == p.COLLECTION:
+                return self._named(part.init, None, origin)
             return ('value', name)
         if kind == 'member':
             template, row = self.program.member(point[1])
@@ -1660,7 +1735,7 @@ class Plan:
                     return ('member', target.members[template.members[row].link(name)].id)
                 if part.kind == p.COLLECTION:
                     member = template.members[row]
-                    return self.resolve(member.value(name) or part.init, (template, row, member), origin)
+                    return self._named(member.value(name) or part.init, (template, row, member), origin)
                 return ('value', f'{point[1]}.{name}')
             if isinstance(part, p.Flow):
                 return ('flow', f'{point[1]}.{name}')
@@ -1685,7 +1760,7 @@ class Plan:
         if kind == 'occurrence':
             names = self.frames[point[1]][3].names
             if name in names:
-                return names[name]
+                return self._bare(names[name], self.frames[point[1]], origin)
             if name in BUILTINS:
                 return ('value', f'{point[1]}.{name}')
             raise Outside(f'{origin}: {point[1]} has no {name} (a type error)')
@@ -1808,8 +1883,15 @@ class Plan:
                 if not evaluate(node, {}, self.units):
                     continue
                 node = None
-            if before is not None:
-                node = before if node is None else nodes.boolean('and', [before, node])
+            if before is not None and node is None:
+                node = before
+            elif before is not None:
+                # A where of a where keeps both tests, in order: one flat conjunction, so a chain of
+                # narrowings (`c2 = c1.where(...)`) makes no deeper node (re-audit 15).
+                terms = [*before.values] if isinstance(before, nodes.BoolOp) and before.op == 'and' else [before]
+                if node not in terms:
+                    terms.append(node)
+                node = nodes.boolean('and', terms)
             points.append(point)
             tests.append(node)
             keys.append(key)
@@ -1972,7 +2054,7 @@ class Plan:
         # The members of a collection that reads no `this` are the same for every member that reads
         # it with its own key: they are found once, and shared (`_members_part`).
         shared = not any(_uses(lookup.source, kind) for kind in (This, Item, Local))
-        found = self._collections.get((id(lookup.source), path.steps)) if shared else None
+        found = self._collections.get((lookup.source, path.steps)) if shared else None
         if found is None:
             source = self.resolve(lookup.source, scope, origin, item)
             if source[0] == 'dynamic':
@@ -1990,7 +2072,8 @@ class Plan:
                 )
             found = (entries.tests, entries.keys, tuple(point[1] for point in points), lookup.source)
             if shared:
-                self._collections[(id(lookup.source), path.steps)] = found
+                # The same source, written again (each member's own formula), is the same collection.
+                self._collections[(lookup.source, path.steps)] = found
         tests, keys, names, _ = found
         x = self.node(lookup.key, scope, origin, item)
         self._derived[key] = name
@@ -2100,6 +2183,9 @@ class Plan:
         if name in self.reductions:
             return self.reductions[name].reads()
         if name in self.keyed:
+            chosen = self._chosen(self.keyed[name])
+            if chosen is not None:
+                return set() if chosen is False else {chosen}  # a constant key reads its entry alone
             found = self.lookup_reads(name)
             return set(found.leaves | found.formulas | found.stepped) - {name}
         if name in self.dynamic:

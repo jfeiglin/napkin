@@ -205,6 +205,9 @@ class _Boundary:
 
 SOURCE, SINK = _Boundary('SOURCE'), _Boundary('SINK')
 ITEM = '<item>'  # the bare name of the member that the test of a `where` is about; no model can spell it
+# The failure of a membership whose interval is reversed when it is read, by the words that every
+# evaluator of a program gives it.
+REVERSED = 'the interval of a membership test is reversed'
 
 
 class NeedsSettle(Exception):
@@ -662,7 +665,23 @@ class Ev:
         return self.ref(then if c else other)
 
     def _in(self, x, lo, hi):
+        """`lo <= x <= hi`, a chain of two comparisons that reads x once."""
+        return self.between(self.val(x), self.val(lo), self.val(hi), x, lo, hi)
+
+    def _within(self, x, lo, hi):
+        """`x in [lo, hi]`, a membership (spec, "Units, comparisons and layout"): x and each end are
+        read once, and an interval that is reversed when it is read fails the run by name, as reversed
+        bounds are an error. Ends that move are compared just after the moment, and the first time at
+        which they can cross is a stop, as for any comparison."""
         v, low, high = self.val(x), self.val(lo), self.val(hi)
+        if not isinstance(low, Lin) and not isinstance(high, Lin):
+            if isinstance(low, (Fraction, Poly, int)) and isinstance(high, (Fraction, Poly, int)):
+                gap = plain(poly(low) - poly(high)) if isinstance(low, Poly) or isinstance(high, Poly) else low - high
+                if self.sign(gap) > 0:
+                    raise RunFailed(f'{REVERSED}: {show(E("within", x, lo, hi))} reads [{low}, {high}]')
+        return self.between(v, low, high, x, lo, hi)
+
+    def between(self, v, low, high, x, lo, hi):
         first = self.compare('>=', v, low, (x, lo))
         second = self.compare('<=', v, high, (x, hi))
         if isinstance(first, Rel) or isinstance(second, Rel):

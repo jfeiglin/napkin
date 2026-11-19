@@ -56,7 +56,10 @@ BINARY = {ast.Add: 'add', ast.Sub: 'sub', ast.Mult: 'mul', ast.Div: 'div', ast.P
 COMPARE = {ast.Eq: 'eq', ast.NotEq: 'ne', ast.Lt: 'lt', ast.LtE: 'le', ast.Gt: 'gt', ast.GtE: 'ge'}
 # The functions that an expression of a structure can call.
 FUNCTIONS = frozenset(
-    {'min', 'max', 'exp', 'expm1', 'ln', 'log1p', 'sqrt', 'erf', 'abs', 'q', 'clip', *('sum', 'any', 'all')}
+    {
+        *('min', 'max', 'exp', 'expm1', 'ln', 'log1p', 'sqrt', 'erf', 'abs', 'q', 'clip'),
+        *('sum', 'any', 'all', 'within'),
+    }
 )
 # The functions over the members of a list, each one node whatever the number of members: `sum(a, b, c)`
 # is `a + b + c` added from the left, and `any` and `all` are `or` and `and` of their members. One
@@ -269,6 +272,18 @@ def if_else(test, body, orelse):
 
 def call(function, args):
     return _made(Call, function, tuple(args))
+
+
+def membership(node):
+    """For a membership `within(x, lo, hi)` (`x in [lo, hi]`): (the chain `lo <= x <= hi` that it
+    tests once its interval is ordered, lo, hi); None for any other node. A consumer that reads the
+    comparisons of a condition (where it changes between moments, a near-tie) reads a membership as
+    that chain, once the membership itself is evaluated, which fails by name where its interval is
+    reversed (`ops.REVERSED`)."""
+    if not (isinstance(node, Call) and node.function == 'within' and len(node.args) == 3):
+        return None
+    value, low, high = node.args
+    return compare(['le', 'le'], [low, value, high]), low, high
 
 
 def foreign(tree):

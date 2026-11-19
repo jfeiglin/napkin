@@ -452,6 +452,14 @@ def _literal_unit(infer, node, registry):
     return registry.parse_unit(args[1].value).canonical()
 
 
+def _membership(infer, node, registry):
+    units = [infer(arg) for arg in node.args]
+    if len(units) != 3:
+        raise ExpressionError('within requires exactly three arguments')
+    _numbers([same(same(units[0], units[1]), units[2])], 'A membership tests numbers')
+    return BOOLEAN
+
+
 # The rule of `ops.UNIT_RULES` that each function here is.
 RULES = {
     'number': _number,
@@ -465,6 +473,7 @@ RULES = {
     'root': _root,
     'plain': _plain,
     'literal': _literal_unit,
+    'membership': _membership,
 }
 if RULES.keys() != ops.UNIT_RULES.keys():
     raise LookupError(f'the rules for units: {sorted(RULES.keys() ^ ops.UNIT_RULES.keys())}')

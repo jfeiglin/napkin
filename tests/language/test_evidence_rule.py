@@ -7,10 +7,13 @@ package (`library.model_document`), and a record's error at its file and line. T
 counted by hand in the texts."""
 
 import json
+from fractions import Fraction
 import textwrap
 from pathlib import Path
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from napkin.model.compile import compile_text, load_scenario
 from napkin.model.ir import ModelError
@@ -221,3 +224,108 @@ def test_a_value_that_differs_from_its_cited_datum_is_a_warning_with_both_number
     assert option[0].startswith(
         'service.rate: @access cites the datum rate of C-ACCESS, 2 people/h, and 1 people/h'
     )
+
+
+# ---- the compiler's own folding of a cited value (the audit's row 17 again) --------------------------
+
+# Each leaf: its text and its exact value in hours, worked by hand from the prelude's units (a day is
+# 24 h and a week 168 h), and a plain multiplier with its value.
+HOURS = [('2 h', Fraction(2)), ('0.5 h', Fraction(1, 2)), ('1.25 h', Fraction(5, 4)), ('0.25 days', Fraction(6)),
+         ('1 days', Fraction(24)), ('0.125 week', Fraction(21))]
+PLAIN = [('2', Fraction(2)), ('0.5', Fraction(1, 2)), ('3', Fraction(3))]
+
+
+def folded(data, depth):
+    """A random expression of hours that the compiler fixes when the model compiles, built from every
+    operation that it folds exactly (a sum, a difference, a product or a quotient by a plain number,
+    `min`, `max`, `abs`, `clip`, a conditional whose condition is fixed, a square root of an exact
+    square, a whole power, a unit conversion), and its exact value in hours, worked here."""
+    if depth == 0 or data.draw(st.integers(0, 3)) == 0:
+        return data.draw(st.sampled_from(HOURS))
+    a, b = folded(data, depth - 1), folded(data, depth - 1)
+    form = data.draw(st.sampled_from(['add', 'sub', 'scale', 'divide', 'min', 'max', 'abs', 'clip', 'if', 'sqrt', 'power']))
+    if form == 'add':
+        return f'({a[0]} + {b[0]})', a[1] + b[1]
+    if form == 'sub':
+        return f'({a[0]} - {b[0]})', a[1] - b[1]
+    if form == 'scale':
+        k = data.draw(st.sampled_from(PLAIN))
+        return f'({k[0]} * {a[0]})', k[1] * a[1]
+    if form == 'divide':
+        k = data.draw(st.sampled_from(PLAIN))
+        return f'({a[0]} / {k[0]})', a[1] / k[1]
+    if form in ('min', 'max'):
+        return f'{form}({a[0]}, {b[0]})', (min if form == 'min' else max)(a[1], b[1])
+    if form == 'abs':
+        return f'abs({a[0]} - {b[0]})', abs(a[1] - b[1])
+    if form == 'clip':
+        c = folded(data, depth - 1)
+        low, high = sorted((b, c), key=lambda item: item[1])
+        return f'clip({a[0]}, {low[0]}, {high[0]})', min(max(a[1], low[1]), high[1])
+    if form == 'if':
+        p, q = folded(data, depth - 1), folded(data, depth - 1)
+        test, holds = data.draw(
+            st.sampled_from([
+                (f'{p[0]} < {q[0]}', p[1] < q[1]),
+                (f'{p[0]} >= {q[0]}', p[1] >= q[1]),
+                (f'not ({p[0]} == {q[0]})', p[1] != q[1]),
+                (f'({p[0]} <= {q[0]} and true)', p[1] <= q[1]),
+                (f'({p[0]} > {q[0]} or false)', p[1] > q[1]),
+                (f'({p[0]} in [{min(p, q, key=lambda i: i[1])[0]}, {max(p, q, key=lambda i: i[1])[0]}])', True),
+            ])
+        )
+        return f'({a[0]} if {test} else {b[0]})', a[1] if holds else b[1]
+    if form == 'sqrt':
+        return f'sqrt({a[0]} * {a[0]})', abs(a[1])
+    # A whole power: the square of a time over a time.
+    if b[1] == 0:
+        return a
+    return f'(({a[0]}) ** 2 / {b[0]})', a[1] ** 2 / b[1]
+
+
+def tail(gap):
+    """A sum that adds `gap` hours exactly: its numerator in hours over its denominator."""
+    gap = Fraction(gap)
+    return f'({gap.numerator} h) / {gap.denominator}'
+
+
+@settings(derandomize=True, max_examples=40, deadline=None)
+@given(st.data())
+def test_a_cited_value_is_the_number_that_the_compilers_folding_gives_it(tmp_path_factory, data):
+    """The rule (the audit's row 17): a value whose record cites a datum is that number. The value
+    compared is what the compiler's own folding of constants gives (`semantic.exact_value`), every
+    operation folded exactly: for random expressions of every operation, made equal to the datum (34
+    h) or 10^-18 h from it, the datum warns exactly when the value differs, as worked here."""
+    expression, value = folded(data, data.draw(st.integers(1, 3)))
+    near = data.draw(st.booleans())
+    end = f'({expression}) + {tail(34 - value)}' + (' + (1 h) / 1000000000000000000' if near else '')
+    path = datum_package(tmp_path_factory.mktemp('fold'), end=end)
+    found = data_warnings(path)
+    if near:
+        (warning,) = found
+        assert warning[0].startswith('service.end: @timing cites the datum delay of C-ACTION, 34 h, and 34.000000000000000001 h')
+        assert warning[0].endswith('differs from it')
+    else:
+        assert found == [], (end, found)
+
+
+def test_a_cited_value_that_the_compiler_cannot_fix_is_a_warning(tmp_path):
+    """A value that cites a datum and that only a run knows (a draw, or a value that reads another
+    input, which a configuration may set) is a `datum` warning, never a silent pass: it is computed
+    when the model runs, and a datum names a number."""
+    for k, end in enumerate(('uniform(30 h, 40 h).draw()', 'this.n * 34 h / (20 people)')):
+        (warning,) = data_warnings(datum_package(tmp_path / str(k), end=end))
+        assert warning[0] == (
+            'service.end: @timing cites the datum delay of C-ACTION, 34 h, and it is computed when the model '
+            'runs, and a datum names a number'
+        )
+
+
+def test_a_number_token_is_the_exact_decimal_that_it_writes(tmp_path):
+    """A number token is the decimal that it writes, never read through a float: 34.000000000000000001
+    h is not the datum 34 h (a float holds both as 34.0), and 33.999999999999999999 h +
+    0.000000000000000001 h is."""
+    (warning,) = data_warnings(datum_package(tmp_path / 'a', end='34.000000000000000001 h'))
+    assert warning[0].endswith('34 h, and 34.000000000000000001 h differs from it')
+    assert data_warnings(datum_package(tmp_path / 'b', end='33.999999999999999999 h + 0.000000000000000001 h')) == []
+    assert data_warnings(datum_package(tmp_path / 'c', end='34.000000000000000000 h')) == []

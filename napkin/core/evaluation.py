@@ -67,6 +67,13 @@ def _clip(value, low, high):
     return min(max(value, low), high)
 
 
+def _within(value, low, high):
+    """`value in [low, high]`, the closed interval; a reversed one is an error (`ops.REVERSED`)."""
+    if low > high:
+        raise ExpressionError(f'{ops.REVERSED}: [{low!r}, {high!r}]')
+    return low <= value <= high
+
+
 def _sum(values):
     """The members of a list added from the left in their order: the value of `a + b + c`, bit for
     bit. Each sum of two passes the check that the sum of two values passes."""
@@ -85,6 +92,7 @@ RUNTIME = {
     '_raise': _raise,
     '_power': _power,
     '_clip': _clip,
+    '_within': _within,
     '_sum': _sum,
     'min': min,
     'max': max,
@@ -146,12 +154,12 @@ class _Writer:
       and `log1p` of a value that is not finite are not finite, or they raise. So the result of such
       an operation is not checked where it is made (`result`): the code that reads it checks it, or
       it goes on to the next such operation.
-    - Each other reader of a value could hide it (a comparison, a test, `not`, `and`, `or`, `min`,
-      `max`, `clip`, a divisor, a power, `exp`, `expm1`, `erf`, a quantity): it reads the value
-      checked (`sure`). So do an assignment and an output of a program.
+    - Each other reader of a value could hide it (a comparison, a membership, a test, `not`, `and`,
+      `or`, `min`, `max`, `clip`, a divisor, a power, `exp`, `expm1`, `erf`, a quantity): it reads the
+      value checked (`sure`). So do an assignment and an output of a program.
     - `min`, `max` and `clip` give one of their checked values; `exp`, `expm1` and `erf` of a finite
-      value are finite or raise; a comparison, `not`, `and` and `or` give a yes/no. Their results
-      need no check.
+      value are finite or raise; a comparison, a membership, `not`, `and` and `or` give a yes/no.
+      Their results need no check.
     """
 
     def __init__(self, read, constants, units, fold, lean=False):
@@ -497,6 +505,13 @@ TABLE = ops.handlers(
         'clip': _call(
             lambda args: f'_clip({args[0]}, {args[1]}, {args[2]})',
             lambda writer, values: _known(_clip, *values),
+            HIDES_ONE,
+        ),
+        # `_within` reads its three checked values once each and gives a yes/no; a reversed interval
+        # that the program knows when it is made stays code, so it fails where a run reaches it.
+        'within': _call(
+            lambda args: f'_within({args[0]}, {args[1]}, {args[2]})',
+            lambda writer, values: _known(_within, *values),
             HIDES_ONE,
         ),
         **{name: _of_one(name) for name in OF_ONE},

@@ -48,7 +48,13 @@ UNIT_RULES = {
     'plain': 'The argument is a plain number, and so is the result.',
     'literal': 'The first argument is a plain number, and the second the written name of a unit of '
     'the registry; the result has that unit.',
+    'membership': 'The tested value and the two ends of its interval are numbers of one unit; the result '
+    'is a yes/no.',
 }
+
+# The failure of a membership whose interval is reversed (spec: reversed bounds are an error), in every
+# evaluator of the program: the function of a node, a program, the values of many instances.
+REVERSED = 'the interval of a membership test is reversed'
 
 
 @dataclass(frozen=True)
@@ -186,6 +192,17 @@ OPERATIONS = {
             'It is not smooth where the value is at a bound.',
             _clip_partials,
             ('+', '+', '+'),
+        ),
+        # `x in [lo, hi]`: x is read once, and the ends are checked each time the membership is
+        # evaluated, so an interval that only a run reverses fails where the run reads it.
+        Operation(
+            'within',
+            3,
+            'membership',
+            'The lower end of the interval is not above its upper end.',
+            STEP,
+            None,
+            ('none', '-', '+'),
         ),
         Operation(
             'abs',

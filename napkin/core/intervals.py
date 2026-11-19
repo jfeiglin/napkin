@@ -546,6 +546,14 @@ def _clip(prover, node, context, seen):
     )
 
 
+def _within(prover, node, context, seen):
+    # A membership has a value only where its interval is ordered (`ops.REVERSED`).
+    args = _arguments(prover, node, context, seen)
+    if args[1][1] > args[2][0]:
+        raise ExpressionError('Cannot prove the ends of a membership test are ordered')
+    return (0, 1)
+
+
 def _logarithm(name, offset):
     def handler(prover, node, context, seen):
         low, high = _arguments(prover, node, context, seen)[0]
@@ -635,6 +643,7 @@ TABLE = ops.handlers(
         'any': _listed('or'),
         'all': _listed('and'),
         'clip': _clip,
+        'within': _within,
         'abs': _abs,
         'sqrt': _sqrt,
         'exp': _exponential('exp', 0),

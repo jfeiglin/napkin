@@ -399,15 +399,23 @@ def ifelse(test, body, orelse):
 
 
 def in_range(value, lower, upper):
-    """`value in [lower, upper]`: one chain of comparisons, so the value is read once."""
+    """`value in [lower, upper]` as a solver's constraint: the chain of its two relations, `lower <=
+    value <= upper`, which reads the value once. A membership that a run evaluates is `within`."""
     return _apply(lambda lo, x, hi: nodes.compare(['le', 'le'], [lo, x, hi]), lower, value, upper)
+
+
+def within(value, lower, upper):
+    """`value in [lower, upper]`, a membership: the value read once, and an interval that is reversed
+    where a run evaluates it fails the run by name (`napkin.core.ops.REVERSED`)."""
+    return call('within', value, lower, upper)
 
 
 def call(function, *args):
     """`function(args...)`: a call of a function of the language's closed list
     (`napkin/core/expr.FUNCTIONS`): `abs`, `exp`, `expm1`, `ln`, `log1p`, `sqrt`, `erf`, `min`, `max`,
-    `clip`, and `sum`, `any` and `all` of their arguments (of a collection they are `fsum`, `fany`
-    and `fall`). A number with a unit is `q`. Any other name is a ValueError."""
+    `clip`, `within` (a membership), and `sum`, `any` and `all` of their arguments (of a collection
+    they are `fsum`, `fany` and `fall`). A number with a unit is `q`. Any other name is a
+    ValueError."""
     if function not in nodes.FUNCTIONS or function == 'q':
         names = ', '.join(sorted(nodes.FUNCTIONS - {'q'}))
         raise ValueError(f'{function!r} is no function of the language: one of {names}')

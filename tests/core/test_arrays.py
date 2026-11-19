@@ -60,9 +60,11 @@ def condition(rng, depth):
             [rng.choice(('eq', 'ne'))], [expr.ref('m.mode'), expr.const(rng.choice(('open', 'shut')))]
         )
     a, b, c = (condition(rng, depth - 1) for _ in range(3))
-    k = rng.randrange(9)
-    if k < 3:
+    k = rng.randrange(10)
+    if k < 3 or k == 9:
         x, y, z = (number(rng, depth - 1) for _ in range(3))
+        if k == 9:
+            return expr.call('within', [x, y, z])
         if k == 2:
             return expr.compare([rng.choice(ORDER), rng.choice(ORDER)], [x, y, z])
         return expr.compare([rng.choice(ORDER)], [x, y])
@@ -252,3 +254,28 @@ def test_a_part_in_a_branch_that_all_instances_take_is_the_part_for_all_instance
     expected = [math.log(value - 2) if value > 2 else 0.0 for value in column]
     found = arrays.values(split, {'c': column}, UNITS, COUNT).tolist()
     assert found == pytest.approx(expected, rel=1e-15)
+
+
+def test_a_membership_over_many_instances_is_that_of_each_instance_and_fails_by_name_with_one():
+    """`within(x, lo, hi)` over arrays: each instance's closed interval, as the function of one
+    instance gives it; and when the interval of one instance is reversed, the whole call fails with
+    the error that names it, as a loop over the instances fails at that one (the audit's row 12)."""
+    rng = random.Random('membership')
+    node = expr.call('within', [expr.ref('x'), expr.ref('lo'), expr.ref('hi')])
+    for _ in range(200):
+        size = rng.randrange(1, 8)
+        columns = {name: np.array([rng.choice((-1.0, 0.0, 0.5, 2.0, 3.0)) for _ in range(size)]) for name in ('x', 'lo', 'hi')}
+        if rng.random() < 0.5:
+            columns['lo'] = np.minimum(columns['lo'], columns['hi'])
+        env = {name: column if rng.random() < 0.8 else float(column[0]) for name, column in columns.items()}
+        each = [{name: float(value[i]) if isinstance(value, np.ndarray) else value for name, value in env.items()} for i in range(size)]
+        if any(one['lo'] > one['hi'] for one in each):
+            with pytest.raises(ExpressionError, match='the interval of a membership test is reversed'):
+                arrays.values(node, env, UNITS, size)
+            continue
+        found = arrays.values(node, env, UNITS, size)
+        wanted = [one['lo'] <= one['x'] <= one['hi'] for one in each]
+        if isinstance(found, np.ndarray):
+            assert found.tolist() == wanted
+        else:
+            assert all(found is want for want in wanted)

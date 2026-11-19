@@ -1230,6 +1230,14 @@ class Files:
 # ---- resolution ---------------------------------------------------------------------------------------
 
 
+class _Unresolved(Exception):
+    """A value that a resolution under way reads before it is resolved (`Resolver.resolved`)."""
+
+    def __init__(self, path):
+        super().__init__(path)
+        self.path = path
+
+
 class Refused(Exception):
     """A diagnostic that stops the resolution of one part."""
 
@@ -1594,21 +1602,23 @@ class Resolver:
             body, orelse = self.alike(body, orelse, node, 'if')
             return Apply('if', (test, body, orelse), body.type if body.type != PLAIN else orelse.type)
         if isinstance(node, n.Within):
-            # The interval of a test is an interval as a range is: its ends are checked by `interval`.
+            # The interval of a test is an interval as a range is: ends fixed when the model compiles
+            # are checked by `interval`, and a membership with two ends is the program's operation
+            # `within`, which checks them each time a run evaluates it (spec: reversed bounds are an
+            # error). An interval with one end left empty cannot be reversed: it is one comparison.
             value = self.expression(node.value, scope)
             self.want_number(value, node, 'in')
             low = high = None
-            tests = []
             if node.low is not None:
                 low, value = self.alike(self.expression(node.low, scope), value, node, 'in')
-                tests.append(Apply('compare', (low, value), BOOL, ('<=',)))
             if node.high is not None:
                 value, high = self.alike(value, self.expression(node.high, scope), node, 'in')
-                tests.append(Apply('compare', (value, high), BOOL, ('<=',)))
             self.interval(low, high, 'the interval of this test', node, (node.low, node.high))
-            if len(tests) == 2:
-                return Apply('compare', (tests[0].args[0], value, tests[1].args[1]), BOOL, ('<=', '<='))
-            return tests[0]
+            if low is not None and high is not None:
+                return Apply('call', (value, low, high), BOOL, 'within')
+            if low is not None:
+                return Apply('compare', (low, value), BOOL, ('<=',))
+            return Apply('compare', (value, high), BOOL, ('<=',))
         self.fail('syntax', f'{type(node).__name__} is no value here', node)
 
     def quantity(self, value, node, scope):
@@ -2437,7 +2447,10 @@ class Resolver:
         """The declared value of a path, resolved once; a value with a problem refuses its readers
         quietly (`depends`), since its own problem is reported. A value that its own resolution reads
         (a template's, through other members) is read as its declaration types it (`provisional`):
-        whether a member reads itself is the members' connections' to say (`Order`)."""
+        whether a member reads itself is the members' connections' to say (`Order`).
+
+        A value that a resolution under way reads is resolved before it and not inside it
+        (`resolved`), so a chain of values costs no depth of calls (the audit's row 15)."""
         if path in self.done:
             found = self.done[path]
             if found is None:
@@ -2459,23 +2472,50 @@ class Resolver:
                     syntax,
                 )
             self.fail('cycle', f'{chain}: the values on a cycle have no order', syntax)
-        self.active[path] = None
+        if self.active:
+            raise _Unresolved(path)
+        return self.resolved(path)
+
+    def resolved(self, path):
+        """Resolve a value, and each value that its resolution reads before it, on an explicit stack
+        (`active`, outermost first, so that a cycle is its chain from the value that it returns to):
+        the value on top is resolved; a value that it reads and that is not resolved yet raises
+        `_Unresolved`, goes on top and is resolved first, and the value under it is then resolved
+        again, from its start. A resolution has no effect but the values that it resolves, so
+        resolving it again gives what one resolution would. A problem of a value refuses each value
+        under it on the stack, as a problem of what it reads, and is the caller's to report."""
+        stack = self.active
+        stack[path] = None
         try:
-            scope = self.scope_of(owner)
-            if isinstance(syntax, n.Param):
-                found = self.param(path, scope, syntax)
-            elif isinstance(syntax, n.Unknown):
-                found = self.unknown(path, scope, syntax)
-            else:
-                found = self.declaration(path, scope, syntax)
-                if path in self.changes and (owner in self.entities or owner in self.templates):
-                    found = self.changed(found, owner, self.changes[path][1])
-        except Refused:
-            self.done[path] = None
-            raise
+            while stack:
+                current = next(reversed(stack))
+                try:
+                    found = self.declared(current)
+                except _Unresolved as unresolved:
+                    stack[unresolved.path] = None
+                    continue
+                except Refused:
+                    for each in stack:
+                        self.done[each] = None
+                    raise
+                self.done[current] = found
+                del stack[current]
         finally:
-            self.active.pop(path, None)
-        self.done[path] = found
+            stack.clear()
+        return self.done[path]
+
+    def declared(self, path):
+        """One resolution of the value of a path: a parameter, an unknown of a solver, or a
+        declaration, with the `change` of the model that sets it."""
+        owner, syntax = self.syntax[path]
+        scope = self.scope_of(owner)
+        if isinstance(syntax, n.Param):
+            return self.param(path, scope, syntax)
+        if isinstance(syntax, n.Unknown):
+            return self.unknown(path, scope, syntax)
+        found = self.declaration(path, scope, syntax)
+        if path in self.changes and (owner in self.entities or owner in self.templates):
+            found = self.changed(found, owner, self.changes[path][1])
         return found
 
     def provisional(self, path, syntax):
@@ -3211,7 +3251,11 @@ class Resolver:
 
     def over_inputs(self, expression):
         """Whether an expression reads only what is fixed for the run, also through the formulas that
-        it reads: each formula is looked at once, so a deep chain of shared formulas costs its length."""
+        it reads: each formula is looked at once, on an explicit stack (`walked`), so a deep chain of
+        shared formulas costs its length and no depth of calls."""
+        return walked(self._over_inputs(expression))
+
+    def _over_inputs(self, expression):
         for read in reads_of(expression):
             if read.fixed:
                 continue
@@ -3224,7 +3268,9 @@ class Resolver:
                     member.type.name == template and any(item.path == (name,) for item in member.properties)
                     for member in self.instances.values()
                 )
-                found = not replaced and self.over_inputs(self.value(read.formula).init.body)
+                # A formula met again on its own way is not shown to read inputs only.
+                self.inputs_only[read.formula] = False
+                found = not replaced and (yield self._over_inputs(self.value(read.formula).init.body))
                 self.inputs_only[read.formula] = found
             if not self.inputs_only[read.formula]:
                 return False
@@ -3638,21 +3684,24 @@ class Resolver:
                 raise Refused('depends', f'{path} has a problem of its own')
             return self.done[path]
         solver, node = self.syntax[path]
-        self.done[path] = None
-        if not isinstance(node.value, (n.Name, n.Member, n.Collection)) and not (
-            isinstance(node.value, n.Method) and node.value.name in KEYED
-        ):
-            self.fail(
-                'solver_input',
-                f'the input {node.name} names a value, a flow, a member or a collection by its path: put a '
-                'calculation in a formula of the entity, and name the formula',
-                node,
-            )
-        found = self.path(node.value, Scope(self.scopes[solver].owner))
-        if found.start == ('time',):
-            self.fail(
-                'solver_input', f'the input {node.name} names the time, which a solver reads as t', node
-            )
+        try:
+            if not isinstance(node.value, (n.Name, n.Member, n.Collection)) and not (
+                isinstance(node.value, n.Method) and node.value.name in KEYED
+            ):
+                self.fail(
+                    'solver_input',
+                    f'the input {node.name} names a value, a flow, a member or a collection by its path: '
+                    'put a calculation in a formula of the entity, and name the formula',
+                    node,
+                )
+            found = self.path(node.value, Scope(self.scopes[solver].owner))
+            if found.start == ('time',):
+                self.fail(
+                    'solver_input', f'the input {node.name} names the time, which a solver reads as t', node
+                )
+        except Refused:
+            self.done[path] = None
+            raise
         self.done[path] = DeclaredBinding(path, node.name, found, node.line)
         return self.done[path]
 
@@ -4799,21 +4848,30 @@ class Order:
     def needs(self, expression, member, item=()):
         """The nodes that a typed expression reads for a member ('' at the top level), in the order
         in which it reads them (a dict used as an ordered set, so the search is the same each run)."""
-        found = {}
-        for read in reads_of(expression):
-            if _own(read):
-                self.walk(read, member, item, found)
-            else:
-                key = ('*', read)
-                if key not in self.shared:
-                    self.shared[key] = {}
-                    self.walk(read, '', (), self.shared[key])
-                found[key] = None
-        return found
+        return walked(self._needs(expression, member, item))
 
     def walk(self, read, member, item, found):
         """The members that a read reaches, adding to `found` each value that it reads on its way. A
         flow's rate is no starting value, so a read through a flow reaches nothing."""
+        return walked(self._walk(read, member, item, found))
+
+    # Each walk below is a generator, run by `walked` on an explicit stack: it yields the walk that it
+    # needs and is sent its answer, so a chain of collection values costs no depth of calls.
+
+    def _needs(self, expression, member, item=()):
+        found = {}
+        for read in reads_of(expression):
+            if _own(read):
+                yield self._walk(read, member, item, found)
+            else:
+                key = ('*', read)
+                if key not in self.shared:
+                    self.shared[key] = {}
+                    yield self._walk(read, '', (), self.shared[key])
+                found[key] = None
+        return found
+
+    def _walk(self, read, member, item, found):
         kind, steps = read.start[0], read.steps
         if kind == 'time':
             return {}
@@ -4823,9 +4881,9 @@ class Order:
                 if value is not None:
                     found[('', steps[0])] = None
                 return {}
-            current, steps = self.walk(value.init, '', (), found), steps[1:]
+            current, steps = (yield self._walk(value.init, '', (), found)), steps[1:]
         else:
-            current = self.starts(read.start, member, item, found)
+            current = yield self._starts(read.start, member, item, found)
         for step in steps:
             following = {}
             for each in current:
@@ -4840,13 +4898,13 @@ class Order:
                 elif part.kind == COLLECTION:
                     init = self.init((each, step))
                     if init is not None:
-                        following.update(self.walk(init, each, (), found))
+                        following.update((yield self._walk(init, each, (), found)))
                 else:
                     found[(each, step)] = None
             current = following
         return current
 
-    def starts(self, start, member, item, found):
+    def _starts(self, start, member, item, found):
         kind = start[0]
         if kind == 'this':
             return {member: None}
@@ -4859,34 +4917,34 @@ class Order:
         if kind == 'literal':
             reached = {}
             for each in start[1]:
-                reached.update(self.walk(each, member, item, found))
+                reached.update((yield self._walk(each, member, item, found)))
             return reached
-        source = self.walk(start[1], member, item, found)
+        source = yield self._walk(start[1], member, item, found)
         if kind == 'where':
-            found.update(self.needs(start[2], member, tuple(source)))
+            found.update((yield self._needs(start[2], member, tuple(source))))
             return {each: None for each in source if self.decided(start[2], member, each) is not False}
         if kind == 'by':
             found.update(dict.fromkeys((each, start[2]) for each in source))
             return source
-        found.update(self.needs(start[2], member, item))
-        chosen = self.chosen(start[1], start[2], member, item)
+        found.update((yield self._needs(start[2], member, item)))
+        chosen = yield self._chosen(start[1], start[2], member, item)
         return source if chosen is None else chosen
 
-    def chosen(self, source, key, member, item):
+    def _chosen(self, source, key, member, item):
         """The entry, or none, that a lookup reads for one member when its key is fixed when the model
-        compiles and the members of its source are known then (`known`): the one that the key selects
+        compiles and the members of its source are known then (`_known`): the one that the key selects
         (`select`), or none below the first key, where the read fails if a run evaluates it. None when
         only a run knows it, so that the lookup needs each member of its source."""
         at = self.exact(key)
         if at is None:
             return None
-        members = self.known(source, member, item)
+        members = yield self._known(source, member, item)
         if members is None:
             return None
         found = select(members, at)
         return {} if found is None else {found: None}
 
-    def known(self, read, member, item):
+    def _known(self, read, member, item):
         """The members of a collection read with their keys at the start ({id: key}, in the order of
         creation) when the model fixes them when it compiles: the instances of a template and a
         literal, keyed by their creation numbers; a where whose test is decided for each member
@@ -4911,9 +4969,9 @@ class Order:
                     if part is not None and part.kind == COLLECTION
                     else None
                 )
-            return None if init is None else self.known(init, owner, ())
+            return None if init is None else (yield self._known(init, owner, ()))
         if kind == 'by':
-            inner = self.known(read.start[1], member, item)
+            inner = yield self._known(read.start[1], member, item)
             if inner is None:
                 return None
             keys = {}
@@ -4927,7 +4985,7 @@ class Order:
                 keys[each] = number
             return keys
         if kind == 'where':
-            inner = self.known(read.start[1], member, item)
+            inner = yield self._known(read.start[1], member, item)
             if inner is None:
                 return None
             kept = {}
@@ -4944,7 +5002,7 @@ class Order:
             return None
         ids = []
         for each in read.start[1]:
-            reached = self.walk(each, member, item, {})
+            reached = yield self._walk(each, member, item, {})
             if len(reached) != 1:
                 return None
             ids.extend(reached)
@@ -5044,6 +5102,22 @@ class Order:
             line, file = self.parts[self.template[member]][name].line, ''
         chain = ' reads '.join([*names, names[0]])
         return Problem('cycle', f'{chain}: the values on a cycle have no order', line, 0, file)
+
+
+def walked(walk):
+    """The answer of a walk that is a generator (`Order`): it yields each walk that it needs, which
+    runs on an explicit stack, and is sent that walk's answer; its own answer is what it returns."""
+    stack, answer = [walk], None
+    while stack:
+        try:
+            needed = stack[-1].send(answer)
+        except StopIteration as done:
+            stack.pop()
+            answer = done.value
+            continue
+        stack.append(needed)
+        answer = None
+    return answer
 
 
 def select(keys, at):

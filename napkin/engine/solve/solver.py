@@ -19,7 +19,14 @@ The answer is checked before it is given: each kept optimum, each fair level (ea
 fraction against it), and every bound and row of the problem. A solve that cannot give the answer
 raises a `SolveFailure` by name and never gives another answer in its place. The answer keeps these
 checks (`Answer.admits`): a change that a caller makes to it afterwards, such as the engine's
-polish onto the bounds and rows that it holds, replaces it only if the change passes them too.
+polish onto the bounds and rows that it holds, replaces it only if the change passes them too and
+is no worse than the answer on any rank of the selection order, the last included: each written
+objective, each claim's served fraction, and each stage of the distance to the targets (the flows,
+then the other unknowns). The answer of the distance step is unique (spec: "this selects a unique
+published answer"), so a change may move a coordinate within the precision to which the end checks
+hold it, CHECK times one plus its size over its scale, and no more where that takes the stage farther
+from its targets: the solver's answer (1, 0) of two pipes that carry 1, the first asking 1 and the
+second idle, never gives way to (0, 1).
 
 Reproducibility (the owner's rule): the same run, with the same code, configuration, seed and
 thread settings on one machine, gives the same answers bit for bit, which one `Solver` for each run
@@ -41,6 +48,7 @@ import scipy.sparse as sp
 from . import distance, fair, ranked
 from .failures import INFEASIBLE, NUMERICAL, SolveFailure
 from .kept import Kept
+from .problem import FLOW, OTHER
 from .scaled import Scaled
 
 CHECK = 1e-6  # the end checks of a row, a bound and a fair level, relative to the size of the terms
@@ -97,9 +105,10 @@ class Answer:
         passes the end checks that this answer passed, each to its tolerance (each kept optimum,
         `ranked.KEPT`; each claim's served fraction against its fair level, and every row and bound,
         `CHECK`), and it is no worse than this answer on any rank: no objective higher by more than
-        KEPT of the size of its terms at the two answers, and no claim served a smaller fraction by
-        more than CHECK. The optimum is kept to KEPT of a reference scale, so the second check is
-        what keeps a value far below one: a delivery of 5e-8 L/h that meets a request is no
+        KEPT of the size of its terms at the two answers, no claim served a smaller fraction by more
+        than CHECK, and no stage of the distance farther from its targets than what its roundings
+        may add (`_farther`). The optimum is kept to KEPT of a reference scale, so the second check
+        is what keeps a value far below one: a delivery of 5e-8 L/h that meets a request is no
         rounding of zero, whatever a change of it does to the optimum's tolerance."""
         return self._checks(np.asarray(x, dtype=float), self.x) is None
 
@@ -242,8 +251,9 @@ def _end_checks(arrays, w, optima, levels):
     units, in the order of the problem) that gives the `SolveFailure` of the first check that x fails,
     or None: each kept optimum (`ranked.lost`), each claim's served fraction against its fair level,
     and every row and bound, in working units, each to its tolerance; and, for an x that would replace
-    the answer `replaced`, each objective and each claim's served fraction against that answer's
-    (`Answer.admits`)."""
+    the answer `replaced`, every rank against that answer's, in the order of the selection order:
+    each objective, each claim's served fraction, and each stage of the distance (`_farther`,
+    `Answer.admits`)."""
 
     def check(x, replaced=None):
         xi = x[w.columns] / w.scale
@@ -281,6 +291,18 @@ def _end_checks(arrays, w, optima, levels):
                     f'claim {i} is served {served[i]:.9g} against its level {levels[i]:.9g}',
                     {'claim': i},
                 )
+        if before is not None:
+            for kind, what in ((FLOW, 'the flows'), (OTHER, 'the others')):
+                stage = w.kind == kind
+                worse = _farther(xi[stage], before[stage], w.target[stage]) if stage.any() else 0.0
+                if worse > 0:
+                    return SolveFailure(
+                        NUMERICAL,
+                        f'distance of {what}',
+                        f'a change is farther from the targets than the answer, by {worse:.3g} in the '
+                        'sum of squared deviations over the reference scales',
+                        {'farther': worse},
+                    )
         size = 1.0 + abs(w.A) @ np.abs(xi)
         value = w.A @ xi
         missed = np.maximum(w.row_lower - value, value - w.row_upper) - CHECK * size
@@ -295,3 +317,19 @@ def _end_checks(arrays, w, optima, levels):
         return None
 
     return check
+
+
+def _farther(xi, before, target):
+    """How much farther from its targets a change `xi` of the answer `before` takes one stage of the
+    distance, in working units (each coordinate over its scale): its sum of squared deviations less
+    the answer's, less what its roundings add, a rounding being a coordinate that moved by at most
+    CHECK times one plus its size, the precision to which the end checks hold it, and less the
+    roundoff of the sums. Above zero, the change is worse on that rank: what moved by more than a
+    rounding took the stage farther from its targets. Roundings are allowed whatever they add, so a
+    polish that puts a claim exactly on its request passes, and so a delivery moved from one pipe
+    to another does not hide in a stage whose other deviations are large."""
+    old, new = (before - target) ** 2, (xi - target) ** 2
+    change = new - old
+    rounding = np.abs(xi - before) <= CHECK * (1.0 + np.abs(before))
+    allowed = float(np.maximum(change[rounding], 0.0).sum()) + ROUNDOFF * float((old + new).sum())
+    return float(change.sum()) - allowed

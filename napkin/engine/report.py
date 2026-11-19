@@ -415,9 +415,12 @@ class _Trail:
     def of(self, key, times):
         """The trail of the value of a key that the report read at `times`: each part that it can read,
         ordered by origin and owner, reached through what was read (`reached`), and exercised when it
-        is reached and acted."""
+        is reached and acted. Only the times at which the report's read of the value reached the
+        reader's evaluation count (`Reader.refusal`): at another, the report holds no value of it,
+        whatever another value of the report read of it then."""
         found = self.proofs.reads(key)
-        sure, maybe, unread, applied = self.reached(key, found, sorted(set(times)))
+        times = sorted({t for t in times if self.reader.refusal(key, t) is None})
+        sure, maybe, unread, applied = self.reached(key, found, times)
         used = []
         for part in sorted(found.edges, key=lambda each: (each.origin, each.owner, each.kind)):
             if part in sure:
@@ -446,20 +449,23 @@ class _Trail:
         """The parts that the value of a key reaches surely and those that it reaches only on a branch
         that the record does not show; the parts that an evaluation of the reader could read and did
         not, each with why; and, of each case of a status display that it reaches, the times at which
-        it applied. A
-        part that the reader evaluated at `times` reaches what it read; any other that the run
-        evaluated (`evaluated`) reaches what it reads, on a branch only maybe (`Reads.sometimes`)."""
+        it applied. A part that the reader evaluated reaches what that evaluation read, each read
+        with its own time (`read`): what the value read at a time is followed at that time and at no
+        other, so what another value of the report read, at its times or at these, takes no part in
+        this trail. Any other part that the run evaluated (`evaluated`) reaches what it reads, on a
+        branch only maybe (`Reads.sometimes`). `times` are those at which the report read the value
+        through an evaluation of the reader (`Reader.holds`)."""
         evaluated = self.reader.read
         start = name_of(key)
-        names = frozenset({start} if any((start, t) in evaluated for t in times) else ())
+        pairs = frozenset((start, t) for t in times if (start, t) in evaluated)
         sure, maybe, unread, applied, seen = set(), set(), {}, {}, set()
-        if not names and self.reader.evaluates(start):
+        if not pairs and self.reader.evaluates(start):
             # The report read no value of the formula at its times (each was unavailable before it
             # was evaluated): it read nothing through it.
             why = 'it was not read at the reported times: the report holds no value of the value there'
             return {found.start}, maybe, dict.fromkeys(found.edges.get(found.start, ()), why), applied
         another = 'it was not read at the reported times: the evaluation took another branch'
-        pending = [(found.start, True, names)]
+        pending = [(found.start, True, pairs)]
         while pending:
             state = pending.pop()
             part, certain, inner = state
@@ -469,22 +475,28 @@ class _Trail:
             (sure if certain else maybe).add(part)
             edges = found.edges.get(part, ())
             if inner and part.kind == 'status':
-                # Its cases in order, each read until one applies: the case at each time is its value.
-                places = [self.case_at(key, t) for t in times]
+                # Its cases in order, each read until one applies: the case at each time is its value,
+                # and a case was read at the times at which no case before it applied.
+                places = {at: self.case_at(key, at) for _, at in inner}
                 for k, case in enumerate(edges):
-                    if any(place is not None and k <= place for place in places):
-                        applied[case] = [t for t, place in zip(times, places, strict=True) if place == k]
-                        pending.append((case, certain, inner))
+                    read_at = {at for at, place in places.items() if place is not None and k <= place}
+                    if read_at:
+                        applied[case] = [at for at in times if places.get(at) == k]
+                        pending.append(
+                            (case, certain, frozenset(pair for pair in inner if pair[1] in read_at))
+                        )
                     else:
                         unread[case] = another
             elif inner:
-                read = self.read(inner, times)
+                read = self.read(inner)
+                names = {name for name, _ in read}
                 for other in edges:
-                    hit = self.names_of(other, read)
+                    hit = self.names_of(other, names)
                     if hit is None:
                         pending.append((other, False, frozenset()))
                     elif hit:
-                        again = frozenset(name for name in hit if any((name, t) in evaluated for t in times))
+                        # What the part read, at the times at which this value's evaluations read it.
+                        again = frozenset(pair for pair in read if pair[0] in hit and pair in evaluated)
                         pending.append((other, certain, again))
                     else:
                         unread[other] = another
@@ -506,18 +518,19 @@ class _Trail:
         maybe -= sure
         return sure, maybe, {part: why for part, why in unread.items() if part not in sure | maybe}, applied
 
-    def read(self, names, times):
-        """The engine names that the reader read at `times` in evaluating `names`, through the values
-        that it evaluated in turn."""
+    def read(self, pairs):
+        """Each (engine name, time) that the reader read in evaluating `pairs`, each an (engine name,
+        time) that it evaluated, through the values that it evaluated in turn, each at the time of
+        the evaluation that read it."""
         found, done = set(), set()
-        pending = [(name, t) for name in names for t in times]
+        pending = list(pairs)
         while pending:
             name, t = pending.pop()
             if (name, t) in done:
                 continue
             done.add((name, t))
             for other in self.reader.reads(name, t):
-                found.add(other)
+                found.add((other, t))
                 if (other, t) in self.reader.read:
                     pending.append((other, t))
         return found
@@ -568,7 +581,7 @@ class _Trail:
                         self.reader.at(name, t)
                     except LookupError:
                         continue
-                    found |= {name} | self.read({name}, [t])
+                    found |= {name} | {other for other, _ in self.read({(name, t)})}
         return found
 
     def _held_times(self, key, start):

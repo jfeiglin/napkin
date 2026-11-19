@@ -387,13 +387,15 @@ class Sparse:
         return right
 
     def _conditioned(self, names):
-        """The stores that the settings `names` read through a comparison or an if/else."""
+        """The stores that the settings `names` read through a comparison, a membership or an
+        if/else."""
         plan, found = self.plan, set()
         for name in names:
             for formula in plan.expanded(name).formulas | {name}:
                 node = getattr(plan.values.get(formula), 'node', None)
                 switches = node is not None and any(
-                    isinstance(part, (nodes.IfElse, nodes.Compare)) for part in nodes.walk(node)
+                    isinstance(part, (nodes.IfElse, nodes.Compare)) or nodes.membership(part) is not None
+                    for part in nodes.walk(node)
                 )
                 if switches:
                     found |= plan.expanded(formula).leaves & plan.moving

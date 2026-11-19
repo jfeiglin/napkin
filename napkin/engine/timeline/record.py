@@ -860,11 +860,9 @@ class Reader:
             raise KeyError(
                 f'{key}: {key.store} is no store, and only a store has a ledger of what came from outside'
             )
-        reason = self.record.unavailable(key, t)
+        reason = self.refusal(key, t)
         if reason is not None:
             return Unavailable(reason)
-        if '#' in key.owner and not self.started(key.owner, t):
-            return Unavailable(f'{key.owner} has not started at {t:g} h')
         try:
             if key.store is not None:
                 return self.ledger(key, t)
@@ -872,6 +870,15 @@ class Reader:
         except LookupError as problem:
             stopped = self.record.stopped()
             return Unavailable(str(problem) + (f': {stopped}' if stopped else ''))
+
+    def refusal(self, key, t):
+        """Why the reader gives no value of a record key at a time before it reads one: a time or a
+        value that the record does not hold (`Record.unavailable`), an occurrence that has not
+        started then; None when `value` reads it, from its history or by an evaluation (`at`)."""
+        reason = self.record.unavailable(key, t)
+        if reason is None and '#' in key.owner and not self.started(key.owner, t):
+            reason = f'{key.owner} has not started at {float(t):g} h'
+        return reason
 
     def ledger(self, key, t):
         """What edits brought into a store from outside up to time t (`Recorder.external`): the record

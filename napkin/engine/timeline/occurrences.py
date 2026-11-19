@@ -25,11 +25,21 @@ Then it goes through its steps in order (spec, "Time, waiting and completion"):
   (`triggers.py`), and goes on in that round.
 
 At the end of its steps it finishes normally (`complete`). Each of its stores that a flow or a move
-met must be empty, within its tolerance, or the run fails and names the occurrence, the store, the
-amount and its unit, and the time (retirement). Each of its formulas, the settings of its flows
-included, keeps the value that it has then, or the reason why it has none (D7). Its flows leave the
-network at the settling of the round, and read zero from then on. `done` becomes true and `active`
-false: the occurrence is a stable record, and a write to it fails.
+met, its own or another occurrence's, must be empty, within its tolerance, or the run fails and
+names the occurrence, the store, the amount and its unit, and the time (retirement). Each of its
+formulas, the settings of its flows included, keeps the value that it has then, or the reason why it
+has none (D7). Its flows leave the network at the settling of the round, and read zero from then on.
+`done` becomes true and `active` false: the occurrence is a stable record.
+
+**A finished occurrence is frozen** (spec, "State owned by an invocation": "a write to it is an
+error"), and one check says so wherever a write or a transfer of a run lands (`writable`): the
+target of an assignment and each end of a `move` (`moment.py`), whatever spells it (a reference
+saved at the entry, a copy of one, `.occurrences.at(t)`, a parameter); each end of a flow as it
+joins the network (`register`); and each store of an occurrence as it finishes, which no flow of
+another occurrence may still meet (`complete`): a flow is present at its ends for its owner's
+lifetime, whatever its rate, and a frozen store can neither take nor give. The run fails there, at
+that moment, naming the value, the finished occurrence and the writer. An edit at a stop is refused
+by the same rule (`checkpoints.py`).
 
 The limits of a runaway run (D6) are checked before each start: `max_occurrences` starts of one
 event, and `max_active` occurrences of one event alive at once, whose message names the oldest
@@ -121,7 +131,12 @@ class Occurrences:
             self._enter(name, made)
         for flow in made.flows:
             for connection in plan.flows[flow].connections:
-                live.met.update(end for end in (connection.source, connection.sink) if end in made.stores)
+                for end in (connection.source, connection.sink):
+                    if end is not None:
+                        # A flow that would take from or give to a frozen store fails as it joins; a
+                        # store of an occurrence that it meets is retired as met (`complete`).
+                        self.writable(end, f'the flow {connection.name}')
+                        self.met(end)
             run.flow_joins(flow)
         run.recorder.entry(t, 'start', made.event.origin, made.id, args=tuple(args))
         run.changed.add(('occurrences', member, event))
@@ -295,11 +310,20 @@ class Occurrences:
         return sorted(found, key=lambda live: live.number)
 
     def met(self, store):
-        """A move meets a store: one of an occurrence must be empty when it finishes."""
+        """A move or a flow meets a store: one of an occurrence must be empty when it finishes."""
         found = self.plan.values.get(store)
         owner = found.key.owner if found is not None and found.key is not None else ''
         if owner in self.live:
             self.live[owner].met.add(store)
+
+    def writable(self, name, writer):
+        """The one check of a write or a transfer that lands on an engine name (see the module): a
+        value of a finished occurrence is frozen, and the run fails, naming the value, its
+        occurrence and the writer (a statement's origin, or a flow)."""
+        owner = self.plan.occurrence_of(name)
+        live = self.live.get(owner) if owner is not None else None
+        if live is not None and not live.active:
+            raise SimulationError(f'{writer}: {name} belongs to the finished occurrence {owner}, which is frozen')
 
     def waiting(self):
         """The occurrences that wait at a gate, in the order in which they were made."""
@@ -340,6 +364,13 @@ class Occurrences:
         for flow in made.flows:
             run.flow_leaves(flow)
         live.active = False
+        for store in made.stores:
+            # A flow of another occurrence that still meets one of its stores would write the frozen
+            # store from now on: a transfer that goes on after an occurrence finishes belongs on an
+            # entity (G0, "Endpoint collections describe the present").
+            for side in ('outflow', 'inflow'):
+                for connection in plan.incident(store, side):
+                    self.writable(store, f'the flow {connection}, which still meets it as {made.id} finishes')
         for name, value in ((f'{made.id}.done', True), (f'{made.id}.active', False)):
             run.env[name] = value
             run.recorder.add(name, t, value, 0.0)

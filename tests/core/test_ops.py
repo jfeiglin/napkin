@@ -97,7 +97,7 @@ def points(name, choose):
     if name in ('min', 'max'):
         spread = choose.sample(range(-6, 7), choose.choice((1, 2, 3)))  # distinct, at least 0.5 apart
         return [0.5 * k + choose.uniform(-0.1, 0.1) for k in spread]
-    if name == 'clip':
+    if name in ('clip', 'within'):
         low = choose.uniform(-2, 0)
         high = low + choose.uniform(1, 2)
         inside = choose.uniform(low + 0.2, high - 0.2)

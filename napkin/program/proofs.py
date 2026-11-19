@@ -35,6 +35,11 @@ parts of a program, member by member.
   a solver's unknown, `since`, `elapsed`, a keyed read whose key moves, and any other read.
 - Only a number is averaged over a window: a yes/no, a text, an enum member, a link or a distribution
   is refused by name before anything else, also when it is fixed for the run.
+- A formula's linear form, and its proof by parts, are found once for each formula of a member, each
+  after the formulas that it reads, depth first on a stack of its own (`Proofs._find`): a chain of
+  formulas, of child links or of links between members of any length needs no recursion of Python, and
+  so is the value of an input whose default reads other inputs (`Proofs.input_value`). A formula that
+  reads itself can fall: the proof cannot settle it.
 
 **An edited run** (`Proofs(program, configuration, changes)`): each change from outside (`Change`, an
 edit at a stop, PLAN change 15) is one more writer of the run that it changed, at its time, from its
@@ -195,6 +200,23 @@ class _Nonlinear(Exception):
     """A part of an expression that a linear form does not write."""
 
 
+class _Pending(Exception):
+    """Jobs that a proof needs before it has them: each (`form` or `rise`, a formula point), the
+    linear form or the proof by parts of a formula. The search (`Proofs._find`) does them first and
+    tries again, so a chain of formulas needs no recursion."""
+
+    def __init__(self, jobs):
+        super().__init__(len(jobs))
+        self.jobs = jobs
+
+
+def _formula(point):
+    """The key of a formula of a member (owner, name) that a point names, or None."""
+    if point[0] == 'value' and point[2].kind == p.FORMULA:
+        return (point[1], point[2].name)
+    return None
+
+
 @dataclass(frozen=True, eq=False)
 class _At:
     """Where an expression is read: its template and member (none for the root), and the event,
@@ -278,6 +300,11 @@ class Proofs:
         states = [found for change in self.changes if (found := self._state(change)) is not None]
         self.events = self.declared if not states else _reached(program, configuration, states).events
         self._index = None
+        # Found once, by formula or input (owner, name): a formula's linear form and its proof by
+        # parts, each a value or the failure that it raised (`_find`), and an input's value.
+        self._tables = {'form': {}, 'rise': {}}
+        self._inputs = {}
+        self._searching = 0
 
     def _state(self, change):
         """The named state that a change gives a value (reach's key, its new value, the reason), or
@@ -452,7 +479,7 @@ class Proofs:
 
     # ---- fixed values and signs -----------------------------------------------------------------------
 
-    def constant(self, node, reads, at, depth=0):
+    def constant(self, node, reads, at):
         """The value of an expression that reads only what is fixed for the run, in canonical units, or
         None: an input that is drawn has no value known before the run."""
         environment = {}
@@ -461,12 +488,8 @@ class Proofs:
             if isinstance(read, EnumValue):
                 environment[name] = read.member
                 continue
-            if not isinstance(read, Path) or depth > 50:
-                return None
-            found = self.points(read, at)
-            if len(found) != 1 or found[0][0][0] != 'value' or found[0][0][2].kind != p.INPUT:
-                return None
-            value = self.input_value(found[0][0], depth + 1)
+            point = self._input_point(read, at)
+            value = None if point is None else self.input_value(point)
             if value is None:
                 return None
             environment[name] = value
@@ -475,8 +498,55 @@ class Proofs:
         except (ExpressionError, ArithmeticError, ValueError, TypeError, KeyError):
             return None
 
-    def input_value(self, point, depth=0):
-        """The value of an input: the configuration's, or its default when that is fixed."""
+    def _input_point(self, read, at):
+        """The point of the one input that a read of an expression names, or None."""
+        if not isinstance(read, Path):
+            return None
+        found = self.points(read, at)
+        if len(found) != 1 or found[0][0][0] != 'value' or found[0][0][2].kind != p.INPUT:
+            return None
+        return found[0][0]
+
+    def input_value(self, point):
+        """The value of an input: the configuration's, or its default when that is fixed; None when
+        it has none known before the run. Found once for each input of a member, each after the
+        inputs that its default reads, on a stack: a chain of defaults of any length needs no
+        recursion. A default that reads itself has no value known before the run."""
+        key = (point[1], point[2].name)
+        if key not in self._inputs:
+            stack, waiting = [(point, False)], set()
+            while stack:
+                place, ready = stack.pop()
+                name = (place[1], place[2].name)
+                if name in self._inputs:
+                    continue
+                if ready:
+                    self._inputs[name] = self._input(place)
+                    continue
+                if name in waiting:
+                    self._inputs[name] = None  # it reads itself
+                    continue
+                waiting.add(name)
+                stack.append((place, True))
+                init = self._default(place)
+                for _, read in () if init is None else init.reads:
+                    other = self._input_point(read, place[3])
+                    if other is not None and (other[1], other[2].name) not in self._inputs:
+                        stack.append((other, False))
+        return self._inputs[key]
+
+    def _default(self, point):
+        """The default of an input that the configuration does not set (its member's own line, or
+        its declaration's), or None."""
+        _, owner, part, at = point
+        if (owner, part.name) in self.given:
+            return None
+        init = at.member.value(part.name) if at.member is not None and at.event is None else None
+        init = init if init is not None else part.init
+        return init if init is not None and hasattr(init, 'node') else None
+
+    def _input(self, point):
+        """The value of one input once the inputs that its default reads are known (`input_value`)."""
         _, owner, part, at = point
         given = self.given.get((owner, part.name))
         if given is not None:
@@ -489,11 +559,8 @@ class Proofs:
             # The decimal that a configuration writes times the unit's exact scale, rounded once.
             unit = given.unit if isinstance(given.unit, p.Unit) else self.program.unit(given.unit)
             return float(rational(given.number) * Fraction(unit.scale))
-        init = at.member.value(part.name) if at.member is not None and at.event is None else None
-        init = init if init is not None else part.init
-        if init is None or not hasattr(init, 'node'):
-            return None
-        return self.constant(init.node, dict(init.reads), at, depth)
+        init = self._default(point)
+        return None if init is None else self.constant(init.node, dict(init.reads), at)
 
     def sign(self, node, reads, at):
         """1 for a value that is never negative, -1 for one never positive, 0 for zero, None when the
@@ -705,30 +772,29 @@ class Proofs:
             raise _Fall(f'{part.origin} is {kind_of(part.type)}, and only a number is averaged over a window')
         if part.kind in (p.INPUT, p.LINK):
             return 'it is fixed for the run'
-        return self.rises([(point, True)], frozenset())
+        return self.rises([(point, True)])
 
-    def rises(self, points, seen):
+    def rises(self, points):
         """Why what some points name never falls (their linear form, else their parts), or _Fall."""
         try:
-            form = self.points_form(points, seen)
+            form = self.points_form(points)
         except _Nonlinear:
             pass
         else:
             return self.check(form)
+        self._ensure('rise', [point for point, _ in points])
         reasons = []
         for point, _ in points:
-            if point[0] == 'value' and point[2].kind == p.FORMULA:
-                init = self.formula_init(point, seen)
-                inner = seen | {(point[1], point[2].name)}
-                reasons.append(self.parts_rise(init.node, dict(init.reads), point[3], inner))
+            if _formula(point) is not None:
+                reasons.append(self._entry('rise', point))
             else:
-                reasons.append(self.check(self.point_form(point, seen)))
+                reasons.append(self.check(self.point_form(point)))
         return '; '.join(dict.fromkeys(reasons))
 
-    def parts_rise(self, node, reads, at, seen):
+    def parts_rise(self, node, reads, at):
         """Why an expression that no linear form writes never falls, by its parts, or _Fall."""
         try:
-            return self.check(self.linear(node, reads, at, seen))
+            return self.check(self.linear(node, reads, at))
         except _Nonlinear:
             pass
         parts = None
@@ -756,50 +822,128 @@ class Proofs:
         elif isinstance(node, nodes.Ref):
             read = reads.get(node.name)
             if isinstance(read, Reduce) and read.op in ('min', 'max', 'sum'):
-                return self.rises(self.points(read.source, at), seen)
+                return self.rises(self.points(read.source, at))
             if isinstance(read, Path):
-                return self.rises(self.points(read, at), seen)
+                return self.rises(self.points(read, at))
         if parts is None:
             raise _Fall(
                 f'{nodes.text(node)} can fall: the proof covers sums, differences, min, max, and products '
                 'and quotients by fixed numbers of what never falls'
             )
-        return '; '.join(dict.fromkeys(self.parts_rise(part, reads, at, seen) for part in parts))
+        return '; '.join(dict.fromkeys(self.parts_rise(part, reads, at) for part in parts))
 
-    def formula_init(self, point, seen):
+    def formula_init(self, point):
         """The expression of a formula of one member, or _Fall when a stage can give it another."""
         _, owner, part, at = point
-        key = (owner, part.name)
-        if key in seen:
-            raise _Fall(f'{part.origin} reads itself')
-        for origin, event in self.index().defines.get(key, ()):
+        for origin, event in self.index().defines.get((owner, part.name), ()):
             if self.blocked(event) is None:
                 raise _Fall(f'{origin} can give {part.origin} a new definition')
         own = at.member.value(part.name) if at.member is not None and at.event is None else None
         init = own if own is not None else part.init
         return init.expr if isinstance(init, Formula) else init
 
-    def points_form(self, points, seen):
+    # ---- each formula once, each after what it reads -----------------------------------------------------
+
+    def _ensure(self, which, points):
+        """Find the entry of `which` (`form` or `rise`) of each formula among `points` where it is
+        missing: within a search, the search does it first (`_Pending`); else a search of its own."""
+        table = self._tables[which]
+        missing = [
+            (which, point) for point in points if (key := _formula(point)) is not None and key not in table
+        ]
+        if not missing:
+            return
+        if self._searching:
+            raise _Pending(missing)
+        self._find(missing)
+
+    def _entry(self, which, point):
+        """The entry of `which` of a formula point once it is found: its value, or the failure that it
+        raised, raised again."""
+        self._ensure(which, [point])
+        found = self._tables[which][_formula(point)]
+        if isinstance(found, Exception):
+            raise type(found)(*found.args)
+        return found
+
+    def _find(self, jobs):
+        """Do each job (`form` or `rise`, a formula point) and those that it needs, depth first on a
+        stack, with no recursion: a job goes after the linear forms of the formulas that its
+        expression reads, and one that needs a job that is not done yet (`_Pending`) waits while it is
+        done. A job that its own needs reach again is a formula that reads itself: it can fall."""
+        stack, waiting = [(job, False) for job in jobs], set()
+        self._searching += 1
+        try:
+            while stack:
+                (which, point), ready = stack.pop()
+                key, table = _formula(point), self._tables[which]
+                if key in table:
+                    continue
+                if not ready:
+                    if (which, key) in waiting:
+                        table[key] = _Fall(f'{point[2].origin} reads itself')
+                        continue
+                    waiting.add((which, key))
+                    stack.append(((which, point), True))
+                    stack += [(('form', other), False) for other in self._formulas_read(point)]
+                    continue
+                try:
+                    table[key] = self._job(which, point)
+                except _Pending as pending:
+                    stack.append(((which, point), True))  # again, once what it needs is done
+                    stack += [(job, False) for job in pending.jobs]
+                except (_Fall, _Nonlinear) as problem:
+                    table[key] = problem
+        finally:
+            self._searching -= 1
+
+    def _job(self, which, point):
+        """The linear form of a formula point's expression (`form`), or why it never falls by its
+        parts (`rise`), once what it needs is found."""
+        init = self.formula_init(point)
+        if which == 'form':
+            return self.linear(init.node, dict(init.reads), point[3])
+        return self.parts_rise(init.node, dict(init.reads), point[3])
+
+    def _formulas_read(self, point):
+        """The formula points whose linear forms are not found yet that the expression of a formula
+        point reads, on any branch."""
+        try:
+            init = self.formula_init(point)
+        except _Fall:
+            return []
+        found = []
+        for _, read in init.reads:
+            source = read.source if isinstance(read, Reduce) else read
+            if isinstance(source, Path):
+                found += [
+                    other
+                    for other, _ in self.points(source, point[3])
+                    if (key := _formula(other)) is not None and key not in self._tables['form']
+                ]
+        return found
+
+    def points_form(self, points):
         """The linear form of what some points name, added: a point that may not be counted adds its
         form widened to zero."""
+        self._ensure('form', [point for point, _ in points])
         form = {}
         for point, one in points:
-            found = self.point_form(point, seen)
+            found = self.point_form(point)
             form = _added(form, found if one else _widened(found))
         return form
 
-    def point_form(self, point, seen):
+    def point_form(self, point):
         """The linear form of one point: a stored number is a term, a formula its expression's form."""
         kind = point[0]
         if kind == 'value':
-            _, owner, part, at = point
+            _, owner, part, _ = point
             if part.kind in (p.INPUT, p.LINK):
                 return {}
             if part.kind == p.STATE and isinstance(part.type, p.Number):
                 return {(owner, part.name): (1.0, 1.0)}
             if part.kind == p.FORMULA:
-                init = self.formula_init(point, seen)
-                return self.linear(init.node, dict(init.reads), at, seen | {(owner, part.name)})
+                return self._entry('form', point)
             raise _Fall(f'{part.origin} is no number that the proof can follow')
         if kind == 'occurrences' and point[4] in (None, 'done'):
             # An occurrence joins its event's collection at its start and stays; one done stays done.
@@ -815,53 +959,53 @@ class Proofs:
             )
         raise _Fall(f'it reads a {kind}, which is no number')
 
-    def linear(self, node, reads, at, seen):
+    def linear(self, node, reads, at):
         """The linear form of an expression: {term: (least, greatest coefficient)}, or _Nonlinear."""
         if self.fixed(node, reads, at):
             return {}
         if isinstance(node, nodes.Ref):
-            return self.read_form(reads[node.name], at, seen)
+            return self.read_form(reads[node.name], at)
         if isinstance(node, nodes.Unary) and node.op in ('neg', 'pos'):
-            inner = self.linear(node.operand, reads, at, seen)
+            inner = self.linear(node.operand, reads, at)
             return _scaled(inner, -1) if node.op == 'neg' else inner
         if isinstance(node, nodes.Binary) and node.op in ('add', 'sub'):
-            right = self.linear(node.right, reads, at, seen)
+            right = self.linear(node.right, reads, at)
             return _added(
-                self.linear(node.left, reads, at, seen), right if node.op == 'add' else _scaled(right, -1)
+                self.linear(node.left, reads, at), right if node.op == 'add' else _scaled(right, -1)
             )
         if isinstance(node, nodes.Binary) and node.op == 'mul':
             for factor, operand in ((node.left, node.right), (node.right, node.left)):
                 value = self.constant(factor, reads, at)
                 if _number(value):
-                    return _scaled(self.linear(operand, reads, at, seen), value)
+                    return _scaled(self.linear(operand, reads, at), value)
         if isinstance(node, nodes.Binary) and node.op == 'div':
             value = self.constant(node.right, reads, at)
             if _number(value) and value != 0:
-                return _scaled(self.linear(node.left, reads, at, seen), 1 / value)
+                return _scaled(self.linear(node.left, reads, at), 1 / value)
         if isinstance(node, nodes.IfElse) and self.fixed(node.test, reads, at):
             test = self.constant(node.test, reads, at)
             if isinstance(test, bool):
-                return self.linear(node.body if test else node.orelse, reads, at, seen)
+                return self.linear(node.body if test else node.orelse, reads, at)
         if isinstance(node, nodes.Call) and node.function == 'sum':
             form = {}
             for arg in node.args:
-                form = _added(form, self.linear(arg, reads, at, seen))
+                form = _added(form, self.linear(arg, reads, at))
             return form
         raise _Nonlinear(nodes.text(node))
 
-    def read_form(self, read, at, seen):
+    def read_form(self, read, at):
         """The linear form of one read of an expression."""
         if isinstance(read, Time):
             return {TIME_TERM: (1.0, 1.0)}
         if isinstance(read, Path):
-            return self.points_form(self.points(read, at), seen)
+            return self.points_form(self.points(read, at))
         if isinstance(read, Reduce) and read.op in ('sum', 'count'):
             points = self.points(read.source, at)
             if read.op == 'count' and all(point[0] == 'member' and one for point, one in points):
                 return {}  # the members of a fixed collection are fixed for the run
             if read.op == 'count' and not all(point[0] == 'occurrences' for point, _ in points):
                 raise _Fall(f'{spelled(read.source)} has yes/no members, which can turn false')
-            return self.points_form(points, seen)
+            return self.points_form(points)
         if isinstance(read, (Since, Elapsed)):
             raise _Fall(f'{spelled(read)} falls to zero when what it follows starts or changes again')
         raise _Nonlinear(type(read).__name__)

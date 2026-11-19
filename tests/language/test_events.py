@@ -837,6 +837,103 @@ def test_a_formula_reads_only_what_lives_at_least_as_long_as_it(target, reading)
         compiled(LIVES.format(stage=f'                {target} = {reading}'))
 
 
+# The rule of lifetimes by the target that a statement resolves to, whatever its spelling (the audit's
+# row 14 again: a formula installed through an event's parameter captured the occurrence's parameter).
+OWNERS = """
+    scenario "Owners"
+        horizon 10 h
+    Crew:
+        level: L = 4 L
+        rate: formula(L/h) = formula(0 L/h)
+        held: L = 0 L
+        flow fill: SOURCE -> this.held
+            request = 0 L/h
+    north: Crew
+    south: Crew
+    boss:
+        partner = north
+        crews: <Crew> = <north, south>
+        level: L = 2 L
+        rate: formula(L/h) = formula(0 L/h)
+        store: L = 0 L
+        repair = event(amount: L):
+            mine: formula(L/h) = formula(0 L/h)
+            after 5 h
+        order = event(target: Crew, amount: L):
+            share = 2
+            job = this.repair.occurrences.at(t)
+            mine: formula(L/h) = formula(0 L/h)
+            flow pipe: SOURCE -> this.store
+                request = 0 L/h
+            after 1 h:
+{stage}
+    boss.repair.start(3 L)
+    boss.order.start(north, 5 L)
+    """
+# Each target as it is spelled, and whether its owner is the order's occurrence: an entity's value,
+# flow or store reached through `this`, a parameter, a link or a member of a collection lives for the
+# run, a local of another occurrence as long as that one, and the order's own names as long as it.
+SPELLED = {
+    'this.rate': False,
+    'target.rate': False,
+    'target.fill.request': False,
+    'target.held.inflow.capacity': False,
+    'this.partner.rate': False,
+    'this.partner.fill.capacity': False,
+    'this.crews.at(1).rate': False,
+    'Crew.instances.at(0).rate': False,
+    'job.mine': False,
+    'this.repair.occurrences.at(t).mine': False,
+    'mine': True,
+    'pipe.request': True,
+    'this.store.inflow.capacity': False,
+}
+# What a formula reads, and whether it is a name of the order's occurrence: a parameter (a number or
+# an entity), a local, a saved reference, a flow of it.
+NAMES = {
+    'this.level / (1 h)': False,
+    'amount / (1 h)': True,
+    'share * 1 L/h': True,
+    'target.level / (1 h)': True,
+    'job.amount / (1 h)': True,
+    'pipe.actual_rate': True,
+    'this.repair.occurrences.at(t).amount / (1 h)': False,
+    'this.partner.level / (1 h)': False,
+}
+
+
+@pytest.mark.parametrize('target', sorted(SPELLED))
+@pytest.mark.parametrize('reading', sorted(NAMES))
+def test_a_place_lives_as_long_as_the_owner_of_the_target_that_it_resolves_to(target, reading):
+    """Spec, "State owned by an invocation" (and the audit's row 14): a formula or a flow's setting
+    that a stage installs on a place that outlives the occurrence, and that reads one of the
+    occurrence's own names, is refused (`lifetime`), whatever the spelling of the target: `this`, an
+    event's parameter, a link, a member of a collection, a reference to another occurrence. The
+    place's lifetime is that of the owner of the target that the statement resolves to. Over every
+    spelling and every read here: refused exactly when the owner is not the occurrence and the read
+    is the occurrence's own; a value read now (no formula) is never refused."""
+    text = OWNERS.format(stage=f'                {target} = formula({reading})')
+    if not SPELLED[target] and NAMES[reading]:
+        problem = next(item for item in refused(text).problems if item.code == 'lifetime')
+        assert problem.message.startswith(f'{target} outlives this occurrence of boss.order')
+    else:
+        compiled(text)
+    if target.endswith(('request', 'capacity')):
+        compiled(OWNERS.format(stage=f'                {target} = {reading}'))
+
+
+def test_a_formula_installed_through_a_parameter_is_refused_as_through_this():
+    """The audit's row 14: `target.rate = formula(amount / (2 h))` installed on the entity that the
+    parameter names a formula that reads the order's parameter; it is refused as `this.rate` is."""
+    stage = '                target.rate = formula(amount / (2 h))'
+    problem = next(item for item in refused(OWNERS.format(stage=stage)).problems if item.code == 'lifetime')
+    assert problem.message == (
+        'target.rate outlives this occurrence of boss.order, and its formula reads amount, a parameter of the '
+        'occurrence, which ends with it: give target.rate the value now (target.rate = ... without formula), '
+        'or read only what lives as long as it'
+    )
+
+
 def test_an_entity_formula_that_reads_a_parameter_is_refused_and_its_value_is_kept():
     """The audit's row 14: an entity's formula that captured a parameter compiled and was read
     after the occurrence ended. It is refused with what to do; the captured value runs."""

@@ -117,6 +117,8 @@ def show(e):
     if k == 'if':
         return f'({show(a[1])} if {show(a[0])} else {show(a[2])})'
     if k == 'in':
+        return f'({show(a[1])} <= {show(a[0])} <= {show(a[2])})'
+    if k == 'within':
         return f'({show(a[0])} in [{show(a[1])}, {show(a[2])}])'
     if k == 'fn':
         return f'{a[0]}({", ".join(show(x) for x in a[1])})'
@@ -243,8 +245,8 @@ def if_(cond, then, other):
 
 
 def in_(x, lo, hi):
-    """`x in [lo, hi]`, both ends included."""
-    return E('in', lit(x), lit(lo), lit(hi))
+    """`x in [lo, hi]`, both ends included; a reversed interval fails the run where it is read."""
+    return E('within', lit(x), lit(lo), lit(hi))
 
 
 def formula(expr):

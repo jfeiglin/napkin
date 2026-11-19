@@ -54,6 +54,8 @@ def made(rng, depth):
     if k < 13:
         return expr.compare([rng.choice(sorted(ORDER))], [a, b])
     if k == 13:
+        if rng.random() < 0.3:
+            return expr.call('within', [a, b, c])
         return expr.compare([rng.choice(sorted(ORDER)), rng.choice(sorted(ORDER))], [a, b, c])
     if k == 14:
         return expr.boolean(rng.choice(('and', 'or')), [a, b, c][: rng.randrange(2, 4)])
@@ -177,10 +179,11 @@ def test_this_consumer_has_a_handler_for_each_operation():
     assert set(evaluation.TABLE) == set(ops.OPERATIONS)
     assert set(evaluation.COMPARISONS) == set(expr.COMPARE.values())
     # The names that the written code reads are there for each function of the language but `q`,
-    # which the registry converts, `clip`, which has its own function, and the functions over the
-    # members of a list: `sum` has its own function, and `any` and `all` are written as `or` and `and`.
-    assert expr.FUNCTIONS - {'q', 'clip'} - expr.LISTED <= set(evaluation.RUNTIME)
-    assert '_sum' in evaluation.RUNTIME
+    # which the registry converts, `clip` and `within`, which have their own functions, and the
+    # functions over the members of a list: `sum` has its own function, and `any` and `all` are
+    # written as `or` and `and`.
+    assert expr.FUNCTIONS - {'q', 'clip', 'within'} - expr.LISTED <= set(evaluation.RUNTIME)
+    assert {'_sum', '_clip', '_within'} <= set(evaluation.RUNTIME)
 
 
 def test_the_text_entry_reads_a_number_as_the_constant_that_it_is():
@@ -386,7 +389,7 @@ def towers():
     found['if', 2] = lambda under: expr.if_else(z, y, under)
     for name in sorted(ONE):
         found[name, 0] = lambda under, name=name: expr.call(name, [under])
-    for name in ('min', 'max', 'sum', 'any', 'all', 'clip'):
+    for name in ('min', 'max', 'sum', 'any', 'all', 'clip', 'within'):
         for place in range(3):
             found[name, place] = lambda under, name=name, place=place: expr.call(
                 name, [under if k == place else (y, z, y)[k] for k in range(3)]
@@ -569,3 +572,63 @@ def test_a_name_that_a_program_assigns_again_has_its_last_value():
         env = {'x': 1.5}
         assert program(env, UNITS) == (16.5, 5.0, 11.5)
         assert env == ({'x': 1.5, 'a': 5.0, 'b': 11.5, 'c': 16.5} if write else {'x': 1.5})
+
+
+# The name of the failure of a membership whose interval is reversed, in every evaluator.
+REVERSED = 'the interval of a membership test is reversed'
+
+
+def test_a_membership_is_its_closed_interval_and_a_reversed_interval_fails_by_name():
+    """Spec ("Units, comparisons and layout"): `x in [lo, hi]` holds when lo <= x <= hi, `[x, x]`
+    contains exactly x, and reversed bounds are an error, also where only a run knows the ends (the
+    audit's row 12). A membership is one operation, `within(x, lo, hi)`. For random values, some ends
+    equal and some reversed: the function of a node, a program whose names are known when it is made
+    or read when it runs (lean or not) and the walk of the node each give the closed interval, or the
+    first three fail with the error that names the reversed interval and the walk fails too."""
+    rng = random.Random(20261119)
+    names = ('m.x', 'm.lo', 'm.hi')
+    node = expr.call('within', [expr.ref(name) for name in names])
+    seen = {True: 0, False: 0, None: 0}
+    for _ in range(600):
+        values = [rng.choice((-1.5, -0.0, 0, 0.5, 2, 2.5, 3)) for _ in names]
+        env = dict(zip(names, values))
+        x, low, high = values
+        want = None if low > high else low <= x <= high
+        seen[want] += 1
+        known = {name: value for name, value in env.items() if rng.random() < 0.5}
+        computed = (
+            lambda: evaluation.value(node, env, UNITS),
+            lambda: evaluation.program([], [node], constants=known, units=UNITS)(dict(env), UNITS)[0],
+            lambda: evaluation.program([], [node], constants=known, lean=True)(dict(env), UNITS)[0],
+        )
+        for compute in computed:
+            if want is None:
+                with pytest.raises(ExpressionError, match=REVERSED):
+                    compute()
+            else:
+                assert compute() is want, (values, known)
+        assert outcome(lambda: walked(node, env)) == (('fails',) if want is None else (bool, want))
+    assert min(seen.values()) > 100, seen
+    assert ops.REVERSED == REVERSED
+
+
+def test_a_membership_reads_its_value_once_and_only_where_it_is_reached():
+    """The tested expression is evaluated once, and a membership that a choice, `and` or `or` does
+    not reach fails nothing, however its interval stands."""
+    read = expr.read
+    env = {'ok': True, 'no': False, 'x': 2.5, 'lo': 3, 'hi': 2}
+    for source, want in (
+        ('within(x, lo, hi) if no else 1', 1),
+        ('no and within(x, lo, hi)', False),
+        ('ok or within(x, lo, hi)', True),
+        ('within(x, hi, lo)', True),
+        ('within(x, x, x)', True),
+        ('within(x + 0.5, x, x)', False),
+    ):
+        assert evaluation.value(read(source), env, UNITS) == want
+    for source in ('within(x, lo, hi)', 'ok and within(x, lo, hi)', 'within(x, lo, hi) if ok else 1'):
+        with pytest.raises(ExpressionError, match=REVERSED):
+            evaluation.value(read(source), env, UNITS)
+    # The tested value is read once: a program reads each of its names once into the code.
+    text = evaluation.program_text([], [read('within(m.x * 2, lo, hi)')])
+    assert text.count("E['m.x']") == 1

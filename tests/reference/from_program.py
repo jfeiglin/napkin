@@ -191,6 +191,8 @@ class _Translation:
         values = [self.node(x, expression) for x in n.args]
         if n.function in ('min', 'max', 'abs', 'clip'):
             return fn(n.function, *values)
+        if n.function == 'within':
+            return E('within', *values)  # `x in [lo, hi]`: its ends are checked when it is read
         if n.function in ('sum', 'any', 'all') and values:
             return _joined({'sum': '+', 'any': 'or', 'all': 'and'}[n.function], values)
         raise NotCovered(f'the function {n.function}: the oracle computes in fractions')

@@ -292,6 +292,20 @@ def _clip(run, node, chosen):
     return _checked(np.minimum(np.maximum(value, low), high))
 
 
+def _within(run, node, chosen):
+    """`x in [lo, hi]` for each instance: its three values are read for every instance, as each
+    instance by itself reads them, and a reversed interval of any instance fails the call."""
+    value, low, high = (_number(run.value(arg, chosen)) for arg in node.args)
+    reversed_ = np.asarray(low) > np.asarray(high)
+    if np.any(reversed_):
+        k = int(np.flatnonzero(np.broadcast_to(reversed_, (run.size(chosen),)))[0])
+        ends = [float(np.broadcast_to(end, (run.size(chosen),))[k]) for end in (low, high)]
+        raise ExpressionError(f'{ops.REVERSED}: [{ends[0]!r}, {ends[1]!r}]')
+    if not any(isinstance(arg, np.ndarray) for arg in (value, low, high)):
+        return bool(low <= value <= high)
+    return (np.asarray(low) <= value) & (np.asarray(value) <= high)
+
+
 def _of_one(compute):
     def handler(run, node, chosen):
         (value,) = (_number(run.value(arg, chosen)) for arg in node.args)
@@ -367,6 +381,7 @@ TABLE = ops.handlers(
         'any': _listed(False),
         'all': _listed(True),
         'clip': _clip,
+        'within': _within,
         'abs': _absolute,
         'sqrt': _of_one(np.sqrt),
         'exp': _of_one(np.exp),

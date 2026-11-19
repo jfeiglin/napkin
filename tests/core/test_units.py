@@ -99,6 +99,8 @@ def test_the_dimensions_of_products_quotients_powers_and_roots_are_the_sums_of_t
         ('min(t, 0, t)', 'number', TIME),
         ('max(r)', 'number', RATE),
         ('clip(t, 0, t)', 'number', TIME),
+        # membership: a value and the ends of its interval in one unit, and a yes/no.
+        ('within(t, 0, t)', 'boolean', PLAIN),
         ('0 + 0', 'zero', PLAIN),
         # plain: a plain number in, a plain number out.
         ('exp(x) + ln(x) + expm1(x) + log1p(x) + erf(x)', 'number', PLAIN),
@@ -135,6 +137,9 @@ def test_the_unit_of_each_rule(source, kind, dimensions):
         ('min(t, n)', 'Incompatible quantities'),
         ('min(ok, ok)', 'min/max require numbers'),
         ('clip(t, 0)', 'clip requires exactly three arguments'),
+        ('within(t, 0)', 'within requires exactly three arguments'),
+        ('within(t, n, t)', 'Incompatible quantities'),
+        ('within(ok, ok, ok)', 'A membership tests numbers'),
         ('abs(mode)', 'abs requires numbers'),
         ('exp(t)', 'Incompatible quantities'),
         ('exp(x, x)', 'exp requires exactly one argument'),

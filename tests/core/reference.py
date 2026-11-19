@@ -113,6 +113,12 @@ def walked(node, env):
         if low > high:
             raise ValueError('bounds')
         return real(min(max(value, low), high))
+    if name == 'within':
+        # The closed interval [low, high], read once; a reversed one is an error.
+        value, low, high = args
+        if low > high:
+            raise ValueError('reversed')
+        return low <= value <= high
     if name in ('min', 'max'):
         return real((min if name == 'min' else max)(args))
     (value,) = args

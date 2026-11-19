@@ -292,6 +292,11 @@ def test_a_guard_narrows_its_branch(source, ranges, interval):
         ('x ** -1', {'x': (0.0, 1.0)}, 'Cannot prove nonzero base'),
         ('x ** y', {'x': (0.0, 1.0), 'y': (0.0, 1.0)}, 'Cannot prove nonzero base'),
         ('clip(x, 2, y)', {'x': (0.0, 1.0), 'y': (0.0, 5.0)}, 'Cannot prove clip bounds are ordered'),
+        (
+            'within(x, 2, y)',
+            {'x': (0.0, 1.0), 'y': (0.0, 5.0)},
+            'Cannot prove the ends of a membership test are ordered',
+        ),
         ('1 / nowhere', {}, 'Cannot prove nonzero denominator'),
     ],
 )

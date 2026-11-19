@@ -7,9 +7,10 @@ At a time, rounds. One round is:
    so 0.1 h then 0.2 h is the moment of 0.3 h, the horizon's too. A stage's guard (`after D when C`) is read once,
    when it comes due; a stage whose guard is false runs nothing and commits no entry. Its statements
    run in order and each sees the writes before it (`Tx`): `=`, `+=` and `-=` on a writable value (of
-   the receiver, through a link or an entity parameter, of an occurrence of the stage or of a live
-   occurrence that `.occurrences.at(t)` names; a finished occurrence is frozen, and a write to it
-   fails), `=` of a distribution on a distribution-valued value, which the draws after it read,
+   the receiver, through a link or an entity parameter, of the occurrence of the stage or of another
+   that a saved reference, a copy of one or `.occurrences.at(t)` names; a finished occurrence is
+   frozen, and a write to it fails the run, as each end of a `move` does: `Occurrences.writable`),
+   `=` of a distribution on a distribution-valued value, which the draws after it read,
    of an allocation on an endpoint, by which it shares its flows from the settling on, and of a
    `formula(...)` on a formula, a request or a capacity, which reads the new calculation from the
    commit on (a number written to a request or a capacity that was a formula captures it; spec:
@@ -503,7 +504,8 @@ class Moment:
 
     def target(self, path, scope, origin):
         """The engine name of a value that a statement writes: a value of a scope, or a value of the
-        newest occurrence of an event, which must be live."""
+        newest occurrence of an event. A value of a finished occurrence is frozen, whatever spells
+        it (`Occurrences.writable`)."""
         run, plan = self.run, self.plan
         point = self.resolved(path, scope, origin)
         if point[0] != 'value':
@@ -514,12 +516,8 @@ class Moment:
             members = plan.members(dynamic.source)
             if dynamic.op != 'at' or not members:
                 raise SimulationError(f'{origin}: {dynamic.spelled} names no occurrence at t = {run.now:g} h')
-            occurrence = members[-1][1]
             name = plan.project(members[-1], dynamic.steps, origin)
-            if not run.occurrences.live[occurrence].active:
-                raise SimulationError(
-                    f'{origin}: {name} belongs to the finished occurrence {occurrence}, which is frozen'
-                )
+        run.occurrences.writable(name, origin)
         return name
 
     def checked(self, name, value, origin):
@@ -550,6 +548,7 @@ class Moment:
             point = self.resolved(statement.target, scope, statement.origin)
             if point[0] != 'allocation':
                 raise SimulationError(f'{statement.origin}: an allocation is the allocation of an endpoint')
+            run.occurrences.writable(point[1], statement.origin)
             tx.allocations.append((point[1], point[2], statement.value, scope, statement.origin))
             return
         name = self.target(statement.target, scope, statement.origin)

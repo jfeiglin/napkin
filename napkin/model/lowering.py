@@ -487,9 +487,22 @@ def solver_of(solver):
         )
         for value in solver.unknowns
     ]
-    parts += [build.constraint(handle(item.test)) for item in solver.constraints]
+    parts += [build.constraint(handle(_relations(item.test))) for item in solver.constraints]
     parts += [getattr(build, item.sense)(handle(item.test)) for item in solver.objective]
     return build.solver(solver.name, *parts)
+
+
+def _relations(test):
+    """A constraint as the relations that a solver enforces: a membership that stands as a relation
+    (the constraint, or a term of its `and`) is the chain of its two relations, `lo <= x <= hi`, as
+    `build.in_range` writes it (spec: a constraint states `==`, `<=` and `>=` relations and bounds on
+    sums). A membership that a solve evaluates, of known values under a condition, stays `within`."""
+    if isinstance(test, s.Apply) and test.op == 'call' and test.detail == 'within':
+        value, low, high = test.args
+        return s.Apply('compare', (low, value, high), test.type, ('<=', '<='))
+    if isinstance(test, s.Apply) and test.op == 'and':
+        return s.Apply('and', tuple(_relations(arg) for arg in test.args), test.type, test.detail)
+    return test
 
 
 # ---- expressions ---------------------------------------------------------------------------------------

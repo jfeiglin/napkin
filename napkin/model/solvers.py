@@ -266,11 +266,16 @@ class _Decision:
 
     def compare(self, node, expression, scope):
         found = [self.node(item, expression, scope) for item in node.operands]
+        return self.chain(node.ops, found)
+
+    def chain(self, ops, found):
+        """A chain of comparisons (`ops` between the classes `found` of its operands): KNOWN, or the
+        conjunction of the relation of each pair."""
         if RELATION in found:
             raise _Refused('solver_form', 'a comparison of a relation is left out: write the relations apart')
         if max(found) == KNOWN:
             return KNOWN
-        for op, left, right in zip(node.ops, found, found[1:]):
+        for op, left, right in zip(ops, found, found[1:]):
             if max(left, right) == KNOWN:
                 raise _Refused(
                     'solver_form',
@@ -310,6 +315,10 @@ class _Decision:
         found = [self.node(arg, expression, scope) for arg in node.args]
         if max(found, default=KNOWN) == KNOWN:
             return KNOWN
+        if node.function == 'within':
+            # `x in [lo, hi]`: the chain `lo <= x <= hi`, a relation of each pair; the ends that a
+            # solve knows are checked when it reads them (`ops.REVERSED`).
+            return self.chain(('le', 'le'), [found[1], found[0], found[2]])
         if node.function == 'max':
             return self.positive(found)
         if node.function == 'sum':
