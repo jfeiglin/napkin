@@ -26,7 +26,8 @@ nearest their targets. A claim is a positive request (above `TINY`, the smallest
 alone can be its served fraction's divisor): of a directed flow on its rate, of a route on
 its rate in the direction of its request, of a flow with legs on its fraction (as a request of one,
 when a leg asks anything; when none does, the fraction is zero), and of an endpoint on its total.
-Its tier is (its level, its layer):
+Its tier is (its level, its layer), one rule for local sharing and for a declared solver
+(`claim_order`):
 
 - the **level** is the largest of the supply depth of the stores that its connections draw from
   and the room depth of the stores that they fill (`claim_level`). Supply is settled in its
@@ -36,7 +37,8 @@ Its tier is (its level, its layer):
   passes on the room that its outflows make, and its depth is one more than that of the deepest full
   store that its outflows fill, 0 when they fill none (so one full store shares on the levels of
   supply). With two full tanks in series, the claims into the upper tank wait for the room that the
-  lower tank's outflows make;
+  lower tank's outflows make. Depths read the connections that can carry flow at the instant
+  (`carrying`): a closed pipe passes neither supply nor room, and a ring that it closes is none;
 - the **layer** orders the flows that some endpoint ranks (`priority(a, b)`, which names
   connections: a leg ranks its flow): a flow comes after every flow ranked ahead of it, and flows
   whose ranks contradict each other share a layer (R-A2-12). The claim of an endpoint is in the
@@ -68,7 +70,8 @@ capacity or a request. A part is solved alone, by a closed form where one holds,
 
 Where local sharing has no answer that the oracle defines, the run stops with a failure that names
 the stores (`SimulationError`): a ring of stores at their lower bound that feed one another, and a
-ring of full stores that pass room around (the oracle raises `NotCovered` for both).
+ring of full stores that pass room around, through connections that can carry flow (the oracle
+raises `NotCovered` for both).
 """
 
 from __future__ import annotations
@@ -163,32 +166,53 @@ def water(requests, capacities, available):
         pending = np.setdiff1d(pending, capped)
 
 
-def supply_depths(net, lower):
+def carrying(net, asked):
+    """Whether each connection can carry flow at the instant: its capacity and the capacity of each
+    endpoint that it meets are above zero, and a leg asks something (it carries its request times
+    its flow's fraction). The structure of sharing is that of these connections, found again at each
+    instant (re-audit row 05): the depths and the rings of local sharing, the priority classes and
+    layers (`Network.ranking`), and the clusters of the order of the claims (`claim_order`). A closed
+    valve passes neither supply nor room, closes no ring and takes no place in a priority."""
+    found = np.asarray(asked.capacity, dtype=float) > 0
+    for side, ends in ((OUT, net.source), (IN, net.sink)):
+        met = np.flatnonzero(ends >= 0)
+        found[met] &= asked.end_capacity[side][ends[met]] > 0
+    legs = np.flatnonzero(net.roles == LEG)
+    found[legs] &= asked.request[legs] > 0
+    return found
+
+
+def _through(connections, carries):
+    """The connections of `connections` that can carry flow (all of them when `carries` is None)."""
+    return connections if carries is None else connections[carries[connections]]
+
+
+def supply_depths(net, lower, carries=None):
     """A function: the supply depth of a store of a network, 0 for -1 (SOURCE). A store at its
     lower bound passes on what flows in, so its depth is one more than that of the deepest store that
-    feeds it; any other store holds stock, at depth 0. A ring of stores at their lower bound has no
-    depth: finding one fails, naming the ring."""
+    feeds it through a connection that can carry flow (`carrying`); any other store holds stock, at
+    depth 0. A ring of stores at their lower bound has no depth: finding one fails, naming the ring."""
     return _depths(
         net,
         lower,
-        lambda s: net.source[net.ends[IN].of(s)].tolist(),
+        lambda s: net.source[_through(net.ends[IN].of(s), carries)].tolist(),
         'a ring of stores at their lower bound passes supply around: {}; local sharing settles in '
         'the direction of supply and has no answer here',
     )
 
 
-def room_depths(net, lower, upper):
+def room_depths(net, lower, upper, carries=None):
     """A function: the room depth of a store of a network, 0 for -1 (SINK). A full store (at its
     upper bound and not at its lower bound) passes on the room that its outflows make. Its depth is
-    one more than that of the deepest full store that its outflows fill, and 0 when they fill none:
-    one full store shares on the levels of supply alone. A store with room, and a store held at both
-    bounds, which local sharing settles in the direction of supply, are at depth 0. A ring of full
-    stores has no depth: finding one fails, naming the ring."""
+    one more than that of the deepest full store that its outflows fill through a connection that can
+    carry flow, and 0 when they fill none: one full store shares on the levels of supply alone. A
+    store with room, and a store held at both bounds, which local sharing settles in the direction of
+    supply, are at depth 0. A ring of full stores has no depth: finding one fails, naming the ring."""
     full = np.asarray(upper, dtype=bool) & ~np.asarray(lower, dtype=bool)
     depth = _depths(
         net,
         full,
-        lambda s: net.sink[net.ends[OUT].of(s)].tolist(),
+        lambda s: net.sink[_through(net.ends[OUT].of(s), carries)].tolist(),
         'a ring of stores at their upper bound passes room around: {}; local sharing settles room '
         'against the direction of flow and has no answer here',
     )
@@ -205,6 +229,203 @@ def claim_level(net, supply, room):
         return max(max(supply(int(net.source[c])), room(int(net.sink[c]))) for c in connections)
 
     return level
+
+
+@dataclass(frozen=True)
+class Claim:
+    """A claim as the order of the claims reads it: the connections that serve it, the endpoint
+    (side, store) whose request it is (None for the claim of a flow), its layer, and whether a solver
+    determines it (a flow that the solver names, or an endpoint all of whose connections it names)."""
+
+    connections: tuple
+    endpoint: tuple | None
+    layer: int
+    named: bool = False
+
+    def ends(self, net, connections=None):
+        """The endpoints that rank this claim: its own, or those of the connections of its flow (or
+        of `connections` of them)."""
+        if self.endpoint is not None:
+            return {self.endpoint}
+        found = set()
+        for c in self.connections if connections is None else connections:
+            for side, ends in ((OUT, net.source), (IN, net.sink)):
+                if ends[c] >= 0:
+                    found.add((side, int(ends[c])))
+        return found
+
+
+def claim_order(net, lower, upper, carries, claims):
+    """The place of each claim (`Claim`) in the selection order, as (level, layer): the claims of one
+    place share a tier, and the places go in order. One rule for local sharing and for a declared
+    solver, built from the endpoints' rules (the owner's rule after G2: an endpoint's rule ranks all
+    its flows, named or not):
+
+    - **local sharing**: a claim's level is the largest of the supply depth of the stores that its
+      connections draw from and the room depth of the stores that they fill (`claim_level`), and its
+      layer orders it after what an endpoint ranks ahead of it. Claims linked by an endpoint that
+      they share, directly or through other claims, are a cluster; every claim of a cluster that
+      holds a claim that no solver determines keeps this place, so a flow that a solver does not name
+      keeps its endpoints' local sharing, and so does each flow that shares an endpoint with it;
+    - **the solver's own sharing**, in a cluster of claims that the solver determines only: levels
+      count the steps of local sharing (each a decision that the claim waits for) except across a
+      connection of the solver whose endpoints rank nothing, where the solver decides what passes
+      together with what it serves, and the level passes on. So a solver of the four requested rates
+      of the spec's junctions puts A, B and C on one level (1/3 each), while a priority at the
+      first junction (A ahead of the onward pipe) keeps B and C, which the onward pipe serves, after
+      A. Across endpoints, claims of one place share their tier (spec, "Selection order").
+
+    A claim reads the structure through its connections that can carry flow, and one that has none
+    is served nothing: it takes the first place and reads nothing. A ring of stores at a bound has no
+    order where local sharing reads it, which fails by name (its depths); the stores of a ring of the
+    solver's own connections share one level, which the solver decides together."""
+    supply = supply_depths(net, lower, carries)
+    room = room_depths(net, lower, upper, carries)
+    level = claim_level(net, supply, room)
+    through = [
+        claim.connections if carries is None else tuple(c for c in claim.connections if carries[c])
+        for claim in claims
+    ]
+    live = [bool(mine) for mine in through]
+
+    def local(i):
+        return level(through[i]) if live[i] else 0
+
+    if not any(claim.named for claim in claims):
+        return [(local(i), claim.layer) for i, claim in enumerate(claims)]
+    parent = list(range(len(claims)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    # A claim that no connection of it can carry is served nothing, and links nothing.
+    ends = [claim.ends(net, through[i]) if live[i] else set() for i, claim in enumerate(claims)]
+    first = {}
+    for i, mine in enumerate(ends):
+        for end in mine:
+            parent[find(i)] = find(first.setdefault(end, i))
+    undecided = {find(i) for i, claim in enumerate(claims) if live[i] and not claim.named}
+    kept = [find(i) in undecided for i in range(len(claims))]
+    held = {end for i, mine in enumerate(ends) if kept[i] for end in mine}  # local sharing's endpoints
+    ranked = {end for end, classes in net.ranking(carries).items() if len(classes) > 1}
+    full = np.asarray(upper, dtype=bool) & ~np.asarray(lower, dtype=bool)
+
+    def own(c):
+        """Whether the solver decides what connection c passes: neither of its endpoints keeps local
+        sharing. Gives None if not, else whether an endpoint of it ranks its connections."""
+        sides = [(side, int(at[c])) for side, at in ((OUT, net.source), (IN, net.sink)) if at[c] >= 0]
+        if any(end in held for end in sides):
+            return None
+        return any(end in ranked for end in sides)
+
+    def feeds(s):
+        found = []
+        for c in _through(net.ends[IN].of(s), carries).tolist():
+            t, mine = int(net.source[c]), own(c)
+            found.append((None, supply(t) + 1) if mine is None else (t, int(mine)))
+        return found
+
+    def drains(s):
+        found = []
+        for c in _through(net.ends[OUT].of(s), carries).tolist():
+            d, mine = int(net.sink[c]), own(c)
+            step = int(d >= 0 and full[d])
+            if mine is None:
+                found.append((None, room(d) + 1 if step else 0))
+            else:
+                found.append((d, step if mine else 0) if step else (None, 0))
+        return found
+
+    solver = [through[i] for i in range(len(claims)) if live[i] and not kept[i]]
+    if not held and not ranked:
+        passed = None  # every connection is the solver's and none is ranked: one level
+    else:
+        reached = {
+            int(e) for connections in solver for c in connections for e in (net.source[c], net.sink[c])
+        }
+        passed_supply = _passing(net, np.asarray(lower, dtype=bool), feeds, reached)
+        passed_room = _passing(net, full, drains, reached)
+
+        def passed(connections):
+            level = 0
+            for c in connections:
+                s, d = int(net.source[c]), int(net.sink[c])
+                level = max(level, passed_supply[s] if s >= 0 else 0, passed_room[d] if d >= 0 else 0)
+            return level
+
+    return [
+        (
+            local(i) if kept[i] or not live[i] else passed(through[i]) if passed else 0,
+            claim.layer,
+        )
+        for i, claim in enumerate(claims)
+    ]
+
+
+def _passing(net, active, inputs, roots):
+    """The depth of the stores that `roots` reach (an array; 0 for the others): 0 for a store that
+    is not `active`, else the largest of its `inputs(s)`, each (t, step) the depth of store t (0 for -1
+    or a store that is not active) plus `step`, or (None, value) a value. The stores of a cycle share
+    one depth, the largest of the inputs from outside it: a ring has no first store, and the solver
+    decides it together. The cycles are the strongly connected parts of the stores' inputs (Tarjan's
+    method, iterative): each part is found after every part that it reads, so its depth is known when
+    it is found."""
+    count = len(net.stores)
+    depth = np.zeros(count, dtype=np.int64)
+    index = np.full(count, -1, dtype=np.int64)
+    low = np.zeros(count, dtype=np.int64)
+    on = np.zeros(count, dtype=bool)
+    stack, counter = [], 0
+
+    def reads(t):
+        return t is not None and t >= 0 and active[t]
+
+    for root in sorted(roots):
+        if not reads(root) or index[root] >= 0:
+            continue
+        index[root] = low[root] = counter
+        counter += 1
+        stack.append(root)
+        on[root] = True
+        work = [(root, iter(inputs(root)))]
+        while work:
+            s, pending = work[-1]
+            for t, _ in pending:
+                if not reads(t):
+                    continue
+                if index[t] < 0:
+                    index[t] = low[t] = counter
+                    counter += 1
+                    stack.append(t)
+                    on[t] = True
+                    work.append((t, iter(inputs(t))))
+                    break
+                if on[t]:
+                    low[s] = min(low[s], index[t])
+            else:
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[s])
+                if low[s] != index[s]:
+                    continue
+                members = []
+                while True:
+                    t = stack.pop()
+                    on[t] = False
+                    members.append(t)
+                    if t == s:
+                        break
+                inside = set(members)
+                best = 0
+                for m in members:
+                    for t, step in inputs(m):
+                        if t not in inside:
+                            best = max(best, (int(depth[t]) if reads(t) else 0) + step)
+                depth[members] = best
+    return depth
 
 
 def _depths(net, active, onward, ring):
@@ -251,7 +472,8 @@ class Network:
     the flows. `source`, `sink` and `flow_sets` are of the connections, each in the connected set
     `flow_sets` gives; `store_sets` gives the set of each store; `classes` the priority classes of
     each ranking endpoint, {(side, store): classes of connection numbers, first to last, with its
-    unranked connections last}. Without `of`, each flow is directed and is its one connection;
+    unranked connections last}, which `ranking` and `layers` read among the connections that can
+    carry flow at an instant. Without `of`, each flow is directed and is its one connection;
     else `of`, `roles` and `connections` give the flow, the role and the name of each connection,
     and `kinds` the kind of each flow, whose connections are in the order of their numbers."""
 
@@ -292,12 +514,44 @@ class Network:
             ]
         )
         self.classes = dict(classes)
-        rankings = [
-            [{int(self.of[c]) for c in members} for members in found] for found in self.classes.values()
-        ]
-        self.layer = layers(len(self.flows), rankings)
+        self._layers = {}
         self.flow_sets = np.asarray(flow_sets, dtype=np.int64)
         self.store_sets = np.asarray(store_sets, dtype=np.int64)
+
+    def ranking(self, carries=None):
+        """The priority classes of each ranking endpoint among its connections that can carry flow
+        (`carrying`; all of them when `carries` is None): a closed connection is not eligible (spec:
+        "`priority(a, b)` gives `a` first access when both are eligible"), and a class left empty
+        is none."""
+        if carries is None:
+            return self.classes
+        found = {}
+        for end, classes in self.classes.items():
+            kept = [
+                members for members in ([c for c in members if carries[c]] for members in classes) if members
+            ]
+            if kept:
+                found[end] = tuple(tuple(members) for members in kept)
+        return found
+
+    def layers(self, carries=None):
+        """The priority layer of each flow from the classes of `ranking(carries)`, kept for each
+        set of connections that can carry flow."""
+        if carries is None:
+            rankings = self.classes.values()
+        else:
+            key = np.packbits(carries).tobytes()
+            if key in self._layers:
+                return self._layers[key]
+            rankings = self.ranking(carries).values()
+        found = layers(
+            len(self.flows), [[{int(self.of[c]) for c in members} for members in m] for m in rankings]
+        )
+        if carries is not None:
+            if len(self._layers) > 64:
+                self._layers.clear()
+            self._layers[key] = found
+        return found
 
     def carried(self, values, asked, which=None):
         """The rate of each connection (or of the connections `which`) from the value of each flow:
@@ -379,6 +633,8 @@ class Instant:
             claimed[net.store_sets[asked.end_request[side] > 0]] = True
         self.claimed = claimed  # the connected sets that have a claim
         self.selected = 0  # the parts that the selection order solved, not a closed form
+        self.carries = carrying(net, asked)  # the connections that can carry flow at the instant
+        self.layer = net.layers(self.carries)  # the priority layer of each flow among them
 
     # ---- the coupled parts ----------------------------------------------------------------------
 
@@ -520,12 +776,9 @@ class Instant:
         return self.net.stores[s]
 
     def depths(self):
-        """A function: the supply depth of a store (`supply_depths`)."""
-        return supply_depths(self.net, self.lower)
-
-    def rooms(self):
-        """A function: the room depth of a store (`room_depths`)."""
-        return room_depths(self.net, self.lower, self.upper)
+        """A function: the supply depth of a store (`supply_depths`), through the connections that
+        can carry flow at the instant."""
+        return supply_depths(self.net, self.lower, self.carries)
 
     def _groups(self, part):
         """The rates of a part of directed flows by groups in supply order (see the module), or None
@@ -569,7 +822,11 @@ class Instant:
             members = members.tolist()
             for f in members:
                 rates[f] = 0.0  # a member that flows into its own store brings nothing
-            supplied = net.ends[IN].of(s).tolist() if kind == 'supply' else None
+            # What flows in through a connection that can carry flow (a closed one brings nothing,
+            # and the depths that order the groups do not read it).
+            supplied = (
+                [g for g in net.ends[IN].of(s).tolist() if self.carries[g]] if kind == 'supply' else None
+            )
             rates.update(self.fill(members, IN if kind == 'in' else OUT, s, rates.__getitem__, supplied))
         return np.array([rates[f] for f in part])
 
@@ -588,8 +845,8 @@ class Instant:
         available = float(asked.end_capacity[side][s])
         if supplied is not None:
             available = min(available, sum(rate_of(g) for g in supplied))
-        for layer in sorted({int(net.layer[net.of[f]]) for f in claims}):
-            tier = np.array([f for f in claims if net.layer[net.of[f]] == layer], dtype=np.int64)
+        for layer in sorted({int(self.layer[net.of[f]]) for f in claims}):
+            tier = np.array([f for f in claims if self.layer[net.of[f]] == layer], dtype=np.int64)
             given = water(request[tier], capacity[tier], available)
             for f, rate in zip(tier.tolist(), given.tolist()):
                 rates[f] = rate
@@ -604,7 +861,6 @@ class Instant:
         place = {f: k for k, f in enumerate(part)}
         n = len(part)
         rows = Rows(n)
-        level = claim_level(net, self.depths(), self.rooms())
         mine = {f: self._connections(f) for f in part}
         stores = sorted(
             {int(s) for f in part for c in mine[f] for s in (net.source[c], net.sink[c]) if s >= 0}
@@ -655,8 +911,8 @@ class Instant:
                     if parts:
                         route = next(c for c in here if net.roles[c] in (FORWARD, BACKWARD))
                         self._no_request(side, s, int(net.of[route]))
-                    claims.append(((level(here), 1), total, wanted))
-                    ranked = net.classes.get((side, s))
+                    claims.append((Claim(tuple(here), (side, s), 1), total, wanted))
+                    ranked = net.ranking(self.carries).get((side, s))
                     if ranked:
                         carried = np.zeros(n)
                         for members in ranked[:-1]:
@@ -672,7 +928,7 @@ class Instant:
             one[k] = 1.0
 
             def claim(served, wanted, cs=cs, f=f):
-                claims.append(((level(cs), int(net.layer[f])), served, wanted))
+                claims.append((Claim(tuple(cs), None, int(self.layer[f])), served, wanted))
 
             if kind == DIRECTED:
                 c = cs[0]
@@ -704,8 +960,9 @@ class Instant:
         sizes += [float(x) for x in asked.end_request[:, stores].ravel() if x > TINY]
         units[rates] = max(sizes, default=1.0)
         tiers = {}
-        for tier, a, wanted in claims:
-            tiers.setdefault(tier, []).append((a, wanted))
+        places = claim_order(net, lower, upper, self.carries, [claim for claim, _, _ in claims])
+        for place, (_, a, wanted) in zip(places, claims):
+            tiers.setdefault(place, []).append((a, wanted))
         try:
             return select(rows, low, high, [tiers[key] for key in sorted(tiers)], prefs, target, units)
         except SimulationError as problem:

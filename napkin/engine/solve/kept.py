@@ -139,11 +139,19 @@ class Kept:
             self.s.changeColsCost(self.n, _i32(np.arange(self.n)), _f64(cost))
 
     def set_bounds(self, index, lower, upper):
-        """The bounds of the columns `index`."""
+        """The bounds of the columns `index` (a column may come twice, with one bound: a flow's
+        claim and its endpoint's, held together). HiGHS takes a set of columns only with each once,
+        and changes nothing otherwise, so each is sent once, and a change that it refuses stops the
+        solve rather than leave the instance apart from its program."""
         index = _i32(index)
         if len(index):
             self.lower[index], self.upper[index] = lower, upper
-            self.s.changeColsBounds(len(index), index, _f64(self.lower[index]), _f64(self.upper[index]))
+            index = _i32(np.unique(index))
+            status = self.s.changeColsBounds(
+                len(index), index, _f64(self.lower[index]), _f64(self.upper[index])
+            )
+            if status == ERROR:
+                raise ValueError('HiGHS refused the bounds of columns')
 
     def set_row_bounds(self, index, lower, upper):
         """The bounds of the rows `index`."""

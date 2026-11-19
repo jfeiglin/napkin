@@ -15,9 +15,11 @@ what joined is added at the end, and a row whose working coefficients changed is
 instance then holds the program of the problem formed fresh, in another order, and starts warm from
 its last basis; each answer equals that of a fresh solve to the tolerances of the steps.
 
-The answer is checked before it is given: each kept optimum, each fair level, and every bound and
-row of the problem. A solve that cannot give the answer raises a `SolveFailure` by name and never
-gives another answer in its place.
+The answer is checked before it is given: each kept optimum, each fair level (each claim's served
+fraction against it), and every bound and row of the problem. A solve that cannot give the answer
+raises a `SolveFailure` by name and never gives another answer in its place. The answer keeps these
+checks (`Answer.admits`): a change that a caller makes to it afterwards, such as the engine's
+polish onto the bounds and rows that it holds, replaces it only if the change passes them too.
 
 Reproducibility (the owner's rule): the same run, with the same code, configuration, seed and
 thread settings on one machine, gives the same answers bit for bit, which one `Solver` for each run
@@ -42,6 +44,7 @@ from .kept import Kept
 from .scaled import Scaled
 
 CHECK = 1e-6  # the end checks of a row, a bound and a fair level, relative to the size of the terms
+ROUNDOFF = 64 * np.finfo(float).eps  # a change of an answer this small, of its reference scales, is roundoff
 
 
 @dataclass(frozen=True)
@@ -81,12 +84,24 @@ class Answer:
     problem, each objective's optimum, each claim's fair level (its served fraction, at most one),
     and the work done."""
 
-    def __init__(self, keys, x, optima, levels, work):
+    def __init__(self, keys, x, optima, levels, work, checks=None):
         self.keys, self.x, self.optima, self.levels, self.work = keys, x, optima, levels, work
         self._at = {key: i for i, key in enumerate(keys)}
+        self._checks = checks
 
     def __getitem__(self, key):
         return float(self.x[self._at[key]])
+
+    def admits(self, x):
+        """Whether `x` (author units, in the order of the problem) may take this answer's place: it
+        passes the end checks that this answer passed, each to its tolerance (each kept optimum,
+        `ranked.KEPT`; each claim's served fraction against its fair level, and every row and bound,
+        `CHECK`), and it is no worse than this answer on any rank: no objective higher by more than
+        KEPT of the size of its terms at the two answers, and no claim served a smaller fraction by
+        more than CHECK. The optimum is kept to KEPT of a reference scale, so the second check is
+        what keeps a value far below one: a delivery of 5e-8 L/h that meets a request is no
+        rounding of zero, whatever a change of it does to the optimum's tolerance."""
+        return self._checks(np.asarray(x, dtype=float), self.x) is None
 
 
 class Solver:
@@ -214,36 +229,69 @@ def _check_hard(arrays):
 def _answer(arrays, w, xi, optima, levels, work):
     """The checked answer in author units and in the order of the problem."""
     x = arrays.positive_parts(w.author(xi))
-    xi = x[w.columns] / w.scale
-    lost = ranked.lost(w, optima, xi)
-    if lost:
-        k, value, best = lost[0]
-        raise SolveFailure(
-            NUMERICAL,
-            f'objective {k}',
-            f'the answer reads {value:.9g} against the optimum {best:.9g}',
-            {'lost': lost},
-        )
-    if len(levels):
-        served = w.F @ xi
-        short = np.flatnonzero(served < np.minimum(levels, 1.0) - CHECK * (1.0 + abs(w.F) @ np.abs(xi)))
-        if len(short):
-            i = int(short[0])
-            raise SolveFailure(
+    checks = _end_checks(arrays, w, optima, levels)
+    failure = checks(x)
+    if failure is not None:
+        raise failure
+    optima = tuple(v * norm for v, norm in zip(optima, w.norms))
+    return Answer(arrays.keys, x, optima, levels, work, checks)
+
+
+def _end_checks(arrays, w, optima, levels):
+    """The end checks of a solve, as a function check(x, replaced=None) of an answer x (author
+    units, in the order of the problem) that gives the `SolveFailure` of the first check that x fails,
+    or None: each kept optimum (`ranked.lost`), each claim's served fraction against its fair level,
+    and every row and bound, in working units, each to its tolerance; and, for an x that would replace
+    the answer `replaced`, each objective and each claim's served fraction against that answer's
+    (`Answer.admits`)."""
+
+    def check(x, replaced=None):
+        xi = x[w.columns] / w.scale
+        lost = ranked.lost(w, optima, xi)
+        if lost:
+            k, value, best = lost[0]
+            return SolveFailure(
                 NUMERICAL,
-                f'fair sharing, tier {int(w.tier[i])}',
-                f'claim {i} is served {served[i]:.9g} against its level {levels[i]:.9g}',
-                {'claim': i},
+                f'objective {k}',
+                f'the answer reads {value:.9g} against the optimum {best:.9g}',
+                {'lost': lost},
             )
-    size = 1.0 + abs(w.A) @ np.abs(xi)
-    value = w.A @ xi
-    missed = np.maximum(w.row_lower - value, value - w.row_upper) - CHECK * size
-    outside = np.maximum(w.lower - xi, xi - w.upper) - CHECK * (1.0 + np.abs(xi))
-    if (missed > 0).any() or (outside > 0).any():
-        where = (
-            f'row {arrays.row_keys[w.rows[int(np.argmax(missed))]]!r}'
-            if (missed > 0).any()
-            else f'unknown {arrays.keys[w.columns[int(np.argmax(outside))]]!r}'
-        )
-        raise SolveFailure(NUMERICAL, 'the end check', f'the answer misses {where}', {'where': where})
-    return Answer(arrays.keys, x, tuple(v * norm for v, norm in zip(optima, w.norms)), levels, work)
+        before = None if replaced is None else replaced[w.columns] / w.scale
+        if before is not None:
+            for k, cost in enumerate(w.costs):
+                size = np.abs(cost) @ (np.abs(before) + np.abs(xi))
+                if cost @ xi > cost @ before + ranked.KEPT * size + ROUNDOFF * (np.abs(cost).sum() + size):
+                    return SolveFailure(
+                        NUMERICAL,
+                        f'objective {k + 1}',
+                        f"a change reads {cost @ xi:.9g} against the answer's {cost @ before:.9g}",
+                        {'objective': k + 1},
+                    )
+        if len(levels):
+            served = w.F @ xi
+            floor = np.minimum(levels, 1.0)
+            if before is not None:
+                floor = np.maximum(floor, np.minimum(w.F @ before, 1.0))
+            short = np.flatnonzero(served < floor - CHECK * (1.0 + abs(w.F) @ np.abs(xi)))
+            if len(short):
+                i = int(short[0])
+                return SolveFailure(
+                    NUMERICAL,
+                    f'fair sharing, tier {int(w.tier[i])}',
+                    f'claim {i} is served {served[i]:.9g} against its level {levels[i]:.9g}',
+                    {'claim': i},
+                )
+        size = 1.0 + abs(w.A) @ np.abs(xi)
+        value = w.A @ xi
+        missed = np.maximum(w.row_lower - value, value - w.row_upper) - CHECK * size
+        outside = np.maximum(w.lower - xi, xi - w.upper) - CHECK * (1.0 + np.abs(xi))
+        if (missed > 0).any() or (outside > 0).any() or not np.isfinite(xi).all():
+            where = (
+                f'row {arrays.row_keys[w.rows[int(np.argmax(missed))]]!r}'
+                if (missed > 0).any()
+                else f'unknown {arrays.keys[w.columns[int(np.argmax(outside))]]!r}'
+            )
+            return SolveFailure(NUMERICAL, 'the end check', f'the answer misses {where}', {'where': where})
+        return None
+
+    return check

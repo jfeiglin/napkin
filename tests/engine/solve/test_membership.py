@@ -137,3 +137,22 @@ def test_a_problem_solved_again_on_a_kept_solver():
     first = solver.solve(cases.bottlenecks(True))
     second = solver.solve(cases.bottlenecks(True))
     same(second, first, size=6.0)
+
+
+def test_two_claims_that_hold_one_column_hold_it_in_the_kept_instance():
+    """A flow's request of 3 L/h and its endpoint's of 2 L/h read the one column of the flow, and
+    fair sharing holds both in tier 0 with one bound of that column, the larger floor (`fair._hold`).
+    HiGHS takes a set of columns only with each once and changed nothing when the column came twice,
+    so the instance lost the bound that its record kept: in tier 1 the other flow took the outlet's
+    3 L/h, and the answer missed the program by 3 (a numerical failure). By hand: the flow keeps its
+    3 L/h, and the other flow, which asks 0.5 L/h, gets what the outlet leaves, none."""
+    p = Problem()
+    flow = p.unknown('flow', 0.0, 3.0, FLOW, 3.0)
+    other = p.unknown('other', 0.0, np.inf, FLOW, 0.5)
+    p.at_most('outlet', {flow: 1.0, other: 1.0}, 3.0)
+    p.claim({flow: 1.0}, 3.0, 0)
+    p.claim({flow: 1.0}, 2.0, 0)
+    p.claim({other: 1.0}, 0.5, 1)
+    answer = fresh(p)
+    assert answer['flow'] == pytest.approx(3.0, abs=1e-6)
+    assert answer['other'] == pytest.approx(0.0, abs=1e-6)

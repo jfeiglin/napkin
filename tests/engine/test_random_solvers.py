@@ -50,7 +50,13 @@ from napkin.program.record import Key
 from tests.reference.errors import NotCovered
 from tests.reference.from_program import run_of, value_at
 
-UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
+UNITS = {
+    'h': {'time': 1},
+    'L': {'volume': 1},
+    'mL': ({'volume': 1}, Fraction(1, 1000)),
+    'kL': ({'volume': 1}, 1000),
+}
+SCALES = {'L': 1, 'mL': Fraction(1, 1000), 'kL': 1000}
 HORIZON = 6
 TIMES = [Fraction(k, 2) + Fraction(1, 7) for k in range(2 * HORIZON)]
 
@@ -59,20 +65,26 @@ def _half(rng, low, high):
     return Fraction(rng.randint(2 * low, 2 * high), 2)
 
 
-def program(seed):
+def program(seed, unit='L', size=1):
     """A random program with a declared solver (see the module), and the keys of the values to
-    compare."""
+    compare. Its volumes are written in `unit` (L, mL or kL), each `size` times the litres that the
+    seed draws: the same physical model for any unit, and a smaller one for a small `size`."""
     rng = random.Random(seed)
     b = Builder(UNITS)
+    rate = f'{unit}/h'
+
+    def volume(litres):
+        return Fraction(litres) * Fraction(size) / SCALES[unit]
+
     tanks = [f't{k}' for k in range(rng.randint(1, 3))]
     flows = []  # (tank, flow name)
     parts = {name: [] for name in tanks}
     for name in tanks:
         for k in range(rng.randint(1, 2)):
             kind = rng.choice(('fill', 'drain', 'pass') if len(tanks) > 1 else ('fill', 'drain'))
-            capacity = q(_half(rng, 1, 4), 'L/h') if rng.random() < 0.5 else None
+            capacity = q(volume(_half(rng, 1, 4)), rate) if rng.random() < 0.5 else None
             want = f'want{k}'
-            parts[name].append(value(want, 'L/h', _half(rng, 0, 4)))
+            parts[name].append(value(want, rate, volume(_half(rng, 0, 4))))
             request = formula(getattr(this, want))
             if kind == 'fill':
                 made = flow(f'f{k}', SOURCE, this.water, request=request, capacity=capacity)
@@ -86,14 +98,23 @@ def program(seed):
             if rng.random() < 0.25:
                 at = q(rng.choice((1, Fraction(3, 2), 2, 3)), 'h')
                 parts[name].append(
-                    event(f'change{k}', after(at, assign(getattr(this, want), q(_half(rng, 0, 4), 'L/h'))))
+                    event(
+                        f'change{k}',
+                        after(at, assign(getattr(this, want), q(volume(_half(rng, 0, 4)), rate))),
+                    )
                 )
     for name in tanks:
         cap = _half(rng, 4, 12) if rng.random() < 0.6 else None
         level = rng.choice((Fraction(0), _half(rng, 0, 8), cap if cap is not None else Fraction(3)))
         b.entity(
             name,
-            value('water', 'L', min(level, cap) if cap is not None else level, lower=0, upper=cap),
+            value(
+                'water',
+                unit,
+                volume(min(level, cap) if cap is not None else level),
+                lower=0,
+                upper=None if cap is None else volume(cap),
+            ),
             *parts[name],
         )
     chosen = rng.sample(flows, rng.randint(1, min(3, len(flows))))
@@ -113,16 +134,16 @@ def program(seed):
         mine = getattr(local, key)
         what = rng.random()
         if what < 0.5:
-            solving.append(minimize(fmax(q(0, 'L/h'), mine.request - mine.actual_rate)))
+            solving.append(minimize(fmax(q(0, rate), mine.request - mine.actual_rate)))
         elif what < 0.75 or not names[key][2]:
             solving.append(minimize(mine.actual_rate))
         else:
             solving.append(maximize(mine.actual_rate))
-    provider = [value('limit', 'L/h', _half(rng, 1, 6)), solver('plan', *solving)]
+    provider = [value('limit', rate, volume(_half(rng, 1, 6))), solver('plan', *solving)]
     setup = []
     if rng.random() < 0.4:
         at = q(rng.choice((1, Fraction(3, 2), 2)), 'h')
-        provider.append(event('change', after(at, assign(this.limit, q(_half(rng, 0, 6), 'L/h')))))
+        provider.append(event('change', after(at, assign(this.limit, q(volume(_half(rng, 0, 6)), rate)))))
         setup.append(start(named('provider').change))
     b.entity('provider', *provider)
     for name in tanks:

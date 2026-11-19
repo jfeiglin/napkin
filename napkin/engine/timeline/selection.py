@@ -33,6 +33,11 @@ point, adds the row that the point breaks most, each row held to the size of its
 in a finite number of steps, exact but for roundoff. A row with positive parts joins it through its
 linear piece at the point. A part that does not settle stops the run (`SimulationError`) and never
 gets another answer.
+
+What follows rank 4 changes the answer only by roundoff: an unknown within it of zero or of a bound
+is put there, and the point then exactly on the rows that it holds (`_exact`). Each change is a
+candidate that takes the answer's place only where it holds every row as the answer does and serves
+each claim no less (`_kept`), so a small delivery in a large part is never taken for roundoff.
 """
 
 from __future__ import annotations
@@ -422,16 +427,38 @@ def select(rows, lower, upper, tiers, prefs, target, units=None):
     final.equal = rows.equal + [(f / units, b) for f, b in scaled.equal[made[1] :]]
     final.convex = rows.convex
     found = nearest(final, lower, upper, target, start * units, size)
-    # The roundoff of the linear algebra is no rate: an unknown within it of zero or of a bound is
-    # put there, so that a junction or a store at its bound is held exactly.
-    found[np.abs(found) <= 1e-12 * units] = 0.0
-    for bound in (lower, upper):
-        with np.errstate(invalid='ignore'):
-            near = np.isfinite(bound) & (np.abs(found - bound) <= 1e-12 * (units + np.abs(bound)))
-        found[near] = bound[near]
     if not np.isfinite(found).all():
         raise SimulationError('local sharing: the rates of a part are no finite numbers')
-    return _exact(final, lower, upper, found, target)
+    # The roundoff of the linear algebra is no rate: an unknown within it of zero or of a bound is
+    # put there, so that a junction or a store at its bound is held exactly, and then on the rows
+    # that it holds. Each is a candidate for the answer (`_kept`).
+    snapped = found.copy()
+    snapped[np.abs(snapped) <= 1e-12 * units] = 0.0
+    for bound in (lower, upper):
+        with np.errstate(invalid='ignore'):
+            near = np.isfinite(bound) & (np.abs(snapped - bound) <= 1e-12 * (units + np.abs(bound)))
+        snapped[near] = bound[near]
+    claims = [claim for tier in tiers for claim in tier] + list(prefs)
+    candidates = (_exact(final, lower, upper, snapped, target), snapped)
+    return _kept(final, lower, upper, target, claims, found, candidates)
+
+
+def _kept(rows, lower, upper, target, claims, answer, candidates):
+    """The first of `candidates` (changes of `answer` after the selection order) that holds every
+    row and bound of the part as the answer does (`_holds`, the end check of rank 4) and serves each
+    claim and each preferred route's share (`claims`, as (a, request)) no less than the answer
+    serves it, to `FEASIBLE`; else the answer. A change that would take a small delivery for the
+    roundoff of a large part, or break a row, is dropped."""
+    plain = _plain(rows, lower, upper)
+
+    def served(x):
+        return np.array([min(1.0, float(np.asarray(a, dtype=float) @ x) / r) for a, r in claims])
+
+    floor = served(answer) - FEASIBLE * (1.0 + np.abs(served(answer)))
+    for candidate in candidates:
+        if _holds(rows, plain, candidate, target) and (served(candidate) >= floor).all():
+            return candidate
+    return answer
 
 
 def _exact(rows, lower, upper, x, target):
@@ -439,8 +466,8 @@ def _exact(rows, lower, upper, x, target):
     that rest on no bound and meet no row with positive parts. The programs read each rate in units
     of the part and each claim in served fractions, so a vertex comes back from them with the
     roundoff of those changes (3 L/h over a part of 5 L/h came back 1e-15 short, which moved the
-    time at which a tank emptied); the rows that hold it give its numbers again. A change that would
-    break a row is not made."""
+    time at which a tank emptied); the rows that hold it give its numbers again. The change is a
+    candidate, which `_kept` checks."""
     loose = (x != lower) & (x != upper)
     for _, parts, _ in rows.convex:
         loose[[j for j, _ in parts]] = False
@@ -458,5 +485,4 @@ def _exact(rows, lower, upper, x, target):
         return x
     found = x.copy()
     found[free] += np.linalg.lstsq(A[:, free], residual, rcond=None)[0]
-    found = np.clip(found, lower, upper)
-    return found if _holds(rows, _plain(rows, lower, upper), found, target) else x
+    return np.clip(found, lower, upper)

@@ -7,9 +7,9 @@ spec, "Solver and execution contract": "Flows that no solver determines follow t
 endpoints"). A flow that shares a store with one of its flows is in the same calculation
 (`plan.connect`), so that the books of the store still balance: the solver sees it through its
 bounds and the rows that it meets (a junction passes no more than its pipes can carry), and its
-claim keeps its level of local sharing after the solver's own claims, so local sharing splits what
-arrives. A relation or an objective of the solver that reads such a flow is refused by name: to
-decide who is served, the provider names those rates. The problem of the set at an instant
+claim keeps its place of local sharing, so local sharing splits what arrives. A relation or an
+objective of the solver that reads such a flow is refused by name: to decide who is served, the
+provider names those rates. The problem of the set at an instant
 (`Former`) is formed from the program by the rules of the solve library (`napkin/engine/solve/`):
 
 - **unknowns**: each flow of the set, with its request as its target and one canonical unit of its
@@ -26,15 +26,20 @@ decide who is served, the provider names those rates. The problem of the set at 
   of `constraints`;
 - **objectives**, in written order, maximized ones negated;
 - **claims**: each positive request of a flow (a route's in the direction of its sign, a flow with
-  legs' on its fraction, as a request of one) and of an endpoint. The solver's claims, of the flows
-  that it names and of an endpoint all of whose connections it names, share across endpoints on one
-  level, first; an endpoint's `priority(...)` orders its flows' claims in tiers (`network.layers`),
-  and an endpoint's claim is in the first. Every other claim follows, at its tier of local sharing:
-  its level (`network.claim_level`, from the supply and the room of its stores), then its layer. The
-  preferred classes of an endpoint that has a request carry it first (spec: "A preferred route has
-  first access to useful requested work, up to the outstanding claim it serves"): after every tier,
-  as much of the request as can be on its first class, then on its first two, and so on, each a
-  claim alone in a tier of its own.
+  legs' on its fraction, as a request of one) and of an endpoint, in tiers by one rule with local
+  sharing (`network.claim_order`): the endpoints' rules rank every claim, named or not (an
+  endpoint's `priority(...)` orders its flows' claims, `network.layers`, and its own claim is in the
+  first layer), and the solver's own sharing acts only among the claims that they leave equal. A
+  claim that shares an endpoint with a claim that the solver does not determine, directly or
+  through others, keeps its tier of local sharing: its level (from the supply and the room of its
+  stores, through the connections that can carry flow) and its layer. The solver's own claims share
+  across endpoints: their level passes on across the solver's connections that no endpoint ranks,
+  so a solver of the four requested rates of the spec's junctions gives A, B and C 1/3 each, while
+  B and C, which an onward pipe ranked after A serves, wait for A. The preferred classes of an
+  endpoint that has a request carry it first (spec: "A preferred route has first access to useful
+  requested work, up to the outstanding claim it serves"): after every tier, as much of the request
+  as can be on its first class, then on its first two, and so on, each a claim alone in a tier of
+  its own.
 
 The expressions of the solver read its unknowns as symbols (`Affine`): a formula, a reduction or a
 dynamic read that reads an unknown is expanded where it is read, a keyed read whose key and keys are
@@ -66,6 +71,9 @@ integrator, in a set of at most `MOVING` stores; a larger one stops by name (D3)
 
 The answer is polished (`polished`): put exactly on the bounds and rows that it holds to the
 library's tolerance, so that at a vertex its numbers are the vertex's, as exact arithmetic gives.
+The polish, and the clip to the bounds, are candidates (`published`): one takes the solver's answer's
+place only where it passes the solve's end checks and is no worse on any rank
+(`solve.Answer.admits`), and the solver's checked answer is published otherwise.
 
 One `solve.Solver` serves each declared solver for the whole run (`Ways.kept`): its HiGHS instance
 follows the problem by the keys of its unknowns and rows, so members that join and leave the set add
@@ -106,10 +114,9 @@ from .network import (
     OUT,
     ROUTE,
     SIDES,
-    claim_level,
+    Claim,
+    claim_order,
     network_of,
-    room_depths,
-    supply_depths,
 )
 from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE
 from .reads import lazily
@@ -232,26 +239,22 @@ class Former:
                 f'{self.connections[k].name}: a capacity that is {capacity[k]:g} at {t:g} h'
             )
         self.requests = requests
-        local = claim_level(net, supply_depths(net, lower), room_depths(net, lower, upper))
+        ends = self._ends(t)
+        # The connections that can carry flow at t: the structure that the order of the claims reads.
+        carries = capacity > 0
+        for (side, s), (_, cap) in ends.items():
+            if cap is not None and not cap > 0:
+                carries[net.ends[side].of(s)] = False
+        legs = net.roles == LEG
+        carries[legs] &= requests[legs] > 0
+        layer = net.layers(carries)  # the priority layers among the connections that can carry flow
+        classes = net.ranking(carries)
 
-        def level(connections):
-            """The level of local sharing of a claim of a flow that the solver does not name."""
-            try:
-                return local(connections)
-            except SimulationError as ring:
-                raise SimulationError(
-                    f'{ring}; the solver {declared.id} does not name every flow there, and a flow that '
-                    'it does not name keeps local sharing: name them in its solve_for to decide them'
-                ) from None
+        def claim(f, connections):
+            """A flow's claim as the order reads it (`network.Claim`)."""
+            return Claim(tuple(connections), None, int(layer[f]), net.flows[f] in self.named)
 
-        def place(f, connections):
-            """The place of a flow's claim in the order: the solver's claims on one level, by their
-            layer; a claim of a flow that it does not name at its level of local sharing after them."""
-            if net.flows[f] in self.named:
-                return (0, 0, int(net.layer[f]))
-            return (1, level(connections), int(net.layer[f]))
-
-        claims = []  # (terms, request, place in the order)
+        claims, order = [], []  # (terms, request) of each claim, and each claim as the order reads it
         for f, flow in enumerate(net.flows):
             mine = net.conns.of(f).tolist() if not net.plain else [f]
             kind = int(net.kinds[f])
@@ -271,7 +274,8 @@ class Former:
                             )
                         )
                 if asks:
-                    claims.append(({column: 1.0}, 1.0, place(f, mine)))
+                    claims.append(({column: 1.0}, 1.0))
+                    order.append(claim(f, mine))
                 self.cols[f'{flow}.served_fraction'] = column
                 continue
             if kind == ROUTE:
@@ -281,18 +285,20 @@ class Former:
                 cap = capacity[mine[0]]
                 column = problem.unknown(('flow', flow), -cap, cap, FLOW, signed)
                 if signed != 0:
-                    claims.append(({column: 1.0 if signed > 0 else -1.0}, abs(signed), place(f, mine)))
+                    claims.append(({column: 1.0 if signed > 0 else -1.0}, abs(signed)))
+                    order.append(claim(f, mine))
             else:
                 column = problem.unknown(
                     ('flow', flow), 0.0, capacity[mine[0]], FLOW, float(requests[mine[0]])
                 )
                 if requests[mine[0]] > 0:
-                    claims.append(({column: 1.0}, float(requests[mine[0]]), place(f, mine)))
+                    claims.append(({column: 1.0}, float(requests[mine[0]])))
+                    order.append(claim(f, mine))
             self.cols[f'{flow}.actual_rate'] = column
         for name in self.connected.results:
             self.cols[name] = self._result(name)
         preferred = []  # (the place of the endpoint in the oracle's order, terms, amount)
-        for (side, s), (wanted, cap) in self._ends(t).items():
+        for (side, s), (wanted, cap) in ends.items():
             store = net.stores[s]
             here = net.ends[side].of(s).tolist()
             total = self._total(here)
@@ -304,18 +310,17 @@ class Former:
                         f'{store}.{SIDES[side]}.request with a route at that endpoint, in the solver '
                         f'{declared.id}: a request on the positive parts of a route is not convex'
                     )
-                # An endpoint's claim is in the first layer: the solver's when it determines
-                # every connection of the endpoint, else at its level of local sharing.
-                if all(net.flows[int(net.of[c])] in self.named for c in here):
-                    claims.append((total.terms, wanted, (0, 0, 1)))
-                else:
-                    claims.append((total.terms, wanted, (1, level(here), 1)))
+                # An endpoint's claim is in the first layer; it is the solver's when the solver
+                # determines every connection of the endpoint that can carry flow.
+                claims.append((total.terms, wanted))
+                mine = all(net.flows[int(net.of[c])] in self.named for c in here if carries[c])
+                order.append(Claim(tuple(here), (side, s), 1, mine))
                 # The preferred routes of the aggregate request carry it first, class after class
                 # (spec: "A preferred route has first access to useful requested work, up to the
                 # outstanding claim it serves"): as much of it as can be on the first class, then on
                 # the first two, after every tier of fair sharing.
                 carried = Affine()
-                for members in net.classes.get((side, s), ())[:-1]:
+                for members in classes.get((side, s), ())[:-1]:
                     carried = carried.plus(self._total(list(members)))
                     preferred.append(((self._first_touch(s), side), dict(carried.terms), wanted))
         for s, store in enumerate(net.stores):
@@ -363,14 +368,28 @@ class Former:
         )
         for terms in objectives:
             problem.minimize(made(terms))
-        tiers = {key: k for k, key in enumerate(sorted({key for _, _, key in claims}))}
-        for terms, wanted, key in claims:
+        places = self._order(lower, upper, carries, order)
+        tiers = {key: k for k, key in enumerate(sorted(set(places)))}
+        for (terms, wanted), key in zip(claims, places):
             problem.claim(made(terms), wanted, tiers[key])
         # Each preferred class is a tier of its own after the others, in the order in which the
         # oracle meets the endpoints: one claim alone in a tier is served as far as it can be.
         for k, (_, terms, wanted) in enumerate(sorted(preferred, key=lambda item: item[0])):
             problem.claim(made(terms), wanted, len(tiers) + k)
         return problem
+
+    def _order(self, lower, upper, carries, order):
+        """The place of each claim in the selection order (`network.claim_order`): the endpoints'
+        rules rank every claim, and the solver's own sharing acts only among the claims that they
+        leave equal. A ring that local sharing reads, among flows that the solver does not name, fails
+        with what to name."""
+        try:
+            return claim_order(self.net, lower, upper, carries, order)
+        except SimulationError as ring:
+            raise SimulationError(
+                f'{ring}; the solver {self.declared.id} does not name every flow there, and a flow that '
+                'it does not name keeps local sharing: name them in its solve_for to decide them'
+            ) from None
 
     def _first_touch(self, s):
         """The place of a store in the order in which the oracle meets the stores of a problem: by
@@ -789,7 +808,7 @@ class DeclaredWay:
             raise SimulationError(
                 f'the solver {declared.id} cannot answer at t = {t:g} h: {failure}'
             ) from None
-        return np.clip(polished(arrays, found.x, found.levels), arrays.lower, arrays.upper)
+        return published(arrays, found)
 
     def _values(self, arrays, x):
         """(the value of each flow, {result: value}) of an answer. The unknowns of a problem do not
@@ -1277,6 +1296,20 @@ class _Asked:
         self.request = request
 
 
+def published(arrays, found):
+    """The answer that a solve publishes: its polish (`polished`) within the bounds, else the
+    library's answer within the bounds, else the library's answer as it is. Each change of the
+    answer after the solve is a candidate that takes its place only if it passes the solve's own end
+    checks and is no worse on any rank (`solve.Answer.admits`: each kept optimum and each objective
+    against the answer's, each claim's served fraction against its fair level and the answer's,
+    every row and bound), and a candidate that fails is dropped."""
+    for answer in (polished(arrays, found.x, found.levels), found.x):
+        candidate = np.clip(answer, arrays.lower, arrays.upper)
+        if found.admits(candidate):
+            return candidate
+    return found.x
+
+
 def polished(arrays, x, levels):
     """The answer put exactly on the bounds and rows that it holds to within `NEAR` of their own
     size, its claims that fair sharing held together at one level on one fraction, and its claims
@@ -1291,16 +1324,17 @@ def polished(arrays, x, levels):
     step may take. In exact arithmetic the claims that one program of fair sharing holds rest on one
     level, which the rows that bind them give, and a claim served in full that is served no more
     rests on its request. So at a vertex the polished answer has the numbers of the vertex, and an
-    event time that follows from its rates is what exact arithmetic gives. An answer that the polish
-    would make miss a row or a bound by more than the library's tolerance, or serve a claim below its
-    level by more than `NEAR`, is kept as it is.
+    event time that follows from its rates is what exact arithmetic gives. The polished answer is a
+    candidate: `published` gives it only where it passes the solve's end checks.
 
     Each unknown is near a bound by its own size (`_sizes`, at most the width of its interval), so
     that an idle pipe whose capacity is 1e-7 L/h stays at zero, not at its capacity; and a flow that
     the library serves in full keeps its request, which its claim's row then holds exactly, rather
-    than a bound near it (`_served`): a requested delivery of 1e-7 L/h is no rounding of zero. A row
-    is near its side by the sizes of its own terms, and a row that is an equality, such as the books
-    of a store held at both bounds, always holds exactly."""
+    than a bound near it (`_served`): a requested delivery of 1e-7 L/h is no rounding of zero. So too
+    the terms of a claim served in full that its terms on their bounds would serve short keep their
+    values (`_starved`): a delivery of 5e-7 L/h split between two pipes is none either. A row is near
+    its side by the sizes of its own terms, and a row that is an equality, such as the books of a
+    store held at both bounds, always holds exactly."""
     x = np.array(x, dtype=float)
     lower, upper = arrays.lower, arrays.upper
     size = _sizes(arrays)
@@ -1308,6 +1342,8 @@ def polished(arrays, x, levels):
     kept = _served(arrays, x, levels)
     low = np.isfinite(lower) & (np.abs(x - lower) <= NEAR * size) & ~kept
     high = np.isfinite(upper) & (np.abs(x - upper) <= NEAR * size) & ~low & ~kept
+    kept = _starved(arrays, x, levels, low, high)
+    low, high = low & ~kept, high & ~kept
     found = x.copy()
     found[low], found[high] = lower[low], upper[high]
     blocks, sides = [], []
@@ -1354,11 +1390,25 @@ def polished(arrays, x, levels):
             except RuntimeError:  # a singular system: the answer stays as the library gave it
                 return x
             found[free] += scale * move
-    found = arrays.positive_parts(found)
-    if _missed(arrays, found, size) > max(_missed(arrays, x, size), 1e-9):
-        return x
-    if len(levels) and _short(arrays, found, levels, size) > max(_short(arrays, x, levels, size), NEAR):
-        return x  # the polish would take a claim below its level by more than it moves a bound
+    return arrays.positive_parts(found)
+
+
+def _starved(arrays, x, levels, low, high):
+    """The unknowns that are terms of a claim that the library serves in full, all of whose terms
+    the polish would put on a bound (`low`, `high`) where they would serve it short: the polish
+    leaves them off their bounds, and the claim's row holds them on its request."""
+    found = np.zeros(arrays.n, dtype=bool)
+    if not len(levels):
+        return found
+    F = sp.csr_array(arrays.F)
+    served = (F @ x) / arrays.request
+    on = np.where(low, arrays.lower, np.where(high, arrays.upper, x))
+    short = (F @ on) / arrays.request < 1.0 - NEAR
+    snapped = low | high
+    for i in np.flatnonzero((levels >= 1.0) & (served <= 1.0 + NEAR) & short).tolist():
+        terms = F.indices[F.indptr[i] : F.indptr[i + 1]]
+        if snapped[terms].all():
+            found[terms] = True
     return found
 
 
@@ -1380,29 +1430,6 @@ def _served(arrays, x, levels):
         alone = np.flatnonzero((np.diff(F.indptr) == 1) & (levels >= 1.0) & (served <= 1.0 + NEAR))
         found[F.indices[F.indptr[alone]]] = True
     return found
-
-
-def _short(arrays, x, levels, size):
-    """How far an answer serves its claims below their fair levels, in units of the own sizes of
-    their terms, as `_missed` measures bounds and rows: a level is known to the library's precision
-    in those units, not in served fractions (a claim held at 1.8e-6 of a request of 0.5 L/h, which
-    exact arithmetic serves nothing, is 9e-7 L/h of slack)."""
-    F = sp.csr_array(arrays.F)
-    served = (F @ x) / arrays.request
-    short = (np.minimum(levels, 1.0) - np.minimum(served, 1.0)) * arrays.request / (abs(F) @ size)
-    return float(short.max(initial=0.0))
-
-
-def _missed(arrays, x, size):
-    """How far an answer misses its bounds and rows, each relative to the own sizes of its unknowns."""
-    outside = np.maximum(arrays.lower - x, x - arrays.upper) / size
-    worst = float(outside.max(initial=0.0))
-    if arrays.A.shape[0]:
-        value = arrays.A @ x
-        own = abs(arrays.A) @ size
-        missed = np.maximum(arrays.row_lower - value, value - arrays.row_upper) / np.where(own > 0, own, 1.0)
-        worst = max(worst, float(missed.max(initial=0.0)))
-    return worst
 
 
 def _matrix(rows, width):

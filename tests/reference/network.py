@@ -18,14 +18,20 @@ fills (one more than the deepest full store that their outflows fill, 0 for none
 shares on the levels of supply). Inside one level the fair-sharing rank of the selection order
 applies.
 
-**A declared solver decides only what it names** (the owner's rule after G2). The claims of the
-rates and fractions that it determines share across endpoints on one level, before any other claim
-of its calculation: a solver over the four requesting flows of the junctions gives A, B and C 1/3
-each. A flow of the calculation that it does not name keeps the local sharing of its endpoints: the
-solver sees it through its bounds and the rows that it meets, so that the books still balance, and
-its claim keeps its level of local sharing after the solver's claims. A solver that names only the
-feed of the junctions sends its 1 L/h, which the junctions split 1/2, 1/4 and 1/4. A relation or an
-objective of the solver that reads such a flow is refused: to decide who is served, it names them.
+**A declared solver decides only what it names** (the owner's rule after G2). An endpoint's rule ranks
+every claim of its flows, named or not, and the solver's own sharing acts only among the claims that
+the endpoints' rules leave equal (`_places`). A flow of the calculation that the solver does not name
+keeps the local sharing of its endpoints: the solver sees it through its bounds and the rows that it
+meets, so that the books still balance, and its claim keeps its place of local sharing, as does every
+claim that shares an endpoint with it. The solver's own claims share across endpoints: a solver over
+the four requesting flows of the junctions gives A, B and C 1/3 each; one that names only the feed
+leaves 1/2, 1/4 and 1/4; and where the first junction ranks A ahead of the onward pipe, B and C,
+which that pipe serves, wait for A. A relation or an objective of the solver that reads a flow that it
+does not name is refused: to decide who is served, it names them.
+
+The structure of an instant is that of the connections that can carry flow: one of capacity zero,
+at its flow or at an endpoint, and a leg that asks nothing, pass neither supply nor room, close no
+ring and rank in no class.
 
 `motion` gives the level of each store and the rate of each flow as polynomials in the time after
 the moment, and the times at which a rate input or a store bound asks for a new settlement.
@@ -334,9 +340,10 @@ def _held(view, cell, which, comp):
     return _at_bound(view, cell, which) and (cell, which) not in comp.released
 
 
-def _supply_depths(view, at_store, comp):
+def _supply_depths(view, at_store, comp, shut):
     """The supply depth of a store (None is SOURCE): 0 when it can supply from what it holds, and
-    for a store held at its lower bound one more than the deepest store that feeds it."""
+    for a store held at its lower bound one more than the deepest store that feeds it through a
+    connection that can carry flow (not in `shut`)."""
     depth = {}
 
     def of(cell, path=()):
@@ -348,26 +355,29 @@ def _supply_depths(view, at_store, comp):
                 'settles local sharing in the direction of supply'
             )
         if cell not in depth:
-            feeders = [c.src for c, _ in at_store[cell]['inflow']]
+            feeders = [c.src for c, _ in at_store[cell]['inflow'] if c not in shut]
             depth[cell] = 1 + max((of(s, (*path, cell)) for s in feeders), default=0)
         return depth[cell]
 
     return of
 
 
-def _room_depths(view, at_store, comp):
+def _full(view, cell, comp):
+    """Whether a store is full: held at its upper bound and not at its lower bound."""
+    return cell is not None and _held(view, cell, 'hi', comp) and not _held(view, cell, 'lo', comp)
+
+
+def _room_depths(view, at_store, comp, shut):
     """The room depth of a store (None is SINK). A full store, at its upper bound and not at its
-    lower bound, passes on the room that its outflows make: its depth is one more than that of the
-    deepest full store that its outflows fill, and 0 when they fill none, so that one full store
-    shares on the levels of supply. Any other store is at depth 0: a store with room, and a store
-    held at both bounds, which local sharing settles in the direction of supply."""
+    lower bound, passes on the room that its outflows make through connections that can carry flow
+    (not in `shut`): its depth is one more than that of the deepest full store that they fill, and 0
+    when they fill none, so that one full store shares on the levels of supply. Any other store is at
+    depth 0: a store with room, and a store held at both bounds, which local sharing settles in the
+    direction of supply."""
     depth = {}
 
-    def full(cell):
-        return cell is not None and _held(view, cell, 'hi', comp) and not _held(view, cell, 'lo', comp)
-
     def of(cell, path=()):
-        if not full(cell):
+        if not _full(view, cell, comp):
             return 0
         if cell in path:
             raise NotCovered(
@@ -375,7 +385,9 @@ def _room_depths(view, at_store, comp):
                 'room against the direction of flow'
             )
         if cell not in depth:
-            fills = [c.dst for c, _ in at_store[cell]['outflow'] if full(c.dst)]
+            fills = [
+                c.dst for c, _ in at_store[cell]['outflow'] if c not in shut and _full(view, c.dst, comp)
+            ]
             depth[cell] = max((1 + of(d, (*path, cell)) for d in fills), default=0)
         return depth[cell]
 
@@ -395,6 +407,10 @@ def assemble(run, comp, ev, follow=None):
     leg_request = {}
     at_store = {}
     nets = {}  # the net rate of each store, inflow less outflow
+    shut = (
+        set()
+    )  # the connections that cannot carry flow at this instant: a capacity of zero, a leg that asks nothing
+    ranked = set()  # the endpoints that rank their connections in more than one class
 
     def fixed(value, what, flow=None):
         value = plain(value)
@@ -424,6 +440,8 @@ def assemble(run, comp, ev, follow=None):
                 if r < 0 or (cap is not None and cap < 0):
                     raise RunFailed(f'{one.label}: a request or a capacity below zero')
                 leg_request[one] = r
+                if r == 0 or cap == 0:
+                    shut.add(one)
                 if cap is not None:
                     rows.append(relation(x * r, '<=', cap))
             asks = any(leg_request[one] > 0 for one in f.legs.values())
@@ -438,6 +456,8 @@ def assemble(run, comp, ev, follow=None):
             req = setting(fe, f, 'request', f if f.kind == 'directed' else None) or Fraction(0)
             if cap is not None and cap < 0:
                 raise RunFailed(f'{f.label}: a capacity below zero')
+            if cap == 0:
+                shut.update(connections(f))
             if f.kind == 'directed':
                 if req < 0:
                     raise RunFailed(f'{f.label}: a request below zero')
@@ -473,6 +493,11 @@ def assemble(run, comp, ev, follow=None):
             return Lin.var(('rate', f)) if c.name == 'forward' else Lin()
         return term(c, f)
 
+    for cell, sides in at_store.items():  # an endpoint of capacity zero closes its connections
+        owner_ev = ev.fork(run.scope_of(cell.owner))
+        for side in ('outflow', 'inflow'):
+            if setting(owner_ev, End(cell, side), 'capacity') == 0:
+                shut.update(c for c, _ in sides[side])
     for cell, sides in at_store.items():
         level = view.cells[cell]
         lo, hi = view.bounds.get(cell, (None, None))
@@ -498,7 +523,8 @@ def assemble(run, comp, ev, follow=None):
             if req > 0:
                 if total.parts:
                     raise NotCovered(f'{label(end)}.request with a reversible flow at that endpoint')
-                mine = all(var_of(f) in decided for _, f in here)
+                # the solver's where it determines every connection of the endpoint that can carry flow
+                mine = all(var_of(f) in decided for c, f in here if c not in shut)
                 claims.append((end, total, req, [c for c, _ in here], mine))
             alloc = owner_ev.setting(Cell(end, 'allocation'))
             if alloc is not None and alloc.classes:
@@ -510,10 +536,13 @@ def assemble(run, comp, ev, follow=None):
                                 f'priority(...) at {label(end)} names {label(c)}, which is not a connection '
                                 'of that endpoint; name the leg of that direction'
                             )
-                listed = [tuple(c for c in cls if c in present) for cls in alloc.classes]
-                rest = tuple(c for c, _ in here if not any(c in cls for cls in listed))
+                # A connection that cannot carry flow is not eligible, and ranks nothing.
+                listed = [tuple(c for c in cls if c in present and c not in shut) for cls in alloc.classes]
+                rest = tuple(c for c, _ in here if c not in shut and not any(c in cls for cls in listed))
                 classes = [cls for cls in listed if cls] + ([rest] if rest else [])
                 rankings.append([{present[c] for c in cls} for cls in classes])
+                if len(classes) > 1:
+                    ranked.add(end)
                 if req > 0:  # the preferred routes carry the aggregate request first
                     carried = Lin()
                     for cls in classes[:-1]:
@@ -560,14 +589,13 @@ def assemble(run, comp, ev, follow=None):
                 _refuse_undecided(sol, v, decided, show(e))
                 objectives.append((v if sense == 'min' else -v, show(e)))
 
-    # The claims of what the solver determines share on one level, first; every other claim keeps
-    # the order of local sharing after them (the owner's rule after G2).
+    # The endpoints' rules rank every claim, and the solver's own sharing acts only among the claims
+    # that they leave equal (the owner's rule after G2, `_places`).
     tiers = {}
     layer = _layers(comp.flows, rankings)
-    level = _levels(view, at_store, comp)
-    for node, amount, r, conns, mine in claims:
-        place = (0, 0) if mine else (1, level(conns))
-        tiers.setdefault((*place, layer.get(node, 1)), []).append((amount, r))
+    places = _places(view, at_store, comp, claims, shut, ranked, layer)
+    for (_, amount, r, _, _), place in zip(claims, places):
+        tiers.setdefault(place, []).append((amount, r))
     tiers = [tiers[k] for k in sorted(tiers)]
     signature = (
         tuple(sorted((r.op, _canon(r.lin)) for r in rows)),
@@ -588,12 +616,131 @@ def assemble(run, comp, ev, follow=None):
     }
 
 
-def _levels(view, at_store, comp):
+def _levels(view, at_store, comp, shut):
     """How a claim is placed in the order of local sharing: a function of the connections that
     serve it, the largest of the supply depth of the stores that they draw from and the room depth
     of the stores that they fill. A depth is found only for a claim that asks for it."""
-    supply, room = _supply_depths(view, at_store, comp), _room_depths(view, at_store, comp)
+    supply, room = _supply_depths(view, at_store, comp, shut), _room_depths(view, at_store, comp, shut)
     return lambda conns: max((max(supply(c.src), room(c.dst)) for c in conns), default=0)
+
+
+def _places(view, at_store, comp, claims, shut, ranked, layer):
+    """The place of each claim in the order, as (level, layer) (the owner's rule after G2: an
+    endpoint's rule ranks every claim of its flows, named or not, and the solver's own sharing acts
+    only among the claims that the endpoints' rules leave equal).
+
+    Two claims that rank at one endpoint are linked, and so are the claims that a chain of such links
+    joins. Where a chain holds a claim that the solver does not determine, each of its claims keeps
+    its place of local sharing: its level (`_levels`) and its layer. The other claims are the
+    solver's: a claim waits for the decisions of local sharing that its stores' supply and room come
+    through, as there, and not for the solver's own connections, which pass the level of what they
+    carry on, except where an endpoint ranks one of them: there what it serves waits, as in local
+    sharing. The stores of a ring of the solver's connections share one level: the solver decides the
+    ring together. A claim reads all this through its connections that can carry flow; one that has
+    none is served nothing, and takes the first place."""
+    local = _levels(view, at_store, comp, shut)
+    supply = _supply_depths(view, at_store, comp, shut)
+    room = _room_depths(view, at_store, comp, shut)
+
+    def ends(node, conns):
+        if isinstance(node, End):
+            return {node}
+        found = {End(c.src, 'outflow') for c in conns if c.src is not None}
+        return found | {End(c.dst, 'inflow') for c in conns if c.dst is not None}
+
+    chain = {}  # each endpoint, and each claim, to the chain that holds it
+
+    def root(x):
+        while chain.get(x, x) != x:
+            x = chain[x]
+        return x
+
+    # A claim reads the structure through its connections that can carry flow; one that has none is
+    # served nothing, takes the first place and links nothing.
+    open_ = [[c for c in conns if c not in shut] for _, _, _, conns, _ in claims]
+    live = [bool(mine) for mine in open_]
+    for k, (node, _, _, _, _) in enumerate(claims):
+        for end in ends(node, open_[k]) if live[k] else ():
+            chain[root(('claim', k))] = root(end)
+    undecided = {root(('claim', k)) for k, claim in enumerate(claims) if live[k] and not claim[4]}
+    keeps = [root(('claim', k)) in undecided for k in range(len(claims))]
+    held = {
+        end for k, (node, *_) in enumerate(claims) if keeps[k] and live[k] for end in ends(node, open_[k])
+    }
+
+    def own(c):
+        """None where local sharing decides what connection c passes; else whether it is ranked."""
+        mine = ends(None, [c])
+        return None if mine & held else bool(mine & ranked)
+
+    def passing(active, inputs):
+        """The level of each active store: the largest of its inputs, a store's level plus a step or
+        a value; the stores of a ring share the largest of the inputs from outside it."""
+        cells = [cell for cell in at_store if active(cell)]
+        onward = {
+            cell: [item for kind, item, _ in inputs(cell) if kind == 'store' and active(item)]
+            for cell in cells
+        }
+        reach = {}
+        for cell in cells:
+            seen, stack = set(), [cell]
+            while stack:
+                for item in onward[stack.pop()]:
+                    if item not in seen:
+                        seen.add(item)
+                        stack.append(item)
+            reach[cell] = seen
+        ring = {cell: {cell} | {other for other in reach[cell] if cell in reach[other]} for cell in cells}
+        level = {}
+        for _ in range(len(cells) + 1):  # the rings form no cycle, so this ends
+            changed = False
+            for cell in cells:
+                best = 0
+                for member in ring[cell]:
+                    for kind, item, step in inputs(member):
+                        if kind == 'value':
+                            best = max(best, item + step)
+                        elif not (active(item) and item in ring[cell]):
+                            best = max(best, (level.get(item, 0) if active(item) else 0) + step)
+                if best != level.get(cell, 0):
+                    level[cell], changed = best, True
+            if not changed:
+                break
+        return lambda cell: level.get(cell, 0) if cell is not None and active(cell) else 0
+
+    def feeds(cell):
+        for c, _ in at_store[cell]['inflow']:
+            if c in shut:
+                continue
+            mine = own(c)
+            yield ('value', supply(c.src) + 1, 0) if mine is None else ('store', c.src, int(mine))
+
+    def drains(cell):
+        for c, _ in at_store[cell]['outflow']:
+            if c in shut:
+                continue
+            mine, step = own(c), int(_full(view, c.dst, comp))
+            if mine is None:
+                yield ('value', room(c.dst) + 1 if step else 0, 0)
+            elif step:
+                yield ('store', c.dst, int(mine))
+
+    def kept(k):
+        return local(open_[k]) if live[k] else 0
+
+    if all(keeps[k] or not live[k] for k in range(len(claims))):
+        return [(kept(k), layer.get(node, 1)) for k, (node, *_) in enumerate(claims)]
+    passed_supply = passing(lambda cell: cell is not None and _held(view, cell, 'lo', comp), feeds)
+    passed_room = passing(lambda cell: _full(view, cell, comp), drains)
+    return [
+        (
+            kept(k)
+            if keeps[k] or not live[k]
+            else max(max(passed_supply(c.src), passed_room(c.dst)) for c in open_[k]),
+            layer.get(node, 1),
+        )
+        for k, (node, *_) in enumerate(claims)
+    ]
 
 
 def _refuse_undecided(sol, value, decided, text):
