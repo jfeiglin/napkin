@@ -413,7 +413,11 @@ def test_a_member_keeps_its_title_and_a_change_replaces_it(tmp_path):
     variant = EAST.replace('change second:\n', 'change second:\n    title "The second tank"\n')
     folder = package(tmp_path, {'common.scn': common, 'variants/east/model.scn': variant})
     main = load_scenario(folder / 'model.scn').declared
-    assert (main.title('first'), main.title('second'), main.part('second').title) == ('The first tank', None, None)
+    assert (main.title('first'), main.title('second'), main.part('second').title) == (
+        'The first tank',
+        None,
+        None,
+    )
     east = load_scenario(folder / 'variants/east/model.scn').declared
     assert (east.title('first'), east.title('second')) == ('The first tank', 'The second tank')
     assert east.part('second').title == 'The second tank'
@@ -431,7 +435,11 @@ def test_a_change_that_sets_a_role_is_refused_at_its_line(tmp_path):
     variant = EAST.replace('change second:\n', 'change second:\n    role operator\n')
     folder = package(tmp_path, {'variants/east/model.scn': variant})
     (problem,) = problems(folder / 'variants/east/model.scn')
-    assert (problem.code, problem.file, problem.line) == ('role', (folder / 'variants/east/model.scn').as_posix(), 9)
+    assert (problem.code, problem.file, problem.line) == (
+        'role',
+        (folder / 'variants/east/model.scn').as_posix(),
+        9,
+    )
 
 
 # ---- the hash of a model --------------------------------------------------------------------------

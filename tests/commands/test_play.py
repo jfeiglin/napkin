@@ -131,6 +131,26 @@ def test_play_with_the_order_changed_to_send_sends_the_spare_and_counts_no_wait(
     assert table[-1] == f'edit at 0 h, before {SWITCH}: {ORDER} WAIT -> SEND'
 
 
+def test_play_gives_the_title_of_each_member_that_a_line_names(tmp_path, capsys, monkeypatch):
+    """A member's title follows its name, in brackets, in the stop's line, in the rows of the values,
+    and in the lines of an edit (PLAN, change 19)."""
+    titled = DISPATCH.replace('depot:\n', 'depot:\n    title "North depot"\n')
+    model = package(tmp_path / 'dispatch', titled)
+    found = played(capsys, monkeypatch, model, '--break', SWITCH, typed=f'{ORDER} = SEND\ngo\n')
+    assert found.code == 0, found.err
+    lines = found.out.splitlines()
+    stop = next(k for k, line in enumerate(lines) if line.startswith('Stop 1 at 0 h: '))
+    assert lines[stop].endswith(', in depot.request_pump#0 of depot (North depot).')
+    rows = [cells(line) for line in lines[stop + 3 : stop + 6]]
+    assert [row[0] for row in rows] == [
+        'depot.spares (North depot)',
+        'depot.waits (North depot)',
+        f'{ORDER} (North depot)',
+    ]
+    assert f'  {ORDER} (North depot): WAIT -> SEND' in lines
+    assert lines[-1] == f'edit at 0 h, before {SWITCH}: {ORDER} (North depot) WAIT -> SEND'
+
+
 def in_a_fresh_process(model, path, typed):
     """`python -m napkin play MODEL --from PATH` in a fresh process, reading the lines of `typed`."""
     environment = {**os.environ, 'PYTHONHASHSEED': '4321', 'NAPKIN_STORE': 'off'}

@@ -5,8 +5,10 @@ compiled program (an event, a stage or a statement, for every occurrence or for 
 occurrence: `napkin/program/checkpoint.py`), runs to the first stop (`advance`), shows the checkpoint
 (`view`: where the run stopped, in which occurrence, what runs next and the values that the caller
 asks for, each in its declared unit with its label), makes the caller's edits there (`edit`) and goes
-on, to the next stop or to the end. The engine stops, edits and resumes
-(`napkin/engine/timeline/checkpoints.py`) and checks each edit; it knows no player and no permission.
+on, to the next stop or to the end. A member's title (`title "DC Water"`, PLAN change 19) comes from
+the side table, for a caller that names the member (`title`, `View.title`, `Shown.title`). The
+engine stops, edits and resumes (`napkin/engine/timeline/checkpoints.py`) and checks each edit; it
+knows no player and no permission.
 What a stop shows, and which edits a person may make, is the caller's: `napkin play` is one caller.
 
 **The log** (`Log`) is what a session did: its breakpoints, each stop at which it waited, and each
@@ -72,8 +74,9 @@ class Log:
 class Shown:
     """A value at a stop: its path, its value in its declared unit (a number, a yes/no, an enum member,
     a text, a link's member, or `Unavailable` with its reason), its unit (`''` for none), its label
-    (None for none), whether an edit can change it (a live stored value), and the members of its
-    enum (None for a value of no enum)."""
+    (None for none), whether an edit can change it (a live stored value), the members of its enum
+    (None for a value of no enum), and the title of its member (of an occurrence's value, its
+    receiver's; None for none and for a value of the root)."""
 
     path: str
     value: Any
@@ -81,6 +84,7 @@ class Shown:
     label: str | None
     editable: bool
     choices: tuple[str, ...] | None = None
+    title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -89,9 +93,9 @@ class View:
     before, the occurrence and its member, the time, the round, its hit and the stage that runs again
     from its start), the place of that location in the source (None without a side table), the
     stages that run next in the round from the one that stopped, as (occurrence, stage), the values
-    asked for, the edits made at this stop, and the trace entries of the draws that the stage made
+    asked for, the edits made at this stop, the trace entries of the draws that the stage made
     before the stop (each with its value as the trace holds it), which it makes again with the same
-    keys when it runs again."""
+    keys when it runs again, and the title of the stop's member (None for none, and in the setup)."""
 
     stop: Stop
     where: Location | None
@@ -99,6 +103,7 @@ class View:
     values: tuple[Shown, ...]
     edits: tuple[Edit, ...]
     drawn: tuple[Entry, ...] = ()
+    title: str | None = None
 
 
 class Session:
@@ -300,7 +305,9 @@ class Session:
             for entry in checkpoint.record.entries('draw')
             if (entry.t, entry.round, entry.owner) == (stop.t, stop.round, stop.owner)
         )
-        return View(stop, self.where(stop.at), state.pending, tuple(values), edits, drawn)
+        return View(
+            stop, self.where(stop.at), state.pending, tuple(values), edits, drawn, self.title(stop.member)
+        )
 
     def where(self, origin):
         """The place of a location in the source (`napkin.program.artifact.Location`: its kind, its
@@ -309,6 +316,12 @@ class Session:
             return self.table.location(origin)
         except KeyError:
             return None
+
+    def title(self, owner):
+        """The title of a member by its id, or of an occurrence's receiver (`depot.request_pump#0` is of
+        `depot`), from the side table; None for none, and for the root (`''`)."""
+        member = owner.rsplit('#', 1)[0].rpartition('.')[0] if '#' in owner else owner
+        return self.table.title(member) if member else None
 
     def shown_paths(self, stop):
         """The paths that a view shows by default at a stop (see `view`)."""
@@ -334,7 +347,7 @@ class Session:
         if isinstance(getattr(part, 'type', None), p.EnumType):
             choices = tuple(self.program.enum(part.type.enum).members)
         label = location.label if location is not None else None
-        return Shown(name_of(key), value, unit, label, editable, choices)
+        return Shown(name_of(key), value, unit, label, editable, choices, self.title(key.owner))
 
 
 def _same(stop, expected, crossing):

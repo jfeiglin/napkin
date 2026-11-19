@@ -9,8 +9,9 @@ its occurrences), a stage (`depot.request_pump.step[0]`) or a statement
 or one occurrence (`...@depot.request_pump#0`). At each stop the command prints the stop's number,
 its time, the location with its kind and its place in the source, the occurrence and what runs next,
 then the values of `--value` (by default those of the stop's member and occurrence), each in its
-declared unit, with what an edit can give it (the members of an enum) and its label. Then it reads
-lines:
+declared unit, with what an edit can give it (the members of an enum) and its label. Wherever a line
+names a member that has a title (`title "DC Water"`), the title follows it in brackets: `dc (DC
+Water)`, `dc.demand (DC Water)`. Then it reads lines:
 
 - `PATH = VALUE` edits a live stored value: a number in the value's declared unit, an enum member,
   `true` or `false`, or a text. The engine checks it, and a refusal is printed with its reason;
@@ -197,21 +198,28 @@ def show(session, paths):
     if view.where is not None:
         place = common.shown(view.where.file) if view.where.file else ''
         where = f' ({view.where.kind}' + (f' at {place}:{view.where.line})' if place else ')')
-    owner = f'in {stop.owner} of {stop.member}' if stop.owner else 'in the setup'
+    owner = f'in {stop.owner} of {titled(stop.member, view.title)}' if stop.owner else 'in the setup'
     print()
     print(f'Stop {stop.hit} at {common.number(stop.t)} h: before {stop.at}{where}, {owner}.')
     print(f'Next: {following(view.next)}.')
     for entry in view.drawn:
         print(f'Drawn in this stage before the stop: {entry.part} = {shown(entry.detail("value"))}.')
     rows = [
-        [item.path, shown(item.value, item.unit), offered(item), item.label or ''] for item in view.values
+        [titled(item.path, item.title), shown(item.value, item.unit), offered(item), item.label or '']
+        for item in view.values
     ]
     for line in common.table(rows) if rows else ():
         print(f'  {line}')
     for edit in view.edits:
         target = edit.target if isinstance(edit.target, str) else path_of(edit.target)
-        print(f'  edited here: {target} = {shown(edit.value)}')
+        owner = edit.target.owner if not isinstance(edit.target, str) else target.rpartition('.')[0]
+        print(f'  edited here: {titled(target, session.title(owner))} = {shown(edit.value)}')
     print(HELP)
+
+
+def titled(name, title):
+    """A name of a member, or a path through one, with the member's title in brackets after it."""
+    return f'{name} ({title})' if title else name
 
 
 def following(pending):
@@ -300,7 +308,7 @@ def answered(session, args):
             except (CheckpointError, KeyError, ValueError) as error:
                 print(f'  error: {error.args[0] if error.args else error}')
                 continue
-            print(f'  {path}: {shown(item.value, item.unit)} -> {shown(new, item.unit)}')
+            print(f'  {titled(path, item.title)}: {shown(item.value, item.unit)} -> {shown(new, item.unit)}')
         elif text:
             print(f'  {text!r} is no command. {HELP}')
     return False
@@ -352,12 +360,14 @@ def ended(model, args, session, configuration, paths, entry):
     for edit in record.entries('edit'):
         # The trace holds an edit in canonical units: the line gives it in the value's own.
         target = edit.detail('target')
-        unit, scale = unit_of(model.program, key_of(model.program, target))
+        key = key_of(model.program, target)
+        unit, scale = unit_of(model.program, key)
         old, new = (edit.detail(name) for name in ('old', 'new'))
         if isinstance(old, int | float) and not isinstance(old, bool):
             old, new = old / scale, new / scale
+        named = titled(target, session.title(key.owner))
         print(
-            f'edit at {common.number(edit.t)} h, before {edit.part}: {target} '
+            f'edit at {common.number(edit.t)} h, before {edit.part}: {named} '
             f'{shown(old, unit)} -> {shown(new, unit)}'
         )
     if found.stopped is not None:

@@ -13,15 +13,27 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   and `/` make the dimension of their result (D12). A bare number takes the declared unit where the
   spec says so: the whole initializer, a bare end of the declaration's range, its scale, the value
   arguments of a distribution that (or whose draw) is the whole initializer, a member's own value and
-  a table cell; and a bare zero beside a value of known unit.
+  a table cell; and a bare zero beside a value of known unit. Two ends of a range compare in one
+  unit, so `[6 h, 1 day]` runs from 6 h to 24 h (`reversed`).
 - **Unit runs.** After a number, a name is a unit while the library has a unit of that name and the
   run has not stopped; the first name that is no unit stops the run, and it and the names after it
   are values (`(2 h) * hour` against `2 h * hour`). The arithmetic is the same either way.
 - **Members and links.** A template (`Place:`) is the schema that its members share; an entity
   written once (`tank:`) is the template of its one member, under its own name. A member is written
-  by hand (`north: Utility`, with its own values and links under it) or is a row of a table. A link
-  (`origin: Place`) names one member, fixed for the run: the member sets it, or the link's
-  initializer names it (`origin = sites.junction`), so the declared model knows each target.
+  by hand (`north: Utility`, with its own values and links under it, and its `title`) or is a row of
+  a table. A link (`origin: Place`) names one member, fixed for the run: the member sets it, or the
+  link's initializer names it (`origin = sites.junction`), so the declared model knows each target.
+- **Titles and roles** (PLAN, change 19 after G0). An entity, a template and a member written by
+  hand may have a `title` ("DC Water"), a label that reports and playback give the member
+  (`DeclaredModel.title`) and no hash covers. A `role` stands under an entity or a template only, for
+  the pictures; an event's, a case's, a member's and a change's belong to the scenario's wrapper (its
+  UI or `brief.toml`), and the parser refuses each by name (`role`).
+- **Cycles** are the members' (change 19). A value that its template reads through other members
+  (`total = this.demand + sum(this.children.total)`) is read, while it is resolved, as its
+  declaration types it (`provisional`); one with no declared type is refused, since its type is not
+  known before its value. `Order` then follows each member's own connections, which the links fix
+  when the model compiles (R-A1-30): a `where` that compares links keeps the members that it names.
+  A cycle is refused with its chain, `a.total reads b.total reads a.total`.
 - **Collections** (`<T>`) are typed with their template and their key: `Template.instances`, a
   literal, `where` (a bare name in its test that is a field of the member is the member's, and it
   must be fixed: an input or a link), `by(field)` (the key) and `.at(x)` (one member, `x` in the
@@ -60,9 +72,10 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   flow, reads only what is above it (D14, `local_order`); a formula may read below. Stages (`after D:`,
   `after D when C:`, the wait `after D`) and gates (`until C`) are steps in order; a stage's
   statements assign, move, start and branch (`if`/`else`, `switch` over an enum with guarded
-  cases). A trigger (`when C:`) has no occurrence: its condition reads the receiver, its captures
-  what is above them, its starts and its reset the captures. The paths of an event's parts are the
-  origins that the program gives them (`grinder.refill.step[0].do[1]`, `.when[0]`).
+  cases, a case of which may do nothing but carry its text, its card). A trigger (`when C:`) has
+  no occurrence: its condition reads the receiver, its captures what is above them, its starts and
+  its reset the captures. The paths of an event's parts are the origins that the program gives them
+  (`grinder.refill.step[0].do[1]`, `.when[0]`).
 - **Writes.** A statement assigns a stored value, a local or a parameter's copy, a formula (with a
   formula) or a distribution (with another), of this, through a link or an entity parameter, of a
   live occurrence, or a setting of a flow or an endpoint. An input, a link, an event and the ends of
@@ -81,7 +94,8 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
 - **Draws.** `d.draw()` of a distribution written in place or held by a value stands where a value
   is captured once (an initializer, a stage, a capture, an argument); a formula and a condition that
   is read again (a gate, a trigger, a reset, an assertion) makes none (`formula_draws`). A
-  distribution's parameters are numbers written in place.
+  distribution's parameters are numbers written in place, which hold its family's rule in one unit
+  (`_broken`: `uniform(min, max)` needs min below max, and `uniform(5 h, 2 h)` is refused).
 - **No player machinery** (item 15 of the plan's changes after G0): `actor.choose(d)` and `sees`
   are refused by name (`choose`, `sees`). A decision is a value stored in a field that a branch
   reads, and a caller that wants another value pauses before the branch and edits the field.
@@ -106,8 +120,8 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   an entity, a template or a member written by hand of an earlier file and gives a value or a link
   that it declares a new initializer, of its kind and type, as a member's own value is (`own`): an
   entity's or a template's declaration takes it, and a member's own line gives way to it; two
-  changes of one value are an error (R-A5-03), and its text, `title`, `role` and records replace
-  those of what it names.
+  changes of one value are an error (R-A5-03), and its text, `title` and records replace those of
+  what it names; it sets no role.
 - **The setup scope's initializers** (`wired`): `clinic.delivery.request = 3 L/h` at the top level is
   the initializer under its declaration, and the tree is read with it there: a value or a setting
   of an entity written once, of a leg or of an endpoint, or a member's own value. A path has one
@@ -4516,8 +4530,10 @@ class Order:
     """The starting values of a model's members follow their dependencies, across members and
     whatever the order of the file (spec, "Model-level initializers follow their value
     dependencies"): a value needs what its initializer reads, its own or its template's, and a
-    formula what it reads. Links are fixed, so each read reaches known members. A cycle has no order
-    and is an error, given at a value on it; mutual links are no cycle.
+    formula what it reads. Links are fixed when the model compiles (R-A1-30), so each read reaches
+    known members, and a `where` that compares links keeps only the members that it names
+    (`decided`). A cycle has no order and is an error, given at a value on it with its chain; mutual
+    links are no cycle, and neither is a template that reads itself through other members.
 
     A node is `(member, value)`, `('', value)` of the top level, or `('*', read)` for a read that is
     the same for every member (`sum(Place.instances.need)`), which is walked once, so a template's

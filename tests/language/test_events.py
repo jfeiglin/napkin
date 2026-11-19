@@ -746,7 +746,11 @@ def test_a_case_with_only_its_text_does_nothing_and_keeps_its_text_as_its_card(o
     its text as its card, and the run that takes it leaves the gate closed, while OPEN opens it."""
     model = compiled(RESERVOIR.format(order=order))
     origin = 'operator.decide.step[0].do[0].WAIT'
-    (case,) = [part for part in model.program.template('operator').events[0].steps[0].body[0].cases if part.member == 'WAIT']
+    (case,) = [
+        part
+        for part in model.program.template('operator').events[0].steps[0].body[0].cases
+        if part.member == 'WAIT'
+    ]
     assert case.body == () and case.origin == origin
     location = model.table.location(origin)
     assert (location.kind, location.label) == ('case', 'The operator waits, and the spillway stays closed.')

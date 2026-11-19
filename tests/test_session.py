@@ -434,6 +434,30 @@ def test_a_view_gives_each_value_in_its_declared_unit_with_its_label_and_an_edit
     assert (edit.detail('old'), edit.detail('new')) == (pytest.approx(1000), 5000)
 
 
+def test_a_view_gives_the_title_of_the_member_that_it_names():
+    """A member's title (PLAN, change 19) comes from the side table: the stop's member's, and each
+    value's member's, an occurrence's being its receiver's; the root's values have none."""
+    model = compile_text(BATTERY.replace('\nbattery:\n', '\nbattery:\n    title "Main battery"\n'), UNITS)
+    session = Session(model.program, model.configuration, [Breakpoint(RECHARGE)], table=model.table)
+    session.advance()
+    view = session.view()
+    assert view.title == 'Main battery'
+    assert {item.title for item in view.values} == {'Main battery'}
+    assert (session.title('battery'), session.title('battery.recharge#0'), session.title('')) == (
+        'Main battery',
+        'Main battery',
+        None,
+    )
+    untitled = Session(*battery_parts(), [Breakpoint(RECHARGE)])
+    untitled.advance()
+    assert untitled.view().title is None and {item.title for item in untitled.view().values} == {None}
+
+
+def battery_parts():
+    model = battery()
+    return model.program, model.configuration
+
+
 def test_a_stop_in_the_setup_shows_the_values_of_the_root_and_runs_the_setup_next():
     program = pump_dispatch()
     session = Session(program, ONE_HOUR, [Breakpoint('setup[0]')])

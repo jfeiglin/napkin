@@ -36,8 +36,9 @@ and its condition; the last has none. A refusal of the program's checker, or of 
 part that it names, and so is each of the setup's reports (`reports`), which refuse nothing.
 
 `side_table` gives the program's side table (`napkin.program.artifact.SideTable`): the place in the
-source of each part of the program that has an origin, its label and its evidence, from the declared
-part of that path, so the table is outside the program.
+source of each part of the program that has an origin, its label, its evidence and its title, from
+the declared part of that path, and the same of each member written by hand, so the table is outside
+the program: a title edit moves no hash (PLAN, change 19).
 """
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ from fractions import Fraction
 from ..core import expr as nodes
 from ..program import build, check
 from ..program import parts as p
-from ..program.artifact import Evidence, Location, SideTable, kind_of, origins
+from ..program.artifact import MEMBER, Evidence, Location, SideTable, kind_of, origins
 from ..program.check import ProgramError
 from ..program.refs import (
     ITEM,
@@ -131,27 +132,43 @@ def reports(model, program):
 def side_table(model, program, file=''):
     """The side table of a lowered model: for each part of the program with an origin, in the
     program's order, its kind, its name, its place (the file of its line, `file` for a model of one
-    text, and the column of the line's first word) and the label and the evidence of the declared
-    part of its path. A cited record is given with its content."""
+    text, and the column of the line's first word) and the label, the evidence and the title of the
+    declared part of its path; then each member written by hand, of the kind `MEMBER`, in the order
+    of the program's members, with its text, its evidence and its title. A cited record is given with
+    its content."""
     columns = _columns(model.tree)
     records = {item.name: item for item in model.records}
-    found = []
-    for origin, part in origins(program).items():
-        declared = model.part(origin)
+
+    def located(origin, kind, name, declared):
         line = getattr(declared, 'line', 0)
         where, at = model.place(line) if line else ('', 0)
-        found.append(
-            Location(
-                origin,
-                kind_of(part),
-                getattr(part, 'name', None) or getattr(part, 'member', ''),
-                where or (file if line else ''),
-                at,
-                columns.get(line, 0),
-                getattr(declared, 'text', None),
-                tuple(_evidence(item, records) for item in getattr(declared, 'evidence', ())),
-            )
+        return Location(
+            origin,
+            kind,
+            name,
+            where or (file if line else ''),
+            at,
+            columns.get(line, 0),
+            getattr(declared, 'text', None),
+            tuple(_evidence(item, records) for item in getattr(declared, 'evidence', ())),
+            getattr(declared, 'title', None),
         )
+
+    found = [
+        located(
+            origin,
+            kind_of(part),
+            getattr(part, 'name', None) or getattr(part, 'member', ''),
+            model.part(origin),
+        )
+        for origin, part in origins(program).items()
+    ]
+    for template in program.templates:
+        for member in template.members:
+            declared = model.part(member.id)
+            # An entity written once is its template's location; a row of a table has none.
+            if isinstance(declared, s.DeclaredMember) and declared.table is None:
+                found.append(located(member.id, MEMBER, member.id, declared))
     return SideTable(tuple(found))
 
 

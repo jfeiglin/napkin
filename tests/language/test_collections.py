@@ -477,7 +477,9 @@ def test_a_template_that_reads_itself_declares_the_type_that_its_members_read():
     """Its type is not known before its value, so a template's value that reads itself through its
     members declares its type; the members' connections then decide."""
     found = refused(UTILITIES.replace('total: formula(L/h) =', 'total ='), 'cycle')
-    assert found.message.startswith('Utility.total reads Utility.total') and 'declare its type' in found.message
+    assert (
+        found.message.startswith('Utility.total reads Utility.total') and 'declare its type' in found.message
+    )
 
 
 def test_mutual_links_are_no_cycle():

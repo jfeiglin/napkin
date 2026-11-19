@@ -59,7 +59,11 @@ def test_the_format_is_the_third_with_the_titles_of_the_side_table():
     up from 2 to 3 (the version rule of the module), and a title is kept through the file."""
     assert FORMAT_VERSION == 3
     loaded = loads(Artifact(grinder_refill().program, TABLE).data()).table
-    assert (loaded.title('north'), loaded.title('grinder'), loaded.title('south')) == ('North grinder', None, None)
+    assert (loaded.title('north'), loaded.title('grinder'), loaded.title('south')) == (
+        'North grinder',
+        None,
+        None,
+    )
 
 
 @pytest.mark.parametrize('name', sorted(EXAMPLES))
