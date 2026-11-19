@@ -10,6 +10,12 @@ and a store held at both bounds is one equality of it. A problem whose requests 
 solved at trial states between moments, and one beyond the limit of such a set stops by name; two
 solvers in one calculation, and a relation outside the constraint language, fail by name.
 
+A solver decides only the rates that it names (the owner's rule after G2): a flow of its calculation
+that it does not name keeps its endpoints' local sharing, and a relation on such a flow is refused by
+name. A store that the answer moves off its bound is released at once and the problem solved again.
+The polish of an answer is relative to each unknown's own size: a small requested delivery survives
+it, and an idle pipe with a small capacity stays idle.
+
 The expected numbers are worked by hand from the rules of the spec: the staffing solver of
 "Allocating staff hours" gives care 70% of the staff hours (outreach at its minimum, 30%), and fair
 sharing of one supply of 3 L/h among requests of 2 L/h serves each in full or both at 1.5 L/h; tanks
@@ -19,6 +25,7 @@ that fill at their headroom per hour follow 10 L - c e^-t once their requests ar
 from __future__ import annotations
 
 import math
+from fractions import Fraction
 
 import pytest
 
@@ -271,9 +278,10 @@ def test_a_store_held_at_both_bounds_is_one_equality_of_its_solvers_problem():
 
 
 def test_flows_that_join_and_leave_a_solvers_store_join_and_leave_its_problem():
-    """A alone gets 2 L/h; A and B share the fill's 3 L/h, 1.5 each, by fair sharing; B alone 2; then
-    nothing: the fill, which has no request, is the least that serves them. The solver keeps one instance of HiGHS: B's pipe is a
-    column that joins it at 1 h, and A's leaves at 2 h."""
+    """A alone gets 2 L/h; A and B share the fill's 3 L/h, 1.5 each, as the depot's outflow shares
+    what reaches it (the solver names the fill, not the pipes); B alone 2; then nothing: the fill,
+    which has no request, is the least that serves them. The solver keeps one instance of HiGHS:
+    B's pipe is a column that joins it at 1 h, and A's leaves at 2 h."""
     program = deliveries()
     configuration = Configuration(Request(4))
     made = Run(Plan.of(program, configuration))
@@ -472,3 +480,162 @@ def test_a_formula_that_reads_an_enforced_equality_holds_within_the_solvers_tole
     plan = Plan.of(example.program, configuration)
     assert set(plan.enforced) == set(names)
     assert all(plan.enforced[name].ops == ('eq',) for name in names)
+
+
+def test_a_solver_of_the_feed_alone_leaves_the_junctions_their_local_sharing():
+    """The example `two_junctions_upstream_solver` (worked by hand there): the feed carries 1 L/h, A
+    and the onward pipe 1/2 each, B and C 1/4 each, as the oracle has it, in one solve."""
+    from tests.program.examples import EXAMPLES
+
+    example = EXAMPLES['two_junctions_upstream_solver']()
+    record = run(example.program, example.configuration)
+    assert record.failure is None
+    oracle, failed = run_of(example.program, example.configuration)
+    assert failed is None
+    expected = {('first', 'feed'): 1, ('first', 'to_a'): 0.5, ('first', 'onward'): 0.5}
+    expected |= {('second', 'to_b'): 0.25, ('second', 'to_c'): 0.25}
+    for (owner, name), rate in expected.items():
+        key = Key(owner, (name, 'actual_rate'))
+        assert values(record, example.program, key, (0, 0.5)) == pytest.approx((rate, rate), abs=1e-12)
+        assert float(value_at(oracle, example.program, key, 0)) == rate
+    assert [entry.t for entry in record.entries('solve', 'provider.upstream')] == [0]
+
+
+def test_a_relation_on_a_flow_that_the_solver_does_not_name_is_refused():
+    """A flow that a solver does not name keeps its endpoints' local sharing: a constraint of the
+    solver on it would decide who is served without naming it."""
+    b = Builder(UNITS)
+    tank = b.entity(
+        'tank',
+        value('water', 'L', 10, lower=0, upper=10),
+        flow('out', this.water, SINK, request=q(2, 'L/h')),
+        flow('fill', SOURCE, this.water),
+    )
+    b.entity(
+        'provider',
+        solver(
+            'plan',
+            given('out', tank.out),
+            given('fill', tank.fill),
+            solve_for(local.fill.actual_rate),
+            constraint(local.out.actual_rate <= q(1, 'L/h')),
+        ),
+    )
+    record = run(b.finish(), Configuration(Request(1)))
+    assert record.failure.t == 0
+    message = record.failure.detail('message')
+    assert 'the solver provider.plan reads tank.out.actual_rate, which it does not determine' in message
+
+
+def released():
+    """A full tank drains 2 L/h and is filled from A and by a pipe from a second tank, which starts
+    empty; each asks 2 L/h. The provider's solver determines the fill of the second tank alone: 3 L/h,
+    its request within its capacity. A third tank, which nothing joins, empties at 1 h."""
+    b = Builder(UNITS)
+    full = b.entity(
+        'full',
+        value('water', 'L', 10, lower=0, upper=10),
+        flow('drain', this.water, SINK, request=q(2, 'L/h'), capacity=q(2, 'L/h')),
+        flow('from_a', SOURCE, this.water, request=q(2, 'L/h')),
+    )
+    tank = b.entity(
+        'tank',
+        value('water', 'L', 0, lower=0, upper=10),
+        flow('fill', SOURCE, this.water, request=q(3, 'L/h'), capacity=q(3, 'L/h')),
+        flow('onward', this.water, full.water, request=q(2, 'L/h')),
+    )
+    b.entity('clock', value('water', 'L', 1, lower=0), flow('drain', this.water, SINK, request=q(1, 'L/h')))
+    b.entity('provider', solver('supply', given('fill', tank.fill), solve_for(local.fill.actual_rate)))
+    return b.finish()
+
+
+def test_a_store_that_the_answer_moves_off_its_bound_is_released_at_once():
+    """At 0 h the second tank is empty, so the claim of its pipe waits for its supply: the full tank's
+    room would go to A, 2 L/h, and the pipe would carry nothing. That answer fills the tank at 3 L/h,
+    off its bound, so the bound is released and the problem solved again: the pipe's claim is then on
+    the level of A's, and they share the room, 1 L/h each; the tank rises at 2 L/h. The third tank,
+    which empties at 1 h, changes nothing (the oracle settles every calculation then), and the
+    solve is traced once."""
+    program = released()
+    configuration = Configuration(Request(2))
+    record = run(program, configuration)
+    assert record.failure is None
+    oracle, failed = run_of(program, configuration)
+    assert failed is None
+    times = (0, 0.5, 1.5)
+    for path in ('full.from_a.actual_rate', 'tank.onward.actual_rate'):
+        assert values(record, program, path, times) == pytest.approx((1, 1, 1), abs=1e-12)
+    assert values(record, program, 'tank.water', (0.5, 1.5)) == pytest.approx((1, 3), abs=1e-12)
+    for owner, name in (('full', 'from_a'), ('tank', 'onward'), ('tank', 'water')):
+        key = Key(owner, (name, 'actual_rate') if name != 'water' else (name,))
+        for t in times:
+            found = values(record, program, key, (t,))[0]
+            assert found == pytest.approx(float(value_at(oracle, program, key, Fraction(t))), abs=1e-12)
+    assert [entry.t for entry in record.entries('solve', 'provider.supply')] == [0]
+
+
+def outflows(trickle, spare=None):
+    """A tank of 10 L drains 5 L/h by `main` and, by `trickle`, its request (if any) within the capacity
+    `spare` (if any); the provider's solver determines both."""
+    b = Builder(UNITS)
+    settings = {} if trickle is None else {'request': q(trickle, 'L/h')}
+    if spare is not None:
+        settings['capacity'] = q(spare, 'L/h')
+    tank = b.entity(
+        'tank',
+        value('water', 'L', 10, lower=0, upper=20),
+        flow('main', this.water, SINK, request=q(5, 'L/h')),
+        flow('trickle', this.water, SINK, **settings),
+    )
+    parts = [given('main', tank.main), given('trickle', tank.trickle)]
+    parts += [solve_for(local.main.actual_rate), solve_for(local.trickle.actual_rate)]
+    b.entity('provider', solver('plan', *parts))
+    program = b.finish()
+    record = run(program, Configuration(Request(1)))
+    assert record.failure is None
+    return values(record, program, 'tank.trickle.actual_rate', (0.5,))[0], values(
+        record, program, 'tank.water', (1,)
+    )[0]
+
+
+@pytest.mark.parametrize('trickle', [2e-7, 5e-10])
+def test_a_small_requested_delivery_survives_the_polish(trickle):
+    """The tank holds stock, so each pipe gets its request: 5 L/h and the trickle's own 2e-7 or
+    5e-10 L/h, which the polish of the answer once took for a rounding of zero (it snapped a value
+    within 1e-6 L/h of a bound to it). The tank holds 10 - 5 - trickle L at 1 h."""
+    rate, water = outflows(trickle)
+    assert rate == pytest.approx(trickle, rel=1e-9)
+    assert water == pytest.approx(5 - trickle, rel=0, abs=1e-15)
+
+
+@pytest.mark.parametrize('spare', [1e-7, 5e-7])
+def test_an_idle_pipe_with_a_small_capacity_stays_idle(spare):
+    """A pipe with no request asks nothing and its target is zero: it stays at 0 L/h, where the polish
+    once put it at its capacity, which is within 1e-6 L/h of zero as well (the snap to the upper bound
+    came after the snap to the lower one). The tank holds 5 L at 1 h."""
+    rate, water = outflows(None, spare)
+    assert rate == 0
+    assert water == 5
+
+
+def test_a_ring_of_empty_tanks_among_the_flows_that_a_solver_does_not_name_stops_by_name():
+    """Two empty tanks pass water to each other and the solver names only the fill of the first: the
+    pipes between them keep local sharing, which has no answer for a ring of empty stores (each waits
+    for the other's supply). The run stops at once and says how to decide them."""
+    b = Builder(UNITS)
+    first = b.entity('first', value('water', 'L', 0, lower=0, upper=10))
+    second = b.entity('second', value('water', 'L', 0, lower=0, upper=10))
+    b.entity(
+        'pipes',
+        flow('fill', SOURCE, first.water, capacity=q(2, 'L/h')),
+        flow('there', first.water, second.water, request=q(1, 'L/h')),
+        flow('back', second.water, first.water, request=q(1, 'L/h')),
+    )
+    b.entity(
+        'provider', solver('plan', given('fill', named('pipes').fill), solve_for(local.fill.actual_rate))
+    )
+    record = run(b.finish(), Configuration(Request(1)))
+    assert record.failure.t == 0
+    message = record.failure.detail('message')
+    assert 'a ring of stores at their lower bound passes supply around' in message
+    assert 'the solver provider.plan does not name every flow there' in message

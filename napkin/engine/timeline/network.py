@@ -175,10 +175,10 @@ def supply_depths(net, lower):
 def room_depths(net, lower, upper):
     """A function: the room depth of a store of a network, 0 for -1 (SINK). A full store (at its
     upper bound and not at its lower bound) passes on the room that its outflows make. Its depth is
-    one more than that of the deepest full store that its outflows fill, and 0 when they fill none,
-    so a full store alone shares on the levels of supply, as it does without this depth. A store
-    with room, and a store held at both bounds, which local sharing settles in the direction of
-    supply, are at depth 0. A ring of full stores has no depth: finding one fails, naming the ring."""
+    one more than that of the deepest full store that its outflows fill, and 0 when they fill none:
+    one full store shares on the levels of supply alone. A store with room, and a store held at both
+    bounds, which local sharing settles in the direction of supply, are at depth 0. A ring of full
+    stores has no depth: finding one fails, naming the ring."""
     full = np.asarray(upper, dtype=bool) & ~np.asarray(lower, dtype=bool)
     depth = _depths(
         net,
@@ -203,9 +203,9 @@ def claim_level(net, supply, room):
 
 
 def _depths(net, active, onward, ring):
-    """A function, found as asked: 0 for -1 and for a store that is not `active`, else one more than
-    the largest of the stores that `onward(s)` gives; a cycle of active stores fails with the text
-    `ring`, which names the stores of the cycle."""
+    """A function, found as asked: the depth of a store, 0 for -1 and for a store that is not
+    `active`, else one more than the deepest of the stores that `onward(s)` gives; a cycle of active
+    stores fails with the text `ring`, which names the stores of the cycle."""
     memo = {}
 
     def depth(s0):

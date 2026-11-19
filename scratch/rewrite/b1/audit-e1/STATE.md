@@ -25,8 +25,24 @@ Baseline: G2 passed; solver/sharing folders 1,241 passed (34 s, -n 2). Old code 
 'two_junctions_upstream_solver': JUNCTIONS up to '    provider:' + provider: / upstream = solver: /
 inputs: feed = first.feed / solve_for: feed.actual_rate.
 
-## In progress / remaining
-3. Polish snap relative to each unknown's size (bug 3), idle pipe (bug 4: both bounds within NEAR,
-   the upper snap overwrote the lower) in `declared.polished`.
-- Engine tests (test_solvers.py, new test_full_stores.py), E2's "For E1", deep sets, final command.
+3. Polish (`declared.polished`): own size of an unknown = its reference scale at most its width
+   (`_sizes`); a flow served in full keeps its request, not a bound (`_served`); rows by own terms,
+   equalities always; least change in the distance metric (reference scales: a request-weighted one
+   broke a projection, seed 496); safety net on bounds/rows (`_missed`) and claims (`_short`, in flow
+   units: a level of 1.8e-6 of 0.5 L/h is slack, seed 593).
+4. Idle pipe: both bounds within NEAR of a 5e-7 capacity, the upper snap overwrote the lower; the
+   width cap fixes it.
+- Local sharing (`selection._exact`): rank 4's answer put exactly on its held plain rows (a part of
+  5 L/h gave 2.999999999999999 for 3 and moved an event time; deep local-sharing seed 1067).
+- E2's oracle fixes (tests/reference/run.py): self-move writes nothing; a failed commit is discarded
+  whole (`_commit` snapshot, trace from the stage/fire entry). Tests in test_events.py.
+- Tests: engine test_solvers.py (+8), new test_full_stores.py (4); oracle test_flows (+5),
+  test_solvers (+2), test_events (+2). 10 of 11 first engine tests fail on 858bc1c.
+- Against 858bc1c (17 examples, 1,000 random solver programs): examples unchanged; 14 programs
+  change values (unnamed claims after the solver's); seed 858 now runs; 41 now stop by name on a
+  ring (31 supply, 10 room) among unnamed flows (oracle NotCovered); the message says to name them.
+- Deep sets (once): random solvers 900, solve sweep, occurrences 2,000, local sharing 4,000: pass.
+
+## Remaining
+- The final command; the last message.
 - Leftover: `family.wanted` now only saved/restored by saved.py (not mine).

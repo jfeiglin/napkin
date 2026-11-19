@@ -602,8 +602,9 @@ class Run:
         self.passed = {
             where: edits for where, edits in self.passed.items() if where[:2] != (occ.number, occ.step)
         }
+        mark = len(self.trace)
         self._note('stage' if ran else 'skip', occ.label, occ.step, step.origin)
-        self._commit(tx)
+        self._commit(tx, mark)
         self._reach(occ, occ.step + 1)
 
     def _execute(self, statements, tx, scope, owner=None):
@@ -708,6 +709,11 @@ class Run:
                 raise Diagnostic(
                     f'move: {show(s.source if c is src else s.destination)} is not a stored quantity'
                 )
+        if src == dst:
+            # One store at both ends: the debit and the credit cancel, so the move writes nothing and
+            # checks nothing (its resulting inventory is its own); the books still show it.
+            tx.moves.append((src, dst, amount, s.origin))
+            return
         after = {src: ev.cell(src) - amount, dst: ev.cell(dst) + amount}
         for c, v in after.items():  # both inventories are checked before anything changes
             lo, hi = self.view.bounds.get(c, (None, None))
@@ -719,8 +725,25 @@ class Run:
         tx.writes.update(after)
         tx.moves.append((src, dst, amount, s.origin))
 
-    def _commit(self, tx):
-        """Publish the writes of a stage and register the occurrences that it queued."""
+    def _commit(self, tx, mark=None):
+        """Publish the writes of a stage and register the occurrences that it queued. A commit that
+        fails is discarded whole, as the engine's: its writes, its moves and its children leave the
+        state, and the trace loses what it noted from `mark` (the entry of its stage or firing) on;
+        the run stops there, where a read sees what the earlier commits made."""
+        view = self.view
+        saved = view.copy(), len(self.ledger), len(self.trace) if mark is None else mark
+        written = set(self.round_written)
+        try:
+            self._publish(tx)
+        except RunFailed:
+            frame, ledger, trace = saved
+            view.__dict__.update(frame.__dict__)
+            del self.ledger[ledger:], self.trace[trace:]
+            self.round_written = written
+            raise
+
+    def _publish(self, tx):
+        """The writes, the moves and the starts of a commit."""
         view, t = self.view, self.view.t
         moved = Counter()
         for src, dst, amount, origin in tx.moves:
@@ -943,9 +966,10 @@ class Run:
         if trig.decl.reset is not None and trig.decl.reset[0] == 'after':
             ev = Ev(self, self.view, Scope(trig.ent, None, caps), may_draw=True, owner=firing)
             trig.rearm_at = t + ev.num(trig.decl.reset[1])
+        mark = len(self.trace)
         self._note('fire', trig.label, origin=trig.decl.origin)
         self.again = True
-        self._commit(tx)
+        self._commit(tx, mark)
 
     def _asserts(self):
         for a in self.model.asserts:

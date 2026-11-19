@@ -429,4 +429,32 @@ def select(rows, lower, upper, tiers, prefs, target, units=None):
         with np.errstate(invalid='ignore'):
             near = np.isfinite(bound) & (np.abs(found - bound) <= 1e-12 * (units + np.abs(bound)))
         found[near] = bound[near]
-    return found
+    return _exact(final, lower, upper, found, target)
+
+
+def _exact(rows, lower, upper, x, target):
+    """The point x put exactly on the plain rows that it holds, by the least change of the unknowns
+    that rest on no bound and meet no row with positive parts. The programs read each rate in units
+    of the part and each claim in served fractions, so a vertex comes back from them with the
+    roundoff of those changes (3 L/h over a part of 5 L/h came back 1e-15 short, which moved the
+    time at which a tank emptied); the rows that hold it give its numbers again. A change that would
+    break a row is not made."""
+    loose = (x != lower) & (x != upper)
+    for _, parts, _ in rows.convex:
+        loose[[j for j, _ in parts]] = False
+    free = np.flatnonzero(loose)
+    held = [
+        (a, b)
+        for a, b, is_equal in _plain(rows, lower, upper)
+        if np.abs(a).sum() > 0 and (is_equal or abs(a @ x - b) <= FEASIBLE * _size(a, b, x, target))
+    ]
+    if not len(free) or not held:
+        return x
+    A = np.array([a for a, _ in held], dtype=float)
+    residual = np.array([b for _, b in held], dtype=float) - A @ x
+    if not np.abs(residual).max() > 0:
+        return x
+    found = x.copy()
+    found[free] += np.linalg.lstsq(A[:, free], residual, rcond=None)[0]
+    found = np.clip(found, lower, upper)
+    return found if _holds(rows, _plain(rows, lower, upper), found, target) else x

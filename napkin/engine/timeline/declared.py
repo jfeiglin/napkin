@@ -231,7 +231,17 @@ class Former:
                 f'{self.connections[k].name}: a capacity that is {capacity[k]:g} at {t:g} h'
             )
         self.requests = requests
-        level = claim_level(net, supply_depths(net, lower), room_depths(net, lower, upper))
+        local = claim_level(net, supply_depths(net, lower), room_depths(net, lower, upper))
+
+        def level(connections):
+            """The level of local sharing of a claim of a flow that the solver does not name."""
+            try:
+                return local(connections)
+            except SimulationError as ring:
+                raise SimulationError(
+                    f'{ring}; the solver {declared.id} does not name every flow there, and a flow that '
+                    'it does not name keeps local sharing: name them in its solve_for to decide them'
+                ) from None
 
         def place(f, connections):
             """The place of a flow's claim in the order: the solver's claims on one level, by their
@@ -824,9 +834,8 @@ class DeclaredWay:
         ways, sid = self.run.ways, self.declared.id
         problem, arrays, signature = self._formed(t, low, high)
         last = ways.last.get(sid)
+        # A kept answer of other unknowns (a flow joined or left since) answers no problem here.
         if last is not None and len(last[1]) == len(arrays.keys):
-            # (Of other unknowns, the kept answer serves no problem of this instant: the digest of
-            # a problem names its unknowns.)
             if last[0] == signature:
                 return self._values(arrays, last[1])
             leaving = self._moved(self._values(arrays, last[1])[0], low ^ high, low, inward=True)
@@ -838,13 +847,13 @@ class DeclaredWay:
             leaving = self._moved(flows, low ^ high, low, inward=True)
             if not leaving.any():
                 break
-            trial = self._formed(t, low & ~leaving, high & ~leaving)
-            found = self._solved(t, trial[0], trial[1])
-            moved = self._values(trial[1], found)
+            again = self._formed(t, low & ~leaving, high & ~leaving)
+            found = self._solved(t, again[0], again[1])
+            moved = self._values(again[1], found)
             if self._moved(moved[0], leaving, low, inward=False).any():
                 break
             low, high = low & ~leaving, high & ~leaving
-            signature, x, (flows, results) = trial[2], found, moved
+            signature, x, (flows, results) = again[2], found, moved
         ways.last[sid] = (signature, x)
         self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
         return flows, results
@@ -1236,8 +1245,9 @@ def polished(arrays, x, levels):
     """The answer put exactly on the bounds and rows that it holds to within `NEAR` of their own
     size, its claims that fair sharing held together at one level on one fraction, and its claims
     served in full that it leaves at most at their requests on them, by the least change of the other
-    unknowns, each in proportion to its own size (the least-norm solution of those rows, by one sparse
-    factorization).
+    unknowns in the metric of the distance step, each over its reference scale, so that an answer that
+    the distance step projected stays its projection (the least-norm solution of those rows, by one
+    sparse factorization).
 
     The library meets its rows to 1e-9 of their size, keeps an optimum to 1e-7 of its size, which
     the later ranks may take, and holds a claim that it cannot serve in full at its level less 1e-7
@@ -1246,17 +1256,22 @@ def polished(arrays, x, levels):
     level, which the rows that bind them give, and a claim served in full that is served no more
     rests on its request. So at a vertex the polished answer has the numbers of the vertex, and an
     event time that follows from its rates is what exact arithmetic gives. An answer that the polish
-    would make miss a row or a bound by more than the library's tolerance is kept as it is.
+    would make miss a row or a bound by more than the library's tolerance, or serve a claim below its
+    level by more than `NEAR`, is kept as it is.
 
-    Each unknown is near a bound by its own size (`_sizes`), never by one size for all: a requested
-    delivery of 1e-7 L/h is no rounding of zero, and an idle pipe whose capacity is 1e-7 L/h is at
-    zero, not at its capacity. A row is near its side by the sizes of its own terms, and a row that
-    is an equality, such as the books of a store held at both bounds, always holds exactly."""
+    Each unknown is near a bound by its own size (`_sizes`, at most the width of its interval), so
+    that an idle pipe whose capacity is 1e-7 L/h stays at zero, not at its capacity; and a flow that
+    the library serves in full keeps its request, which its claim's row then holds exactly, rather
+    than a bound near it (`_served`): a requested delivery of 1e-7 L/h is no rounding of zero. A row
+    is near its side by the sizes of its own terms, and a row that is an equality, such as the books
+    of a store held at both bounds, always holds exactly."""
     x = np.array(x, dtype=float)
     lower, upper = arrays.lower, arrays.upper
     size = _sizes(arrays)
-    low = np.isfinite(lower) & (np.abs(x - lower) <= NEAR * size)
-    high = np.isfinite(upper) & (np.abs(x - upper) <= NEAR * size) & ~low
+    levels = np.asarray(levels, dtype=float)
+    kept = _served(arrays, x, levels)
+    low = np.isfinite(lower) & (np.abs(x - lower) <= NEAR * size) & ~kept
+    high = np.isfinite(upper) & (np.abs(x - upper) <= NEAR * size) & ~low & ~kept
     found = x.copy()
     found[low], found[high] = lower[low], upper[high]
     blocks, sides = [], []
@@ -1270,7 +1285,6 @@ def polished(arrays, x, levels):
         rows = np.flatnonzero(left | right)
         blocks.append(A[rows])
         sides.append(np.where(left, arrays.row_lower, arrays.row_upper)[rows])
-    levels = np.asarray(levels, dtype=float)
     if len(levels):
         fraction = sp.diags_array(1.0 / arrays.request) @ arrays.F
         served = fraction @ found
@@ -1292,29 +1306,55 @@ def polished(arrays, x, levels):
         B = sp.csr_array(sp.vstack(blocks))
         residual = np.concatenate(sides) - B @ found
         if len(residual) and np.abs(residual).max() > 0:
-            # The least change d = S e, S the own sizes of the free unknowns, with B S e = r:
+            # The least change in the metric of the distance step, each unknown over its reference
+            # scale S, so that a projection of the distance step stays one: d = S e with B S e = r,
             # [[I, (BS)'], [BS, -eps I]] [e; m] = [0; r], which a dependent row leaves nonsingular.
-            B = sp.csc_array(B[:, free] @ sp.diags_array(size[free]))
+            scale = arrays.scale[free]
+            B = sp.csc_array(B[:, free] @ sp.diags_array(scale))
             m, n = B.shape
             K = sp.block_array([[sp.eye_array(n), B.T], [B, -1e-12 * sp.eye_array(m)]], format='csc')
             try:
                 move = splu(K).solve(np.r_[np.zeros(n), residual])[:n]
             except RuntimeError:  # a singular system: the answer stays as the library gave it
                 return x
-            found[free] += size[free] * move
+            found[free] += scale * move
     found = arrays.positive_parts(found)
     if _missed(arrays, found, size) > max(_missed(arrays, x, size), 1e-9):
         return x
+    if len(levels) and _short(arrays, found, levels, size) > max(_short(arrays, x, levels, size), NEAR):
+        return x  # the polish would take a claim below its level by more than it moves a bound
     return found
 
 
 def _sizes(arrays):
-    """The own size of each unknown of a problem, by which its answer is near a bound: a flow's
-    request, or its reference scale (one canonical unit) where it asks nothing; any other unknown's
-    reference scale; at most the width of its interval, where that is finite and positive."""
-    size = np.where((arrays.kind == FLOW) & (arrays.target != 0), np.abs(arrays.target), arrays.scale)
+    """The own size of each unknown of a problem, by which its answer is near a bound or a row: its
+    reference scale (one canonical unit for a flow, in which the library keeps its answer), at most
+    the width of its interval, where that is finite and positive."""
     width = arrays.upper - arrays.lower
-    return np.where(np.isfinite(width) & (width > 0), np.minimum(size, width), size)
+    return np.where(np.isfinite(width) & (width > 0), np.minimum(arrays.scale, width), arrays.scale)
+
+
+def _served(arrays, x, levels):
+    """The unknowns that are the one term of a claim that the library serves in full, and no more
+    than in full: the polish holds each on its request, not on a bound."""
+    found = np.zeros(arrays.n, dtype=bool)
+    if len(levels):
+        F = sp.csr_array(arrays.F)
+        served = (F @ x) / arrays.request
+        alone = np.flatnonzero((np.diff(F.indptr) == 1) & (levels >= 1.0) & (served <= 1.0 + NEAR))
+        found[F.indices[F.indptr[alone]]] = True
+    return found
+
+
+def _short(arrays, x, levels, size):
+    """How far an answer serves its claims below their fair levels, in units of the own sizes of
+    their terms, as `_missed` measures bounds and rows: a level is known to the library's precision
+    in those units, not in served fractions (a claim held at 1.8e-6 of a request of 0.5 L/h, which
+    exact arithmetic serves nothing, is 9e-7 L/h of slack)."""
+    F = sp.csr_array(arrays.F)
+    served = (F @ x) / arrays.request
+    short = (np.minimum(levels, 1.0) - np.minimum(served, 1.0)) * arrays.request / (abs(F) @ size)
+    return float(short.max(initial=0.0))
 
 
 def _missed(arrays, x, size):

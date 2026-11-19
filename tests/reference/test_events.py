@@ -452,6 +452,36 @@ def test_a_move_that_breaks_a_bound_moves_nothing():
     assert (now(r, N.a.water), now(r, N.b.water)) == (8, 0)
 
 
+def test_a_move_from_a_store_into_itself_leaves_it_as_it_was():
+    """A move of 5 L from a stock of 3 L into the same stock: the debit and the credit cancel, so
+    nothing changes and no bound is broken; the books show the move."""
+    m = Model()
+    m.entity('a', fields=[value('water', 3, 0, 10, readonly=True)])
+    m.entity('op', events=[event('go', steps=[after(1, [move(5, N.a.water, N.a.water)])])])
+    m.setup = [start(N.op.go)]
+    r = Run(m, horizon=2).run()
+    assert r.read(N.a.water, 1) == r.read(N.a.water, 2) == 3
+    assert [e[4] for e in r.ledger if e[0] == 'move'] == [5]
+    assert r.conservation()['balanced']
+
+
+def test_a_commit_that_fails_is_discarded_whole():
+    """At 1 h a stage writes the note and starts two children, and the second start breaks
+    max_occurrences = 1: the run stops at 1 h, and the stage leaves nothing, neither its write nor
+    its first child nor its entry in the trace."""
+    parent = event('parent', steps=[after(1, [set_(this.note, 1), start(this.child), start(this.child)])])
+    m = Model()
+    m.entity('unit', fields=[value('note', 0)], events=[parent, event('child', steps=[after(5, [])])])
+    m.setup = [start(N.unit.parent)]
+    r = Run(m, horizon=2, max_occurrences=1)
+    with pytest.raises(RunFailed, match='max_occurrences is 1'):
+        r.run()
+    assert r.view.t == 1
+    assert r.read(N.unit.note, 1) == 0
+    assert r.read(count(N.unit.child.occurrences), 1) == 0
+    assert [e.kind for e in r.trace if e.t == 1] == ['moment']
+
+
 def test_a_child_is_counted_after_the_stage_commits():
     """`count(child.occurrences)` reads 0 for the rest of the stage that starts the child, and 1 in
     the parent's next delay (1 * 2 h after t = 1 h)."""
