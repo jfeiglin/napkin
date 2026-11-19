@@ -2,8 +2,8 @@
 every file as it was, and the reports of pack integration and of the source check follow from their
 inputs by the documented rules.
 
-The inputs are those of the evidence tool tests: a synthetic catalogue scenario under tmp_path, a pack
-of claims on a cached synthetic document, and no network.
+The inputs are those of the evidence tool tests (`tests/evidence/support.py`): a synthetic catalogue
+scenario under tmp_path, a pack of claims on a cached synthetic document, and no network.
 """
 
 import hashlib
@@ -12,9 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.build import scenario
-from tests.evidence.test_evidence_tools import claim, pack
-from tests.owned import write_scenario
+from tests.evidence.support import QUEUE, claim, pack, write_package
 from tools.evidence import fetch, integrate
 
 
@@ -108,7 +106,7 @@ def test_a_retrieval_refuses_force_and_reads_the_media_type_of_the_bytes(tmp_pat
 def catalogue(tmp_path):
     """A catalogue of one scenario, SC99, and a pack for it: V-1 quotes the cached document, and P-1
     quotes it once in two quotes ('14 days', where the document says 114 days)."""
-    write_scenario(tmp_path, scenario())
+    write_package(tmp_path, {'model.scn': QUEUE})
     (tmp_path / 'packs').mkdir()
     claims = [claim('V-1'), claim('P-1', quotes=('14 days', 'high confidence'))]
     (tmp_path / 'packs' / 'doc.json').write_text(json.dumps(pack(tmp_path, 'doc', claims)))

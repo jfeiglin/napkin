@@ -1,351 +1,268 @@
-"""The run store (`napkin/store.py`): a stored run is the fresh run, bit for bit; each input
-of a simulation is in its key; an edit simulates again only the runs that it changes; processes share
-the runs of a study; writes are atomic; the size limit removes the least recently used runs; and a
-simulation calls only code of the files that the key digests."""
+"""The run store (`napkin/store.py`): a stored record is the fresh record, bit for bit; the key covers
+what a run computes from and no label; a stored run serves a request that it covers, cut to it, and a
+request for a later horizon or for a value that it lacks runs again; a failure is stored and a pause is
+not; a process waits for a run that another holds; writes are atomic; the size limit removes the least
+recently used files; and a run calls only code of the files that its key digests. The values are worked
+by hand: the tank fills at its median rate, 2 L/h, so it holds 2 L for each hour."""
 
-import copy
+from __future__ import annotations
+
 import multiprocessing
 import os
-import pickle
 import sys
+import textwrap
 import threading
-import zlib
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from napkin import store
-from napkin.engine import edits_for, evaluate_study, sample_result
-from napkin.engine.runtime import NumericalSettings, simulate
-from napkin.model.ir import thaw
-from napkin.model.structure import Resolved
-from tests import processes
-from tests.acceptance.helpers import LIBRARY, model_of
-from tests.build import compiled, play_scenario, scenario
+from napkin.engine import read
+from napkin.engine.timeline import run as fresh
+from napkin.model.compile import compile_text
+from napkin.program.config import SAMPLED, Request
+from napkin.program.record import Entry, Key, Manifest, Record
+from tests.program.examples import EXAMPLES, UNITS
+
+TANK = textwrap.dedent("""\
+    scenario "Tank"
+        horizon 4 h
+    tank:
+        input rate: L/h = uniform(1 L/h, 3 L/h).draw()  @measured
+            "Inflow"
+        water: L = 0 L in [0 L,]
+            "Water in the tank"
+        level = formula(this.water / 8 L)
+        flow fill: SOURCE -> this.water
+            request = this.rate
+    record measured: source "A gauge reading."
+    """)
+WATER, LEVEL = Key('tank', ('water',)), Key('tank', ('level',))
 
 
-@pytest.fixture
-def model():
-    """Two runs: `a` with the defaults, `b` with the profile Half rate."""
-    return compiled(scenario())
+def tank(text=TANK):
+    return compile_text(text, UNITS)
 
 
-def fingerprints(study):
-    return {run: store.fingerprint(item['trajectory']) for run, item in study.runs.items()}
-
-
-def counted(evaluate):
-    """The result of `evaluate()` and the store's hits and misses while it ran."""
+def counted(work):
+    """The result of `work()` and the store's hits and misses while it ran."""
     before = dict(store.counts)
-    result = evaluate()
-    return result, {name: store.counts[name] - before[name] for name in before}
+    found = work()
+    return found, {name: store.counts[name] - before[name] for name in before}
 
 
-def fake(rs, library, settings):
-    """A stand-in simulation for the store's own mechanics: it gives back its run."""
-    return {'run': rs['run']}
+def water(record, model, times):
+    return read(record, model.program, ['tank.water'], times)[0].values
 
 
-def item(run):
-    return ({'run': run}, {'units': {}}, None)
+def sampled(model, seed):
+    return replace(model.configuration, mode=SAMPLED, seed=seed)
 
 
-def test_a_stored_run_is_the_fresh_run_bit_for_bit(model, tmp_path):
-    with store.use(None):
-        fresh = evaluate_study(model)
+def test_a_stored_record_is_the_fresh_record_bit_for_bit(tmp_path):
+    model = tank()
+    alone = fresh(model.program, model.configuration)
     with store.use(tmp_path):
-        cold, first = counted(lambda: evaluate_study(model))
-        warm, second = counted(lambda: evaluate_study(model))
-    assert first == {'hits': 0, 'misses': 2, 'unkeyed': 0}
-    assert second == {'hits': 2, 'misses': 0, 'unkeyed': 0}
-    assert fingerprints(cold) == fingerprints(warm) == fingerprints(fresh)
-    assert store.fingerprint(sample_result(warm)) == store.fingerprint(sample_result(fresh))
-    assert warm.diagnostics == fresh.diagnostics and warm.admissible and fresh.admissible
+        cold, first = counted(lambda: store.run(model.program, model.configuration))
+        warm, second = counted(lambda: store.run(model.program, model.configuration))
+    assert first == {'hits': 0, 'misses': 1} and second == {'hits': 1, 'misses': 0}
+    assert store.fingerprint(warm) == store.fingerprint(cold) == store.fingerprint(alone)
+    assert warm == alone and water(warm, model, [4]) == pytest.approx((8,))
 
 
-def test_an_edit_simulates_again_only_the_runs_that_it_changes(model, tmp_path):
-    """The profile Half rate is in run `b` only: an edit of it leaves run `a` in the store."""
-    edits = edits_for(model, {'options': {'Half rate': {'service.rate': 6}}})
+def test_a_label_edit_reuses_a_stored_run(tmp_path):
+    """A label is no part of the program: the edited model's run is the stored one."""
+    model = tank()
+    edited = tank(TANK.replace('"Water in the tank"', '"Water held in the tank"'))
+    assert edited.declared != model.declared and edited.program == model.program
     with store.use(tmp_path):
-        counted(lambda: evaluate_study(model))
-        edited, used = counted(lambda: evaluate_study(model, edits))
-    assert edited.admissible and used == {'hits': 1, 'misses': 1, 'unkeyed': 0}
-    with store.use(None):
-        assert fingerprints(edited) == fingerprints(evaluate_study(model, edits))
+        store.run(model.program, model.configuration)
+        again, used = counted(lambda: store.run(edited.program, edited.configuration))
+    assert used == {'hits': 1, 'misses': 0} and water(again, edited, [2]) == pytest.approx((4,))
 
 
-def test_each_input_of_a_simulation_is_in_its_key(model, monkeypatch):
-    rs, library = model.resolve('a'), thaw(model.library)
-    base = store.key(rs, library)
-    # The same inputs: the typed run or the plain data that it writes, and no settings or the
-    # default ones.
-    assert store.key(rs.plain(), library) == base
-    assert store.key(rs, library, {}) == store.key(rs, library, NumericalSettings()) == base
-    # A library's other parts are not inputs of a simulation.
-    other = copy.deepcopy(library)
-    other['claims'] = [{'id': 'another'}]
-    assert store.key(rs, other) == base
-    # Each input of a simulation changes the key.
-    unit = next(iter(library['units']))
-    units = copy.deepcopy(library)
-    units['units'][unit]['scale'] = units['units'][unit]['scale'] * 2
-    changed = {
-        'run': store.key(model.resolve('b'), library),
-        'value': store.key(model.resolve('a', {'service.end': 6}), library),
-        'units': store.key(rs, units),
-        'settings': store.key(rs, library, {'rtol': 1e-8}),
-        # What a played run asks: who picks, and the picks.
-        'control': store.key(rs, library, None, {'control': {'service': 'reader'}, 'picks': []}),
-        'picks': store.key(
-            rs, library, None, {'control': {'service': 'reader'}, 'picks': [{'event': 'e', 'outcome': 'o'}]}
-        ),
-    }
+def test_another_seed_runs_again(tmp_path):
+    model = tank()
+    with store.use(tmp_path):
+        first = store.run(model.program, sampled(model, 1))
+        other, used = counted(lambda: store.run(model.program, sampled(model, 2)))
+        _, again = counted(lambda: store.run(model.program, sampled(model, 1)))
+    assert used == {'hits': 0, 'misses': 1} and again == {'hits': 1, 'misses': 0}
+    # Two seeds draw two rates; each run holds its own rate times 4 h.
+    rates = [record.entries('draw')[0].detail('value') for record in (first, other)]
+    assert rates[0] != rates[1]
+    assert [water(record, model, [4])[0] for record in (first, other)] == pytest.approx([4 * r for r in rates])
+
+
+def test_a_window_that_the_stored_run_lacks_runs_again(tmp_path):
+    """A stored run to 4 h serves no request to 6 h; the run to 6 h takes the entry's place and then
+    serves the request to 4 h too."""
+    model = tank()
+    to_six = replace(model.configuration, request=Request(6))
+    with store.use(tmp_path):
+        store.run(model.program, model.configuration)
+        longer, used = counted(lambda: store.run(model.program, to_six))
+        shorter, again = counted(lambda: store.run(model.program, model.configuration))
+    assert used == {'hits': 0, 'misses': 1} and again == {'hits': 1, 'misses': 0}
+    assert water(longer, model, [6]) == pytest.approx((12,))
+    assert shorter.manifest == Manifest(4) and water(shorter, model, [4]) == pytest.approx((8,))
+    with pytest.raises(LookupError):
+        water(shorter, model, [5])
+
+
+def test_a_value_that_the_stored_run_lacks_runs_again_and_the_entry_then_holds_both(tmp_path):
+    model = tank()
+
+    def asking(*keys):
+        return replace(model.configuration, request=Request(4, everything=False, keys=keys))
+
+    with store.use(tmp_path):
+        store.run(model.program, asking(WATER))
+        level, used = counted(lambda: store.run(model.program, asking(LEVEL)))
+        _, again = counted(lambda: store.run(model.program, asking(WATER)))
+        _, whole = counted(lambda: store.run(model.program, model.configuration))
+    assert used == {'hits': 0, 'misses': 1} and again == {'hits': 1, 'misses': 0}
+    assert whole == {'hits': 0, 'misses': 1}  # every value is more than the two
+    assert level.manifest == Manifest(4, everything=False, keys=(LEVEL,))
+    assert read(level, model.program, ['tank.level'], [4])[0].values == pytest.approx((1,))
+    with pytest.raises(LookupError):
+        water(level, model, [4])
+
+
+def test_a_shorter_request_reads_the_stored_run_up_to_its_horizon_and_nothing_after(tmp_path):
+    """An event at 3 h adds 5 L: a request to 2 h gets no entry of it, and its values are those of a
+    run to 2 h."""
+    model = tank(
+        TANK.replace('    flow fill:', '    top_up = event():\n        after 3 h:\n            this.water += 5 L\n    flow fill:')
+        + 'tank.top_up.start()\n'
+    )
+    to_two = replace(model.configuration, request=Request(2))
+    with store.use(tmp_path):
+        stored = store.run(model.program, model.configuration)
+        cut = store.run(model.program, to_two)
+    alone = fresh(model.program, to_two)
+    assert water(stored, model, [4]) == pytest.approx((13,))
+    assert [entry.t for entry in stored.entries('commit')] == [3] and cut.entries('commit') == ()
+    assert cut.manifest == alone.manifest == Manifest(2)
+    assert water(cut, model, [0, 1, 2]) == pytest.approx(water(alone, model, [0, 1, 2]), rel=1e-12)
+
+
+def test_a_failure_is_stored_and_a_pause_is_not(tmp_path, monkeypatch):
+    """The median rate, 2 L/h, breaks the assertion at the start: the stored run fails the same way.
+    A run that the engine gives back paused is never stored."""
+    failing = tank(TANK + 'assert tank.rate <= 1.5 L/h\n')
+    with store.use(tmp_path):
+        failed, first = counted(lambda: store.run(failing.program, failing.configuration))
+        again, second = counted(lambda: store.run(failing.program, failing.configuration))
+    assert failed.failure is not None and failed.failure.t == 0
+    assert first == {'hits': 0, 'misses': 1} and second == {'hits': 1, 'misses': 0} and again == failed
+    model = tank()
+    pause = Entry(1.0, 1, 'pause', 'tank.decide', 'tank', (('site', 'tank.decide'),))
+    monkeypatch.setattr('napkin.engine.timeline.run', lambda program, configuration: Record(Manifest(4), (), (pause,)))
+    with store.use(tmp_path / 'paused'):
+        store.run(model.program, model.configuration)
+        _, used = counted(lambda: store.run(model.program, model.configuration))
+    assert used == {'hits': 0, 'misses': 1} and not list((tmp_path / 'paused').glob('??/*.run'))
+
+
+def test_what_a_run_computes_from_is_in_its_key_and_no_label_is(monkeypatch):
+    model = tank()
+    base = store.key(model.program, model.configuration)
+    labelled = tank(TANK.replace('"Inflow"', '"The inflow"'))
+    assert store.key(labelled.program, labelled.configuration) == base
+    changed = [
+        store.key(tank(TANK.replace('3 L/h).draw()', '4 L/h).draw()')).program, model.configuration),
+        store.key(model.program, sampled(model, 0)),
+    ]
     monkeypatch.setattr(store, 'ENGINE_DIGEST', '0' * 64)
-    changed['engine'] = store.key(rs, library)
+    changed.append(store.key(model.program, model.configuration))
     monkeypatch.undo()
     monkeypatch.setattr(store, '_ENVIRONMENT_BYTES', b'another computer')
-    changed['environment'] = store.key(rs, library)
-    assert len(set(changed.values()) | {base}) == len(changed) + 1, changed
+    changed.append(store.key(model.program, model.configuration))
+    assert len({base, *changed}) == 1 + len(changed)
 
 
-# A quantity whose upper bound reads an input: each run has the number of the bound for its values.
-BOUND = (
-    'var served: people = 0 size 10 people  @fixture',
-    'var served: people = 0 in 0 people to 4 * n size 10 people  @fixture',
-)
+def test_a_process_waits_for_a_run_that_another_holds_and_reads_it(tmp_path):
+    """Another process holds the key's lock and stores the run meanwhile: this one waits, then reads it."""
+    model = tank()
+    run_key = store.key(model.program, model.configuration)
+    found = []
 
+    def ask():
+        found.append(counted(lambda: store.run(model.program, model.configuration)))
 
-def test_the_key_of_typed_parts_is_the_key_of_the_plain_data_that_they_write():
-    """The store keys a resolved run as typed parts by the plain data that the parts write, piece
-    by piece: the parts that the runs of a structure share, and what each run has of its own. For
-    two runs, a run with other values (which give its bound another number) and a run with the
-    luck of a sample, the key is the key of that plain data as one mapping, and each run has a key
-    of its own. A run that is read again from the plain data, whose parts are other objects, has
-    the same key."""
-    text = scenario()
-    assert text.count(BOUND[0]) == 1
-    model = compiled(text.replace(*BOUND))
-    library = thaw(model.library)
-    first = model.resolve('a')
-    runs = [
-        first,
-        model.resolve('b'),
-        model.resolve('a', {'service.n': 20}),
-        first.adding(luck={'seed': 3, 'sample': 7}),
-    ]
-    assert runs[0].quantities['service.served'].maximum != runs[2].quantities['service.served'].maximum
-    keys = [store.key(rs, library) for rs in runs]
-    assert len(set(keys)) == len(runs)
-    for rs, found in zip(runs, keys):
-        written = rs.plain()
-        assert store.key(written, library) == found
-        assert store.key(Resolved.of(written), library) == found
-        # The same run again: the pieces that the store kept give the same key.
-        assert store.key(rs, library) == found
-
-
-def played(rs, library, settings, play=None):
-    """A stand-in simulation that gives back its run and what the run was asked."""
-    return {'run': rs['run'], 'play': play}
-
-
-def test_what_a_played_run_asks_goes_to_its_simulation_and_into_its_key(tmp_path):
-    """An item of a played run has a fourth part: who picks, and the picks. The simulation gets it
-    as `play`; an item with no such part is simulated with no `play`. With a store, each play of one
-    run is its own entry, and the same play is read from the store."""
-    first = {'control': {'actor': 'reader'}, 'picks': []}
-    second = {'control': {'actor': 'reader'}, 'picks': [{'event': 'actor.decide', 'outcome': 'yes'}]}
-    items = [item('a'), (*item('a'), first), (*item('a'), second)]
-    asked = [None, first, second]
-    assert [found['play'] for found in store.simulate_all(played, items)] == asked
     with store.use(tmp_path):
-        results, used = counted(lambda: store.simulate_all(played, items))
-        assert [found['play'] for found in results] == asked
-        assert used == {'hits': 0, 'misses': 3, 'unkeyed': 0}
-        results, used = counted(lambda: store.simulate_all(played, items))
-        assert [found['play'] for found in results] == asked
-        assert used == {'hits': 3, 'misses': 0, 'unkeyed': 0}
-    assert len(list(tmp_path.glob('??/*.run'))) == 3
+        record = fresh(model.program, model.configuration)
+        with store._locked(tmp_path, run_key):
+            waiting = threading.Thread(target=ask)
+            waiting.start()
+            waiting.join(0.3)
+            assert waiting.is_alive()
+            store._save(tmp_path, run_key, model.program, model.configuration, record)
+        waiting.join()
+    ((again, used),) = found
+    assert used == {'hits': 1, 'misses': 0} and again == record
 
 
-def test_a_key_holds_only_plain_data():
-    with pytest.raises(TypeError):
-        store.canonical({'value': object()})
-
-
-def test_a_stored_simulation_reads_only_the_units_of_the_library(tmp_path):
-    def reads_claims(rs, library, settings):
-        return library['claims']
-
-    with store.use(tmp_path), pytest.raises(KeyError, match='only the library units'):
-        store.simulate(reads_claims, *item('a'))
-
-
-def test_a_process_simulates_a_free_run_while_another_holds_a_run(tmp_path):
-    """Another process holds the first run: this one simulates the second, then waits for the first.
-    The holder ends without storing it, so this one simulates it too."""
-    computed = []
-
-    def compute(rs, library, settings):
-        computed.append(rs['run'])
-        return fake(rs, library, settings)
-
-    held = store._try_lock(tmp_path, store.key(*item('held')))
-    release = threading.Timer(0.3, store._unlock, (held,))
-    release.start()
+def test_a_write_is_atomic_and_a_damaged_entry_runs_again(tmp_path):
+    model = tank()
     with store.use(tmp_path):
-        results = store.simulate_all(compute, [item('held'), item('free')])
-    release.join()
-    assert computed == ['free', 'held']
-    assert results == [{'run': 'held'}, {'run': 'free'}]
-
-
-def test_a_run_that_another_process_stores_is_read_not_simulated(tmp_path):
-    computed = []
-
-    def compute(rs, library, settings):
-        computed.append(rs['run'])
-        return fake(rs, library, settings)
-
-    run_key = store.key(*item('held'))
-    held = store._try_lock(tmp_path, run_key)
-
-    def finish():
-        store._save(tmp_path, run_key, item('held'), {'run': 'held'})
-        store._unlock(held)
-
-    holder = threading.Timer(0.3, finish)
-    holder.start()
-    with store.use(tmp_path):
-        results = store.simulate_all(compute, [item('held')])
-    holder.join()
-    assert computed == [] and results == [{'run': 'held'}]
-
-
-def test_a_write_is_atomic_and_a_damaged_run_is_simulated_again(tmp_path):
-    with store.use(tmp_path):
-        store.simulate_all(fake, [item('a')])
+        store.run(model.program, model.configuration)
         (entry,) = tmp_path.glob('??/*.run')
-        assert not list(tmp_path.glob('??/*.tmp'))
-        entry.write_bytes(entry.read_bytes()[:20])
-        _, used = counted(lambda: store.simulate_all(fake, [item('a')]))
-        assert used['misses'] == 1
-        _, used = counted(lambda: store.simulate_all(fake, [item('a')]))
-        assert used['hits'] == 1
+        assert not list(tmp_path.rglob('*.tmp'))
+        entry.write_bytes(entry.read_bytes()[:40])
+        _, used = counted(lambda: store.run(model.program, model.configuration))
+        _, again = counted(lambda: store.run(model.program, model.configuration))
+    assert used == {'hits': 0, 'misses': 1} and again == {'hits': 1, 'misses': 0}
 
 
-def test_a_failure_is_never_stored(tmp_path):
-    class Failure(Exception):
-        pass
-
-    def fails(rs, library, settings):
-        raise Failure('no result')
-
+def test_the_size_limit_removes_the_least_recently_used_files(tmp_path, monkeypatch):
+    """Two entries and their program, the first used least recently; a limit that a third entry passes
+    and that leaves room for the rest once the first is gone."""
+    model = tank()
     with store.use(tmp_path):
-        (outcome,) = store.simulate_all(fails, [item('a')], (Failure,))
-    assert isinstance(outcome, Failure) and not list(tmp_path.glob('??/*.run'))
-
-
-def test_the_size_limit_removes_the_least_recently_used_runs(tmp_path, monkeypatch):
-    with store.use(tmp_path):
-        store.simulate_all(fake, [item('first'), item('second')])
-    entries = {path: path.stat().st_size for path in tmp_path.glob('??/*.run')}
-    for age, path in enumerate(sorted(entries, key=lambda path: path.name)):
+        for seed in (0, 1):
+            store.run(model.program, sampled(model, seed))
+    first, second = sorted(tmp_path.glob('??/*.run'), key=lambda path: path.stat().st_mtime_ns)
+    (program,) = tmp_path.glob('programs/*.program')
+    for age, path in enumerate((first, second, program)):
         os.utime(path, (1_000_000 + age, 1_000_000 + age))
-    oldest = min(entries, key=lambda path: path.stat().st_mtime)
-    # Room for two runs and a half: the third run removes the one least recently used.
-    monkeypatch.setenv('NAPKIN_STORE_LIMIT', str(2.5 * max(entries.values()) / 1e9))
+    sizes = [path.stat().st_size for path in (first, second, program)]
+    monkeypatch.setenv('NAPKIN_STORE_LIMIT', str(1.02 * sum(sizes) / 0.9 / 1e9))
     with store.use(tmp_path):
-        store.simulate_all(fake, [item('third')])
+        store.run(model.program, sampled(model, 2))
     remaining = set(tmp_path.glob('??/*.run'))
-    assert len(remaining) == 2 and oldest not in remaining
+    assert len(remaining) == 2 and first not in remaining and second in remaining and program.is_file()
 
 
-def test_verify_finds_a_stored_run_that_differs_from_a_fresh_one(model, tmp_path):
+def test_verify_runs_stored_runs_again_and_finds_one_that_differs(tmp_path, capsys):
+    model = tank()
     with store.use(tmp_path):
-        evaluate_study(model)
+        for seed in (1, 2):
+            store.run(model.program, sampled(model, seed))
     assert store.verify(tmp_path, 2) == []
     path = sorted(tmp_path.glob('??/*.run'))[0]
     entry = store._read(path)
-    entry['trajectory'].trace.append({'rule': 'never'})
-    data = pickle.dumps(entry, protocol=pickle.HIGHEST_PROTOCOL)
-    path.write_bytes(store.MAGIC + zlib.compress(data, 1))
+    entry['record'] = replace(entry['record'], trace=())
+    store._write(path, entry)
     assert store.verify(tmp_path, 2) == [path]
+    assert '2 stored runs run again, 1 differ' in capsys.readouterr().out
 
 
-def test_verify_simulates_a_played_run_with_what_it_was_asked(tmp_path):
-    """A played run that is stored has what it was asked beside its inputs: the check of the store
-    simulates it again with the same picks, so it finds no difference. The picks change the run: the
-    stored run of the same model that nobody plays is another entry."""
-    played_model = compiled(play_scenario())
+def test_the_processes_of_a_pool_use_the_store_of_their_parent(tmp_path):
     with store.use(tmp_path):
-        free = evaluate_study(played_model)
-        waits = evaluate_study(played_model, play={'run': 'a', 'control': {'guard': 'reader'}, 'picks': []})
-        event = waits.decision['event']
-        outcome = waits.decision['outcomes'][-1]['name']
-        study = evaluate_study(
-            played_model,
-            play={
-                'run': 'a',
-                'control': {'guard': 'reader'},
-                'picks': [{'event': event, 'outcome': outcome}],
-            },
-        )
-    assert free.admissible and study.admissible, (free.diagnostics, study.diagnostics)
-    assert len(list(tmp_path.glob('??/*.run'))) == 3
-    assert store.verify(tmp_path, 3) == []
-
-
-def test_worker_processes_use_the_store_of_their_parent(tmp_path):
-    with store.use(tmp_path):
-        options = store.pool_options(helpers=2)
-    context = multiprocessing.get_context('spawn')
-    with ProcessPoolExecutor(1, mp_context=context, **options) as pool:
+        options = store.pool_options()
+    with ProcessPoolExecutor(1, mp_context=multiprocessing.get_context('spawn'), **options) as pool:
         assert pool.submit(store.current).result() == tmp_path
-        assert pool.submit(store.helpers).result() == (2 if store.fcntl is not None else 0)
 
 
-def slow(name, **extra):
-    return ({'run': name, 'seconds': 1.5, **extra}, {'units': {}}, None)
-
-
-@pytest.mark.skipif(store.fcntl is None, reason='helpers need file locks')
-def test_helpers_simulate_the_missing_runs_of_a_list_beside_the_process(tmp_path):
-    """Four runs of 1.5 s, three helpers: the helpers take runs while this process simulates the
-    first, each run is simulated once, and every one counts as simulated."""
-    with store.use(tmp_path):
-        store.activate(tmp_path, helpers=3)
-        results, used = counted(lambda: store.simulate_all(processes.slow_run, [slow(n) for n in 'abcd']))
-    assert [result['run'] for result in results] == list('abcd')
-    assert len({result['process'] for result in results}) > 1
-    assert used == {'hits': 0, 'misses': 4, 'unkeyed': 0}
-    assert len(list(tmp_path.glob('??/*.run'))) == 4
-
-
-@pytest.mark.skipif(store.fcntl is None, reason='helpers need file locks')
-def test_a_run_that_fails_in_a_helper_fails_in_the_process_that_needs_it(tmp_path):
-    """A helper does not store a failure, so this process simulates the run again and reports it."""
-    with store.use(tmp_path):
-        store.activate(tmp_path, helpers=2)
-        results = store.simulate_all(
-            processes.slow_run, [slow('a'), slow('b', fails=True), slow('c')], (processes.Failure,)
-        )
-    assert results[0]['run'] == 'a' and results[2]['run'] == 'c'
-    assert isinstance(results[1], processes.Failure) and str(results[1]) == 'b fails'
-    assert len(list(tmp_path.glob('??/*.run'))) == 2
-
-
-@pytest.mark.parametrize('name', ['scenario', 'F5'])
-def test_a_simulation_calls_only_code_of_the_files_that_its_key_digests(name):
-    """Each package function that a simulation calls is defined in a file of the engine's import
-    closure, so a change to any code that a simulation runs changes every key. The acceptance fixture
-    F5 has every construct of the language once; each of its runs is simulated."""
-    if name == 'scenario':
-        model, library = compiled(scenario()), None
-    else:
-        model, library = model_of(name), thaw(LIBRARY)
-    structures = [model.resolve(run) for run in model.runs]
+def test_a_run_calls_only_code_of_the_files_that_its_key_digests():
+    """Each package function that a run calls is defined in a file of the engine's import closure, so
+    a change to any code that a run runs changes every key. The worked examples of the spec run every
+    construct that the engine runs."""
+    examples = [make() for make in EXAMPLES.values()]
     called = set()
 
     def profile(frame, event, argument):
@@ -354,11 +271,11 @@ def test_a_simulation_calls_only_code_of_the_files_that_its_key_digests(name):
 
     sys.setprofile(profile)
     try:
-        for rs in structures:
-            simulate(rs, library or thaw(model.library))
+        for example in examples:
+            fresh(example.program, example.configuration)
     finally:
         sys.setprofile(None)
-    files = {Path(filename).resolve() for filename in called}
+    files = {Path(name).resolve() for name in called}
     package = {path for path in files if path.is_relative_to(store.PACKAGE)}
     assert package and package <= set(store.closure()), sorted(package - set(store.closure()))
 
@@ -373,7 +290,14 @@ def test_the_store_folder_follows_its_settings(monkeypatch, tmp_path):
     monkeypatch.delenv('NAPKIN_STORE')
     assert store.default_directory() == store.source_checkout() / '.cache' / 'runs'
     assert store.source_checkout() == store.PACKAGE.parent
-    # An installed package has no checkout around it.
     monkeypatch.setattr(store, 'source_checkout', lambda: None)
     monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path / 'cache'))
     assert store.default_directory() == tmp_path / 'cache' / 'napkin' / 'runs'
+
+
+def test_a_fingerprint_reads_a_record_and_nothing_else():
+    record = Record(Manifest(1), (), (Entry(0.5, 1, 'fire', 'tank.when[0]', 'tank'),))
+    assert store.fingerprint(record) == store.fingerprint(replace(record))
+    assert store.fingerprint(record) != store.fingerprint(replace(record, trace=()))
+    with pytest.raises(TypeError):
+        store.fingerprint(object())

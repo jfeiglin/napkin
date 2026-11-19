@@ -17,7 +17,15 @@ Own: `tools/evidence/`, `tests/evidence/`, `tests/model/test_pages.py`. Not `nap
    (waits for M). `tests/model/test_pages.py`: names in words and the texts the pages read.
 
 ## Done
-- (nothing yet)
+- `tools/evidence/trail.py` (new, with its command); `integrate.py` (coverage over trail.py, the
+  readers' documents of whole packages); `adopt.py` (own unit helpers, package documents);
+  `__init__.py`. `manifest.py`, `fetch.py`, `normalize.py`, `cache.py` unchanged.
+- `tests/evidence/support.py` rewritten: `SERVICE`, `QUEUE`, `family`, `write_package`,
+  `evidence_library`, and the pack helpers (moved from test_evidence_tools.py).
+- Ported and passing: test_cache (3), test_evidence_tools (58, 1 skip: no Ghostscript),
+  test_source_manifest (7), test_commands (36), test_adopt (7).
+- In progress: test_evidence_report, test_index, test_assumption_disclosure, test_library_integrity,
+  test_catalogue (new, M), tests/model/test_pages.py.
 
 ## Decisions
 - (to come)

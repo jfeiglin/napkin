@@ -1,25 +1,43 @@
-"""The tools on a package with variants, the catalogue's layout from Phase 3b on, built in tmp_path: a
-package `scenarios/SC97/` with its main file and its module, and the variants `SC97:a` and `SC97:b`, each
-in `variants/<name>/` with an entry file that reads the package's main file.
+"""The tools on a package with variants, the catalogue's layout, built in tmp_path in the language of
+the rewrite: a package `scenarios/SC97/` with its main file and its module, and the variants `SC97:a`
+and `SC97:b`, each in `variants/<name>/` with an entry file that reads the package's main file.
 
-The package runs as its variants: its main file is part of each variant's model, so it is no entry, and
-the package is the owner of the records of its folder, which its variants read. The records of a folder
-belong to that folder's owner. A pack or an adoption writes the records of one owner's folder, and every
-other folder's records stay byte-identical."""
+The package runs as its variants: its main file is part of each variant's model, so it is no entry,
+and the package is the owner of the records of its folder, which its variants read. The records of a
+folder belong to that folder's owner. A pack or an adoption writes the records of one owner's folder,
+and every other folder's records stay byte-identical."""
 
 import json
 
+from napkin.model.compile import load_scenario
 from napkin.model.identity import COLLECTIONS
-from tests.build import evidence_library, fixture_claim
+from tests.evidence.support import evidence_library, fixture_claim, write_package
 from tests.evidence.test_adopt import linked
-from tests.model.test_modules import CHANGE, TANKS, module, scenario
-from tests.owned import write_family
 from tools import catalogue
 from tools.evidence import adopt, integrate
 
-CITE = 'record {0}: source_transfer "Applied here."\n    claims:\n        {1}\n'
-# An assumption that a model cites before a pack adds it.
-LATER = 'record later: assumption {0} "A later assumption."\n'
+# The package's module: two tanks of one template, each filled at its ask, and a value of the top
+# level that rests on the package's record `used`, which cites its claim C-USED.
+COMMON = """\
+Tank:
+    "A tank that a supply fills."
+    input ask: people/h = 1 people/h in [0 people/h, 10 people/h]  @fixture
+        "Ask"
+    got: people = 0 people in [0 people,]  @fixture
+        "Taken"
+    flow take: SOURCE -> this.got  @fixture
+        request = formula(this.ask)
+
+total: formula(people) = formula(sum(Tank.instances.got))  @used
+    "Water taken"
+
+record fixture: identity "Analytic contract fixture."
+record used: source_transfer "Applied here."
+    claims:
+        C-USED
+"""
+# A record that a model cites before a pack adds its assumption.
+LATER = 'record later: assumption "A later assumption."\n    assumption {0}\n'
 
 
 def assumption(identifier):
@@ -38,12 +56,13 @@ def assumption(identifier):
 
 
 def entry_text(later=None):
-    """The package's main file, which uses the package's module: its tanks, the first resting on the
-    assumption `later` that no folder holds yet."""
-    body = TANKS
-    if later is not None:
-        body = body.replace('ask = 1 people/h  @fixture', 'ask = 1 people/h  @later')
-    text = scenario(body=body + '\n' + CHANGE.format(20))
+    """The package's main file, which uses the package's module: its two tanks, the first resting on
+    the assumption `later` that no folder holds yet."""
+    first = '@later' if later is not None else '@fixture'
+    text = (
+        'scenario "Tanks"\n    horizon 12 h\n    library "../library"\nuse common\n\n'
+        f'a1: Tank\n    ask = 1 people/h  {first}\n\na2: Tank\n    ask = 2 people/h  @fixture\n'
+    )
     return text + ('\n' + LATER.format(later) if later else '')
 
 
@@ -54,24 +73,20 @@ def variant_text(title, record, later=None):
     if later is not None:
         lines += ['', 'change a1:', '    ask = 1 people/h  @later']
     text = '\n'.join(lines) + '\n'
-    return text + '\n' + CITE.format(*record) + ('\n' + LATER.format(later) if later else '')
+    cite = f'record {record[0]}: source_transfer "Applied here."\n    claims:\n        {record[1]}\n'
+    return text + '\n' + cite + ('\n' + LATER.format(later) if later else '')
 
 
 def nested(root, *, package_later=None, variant_later=None):
     """The package SC97 and its variants a and b below `root`, with the records of each folder: the
     package's source and claim, which its module cites, and each variant's own claim."""
-    common = module().replace(
-        'output total: people = sum(Tank.got)  @fixture', 'output total: people = sum(Tank.got)  @used'
-    )
-    files = write_family(
-        root,
-        {
-            'SC97/common.scn': common + '\n' + CITE.format('used', 'C-USED'),
-            'SC97/model.scn': entry_text(later=package_later),
-            'SC97/variants/a/model.scn': variant_text('A', ('own', 'C-A'), variant_later),
-            'SC97/variants/b/model.scn': variant_text('B', ('own', 'C-B')),
-        },
-    )
+    files = {
+        'common.scn': COMMON,
+        'model.scn': entry_text(later=package_later),
+        'variants/a/model.scn': variant_text('A', ('own', 'C-A'), variant_later),
+        'variants/b/model.scn': variant_text('B', ('own', 'C-B')),
+    }
+    write_package(root, files, owner='SC97')
     owners = catalogue.owners(root)
     base, east, west = (owners[name].evidence for name in ('SC97', 'SC97:a', 'SC97:b'))
     (base / 'sources.json').write_text(json.dumps(evidence_library()['sources']))
@@ -135,6 +150,10 @@ def test_the_package_and_its_variants_are_owners_read_as_their_files_say(tmp_pat
         'SC97:a': ('SC97:a',),
         'SC97:b': ('SC97:b',),
     }
+    # Each variant compiles with the package's module, and cites its own record and the package's.
+    for name in ('a', 'b'):
+        declared = load_scenario(catalogue.locate(f'SC97:{name}', tmp_path).entry).declared
+        assert {record.name for record in declared.records} == {'fixture', 'used', 'own'}
 
 
 def test_a_variants_pack_writes_its_folder_and_leaves_the_package_and_its_sibling_alone(tmp_path):

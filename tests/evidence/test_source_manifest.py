@@ -1,7 +1,7 @@
 """Portable acquisition uses the recorded source bytes and full coverage counts.
 
-The sources are synthetic: a pack integrates one cached document (tests/evidence/test_evidence_tools.py),
-and a project document lives under tmp_path. Nothing reads the network or the real cache.
+The sources are synthetic: a pack integrates one cached document (`tests/evidence/support.py`), and a
+project document and the catalogue live under tmp_path. Nothing reads the network or the real cache.
 """
 
 import copy
@@ -10,10 +10,9 @@ import json
 
 import pytest
 
-from tests.evidence.test_evidence_tools import base_library, claim, pack
-from tests.helpers import ROOT
+from tests.evidence.support import QUEUE, base_library, claim, pack, write_package
 from tools.evidence.integrate import integrate, retrieval_coverage
-from tools.evidence.manifest import PATH, acquire, main, restore
+from tools.evidence.manifest import PATH, acquire, artifacts, main, restore
 
 
 def integrated(tmp_path):
@@ -139,11 +138,9 @@ def test_parallel_reproduction_retains_order_and_unclaimed_failure(tmp_path):
 
 
 def test_selected_evidence_commands_do_not_load_an_invalid_sibling(tmp_path, capsys):
-    from tests.build import scenario
-    from tests.owned import write_scenario
     from tools.evidence.integrate import main as integrate_main
 
-    write_scenario(tmp_path, scenario())
+    write_package(tmp_path, {'model.scn': QUEUE})
     other = tmp_path / 'scenarios/SC98'
     other.mkdir()
     (other / 'model.scn').write_text('not a valid model: [')
@@ -152,11 +149,20 @@ def test_selected_evidence_commands_do_not_load_an_invalid_sibling(tmp_path, cap
     assert integrate_main(['--check', '--root', str(tmp_path), '--scenario', 'SC99']) == 0
 
 
-def test_scenario_manifest_import_commands_keep_the_owner():
-    from tools.evidence.manifest import artifacts
+def test_scenario_manifest_import_commands_keep_the_owner(tmp_path):
+    # SC99 owns the source `doc` with its retrieval, which a pack wrote; the shared vocabulary has none.
+    from tools.evidence.integrate import main as integrate_main
 
-    document = json.loads(artifacts(ROOT)[PATH])
-    for row in document['scenarios']:
-        for source in row['sources']:
-            if source.get('retrieval'):
-                assert f'--scenario {row["scenario"]} --import {source["id"]}=' in source['import_command']
+    write_package(tmp_path, {'model.scn': QUEUE})
+    (tmp_path / 'packs').mkdir()
+    (tmp_path / 'packs' / 'doc.json').write_text(json.dumps(pack(tmp_path, 'doc', [claim('V-1')])))
+    options = ['--root', str(tmp_path), '--packs', str(tmp_path / 'packs'), '--cache', str(tmp_path / 'cache')]
+    assert integrate_main([*options, '--report', str(tmp_path / 'report.json'), '--write']) == 0
+    document = json.loads(artifacts(tmp_path)[PATH])
+    (row,) = document['scenarios']
+    (source,) = row['sources']
+    assert (row['scenario'], source['id'], source['claims']) == ('SC99', 'doc', ['V-1'])
+    assert source['import_command'] == (
+        'python -m tools.evidence.manifest --scenario SC99 --import doc=/path/to/raw-document'
+    )
+    assert document['shared']['sources'] == [] and document['library_source_count'] == 1

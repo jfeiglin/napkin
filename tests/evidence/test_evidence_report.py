@@ -1,85 +1,81 @@
-"""The evidence report reads built models: what each entity and each output rests on, the cyber
-first move, claim reachability and the red-team records in use."""
+"""The evidence coverage report and the views that it reads (`tools/evidence/trail.py`): what each
+entity and template rests on, what a value rests on, the claims that a model reaches and those of its
+folder that it does not, and the red-team records of its folder.
 
-from napkin.model.model import build_model
-from tests.build import (
-    append,
-    block,
-    cited,
-    compiled,
-    edit,
-    entity,
-    evidence_library,
-    fixture_claim,
-    in_place,
-    member,
-    output,
-    parameter,
-    replace,
-    sc99,
-    scenario,
-    stock,
-    template,
-)
-from tests.evidence.support import resting, write_library
-from tools.evidence.integrate import coverage_report, entity_view, outcome_view
+The models are the synthetic service of `tests/evidence/support.py`; each expected count is the
+records written on its lines, counted by hand.
+"""
+
+import textwrap
+
+from napkin.model.compile import compile_text, library_units
+from tests.evidence.support import SERVICE, evidence_library, fixture_claim, write_package
+from tools.evidence.integrate import coverage_report
+from tools.evidence.trail import entities, rests_on, summary
+
+# A table of three archives, whose column `kept` cites its record once for every row.
+ROWS = 'id,kept: people @fixture\nfirst,1\nsecond,2\nthird,3\n'
 
 
-def evidence_fixture():
-    """The analytic transfer with cited evidence on its delivery path, and a set of two archive
-    copies whose evidence, a named record used twice, no output reads."""
-    text = resting(scenario(), 'service/rate', in_place('source_transfer', 'Contract fixture.', 'C-ACCESS'))
-    text = resting(
-        text, 'service/stop', in_place('assumption', 'The service stops.', assumption='RT-FIXTURE')
+def compiled(text=SERVICE, tables=None):
+    return compile_text(textwrap.dedent(text), library_units(evidence_library()), tables=tables)
+
+
+def test_each_entity_counts_its_uses_and_a_template_its_members_lines_and_its_columns_once():
+    # The service: five identities (n, end, waiting, served, serve), the rate's transfer and the stop's
+    # assumption. The archive: its two values' transfers; north's own line and the table's column add
+    # one identity each, and the table's three rows none.
+    text = SERVICE.replace(
+        'north: Archive\n', 'north: Archive\n    kept = 1 people  @fixture\n\nrows: Archive from "rows.csv"\n'
     )
-    archive = template(
-        'Archive',
-        *(stock(name, 0, minimum=None, kind='state', records='@archived') for name in ('kept', 'seen')),
-        doc='Archived records.',
-        records=None,
-    )
-    copies = entity('archive', template='Archive', copies=2, records=None)
-    text = edit(
-        text,
-        replace('\nassert service.end', f'\n{archive}\n\n{copies}\n\nassert service.end'),
-        append(cited('archived', 'C-ACTION')),
-    )
-    return compiled(text, evidence_library())
+    view = entities(compiled(text, {'rows.csv': ROWS}).declared)
+    assert view == {
+        'service': {
+            'kinds': {'source_transfer': 1, 'assumption': 1, 'identity': 5},
+            'claims': ['C-ACCESS'],
+            'assumptions': ['RT-FIXTURE'],
+        },
+        'Archive': {
+            'kinds': {'source_transfer': 2, 'identity': 2},
+            'claims': ['C-ACTION'],
+            'assumptions': [],
+        },
+    }
 
 
-def test_each_entity_counts_its_basis_uses_and_its_copies_once():
-    view = entity_view(evidence_fixture())
-    assert set(view) == {'service', 'archive'}
-    # Each use of the named record is recorded; the two copies share one definition.
-    assert view['archive'] == {'kinds': {'source_transfer': 2}, 'claims': ['C-ACTION'], 'assumptions': []}
-    assert (view['service']['claims'], view['service']['assumptions']) == (['C-ACCESS'], ['RT-FIXTURE'])
+def test_a_value_rests_on_the_parts_that_it_can_read_and_no_others():
+    # served reads the flow that fills it from the people waiting, at the rate while the service is
+    # open, which the stop closes at its end: the identities of n, end, waiting, served and serve, the
+    # rate's transfer, the stop's assumption and the option that halves the rate, which rests on the
+    # same assumption. The archive's claim is no part of it.
+    model = compiled()
+    assert summary(rests_on(model, 'service.served')) == {
+        'kinds': {'source_transfer': 1, 'assumption': 2, 'identity': 5},
+        'claims': ['C-ACCESS'],
+        'assumptions': ['RT-FIXTURE'],
+    }
+    halved = [use for use in rests_on(model, 'service.served') if use.option is not None]
+    assert [(use.path, use.name, use.option) for use in halved] == [('service.rate', 'halved', 'Half rate')]
+    # A member of a template rests on its template's records.
+    assert summary(rests_on(model, 'north.kept')) == {
+        'kinds': {'source_transfer': 1},
+        'claims': ['C-ACTION'],
+        'assumptions': [],
+    }
 
 
-def test_an_outcome_rests_on_the_parts_it_can_depend_on_and_no_others():
-    # delivered reads served, which the flow at the delivery rate fills until the stop event switches
-    # the service off: the rate's claim and the event's assumption, never the archive's claim.
-    view = outcome_view(evidence_fixture())
-    assert set(view) == {'delivered'}
-    assert (view['delivered']['claims'], view['delivered']['assumptions']) == (['C-ACCESS'], ['RT-FIXTURE'])
-    assert set(view['delivered']['kinds']) == {'identity', 'source_transfer', 'assumption'}
+def test_a_member_rests_on_its_own_line_and_a_row_on_its_column():
+    text = SERVICE.replace('north: Archive\n', 'north: Archive\n    kept = 1 people  @fixture\n')
+    model = compiled(text.replace('south: Archive\n', 'rows: Archive from "rows.csv"\n'), {'rows.csv': ROWS})
+    for path, place in (('north.kept', 'north.kept'), ('rows.second.kept', 'rows.kept')):
+        found = rests_on(model, path)
+        assert [(use.path, use.name) for use in found] == [('Archive.kept', 'archived'), (place, 'fixture')]
+    assert [(use.path, use.name) for use in rests_on(model, 'north.seen')] == [('Archive.seen', 'archived')]
 
 
-def test_an_outcome_rests_on_the_input_that_its_lag_reads():
-    # `reported` is the delivered count after a delay that an input gives; only the input cites C-ACTION.
-    text = edit(scenario(), member('service', parameter('report_delay', 2, 'h', 1, 4, doc='Report delay')))
-    text = resting(text, 'service/report_delay', in_place('source_transfer', 'Contract fixture.', 'C-ACTION'))
-    reported = output(
-        'reported', 'service.served', 'people', doc='Reported', under=('lag service.report_delay',)
-    )
-    text = edit(text, replace('\noptions "Response":', f'\n{reported}\n\noptions "Response":'))
-    view = outcome_view(compiled(text, evidence_library()))
-    assert 'C-ACTION' in view['reported']['claims']
-    assert 'C-ACTION' not in view['delivered']['claims']
-
-
-def test_the_report_names_the_first_move_the_unreached_claims_and_the_red_team_users(tmp_path):
+def test_the_report_names_the_reached_and_unused_claims_and_the_red_team_records(tmp_path):
     library = evidence_library()
-    # A claim reaches a scenario through its records, its review or an assumption it uses.
+    # A claim reaches a scenario through its records, its notes or an assumption that it rests on.
     library['claims'] += [fixture_claim(c) for c in ('C-SUPPORT', 'C-FLAGGED', 'C-ORPHAN')]
     library['assumptions'][0]['supports'].append({'claim': 'C-SUPPORT', 'relation': 'bounds'})
     library['assumptions'] += [
@@ -90,30 +86,31 @@ def test_the_report_names_the_first_move_the_unreached_claims_and_the_red_team_u
             'review': {'status': 'unreviewed'},
             'origin': 'author',
         },
-        {'id': 'RT-UNUSED', **{k: v for k, v in library['assumptions'][0].items() if k != 'id'}},
+        {**library['assumptions'][0], 'id': 'RT-UNUSED'},
     ]
-    limitation = block('RF: "Fixture."', in_place('source_transfer', 'Contract fixture.', 'C-FLAGGED'))
-    attacked = edit(sc99(), member('notes:', block('limitations:', limitation)))
-    write_library(tmp_path, 'SC99', library)
-    effective = compiled(attacked, library).library
-    path = tmp_path / 'scenarios/SC99/model.scn'
-    path.write_text(attacked, encoding='utf-8')
-    # The name of the attack is the pages': brief.toml beside the model's file.
-    title = 'unauthorized control commands'
-    path.with_name('brief.toml').write_text(f'attack = "{title}"\n', encoding='utf-8')
-    (tmp_path / 'scenarios/fixture.scn').write_text('not a catalogue case', encoding='utf-8')
-    lines = coverage_report(tmp_path).splitlines()
-    top = [line.split(':')[0] for line in lines if line.startswith('  ') and line[2] != ' ']
-    assert top == ['  SC99']
-    # The first move: the attack's name (`attack` in brief.toml), the start's rule and its event, and
-    # each claim that the records of the start event cite, once, with its status: the record at the
-    # end of its line (`@access`, C-ACCESS), then the record under it (C-ACTION, ATTACK-T0831).
-    initiation = build_model(path, effective).initiation
-    assert lines[2] == (
-        f'      claims reached 5; initiation cyber (incident): {title}; '
-        f'{initiation["rule"]} -> {initiation["effect"]}; '
-        'claims C-ACCESS (unverified), C-ACTION (unverified), ATTACK-T0831 (unverified)'
+    note = textwrap.dedent(
+        """
+        notes:
+            limitations:
+                RF: "Fixture."
+                    @source_transfer "Contract fixture."
+                        claims:
+                            C-FLAGGED
+        """
     )
-    assert '      unused claims: C-ORPHAN' in lines
-    assert '      machine red-team record: SC99:RT-FIXTURE' in lines
-    assert '      machine red-team record: SC99:RT-UNUSED' in lines
+    write_package(tmp_path, {'model.scn': SERVICE + note}, library)
+    (tmp_path / 'scenarios/fixture.scn').write_text('not a catalogue case', encoding='utf-8')
+    # The uses: the service's seven, the archive's two, the option's assumption and the note's
+    # transfer. The claims reached: the three that the records name and C-SUPPORT, through RT-FIXTURE.
+    assert coverage_report(tmp_path).splitlines() == [
+        'Evidence coverage by scenario and record ID',
+        '  SC99: source_transfer 4, assumption 2, identity 5; claims C-ACCESS, C-ACTION, C-FLAGGED; '
+        'assumptions RT-FIXTURE',
+        '      claims reached 4',
+        '      entities',
+        '        service: source_transfer 1, assumption 1, identity 5; claims C-ACCESS; assumptions RT-FIXTURE',
+        '        Archive: source_transfer 2; claims C-ACTION; assumptions none',
+        '      unused claims: C-ORPHAN',
+        '      machine red-team record: SC99:RT-FIXTURE',
+        '      machine red-team record: SC99:RT-UNUSED',
+    ]

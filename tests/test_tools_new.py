@@ -1,21 +1,22 @@
-"""Starting a package of the catalogue (`tools/new.py`): the new folder has every file that each
-package of the catalogue has, in its shape; the catalogue finds it; its model names the catalogue's
-library; it takes the name of a real package only; and the commands and docs that its checklist and
-README name exist."""
+"""Starting a package of the catalogue (`tools/new.py`): its model names the catalogue's library and
+compiles in the new language; it takes the name of a real package only; and the commands and docs
+that its checklist and README name exist. That the new folder has each file that every package of
+the catalogue has is `tests/test_tools_new_catalogue.py`, which reads the catalogue (stage M)."""
 
 import importlib.util
 import json
 import re
 import shutil
+from pathlib import Path
 
 import pytest
 
 from napkin import commands
 from napkin.draw import style
-from napkin.model import load_scenario
-from tests.helpers import ALL_SCENARIO_IDS, ROOT
+from napkin.model.compile import load_scenario
 from tools import catalogue, new
-from tools.publish import brief
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -41,31 +42,29 @@ def made(root):
     return sorted(path.name for path in (root / catalogue.SCENARIOS).iterdir() if path.name != 'library')
 
 
-def test_a_new_folder_has_each_file_that_every_package_has(root):
+def test_a_new_folder_has_its_files_each_in_its_shape(root):
+    """The JSON files read, the evidence lists are empty, and the stylesheet reads and leaves each key
+    to its default."""
     folder = new.create(root, 'fake_case', 'A test of the folder')
     assert catalogue.entries(root) == {'fake_case': folder / 'model.scn'}
-    everywhere = set.intersection(*(authored(catalogue.locate(sid, ROOT).folder) for sid in ALL_SCENARIO_IDS))
-    assert everywhere and everywhere <= authored(folder), sorted(everywhere - authored(folder))
+    assert authored(folder) == set(new.files('fake_case', 'A test of the folder'))
     for path in folder.rglob('*.json'):
         json.loads(path.read_text(encoding='utf-8'))
     for name in catalogue.COLLECTIONS:
         assert json.loads((folder / 'evidence' / f'{name}.json').read_text(encoding='utf-8')) == []
-    # The stylesheet and the brief settings read, and leave each key to its default.
-    for name, read, empty in (
-        (style.STYLE_FILE, style.read, style.Style),
-        (brief.BRIEF_FILE, brief.read_brief, brief.Brief),
-    ):
-        assert read((folder / name).read_text(encoding='utf-8'), name) == empty(origin=name)
+    assert style.read((folder / style.STYLE_FILE).read_text(encoding='utf-8'), style.STYLE_FILE) == style.Style(
+        origin=style.STYLE_FILE
+    )
 
 
 def test_the_new_model_names_the_catalogues_library_and_the_title(root):
     # The title comes on one line, with one space between its words.
     folder = new.create(root, 'fake_case', ' A test\tof  the\nfolder ')
-    model = load_scenario(folder / 'model.scn')
-    assert model.scenario.title == 'A test of the folder'
+    declared = load_scenario(folder / 'model.scn').declared
+    assert declared.scenario.title == 'A test of the folder'
     # Each unit of the shared vocabulary is a unit of the model: its file names the library.
     shared = catalogue.vocabulary(root)['units']
-    assert shared and set(shared) <= set(model.library['units'])
+    assert shared and set(shared) <= set(declared.units.base)
 
 
 def test_a_name_that_is_taken_is_refused_and_its_folder_kept(root):

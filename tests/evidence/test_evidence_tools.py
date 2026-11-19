@@ -1,32 +1,25 @@
 """Evidence authoring tools: quote normalization, status by rule, idempotent integration.
 
-Packs and cached documents are synthetic and live under tmp_path; nothing touches the
-network, the real cache or scenario evidence files. Expected statuses follow from the
-documented rules applied to hand-built inputs, never from a production run.
+Packs and cached documents are synthetic and live under tmp_path (`tests/evidence/support.py`);
+nothing touches the network, the real cache or scenario evidence files. Expected statuses follow from
+the documented rules applied to hand-built inputs, never from a production run. The checks of the
+catalogue's own files wait for stage M (`tests/evidence/test_catalogue.py`).
 """
 
 import copy
 import hashlib
 import json
-from functools import cache
 from pathlib import Path
 
 import pytest
 
-from napkin.model import load_json
 from napkin.model.evidence import claim_digest, validate_library
-from tests.build import library
-from tests.helpers import ROOT
+from tests.evidence.support import DOCUMENT, base_library, cached, claim, pack, statuses
+from tests.units import library
 from tools import catalogue
 from tools.evidence.fetch import GS, archive_id, extract, extract_bytes, record, sniff
 from tools.evidence.integrate import PACK_SCHEMA, IntegrationError, dump, integrate, pack_validator, rematch
 from tools.evidence.normalize import NORMALIZATION, match_quotes, matches, normalize
-
-DOCUMENT = (
-    'Incident summary. The con-\nfiguration change was reverted with high con\ufb01dence.\n'
-    'Service restoration took 114 days in total; losses fell 42% after the soft\u00adware fix.\n'
-    'Operators confirmed the breakers were reopened within 6 hours.\n'
-)
 
 
 @pytest.mark.parametrize(
@@ -214,124 +207,6 @@ def test_pdf_text_comes_from_ghostscript_txtwrite():
 # Integration on synthetic packs.
 
 
-def cached(tmp_path, content=DOCUMENT):
-    raw = content.encode()
-    r = record(
-        'https://example.org/report.txt',
-        'https://example.org/report.txt',
-        200,
-        'curl',
-        'text/plain',
-        raw,
-        tmp_path / 'cache',
-        retrieved_at='2026-09-18T00:00:00Z',
-    )
-    return {**r, 'text': extract(tmp_path / 'cache' / 'sha256' / r['sha256'][:2] / f'{r["sha256"]}.txt')}
-
-
-def base_library():
-    lib = library()
-    lib['sources'] = [
-        {
-            'id': 'kept',
-            'type': 'report',
-            'title': 'Kept source',
-            'URL': 'https://example.org/kept',
-            'custom': {
-                'verification': {
-                    'status': 'unverified',
-                    'date': '2026-09-17',
-                    'method': 'access_attempt',
-                    'url': 'https://example.org/kept',
-                    'notes': 'Not reached.',
-                    'access': 'unavailable',
-                }
-            },
-        }
-    ]
-    claim = {
-        'id': 'K-1',
-        'source': 'kept',
-        'locator': 'p. 1',
-        'evidence_type': 'guidance',
-        'shows': 'Kept claim.',
-        'limits': 'None.',
-    }
-    claim['verification'] = {
-        'status': 'unverified',
-        'date': '2026-09-17',
-        'method': 'access_attempt',
-        'checked_fields': [],
-        'notes': 'Not reached.',
-        'content_sha256': claim_digest(claim),
-    }
-    lib['claims'] = [claim]
-    return lib
-
-
-def claim(
-    cid,
-    *,
-    quotes=('configuration change was reverted',),
-    opened=True,
-    fields=('shows', 'limits', 'quotes'),
-    verdicts=None,
-    method=None,
-    data=None,
-    action='new',
-    **extra,
-):
-    check = {
-        'opened': opened,
-        'checked_fields': list(fields),
-        'field_verdicts': verdicts or {f: 'match' for f in fields},
-        'notes': f'Checked {cid}.',
-    }
-    if method:
-        check['method'] = method
-    out = {
-        'id': cid,
-        'action': action,
-        'locator': 'p. 1',
-        'evidence_type': 'incident_report',
-        'shows': f'{cid} shows.',
-        'limits': f'{cid} limits.',
-        'quotes': [{'locator': 'p. 1', 'text': q} for q in quotes],
-        'check': check,
-        **extra,
-    }
-    if data:
-        out['data'] = data
-    return out
-
-
-def pack(tmp_path, sid, claims, *, retrievals=None, action='new', method=None, failures=()):
-    retrievals = [cached(tmp_path)] if retrievals is None else retrievals
-    for c in claims:
-        if c['check']['opened'] and retrievals:
-            c['check'].setdefault('retrieval_sha256', retrievals[0]['sha256'])
-    source = {'id': sid, 'action': action, 'access': 'accessible'}
-    if action == 'new':
-        source['csl'] = {'type': 'report', 'title': f'{sid} report', 'URL': 'https://example.org/report.txt'}
-    if method:
-        source['method'] = method
-    return {
-        'pack_version': '1',
-        'scenario': 'SC99',
-        'pack_id': f'pack-{sid}',
-        'agent': 'fixture',
-        'date': '2026-09-18',
-        'source': source,
-        'retrievals': retrievals,
-        'claims': claims,
-        'access_failures': list(failures),
-    }
-
-
-def statuses(lib):
-    return {c['id']: (c['verification']['status'], c['verification']['method']) for c in lib['claims']}
-
-
 def test_integration_assigns_status_by_rule(tmp_path):
     packs = [
         (
@@ -456,15 +331,6 @@ def test_cache_tampering_and_missing_text_block_verification(tmp_path):
         tmp_path / 'cache',
     )
     assert statuses(lib)['C'] == ('partial', 'primary_full_text')
-
-
-def test_the_library_on_disk_is_in_the_format_integration_writes():
-    # The records of each owner: each scenario's and variant's folder, and each folder of modules.
-    paths = [path for owner in catalogue.owners(ROOT).values() for path in owner.evidence.glob('*.json')]
-    assert paths
-    for path in paths:
-        text = path.read_text(encoding='utf-8')
-        assert dump(json.loads(text)) == text
 
 
 def test_reapplying_packs_is_a_no_op_and_downgrades_keep_their_history(tmp_path):
@@ -613,7 +479,7 @@ def test_the_pack_schema_is_a_tool_file_and_the_package_ships_only_the_compiler_
     from napkin.model.load import SCHEMAS
     from napkin.schema import FOLDER
 
-    assert PACK_SCHEMA.is_file() and PACK_SCHEMA.parent == ROOT / 'tools' / 'evidence'
+    assert PACK_SCHEMA.is_file() and PACK_SCHEMA.parent == catalogue.ROOT / 'tools' / 'evidence'
     shipped = sorted(path.name for path in FOLDER.glob('*.json'))
     assert shipped == sorted(f'{name}.schema.json' for name in SCHEMAS)
 
@@ -695,89 +561,6 @@ def test_rematch_rechecks_recorded_retrievals_offline(tmp_path):
         next(r for r in rematch(lib, tmp_path / 'cache') if r['claim'] == 'V-1')['problem'] == 'recorded 2/1'
     )
     assert all(r['matched'] is None and r['problem'] for r in rematch(lib, tmp_path / 'missing'))
-
-
-@cache
-def rendered_dossiers():
-    """{scenario: its source dossier} as the publication builder renders them, each in the scenario's
-    results folder; tests only read them."""
-    from tools.publish import Context
-    from tools.publish.dossier import artifacts
-
-    outputs = artifacts(Context(ROOT))
-    assert set(outputs) == {
-        catalogue.result(sid, 'source-verification.json') for sid in catalogue.entries(ROOT)
-    }
-    return {
-        sid: json.loads(outputs[catalogue.result(sid, 'source-verification.json')])
-        for sid in catalogue.entries(ROOT)
-    }
-
-
-def test_dossier_renders_every_owned_verification_record():
-    owned = {
-        sid: {
-            name: load_json(catalogue.locate(sid, ROOT).evidence / f'{name}.json')
-            for name in ('sources', 'claims')
-        }
-        for sid in catalogue.entries(ROOT)
-    }
-    rendered = rendered_dossiers()
-    sources = {
-        (row['scenario'], row['source_id']): row
-        for dossier in rendered.values()
-        for row in dossier['sources']
-    }
-    claims = {
-        (row['scenario'], claim['id']): (row['source_id'], claim)
-        for dossier in rendered.values()
-        for row in dossier['sources']
-        for claim in row['claims']
-    }
-    assert sources.keys() == {
-        (sid, source['id']) for sid, records in owned.items() for source in records['sources']
-    }
-    assert claims.keys() == {
-        (sid, claim['id']) for sid, records in owned.items() for claim in records['claims']
-    }
-    for sid, records in owned.items():
-        for claim in records['claims']:
-            source, row = claims[sid, claim['id']]
-            assert source == claim['source']
-            assert {
-                key: value
-                for key, value in row.items()
-                if key not in ('id', 'scenario', 'reachable_from_scenarios')
-            } == claim['verification']
-        for source in records['sources']:
-            row = sources[sid, source['id']]
-            verification = source['custom']['verification']
-            assert (row['title'], row['url'], row['status'], row['method'], row['notes']) == (
-                source['title'],
-                verification['url'],
-                verification['status'],
-                verification['method'],
-                verification['notes'],
-            )
-    for sid, records in owned.items():
-        # Each dossier is its own folder's: its rows name its scenario, and it counts its folder's records.
-        assert rendered[sid]['scenario'] == sid
-        assert {row['scenario'] for row in rendered[sid]['sources']} <= {sid}
-        assert rendered[sid]['summary']['sources'] == len(records['sources'])
-        assert rendered[sid]['summary']['claims'] == len(records['claims'])
-
-
-def test_dossier_counts_retained_excerpt_records_without_claiming_a_fresh_check():
-    rendered = rendered_dossiers()
-    for sid in catalogue.entries(ROOT):
-        claims = load_json(catalogue.locate(sid, ROOT).evidence / 'claims.json')
-        retained = sum(
-            verification.get('quote_match', {}).get('total', 0) > 0
-            and verification['quote_match']['matched'] == verification['quote_match']['total']
-            for verification in (claim['verification'] for claim in claims)
-        )
-        assert rendered[sid]['summary']['claim_quote_match_records'] == retained
-        assert 'complete_source_reproduction' not in rendered[sid]
 
 
 def test_source_reproduction_requires_the_recorded_extraction_environment(monkeypatch):

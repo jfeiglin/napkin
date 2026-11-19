@@ -1,13 +1,18 @@
-"""Adoption copies the dependency closure without linking independent records."""
+"""Adoption copies the dependency closure without linking independent records, and pack integration
+writes the folder of a package that its variants read. The packages are synthetic, under tmp_path
+(`tests/evidence/support.py`)."""
 
 import copy
+import json
 
 import pytest
 
 from napkin.model.evidence import claim_digest
-from tests.build import evidence_library, library
-from tools.evidence.adopt import adopt
+from tests.evidence.support import QUEUE, evidence_library, family, write_package
+from tests.units import library
+from tools.evidence.adopt import adopt, main
 from tools.evidence.integrate import IntegrationError
+from tools.evidence.integrate import main as integrate
 
 
 def linked():
@@ -67,131 +72,69 @@ def test_a_unit_that_differs_only_in_its_description_is_the_same_unit():
 
 def test_adopt_writes_a_packages_folder_and_leaves_the_source_alone(tmp_path):
     # The package SC97, whose main file uses its module, takes a record of SC98 into its own folder.
-    import json
-
-    from tests.model.test_modules import family
-    from tools.evidence.adopt import main
-
-    paths = family(tmp_path)
+    family(tmp_path)
     source = linked()
-    for kind in ('sources', 'claims', 'assumptions'):
-        (paths['SC98/model.scn'].parent / 'evidence' / f'{kind}.json').write_text(json.dumps(source[kind]))
+    write_package(tmp_path, {'model.scn': QUEUE}, source, owner='SC98')
     args = ['--root', str(tmp_path), '--from', 'SC98', '--to', 'SC97', '--id', 'RT-FIXTURE']
     assert main(args) == 0
     assert json.loads((tmp_path / 'scenarios/SC97/evidence/assumptions.json').read_text()) == []
     assert main([*args, '--write']) == 0
     written = json.loads((tmp_path / 'scenarios/SC97/evidence/assumptions.json').read_text())
     assert [record['id'] for record in written] == ['RT-FIXTURE']
+    claims = json.loads((tmp_path / 'scenarios/SC97/evidence/claims.json').read_text())
+    assert [record['id'] for record in claims] == ['C-ACCESS', 'C-ACTION']
     held = json.loads((tmp_path / 'scenarios/SC98/evidence/assumptions.json').read_text())
     assert held == source['assumptions']
     assert main([*args[:-1], 'NOT-THERE']) == 1
 
 
+LATER = {
+    'id': 'A-LATER',
+    'title': 'Later',
+    'statement': 'The arrivals are an assumption.',
+    'rationale': 'A fixture.',
+    'status': 'selected',
+    'origin': 'author',
+    'review': {'status': 'unreviewed'},
+    'supports': [],
+    'evidence_needed': 'None: a fixture.',
+    'decided': {'by': 'fixture', 'date': '2026-10-28'},
+}
+
+
+def packed(tmp_path, upsert):
+    """The arguments of pack integration with one pack of assumptions for SC97, which upserts these."""
+    folder = tmp_path / 'packs'
+    folder.mkdir(exist_ok=True)
+    found = {'pack_version': '1', 'kind': 'assumptions', 'scenario': 'SC97', 'upsert': upsert, 'retire': []}
+    (folder / 'pack.json').write_text(json.dumps(found))
+    return ['--root', str(tmp_path), '--packs', str(folder), '--report', str(tmp_path / 'report.json')]
+
+
 def test_integrate_adds_an_assumption_that_the_model_already_cites(tmp_path):
     # The module cites A-LATER before any folder holds it: the pack that adds it writes, and a model
     # that still cites a missing record is refused, in a dry run too.
-    import json
-
-    from tests.model.test_modules import module, scenario, variant
-    from tests.owned import write_family
-    from tools.evidence.integrate import main
-
-    later = module().replace(
-        '    input start_water: people = {water} in 1 people to 100 people  @fixture'.format(
-            water='30 people'
-        ),
-        '    input start_water: people = 30 people in 1 people to 100 people  @later',
-    )
-    assert '@later' in later
-    text = later + '\nrecord later: assumption A-LATER "A later assumption."\n'
-    write_family(
-        tmp_path,
-        {
-            'SC97/common.scn': text,
-            'SC97/model.scn': scenario(body=''),
-            'SC97/variants/a/model.scn': variant('A'),
-        },
-    )
-    assumption = {
-        'id': 'A-LATER',
-        'title': 'Later',
-        'statement': 'The starting water is an assumption.',
-        'rationale': 'A fixture.',
-        'status': 'selected',
-        'origin': 'author',
-        'review': {'status': 'unreviewed'},
-        'supports': [],
-        'evidence_needed': 'None: a fixture.',
-        'decided': {'by': 'fixture', 'date': '2026-10-28'},
-    }
-    packs = tmp_path / 'packs'
-    packs.mkdir()
-    pack = {
-        'pack_version': '1',
-        'kind': 'assumptions',
-        'scenario': 'SC97',
-        'upsert': [assumption],
-        'retire': [],
-    }
-    (packs / 'later.json').write_text(json.dumps(pack))
-    args = ['--root', str(tmp_path), '--packs', str(packs), '--report', str(tmp_path / 'report.json')]
-    assert main(args) == 0
-    assert main([*args, '--write']) == 0
+    record = '\nrecord later: assumption "A later assumption."\n    assumption A-LATER\n'
+    family(tmp_path, records='@later', extra=record)
+    args = packed(tmp_path, [LATER])
+    assert integrate(args) == 0
+    assert integrate([*args, '--write']) == 0
     written = json.loads((tmp_path / 'scenarios/SC97/evidence/assumptions.json').read_text())
     assert [record['id'] for record in written] == ['A-LATER']
     # A pack that adds something else leaves the citation unresolved.
     (tmp_path / 'scenarios/SC97/evidence/assumptions.json').write_text('[]')
-    pack['upsert'] = [{**assumption, 'id': 'A-OTHER'}]
-    (packs / 'later.json').write_text(json.dumps(pack))
-    assert main(args) == 1
+    assert integrate(packed(tmp_path, [{**LATER, 'id': 'A-OTHER'}])) == 1
 
 
 def test_integrate_prunes_the_records_that_no_reader_reaches(tmp_path):
-    import json
-
-    from tests.model.test_modules import module, scenario, variant
-    from tests.owned import write_family
-    from tools.evidence.integrate import main
-
-    write_family(
-        tmp_path,
-        {
-            'SC97/common.scn': module(),
-            'SC97/model.scn': scenario(body=''),
-            'SC97/variants/a/model.scn': variant('A'),
-        },
-    )
+    # The module cites A-KEPT; the package's folder also holds A-UNUSED, which nothing cites.
+    record = '\nrecord kept: assumption "A kept assumption."\n    assumption A-KEPT\n'
+    lib = library()
+    lib['assumptions'] = [{**LATER, 'id': 'A-KEPT'}, {**LATER, 'id': 'A-UNUSED'}]
+    family(tmp_path, lib, records='@kept', extra=record)
     folder = tmp_path / 'scenarios/SC97/evidence'
-    unused = {
-        'id': 'A-UNUSED',
-        'title': 'Unused',
-        'statement': 'Nothing cites this assumption.',
-        'rationale': 'A fixture.',
-        'status': 'selected',
-        'origin': 'author',
-        'review': {'status': 'unreviewed'},
-        'supports': [],
-        'evidence_needed': 'None: a fixture.',
-        'decided': {'by': 'fixture', 'date': '2026-10-29'},
-    }
-    kept = json.loads((folder / 'assumptions.json').read_text())
-    (folder / 'assumptions.json').write_text(json.dumps([*kept, unused]))
-    packs = tmp_path / 'packs'
-    packs.mkdir()
-    empty = {'pack_version': '1', 'kind': 'assumptions', 'scenario': 'SC97', 'upsert': [], 'retire': []}
-    (packs / 'empty.json').write_text(json.dumps(empty))
-    args = [
-        '--root',
-        str(tmp_path),
-        '--packs',
-        str(packs),
-        '--report',
-        str(tmp_path / 'report.json'),
-        '--write',
-    ]
-    assert main(args) == 0
-    assert 'A-UNUSED' in {r['id'] for r in json.loads((folder / 'assumptions.json').read_text())}
-    assert main([*args, '--prune']) == 0
-    remaining = {r['id'] for r in json.loads((folder / 'assumptions.json').read_text())}
-    assert 'A-UNUSED' not in remaining
-    assert remaining == {r['id'] for r in kept}
+    args = [*packed(tmp_path, []), '--write']
+    assert integrate(args) == 0
+    assert {r['id'] for r in json.loads((folder / 'assumptions.json').read_text())} == {'A-KEPT', 'A-UNUSED'}
+    assert integrate([*args, '--prune']) == 0
+    assert {r['id'] for r in json.loads((folder / 'assumptions.json').read_text())} == {'A-KEPT'}

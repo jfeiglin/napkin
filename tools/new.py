@@ -1,8 +1,9 @@
 """Start a package of the catalogue: python -m tools.new NAME [--title TEXT].
 
 It makes the folder `scenarios/<NAME>/` with every file that a package of the catalogue has, each in
-its shape and with no content of a scenario: the model file with its scenario block, which names the
-catalogue's library (`library "../library"`), and an outline of the parts to write; an empty
+its shape and with no content of a scenario: the model file with its scenario line, which names the
+catalogue's library (`library "../library"`), and an outline of the parts to write in the language
+(docs/language.md); an empty
 stylesheet and empty brief settings; no local units; empty evidence lists; a research note and a
 README with their headings; and the tests folder with no expected orders and no oracle inputs (the
 root conftest.py rewrites the assertions of its test modules and helpers). Then it prints the list of
@@ -41,16 +42,21 @@ MODEL = """\
 scenario "{title}"
     summary "Write the story here in a few sentences. Its first sentence is the hook."
     horizon 720 h
-    scope "Write here whom the outputs cover."
+    scope "Write here whom the values cover."
     library "../library"
 
 # Write the model below. docs/modeling-guide.md says how, and docs/language.md gives each line.
-# - A thing for each real thing or actor, with its inputs, vars, flows, events and records.
-# - event start when t >= 0 h: the attacker's first move, an event of the attacker.
+# - An entity for each real thing or actor, with its inputs, stored values, formulas, flows and
+#   events, each with its text and its records; a template for things of one kind.
+# - The attacker's first move: an event of the attacker that the setup starts, such as
+#   `attacker.first_move.start()`.
 # - options "Response": the defenders' tiers. Another group gives the attacker: the AI agent, and
-#   the human team that it is compared with (scenarios/docs/ai-operations.md).
-# - runs: each run names one option of each group. The human team's run says `versus` its AI run.
-# - Outputs with `category` deaths, casualties and loss, or `unestimated` with the reason.
+#   the human team (scenarios/docs/ai-operations.md).
+# - runs: each run names one option of each group. Two runs that a reader compares are two runs of
+#   the engine; the model holds no comparison.
+# - The values that a caller reports, such as the deaths, casualties and losses: each a named value
+#   with its text and its records. A value that the model cannot estimate is left out, and the notes
+#   say why.
 # - notes: the premises, the limitations and the verification (scenarios/docs/catalogue.md).
 # - The named records at the end of the file.
 """
@@ -116,10 +122,10 @@ The publisher owns files in `results/`. Evidence changes go through `tools.evide
 
 CHECKLIST = """\
 Write {name} in this order. After each step, `napkin compile {folder}` gives each diagnostic
-with its file, line and column, and `napkin run {folder}` the outcomes of each run.
+with its file, line and column, and `napkin run {folder}` the values of its default run.
 
-1. The model, {folder}/model.scn: the scenario block, the things, the first move, the options
-   with the group "Response", the AI agent and its matched human team, the runs, the outputs, the
+1. The model, {folder}/model.scn: the scenario block, the entities, the first move, the options
+   with the group "Response", the AI agent and the human team, the runs, the values to report, the
    notes and the records (docs/modeling-guide.md, docs/language.md, scenarios/docs/conventions.md,
    scenarios/docs/ai-operations.md).
 2. The evidence, {folder}/evidence/: sources and claims only through
