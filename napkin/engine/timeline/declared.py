@@ -2,10 +2,15 @@
 "Solver and execution contract"), on lines.
 
 A declared solver determines the rates of the flows that its `solve_for` names, the stored numbers
-that it names and its own unknowns. A flow that shares a store with one of its flows is in the same
-calculation (`plan.connect`), as the oracle has it, so the solver's selection order chooses its rate
-too. The problem of the set at an instant (`Former`) is formed from the program by the rules of the
-solve library (`napkin/engine/solve/`):
+that it names and its own unknowns, and nothing else (the owner's rule after G2, PLAN.md change 19;
+spec, "Solver and execution contract": "Flows that no solver determines follow their own
+endpoints"). A flow that shares a store with one of its flows is in the same calculation
+(`plan.connect`), so that the books of the store still balance: the solver sees it through its
+bounds and the rows that it meets (a junction passes no more than its pipes can carry), and its
+claim keeps its level of local sharing after the solver's own claims, so local sharing splits what
+arrives. A relation or an objective of the solver that reads such a flow is refused by name: to
+decide who is served, the provider names those rates. The problem of the set at an instant
+(`Former`) is formed from the program by the rules of the solve library (`napkin/engine/solve/`):
 
 - **unknowns**: each flow of the set, with its request as its target and one canonical unit of its
   dimension as its reference scale (so flows of two dimensions that trade off are each divided by one
@@ -21,18 +26,21 @@ solve library (`napkin/engine/solve/`):
   of `constraints`;
 - **objectives**, in written order, maximized ones negated;
 - **claims**: each positive request of a flow (a route's in the direction of its sign, a flow with
-  legs' on its fraction, as a request of one) and of an endpoint. A declared solver shares across all
-  of its claims on one level; an endpoint's `priority(...)` orders its flows' claims in tiers
-  (`network.layers`), and an endpoint's claim is in the first. The preferred classes of an endpoint
-  that has a request carry it first (spec: "A preferred route has first access to useful requested
-  work, up to the outstanding claim it serves"): after every tier, as much of the request as can be
-  on its first class, then on its first two, and so on, each a claim alone in a tier of its own.
+  legs' on its fraction, as a request of one) and of an endpoint. The solver's claims, of the flows
+  that it names and of an endpoint all of whose connections it names, share across endpoints on one
+  level, first; an endpoint's `priority(...)` orders its flows' claims in tiers (`network.layers`),
+  and an endpoint's claim is in the first. Every other claim follows, at its tier of local sharing:
+  its level (`network.claim_level`, from the supply and the room of its stores), then its layer. The
+  preferred classes of an endpoint that has a request carry it first (spec: "A preferred route has
+  first access to useful requested work, up to the outstanding claim it serves"): after every tier,
+  as much of the request as can be on its first class, then on its first two, and so on, each a
+  claim alone in a tier of its own.
 
 The expressions of the solver read its unknowns as symbols (`Affine`): a formula, a reduction or a
 dynamic read that reads an unknown is expanded where it is read, a keyed read whose key and keys are
 known numbers reads the member that it selects (one keyed by an unknown is refused by name, as the
-spec leaves it out), and any other value is a number of the instant, read from the run. The forms are those of the spec: affine `==`, `<=` and `>=`, their
-conjunction, `all(...)` and sums, products and quotients by known numbers, and positive parts
+spec leaves it out), and any other value is a number of the instant, read from the run. The forms
+are those of the spec: affine `==`, `<=` and `>=`, their conjunction, `all(...)` and sums, products and quotients by known numbers, and positive parts
 (`max` of an unknown is `a + max(0, b - a)`, one INTERNAL unknown of the library for each), where
 they are convex: minimized, or on the small side of `<=`. A strict relation, `!=`, `or`, `any`,
 `not` of a relation, a relation under a condition, `min` of an unknown, a product of two unknowns, a
@@ -40,15 +48,17 @@ division by one, another function of one, and a request or a capacity of the set
 the run with a diagnostic that names the solver and the form.
 
 **Between moments the answer holds** where the problem reads nothing that moves between moments:
-the rates are constant and each store is a line, as on the lines (`lines.py`). A store that reaches a bound is put on it, and the problem is solved again with
-its row; that is an event of the instance, and the stores whose lines and the rates and results whose
-values change are a moment when a watched condition or another set reads them (`run.next_moment`).
-A store at its bound whose answer moves it away leaves it. A moment that changes what the problem
-reads (a written input, a flow that joins or leaves, a keyed read at its key time, a store that met
-a bound at the moment) builds the set again (`ways.py`), so the problem is solved once in a round,
-after the stages commit, in the order of the sets' levels. A problem equal to the one that the solver
-answered last is not solved again, as the oracle caches it; each solve is an entry `solve` of the
-trace, at its time and round.
+the rates are constant and each store is a line, as on the lines (`lines.py`). A store that reaches
+a bound is put on it, and the problem is solved again with its row; that is an event of the
+instance, and the stores whose lines and the rates and results whose values change are a moment
+when a watched condition or another set reads them (`run.next_moment`). A store at its bound whose
+answer moves it away is released at once and the problem solved again without its bound
+(`DeclaredWay._settled`), so that the answer is the one that holds just after the instant. A moment
+that changes what the problem reads (a written input, a flow that joins or leaves, a keyed read at
+its key time, a store that met a bound at the moment) builds the set again (`ways.py`), so the
+problem is solved once in a round, after the stages commit, in the order of the sets' levels. A
+problem equal to the one that the solver settled on last is not solved again, as the oracle caches
+it; each solve is an entry `solve` of the trace, at its time and round.
 
 A problem that reads what moves (a store of the set through a setting, a relation or a domain, or
 the time) runs on `MovingDeclared`: its rates follow the state, solved at each trial state of an
@@ -731,8 +741,19 @@ class DeclaredWay:
     def answer(self, t, lower, upper):
         """The answer of the problem at time t with the stores flagged on their bounds: (the value of
         each flow, {result: value}). A problem equal to the one that the solver answered last is not
-        solved again (the caller traces a solve that ran: `_settled`, `MovingDeclared._settle`)."""
-        run, plan, declared = self.run, self.plan, self.declared
+        solved again. Used at the trial states of a moving set (`MovingDeclared`), which traces its
+        own solves."""
+        problem, arrays, signature = self._formed(t, lower, upper)
+        last = self.run.ways.last.get(self.declared.id)
+        if last is not None and last[0] == signature:
+            return self._values(arrays, last[1])
+        x = self._solved(t, problem, arrays)
+        self.run.ways.last[self.declared.id] = (signature, x)
+        return self._values(arrays, x)
+
+    def _formed(self, t, lower, upper):
+        """(the problem at time t with the stores flagged on their bounds, its arrays, its digest)."""
+        declared = self.declared
         try:
             problem = self.former.problem(t, lower, upper)
         except ExpressionError as problem:
@@ -740,25 +761,28 @@ class DeclaredWay:
         except ValueError as problem:
             raise SimulationError(f'the solver {declared.id} at t = {t:g} h: {problem}') from None
         arrays = problem.arrays()
-        signature = _signature(arrays)  # a digest: the state of a run holds it as data (`saved.py`)
-        last = run.ways.last.get(declared.id)
-        if last is not None and last[0] == signature:
-            x = last[1]
-        else:
-            kept = run.ways.kept.get(declared.id)
-            if kept is None:
-                budgets = plan.configuration.budgets
-                kept = run.ways.kept[declared.id] = Solver(
-                    Budget(budgets.fair_programs, budgets.newton_steps, budgets.qp_iterations)
-                )
-            try:
-                found = kept.solve(problem)
-            except SolveFailure as failure:
-                raise SimulationError(
-                    f'the solver {declared.id} cannot answer at t = {t:g} h: {failure}'
-                ) from None
-            x = np.clip(polished(arrays, found.x, found.levels), arrays.lower, arrays.upper)
-            run.ways.last[declared.id] = (signature, x)
+        return problem, arrays, _signature(arrays)  # a digest: a checkpoint holds it as data (`saved.py`)
+
+    def _solved(self, t, problem, arrays):
+        """The polished answer of a problem by the selection order, on the solver that the run keeps."""
+        run, declared = self.run, self.declared
+        kept = run.ways.kept.get(declared.id)
+        if kept is None:
+            budgets = self.plan.configuration.budgets
+            kept = run.ways.kept[declared.id] = Solver(
+                Budget(budgets.fair_programs, budgets.newton_steps, budgets.qp_iterations)
+            )
+        try:
+            found = kept.solve(problem)
+        except SolveFailure as failure:
+            raise SimulationError(
+                f'the solver {declared.id} cannot answer at t = {t:g} h: {failure}'
+            ) from None
+        return np.clip(polished(arrays, found.x, found.levels), arrays.lower, arrays.upper)
+
+    def _values(self, arrays, x):
+        """(the value of each flow, {result: value}) of an answer. The unknowns of a problem do not
+        depend on the flags of its stores, so an answer serves each problem of the instant."""
         at = {key: j for j, key in enumerate(arrays.keys)}
         flows = np.array([x[at[('flow', flow)]] for flow in self.flows], dtype=float)
         return flows, {name: float(x[at[('value', name)]]) for name in self.connected.results}
@@ -791,22 +815,38 @@ class DeclaredWay:
         solved again without that bound, until the flags stay. The answer is then the one that holds
         just after t, whatever moments other sets have, as the oracle's (`tests/reference/network.py`,
         `solve`); it matters where a claim's level reads the bound (`network.supply_depths`). A
-        release whose answer would move a released store past its bound is not made. A solve that
-        ran is traced once, as one of the run's. Gives (flows, results)."""
+        release whose answer would move a released store past its bound is not made.
+
+        The solver keeps the problem that it settled on and its answer (`Ways.last`), which serve
+        again, unsolved, where the problem is that one, as formed or with the bounds released that
+        the kept answer moves off. A solve that runs is traced once, as one of the run's. Gives
+        (flows, results)."""
         ways, sid = self.run.ways, self.declared.id
+        problem, arrays, signature = self._formed(t, low, high)
         last = ways.last.get(sid)
-        flows, results = self.answer(t, low, high)
+        if last is not None and len(last[1]) == len(arrays.keys):
+            # (Of other unknowns, the kept answer serves no problem of this instant: the digest of
+            # a problem names its unknowns.)
+            if last[0] == signature:
+                return self._values(arrays, last[1])
+            leaving = self._moved(self._values(arrays, last[1])[0], low ^ high, low, inward=True)
+            if leaving.any() and self._formed(t, low & ~leaving, high & ~leaving)[2] == last[0]:
+                return self._values(arrays, last[1])
+        x = self._solved(t, problem, arrays)
+        flows, results = self._values(arrays, x)
         for _ in range(len(self.stores)):
             leaving = self._moved(flows, low ^ high, low, inward=True)
             if not leaving.any():
                 break
-            trial = self.answer(t, low & ~leaving, high & ~leaving)
-            if self._moved(trial[0], leaving, low, inward=False).any():
+            trial = self._formed(t, low & ~leaving, high & ~leaving)
+            found = self._solved(t, trial[0], trial[1])
+            moved = self._values(trial[1], found)
+            if self._moved(moved[0], leaving, low, inward=False).any():
                 break
             low, high = low & ~leaving, high & ~leaving
-            flows, results = trial
-        if ways.last.get(sid) is not last:
-            self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
+            signature, x, (flows, results) = trial[2], found, moved
+        ways.last[sid] = (signature, x)
+        self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
         return flows, results
 
     def _moved(self, flows, stores, low, inward):
@@ -1193,10 +1233,11 @@ class _Asked:
 
 
 def polished(arrays, x, levels):
-    """The answer put exactly on the bounds and rows that it holds to within `NEAR` of their size,
-    its claims that fair sharing held together at one level on one fraction, and its claims served in
-    full that it leaves at most at their requests on them, by the least change of the other unknowns
-    (the least-norm solution of those rows, by one sparse factorization).
+    """The answer put exactly on the bounds and rows that it holds to within `NEAR` of their own
+    size, its claims that fair sharing held together at one level on one fraction, and its claims
+    served in full that it leaves at most at their requests on them, by the least change of the other
+    unknowns, each in proportion to its own size (the least-norm solution of those rows, by one sparse
+    factorization).
 
     The library meets its rows to 1e-9 of their size, keeps an optimum to 1e-7 of its size, which
     the later ranks may take, and holds a claim that it cannot serve in full at its level less 1e-7
@@ -1205,20 +1246,27 @@ def polished(arrays, x, levels):
     level, which the rows that bind them give, and a claim served in full that is served no more
     rests on its request. So at a vertex the polished answer has the numbers of the vertex, and an
     event time that follows from its rates is what exact arithmetic gives. An answer that the polish
-    would make miss a row or a bound by more than the library's tolerance is kept as it is."""
+    would make miss a row or a bound by more than the library's tolerance is kept as it is.
+
+    Each unknown is near a bound by its own size (`_sizes`), never by one size for all: a requested
+    delivery of 1e-7 L/h is no rounding of zero, and an idle pipe whose capacity is 1e-7 L/h is at
+    zero, not at its capacity. A row is near its side by the sizes of its own terms, and a row that
+    is an equality, such as the books of a store held at both bounds, always holds exactly."""
     x = np.array(x, dtype=float)
     lower, upper = arrays.lower, arrays.upper
-    low = np.isfinite(lower) & (np.abs(x - lower) <= NEAR * (1.0 + np.abs(lower)))
-    high = np.isfinite(upper) & (np.abs(x - upper) <= NEAR * (1.0 + np.abs(upper)))
+    size = _sizes(arrays)
+    low = np.isfinite(lower) & (np.abs(x - lower) <= NEAR * size)
+    high = np.isfinite(upper) & (np.abs(x - upper) <= NEAR * size) & ~low
     found = x.copy()
     found[low], found[high] = lower[low], upper[high]
     blocks, sides = [], []
     A = arrays.A
     if A.shape[0]:
         value = A @ found
-        size = 1.0 + abs(A) @ np.abs(found)
-        left = np.isfinite(arrays.row_lower) & (np.abs(value - arrays.row_lower) <= NEAR * size)
-        right = np.isfinite(arrays.row_upper) & (np.abs(value - arrays.row_upper) <= NEAR * size)
+        own = abs(A) @ size
+        equal = arrays.row_lower == arrays.row_upper
+        left = np.isfinite(arrays.row_lower) & (equal | (np.abs(value - arrays.row_lower) <= NEAR * own))
+        right = np.isfinite(arrays.row_upper) & ~left & (np.abs(value - arrays.row_upper) <= NEAR * own)
         rows = np.flatnonzero(left | right)
         blocks.append(A[rows])
         sides.append(np.where(left, arrays.row_lower, arrays.row_upper)[rows])
@@ -1244,30 +1292,39 @@ def polished(arrays, x, levels):
         B = sp.csr_array(sp.vstack(blocks))
         residual = np.concatenate(sides) - B @ found
         if len(residual) and np.abs(residual).max() > 0:
-            # The least change d with B d = r: [[I, B'], [B, -eps I]] [d; m] = [0; r], which a
-            # dependent row of B leaves nonsingular.
-            B = sp.csc_array(B[:, free])
+            # The least change d = S e, S the own sizes of the free unknowns, with B S e = r:
+            # [[I, (BS)'], [BS, -eps I]] [e; m] = [0; r], which a dependent row leaves nonsingular.
+            B = sp.csc_array(B[:, free] @ sp.diags_array(size[free]))
             m, n = B.shape
             K = sp.block_array([[sp.eye_array(n), B.T], [B, -1e-12 * sp.eye_array(m)]], format='csc')
             try:
                 move = splu(K).solve(np.r_[np.zeros(n), residual])[:n]
             except RuntimeError:  # a singular system: the answer stays as the library gave it
                 return x
-            found[free] += move
+            found[free] += size[free] * move
     found = arrays.positive_parts(found)
-    if _missed(arrays, found) > max(_missed(arrays, x), 1e-9):
+    if _missed(arrays, found, size) > max(_missed(arrays, x, size), 1e-9):
         return x
     return found
 
 
-def _missed(arrays, x):
-    """How far an answer misses its bounds and rows, relative to their size."""
-    outside = np.maximum(arrays.lower - x, x - arrays.upper) / (1.0 + np.abs(x))
+def _sizes(arrays):
+    """The own size of each unknown of a problem, by which its answer is near a bound: a flow's
+    request, or its reference scale (one canonical unit) where it asks nothing; any other unknown's
+    reference scale; at most the width of its interval, where that is finite and positive."""
+    size = np.where((arrays.kind == FLOW) & (arrays.target != 0), np.abs(arrays.target), arrays.scale)
+    width = arrays.upper - arrays.lower
+    return np.where(np.isfinite(width) & (width > 0), np.minimum(size, width), size)
+
+
+def _missed(arrays, x, size):
+    """How far an answer misses its bounds and rows, each relative to the own sizes of its unknowns."""
+    outside = np.maximum(arrays.lower - x, x - arrays.upper) / size
     worst = float(outside.max(initial=0.0))
     if arrays.A.shape[0]:
         value = arrays.A @ x
-        size = 1.0 + abs(arrays.A) @ np.abs(x)
-        missed = np.maximum(arrays.row_lower - value, value - arrays.row_upper) / size
+        own = abs(arrays.A) @ size
+        missed = np.maximum(arrays.row_lower - value, value - arrays.row_upper) / np.where(own > 0, own, 1.0)
         worst = max(worst, float(missed.max(initial=0.0)))
     return worst
 

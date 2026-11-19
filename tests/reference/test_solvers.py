@@ -6,6 +6,7 @@ from fractions import Fraction as F
 
 import pytest
 
+from tests.reference.errors import Diagnostic
 from tests.reference.model import (
     SINK,
     SOURCE,
@@ -370,3 +371,61 @@ def test_distance_step_with_a_band(target, expected):
 def test_distance_step_with_an_equality():
     """x + y == 1 with targets zero gives (1/2, 1/2), where a linear program may give (1, 0)."""
     assert pick(0, [N.x + N.y == 1]) == (F(1, 2), F(1, 2))
+
+
+def released(clock=True):
+    """A full tank drains 2 L/h and is filled from A and by a pipe from a second tank, which starts
+    empty; each asks 2 L/h. The provider's solver determines the fill of the second tank alone: 3 L/h,
+    its request within its capacity. A third tank, which nothing joins, empties at 1 h."""
+    m = Model()
+    m.entity(
+        'full',
+        fields=[value('water', 10, 0, 10)],
+        flows=[
+            flow('drain', this.water, SINK, request=2, capacity=2),
+            flow('from_a', SOURCE, this.water, request=2),
+        ],
+    )
+    m.entity(
+        'tank',
+        fields=[value('water', 0, 0, 10)],
+        flows=[
+            flow('fill', SOURCE, this.water, request=3, capacity=3),
+            flow('onward', this.water, N.full.water, request=2),
+        ],
+    )
+    if clock:
+        m.entity('clock', fields=[value('water', 1, 0)], flows=[flow('drain', this.water, SINK, request=1)])
+    m.entity('provider', solvers=[solver('supply', {'fill': N.tank.fill}, [N.fill.actual_rate])])
+    return Run(m, horizon=2).run()
+
+
+def test_a_store_that_the_answer_moves_off_its_bound_is_released_at_once():
+    """At 0 h the second tank is empty, so the claim of its pipe waits for its supply: the full tank's
+    room would go to A, 2 L/h, and the pipe would carry nothing. That answer fills the tank at 3 L/h,
+    off its bound, so the bound is released and the problem solved again: the pipe's claim is then on
+    the level of A's, and they share the room, 1 L/h each; the tank rises at 2 L/h. The answer is the
+    same whether or not another tank meets its bound in between, and it is noted as one solve."""
+    for clock in (True, False):
+        r = released(clock)
+        for at in (0, F(1, 2), F(3, 2)):
+            assert r.read(N.full.from_a.actual_rate, at) == 1
+            assert r.read(N.tank.onward.actual_rate, at) == 1
+        assert (r.read(N.tank.water, F(1, 2)), r.read(N.tank.water, F(3, 2))) == (1, 3)
+        assert [e.t for e in r.trace if e.kind == 'solve' and e.label == 'provider.supply'] == [0]
+
+
+def test_a_relation_on_a_flow_that_the_solver_does_not_name_is_refused():
+    """A flow that a solver does not name keeps its endpoints' local sharing: a constraint of the
+    solver on it would decide who is served without naming it."""
+    m = Model()
+    m.entity(
+        'tank',
+        fields=[value('water', 10, 0, 10)],
+        flows=[flow('out', this.water, SINK, request=2), flow('fill', SOURCE, this.water)],
+    )
+    inputs = {'out': N.tank.out, 'fill': N.tank.fill}
+    rows = [N.out.actual_rate <= 1]
+    m.entity('provider', solvers=[solver('plan', inputs, [N.fill.actual_rate], constraints=rows)])
+    with pytest.raises(Diagnostic, match=r'tank\.out\.actual_rate, which the solver does not determine'):
+        Run(m, horizon=1).run()

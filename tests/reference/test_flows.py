@@ -8,7 +8,7 @@ from fractions import Fraction as F
 
 import pytest
 
-from tests.reference.errors import RunFailed
+from tests.reference.errors import NotCovered, RunFailed
 from tests.reference.model import (
     SINK,
     SOURCE,
@@ -208,9 +208,10 @@ def test_a_request_on_each_pipe_is_two_claims():
     assert (r.read(N.pipes.main.actual_rate, 0), r.read(N.pipes.backup.actual_rate, 0)) == (4, 6)
 
 
-def two_junctions(with_c=True, solver_over_four=False):
+def two_junctions(with_c=True, solver_over_four=False, solver_over_feed=False):
     """1 L/h reaches a junction with two pipes of 1 L/h: one serves A, one feeds a second junction
-    where B (and C) request 1 L/h."""
+    where B (and C) request 1 L/h; a provider's solver may determine the four requesting rates, or
+    the feed alone."""
     m = Model()
     m.entity(
         'first',
@@ -229,6 +230,9 @@ def two_junctions(with_c=True, solver_over_four=False):
         inputs = {'a': N.first.to_a, 'onward': N.first.onward, 'b': N.second.to_b, 'c': N.second.to_c}
         solve_for = [N.a.actual_rate, N.onward.actual_rate, N.b.actual_rate, N.c.actual_rate]
         m.entity('provider', solvers=[solver('share', inputs=inputs, solve_for=solve_for)])
+    if solver_over_feed:
+        inputs, solve_for = {'feed': N.first.feed}, [N.feed.actual_rate]
+        m.entity('provider', solvers=[solver('upstream', inputs=inputs, solve_for=solve_for)])
     r = Run(m, horizon=1).run()
     names = [N.first.to_a, N.second.to_b] + ([N.second.to_c] if with_c else [])
     return tuple(r.read(x.actual_rate, 0) for x in names)
@@ -245,6 +249,84 @@ def test_two_junctions_under_one_solver_share_fairly():
     """One solver over the four requesting flows, with no objective: fair sharing across all of its
     claims gives 1/3 L/h to A, B and C."""
     assert two_junctions(solver_over_four=True) == (F(1, 3), F(1, 3), F(1, 3))
+
+
+def test_a_solver_of_the_feed_alone_leaves_the_junctions_their_local_sharing():
+    """The owner's rule after G2: a solver decides only the rates that it names. One that names the
+    feed alone sends its 1 L/h, and the junctions split it as they do without a solver: the claims of
+    the pipes, which it does not name, keep their levels of local sharing. 1/2, 1/4, 1/4."""
+    assert two_junctions(solver_over_feed=True) == (F(1, 2), F(1, 4), F(1, 4))
+
+
+def full(flows):
+    """A tank of 10 L that is full, with its flows."""
+    return dict(fields=[value('water', 10, 0, 10)], flows=flows)
+
+
+def test_two_full_tanks_in_series_pass_a_transfer_through_both():
+    """1 L/h fills the upper tank, which passes 1 L/h to the lower, which drains 1 L/h; both are full.
+    Each request is served, and both stay full: the drain makes room in the lower tank, the pipe
+    takes it and makes room in the upper one, and the fill takes that."""
+    m = Model()
+    m.entity('down', **full([flow('drain', this.water, SINK, request=1)]))
+    m.entity(
+        'up',
+        **full(
+            [
+                flow('fill', SOURCE, this.water, request=1),
+                flow('pass_on', this.water, N.down.water, request=1),
+            ],
+        ),
+    )
+    r = Run(m, horizon=2).run()
+    for x in (N.up.fill, N.up.pass_on, N.down.drain):
+        assert r.read(x.actual_rate, 1) == 1
+    assert (r.read(N.up.water, 2), r.read(N.down.water, 2)) == (10, 10)
+
+
+def test_room_passed_upstream_through_two_full_tanks_is_shared_locally():
+    """The mirror of the two junctions: a full tank whose drain can take 1 L/h is filled from A and
+    by a pipe from a second full tank, which B and C fill; each asks 1 L/h. The first tank shares its
+    room of 1 L/h between A and the pipe, 1/2 each; the second shares the 1/2 that the pipe takes
+    between B and C, 1/4 each. The claims into the second tank wait for those into the first."""
+    m = Model()
+    m.entity(
+        'first',
+        **full([flow('drain', this.water, SINK, capacity=1), flow('from_a', SOURCE, this.water, request=1)]),
+    )
+    m.entity(
+        'second',
+        **full(
+            [
+                flow('onward', this.water, N.first.water, request=1),
+                flow('from_b', SOURCE, this.water, request=1),
+                flow('from_c', SOURCE, this.water, request=1),
+            ],
+        ),
+    )
+    r = Run(m, horizon=1).run()
+    found = [
+        r.read(x.actual_rate, 0) for x in (N.first.from_a, N.second.onward, N.second.from_b, N.second.from_c)
+    ]
+    assert found == [F(1, 2), F(1, 2), F(1, 4), F(1, 4)]
+
+
+def test_a_pipe_between_two_full_tanks_that_nothing_drains_carries_nothing():
+    m = Model()
+    m.entity('low', **full([]))
+    m.entity('high', **full([flow('pass_on', this.water, N.low.water, request=1)]))
+    r = Run(m, horizon=1).run()
+    assert r.read(N.high.pass_on.actual_rate, 0) == 0 and r.read(N.high.water, 1) == 10
+
+
+def test_a_ring_of_full_tanks_is_not_covered():
+    """Two full tanks that fill each other pass room around: local sharing settles room against the
+    direction of flow, and a ring has no first tank."""
+    m = Model()
+    m.entity('x', **full([flow('there', this.water, N.y.water, request=1)]))
+    m.entity('y', **full([flow('back', this.water, N.x.water, request=1)]))
+    with pytest.raises(NotCovered, match='a ring of stores at their upper bound passes room around'):
+        Run(m, horizon=1).run()
 
 
 def test_upstream_supply_first_with_legs():

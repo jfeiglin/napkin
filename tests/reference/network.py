@@ -191,22 +191,28 @@ def solve(run, comp):
     store at a bound that the answer moves off is released, and the problem is solved again without
     that bound, until the bounds that it holds stay (its answer is then the one that holds just
     after the instant, whatever moments other calculations have). A release whose answer would move
-    a released store past its bound is not made. The solve is noted once."""
+    a released store past its bound is not made. The cache holds the problem that the solve settled
+    on, with its answer and its releases: it serves again where the problem is that one, as assembled
+    or with the bounds released that the cached answer moves off. The solve is noted once."""
     comp.busy = True
-    ev, problem, answer, ran = _attempt(run, comp)
-    while comp.sols:
-        leaving = _moved(problem, answer, _one_bound(run.view, problem, comp), inward=True)
-        if not leaving:
-            break
-        before = comp.released
-        comp.released = before | leaving
-        trial = _attempt(run, comp)
-        ran = ran or trial[3]
-        if _moved(trial[1], trial[2], leaving, inward=False):
-            comp.released = before
-            break
-        ev, problem, answer = trial[:3]
-    if ran:
+    ev = Ev(run, run.view, None, unknowns=set(comp.vars))
+    problem = assemble(run, comp, ev)
+    answer = _cached(run, comp, problem)
+    if answer is None:
+        answer = _select(run, comp, problem)
+        while comp.sols:
+            leaving = _moved(problem, answer, _one_bound(run.view, problem, comp), inward=True)
+            if not leaving:
+                break
+            before = comp.released
+            comp.released = before | leaving
+            trial = assemble(run, comp, Ev(run, run.view, None, unknowns=set(comp.vars)))
+            found = _select(run, comp, trial)
+            if _moved(trial, found, leaving, inward=False):
+                comp.released = before
+                break
+            problem, answer = trial, found
+        run.cache[comp.key] = (problem['signature'], answer)
         who = label(comp.sols[0][0]) if comp.sols else 'network'
         run._note('solve', who, origin=comp.sols[0][1].origin if comp.sols else '')
     comp.deps = set(ev.shared.reads) | problem['stores']
@@ -219,16 +225,30 @@ def solve(run, comp):
     comp.busy, comp.done = False, True
 
 
-def _attempt(run, comp):
-    """The problem of a component with its released bounds, and its answer, from the cache when it
-    holds the same problem: (evaluator, problem, answer, whether a selection ran)."""
-    ev = Ev(run, run.view, None, unknowns=set(comp.vars))
-    problem = assemble(run, comp, ev)
+def _cached(run, comp, problem):
+    """The cached answer of a component whose problem is the one that it settled on last, as
+    assembled or with the bounds released that the cached answer moves off (then released here
+    too); else None."""
     cached = run.cache.get(comp.key)
-    if cached is not None and cached[0] == problem['signature']:
-        return ev, problem, cached[1], False
+    if cached is None:
+        return None
+    if cached[0] == problem['signature']:
+        return cached[1]
+    leaving = (
+        _moved(problem, cached[1], _one_bound(run.view, problem, comp), inward=True) if comp.sols else ()
+    )
+    if leaving:
+        comp.released = frozenset(leaving)
+        if assemble(run, comp, Ev(run, run.view, None, unknowns=set(comp.vars)))['signature'] == cached[0]:
+            return cached[1]
+        comp.released = frozenset()
+    return None
+
+
+def _select(run, comp, problem):
+    """The answer of the selection order for the problem of a component."""
     try:
-        answer = select(
+        return select(
             comp.vars,
             problem['rows'],
             problem['objectives'],
@@ -239,8 +259,6 @@ def _attempt(run, comp):
     except RunFailed as e:
         who = label(comp.sols[0][0]) if comp.sols else 'the flows ' + ', '.join(f.label for f in comp.flows)
         raise type(e)(f'{e} [{who}, t = {run.view.t} h]') from None
-    run.cache[comp.key] = (problem['signature'], answer)
-    return ev, problem, answer, True
 
 
 def _one_bound(view, problem, comp):

@@ -386,6 +386,8 @@ def one_pipe_capped_at_sink():
 
 
 def _two_junctions(name, solved):
+    """The junctions of "Sharing is local by default"; with `solved`, a provider's solver that
+    determines the four requested rates (`'fair'`) or the upstream feed alone (`'upstream'`)."""
     b = Builder(UNITS)
     second = b.entity(
         'second',
@@ -400,14 +402,17 @@ def _two_junctions(name, solved):
         flow('to_a', this.water, SINK, request=q(1, 'L/h')),
         flow('onward', this.water, second.water, request=q(1, 'L/h')),
     )
-    if solved:
+    if solved == 'fair':
         names = {'a': first.to_a, 'onward': first.onward, 'b': second.to_b, 'c': second.to_c}
         parts = [given(name, source) for name, source in names.items()]
         parts += [solve_for(getattr(local, name).actual_rate) for name in names]
         b.entity('provider', solver('fair', *parts))
-    share = F(1, 3) if solved else F(1, 4)
+    elif solved == 'upstream':
+        b.entity('provider', solver('upstream', given('feed', first.feed), solve_for(local.feed.actual_rate)))
+    fair = solved == 'fair'
+    share = F(1, 3) if fair else F(1, 4)
     expected = [
-        At(0, key('first', 'to_a', 'actual_rate'), F(1, 3) if solved else F(1, 2)),
+        At(0, key('first', 'to_a', 'actual_rate'), F(1, 3) if fair else F(1, 2)),
         At(0, key('first', 'onward', 'actual_rate'), 2 * share),
         At(0, key('second', 'to_b', 'actual_rate'), share),
         At(0, key('second', 'to_c', 'actual_rate'), share),
@@ -421,16 +426,30 @@ def two_junctions():
     """Spec, "Sharing is local by default": 1 L/h reaches a [0, 0] junction whose two pipes
     request 1 L/h each, one to A and one to a second junction that B and C share. Each junction
     shares its own inflow: A gets 1/2, B and C 1/4 each (acceptance row 8)."""
-    return _two_junctions('two_junctions', False)
+    return _two_junctions('two_junctions', None)
 
 
 @example
 def two_junctions_solver():
     """Spec, "Sharing is local by default": one solver that determines the four requested rates,
     with no objective, shares fairly across its claims, and A, B and C get 1/3 L/h each; the onward
-    pipe carries B's and C's 2/3, and the feed balances the first junction at 1 L/h (acceptance
-    row 8)."""
-    return _two_junctions('two_junctions_solver', True)
+    pipe carries B's and C's 2/3, and the feed, which no solver names, balances the first junction
+    at 1 L/h (acceptance row 8)."""
+    return _two_junctions('two_junctions_solver', 'fair')
+
+
+@example
+def two_junctions_upstream_solver():
+    """The owner's rule after G2 (PLAN.md, change 19): a solver decides only the rates that it
+    names, and a flow that it does not name keeps its endpoints' local sharing. A solver that names
+    only the upstream feed of the junctions leaves 1/2, 1/4 and 1/4. Worked by hand: the feed is the
+    solver's, with no request and no claim of its own; the four pipes are not, and their claims keep
+    their levels of local sharing after the solver's claims. To A and onward, out of the first
+    junction (held at 0 L, so it passes on what the feed brings), the level is one: each gets half of
+    what the feed can bring, at most its capacity of 1 L/h, so the feed carries 1 L/h and A and
+    onward 1/2 L/h each. B and C, out of the second junction, are at level two and split its 1/2:
+    1/4 L/h each."""
+    return _two_junctions('two_junctions_upstream_solver', 'upstream')
 
 
 @example
