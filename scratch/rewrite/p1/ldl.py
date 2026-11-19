@@ -92,6 +92,9 @@ def use():
     distance.splu = lambda K, permc_spec=None: _Factor(K)
 
 
+STEPS = None  # `--steps N`: the Newton budget of each stage (the library's is 500)
+
+
 def run(tag, repeat, checked=False):
     use()
     _Factor.checked = checked
@@ -101,7 +104,8 @@ def run(tag, repeat, checked=False):
         work = Work()
         clock = time.perf_counter()
         try:
-            xi = distance.select(copy.deepcopy(state['face']), state['w'], Budget(), work)
+            budget = Budget(newton_steps=STEPS) if STEPS else Budget()
+            xi = distance.select(copy.deepcopy(state['face']), state['w'], budget, work)
         except Exception as stopped:  # a named failure is the measurement here
             print(f'{tag} library-ldl: stopped after {time.perf_counter() - clock:.1f} s: {stopped}; '
                   f'Newton {work.newton}, superlu {len(SUPERLU)}', flush=True)
@@ -116,7 +120,7 @@ def run(tag, repeat, checked=False):
     found = lab.measures(state, answers[0], reference)
     infos = dict(newton=work.newton, methods=work.methods, factorizations=work.factorizations, qp=work.qp,
                  superlu=len(SUPERLU))
-    name = 'library-ldl' + ('-checked' if checked else '') + (f'-regular{REGULAR:g}' if REGULAR else '')
+    name = 'library-ldl' + ('-checked' if checked else '') + (f'-regular{REGULAR:g}' if REGULAR else '') + (f'-steps{STEPS}' if STEPS else '')
     record = dict(tag=tag, method=name, seconds=min(times), all=times, repeat=repeat, bitwise=same,
                   infos=infos, measures=found, load=lab.load(), version=lab.library_version())  # fmt: skip
     with open(f'{lab.DATA}/distance.jsonl', 'a') as f:
@@ -133,6 +137,10 @@ if __name__ == '__main__':
         repeat = int(args[i + 1])
         del args[i : i + 2]
     checked = '--checked' in args
+    if '--steps' in args:
+        i = args.index('--steps')
+        STEPS = int(args[i + 1])
+        del args[i : i + 2]
     if '--regular' in args:
         i = args.index('--regular')
         REGULAR = float(args[i + 1])

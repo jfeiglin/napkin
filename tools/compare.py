@@ -83,7 +83,9 @@ def capture(entry, run=None, times=None):
     held = [t for t in times if t <= stop]
     values = {}
     for found in read(record, model.program, named(model, record), held):
-        shown = [{'unavailable': item.reason} if isinstance(item, Unavailable) else item for item in found.values]
+        shown = [
+            {'unavailable': item.reason} if isinstance(item, Unavailable) else item for item in found.values
+        ]
         shown += [{'unavailable': f'the run stopped at {stop:g} h: {why}'}] * (len(times) - len(held))
         values[found.path] = {'unit': found.unit, 'values': shown}
     return {
@@ -97,11 +99,7 @@ def capture(entry, run=None, times=None):
             for entry in record.trace
             if entry.kind in TRACED
         ]
-        + (
-            [{'t': stop, 'kind': 'failure', 'part': '', 'owner': ''}]
-            if record.failure is not None
-            else []
-        ),
+        + ([{'t': stop, 'kind': 'failure', 'part': '', 'owner': ''}] if record.failure is not None else []),
     }
 
 
@@ -129,7 +127,14 @@ def published(document, run=None):
         for name, outcome in row['outcomes'].items()
     }
     horizon = float(document['horizon_h'])
-    return {'model': document['scenario'], 'run': row['run'], 'horizon': horizon, 'times': [horizon], 'values': values, 'trace': None}
+    return {
+        'model': document['scenario'],
+        'run': row['run'],
+        'horizon': horizon,
+        'times': [horizon],
+        'values': values,
+        'trace': None,
+    }
 
 
 def side(text, run=None, times=None):
@@ -213,7 +218,9 @@ def compare(base, other, renames=None, relative=1e-6, absolute=1e-9):
                 break
         else:
             if len(base['trace']) != len(other['trace']):
-                longer, kept = ('the base', base) if len(base['trace']) > len(other['trace']) else ('the other', other)
+                longer, kept = (
+                    ('the base', base) if len(base['trace']) > len(other['trace']) else ('the other', other)
+                )
                 extra = kept['trace'][entries]
                 found.append(
                     f'trace entry {entries}: only {longer} has it, {extra["kind"]} {extra["part"]} at {extra["t"]:g} h'
@@ -237,11 +244,17 @@ def main(argv=None):
     )
     parser.add_argument('base', metavar='BASE', help='a model, a capture or published results (.json)')
     parser.add_argument('other', metavar='OTHER', nargs='?', help='a model, a capture or published results')
-    parser.add_argument('--run', metavar='NAME', help='the named run of a model, or the row of published results')
+    parser.add_argument(
+        '--run', metavar='NAME', help='the named run of a model, or the row of published results'
+    )
     parser.add_argument('--at', metavar='HOURS', help='the times of a capture, in hours: --at 0,12,24')
     parser.add_argument('--rename', type=Path, metavar='FILE', help='a JSON object {base path: other path}')
-    parser.add_argument('--relative', type=float, default=1e-6, metavar='R', help='the relative tolerance (1e-6)')
-    parser.add_argument('--absolute', type=float, default=1e-9, metavar='A', help='the absolute tolerance (1e-9)')
+    parser.add_argument(
+        '--relative', type=float, default=1e-6, metavar='R', help='the relative tolerance (1e-6)'
+    )
+    parser.add_argument(
+        '--absolute', type=float, default=1e-9, metavar='A', help='the absolute tolerance (1e-9)'
+    )
     parser.add_argument('--write', type=Path, metavar='FILE', help='write the capture of BASE, a model')
     args = parser.parse_args(argv)
     if (args.write is None) == (args.other is None):
@@ -256,7 +269,9 @@ def main(argv=None):
         base = side(args.base, args.run, times)
         if args.write is not None:
             args.write.write_text(json.dumps(base, indent=1, allow_nan=False) + '\n', encoding='utf-8')
-            print(f'{args.write}: {len(base["values"])} values at {len(base["times"])} times, {len(base["trace"] or ())} trace entries')
+            print(
+                f'{args.write}: {len(base["values"])} values at {len(base["times"])} times, {len(base["trace"] or ())} trace entries'
+            )
             return 0
         other = side(args.other, args.run, times)
         renames = json.loads(args.rename.read_text(encoding='utf-8')) if args.rename else None

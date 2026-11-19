@@ -1,14 +1,15 @@
 """The benchmark harness (`tools/bench/`), on synthetic models and made-up profiles.
 
 Each family compiles and runs at its smallest size, and is what its docstring says, read from its
-compiled model: copies that read only themselves, an aggregate that only an output reads, a guard
-that reads every copy, a rate that reads every copy, flows that differ by the stiffness, `n` firings
-at equal steps, a share that is drained to its bound with rates that read the state, the same share
-in order, compartments with no numerical segment, and a chain of formulas. The attribution of a
-profile puts each function in the group of its file, a factorization of C in the linear algebra,
-moves the time of a helper to its callers, and keeps the whole. A workload that fails is a
-record, and the harness goes on. The document has its slots and goes through JSON. The catalogue is
-found by its locator and is opt-in. No test judges a duration: the times are only recorded.
+program and its record: copies that read only themselves, an aggregate that only a value of the top
+level reads, a guard that reads every copy, a rate that reads every copy, flows that differ by the
+stiffness, `n` starts at equal steps, a tank drained to its bound with rates that read the state, the
+same tank in order, a linear chain of compartments, a chain of formulas, and each family of copies
+again from a table. The closed forms are worked by hand. The attribution of a profile puts each
+function in the group of its file, a factorization of C in the linear algebra, moves the time of a
+helper to its callers, and keeps the whole. A workload that fails is a record, and the harness goes
+on. The document has its slots and goes through JSON. The catalogue is found by its locator and is
+opt-in. No test judges a duration: the times are only recorded.
 """
 
 import cProfile
@@ -21,389 +22,188 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from scipy.integrate import OdeSolution
 
 import napkin
 from napkin import expressions
-from napkin.engine.continuous.kernels import MatrixExponential
-from napkin.engine.runtime import simulate
-from napkin.model import hybrid
-from napkin.model import structure as typed
-from napkin.model.ir import thaw
-from tools import catalogue, compare
+from tools import catalogue
 from tools.bench import families, measure
 from tools.bench.__main__ import main
 from tools.bench.workloads import ALL, Workload, workloads
 
 ROOT = catalogue.ROOT
-COPIES = 3  # the size at which a test reads "every copy"
 
 
 @pytest.fixture(scope='module')
 def made(tmp_path_factory):
-    """`made(family, n)`: the model of a family at a size, the resolved structure of its run and the
-    library, each made once for the module."""
+    """`made(family, n)`: the compiled model of a family at a size and the record of its default run,
+    each made once for the module."""
     folder, found = tmp_path_factory.mktemp('families'), {}
 
     def make(family, n):
         if (family, n) not in found:
             model = napkin.load_scenario(families.write(family, n, folder))
-            found[family, n] = (model, model.resolve(next(iter(model.runs))), thaw(model.library))
+            found[family, n] = (model, napkin.run(model.program, model.configuration))
         return found[family, n]
 
     return make
 
 
-@pytest.fixture(scope='module')
-def ran(made):
-    """`ran(family, n)`: the trajectory of the run of a family at a size, simulated once."""
-    found = {}
-
-    def run(family, n):
-        if (family, n) not in found:
-            _, rs, library = made(family, n)
-            found[family, n] = simulate(rs, library)
-        return found[family, n]
-
-    return run
+def at(made, family, n, paths, times):
+    """The values of paths of a family's run at times ([path][time])."""
+    model, record = made(family, n)
+    return [reading.values for reading in napkin.read(record, model.program, paths, times)]
 
 
-def formulas_read(rs, source):
-    """The formulas that an expression reads, itself or through the formulas that it reads."""
-    found, pending = set(), [typed.node(source)]
-    while pending:
-        for name in expressions.names_in(pending.pop()):
-            if name in rs.computed and name not in found:
-                found.add(name)
-                pending.append(typed.node(rs.computed[name].expr))
-    return found
+def written(made, family, n, template, part):
+    """The names that a part of a family's program reads directly: a flow's request, or a value's
+    formula (`this.c1`, `pool.mean`)."""
+    model, _ = made(family, n)
+    found = model.program.template(template).part(part)
+    expr = getattr(found, 'request', None) or found.init
+    return {name for name, _ in getattr(expr, 'expr', expr).reads}
 
 
-def quantities_read(rs, source):
-    """The quantities that an expression reads, itself or through the formulas that it reads."""
-    sources = [
-        typed.node(source),
-        *(typed.node(rs.computed[name].expr) for name in formulas_read(rs, source)),
-    ]
-    return {name for text in sources for name in expressions.names_in(text) if name in rs.quantities}
-
-
-def rate_sources(rs):
-    """[(entity, expression)] of each rate of change of a structure: its rates and its flows."""
-    rates = [(rs.quantities[name].entity, item.expr) for name, item in rs.rates.items()]
-    return rates + [(flow.entity, flow.rate) for flow in rs.flows.values()]
-
-
-def texts(value):
-    """Every text in a part of a structure, its keys with them."""
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            yield str(key)
-            yield from texts(item)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            yield from texts(item)
-
-
-def names(rs, section):
-    """The names that the expressions of one section of a structure read."""
-    found = set()
-    for text in texts(typed.thawed(rs.section(section))):
-        found.update(re.findall(r'[A-Za-z_][\w.]*', text))
-    return found
-
-
-def of(rs, entity):
-    return {name for name, item in rs.quantities.items() if item.entity == entity}
-
-
-def members(rs, member):
-    """The quantity `member` of each copy of the template `Cell`."""
-    return {name for name, item in rs.quantities.items() if item.path == f'Cell/{member}'}
+def reads(made, family, n, path):
+    """The origins of the parts that a value of a family's run can read (its evidence trail)."""
+    model, record = made(family, n)
+    found = napkin.report(record, model.program, model.configuration, [path], [0], model=model.declared)
+    return {used.origin for used in found.values[0].trail}
 
 
 # --- The families ---------------------------------------------------------------------------------
 
 
-TABLED = [name for name, family in families.FAMILIES.items() if family.files]
-
-
-def end_of_first_run(path):
-    model = napkin.load_scenario(path)
-    run = simulate(model.resolve(next(iter(model.runs))), thaw(model.library), None)
-    return [(event['t'], event['event']) for event in run.trace], run.env_at(run.horizon)
-
-
-@pytest.mark.parametrize('family', TABLED)
-def test_a_family_from_a_table_runs_as_its_family_of_copies(family, tmp_path):
-    """The table gives each cell the value that the copy takes from its number, so the two models are
-    one model but for how that one value is written: the same events in the same order, at the same
-    times and with the same values to the rounding of that value."""
-    assert len(TABLED) == 4
-    n = 6
-    events, end = end_of_first_run(families.write(family, n, tmp_path))
-    copy_events, copy_end = end_of_first_run(families.write(family.removeprefix('table_'), n, tmp_path))
-    assert [name for _, name in events] == [name for _, name in copy_events]
-    assert [t for t, _ in events] == pytest.approx([t for t, _ in copy_events], rel=1e-9, abs=1e-9)
-    numbers = sorted(name for name, value in end.items() if isinstance(value, float))
-    assert numbers and set(end) == set(copy_end)
-    assert [end[name] for name in numbers] == pytest.approx(
-        [copy_end[name] for name in numbers], rel=1e-9, abs=1e-12
-    )
-
-
-@pytest.mark.parametrize('family', TABLED)
-@pytest.mark.parametrize('n', [1, 12])
-def test_the_hybrid_core_of_a_family_from_a_table_stands_for_its_flat_structure(family, n, tmp_path):
-    """Every row of such a table has one shape: one class, one instance lowered, and the checking mode
-    of the hybrid core finds no difference from the flat structure of all the rows."""
-    core = hybrid.compile(families.write(family, n, tmp_path))
-    assert [len(found) for found in core.families] == [n]
-    assert hybrid.problems(core) == []
-
-
-def test_the_harness_measures_the_hybrid_core_of_a_table_and_no_flat_structure_of_a_large_one(tmp_path):
-    large = measure.FLAT_ROWS + 1
-    selected = workloads(families=['table_instances'], sizes=[3, large], folder=tmp_path)
-    small, big = measure.bench(selected, repeats=1, run_task=measure.inline)
-    for item, rows in ((small, 3), (big, large)):
-        slot = item['compile']['shape_classes']
-        assert slot['available'] is True and slot['instances'] == rows and slot['classes'] == 1
-        assert slot['seconds'] > 0 and slot['peak_mb'] > 0 and slot['things_lowered'] == 1
-    assert small['compile']['cold']['seconds'] > 0 and 'median_seconds' in small['values']['one_run']['warm']
-    assert 'not tried' in big['compile']['cold']['failed']
-    assert big['values']['one_run']['warm']['from'] == 'compile'
-
-
-@pytest.mark.parametrize('family', families.FAMILIES)
-def test_each_family_compiles_and_its_first_run_finishes_at_its_smallest_size(family, made, ran, tmp_path):
-    _, rs, _ = made(family, 1)
-    trajectory = ran(family, 1)
-    assert not trajectory.paused and trajectory.end_time == rs.time.horizon
-    assert not [item for item in trajectory.diagnostics if item.get('severity') == 'error']
-    path = families.write(family, 1, tmp_path)
-    assert path == tmp_path / f'{family}_1' / 'model.scn'
-    assert (path.parent / 'units.json').is_file() == bool(families.FAMILIES[family].units)
-    assert families.FAMILIES[family].stresses  # each family says what it stresses
+@pytest.mark.parametrize('family', list(families.FAMILIES))
+def test_each_family_compiles_and_its_run_reaches_its_horizon_at_its_smallest_size(family, made):
+    _, record = made(family, 1)
+    assert record.failure is None, record.failure
+    assert float(record.manifest.horizon) == (48 if family in ('rationing', 'priority') else 240)
+    assert families.FAMILIES[family].stresses
 
 
 def test_a_family_has_no_size_below_one(tmp_path):
-    for size in (0, -3, True, 2.0):
+    for n in (0, -1, 1.5, True):
         with pytest.raises(ValueError):
-            families.write('events', size, tmp_path)
+            families.write('events', n, tmp_path)
     with pytest.raises(KeyError):
-        families.write('no_such_family', 2, tmp_path)
-    assert list(tmp_path.iterdir()) == []
+        families.write('no_such_family', 1, tmp_path)
 
 
 def test_the_copies_of_instances_read_only_themselves(made):
-    model, rs, library = made('instances', COPIES)
-    copies = {item.entity for item in rs.quantities.values() if item.path.startswith('Cell/')}
-    assert len(napkin.instances(model, 'Cell')) == COPIES == len(copies)
-    assert {entity for entity, _ in rate_sources(rs)} == copies
-    for entity, source in rate_sources(rs):
-        assert quantities_read(rs, source) <= of(rs, entity)
-    for rule in rs.rules.values():
-        assert rule.entity in copies
-        assert quantities_read(rs, rule.trigger.when) <= of(rs, rule.entity)
-        assert all(name.startswith(f'{rule.entity}.') for o in rule.outcomes for name in o.do.set)
-    # Each copy has a time of its own: no two copies open their gates at one threshold.
-    units = expressions.UnitSystem(library['units'])
-    watched = [str(rule.trigger.value) for rule in rs.rules.values() if rule.trigger.value is not None]
-    thresholds = {expressions.evaluate(rs.computed[name].expr, rs.values, units) for name in watched}
-    assert len(watched) == COPIES == len(thresholds)
-    # The outputs add a tally of every copy.
-    assert members(rs, 'spilled') <= names(rs, 'outcomes')
+    """The water of each copy rests on its own flows and inputs, and on no other copy's."""
+    for k in (1, 2, 3):
+        found = reads(made, 'instances', 3, f'c{k}.water')
+        assert 'Cell.storm' in found and 'Cell.inflow' in found
+    model, _ = made('instances', 3)
+    assert [member.id for template in model.program.templates for member in template.members] == [
+        'c1',
+        'c2',
+        'c3',
+    ]
 
 
-def test_only_an_output_reads_the_aggregate_of_aggregate_output(made):
-    _, rs, _ = made('aggregate_output', COPIES)
-    water = members(rs, 'water')
-    assert len(water) == COPIES
-    whole = [name for name, item in rs.computed.items() if water <= expressions.names_in(item.expr)]
-    assert len(whole) == 1
-    (aggregate,) = whole
-    for entity, source in rate_sources(rs):
-        assert aggregate not in formulas_read(rs, source)
-        assert quantities_read(rs, source) <= of(rs, entity)
-    for section in (
-        'rates',
-        'flows',
-        'allocation',
-        'coupling',
-        'rules',
-        'state_checks',
-        'input_checks',
-        'labels',
-    ):
-        assert aggregate not in names(rs, section)
-    assert not any(aggregate in expressions.names_in(item.expr) for item in rs.computed.values())
-    assert aggregate in names(rs, 'outcomes')
-    # The counterexample: the same reading finds the aggregate of `aggregate_feedback` in its rates.
-    _, coupled, _ = made('aggregate_feedback', COPIES)
-    assert any(formulas_read(coupled, source) for _, source in rate_sources(coupled))
+def test_only_a_value_of_the_top_level_reads_the_aggregate_of_aggregate_output(made):
+    assert 'pool.held' in reads(made, 'aggregate_output', 2, 'held')
+    for path in ('c1.water', 'c1.spill.actual_rate', 'spilled_total'):
+        assert 'pool.held' not in reads(made, 'aggregate_output', 2, path), path
 
 
-def test_the_guard_of_aggregate_guard_reads_every_copy_and_each_event_changes_one(made, ran):
-    _, rs, _ = made('aggregate_guard', COPIES)
-    flags = members(rs, 'flag')
-    assert len(flags) == COPIES
-    own = {name: rule for name, rule in rs.rules.items() if of(rs, rule.entity) & flags}
-    (guard,) = [rule for name, rule in rs.rules.items() if name not in own]
-    assert len(own) == COPIES
-    assert flags <= expressions.names_in(guard.trigger.when)
-    for rule in own.values():
-        changed = {name for outcome in rule.outcomes for name in outcome.do.set}
-        assert len(changed) == 1 and changed <= of(rs, rule.entity) & flags
-        assert not expressions.names_in(rule.trigger.when) & (flags - of(rs, rule.entity))
-    # The run: the copies raise their flags at different times, and the guard fires with the last.
-    trace = ran('aggregate_guard', COPIES).trace
-    raised = [entry['t'] for entry in trace if entry['rule'] in own]
-    fired = [entry['t'] for entry in trace if entry['rule'] == guard.id]
-    assert len(set(raised)) == COPIES
-    assert fired == [max(raised)]
-
-
-def test_every_rate_of_aggregate_feedback_reads_every_copy(made):
-    _, rs, _ = made('aggregate_feedback', COPIES)
-    levels = members(rs, 'level')
-    assert len(levels) == COPIES and len(rate_sources(rs)) == COPIES
-    for _, source in rate_sources(rs):
-        assert levels <= quantities_read(rs, source)
-    # The copies start at different levels.
-    assert len({str(rs.quantities[name].initial) for name in levels}) == COPIES
-
-
-def test_the_flows_of_stiff_differ_by_the_stiffness_and_need_the_numerical_solver(made, ran):
-    _, rs, library = made('stiff', 4)
-    units = expressions.UnitSystem(library['units'])
-    stocks = [name for name, item in rs.quantities.items() if item.kind == 'stock']
-    assert len(stocks) == 4 and len(rs.flows) == 4
-    # With the same content in each compartment, the fast flows are `stiffness` times the slow ones.
-    environment = {**rs.values, **dict.fromkeys(rs.quantities, 0.25)}
-    speeds = sorted({expressions.evaluate(flow.rate, environment, units) for flow in rs.flows.values()})
-    slow, fast = speeds
-    assert rs.values['chain.stiffness'] > 1
-    assert fast == pytest.approx(slow * rs.values['chain.stiffness'])
-    assert sum('chain.stiffness' in expressions.names_in(flow.rate) for flow in rs.flows.values()) == 2
-    # No flow is linear in its content: twice the content gives less than twice the flow.
-    double = {**environment, **dict.fromkeys(rs.quantities, 0.5)}
-    for flow in rs.flows.values():
-        once, twice = (expressions.evaluate(flow.rate, env, units) for env in (environment, double))
-        assert once < twice < 2 * once
-    assert any(isinstance(segment.solution, OdeSolution) for segment in ran('stiff', 1)._segments)
-
-
-@pytest.mark.parametrize('n', [1, 7])
-def test_the_event_of_events_fires_n_times_at_equal_steps(n, made, ran):
-    _, rs, _ = made('events', n)
-    (rule,) = rs.rules
-    times = [entry['t'] for entry in ran('events', n).trace if entry['rule'] == rule]
-    assert len(times) == n and times == sorted(set(times))
-    assert 0 < times[0] <= times[-1] < rs.time.horizon
-    assert [b - a for a, b in zip([0.0, *times], times)] == pytest.approx([times[0]] * n)
-    # The model keeps its size: the same quantities and rules at each number of firings.
-    assert set(rs.quantities) == set(made('events', 1)[1].quantities)
-
-
-def tank_facts(rs, library, n):
-    """(the share, the flows that drain the tank, what each asks at the start, the cap) of the tank of
-    `rationing` or `priority`, with each flow in the group of the share and a rate that reads the tally
-    of its own user."""
-    units = expressions.UnitSystem(library['units'])
-    (share,) = rs.allocation.values()
-    drains = [name for name, flow in rs.flows.items() if flow.source == 'tank.water']
-    assert len(drains) == n and all(rs.flows[name].allocation in rs.allocation for name in drains)
-    for name in drains:
-        assert quantities_read(rs, rs.flows[name].rate) == {rs.flows[name].target}
-    start = {**rs.values, **{name: 0.0 for name in rs.quantities}}
-    asked = [expressions.evaluate(rs.flows[name].rate, start, units) for name in drains]
-    return share, drains, asked, expressions.evaluate(share.capacity, rs.values, units)
-
-
-def test_rationing_has_a_share_that_is_drained_to_its_bound_with_rates_that_read_the_state(made, ran):
-    n = 4
-    _, rs, library = made('rationing', n)
-    share, drains, asked, limit = tank_facts(rs, library, n)
-    assert share.policy == 'proportional' and share.order is None
-    inflow, horizon, habit = rs.values['tank.inflow'], rs.time.horizon, rs.values['tank.habit']
-    assert inflow < limit < sum(asked)  # the cap cuts the flows from the start, and the tank drains
-    trajectory = ran('rationing', n)
-    # The rates read the state, so no segment has a closed form: the allocation runs at each evaluation.
-    solutions = [segment.solution for segment in trajectory._segments]
-    assert solutions and all(isinstance(solution, OdeSolution) for solution in solutions)
-    assert trajectory.evaluations > 10 * len(solutions)
-    start, end = trajectory.env_at(0.0), trajectory.env_at(trajectory.end_time)
-    used = [end[rs.flows[name].target] for name in drains]
-    # The water is counted once: what was there and what came in is in the tank or with a user.
-    assert start['tank.water'] + inflow * horizon == pytest.approx(end['tank.water'] + sum(used))
-    assert start['tank.water'] > 0 and end['tank.water'] == pytest.approx(0, abs=1e-6 * start['tank.water'])
-    # Each user is cut: uncut, a user that asks a at the start, and a (habit + 2 u) / (habit + u) when
-    # it has taken u, has u / 2 + habit / 4 × ln(1 + 2 u / habit) = a × the time.
-    for took, a in zip(used, asked):
-        assert took / 2 + habit / 4 * math.log1p(2 * took / habit) < 0.99 * a * horizon
-    # In proportion: a user that asks more at the start has taken more.
-    assert used == sorted(used) and len(set(used)) == n
-
-
-def test_priority_is_the_tank_of_rationing_with_a_share_in_order(made, ran):
-    n = 4
-    _, rs, library = made('priority', n)
-    share, drains, asked, limit = tank_facts(rs, library, n)
-    assert share.policy == 'priority' and list(share.order) == drains
-    inflow, horizon, habit = rs.values['tank.inflow'], rs.time.horizon, rs.values['tank.habit']
-    assert inflow < limit < sum(asked)
-    _, plain, plain_library = made('rationing', n)
-    assert tank_facts(plain, plain_library, n)[1:] == (drains, asked, limit)
-    assert typed.thawed(rs.quantities) == typed.thawed(plain.quantities)
-    trajectory = ran('priority', n)
-    solutions = [segment.solution for segment in trajectory._segments]
-    assert solutions and all(isinstance(solution, OdeSolution) for solution in solutions)
-    start, end = trajectory.env_at(0.0), trajectory.env_at(trajectory.end_time)
-    used = [end[rs.flows[name].target] for name in drains]
-    assert start['tank.water'] + inflow * horizon == pytest.approx(end['tank.water'] + sum(used))
-    assert end['tank.water'] == pytest.approx(0, abs=1e-6 * start['tank.water'])
-    # In order: the first user is never cut, at the cap or at the empty tank, because the inflow is more
-    # than twice what it asks at the start. Uncut, a user that asks a at the start has
-    # u / 2 + habit / 4 × ln(1 + 2 u / habit) = a × the time. The last user is cut.
-    assert 2 * asked[0] < inflow
-    assert used[0] / 2 + habit / 4 * math.log1p(2 * used[0] / habit) == pytest.approx(
-        asked[0] * horizon, rel=1e-6
+def test_the_guard_of_aggregate_guard_counts_every_flag_and_fires_with_the_last(made):
+    """The k-th flag of 3 rises at 9 days k / 3: at 72, 144 and 216 h; the watcher sounds once, at
+    216 h, when the count of flags reaches 3."""
+    _, record = made('aggregate_guard', 3)
+    raised = sorted(
+        float(entry.t) for entry in record.trace if entry.kind == 'start' and entry.part == 'Cell.raise_flag'
     )
-    assert used[-1] / 2 + habit / 4 * math.log1p(2 * used[-1] / habit) < 0.9 * asked[-1] * horizon
+    assert raised == pytest.approx([72, 144, 216])
+    (sound,) = [entry for entry in record.trace if entry.kind == 'start' and entry.part == 'watch.sound']
+    assert float(sound.t) == pytest.approx(216)
+    assert 'Cell.flag' in reads(made, 'aggregate_guard', 3, 'watch.alarm')
 
 
-def test_the_run_of_compartments_has_no_numerical_segment(made, ran):
-    n = 5
-    _, rs, _ = made('compartments', n)
-    stocks = [name for name, item in rs.quantities.items() if item.kind == 'stock']
-    assert len(stocks) == n
-    for flow in rs.flows.values():
-        # Each rate reads the content of its own compartment only.
-        assert quantities_read(rs, flow.rate) == {flow.source}
-    trajectory = ran('compartments', n)
-    solutions = [segment.solution for segment in trajectory._segments]
-    assert solutions and not any(isinstance(solution, OdeSolution) for solution in solutions)
-    assert any(isinstance(solution, MatrixExponential) for solution in solutions)
-    # Nothing leaves the chain but into its tally.
-    start, end = trajectory.env_at(0.0), trajectory.env_at(trajectory.end_time)
-    assert sum(end[name] for name in rs.quantities) == pytest.approx(
-        sum(start[name] for name in rs.quantities)
-    )
-    assert end['chain.out'] > 0
+def test_every_rate_of_aggregate_feedback_reads_the_mean_of_every_copy(made):
+    for k in (1, 2, 3):
+        assert 'pool.mean' in reads(made, 'aggregate_feedback', 3, f'c{k}.grow.actual_rate')
+    # The mean starts at the mean of the starts 0.05 + 0.4 k / 3: 0.05 + 0.4 * 2 / 3.
+    (levels,) = at(made, 'aggregate_feedback', 3, ['level_total'], [0])
+    assert levels[0] == pytest.approx(3 * (0.05 + 0.4 * 2 / 3))
+
+
+def test_the_flows_of_stiff_differ_by_the_stiffness(made):
+    assert written(made, 'stiff', 2, 'chain', 'f1') == {'this.slow', 'this.stiffness', 'this.c1', 'this.half'}
+    assert written(made, 'stiff', 2, 'chain', 'f2') == {'this.slow', 'this.c2', 'this.half'}
+    # Nothing leaves the chain: what the first compartment held is in the compartments or out.
+    c1, c2, out = at(made, 'stiff', 2, ['chain.c1', 'chain.c2', 'chain.out'], [240])
+    assert c1[0] + c2[0] + out[0] == pytest.approx(1, abs=1e-8)
+
+
+@pytest.mark.parametrize('n', [1, 2, 3])
+def test_the_event_of_events_starts_n_times_at_equal_steps(n, made):
+    """The period is 240 h / (n + 0.5); the k-th ring is at k periods, and the lamp is on from the
+    first ring to the second, from the third to the fourth, and so on, until 240 h."""
+    _, record = made('events', n)
+    period = 240 / (n + 0.5)
+    rings = [float(entry.t) for entry in record.trace if entry.kind == 'start']
+    assert rings == pytest.approx([k * period for k in range(1, n + 1)])
+    ends = [*rings, 240.0]
+    lit = sum(ends[k + 1] - ends[k] for k in range(0, n, 2))
+    assert at(made, 'events', n, ['clock.lit'], [240])[0][0] == pytest.approx(lit)
+
+
+def test_rationing_drains_its_tank_to_its_bound_then_serves_the_inflow(made):
+    """One user asks at least 20 L/h, capped at 16 L/h, from 160 L that 5 L/h fill: empty at
+    160 / 11 h, and from then the user takes the inflow."""
+    use, water = at(made, 'rationing', 1, ['tank.use_1.actual_rate', 'tank.water'], [10, 47])
+    assert use == pytest.approx([16, 5]) and water == pytest.approx([160 - 11 * 10, 0], abs=1e-9)
+    assert at(made, 'rationing', 1, ['tank.water'], [160 / 11 - 0.5])[0][0] == pytest.approx(5.5)
+
+
+def test_priority_serves_the_first_user_in_full_and_the_rest_to_the_second(made):
+    """Two users capped at 48 L/h from 480 L that 15 L/h fill: the first takes its whole request and
+    the second the rest of the cap until the tank empties at 480 / 33 h; then the first takes the
+    inflow and the second nothing."""
+    first, second = at(made, 'priority', 2, ['tank.use_1.actual_rate', 'tank.use_2.actual_rate'], [10, 47])
+    assert first[0] + second[0] == pytest.approx(48) and first[0] > 20
+    assert (first[1], second[1]) == (pytest.approx(15), pytest.approx(0, abs=1e-9))
+    assert at(made, 'priority', 2, ['tank.water'], [480 / 33 - 0.5])[0][0] == pytest.approx(16.5)
+
+
+def test_the_chain_of_compartments_drains_in_closed_form(made):
+    """One compartment that drains at 2 x 0.05 an hour: c1 = e^(-0.1 t)."""
+    c1, out = at(made, 'compartments', 1, ['chain.c1', 'chain.out'], [10, 240])
+    assert c1 == pytest.approx([math.exp(-1), math.exp(-24)], rel=1e-6, abs=1e-10)
+    assert out[0] == pytest.approx(1 - math.exp(-1), rel=1e-8)
 
 
 def test_the_rates_of_formulas_read_a_chain_of_n_formulas(made):
-    n = 6
-    _, rs, _ = made('formulas', n)
-    assert len(rs.computed) == n
-    read = {name: formulas_read(rs, item.expr) for name, item in rs.computed.items()}
-    # A chain: the formulas that each one reads, itself with them, are 1, 2, … n formulas.
-    assert sorted(len(found) + 1 for found in read.values()) == list(range(1, n + 1))
-    lengths = sorted(len(formulas_read(rs, source)) for _, source in rate_sources(rs))
-    assert lengths[0] == 1 and lengths[-1] == n and len(lengths) == 3
+    """Each formula reads the one before it and the stock; the flows read the last, the middle and
+    the first, and through them the drain rests on the whole chain."""
+    n = 4
+    assert written(made, 'formulas', n, 'tank', 'f1') == {'this.level'}
+    for k in range(2, n + 1):
+        assert written(made, 'formulas', n, 'tank', f'f{k}') == {f'this.f{k - 1}', 'this.level'}
+    assert written(made, 'formulas', n, 'tank', 'drain') == {'this.pace', f'this.f{n}'}
+    assert written(made, 'formulas', n, 'tank', 'see') == {'this.pace', f'this.f{n // 2}'}
+    assert written(made, 'formulas', n, 'tank', 'note') == {'this.pace', 'this.f1'}
+    assert {f'tank.f{k}' for k in range(1, n + 1)} <= reads(made, 'formulas', n, 'tank.drain.actual_rate')
+
+
+@pytest.mark.parametrize(
+    'family, total',
+    [
+        ('instances', 'spilled_total'),
+        ('aggregate_output', 'held'),
+        ('aggregate_guard', 'filled_total'),
+        ('aggregate_feedback', 'level_total'),
+    ],
+)
+def test_a_family_from_a_table_runs_as_its_family_of_copies(family, total, made):
+    """The same cells, written by hand or read from a table, give the same sums."""
+    plain = at(made, family, 3, [total], [60, 240])[0]
+    tabled = at(made, f'table_{family}', 3, [total], [60, 240])[0]
+    assert tabled == pytest.approx(plain, rel=1e-9, abs=1e-12)
+    model, _ = made(f'table_{family}', 3)
+    assert sum(len(template.members) for template in model.program.templates if template.name == 'Cell') == 3
 
 
 # --- Where the time goes ----------------------------------------------------------------------------
@@ -417,10 +217,23 @@ def entry(seconds, callers=None):
 
 
 PLACES = {
-    'analysis': ['/x/napkin/model/lower/builder.py', '/x/napkin/model/language/front.py'],
-    'expressions': ['<model>', '<string>'],
+    'analysis': [
+        '/x/napkin/model/compile.py',
+        '/x/napkin/model/language/parse.py',
+        '/x/napkin/program/proofs.py',
+    ],
+    'expressions': [
+        '<model>',
+        '<string>',
+        '/x/napkin/core/evaluation.py',
+        '/x/napkin/engine/timeline/reads.py',
+    ],
     'field': [
         '/x/napkin/engine/allocation.py',
+        '/x/napkin/engine/solve/fair.py',
+        '/x/napkin/engine/timeline/network.py',
+        '/x/napkin/engine/timeline/selection.py',
+        '/x/napkin/engine/timeline/declared.py',
         *(
             f'/x/napkin/engine/continuous/{name}.py'
             for name in ('fields', 'kernels', 'bounds', 'system', 'highs')
@@ -428,6 +241,7 @@ PLACES = {
     ],
     'solver': [
         '/x/napkin/engine/continuous/integrate.py',
+        '/x/napkin/engine/timeline/sparse.py',
         '/lib/site-packages/scipy/integrate/_ivp/radau.py',
     ],
     'linear_algebra': [
@@ -438,7 +252,7 @@ PLACES = {
     'scheduler': [
         '/x/napkin/engine/timeline/run.py',
         '/x/napkin/engine/timeline/component.py',
-        '/x/napkin/engine/runtime.py',
+        '/x/napkin/engine/timeline/moment.py',
         '/x/napkin/engine/continuous/segment.py',
     ],
     'reporting': ['/x/napkin/engine/report.py'],
@@ -628,21 +442,22 @@ def test_a_function_that_the_profiler_gives_no_entry_of_its_own_keeps_its_time()
 
 # --- The harness ------------------------------------------------------------------------------------
 
-BROKEN = families.events(1).replace('t >= next', 't >= nothing_declared')
-# A model that compiles and whose run stops: the chances of an event's outcomes do not add up to 1.
+BROKEN = families.events(1).replace('t >= this.next', 't >= this.nothing_declared')
+# A model that compiles and whose run stops: a move of 9 L from 8 L at 1 h.
 STOPS = """scenario "A run that stops"
-    summary "The chances of an event do not add up."
+    summary "A move takes more than the tank holds."
     horizon 10 h
     scope "Nothing: the model is synthetic."
 
-tank:  @shape
+tank:
     "The tank."
-    var valve: "shut" | "open" | "stuck" = "shut"
-    event turn once when t >= 1 h:  @shape
-        opens 0.5:
-            valve = "open"
-        sticks 0.4:
-            valve = "stuck"
+    water: L = 8 L in [0 L,] @shape
+    out: L = 0 L in [0 L,] @shape
+    take = event():
+        after 1 h:
+            move 9 L from this.water to this.out
+
+tank.take.start()
 
 record shape: assumption "A synthetic model of the benchmark, with no source."
 """
@@ -658,6 +473,7 @@ def records(tmp_path_factory):
         path = folder / name / 'model.scn'
         path.parent.mkdir()
         path.write_text(text, encoding='utf-8')
+        (path.parent / 'units.json').write_text(json.dumps(families.RATIONING_UNITS), encoding='utf-8')
         selected.append(Workload('family', name, path))
     selected += workloads(ROOT, families=['events'], sizes=[2], folder=folder)
     said = []
@@ -683,7 +499,7 @@ def test_a_workload_that_fails_is_a_record_and_the_harness_goes_on(records):
     assert [record['name'] for record in records] == ['broken', 'stops', 'events_2']
     broken, stops, good = records
     # The compile fails: no later measurement is tried, and each says where its failure comes from.
-    assert broken['compile']['cold']['failed'].startswith('ModelError: ')
+    assert broken['compile']['cold']['failed'].startswith('LanguageError: ')
     assert (
         'nothing_declared' in broken['compile']['cold']['failed'] and 'from' not in broken['compile']['cold']
     )
@@ -692,11 +508,11 @@ def test_a_workload_that_fails_is_a_record_and_the_harness_goes_on(records):
     # The run stops: the compile is measured, and the failure is the first result's.
     assert 'failed' not in stops['compile']['cold']
     failed = stops['values']['one_run']['cold']
-    assert re.match(r'[A-Z]\w*(Error|Exception): ', failed['failed']) and 'from' not in failed
+    assert failed['failed'].startswith('RuntimeError: the run stops at 1 h: ') and 'from' not in failed
     for later in measurements(stops)[2:]:
         assert later == {'failed': failed['failed'], 'from': 'first result'}
     assert not any('failed' in found for found in measurements(good))
-    assert good['run'] == 'base' and good['family'] == 'events' and good['size'] == 2
+    assert good['run'] is None and good['family'] == 'events' and good['size'] == 2
 
 
 def test_a_long_failure_keeps_its_ends():
@@ -707,6 +523,8 @@ def test_a_long_failure_keeps_its_ends():
 
 
 def test_the_document_has_its_slots_and_goes_through_json(records):
+    from napkin.store import ENVIRONMENT
+
     settings = {'repeats': 2, 'samples': 4, 'timeout': 600, 'runs': 'first'}
     document = measure.document(records, settings)
     assert json.loads(json.dumps(document)) == document
@@ -715,17 +533,12 @@ def test_the_document_has_its_slots_and_goes_through_json(records):
     assert set(document['groups']) == set(measure.GROUPS) - {'other'}
     for group, places in measure.FILES:
         assert set(places) <= set(document['groups'][group])
-    assert document['settings'] == settings and document['machine'] == compare.here()
+    assert document['settings'] == settings and document['machine'] == json.loads(json.dumps(ENVIRONMENT))
     assert document['commit'] is None or re.fullmatch(r'[0-9a-f]{40}', document['commit'])
     assert isinstance(document['processors'], int) and len(document['workloads']) == len(records)
     for item in document['workloads']:
         assert {'kind', 'name', 'path', 'run', 'compile', 'values'} <= set(item)
-        assert item['compile']['shape_classes'] == {'available': False}
-        assert set(item['compile']) == {'cold', 'shape_classes'} and set(item['values']) == {
-            'one_run',
-            'every_run',
-            'batch',
-        }
+        assert set(item['compile']) == {'cold'} and set(item['values']) == {'one_run', 'every_run', 'batch'}
         assert set(item['values']['one_run']) == {'cold', 'warm', 'report', 'where'}
     good = document['workloads'][-1]
     one = good['values']['one_run']
@@ -734,20 +547,20 @@ def test_the_document_has_its_slots_and_goes_through_json(records):
     assert sum(one['cold']['parts'].values()) == pytest.approx(one['cold']['seconds'])
     warm = one['warm']
     assert warm['repeats'] == 2 == len(warm['seconds'])
-    assert warm['median_seconds'] == statistics.median(warm['seconds']) and warm['min_seconds'] == min(
-        warm['seconds']
-    )
-    size = {'quantities', 'rules', 'flows', 'formulas', 'evaluations', 'trace', 'segments'}
-    assert size <= set(warm['size']) and warm['size']['trace'] == 2 and warm['size']['rules'] == 1
-    assert sum(warm['size']['segment_kinds'].values()) == warm['size']['segments']
+    assert warm['median_seconds'] == statistics.median(warm['seconds'])
+    assert warm['min_seconds'] == min(warm['seconds'])
+    # Two rings, each a firing, a start, a commit and a finish; one template, one member, one flow.
+    size = warm['size']
+    assert (size['templates'], size['members'], size['flows'], size['events']) == (1, 1, 1, 1)
+    assert size['trace_kinds'] == {'commit': 2, 'finish': 2, 'fire': 2, 'start': 2} and size['trace'] == 8
+    assert size['pieces'] >= size['histories'] > 0
     assert set(one['where']['groups']) == set(measure.GROUPS)
     assert sum(group['share'] for group in one['where']['groups'].values()) == pytest.approx(1)
-    # The study of the run and its report are measured, and the profile is of both: the report has a
-    # part of the time, and so has the analysis of the study's checks.
-    assert one['report']['study_seconds'] > 0 and one['report']['report_seconds'] > 0
+    # The report of the run is measured, and the profile is of a run and its report.
+    assert one['report']['report_seconds'] > 0 and one['report']['values'] > 0
     assert one['where']['groups']['reporting']['own_seconds'] > 0
-    assert one['where']['groups']['analysis']['own_seconds'] > 0
-    assert good['values']['batch'] == {'skipped': 'no uncertain input'}
+    assert one['where']['groups']['scheduler']['own_seconds'] > 0
+    assert good['values']['batch'] == {'skipped': 'no draw'}
     assert good['path'] == 'events_2/model.scn'
     # The table: one row for each record, and a failure in the row of its workload.
     lines = measure.table(document).splitlines()
@@ -757,76 +570,54 @@ def test_the_document_has_its_slots_and_goes_through_json(records):
     assert 'FAILED at the compile' in lines[1] and 'FAILED at the first result' in lines[2]
 
 
-def test_a_study_measures_a_run_with_an_uncertain_input_and_skips_one_without(tmp_path):
-    text = families.compartments(2).replace('= 0.05 ratio/h in', '= uniform(0.02 ratio/h, 0.08 ratio/h) in')
-    assert text != families.compartments(2)
-    path = tmp_path / 'model.scn'
+def uncertain(tmp_path):
+    """The tank of `TWO_RUNS` with its rate drawn from a uniform distribution."""
+    text = TWO_RUNS.replace('= 0.05 fraction/h in', '= uniform(0.02 fraction/h, 0.08 fraction/h).draw() in')
+    assert text != TWO_RUNS
+    path = tmp_path / 'uncertain' / 'model.scn'
+    path.parent.mkdir()
     path.write_text(text, encoding='utf-8')
-    model = napkin.load_scenario(path)
-    found = measure.study(model, 'base', 5)
-    assert found['samples'] == 5 and found['jobs'] == 1 and found['run'] == 'base'
-    assert 'first_seconds' not in found and 'processes' not in found
-    # The three parts of the study make its whole, and the samples in a second leave the central run out.
-    parts = [found[key] for key in ('central_seconds', 'check_seconds', 'run_seconds')]
-    assert all(part > 0 for part in parts) and sum(parts) == pytest.approx(found['seconds'])
-    assert found['samples_per_second'] == pytest.approx(5 / (found['check_seconds'] + found['run_seconds']))
-    plain = napkin.load_scenario(families.write('compartments', 2, tmp_path))
-    assert measure.study(plain, 'base', 5) == {'skipped': 'no uncertain input'}
+    return napkin.load_scenario(path)
+
+
+def test_a_study_measures_a_run_with_a_draw_and_skips_one_without(tmp_path):
+    found = measure.study(uncertain(tmp_path), None, 5)
+    assert (found['samples'], found['jobs'], found['run']) == (5, 1, None)
+    assert 'first_seconds' not in found
+    assert found['samples_per_second'] == pytest.approx(5 / found['seconds'])
+    plain = napkin.load_scenario(families.write('events', 1, tmp_path))
+    assert measure.study(plain, None, 5) == {'skipped': 'no draw'}
 
 
 def test_a_study_on_two_processes_is_measured_after_its_pool_has_started(tmp_path):
-    from napkin import spread as spreads
-
-    text = families.compartments(2).replace('= 0.05 ratio/h in', '= uniform(0.02 ratio/h, 0.08 ratio/h) in')
-    path = tmp_path / 'model.scn'
-    path.write_text(text, encoding='utf-8')
-    model = napkin.load_scenario(path)
-    found = measure.study(model, 'base', 6, jobs=2)
-    assert found['samples'] == 6 and found['jobs'] == 2 and found['first_seconds'] > 0
-    # The first study started every process of the pool, so the measured one started none: the pool
-    # has the same processes after one more study as it had between the two.
-    assert found['processes'] == 2
-    pool = spreads._pool(2)
-    between = set(pool._processes)
-    assert len(between) == 2
-    again = measure.study(model, 'base', 6, jobs=2)
-    assert set(pool._processes) == between and again['processes'] == 2
-    parts = [found[key] for key in ('central_seconds', 'check_seconds', 'run_seconds')]
-    assert sum(parts) == pytest.approx(found['seconds'])
-    plain = napkin.load_scenario(families.write('compartments', 2, tmp_path))
-    assert measure.study(plain, 'base', 6, jobs=2) == {'skipped': 'no uncertain input'}
+    found = measure.study(uncertain(tmp_path), None, 4, jobs=2)
+    assert (found['samples'], found['jobs']) == (4, 2) and found['first_seconds'] > 0
 
 
-# Two runs of one model: the second has a faster inflow, so its event comes sooner.
+# Two runs of one model: the second has a faster inflow.
 TWO_RUNS = """scenario "Two runs"
     summary "A tank fills at one of two rates."
     horizon 10 h
     scope "Nothing: the model is synthetic."
 
-tank:  @shape
+tank:
     "The tank."
-    input rate: fraction/h = 0.05 fraction/h in 0 fraction/h to 1 fraction/h  @shape
-    input full: fraction = uniform(0.3, 0.5) in 0.1 to 1  @shape
-    var water: fraction = 0 size 1  @shape
+    input rate: fraction/h = 0.05 fraction/h in [0 fraction/h, 1 fraction/h] @shape
+    water: fraction = 0 in [0,] scale 1 @shape
         "Water in the tank"
-    output water
-    var valve: "open" | "closed" = "open"
-    flow fill: -> water at rate while valve is "open"
-    event close once when water >= full:  @shape
-        "The valve closes."
-        valve = "closed"
+    flow fill: SOURCE -> this.water
+        request = this.rate
 
 options "Inflow":
     "Slow":
         "The inflow as it is."
     "Fast":
         "A faster inflow."
-        tank.rate = 0.5 fraction/h  @shape
+        tank.rate = 0.5 fraction/h @shape
 
 runs:
     slow = "Slow"
-    quick = "Fast" versus slow
-        "The tank fills sooner."
+    quick = "Fast"
 
 record shape: assumption "A synthetic model of the benchmark, with no source."
 """
@@ -836,32 +627,18 @@ def test_the_survey_times_each_run_of_a_model_in_its_order(tmp_path):
     path = tmp_path / 'two' / 'model.scn'
     path.parent.mkdir()
     path.write_text(TWO_RUNS, encoding='utf-8')
-    model = napkin.load_scenario(path)
-    assert list(model.runs) == ['slow', 'quick']
     (record,) = measure.bench(
         [Workload('family', 'two', path)], repeats=1, survey=True, run_task=measure.inline
     )
-    assert record['run'] == 'slow'  # the measurements in full are of the first run
+    assert record['run'] == 'slow'  # the measurements in full are of the first named run
     found = record['values']['every_run']
     assert list(found['runs']) == ['slow', 'quick'] and found['slowest'] in found['runs']
-    for name, item in found['runs'].items():
-        trajectory = simulate(model.resolve(name), thaw(model.library))
-        assert item['seconds'] > 0 and item['trace'] == len(trajectory.trace) == 1
-        assert item['evaluations'] == trajectory.evaluations
+    for item in found['runs'].values():
+        assert item['seconds'] > 0 and item['trace'] == 0 and item['histories'] > 0
     slowest = found['runs'][found['slowest']]['seconds']
     assert slowest == max(item['seconds'] for item in found['runs'].values())
     line = measure.table(measure.document([record], {'samples': None})).splitlines()[1]
     assert f'slowest of 2 runs: {found["slowest"]}' in line
-    # With a survey, a study samples the slowest run that the survey found, and names it. Without
-    # one, it samples the run of the record.
-    (studied,) = measure.bench(
-        [Workload('family', 'two', path)], repeats=1, survey=True, samples=3, run_task=measure.inline
-    )
-    assert studied['values']['batch']['run'] == studied['values']['every_run']['slowest']
-    assert studied['values']['batch']['samples'] == 3
-    (first,) = measure.bench([Workload('family', 'two', path)], repeats=1, samples=3, run_task=measure.inline)
-    assert first['values']['batch']['run'] == first['run'] == 'slow'
-    # Without the survey, the record says so.
     (plain,) = measure.bench([Workload('family', 'two', path)], repeats=1, run_task=measure.inline)
     assert plain['values']['every_run'] == {'skipped': 'no survey asked'}
 
@@ -871,7 +648,7 @@ def test_a_measurement_runs_in_a_process_of_its_own_within_its_time(tmp_path):
     broken = tmp_path / 'broken.scn'
     broken.write_text(BROKEN, encoding='utf-8')
     failed = measure.isolated({'kind': 'compile', 'path': str(broken)}, 120)
-    assert failed['failed'].startswith('ModelError: ') and 'nothing_declared' in failed['failed']
+    assert failed['failed'].startswith('LanguageError: ') and 'nothing_declared' in failed['failed']
     late = measure.isolated({'kind': 'compile', 'path': str(good)}, 0.01)
     assert late == {'failed': 'TimeoutError: no result after 0.01 s'}
 
@@ -921,7 +698,7 @@ def test_the_command_measures_a_family_and_writes_the_document(tmp_path, capsys)
     assert main(['--family', 'events', '--sizes', '1', '--repeats', '1', '--out', str(out)]) == 0
     document = json.loads(out.read_text(encoding='utf-8'))
     (item,) = document['workloads']
-    assert item['name'] == 'events_1' and item['kind'] == 'family' and item['run'] == 'base'
+    assert item['name'] == 'events_1' and item['kind'] == 'family' and item['run'] is None
     assert not any('failed' in found for found in measurements(item))
     assert item['values']['batch'] == {'skipped': 'no samples asked'}
     assert all(isinstance(found.get('peak_mb'), float) for found in measurements(item)[:3])

@@ -36,6 +36,9 @@ holds them (`{"unavailable": reason}` for a value that has none, `{"rating", "te
 status display), its lag and its note, and its evidence trail; the records that the trails cite;
 the near-ties; why the run stopped; and the diagnostics.
 
+The run goes through the run store (`napkin.store`): a run that the store holds is read, not run
+again; `NAPKIN_STORE=off` turns it off.
+
 A model that does not compile, or that the engine does not run, prints each problem
 (`file:line:column: error: message [code]`) and exits 1, and so does an edit document that does not
 hold. A run that stops prints the values up to the time at which it stopped, then why, and exits 1.
@@ -151,16 +154,20 @@ def main(args):
 
 
 def recorded(program, configuration, entry):
-    """The record of a run of a program (`napkin.engine.run`). A part that the engine does not run,
+    """The record of a run of a program, through the run store (`napkin.store.run`, `common.stored`):
+    the stored record when one covers the run, else a new run. A part that the engine does not run,
     and a configuration that the program cannot take, are a Failed."""
-    from ..engine import run
+    from .. import store
     from ..engine.timeline import Outside
     from ..program.config import ConfigurationError
 
+    common.stored()
     try:
-        return run(program, configuration)
+        return store.run(program, configuration)
     except Outside as error:
-        raise common.Failed([common.problem('engine', f'the engine does not run this: {error}', entry)]) from None
+        raise common.Failed(
+            [common.problem('engine', f'the engine does not run this: {error}', entry)]
+        ) from None
     except ConfigurationError as error:
         raise common.Failed([common.problem('configuration', error, entry)]) from None
 

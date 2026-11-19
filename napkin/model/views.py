@@ -5,7 +5,9 @@
   human player is shown what it `sees` or is asked by a stage to `choose`. `sees` permits nothing
   (D1): it lists what the player is shown. Each choice is the site that a pick names (`config.Pick`),
   the event whose stage asks it, and its outcomes: each member of the forecast's enum, with the card
-  (the text) of its case when the choice selects a `switch`.
+  (the text) of its case when the choice selects a `switch`. The language refuses `choose` and
+  `sees` (item 15 of the plan's changes after G0), so a compiled text has no actor; the view goes
+  when the program loses its choices.
 - `instances(compiled, template)`: each member of a template, in creation order, with the member
   that each of its links names.
 

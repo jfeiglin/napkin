@@ -395,12 +395,25 @@ class Run:
         )
         value = number(value)
         if type(value) is not type(old):
-            raise RunFailed(f'{owner}.{name}: an edit keeps the type of the value, {old!r}, and {value!r} is another')
+            raise RunFailed(
+                f'{owner}.{name}: an edit keeps the type of the value, {old!r}, and {value!r} is another'
+            )
         lo, hi = view.bounds.get(cell, (None, None))
-        if isinstance(value, Fraction) and ((lo is not None and value < lo) or (hi is not None and value > hi)):
-            raise RunFailed(f'{owner}.{name} = {value} is outside its range [{lo}, {hi}]: an edit keeps the range')
+        if isinstance(value, Fraction) and (
+            (lo is not None and value < lo) or (hi is not None and value > hi)
+        ):
+            raise RunFailed(
+                f'{owner}.{name} = {value} is outside its range [{lo}, {hi}]: an edit keeps the range'
+            )
         self.edit_log.append(
-            {'time': t, 'breakpoint': self.paused['at'], 'owner': owner, 'name': name, 'old': old, 'new': value}
+            {
+                'time': t,
+                'breakpoint': self.paused['at'],
+                'owner': owner,
+                'name': name,
+                'old': old,
+                'new': value,
+            }
         )
         self._note('edit', owner, origin=self.paused['at'])
         if cell in self.stores and isinstance(old, Fraction):
@@ -598,7 +611,9 @@ class Run:
                 raise type(e)(f'{e} [stage {occ.step + 1} of {occ.label}, t = {self.view.t} h]') from None
         self.scheduled.remove(occ)
         occ.due, self.kept_draws = None, {}
-        self.passed = {where: edits for where, edits in self.passed.items() if where[:2] != (occ.number, occ.step)}
+        self.passed = {
+            where: edits for where, edits in self.passed.items() if where[:2] != (occ.number, occ.step)
+        }
         self._note('stage' if ran else 'skip', occ.label, occ.step, step.origin)
         self._commit(tx)
         self._reach(occ, occ.step + 1)

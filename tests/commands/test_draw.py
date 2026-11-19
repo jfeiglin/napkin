@@ -165,7 +165,9 @@ def test_draw_writes_the_latex_of_the_panels_to_the_file_that_latex_names(tmp_pa
     (folder / 'style.toml').write_text('', encoding='utf-8')
     found = napkin(capsys, 'draw', folder, '-o', tmp_path / 'wards.svg', '--latex', tmp_path / 'none.tex')
     assert f'note: {tmp_path / "none.tex"}: the stylesheet names no thing' in found.out
-    assert all(row.startswith('%') for row in (tmp_path / 'none.tex').read_text(encoding='utf-8').splitlines())
+    assert all(
+        row.startswith('%') for row in (tmp_path / 'none.tex').read_text(encoding='utf-8').splitlines()
+    )
 
 
 def test_draw_gives_the_problem_of_a_stylesheet_that_it_cannot_read(tmp_path, monkeypatch, capsys):

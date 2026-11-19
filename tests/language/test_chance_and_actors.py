@@ -1,9 +1,10 @@
 """Distributions, draws, actors and enum states in the front end (slice S4), ported from the front-end
 tests of the old compiler (`tests/model/test_distribution_contracts.py`, `test_named_arguments.py`,
-`test_sight.py`, `test_views.py`, `test_state_assignment.py`). Their rules changed at G0: a
-distribution's parameters are numbers written in place, in the order of today's constructors (no
-argument by name); `sees` selects what a human player is shown and permits nothing (D1); an enum is
-its members; and the views read the compiled model."""
+`test_views.py`, `test_state_assignment.py`). Their rules changed at G0: a distribution's parameters
+are numbers written in place, in the order of today's constructors (no argument by name); an enum is
+its members; and the views read the compiled model. At item 15 of the plan's changes after G0,
+`choose(...)` and `sees` left the language: a decision is a field that a branch reads, which a caller
+edits at a breakpoint (the acceptance example, `PUMP_DISPATCH`)."""
 
 import textwrap
 from fractions import Fraction
@@ -12,10 +13,11 @@ import pytest
 
 from napkin.model.compile import compile_text
 from napkin.model.language.problems import LanguageError
-from napkin.model.views import actors, instances
+from napkin.model.views import actors
 from napkin.program import parts as p
-from napkin.program.refs import THIS, Choice, Distribution, EnumValue, Named, Path
-from tests.program.examples import UNITS
+from napkin.program.canonical import program_bytes
+from napkin.program.refs import Distribution, EnumValue, Named, Path
+from tests.program.examples import UNITS, pump_dispatch
 
 UNITS = dict(UNITS, day=({'time': 1}, 24), people={'people': 1})
 
@@ -170,8 +172,39 @@ def test_a_state_refuses_a_value_it_cannot_hold(line):
     assert codes(DESK.format(line=line)) in (['type'], ['enum_member'])
 
 
-# ---- actors and what they see, from test_sight.py and test_views.py -----------------------------------
+# ---- the acceptance example of item 15 of the plan's changes after G0 ---------------------------------
 
+# The forecast drawn into the occurrence's field `order`, a `switch` on it, and the eligibility of
+# SEND as its case's guard: a caller that wants another order stops before the switch and edits it.
+# `tests/language/test_events.py` lowers it to the program of `pump_dispatch_unattended`.
+PUMP_DISPATCH = """
+    dispatcher:
+        forecast = categorical(SEND: 0, WAIT: 1)
+
+    depot:
+        spares = 1 in [0,]
+        waits = 0
+        request_pump = event():
+            order: enum[SEND, WAIT] = WAIT
+            after 0 h:
+                order = dispatcher.forecast.draw()
+                switch order:
+                    SEND when this.spares >= 1:
+                        this.send_pump.start()
+                    WAIT:
+                        this.waits += 1
+        send_pump = event():
+            after 0 h:
+                this.spares -= 1
+
+    depot.request_pump.start()
+    sent = formula(count(depot.send_pump.occurrences))
+    """
+
+
+# ---- no player machinery (item 15) ---------------------------------------------------------------------
+
+# The dispatcher of the spec as G0 wrote it, with an actor that sees the spares and chooses.
 DEPOT = """
     dispatcher:
         sees depot.spares
@@ -183,8 +216,7 @@ DEPOT = """
         request_pump = event():
             after 0 h:
                 switch dispatcher.choose(dispatcher.forecast):
-                    SEND when this.spares >= 1 and this.waits < 3:
-                        "Send the spare pump."
+                    SEND when this.spares >= 1:
                         this.send_pump.start()
                     WAIT:
                         this.waits += 1
@@ -196,84 +228,38 @@ DEPOT = """
     """
 
 
-def test_an_actor_lists_what_it_sees_and_each_choice_with_its_outcomes():
-    """`dispatcher` sees the spares; the depot's stage asks it to choose, and the guard reads
-    `waits`, which it does not see: `sees` permits nothing and refuses no read (D1)."""
-    (dispatcher,) = actors(compiled(DEPOT))
-    assert (dispatcher['name'], dispatcher['members'], dispatcher['sees']) == (
-        'dispatcher',
-        ['dispatcher'],
-        ['depot.spares'],
+def problems(text):
+    with pytest.raises(LanguageError) as caught:
+        compiled(text)
+    return caught.value.problems
+
+
+def test_a_choice_and_a_sight_are_refused_by_name_with_what_to_write_instead():
+    """`choose(...)` and `sees` left the language: each is refused at its line, and the message
+    says to store the value in a field, branch on it, and pause before the branch."""
+    found = sorted(problems(DEPOT), key=lambda problem: problem.line)
+    assert [(problem.code, problem.line) for problem in found] == [('sees', 3), ('choose', 11)]
+    for problem in found:
+        assert 'store the value in a field and branch on it' in problem.message
+        assert 'pause before the branch' in problem.message
+    assert codes('a:\n    d = categorical(X: 1)\n    x = formula(a.choose(a.d) == X)\n') == ['choose']
+    assert actors(compiled(PUMP_DISPATCH)) == []
+
+
+def test_the_spec_s_dispatcher_written_with_a_field_lowers_as_the_acceptance_example():
+    """The dispatcher's choice becomes a draw of its forecast into `order`, which a caller edits."""
+    written = DEPOT.replace('        sees depot.spares\n', '').replace(
+        '            after 0 h:\n                switch dispatcher.choose(dispatcher.forecast):',
+        '            order: enum[SEND, WAIT] = WAIT\n            after 0 h:\n'
+        '                order = dispatcher.forecast.draw()\n                switch order:',
     )
-    assert dispatcher['choices'] == [
-        {
-            'site': 'depot.request_pump.step[0].do[0].choice[0]',
-            'event': 'depot.request_pump',
-            'outcomes': [{'name': 'SEND', 'label': 'Send the spare pump.'}, {'name': 'WAIT', 'label': None}],
-        }
-    ]
-    (selector,) = compiled(DEPOT).program.template('depot').events[0].steps[0].body
-    assert isinstance(selector.selector.reads[0][1], Choice)
-
-
-def test_a_template_s_observations_bind_each_member_s_own_fields_and_links():
-    text = """
-        Sensor:
-            reported = 0
-        Reader:
-            sensor: Sensor
-            sees this.sensor.reported
-            sees this.calls
-            calls = 0
-        left_sensor: Sensor
-        right_sensor: Sensor
-        left: Reader
-            sensor = left_sensor
-        right: Reader
-            sensor = right_sensor
-        """
-    model = compiled(text)
-    assert model.program.template('Reader').sees == (
-        Path(THIS, ('sensor', 'reported')),
-        Path(THIS, ('calls',)),
-    )
-    (reader,) = actors(model)
-    assert (reader['name'], reader['members'], reader['sees']) == (
-        'Reader',
-        ['left', 'right'],
-        ['this.sensor.reported', 'this.calls'],
-    )
-    assert instances(model, 'Reader') == [
-        {'name': 'left', 'links': {'sensor': 'left_sensor'}},
-        {'name': 'right', 'links': {'sensor': 'right_sensor'}},
-    ]
-    assert [item['name'] for item in instances(model, 'Sensor')] == ['left_sensor', 'right_sensor']
-
-
-@pytest.mark.parametrize(
-    ('text', 'code'),
-    [
-        # An actor is an entity, and its forecast a categorical over the enum of the choice.
-        (
-            'a:\n    d = uniform(1, 2)\n    go = event():\n        x = a.choose(a.d)\n        after 0 h\n',
-            'choice',
-        ),
-        (
-            'a:\n    d = categorical(X: 1)\n    go = event():\n        x = a.d.choose(a.d)\n        after 0 h\n',
-            'choice',
-        ),
-        # A choice is captured once, in a stage or a local: no formula asks an actor.
-        ('a:\n    d = categorical(X: 1)\n    x = formula(a.choose(a.d) == X)\n', 'formula_draws'),
-        ('a:\n    sees a.go\n    go = event():\n        after 0 h\n', 'sees'),
-    ],
-)
-def test_a_choice_and_a_sight_that_break_a_rule_are_refused_by_their_code(text, code):
-    assert codes(text) == [code]
+    written = written.rstrip() + '\n    sent = formula(count(depot.send_pump.occurrences))\n'
+    assert program_bytes(compiled(written).program) == program_bytes(pump_dispatch())
 
 
 def test_a_draw_of_a_categorical_in_a_median_and_a_weight_of_zero_lower_as_written():
     """The forecast that always waits keeps its zero weight: eligibility and probability are
-    independent (D1), so a player may still send."""
-    forecast = compiled(DEPOT).program.template('dispatcher').part('forecast').init
+    independent (D1), so an edit of `order` at a breakpoint may still send."""
+    forecast = compiled(PUMP_DISPATCH).program.template('dispatcher').part('forecast').init
     assert (forecast.outcomes, forecast.params) == (('SEND', 'WAIT'), (0, 1))
     assert Fraction(sum(forecast.params)) == 1

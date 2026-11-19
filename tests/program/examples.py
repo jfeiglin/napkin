@@ -1497,7 +1497,9 @@ def pump_dispatch(spares=1):
     eligibility of SEND is its case's guard), or counts a wait. Unattended it waits once."""
     b = Builder(UNITS)
     action = b.enum('enum[SEND, WAIT]', 'SEND', 'WAIT')
-    dispatcher = b.entity('dispatcher', value('forecast', dist_of(action), categorical(action, SEND=0, WAIT=1)))
+    dispatcher = b.entity(
+        'dispatcher', value('forecast', dist_of(action), categorical(action, SEND=0, WAIT=1))
+    )
     depot = b.entity(
         'depot',
         value('spares', '', spares, lower=0),

@@ -135,15 +135,17 @@ def main(args):
     give the exit code. A run that the model does not have is a usage error."""
     from ..draw import layout as layouts
     from ..draw import model_map, panels
-    from ..draw import svg as svgs
     from ..draw import style as styles
+    from ..draw import svg as svgs
 
     entry = common.entry_of(args.model)
     model = common.compiled(entry)
     runs = [name for name in styles.things_of(model).runs if name is not None]
     if args.run is not None and args.run not in runs:
         known = f'; its runs are {common.listed(runs)}' if runs else '; it has no named run'
-        raise common.UsageError(f'--run {args.run}: no run of the model' + (common.close(args.run, runs) or known))
+        raise common.UsageError(
+            f'--run {args.run}: no run of the model' + (common.close(args.run, runs) or known)
+        )
     style = stylesheet(model, args.style)
     run = args.run if args.run is not None or len(runs) != 1 else runs[0]
     picture = model_map.picture(model, style, run=run)

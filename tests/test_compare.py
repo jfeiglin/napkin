@@ -114,7 +114,9 @@ def test_the_first_entry_of_the_trace_that_differs_is_the_difference():
     ]
     shorter = copy.deepcopy(base)
     shorter['trace'].pop()
-    assert differences(base, shorter) == ['trace entry 1: only the base has it, commit tank.fill.step[0] at 1.5 h']
+    assert differences(base, shorter) == [
+        'trace entry 1: only the base has it, commit tank.fill.step[0] at 1.5 h'
+    ]
     # A side with no trace, such as a published result, is compared by its values.
     untraced = copy.deepcopy(base)
     untraced['trace'] = None
@@ -141,7 +143,11 @@ RESULTS = {
 
 def test_published_results_give_the_outcomes_of_one_run_at_the_horizon():
     fast = compare.published(RESULTS, 'fast')
-    assert (fast['times'], fast['values'], fast['trace']) == ([48.0], {'served': {'unit': None, 'values': [12.5]}}, None)
+    assert (fast['times'], fast['values'], fast['trace']) == (
+        [48.0],
+        {'served': {'unit': None, 'values': [12.5]}},
+        None,
+    )
     slow = compare.published(RESULTS, 'slow')
     assert slow['values']['served']['values'] == [{'unavailable': 'unestimated'}]
     with pytest.raises(ValueError, match='give --run NAME'):
@@ -158,7 +164,9 @@ def test_the_capture_of_the_tank_follows_its_closed_form(tmp_path):
     found = compare.capture(model / 'model.scn', times=[0, 1, 2, 3, 4])
     assert found['model'] == 'tank' and found['horizon'] == 4
     assert found['values']['tank.water'] == {'unit': 'L', 'values': pytest.approx([8, 5, 2, 0, 0], abs=1e-9)}
-    assert found['values']['clinic.delivery.actual_rate']['values'] == pytest.approx([3, 3, 3, 0, 0], abs=1e-9)
+    assert found['values']['clinic.delivery.actual_rate']['values'] == pytest.approx(
+        [3, 3, 3, 0, 0], abs=1e-9
+    )
     assert found['trace'] == []
     # Sixteenths of the horizon by default.
     assert compare.capture(model / 'model.scn')['times'] == [k / 4 for k in range(17)]

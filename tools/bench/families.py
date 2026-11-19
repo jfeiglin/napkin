@@ -67,8 +67,10 @@ def _cell(level):
         '    arrived: fraction = 0 in [0,] scale 1 @shape',
         '    flow arrive: SOURCE -> this.arrived',
         '        request = this.inflow',
+        '        capacity = this.inflow',
         '    flow storm: SOURCE -> this.water',
         '        request = this.inflow',
+        '        capacity = this.inflow',
         '    flow seep: this.water -> this.seeped',
         '        request = formula(this.leak * this.water)',
         '    flow spill: this.water -> this.spilled',
@@ -243,15 +245,18 @@ def stiff(n):
             '    input half: fraction = 0.5 in [0.1, 10] @shape',
             *_chain(
                 n,
-                lambda k: f'this.slow * {"this.stiffness * " if k % 2 else ""}this.c{k} / (this.half + this.c{k})',
+                lambda k: (
+                    f'this.slow * {"this.stiffness * " if k % 2 else ""}this.c{k} / (this.half + this.c{k})'
+                ),
             ),
         ),
     )
 
 
 def events(n):
-    """A small model whose one event starts `n` times, at equal steps over the run. Each start sets
-    the time of the next one and switches a lamp, which starts or stops a flow.
+    """A small model whose one event starts `n` times, at equal steps over the run: its trigger rearms
+    once the time is before the next ring again. Each start sets the time of the next one and switches
+    a lamp, which starts or stops a flow.
 
     It stresses the density of events: the model keeps its size, and the number of moments, and of
     segments between them, grows with `n`."""
@@ -273,7 +278,7 @@ def events(n):
             '        "The clock rings."',
             '        when t >= this.next:',
             '            this.ring.start()',
-            '            reset when false',
+            '            reset when t < this.next',
             '        after 0 h:',
             '            this.next += this.period',
             '            this.lamp = OFF if this.lamp == ON else ON',
@@ -290,8 +295,8 @@ def _tank(n, title, ordered):
     the start, the second 40 L/h, and so on, and each asks more as its user has taken more, up to twice
     as much. The tank's outflow is capped at 80% of what they ask at the start; `ordered` says whether
     it serves them in order (`priority`) or in proportion (the default). The tank fills at a quarter of
-    what they ask at the start, so it is empty after about 14 of the 48 hours, and from then the flows
-    share the inflow."""
+    what they ask at the start, and no faster (a request is soft, D15: the capacity holds it), so it is
+    empty after about 14 of the 48 hours, and from then the flows share the inflow."""
     pairs = n * (n + 1)  # the flows ask 10 x pairs L/h together at the start
     order = f'priority({", ".join(f"this.use_{k}" for k in range(1, n + 1))})'
     return _file(
@@ -309,6 +314,7 @@ def _tank(n, title, ordered):
             *(f'    used_{k}: L = 0 L in [0 L,] scale {2000 * n} L @shape' for k in range(1, n + 1)),
             '    flow fill: SOURCE -> this.water',
             '        request = this.inflow',
+            '        capacity = this.inflow',
             *(
                 line
                 for k in range(1, n + 1)
@@ -385,7 +391,10 @@ def formulas(n):
             '    seen: fraction = 0 in [0,] scale 10 @shape',
             '    noted: fraction = 0 in [0,] scale 10 @shape',
             '    f1 = formula(this.level / (1 + this.level)) @shape',
-            *(f'    f{k} = formula((this.f{k - 1} + this.level) / (1 + this.level)) @shape' for k in range(2, n + 1)),
+            *(
+                f'    f{k} = formula((this.f{k - 1} + this.level) / (1 + this.level)) @shape'
+                for k in range(2, n + 1)
+            ),
             '    flow drain: this.level -> this.passed',
             f'        request = formula(this.pace * this.f{n})',
             '    flow see: SOURCE -> this.seen',

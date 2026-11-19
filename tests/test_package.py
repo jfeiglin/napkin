@@ -117,9 +117,13 @@ def test_every_problem_of_every_model_is_kept_once(tmp_path):
         'east/model.scn',
         'west/model.scn',
     }
-    broken = write(tmp_path / 'broken', {'model.scn': MAIN.replace('people/h =', 'pople/h ='), **{
-        f'variants/{name}/model.scn': variant(name.title(), 3) for name in ('east', 'west')
-    }})
+    broken = write(
+        tmp_path / 'broken',
+        {
+            'model.scn': MAIN.replace('people/h =', 'pople/h ='),
+            **{f'variants/{name}/model.scn': variant(name.title(), 3) for name in ('east', 'west')},
+        },
+    )
     with pytest.raises(LanguageError) as once:
         load_package(broken)
     with pytest.raises(LanguageError) as alone:

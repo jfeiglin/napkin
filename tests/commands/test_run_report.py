@@ -172,7 +172,9 @@ def test_a_fixed_delay_reads_the_value_that_long_before(tmp_path, capsys):
 
 def test_a_lag_of_a_value_that_can_fall_is_a_warning_and_the_plain_read_stays(tmp_path, capsys):
     model = package(tmp_path / 'decay', DECAY)
-    found = napkin(capsys, 'run', model, '--at', '0h,10h', '--value', 's.pending', '--lag', 's.pending=2h..6h')
+    found = napkin(
+        capsys, 'run', model, '--at', '0h,10h', '--value', 's.pending', '--lag', 's.pending=2h..6h'
+    )
     assert found.code == 0
     assert found.err.splitlines() == [
         'warning: the lag is refused: s.pending can fall: s.finish of s takes from what it counts [lag]'

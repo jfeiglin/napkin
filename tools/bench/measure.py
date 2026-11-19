@@ -203,7 +203,8 @@ def compile_task(task, save=None):
 def first_task(task, save=None):
     """The time to the first result: the seconds from `task['started']`, the wall-clock time at which
     the harness started this process, to the end of the run `task['run']` (None: the default run).
-    `parts` splits them: the start of the process, the imports, the compile, the run."""
+    `parts` splits them: the start of the process, the imports, the compile, the run. A run that stops
+    before its horizon is a failure."""
     began = time.perf_counter()
     import napkin
 
@@ -212,8 +213,12 @@ def first_task(task, save=None):
     model = load(task['path'])
     compiled = time.perf_counter()
     run = task.get('run')
-    napkin.run(model.program, configured(model, run))
+    record = napkin.run(model.program, configured(model, run))
     done = time.perf_counter()
+    if record.failure is not None:
+        raise RuntimeError(
+            f'the run stops at {float(record.failure.t):g} h: {record.failure.detail("message")}'
+        )
     seconds = time.time() - task['started']
     return {
         'seconds': seconds,
@@ -901,7 +906,10 @@ def table(document):
             _seconds(_get(one, 'warm', 'min_seconds')),
             _whole(_get(one, 'warm', 'peak_mb')),
             _seconds(_get(one, 'report', 'report_seconds')),
-            *(_whole(facts.get(key)) for key in ('members', 'values', 'flows', 'histories', 'pieces', 'trace')),
+            *(
+                _whole(facts.get(key))
+                for key in ('members', 'values', 'flows', 'histories', 'pieces', 'trace')
+            ),
         ]
         if batch:
             row.append(_seconds(_get(item, 'values', 'batch', 'samples_per_second')))

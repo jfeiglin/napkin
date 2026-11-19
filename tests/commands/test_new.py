@@ -81,7 +81,10 @@ def test_new_with_variants_writes_variants_that_change_one_input(tmp_path, capsy
     found = napkin(capsys, 'new', '--variants', 'east,west', folder)
     assert found.code == 0, found.err
     files = written(folder)
-    assert set(files) == {paths.ENTRY, *(f'{paths.VARIANTS}/{name}/{paths.ENTRY}' for name in ('east', 'west'))}
+    assert set(files) == {
+        paths.ENTRY,
+        *(f'{paths.VARIANTS}/{name}/{paths.ENTRY}' for name in ('east', 'west')),
+    }
     assert all(format_text(text) == text for text in files.values())
     main = load_scenario(folder / paths.ENTRY)
     for k, name in enumerate(('east', 'west'), start=1):

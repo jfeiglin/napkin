@@ -26,6 +26,15 @@ Baseline b0b1d32 (stage C report committed, 5,151 live tests).
   test_sample.py (16). If C-S changes `spread`/`MonteCarlo`, adjust `main` and `document`.
 - tools/compare.py rewritten small (capture, published runs.json, compare names/values/trace,
   renames). tests/test_compare.py (15).
+- API: napkin/__init__.py exports load_scenario, load_package, run, read, report, Lag, study,
+  monte_carlo, spread (module), instances, dynamics; gone: sample_result, evaluate_study,
+  evaluate_uncertainty, uncertainty_report, Session, actors (S7). tests/test_api.py (18, CLOSURE
+  = store.closure() today: recheck if C-S changes ENGINE_STARTS). engine/__init__.py left to C-S.
+- tools/bench: families.py in the new language (14; SOURCE flows capped, D15; ring rearms with
+  `reset when t < this.next`; bool gate: sparse.py fails on an enum in a moving rate), measure.py
+  over programs and records (no hybrid/shape_classes), tests/test_bench.py rewritten.
+- tests/release/wheel_smoke.py: steps 2-3 on the new commands, no play (S7); 3-5 wait for M.
+- Deleted (ported): tests/test_cli.py, tests/test_cli_tables.py.
 - `napkin draw` (draw.py) on `Things(compiled).runs`; `napkin compile` lists named runs and the
   model hash and checks style.toml (exit 1). tests/commands/test_draw.py (11, the 4 stylesheet
   tests again as one parametrized test). `napkin new` (new.py) and tools/new.py in the new

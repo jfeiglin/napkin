@@ -74,13 +74,15 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   CLOSED]`. A bare member takes its enum from its place: a declared type, the other side of a
   comparison or a conditional, an assignment's target, a parameter, a switch's selector, a column.
   A categorical takes the enum of its place, or the enum of its outcomes.
-- **Draws and choices.** `d.draw()` of a distribution written in place or held by a value, and
-  `actor.choose(d)` over a categorical forecast, stand where a value is captured once (an
-  initializer, a stage, a capture, an argument); a formula and a condition that is read again (a
-  gate, a trigger, a reset, an assertion) makes none (`formula_draws`). A distribution's parameters
-  are numbers written in place.
+- **Draws.** `d.draw()` of a distribution written in place or held by a value stands where a value
+  is captured once (an initializer, a stage, a capture, an argument); a formula and a condition that
+  is read again (a gate, a trigger, a reset, an assertion) makes none (`formula_draws`). A
+  distribution's parameters are numbers written in place.
+- **No player machinery** (item 15 of the plan's changes after G0): `actor.choose(d)` and `sees`
+  are refused by name (`choose`, `sees`). A decision is a value stored in a field that a branch
+  reads, and a caller that wants another value pauses before the branch and edits the field.
 - **Expressions** become a small typed form (`Const`, `Read`, `Apply`, `Retain`, `Distribution`,
-  `Drawn`, `Chosen`, `History`, `Reduced`) that the lowering writes as a program. A `Read` knows
+  `Drawn`, `History`, `Reduced`) that the lowering writes as a program. A `Read` knows
   whether what it reads is fixed for the run (inputs, links and the members of fixed collections),
   which `where` and `assert` need, whether it ends at a stored number, which a flow, an endpoint and a
   move need, and the declared value that it ends at, which an assignment needs.
@@ -464,16 +466,6 @@ class Drawn:
 
 
 @dataclass(frozen=True)
-class Chosen:
-    """`actor.choose(d)`: the pick of the actor's controller among the eligible members of the
-    forecast `d` (a categorical, or a value that holds one), or with no controller a draw of it."""
-
-    actor: Read
-    source: Distribution | Read
-    type: EnumOf
-
-
-@dataclass(frozen=True)
 class History:
     """`since(e)` (the time since the latest start of an event) or `elapsed(x)` (since the value of
     `x` last changed at a commit)."""
@@ -494,14 +486,14 @@ def reads_of(expression):
             yield from reads_of(arg)
     elif isinstance(expression, Retain):
         yield from reads_of(expression.body)
-    elif isinstance(expression, (Drawn, Chosen)) and isinstance(expression.source, Read):
+    elif isinstance(expression, Drawn) and isinstance(expression.source, Read):
         yield expression.source
 
 
 def draws_of(expression):
-    """The draws and the choices of a typed expression, which a formula and a condition that is
-    read again may not make."""
-    if isinstance(expression, (Drawn, Chosen)):
+    """The draws of a typed expression, which a formula and a condition that is read again may not
+    make."""
+    if isinstance(expression, Drawn):
         yield expression
     elif isinstance(expression, Apply):
         for arg in expression.args:
@@ -528,6 +520,17 @@ def fixed(expression):
 INPUT, STATE, FORMULA, DISTRIBUTION = 'input', 'state', 'formula', 'distribution'
 LINK, COLLECTION = 'link', 'collection'
 UNKNOWN = 'unknown'  # a new unknown of a solver: a result that the solver publishes
+
+# The refusals of the player machinery, which left the language (item 15 of the plan's changes after
+# G0): each names what it refuses and says what to write instead.
+CHOOSE = (
+    'actor.choose(d) is not in the language: store the value in a field and branch on it '
+    '(order = forecast.draw(), then switch order:); a wrapper can pause before the branch and edit the field'
+)
+SEES = (
+    'sees is not in the language: store the value in a field and branch on it; a wrapper can pause '
+    'before the branch, show any value and edit the field'
+)
 
 
 @dataclass(frozen=True)
@@ -636,15 +639,6 @@ class DeclaredAssert:
     evidence: tuple = ()
     line: int = 0
     fixed: bool = True
-
-
-@dataclass(frozen=True)
-class DeclaredSees:
-    """`sees depot.spares`: what a human player of this actor is shown (it permits nothing)."""
-
-    path: str
-    read: Read
-    line: int = 0
 
 
 # ---- solvers ------------------------------------------------------------------------------------
@@ -770,7 +764,7 @@ class DeclaredCase:
 
 @dataclass(frozen=True)
 class DeclaredSwitch:
-    """`switch selector:` over an enum (a value, a draw or an actor's choice), its cases and `else`."""
+    """`switch selector:` over an enum (a value or a draw), its cases and `else`."""
 
     path: str
     selector: object
@@ -1400,7 +1394,7 @@ class Resolver:
                 self.fail('start', '.start(...) starts an occurrence and gives no value', node)
             if node.name == 'draw':
                 return self.drawn(node, scope, unit)
-            return self.chosen(node, scope, unit)
+            self.fail('choose', CHOOSE, node)
         if isinstance(node, n.Call):
             return self.call(node, scope)
         if isinstance(node, n.Formula):
@@ -2433,36 +2427,12 @@ class Resolver:
             self.fail('draw', f'.draw() takes a distribution, and this is {source.type}', node)
         return Drawn(source, source.type.of)
 
-    def chosen(self, node, scope, expected):
-        """`actor.choose(d)`: the actor is an entity, and its forecast `d` a categorical (written in
-        place, or a value that holds one) over the enum of the choice."""
-        if len(node.args) != 1:
-            self.fail('arguments', 'choose takes the forecast of the actor: dispatcher.choose(d)', node)
-        if not isinstance(node.base, (n.Name, n.Member)):
-            self.fail('choice', 'an actor is an entity: dispatcher.choose(d)', node)
-        actor = self.path(node.base, scope)
-        if not isinstance(actor.type, Ent):
-            self.fail('choice', f'an actor is an entity, as dispatcher.choose(d), not {actor.type}', node)
-        (arg,) = node.args
-        if isinstance(arg, n.Call) and arg.function == 'categorical':
-            source = self.distribution(arg, expected if isinstance(expected, EnumOf) else None)
-        elif isinstance(arg, (n.Name, n.Member)):
-            source = self.path(arg, scope)
-        else:
-            source = None
-        kind = getattr(source, 'type', None)
-        if not (isinstance(kind, Dist) and isinstance(kind.of, EnumOf)):
-            self.fail('choice', 'an actor chooses a member of an enum: its forecast is a categorical', node)
-        return Chosen(actor, source, kind.of)
-
     def no_draws(self, expression, node, what):
-        """A formula, and a condition that is read again, makes no draw and asks no actor: it may read
-        a stored draw."""
-        for found in draws_of(expression):
-            verb = 'draws' if isinstance(found, Drawn) else 'asks an actor'
+        """A formula, and a condition that is read again, makes no draw: it may read a stored draw."""
+        for _ in draws_of(expression):
             self.fail(
                 'formula_draws',
-                f'{what} is read again, and a read never {verb}: store the drawn or chosen value in a local',
+                f'{what} is read again, and a read never draws: store the drawn value in a local',
                 node,
             )
 
@@ -3127,7 +3097,7 @@ class Resolver:
         """A solver of an entity or a template: its inputs, read in the owner's scope; its new
         unknowns and the fields that it determines; its constraints (each a yes/no) and its
         objectives (each a number), read in the solver's scope, where a bare name is an input or an
-        unknown. None of them draws or asks an actor: a solve reads them again."""
+        unknown. None of them draws: a solve reads them again."""
         seen = {}
         unknowns = [entry for entry in node.solve_for if isinstance(entry, n.Unknown)]
         for item in (*node.inputs, *unknowns):
@@ -3690,12 +3660,7 @@ class Resolver:
             if isinstance(node, n.Event):
                 return self.event(path, owner, node)
             if isinstance(node, n.Sees):
-                found = self.path(node.path, Scope(owner))
-                if not isinstance(found.type, (Num, Word, EnumOf)):
-                    self.fail(
-                        'sees', f'sees names one value to show, as sees depot.spares, not {found.type}', node
-                    )
-                return DeclaredSees(path, found, node.line)
+                self.fail('sees', SEES, node)
             if isinstance(node, n.Start):
                 return self.start(path, TOP, node)
             if isinstance(node, n.Solver):

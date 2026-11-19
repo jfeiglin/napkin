@@ -46,7 +46,7 @@ def test_each_sample_fills_ten_hours_of_its_draw_and_the_central_run_the_median(
     assert (filled['unit'], filled['label'], filled['central']) == ('L', 'Water filled', pytest.approx(20))
     values = np.array([sample['values']['tank.filled'] for sample in doc['draws']])
     rates = np.array([sample['draws'][0]['value'] for sample in doc['draws']])
-    assert len(values) == 200 and np.all((1 <= rates) & (rates <= 3))
+    assert len(values) == 200 and np.all((rates >= 1) & (rates <= 3))
     assert values == pytest.approx(10 * rates, rel=1e-9)
     assert filled['mean']['value'] == pytest.approx(values.mean(), rel=1e-12)
     for p in (5, 25, 50, 75, 95):
@@ -60,7 +60,9 @@ def test_each_sample_fills_ten_hours_of_its_draw_and_the_central_run_the_median(
 def test_the_text_gives_the_central_value_the_mean_and_the_middle_of_the_samples(tmp_path, capsys):
     model = package(tmp_path / 'fill', FILL, UNITS)
     doc = sampled(capsys, model, '--value', 'tank.filled', '--samples', '40', '--seed', '3')
-    found = napkin(capsys, 'sample', model, '--jobs', '1', '--value', 'tank.filled', '--samples', '40', '--seed', '3')
+    found = napkin(
+        capsys, 'sample', model, '--jobs', '1', '--value', 'tank.filled', '--samples', '40', '--seed', '3'
+    )
     assert found.code == 0, found.err
     lines = found.out.splitlines()
     assert lines[0] == 'Fill: the default run, 40 samples from the seed 3, at 10 h'
@@ -78,7 +80,9 @@ def test_the_far_tails_show_once_ten_samples_lie_beyond_them(tmp_path, capsys):
     model = package(tmp_path / 'fill', FILL, UNITS)
     doc = sampled(capsys, model, '--value', 'tank.filled', '--samples', '1000')
     values = [sample['values']['tank.filled'] for sample in doc['draws']]
-    assert doc['values']['tank.filled']['tails'] == {'p99': pytest.approx(np.percentile(values, 99), rel=1e-12)}
+    assert doc['values']['tank.filled']['tails'] == {
+        'p99': pytest.approx(np.percentile(values, 99), rel=1e-12)
+    }
 
 
 def test_an_exceedance_is_the_share_of_the_samples_above_the_value(tmp_path, capsys):
@@ -111,7 +115,9 @@ def test_samples_in_two_processes_agree_with_samples_in_one(tmp_path, capsys):
     """Change 11: a sample in another process agrees within the stated tolerances."""
     model = package(tmp_path / 'fill', FILL, UNITS)
     one = sampled(capsys, model, '--value', 'tank.filled', '--samples', '8')
-    two = napkin(capsys, 'sample', model, '--json', '--jobs', '2', '--value', 'tank.filled', '--samples', '8').doc
+    two = napkin(
+        capsys, 'sample', model, '--json', '--jobs', '2', '--value', 'tank.filled', '--samples', '8'
+    ).doc
     assert [sample['seed'] for sample in two['draws']] == [sample['seed'] for sample in one['draws']]
     assert [sample['values']['tank.filled'] for sample in two['draws']] == pytest.approx(
         [sample['values']['tank.filled'] for sample in one['draws']], rel=1e-9
@@ -136,7 +142,9 @@ def test_an_edit_document_gives_a_distribution_valued_input_another_distribution
     assert doc['values']['tank.filled']['central'] == pytest.approx(30)
     rates = [sample['draws'][0]['value'] for sample in doc['draws']]
     assert all(2 <= rate <= 4 for rate in rates)
-    assert [sample['values']['tank.filled'] for sample in doc['draws']] == pytest.approx([10 * r for r in rates])
+    assert [sample['values']['tank.filled'] for sample in doc['draws']] == pytest.approx(
+        [10 * r for r in rates]
+    )
     assert sampled(capsys, model, '--value', 'tank.filled', '--samples', '5')['values']['tank.filled'][
         'central'
     ] == pytest.approx(20)
@@ -146,7 +154,10 @@ def test_a_run_that_draws_nothing_has_no_spread(tmp_path, capsys):
     model = package(tmp_path / 'fixed', FILL.replace('uniform(1 L/h, 3 L/h).draw()', '2 L/h'), UNITS)
     found = napkin(capsys, 'sample', model, '--jobs', '1', '--samples', '5')
     assert found.code == 0, found.err
-    assert found.out.splitlines()[-1] == 'Its samples draw nothing: each sample is its central run, so it has no spread.'
+    assert (
+        found.out.splitlines()[-1]
+        == 'Its samples draw nothing: each sample is its central run, so it has no spread.'
+    )
     assert napkin(capsys, 'sample', model, '--json', '--jobs', '1', '--samples', '5').doc['drawn'] is False
 
 

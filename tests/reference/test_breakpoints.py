@@ -54,7 +54,11 @@ def test_a_stop_resumed_untouched_is_the_unattended_run():
     assert failure is None
     run = stopped(program, PAUSES['untouched'][1])
     assert entries(run) == entries(alone)
-    assert run.draws == alone.draws == [('depot.request_pump.step[0].do[0].draw[0]|depot.request_pump#0', 'WAIT')]
+    assert (
+        run.draws
+        == alone.draws
+        == [('depot.request_pump.step[0].do[0].draw[0]|depot.request_pump#0', 'WAIT')]
+    )
     for key in (Key('depot', ('waits',)), Key('depot', ('spares',)), Key('', ('sent',))):
         assert value_at(run, program, key, 1) == value_at(alone, program, key, 1)
 
@@ -65,7 +69,14 @@ def test_the_edit_explains_the_divergence():
     run = stopped(pump_dispatch(), PAUSES['sends'][1])
     assert run.draws == [('depot.request_pump.step[0].do[0].draw[0]|depot.request_pump#0', 'WAIT')]
     assert run.edit_log == [
-        {'time': 0, 'breakpoint': DISPATCH_SWITCH, 'owner': DISPATCH, 'name': 'order', 'old': 'WAIT', 'new': 'SEND'}
+        {
+            'time': 0,
+            'breakpoint': DISPATCH_SWITCH,
+            'owner': DISPATCH,
+            'name': 'order',
+            'old': 'WAIT',
+            'new': 'SEND',
+        }
     ]
     kinds = [entry.kind for entry in run.trace if entry.label == DISPATCH]
     assert kinds == ['start', 'draw', 'edit', 'stage', 'done']

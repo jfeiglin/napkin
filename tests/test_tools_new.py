@@ -52,9 +52,9 @@ def test_a_new_folder_has_its_files_each_in_its_shape(root):
         json.loads(path.read_text(encoding='utf-8'))
     for name in catalogue.COLLECTIONS:
         assert json.loads((folder / 'evidence' / f'{name}.json').read_text(encoding='utf-8')) == []
-    assert style.read((folder / style.STYLE_FILE).read_text(encoding='utf-8'), style.STYLE_FILE) == style.Style(
-        origin=style.STYLE_FILE
-    )
+    assert style.read(
+        (folder / style.STYLE_FILE).read_text(encoding='utf-8'), style.STYLE_FILE
+    ) == style.Style(origin=style.STYLE_FILE)
 
 
 def test_the_new_model_names_the_catalogues_library_and_the_title(root):

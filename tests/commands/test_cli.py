@@ -62,7 +62,10 @@ def test_a_command_that_a_later_stage_brings_back_exits_with_status_2(capsys, na
     found = napkin(capsys, name, *rest)
     assert found.code == 2
     stage = LATER[name][1]
-    assert found.err == f'napkin {name} comes back in a later stage of the rewrite of the language (stage {stage})\n'
+    assert (
+        found.err
+        == f'napkin {name} comes back in a later stage of the rewrite of the language (stage {stage})\n'
+    )
     assert found.out == ''
     assert LATER['play'][1] == 'S7'
 

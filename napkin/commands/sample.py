@@ -19,6 +19,8 @@ correlation (`DRIVERS`), and each `--exceed PATH=VALUE`: the share of the sample
 value's unit, P(X > V) = k / n, with its Clopper-Pearson interval. A value that some sample cannot
 give, or a text named by `--value`, has no spread, and the command says why.
 
+Each run goes through the run store (`napkin.store`; `NAPKIN_STORE=off` turns it off).
+
 A run whose samples draw nothing has no spread: each sample is the central run. The command says so
 and exits 0. A study that a sample refuses (a sample that stops before the horizon, which no
 estimate leaves out), a central run that stops, and an edit document that does not hold are
@@ -102,7 +104,9 @@ def configure(parser):
     parser.add_argument(
         '--samples', type=count, default=200, metavar='N', help='the number of samples (default 200)'
     )
-    parser.add_argument('--seed', type=seed, default=0, metavar='N', help='the seed of the samples (default 0)')
+    parser.add_argument(
+        '--seed', type=seed, default=0, metavar='N', help='the seed of the samples (default 0)'
+    )
     parser.add_argument(
         '--jobs', type=count, metavar='N', help='the processes that run the samples (default: the processors)'
     )
@@ -152,9 +156,17 @@ def main(args):
     exceed = exceedances(args.exceed, held(record))
     paths += [path for path, _ in exceed if path not in paths]
     jobs = min(args.jobs if args.jobs is not None else os.cpu_count() or 1, args.samples)
+    common.stored()
     try:
         found = spread(
-            model, paths, [when[1]], run=args.run, edits=edits, samples=args.samples, seed=args.seed, jobs=jobs
+            model,
+            paths,
+            [when[1]],
+            run=args.run,
+            edits=edits,
+            samples=args.samples,
+            seed=args.seed,
+            jobs=jobs,
         )
     except LanguageError as error:
         raise common.Failed(error.problems) from None
@@ -182,7 +194,9 @@ def exceedances(items, known):
         if not separator or not path or not text:
             raise common.UsageError(f'--exceed takes PATH=VALUE, such as tank.water=5, not {item!r}')
         if path not in known:
-            raise common.UsageError(f'--exceed {path}: no named value of the model' + common.close(path, known))
+            raise common.UsageError(
+                f'--exceed {path}: no named value of the model' + common.close(path, known)
+            )
         try:
             value = float(text)
         except ValueError:
@@ -219,7 +233,10 @@ def document(model, entry, args, configuration, when, found, rows, exceed, drawn
                 least=summary.least,
                 greatest=summary.greatest,
                 percentiles={f'p{p}': value for p, value in summary.percentiles},
-                tails={tail_key(p): expectations.quantile(sampled, float(p) / 100).value for p in shown_tails(len(sampled))},
+                tails={
+                    tail_key(p): expectations.quantile(sampled, float(p) / 100).value
+                    for p in shown_tails(len(sampled))
+                },
                 drivers=[{'site': site, 'owner': owner, 'rho': rho} for site, owner, rho in item.drivers],
             )
         values[item.path] = shown
@@ -229,7 +246,15 @@ def document(model, entry, args, configuration, when, found, rows, exceed, drawn
         if all(isinstance(each, (int, float)) for each in sampled):
             share = expectations.exceedance(sampled, value)
             above = round(share.value * share.n)
-            exceeded.append({'path': path, 'threshold': value, 'above': above, 'samples': share.n, 'share': estimate(share)})
+            exceeded.append(
+                {
+                    'path': path,
+                    'threshold': value,
+                    'above': above,
+                    'samples': share.n,
+                    'share': estimate(share),
+                }
+            )
         else:
             exceeded.append({'path': path, 'threshold': value, 'reason': 'a sample gives no number of it'})
     return {
@@ -247,7 +272,9 @@ def document(model, entry, args, configuration, when, found, rows, exceed, drawn
             {
                 'seed': sample.seed,
                 'values': {path: sample.values[place[path]][0] for path in values},
-                'draws': [{'site': site, 'owner': owner, 'value': value} for site, owner, value in sample.draws],
+                'draws': [
+                    {'site': site, 'owner': owner, 'value': value} for site, owner, value in sample.draws
+                ],
             }
             for sample in found.samples
         ],
@@ -278,7 +305,10 @@ def lines(model, args, when, doc, drawn):
                 *(common.number(value['tails'][tail_key(p)]) for p in tails),
             ]
         )
-        moved = [f'{item["site"]} of {item["owner"] or "the root"} ({item["rho"]:.2f})' for item in value['drivers']]
+        moved = [
+            f'{item["site"]} of {item["owner"] or "the root"} ({item["rho"]:.2f})'
+            for item in value['drivers']
+        ]
         if moved:
             drivers.append(f'{path}: moved most by {", ".join(moved[:DRIVERS])}')
     shown += common.table(rows) if len(rows) > 1 else []

@@ -22,8 +22,8 @@ as the read of its store (`semantic.Resolver.end`), so the program reads the sto
 An event is a `build.event` of its parameters, its locals and flows, its steps and its triggers; a
 statement is the builder's assignment, move, start or branch, and the setup's starts are
 `Builder.setup`. A bare name of an event is `refs.Local`. An enum is declared once by its spelling
-(`enum[OPEN, CLOSED]`), its members a `refs.EnumValue`; a draw and a choice carry a temporary site
-until `Builder.finish` gives each its place, as the builder's own `draw` and `choose` do.
+(`enum[OPEN, CLOSED]`), its members a `refs.EnumValue`; a draw carries a temporary site
+until `Builder.finish` gives each its place, as the builder's own `draw` does.
 
 A solver is a `build.solver` of its inputs, the fields that it determines, its new unknowns, its
 constraints and its objectives; a bare name of it is `refs.Local`, and a caller reads its unknowns by
@@ -56,7 +56,6 @@ from ..program.refs import (
     THIS,
     TIME,
     By,
-    Choice,
     Distribution,
     Draw,
     Elapsed,
@@ -265,8 +264,6 @@ def part_of(part):
         return event_of(part)
     if isinstance(part, s.DeclaredSolver):
         return solver_of(part)
-    if isinstance(part, s.DeclaredSees):
-        return build.sees(build.X.read(_path(part.read)))
     if isinstance(part, s.DeclaredLegs):
         return build.legs(part.name, *(flow_of(leg) for leg in part.legs))
     if isinstance(part, s.DeclaredFlow):
@@ -545,8 +542,6 @@ def _node(item, reads):
     if isinstance(item, s.Drawn):
         # A temporary site, distinct for each draw, until `Builder.finish` gives the draw its place.
         return _named(Draw(_source(item.source), f'?lowered{next(_SITES)}'), reads)
-    if isinstance(item, s.Chosen):
-        return _named(Choice(_path(item.actor), _source(item.source), f'?lowered{next(_SITES)}'), reads)
     if isinstance(item, s.History):
         source = _path(item.source)
         if item.op == 'since':

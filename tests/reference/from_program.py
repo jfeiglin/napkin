@@ -476,7 +476,11 @@ def run_of(program, configuration, stops=()):
             run.breakpoints.remove((origin, occurrence))
             for key, value in edits:
                 (name,) = key.steps
-                exact = _exact(value) * scale_at(program, key) if isinstance(value, int | float | Fraction) else value
+                exact = (
+                    _exact(value) * scale_at(program, key)
+                    if isinstance(value, int | float | Fraction)
+                    else value
+                )
                 run.edit(key.owner, name, exact)
             run.resume()
     except RunFailed as e:

@@ -20,6 +20,18 @@ occurrence. The engine stops before the stage or the statement and gives a `Chec
 - `program` and `engine`: the SHA-256 of the program's canonical bytes (`canonical.py`) and the
   version of the engine (the SHA-256 of its code), `configuration` and `breakpoints`: what the run
   ran with.
+- `edits` (`Edit`): every edit of the run so far, each at the stop where it was made, in order.
+
+**Edits** (`Checkpoint.edit`) are the actions of a caller at a stop: an edit gives a live stored
+value a new value, in the canonical unit of its dimension, as `State` holds it. Its type and its
+bounds hold, and a value of a finished occurrence is frozen; derived values and rates follow by the
+usual rules. An edit at a stop before a statement joins the writes of its stage: the stage sees it,
+and the rest of the run once the stage commits; an edit at a stop before a stage commits at once.
+Each edit is an entry `edit` of the trace (the time, the breakpoint, the target, the old value and
+the new), traced when it commits: an edit of a store is a transfer from outside in its books, and
+one that lowers a value withdraws, for the run, a proof that the value never falls. A stage that runs
+again from its start takes the edits made at its stops again, in order, at their places, and commits
+each once.
 
 **Exact resume** (the owner's rule): with the same program, engine version, numerical settings and
 seed, on one platform, a stopped and resumed run gives the same recorded values, draw results, event
@@ -42,7 +54,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 from fractions import Fraction
 from typing import Any
 
@@ -132,6 +144,16 @@ class State:
 
 
 @dataclass(frozen=True)
+class Edit:
+    """An edit (see the module): the number of the stop at which it is made (`Stop.hit`), the engine
+    name of the stored value that it changes, and its new value."""
+
+    hit: int
+    target: str
+    value: Any
+
+
+@dataclass(frozen=True)
 class Checkpoint:
     """A run stopped at a breakpoint (see the module)."""
 
@@ -142,6 +164,37 @@ class Checkpoint:
     stop: Stop
     state: State
     record: record.Record
+    edits: tuple[Edit, ...] = ()
+
+    def edit(self, target, value):
+        """This checkpoint with one more edit at its stop. The value that it changes must be in its
+        state, of the same type, and not of a finished occurrence; the engine checks the rest when
+        the run goes on (a stored value, its bounds, the members of its enum)."""
+        try:
+            old = self.state.value(target)
+        except KeyError:
+            raise CheckpointError(f'{target}: no value of the state at the stop has this name') from None
+        for occurrence in self.state.occurrences:
+            if target.startswith(f'{occurrence.id}.') and not occurrence.active:
+                raise CheckpointError(
+                    f'{target} belongs to the finished occurrence {occurrence.id}, which is frozen'
+                )
+        if _kind(old) != _kind(value):
+            raise CheckpointError(f'{target} holds {_kind(old)}, and {value!r} is {_kind(value)}')
+        if isinstance(value, int) and not isinstance(value, bool):
+            value = float(value)
+        return replace(self, edits=(*self.edits, Edit(self.stop.hit, target, value)))
+
+
+def _kind(value):
+    """The kind of a value that an edit may give: a yes/no, a number or a text."""
+    if isinstance(value, bool):
+        return 'a yes/no'
+    if isinstance(value, int | float):
+        return 'a number'
+    if isinstance(value, str):
+        return 'a text'
+    return f'a {type(value).__name__}'
 
 
 # The records that a checkpoint is made of, by the name that the representation gives each.
@@ -150,6 +203,7 @@ RECORDS = {
     for cls in (
         Breakpoint,
         Stop,
+        Edit,
         Occurrence,
         Trigger,
         State,

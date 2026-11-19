@@ -103,17 +103,20 @@ CATEGORICAL = """
 
     repairs = formula(count(machine.repair.occurrences))
     """
-DISPATCHER = """
+# The acceptance example of item 15 of the plan's changes after G0: the dispatcher's forecast drawn
+# into the occurrence's field `order`, and a switch on it, which a caller edits at a breakpoint.
+DISPATCH = """
     dispatcher:
-        sees depot.spares
         forecast = categorical(SEND: 0, WAIT: 1)
 
     depot:
-        spares = {spares} in [0,]
+        spares = 1 in [0,]
         waits = 0
         request_pump = event():
+            order: enum[SEND, WAIT] = WAIT
             after 0 h:
-                switch dispatcher.choose(dispatcher.forecast):
+                order = dispatcher.forecast.draw()
+                switch order:
                     SEND when this.spares >= 1:
                         this.send_pump.start()
                     WAIT:
@@ -389,10 +392,7 @@ SOURCES = {
     'water_service_returns': WATER,
     'median_categorical': CATEGORICAL.format(parts=1, guard=''),
     'median_categorical_guarded': CATEGORICAL.format(parts=0, guard=' when this.parts >= 1'),
-    'dispatcher_forecast': DISPATCHER.format(spares=1),
-    'dispatcher_player_sends': DISPATCHER.format(spares=1),
-    'dispatcher_player_no_spare': DISPATCHER.format(spares=0),
-    'dispatcher_forecast_no_spare': DISPATCHER.format(spares=0),
+    'pump_dispatch_unattended': DISPATCH,
     'distribution_input': """
         machine:
             operational: bool = false
@@ -697,7 +697,7 @@ def test_a_readonly_value_is_assigned_by_no_statement_and_a_move_still_changes_i
         ('m:\n    x = 1\n    d = uniform(this.x, 2)\n', 'distribution'),
         (
             'a:\n    d = uniform(1, 2)\nm:\n    go = event():\n        after 0 h:\n            switch a.choose(a.d):\n                X:\n                    this.go.start()\n',
-            'choice',
+            'choose',
         ),
         ('m:\n    x = 1\nm.x += 1\n', 'syntax'),
     ],

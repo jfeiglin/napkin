@@ -186,7 +186,9 @@ def edits_of(model, path):
     except json.JSONDecodeError as error:
         raise Failed([problem('edits', error.msg, path, error.lineno, error.colno)]) from None
     except UnicodeDecodeError as error:
-        raise Failed([problem('edits', f'not UTF-8 text: {error.reason} at byte {error.start}', path)]) from None
+        raise Failed(
+            [problem('edits', f'not UTF-8 text: {error.reason} at byte {error.start}', path)]
+        ) from None
     except OSError as error:
         raise Failed([problem('file', error.strerror or str(error), path)]) from None
     if not isinstance(body, dict):
@@ -213,6 +215,15 @@ def configured(model, run=None, edits=None, path=None):
         raise Failed(
             [item if item.file else problem(item.code, item.message, path or '') for item in error.problems]
         ) from None
+
+
+def stored():
+    """Turn on the run store of this checkout or installation for this process
+    (`napkin.store.default_directory`; none when `NAPKIN_STORE` is `off`), so that the runs of a
+    command are read from it when it holds them, and kept in it."""
+    from .. import store
+
+    store.activate(store.default_directory())
 
 
 def listed(names):
