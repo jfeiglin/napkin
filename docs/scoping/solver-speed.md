@@ -147,7 +147,10 @@ The new times, with the library's bench (`scratch/rewrite/b1/solve/bench.py`) an
 
 The engine's bench (`scratch/rewrite/b1/s5-engine/bench.py`, two solves over 48 h): at 3,000 places
 the run takes 18.2 s instead of 31.7 s, and the solve library 5.9 s instead of 21.8 s. At 30,000
-places: PENDING.
+places the first solve, at normal supply, takes 166 s (459 fair-sharing programs, 25 renewals,
+445 + 3 Newton steps), where before it did not finish in 45 minutes; the second, with the supply cut
+to 0.8 at 24 h, is a case of shortage and did not finish in the 10.6 minutes left of the 15
+(`scratch/rewrite/p1/engine_solves.py`).
 
 ## What was deferred
 
@@ -225,5 +228,6 @@ program, basis and last problem): none of the three changes keeps anything betwe
 - Fair sharing on a connected network is still one program for each level (155 to 660 s at 30,000
   places). Holding every claim that cannot rise in one program would save at most the programs that
   repeat a level (under 1 % on a connected network).
-- Whether need x1.45 and x1.7 at 30,000 places answer now (above), and if not, what the distance step
-  needs there.
+- What the distance step needs to answer under shortage at 30,000 places (need x1.45 and x1.7, and
+  the engine's second solve): its Newton method did not converge there in P1, by either
+  factorization.

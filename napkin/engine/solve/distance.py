@@ -46,8 +46,8 @@ an LDL' factorization in any symmetric order. Its pattern stays over a stage and
 follows the free set, so `qdldl` (OSQP's LDL', Apache-2.0) orders it and analyses its pattern once a
 stage, and each new diagonal is a numeric factorization alone, where SuperLU orders and pivots
 afresh each time; each solve is refined REFINE times against the system, since LDL' does not pivot.
-At 30,000 places the method then took its 447 steps in 75 s instead of 342 s, with answers within
-6e-7 of SuperLU's (prototype P1, `scratch/rewrite/p1/`). Without pivoting LDL' is not as sure: with
+At 30,000 places at normal need the method then takes its 446 steps in 45 s instead of 342 s
+(`scratch/rewrite/p1/adopted.py`); in prototype P1 its answers were within 6e-7 of SuperLU's. Without pivoting LDL' is not as sure: with
 weights up to 1 + RHO and delta = DELTA, a solve's backward error |K x - b| / (|K| |x| + |b|) rose
 to 0.15 on the objective's face of 3,000 places, where SuperLU's stays below 1e-15, and on another
 face its steps, accurate to 1e-12, stalled where SuperLU's converged. So a stage starts by LDL' and

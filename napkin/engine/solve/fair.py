@@ -33,8 +33,8 @@ that is down splits a network of places). Each part gets its own t, and one prog
 sum: it is the programs of the parts side by side, so each t* is its part's level, the duals of a
 part's claims sum to one, and each part holds its own claims by the rule above. A round of programs
 advances every part, and the number of programs is that of the part with the most levels, not the
-sum over the parts (prototype P1, 30,000 places with 1,000 routes down: 22 programs instead of 693,
-67 s instead of 174 s, the same levels to 5e-11). A connected face is one part, as before.
+sum over the parts (30,000 places with 1,000 routes down: 22 programs instead of 693, 35 s instead
+of 174 s, the same levels to 5e-11, prototype P1). A connected face is one part, as before.
 
 After the first program of a tier only bounds change, and the last answer stays feasible, so the
 later programs run the primal simplex from the last basis (A3: 5 to 40 iterations each at 3,000
