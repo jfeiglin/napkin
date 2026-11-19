@@ -16,7 +16,7 @@ An expression is written with handles (`X`): `this`, `local` (a bare name), `ite
 member that `entity`, `member`, `named` or a table gives, `q(number, unit)`, `call` of a function
 of the language (`call('abs', x)`), and the functions below. A handle on a path takes more steps by
 attribute (`this.origin.level`), also a step named as an operation of a handle: `this.start` reads
-the field `start`, and `this.start()` starts it (so too `draw`, `where`, `by`, `at` and `choose`).
+the field `start`, and `this.start()` starts it (so too `draw`, `where`, `by` and `at`).
 Operators make nodes of `napkin/core/expr` (`&`, `|`, `~` are `and`, `or`, `not`). A node that no
 operator makes, such as a chain of comparisons or an `and` of three values, is made with
 `napkin/core/expr` and wrapped as `X(node, reads)` (see `X`). The part
@@ -25,8 +25,8 @@ constructors (`value`, `flow`, `event`, `after`, `solver`, ...) make the records
 
 `finish()` makes the program and checks it (`check.check`), raising `ProgramError` with each
 refusal. On the way it gives each part its origin from its place (`grinder.refill.step[0].do[1]`),
-each draw and choice its site (`<origin>.draw[0]`, in place of the temporary site that `draw` and
-`choose` give), each name of a node the spelling of its read, each flow without a unit the unit of
+each draw its site (`<origin>.draw[0]`, in place of the temporary site that `draw` gives), each
+name of a node the spelling of its read, each flow without a unit the unit of
 its ends per hour (`1/h` for ends that are plain numbers, as the front end writes it), and the
 program the table of the units that it spells. A unit is spelled with `*` and `/` over the units
 that the builder is given (`L/h`, `person*year`, `1/h`, D12). A bare number where a declared unit is
@@ -55,7 +55,6 @@ from .refs import (
     THIS,
     TIME,
     By,
-    Choice,
     Distribution,
     Draw,
     Elapsed,
@@ -74,7 +73,7 @@ from .refs import (
     spelled,
 )
 
-# A temporary site of a draw or a choice until `finish` gives it its place; each is distinct.
+# A temporary site of a draw until `finish` gives it its place; each is distinct.
 _TOKENS = itertools.count()
 
 
@@ -174,11 +173,6 @@ class X:
     def draw(self):
         """`d.draw()` of the distribution that this path names."""
         return draw(self)
-
-    @_Operation
-    def choose(self, source):
-        """`actor.choose(d)`."""
-        return choose(self, source)
 
     @_Operation
     def start(self, *args):
@@ -474,12 +468,6 @@ def draw(source):
     """`d.draw()` of a distribution, or of the distribution that a path names."""
     origin = source if isinstance(source, Distribution) else _path(source)
     return _read(Draw(origin, f'?{next(_TOKENS)}'))
-
-
-def choose(actor, source):
-    """`actor.choose(d)`: the controller's pick, or a draw of the forecast `d`."""
-    origin = source if isinstance(source, Distribution) else _path(source)
-    return _read(Choice(_path(actor), origin, f'?{next(_TOKENS)}'))
 
 
 def formula(value):
@@ -901,16 +889,6 @@ def assertion(test):
     return p.Assert(expr_of(test))
 
 
-class _Sees:
-    def __init__(self, path):
-        self.path = path
-
-
-def sees(value):
-    """What a human player of this actor is shown."""
-    return _Sees(_path(value))
-
-
 # ---- the builder -------------------------------------------------------------------------------------
 
 
@@ -961,8 +939,8 @@ class Builder:
         return handle
 
     def template(self, name, *parts):
-        """A template with its parts: values, flows, events, solvers, a status display,
-        assertions and `sees`."""
+        """A template with its parts: values, flows, events, solvers, a status display and
+        assertions."""
         if name in self._templates:
             raise ValueError(f'the template {name!r} is declared twice')
         self._templates[name] = list(parts)
@@ -1030,7 +1008,7 @@ class Builder:
         return program
 
     def _template(self, name, parts):
-        groups = {'values': [], 'flows': [], 'events': [], 'solvers': [], 'asserts': [], 'sees': []}
+        groups = {'values': [], 'flows': [], 'events': [], 'solvers': [], 'asserts': []}
         status = None
         for part in parts:
             if isinstance(part, p.Value):
@@ -1043,8 +1021,6 @@ class Builder:
                 groups['solvers'].append(part)
             elif isinstance(part, p.Assert):
                 groups['asserts'].append(part)
-            elif isinstance(part, _Sees):
-                groups['sees'].append(part.path)
             elif isinstance(part, p.Status):
                 status = part
             else:
@@ -1209,8 +1185,8 @@ def _placed_items(items, field, origin):
 
 def _placed(record, origin):
     """A record with its origin and its parts', its expressions with their names spelled, and the
-    sites of its draws and choices numbered in the order in which they are written."""
-    counter = {'draw': 0, 'choice': 0}
+    sites of its draws numbered in the order in which they are written."""
+    counter = {'draw': 0}
     changes = {'origin': origin} if _has_origin(record) else {}
     for item in fields(record):
         if item.name == 'origin':
@@ -1238,10 +1214,7 @@ def _inner(value, origin, counter):
     if isinstance(value, p.Reset):
         return p.Reset(value.kind, _spelled_expr(value.expr, origin, counter))
     if isinstance(value, p.Member):
-        values = tuple(
-            (name, _inner(init, f'{value.id}.{name}', {'draw': 0, 'choice': 0}))
-            for name, init in value.values
-        )
+        values = tuple((name, _inner(init, f'{value.id}.{name}', {'draw': 0})) for name, init in value.values)
         return replace(value, values=values)
     if isinstance(value, tuple):
         return tuple(_inner(each, origin, counter) for each in value)
@@ -1262,18 +1235,15 @@ def _placed_path(path, origin, counter):
 
 
 def _placed_read(read, origin, counter):
-    if isinstance(read, (Draw, Choice)):
-        kind = 'draw' if isinstance(read, Draw) else 'choice'
-        site = f'{origin}.{kind}[{counter[kind]}]'
-        counter[kind] += 1
+    if isinstance(read, Draw):
+        site = f'{origin}.draw[{counter["draw"]}]'
+        counter['draw'] += 1
         source = (
             read.source
             if isinstance(read.source, Distribution)
             else _placed_path(read.source, origin, counter)
         )
-        if isinstance(read, Draw):
-            return Draw(source, site)
-        return Choice(_placed_path(read.actor, origin, counter), source, site)
+        return Draw(source, site)
     if isinstance(read, Path):
         return _placed_path(read, origin, counter)
     if isinstance(read, Reduce):

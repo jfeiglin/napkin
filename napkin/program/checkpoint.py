@@ -214,8 +214,6 @@ RECORDS = {
         config.Request,
         config.InputValue,
         config.Quantity,
-        config.Controller,
-        config.Pick,
         config.Limits,
         config.Budgets,
         config.Numerics,

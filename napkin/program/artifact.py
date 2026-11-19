@@ -16,7 +16,7 @@ program equal to the one saved, with the same bytes, so the engine runs it to th
 
 The file is a header of two lines, then two sections, each a line with its size and its bytes:
 
-    napkin program 1               the name of the format and its version
+    napkin program 2               the name of the format and its version
     language 0.1.0                 the version of the language of the program
     program <size> <sha256>        the program's canonical bytes, and their digest
     <the program's bytes>
@@ -49,7 +49,7 @@ from . import config, parts, record, refs
 from .canonical import Malformed, decode, program_bytes, value_bytes
 
 FORMAT = b'napkin program'
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 # The version of the language: what a program means. A model's identity changes with it, never with
 # the version of the package.
 LANGUAGE_VERSION = '0.1.0'

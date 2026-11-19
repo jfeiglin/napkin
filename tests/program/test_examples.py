@@ -3,7 +3,7 @@
 Each example builds, and its program passes `finish()`. Every row of the spec's table "Acceptance
 cases" has an example, and every example says what it expects in terms that the program can answer:
 each value names a member, the root or an occurrence of an event of the program, each trace names
-a part that the program has, and each configuration names inputs, actors and choices of the program.
+a part that the program has, and each configuration names inputs of the program.
 """
 
 from dataclasses import fields, is_dataclass
@@ -12,7 +12,7 @@ import pytest
 
 from napkin.program import parts as p
 from napkin.program.record import KINDS
-from napkin.program.refs import Choice, Draw, Expr
+from napkin.program.refs import Draw, Expr
 
 from .examples import EXAMPLES, ROWS, At, Fails, Traced
 
@@ -26,10 +26,10 @@ def built():
 
 
 def origins(value, found):
-    """Each origin of a program, and each site of a draw or a choice."""
+    """Each origin of a program, and each site of a draw."""
     if isinstance(value, Expr):
         for _, read in value.reads:
-            if isinstance(read, (Draw, Choice)):
+            if isinstance(read, Draw):
                 found.append(read.site)
         return
     if isinstance(value, tuple):
@@ -116,10 +116,3 @@ def test_the_configuration_of_an_example_names_the_program(name, built):
     for given in configuration.inputs:
         template = members[given.member]
         assert template.part(given.name).kind == p.INPUT
-    for controller in configuration.controllers:
-        assert controller.actor in members
-    sites = []
-    origins(program, sites)
-    for pick in configuration.picks:
-        assert pick.site in sites
-        assert pick.occurrence.partition('#')[0] in owners(program)

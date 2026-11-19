@@ -31,7 +31,6 @@ from napkin.program.build import (
     assign,
     case,
     categorical,
-    choose,
     constraint,
     count,
     dist_of,
@@ -63,7 +62,6 @@ from napkin.program.build import (
     reset_after,
     reset_when,
     route,
-    sees,
     solve_for,
     solver,
     start,
@@ -77,7 +75,7 @@ from napkin.program.build import (
     value,
     when,
 )
-from napkin.program.config import PLAYER, Configuration, Controller, InputValue, Pick, Quantity, Request
+from napkin.program.config import Configuration, InputValue, Quantity, Request
 from napkin.program.parts import Program
 from napkin.program.record import Key
 
@@ -1359,7 +1357,7 @@ def frozen_formula():
     return _example('frozen_formula', b, 3, expected)
 
 
-# ---- draws, choices and inputs ---------------------------------------------------------------------------
+# ---- draws and inputs ------------------------------------------------------------------------------------
 
 
 def _categorical(name, parts, guarded, expected):
@@ -1409,70 +1407,6 @@ def median_categorical_guarded():
     repair (worked from the spec's rule)."""
     expected = [At(2, key('machine', 'operational'), False), At(2, key('', 'repairs'), 1)]
     return _categorical('median_categorical_guarded', 0, True, expected)
-
-
-CHOICE_SITE = 'depot.request_pump.step[0].do[0].choice[0]'
-
-
-def _dispatcher(name, spares, picks, expected):
-    """Spec, "Actor decisions and observations": a dispatcher whose forecast always waits, and a
-    depot that asks it whether to send a spare pump, which needs a spare (acceptance row 31)."""
-    b = Builder(UNITS)
-    action = b.enum('enum[SEND, WAIT]', 'SEND', 'WAIT')
-    depot = named('depot')
-    dispatcher = b.entity(
-        'dispatcher',
-        sees(depot.spares),
-        value('forecast', dist_of(action), categorical(action, SEND=0, WAIT=1)),
-    )
-    b.entity(
-        'depot',
-        value('spares', '', spares, lower=0),
-        value('waits', '', 0),
-        event(
-            'request_pump',
-            after(
-                q(0, 'h'),
-                switch(
-                    choose(dispatcher, dispatcher.forecast),
-                    case(action.SEND, start(this.send_pump), when=this.spares >= 1),
-                    case(action.WAIT, add(this.waits, 1)),
-                ),
-            ),
-        ),
-        event('send_pump', after(q(0, 'h'), subtract(this.spares, 1))),
-    )
-    b.setup(start(depot.request_pump))
-    b.root(value('sent', '', formula(count(depot.send_pump.occurrences))))
-    settings = {}
-    if picks:
-        settings = {
-            'controllers': (Controller('dispatcher', PLAYER),),
-            'picks': tuple(Pick(CHOICE_SITE, 'depot.request_pump#0', pick) for pick in picks),
-        }
-    return _example(name, b, 1, expected, **settings)
-
-
-@example
-def dispatcher_forecast():
-    """Spec, "Actor decisions and observations": with no controller, the forecast waits."""
-    expected = [At(0, key('depot', 'waits'), 1), At(0, key('', 'sent'), 0)]
-    return _dispatcher('dispatcher_forecast', 1, (), expected)
-
-
-@example
-def dispatcher_player_sends():
-    """Spec, "Actor decisions and observations": a human player can send the spare pump,
-    although its forecast probability is zero."""
-    expected = [At(0, key('', 'sent'), 1), At(0, key('depot', 'spares'), 0), At(0, key('depot', 'waits'), 0)]
-    return _dispatcher('dispatcher_player_sends', 1, ('SEND',), expected)
-
-
-@example
-def dispatcher_player_no_spare():
-    """Spec, "Actor decisions and observations": with no spare, sending is unavailable to the
-    human, and the pick fails the run."""
-    return _dispatcher('dispatcher_player_no_spare', 0, ('SEND',), [Fails('SEND', 0)])
 
 
 DISPATCH_SWITCH = 'depot.request_pump.step[0].do[1]'
@@ -1568,14 +1502,6 @@ def pump_dispatch_unattended():
     """The acceptance example of item 15 run unattended: the forecast waits, nothing is sent."""
     expected = [At(0, key('depot', 'waits'), 1), At(0, key('', 'sent'), 0), DISPATCH_DRAW]
     return Example('pump_dispatch_unattended', pump_dispatch(), run(1), tuple(expected))
-
-
-@example
-def dispatcher_forecast_no_spare():
-    """Spec, "Actor decisions and observations": with no spare, sending is unavailable to the
-    forecast too, and it waits."""
-    expected = [At(0, key('depot', 'waits'), 1), At(0, key('', 'sent'), 0)]
-    return _dispatcher('dispatcher_forecast_no_spare', 0, (), expected)
 
 
 @example
@@ -1853,11 +1779,6 @@ ROWS = {
     ),
     'A formula of an occurrence that read 14 at its finish': ('frozen_formula',),
     '`categorical(FIXED: 0.7, FAILED: 0.3).draw()` in a median run': ('median_categorical',),
-    'A dispatcher whose forecast always waits, with one spare pump': (
-        'dispatcher_forecast',
-        'dispatcher_player_sends',
-        'dispatcher_player_no_spare',
-        'dispatcher_forecast_no_spare',
-    ),
+    'A dispatcher whose forecast always waits, with one spare pump': ('pump_dispatch_unattended',),
     'The water model; service returns at hour 5': ('water_service_returns',),
 }

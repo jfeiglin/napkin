@@ -12,8 +12,8 @@ commit 81b367b (`Acting`), on the parts of a program.
 
 - **Start values.** A state starts at its initializer, and each member at its own value, or at the
   configuration's value of an input: a member written in place or a yes/no is that value; a draw of
-  a categorical is each outcome of positive weight; a choice, each member of its enum; a read of
-  another state, what that state can take; anything else, any value of its type.
+  a categorical is each outcome of positive weight; a read of another state, what that state can
+  take; anything else, any value of its type.
 - **Events.** An event can start when the setup starts it, when one of its triggers can fire (its
   condition can hold: a trigger exists once for each receiver, also before its event has started),
   or when a statement that can run starts it. A statement can run when the setup holds it, or when
@@ -259,8 +259,7 @@ class _Reach:
 
     def read(self, read, scope):
         """What one read can be: a member of an enum, a named state, the count of the occurrences of
-        an event that cannot start, a draw of a categorical; anything else (a choice among them) may
-        be any value."""
+        an event that cannot start, a draw of a categorical; anything else may be any value."""
         if isinstance(read, EnumValue):
             return frozenset({read.member})
         if isinstance(read, Path):

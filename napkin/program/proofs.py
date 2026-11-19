@@ -62,7 +62,6 @@ from . import parts as p
 from .reach import reach
 from .refs import (
     By,
-    Choice,
     Distribution,
     Draw,
     Elapsed,
@@ -970,7 +969,7 @@ class Proofs:
             return self._read_parts(read.event, at, places)
         if isinstance(read, Elapsed):
             return self._read_parts(read.value, at, places)
-        if isinstance(read, (Draw, Choice)) and isinstance(read.source, Path):
+        if isinstance(read, Draw) and isinstance(read.source, Path):
             return self._read_parts(read.source, at, places)
         return []
 

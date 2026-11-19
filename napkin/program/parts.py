@@ -271,8 +271,8 @@ class Case:
 
 @dataclass(frozen=True)
 class Switch:
-    """`switch selector:`. The guards are read once, before the selector; a draw or a choice as the
-    selector picks among the eligible cases. With no eligible case, `orelse` runs."""
+    """`switch selector:`. The guards are read once, before the selector; a draw as the selector
+    picks among the eligible cases. With no eligible case, `orelse` runs."""
 
     selector: Expr
     cases: tuple[Case, ...]
@@ -439,8 +439,7 @@ class Member:
 @dataclass(frozen=True)
 class Template:
     """A template: a shared schema and behaviour, and its members. An entity written on its own is a
-    template of one member with the same name. `sees` are the observations that a human player of
-    this actor is shown (it permits nothing)."""
+    template of one member with the same name."""
 
     name: str
     values: tuple[Value, ...] = ()
@@ -449,7 +448,6 @@ class Template:
     solvers: tuple[Solver, ...] = ()
     status: Status | None = None
     asserts: tuple[Assert, ...] = ()
-    sees: tuple[Path, ...] = ()
     members: tuple[Member, ...] = ()
     origin: str = ''
 

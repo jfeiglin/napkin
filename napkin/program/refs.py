@@ -17,8 +17,7 @@ resolved by the type of what precedes it, as the language resolves a dotted name
 collection is a projection, as `routes.limit` is in the language.
 
 The other reads are the named parts that the language spells as calls: a reduction of a collection
-(`Reduce`), a draw (`Draw`, keyed by its site), an actor's choice (`Choice`), `since` and
-`elapsed`, a member of an enum (`EnumValue`) and the time `t` (`TIME`). A number with a unit is the
+(`Reduce`), a draw (`Draw`, keyed by its site), `since` and `elapsed`, a member of an enum (`EnumValue`) and the time `t` (`TIME`). A number with a unit is the
 core's literal call `q(number, unit)`, whose unit is a spelling of the program's table of units.
 """
 
@@ -198,16 +197,6 @@ class Draw:
 
 
 @dataclass(frozen=True)
-class Choice:
-    """`actor.choose(d)`: a value that the actor's controller picks, or with no controller a draw of
-    the forecast `d`. `site` keys it as a draw's site does."""
-
-    actor: Path
-    source: Path | Distribution
-    site: str
-
-
-@dataclass(frozen=True)
 class Since:
     """`since(e)`: the time since the latest start of an event; it fails before the first start."""
 
@@ -221,7 +210,7 @@ class Elapsed:
     value: Path
 
 
-Read = Time | Path | EnumValue | Reduce | Draw | Choice | Since | Elapsed
+Read = Time | Path | EnumValue | Reduce | Draw | Since | Elapsed
 
 
 # ---- expressions -----------------------------------------------------------------------------------
@@ -302,8 +291,6 @@ def spelled(item):
         return f'{item.family}({", ".join(args)})'
     if isinstance(item, Draw):
         return f'{spelled(item.source)}.draw()'
-    if isinstance(item, Choice):
-        return f'{spelled(item.actor)}.choose({spelled(item.source)})'
     if isinstance(item, Since):
         return f'since({spelled(item.event)})'
     if isinstance(item, Elapsed):

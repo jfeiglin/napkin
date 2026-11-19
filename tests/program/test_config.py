@@ -1,24 +1,21 @@
 """The run configuration (`napkin/program/config.py`).
 
 The limits start at the defaults of D6; a median run has no seed and a sampled run needs one; an
-input, a controller and a pick are each given once; a limit, a budget and a numerical setting are
-positive; the horizon is a number of hours.
+input is given once; a limit, a budget and a numerical setting are positive; the horizon is a
+number of hours.
 """
 
 import pytest
 
 from napkin.program.config import (
     MEDIAN,
-    PLAYER,
     SAMPLED,
     Budgets,
     Configuration,
     ConfigurationError,
-    Controller,
     InputValue,
     Limits,
     Numerics,
-    Pick,
     Quantity,
     Request,
 )
@@ -42,9 +39,6 @@ def test_a_run_is_median_by_default_and_records_everything():
         {'mode': SAMPLED, 'seed': True},
         {'mode': 'mean'},
         {'inputs': (InputValue('tank', 'water', Quantity(9, 'L')),) * 2},
-        {'controllers': (Controller('dispatcher', 'oracle'),)},
-        {'controllers': (Controller('dispatcher', PLAYER),) * 2},
-        {'picks': (Pick('depot.ask.step[0].do[0].choice[0]', 'depot.ask#0', 'SEND'),) * 2},
     ],
 )
 def test_a_configuration_that_no_run_can_take_is_refused(settings):

@@ -13,7 +13,6 @@ import pytest
 
 from napkin.model.compile import compile_text
 from napkin.model.language.problems import LanguageError
-from napkin.model.views import actors
 from napkin.program import parts as p
 from napkin.program.canonical import program_bytes
 from napkin.program.refs import Distribution, EnumValue, Named, Path
@@ -243,7 +242,6 @@ def test_a_choice_and_a_sight_are_refused_by_name_with_what_to_write_instead():
         assert 'store the value in a field and branch on it' in problem.message
         assert 'pause before the branch' in problem.message
     assert codes('a:\n    d = categorical(X: 1)\n    x = formula(a.choose(a.d) == X)\n') == ['choose']
-    assert actors(compiled(PUMP_DISPATCH)) == []
 
 
 def test_the_spec_s_dispatcher_written_with_a_field_lowers_as_the_acceptance_example():

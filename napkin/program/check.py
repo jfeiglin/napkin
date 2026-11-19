@@ -33,7 +33,7 @@ The codes:
   number, or `SINK` as a source; a parameter as an end (D13); `SOURCE` or `SINK` at an end of a
   reversible route; ends of two dimensions, or a rate whose unit is not the end's per time; a
   move's end that is no stored number.
-- `formula_draws`: a draw or a choice in a formula, or in a condition that is read again (a
+- `formula_draws`: a draw in a formula, or in a condition that is read again (a
   trigger, a reset, a gate, a where, a status, an assertion, a solver).
 - `trigger_start`: a trigger that does anything but start its own event.
 - `local_order`: a plain initializer of an event local, or a plain property of an event's flow,
@@ -66,7 +66,6 @@ from .refs import (
     REDUCTIONS,
     THIS,
     By,
-    Choice,
     Distribution,
     Draw,
     Elapsed,
@@ -416,13 +415,9 @@ class Resolver:
             if read.op not in REDUCTIONS:
                 self.fail('kind', where, f'no reduction {read.op!r}')
             self.collection(read.source, scope, where, retained)
-        elif isinstance(read, (Draw, Choice)):
+        elif isinstance(read, Draw):
             if retained:
-                self.fail('formula_draws', where, f'{retained} cannot draw or choose: `{spelled(read)}`')
-            if isinstance(read, Choice):
-                actor = self.resolve(read.actor, scope, where, retained)
-                if actor is not None and (actor.kind != 'member' or actor.many):
-                    self.fail('kind', where, f'`{spelled(read.actor)}` is no actor')
+                self.fail('formula_draws', where, f'{retained} cannot draw: `{spelled(read)}`')
             self.drawn(read.source, scope, where)
         elif isinstance(read, Since):
             found = self.resolve(read.event, scope, where, retained)
@@ -436,7 +431,7 @@ class Resolver:
             self.fail('kind', where, f'no read: {type(read).__name__}')
 
     def drawn(self, source, scope, where):
-        """The source of a draw or a choice: a distribution, or a value that holds one."""
+        """The source of a draw: a distribution, or a value that holds one."""
         if isinstance(source, Distribution):
             self.distribution(source, where)
             return
@@ -542,8 +537,6 @@ class _Checker(Resolver):
             self.status(template.status, scope)
         for check in template.asserts:
             self.check_expr(check.test, scope, check.origin, 'an assertion')
-        for seen in template.sees:
-            self.resolve(seen, scope, template.origin)
         for member in template.members:
             self.member(member, template)
 
@@ -906,7 +899,7 @@ class _Checker(Resolver):
         read = selector.reads[0][1]
         if isinstance(read, EnumValue):
             return read.enum
-        source = read.source if isinstance(read, (Draw, Choice)) else read
+        source = read.source if isinstance(read, Draw) else read
         if isinstance(source, Distribution):
             return source.enum or None
         if isinstance(source, Path):

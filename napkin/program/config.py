@@ -1,9 +1,10 @@
 """The run configuration: everything that one run of a program needs besides the program itself.
 
 One engine invocation runs one program under one configuration and gives one record (D9). The
-configuration holds the values of the inputs, the mode and the seed, the controller of each actor
-and its picks, the limits of a runaway run (D6), the solver budgets (D0), the numerical settings,
-and the request of what to record.
+configuration holds the values of the inputs, the mode and the seed, the limits of a runaway run
+(D6), the solver budgets (D0), the numerical settings, and the request of what to record. It has no
+player and no pick (item 15 of the plan's changes after G0): a caller who wants another value stops
+the run at a breakpoint and edits it (`checkpoint.py`).
 
 - **An input value** follows the declared type (D2): a number with a unit of its dimension, a
   yes/no, an enum member, a text, or a distribution for a distribution-valued input. A number
@@ -13,9 +14,6 @@ and the request of what to record.
 - **The mode** is `sampled` (each executed draw samples, under the seed) or `median` (a numeric
   draw is its distribution's median, a categorical one the most likely eligible outcome, the first
   declared of them on a tie). A median run has no seed.
-- **A controller** decides an actor's choices: `forecast` (none: the choice is a draw of its
-  forecast under the mode) or `player`, whose answers are the `picks`, each keyed by the choice's
-  site and the occurrence that makes it.
 - **Budgets** count work, never seconds, so a run that succeeds on one machine succeeds on another:
   the linear programs of one fair-sharing step, the Newton steps of each distance stage, and the
   iterations of its exact fallback. A step that cannot finish within its budget stops the run with
@@ -33,7 +31,6 @@ from .record import Key
 from .refs import Distribution, EnumValue, Number
 
 SAMPLED, MEDIAN = 'sampled', 'median'
-FORECAST, PLAYER = 'forecast', 'player'
 
 
 class ConfigurationError(ValueError):
@@ -56,23 +53,6 @@ class InputValue:
     member: str
     name: str
     value: Quantity | bool | EnumValue | str | Distribution
-
-
-@dataclass(frozen=True)
-class Controller:
-    """Who decides the choices of an actor, a member: `forecast` or `player`."""
-
-    actor: str
-    by: str = FORECAST
-
-
-@dataclass(frozen=True)
-class Pick:
-    """A player's answer: the member of the enum chosen at a choice's site by one occurrence."""
-
-    site: str
-    occurrence: str
-    value: str
 
 
 def _positive(record):
@@ -144,14 +124,12 @@ class Request:
 
 @dataclass(frozen=True)
 class Configuration:
-    """One run's inputs, mode, seed, controllers, picks, limits, budgets, numerics and request."""
+    """One run's inputs, mode, seed, limits, budgets, numerics and request."""
 
     request: Request
     inputs: tuple[InputValue, ...] = ()
     mode: str = MEDIAN
     seed: int | None = None
-    controllers: tuple[Controller, ...] = ()
-    picks: tuple[Pick, ...] = ()
     limits: Limits = Limits()
     budgets: Budgets = Budgets()
     numerics: Numerics = Numerics()
@@ -163,14 +141,7 @@ class Configuration:
             raise ConfigurationError('a sampled run needs a whole-number seed')
         if self.mode == MEDIAN and self.seed is not None:
             raise ConfigurationError('a median run has no seed')
-        for controller in self.controllers:
-            if controller.by not in (FORECAST, PLAYER):
-                raise ConfigurationError(f'{controller.actor}: a controller is forecast or player')
-        for what, keys in (
-            ('input', [(item.member, item.name) for item in self.inputs]),
-            ('controller', [item.actor for item in self.controllers]),
-            ('pick', [(item.site, item.occurrence) for item in self.picks]),
-        ):
-            twice = sorted({str(key) for key in keys if keys.count(key) > 1})
-            if twice:
-                raise ConfigurationError(f'a {what} is given twice: {", ".join(twice)}')
+        keys = [(item.member, item.name) for item in self.inputs]
+        twice = sorted({str(key) for key in keys if keys.count(key) > 1})
+        if twice:
+            raise ConfigurationError(f'an input is given twice: {", ".join(twice)}')
