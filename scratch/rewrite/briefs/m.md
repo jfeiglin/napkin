@@ -1,7 +1,7 @@
 # Brief of stage M: the migration of the catalogue
 
 Read `briefs/COMMON-B.md` first (its rules hold: no git command that changes the repository, at most
-`-n 2`, the house style, a short last message); then `PLAN.md`, "Changes after G0" items 1 to 17
+`-n 2`, the house style, a short last message); then `PLAN.md`, "Changes after G0" items 1 to 18
 and the section "M. Catalogue migration"; then `b1/m-prep/STATE.md`, which made this stage ready.
 The language of now is `napkin/model/` (the docstrings of `semantic.py`, `compile.py` and
 `support.py`), `spec.md` as the changes after G0 amend it, and the examples of `tests/language/`.
