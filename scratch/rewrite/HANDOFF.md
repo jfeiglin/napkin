@@ -67,21 +67,28 @@ export NAPKIN_BASE="$(cd ../napkin-base && pwd)"
 5. As needed: `scratch/rewrite/b1/m-prep/STATE.md` (how the migration tools were made ready) and
    the other `scratch/rewrite/b1/*/STATE.md` files (what each part of the rewrite built and decided).
 
-## Ask the owner first
+## Decided by the owner since G2 (`PLAN.md`, changes 19 and 20)
 
-These came up while the migration was made ready; each changes what an author writes, so they are
-the owner's. Ask before you translate the lines they touch.
+An audit after G2 raised five questions and a list of bugs. The owner answered, and the bugs are
+fixed on the rewrite branch, each with its failing example as a test. What this means for you:
 
-1. **An empty case.** 21 old outcomes do nothing but carry a text (the reservoir's `WAIT`, the water
-   model's `SKIPPED` and `STOPPED`). A `switch` case needs an action today. Allow a case with only its
-   text, or drop the texts?
-2. **`title` and `role`.** A member written by hand has no `title` (69 in the water variants) and an
-   event has no `role` (10). The translator keeps titles in `notes:` and roles as comments. Bring
-   them back as fields, or keep them there?
-3. **`timescales` that name values** (two packages): the language takes times only.
-4. **A cycle in the water model.** `Utility.tie_asks` reads `Tie.ask`, which reads the buyer's need,
-   which reads `tie_asks`. Member by member there is no cycle, but the front end checks the
-   template. Is that check too strict (a front-end fix), or should the model be restructured?
+1. **A solver decides only what it names.** A connected flow that a solver does not name in
+   `solve_for` keeps its endpoints' local sharing; the solver sees it only through the limits it
+   imposes. A model whose provider must decide who is served names those rates.
+2. **A `switch` case may be empty**, with or without a text: an old outcome that only carried a
+   text keeps it as a case with no action.
+3. **A member may have a `title`** ("DC Water"), shown by reports and playback. An event's `role` is
+   refused by the model: it belongs to the scenario's wrapper (its UI or `brief.toml`).
+4. **`timescales` is retired** and refused. For the heat-wave and cyber models, confirm that their
+   results meet their accuracy without the hint (run them with and without a small `max_step` in
+   the configuration, and compare); report it either way.
+5. **Cycles are checked on the members' actual connections**, so the water model's
+   `Utility.tie_asks` compiles; a real cycle is reported as its chain.
+6. **Triggers on values that rise and fall between events are certified step by step** (change
+   20), so the reservoir's `water >= level` runs: its spillway opens at 40 h.
+
+The translator (`scratch/rewrite/a5/translate.py`) follows these decisions. Anything else that
+changes what a model author writes or sees is still the owner's: ask.
 
 ## The work, in order
 
@@ -105,7 +112,11 @@ For each package:
 2. Check the meaning, under the new compiler and with no `PYTHONPATH`:
    `.venv/bin/python scratch/rewrite/a5/check.py <old entry> <new entry>`. It compares numbers with
    units, texts, the kind of each name, flows, and the old cumulative outputs against the new
-   never-falls proof. Repeat until it passes; declare a rename with `--rename A=B`.
+   never-falls proof, and it **runs both models** (its group `run`): the old one under the old
+   engine, the new one under the new engine in `median` mode, to the horizon, comparing each old
+   output with the new value of its name at 0 h, at the horizon and at each `--at` time, within
+   1e-6 of the larger and a floor of 1e-8 in its unit. A difference fails unless the package's
+   `changed.md` lists it (below). Repeat until it passes; declare a rename with `--rename A=B`.
 3. Compile and run it: `.venv/bin/napkin compile <package>` (it lists every value without a record)
    and `.venv/bin/napkin run <package>`.
 4. Port its tests, with `oracle-inputs.json`, `expected-orders.json`, its evidence index,
@@ -130,8 +141,11 @@ Parity with the old numbers is not required, but every change is traced.
   translation. A change that follows from the new semantics goes on the owner's list.
 - **No expected value is edited to make a test pass.**
 - Keep the owner's list in `scratch/rewrite/b1/m-<package>/changed.md`, one row for each changed
-  number: the test, the quantity, the old number, the new number, the cause (the rule of the spec or
-  the change after G0), and the evidence (the trace or the check's line).
+  number, as a table `| test | quantity | old | new | cause | evidence |`: the test is
+  `check run ENTRY[:RUN]` for a difference that the checker's run finds, the quantity
+  `OUTPUT at T h`, the cause the rule of the spec or the change after G0, and the evidence the
+  trace or the check's line. The checker fails on an unlisted difference, on numbers that do not
+  match, on a stale row and on an empty cause or evidence.
 - If you find a bug in `napkin/`, fix it only if the fix is small and plainly a bug, with a test that
   failed before it; otherwise write it down with a failing example. Do not change the language, the
   engine's rules or a tolerance to make a model fit: that is the owner's.
@@ -167,7 +181,8 @@ Candidates that the rewrite left open (see the end of the progress list in `PLAN
 for a split of who is served decided between moments, inside the integration (not marked today);
 the oracle's coverage of `where` over an endpoint's flows (it does not run them); a check of a value
 against the datum that its record cites; acceptance tests from source for each package's headline
-numbers.
+numbers. A run that re-integrates after a new trigger moment costs time (a 10,000 h test went from
+3.1 s to 5.9 s): watch the catalogue's run times, and report a model that becomes slow.
 
 ## Gate G3: done when
 
@@ -182,7 +197,8 @@ numbers.
 Open the pull request into `claude/blissful-heisenberg-5me2hn`, and do not merge it. Its description:
 
 1. For each package: what was translated by hand and why, and the result of `check.py`.
-2. The owner's answers to the four questions, and how each was applied.
+2. How each decision of changes 19 and 20 applied to the packages, and the heat-wave and cyber
+   models' accuracy without `timescales`.
 3. The changed numbers: a link to each `changed.md`, and the five largest changes in a table.
 4. Every decision you made that the owner did not, one line each.
 5. Every bug found in `napkin/`: fixed (with its test) or written down (with its failing example).
