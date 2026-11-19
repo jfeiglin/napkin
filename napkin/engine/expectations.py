@@ -122,8 +122,7 @@ def summary(values, central, confidence=0.95):
         float(x.min()),
         float(x.max()),
         tuple(
-            (p, float(value))
-            for p, value in zip(PERCENTILES, np.percentile(x, PERCENTILES, method='linear'))
+            (p, float(value)) for p, value in zip(PERCENTILES, np.percentile(x, PERCENTILES, method='linear'))
         ),
     )
 

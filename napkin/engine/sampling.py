@@ -67,7 +67,8 @@ def sample_seed(seed, k):
 def sampled(configuration, settings):
     """The configuration of each sample of a study (see the module), in the order of the samples."""
     return tuple(
-        replace(configuration, mode=SAMPLED, seed=sample_seed(settings.seed, k)) for k in range(settings.samples)
+        replace(configuration, mode=SAMPLED, seed=sample_seed(settings.seed, k))
+        for k in range(settings.samples)
     )
 
 

@@ -29,10 +29,11 @@ values that a report reads (`napkin/engine/report.py`), resolved in the model's 
   disclosure names each claim that is not verified and each assumption that is not confirmed, of the
   exercised parts (`disclosures`).
 
-`built(path, library)` reads a package as `napkin.model.compile.load_scenario` does, with the library
-that the caller reads: the coverage report (`integrate --coverage`) reads a model whose folder holds
-records that it does not cite yet, and pack integration reads the records that a package cites before
-its library holds them (`package_document`).
+`built(path, library)` declares a package as `napkin.model.compile.load_scenario` does, with the
+library that the caller reads, so the coverage report (`integrate --coverage`) reads a model whose
+folder holds records that it does not cite yet; pack integration reads the records that a package
+cites before its library holds them (`package_document`). `load_scenario` takes no library, and
+`napkin.model.library.model_document` reads the entry file alone, without the package's modules.
 """
 
 from __future__ import annotations
@@ -56,7 +57,6 @@ from napkin.model.language.parse import parse
 from napkin.model.language.problems import LanguageError, SyntaxProblem
 from napkin.model.language.tables import in_folder
 from napkin.model.library import load_library
-from napkin.model.lowering import lower
 from napkin.program.proofs import Proofs
 
 # The kinds of a record, in the order in which a summary counts them.
@@ -66,9 +66,10 @@ KINDS = ('source', 'source_transfer', 'assumption', 'convention', 'identity')
 @dataclass(frozen=True)
 class Use:
     """One record at one place: the path of the declared part that it supports (for a setting of an
-    option, the input that it sets; for a note, `notes.key.key`), the option that writes it (None
-    elsewhere), the record's name (None for a record written in place), its kind, the claims that it
-    names and the assumptions and conventions that it rests on."""
+    option, the input that it sets, and '' for the option's own line; for a note, `notes.key.key`),
+    the option that writes it (None elsewhere), the record's name (None for a record written in
+    place), its kind, the claims that it names, the assumptions and conventions that it rests on, and
+    its content as the library's walkers read it (`language.evidence.content`)."""
 
     path: str
     name: str | None
@@ -167,6 +168,7 @@ def _table(table):
 
 
 def _notes(notes, path):
+    """(path, evidence) of each note and of the notes under it."""
     for note in notes:
         here = f'{path}.{note.key}'
         yield here, (*note.cites, *note.evidence)
@@ -289,10 +291,10 @@ def _settings(declared, value, owner, options):
     return found
 
 
-def rests_on(compiled, path, configuration=None):
-    """The uses of every part that the value at `path` can read in a run of a compiled model (see the
-    module), part by part, each once."""
-    found = Proofs(compiled.program, configuration).reads(key_of(compiled.program, path))
+def rests_on(compiled, path):
+    """The uses of every part that the value at `path` can read in any run of a compiled model (see
+    the module), part by part, each once."""
+    found = Proofs(compiled.program, None).reads(key_of(compiled.program, path))
     parts = sorted(found.edges, key=lambda part: (part.origin, part.owner, part.kind))
     return [use for part in parts for use in part_uses(compiled.declared, part)]
 
@@ -390,11 +392,10 @@ def package_document(path):
 
 
 def built(path, library):
-    """(the declared model, the program) of the entry file `path`, declared with the units of `library`
-    (`napkin.model.library.load_library`), as `load_scenario` builds them."""
+    """The declared model of the entry file `path`, declared with the units of `library`
+    (`napkin.model.library.load_library`), as `load_scenario` declares it."""
     tree, files, folder = package_tree(path)
-    declared = s.declare(tree, library_units(library), in_folder(folder), files)
-    return declared, lower(declared)
+    return s.declare(tree, library_units(library), in_folder(folder), files)
 
 
 # ---- the command --------------------------------------------------------------------------------------------

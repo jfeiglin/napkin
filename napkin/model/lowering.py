@@ -33,6 +33,10 @@ finished program (`solvers.problems`).
 A status display is `build.status` of its cases in written order, each `build.rating` of its rating
 and its condition; the last has none. A refusal of the program's checker, or of `solvers.problems`, is given at the line of the declared
 part that it names, and so is each of the setup's reports (`reports`), which refuse nothing.
+
+`side_table` gives the program's side table (`napkin.program.artifact.SideTable`): the place in the
+source of each part of the program that has an origin, its label and its evidence, from the declared
+part of that path, so the table is outside the program.
 """
 
 from __future__ import annotations
@@ -44,6 +48,7 @@ from fractions import Fraction
 from ..core import expr as nodes
 from ..program import build, check
 from ..program import parts as p
+from ..program.artifact import Evidence, Location, SideTable, kind_of, origins
 from ..program.check import ProgramError
 from ..program.refs import (
     ITEM,
@@ -69,6 +74,7 @@ from ..program.refs import (
 )
 from . import semantic as s
 from . import solvers
+from .language import nodes as n
 from .language.problems import LanguageError, Problem
 
 _SITES = itertools.count()
@@ -120,6 +126,65 @@ def reports(model, program):
     reads, a lookup below its first key), each a `Problem` at the line of its part, which refuses
     nothing."""
     return tuple(_located(model, item) for item in check.reports(program))
+
+
+def side_table(model, program, file=''):
+    """The side table of a lowered model: for each part of the program with an origin, in the
+    program's order, its kind, its name, its place (the file of its line, `file` for a model of one
+    text, and the column of the line's first word) and the label and the evidence of the declared
+    part of its path. A cited record is given with its content."""
+    columns = _columns(model.tree)
+    records = {item.name: item for item in model.records}
+    found = []
+    for origin, part in origins(program).items():
+        declared = model.part(origin)
+        line = getattr(declared, 'line', 0)
+        where, at = model.place(line) if line else ('', 0)
+        found.append(
+            Location(
+                origin,
+                kind_of(part),
+                getattr(part, 'name', None) or getattr(part, 'member', ''),
+                where or (file if line else ''),
+                at,
+                columns.get(line, 0),
+                getattr(declared, 'text', None),
+                tuple(_evidence(item, records) for item in getattr(declared, 'evidence', ())),
+            )
+        )
+    return SideTable(tuple(found))
+
+
+def _columns(tree):
+    """The column of each line of a parsed model, its first word's, by the line's number."""
+    found = {}
+
+    def walk(node):
+        if isinstance(node, n.Line):
+            found.setdefault(node.line, node.column)
+        for item in fields(node):
+            value = getattr(node, item.name)
+            for each in value if isinstance(value, tuple) else (value,):
+                if isinstance(each, n.Node):
+                    walk(each)
+
+    for item in tree.items:
+        walk(item)
+    return found
+
+
+def _evidence(item, records):
+    """A record of a declared part's evidence (`nodes.Cite` of a record of the model, or
+    `nodes.Inline`) as the side table gives it, with its content."""
+    if isinstance(item, n.Cite):
+        named = records[item.name]
+        return Evidence(item.name, *_content(named))
+    return Evidence('', *_content(item))
+
+
+def _content(record):
+    claims = tuple((claim.id, claim.datum) for claim in record.claims)
+    return record.kind, record.text, tuple(record.relations), claims
 
 
 def _located(model, item):

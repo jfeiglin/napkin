@@ -41,7 +41,7 @@ from functools import partial
 
 from .. import SCHEMA_VERSION, store
 from ..model.language.problems import LanguageError
-from ..model.runs import check
+from ..model.runs import check, options_of
 
 # The chunks of a pool for each of its processes: enough to keep each busy to the end, few enough that
 # the program's results come back in large parts.
@@ -69,16 +69,14 @@ def configurations(model, runs=None, edits=None):
     elif isinstance(runs, str) or len(set(runs)) != len(runs):
         raise ValueError(f'runs is a list that names each run once, not {runs!r}')
     problems = list(check(model.declared, edits, model.model_hash))
-    found = {}
-    if not problems:
-        for name in runs:
-            try:
-                found[name] = model.configure(name, edits)
-            except LanguageError as error:
-                problems += error.problems
+    for name in runs:
+        try:
+            options_of(model.declared, name)
+        except LanguageError as error:
+            problems += error.problems
     if problems:
         raise LanguageError(problems)
-    return found
+    return {name: model.configure(name, edits) for name in runs}
 
 
 def whole(program, configuration, record):
@@ -169,4 +167,6 @@ def _end_with(parent):
 def _chunk(work, configurations):
     """The runs of one chunk in a process of a pool, one after another."""
     program = _WORKER['program']
-    return [work(program, configuration, store.run(program, configuration)) for configuration in configurations]
+    return [
+        work(program, configuration, store.run(program, configuration)) for configuration in configurations
+    ]

@@ -17,6 +17,10 @@ line with its `resolution` as the longest step, or of the named run `run`, under
 `edits` (`runs.configuration`). Each refusal is a `LanguageError` with every problem, each with its
 code and its place: a file and a line, the file and the line of a table, or the place in the edit
 document.
+
+The program's side table (`lowering.side_table`) gives each part of the program its place in the
+files, its label and its evidence; `Compiled.artifact` is the program with its table, which a fresh
+process loads and runs without the parser (`napkin.program.artifact`).
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from dataclasses import dataclass, replace
 from fractions import Fraction
 from pathlib import Path
 
+from ..program.artifact import Artifact, SideTable
 from ..program.config import Configuration, Numerics, Request
 from ..program.parts import Program
 from . import runs
@@ -35,7 +40,7 @@ from .language.modules import files as package_files
 from .language.parse import parse
 from .language.problems import LanguageError, Problem, SyntaxProblem
 from .language.tables import in_folder, in_memory
-from .lowering import lower, reports
+from .lowering import lower, reports, side_table
 from .semantic import DeclaredModel, Files, declare
 
 HORIZON = 'the scenario line gives the horizon of the default run: horizon 30 days'
@@ -48,7 +53,8 @@ class Compiled:
     of its runs (None for a text with no horizon), the setup's reports (`lowering.reports`), each a
     `Problem` at its place that refuses nothing (equal keys in a keyed view that `.at(...)` reads, and a
     lookup below its first key at a known lower bound), and its hash (`identity.model_hash`). `base` is
-    the configuration of its default run, from which `configure` makes another run's."""
+    the configuration of its default run, from which `configure` makes another run's. `table` is the
+    program's side table, which no hash covers."""
 
     declared: DeclaredModel
     program: Program
@@ -56,6 +62,11 @@ class Compiled:
     reports: tuple[Problem, ...] = ()
     model_hash: str = ''
     base: Configuration | None = None
+    table: SideTable = SideTable()
+
+    def artifact(self):
+        """The program with its side table, as a file keeps it (`napkin.program.artifact`)."""
+        return Artifact(self.program, self.table)
 
     def configure(self, run=None, edits=None, options=None):
         """The configuration of the run `run` (None for the default run), or of a combination of
@@ -100,7 +111,8 @@ def _compiled(tree, units, reader, files, file, run, edits):
         raise LanguageError(placed(error.problems), file) from None
     base = default_run(declared)
     found = tuple(replace(item, file=item.file or file) for item in placed(reports(declared, program)))
-    compiled = Compiled(declared, program, base, found, model_hash(declared, program, base), base)
+    table = side_table(declared, program, file)
+    compiled = Compiled(declared, program, base, found, model_hash(declared, program, base), base, table)
     if run is not None or edits is not None:
         try:
             compiled = replace(compiled, configuration=compiled.configure(run, edits))

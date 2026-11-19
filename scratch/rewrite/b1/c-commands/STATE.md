@@ -22,6 +22,17 @@ Baseline b0b1d32 (stage C report committed, 5,151 live tests).
 - Fixed outside my files (flag it): napkin/program/proofs.py `_point_parts`, a route leg's point
   keeps `at` fourth (the report crashed on `x.forward.actual_rate`).
 
+- `napkin draw` (draw.py) on `Things(compiled).runs`; `napkin compile` lists named runs and the
+  model hash and checks style.toml (exit 1). tests/commands/test_draw.py (11, the 4 stylesheet
+  tests again as one parametrized test). `napkin new` (new.py) and tools/new.py in the new
+  language: tests/commands/test_new.py (26), tests/test_tools_new.py (27, live);
+  tests/test_tools_new_catalogue.py (1, new: reads the catalogue and the publisher: M, dormant).
+- commands/__init__.py: NAMES compile, run, fmt, draw, new; LATER {play: S7, sample: C}; cli.py
+  names each later command's stage.
+- package.py: `name_of`, `entries`, `load_package(path)` (one LanguageError, each problem once);
+  `combined`/`reduced`/`source_problem` gone (`Compiled.configure` does it). tests/test_package.py
+  (5). tests/test_nested_packages.py (5) on C-E's tests/evidence/support.py.
+
 ## Decisions
 - K1 Residue: the text shows 0 for |x| <= atol_factor (1e-10) x the largest magnitude of the
   value's history and its reported numbers; JSON keeps the record's number. (G1: 4.05538e-26 W.)

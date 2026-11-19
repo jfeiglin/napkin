@@ -42,13 +42,32 @@ TANK = textwrap.dedent("""\
 RATE = 'tank.rate.draw[0]'
 
 
+def noisy():
+    """The tank with a noise that a flow of its own reads, so that each run draws it and the water does
+    not depend on it."""
+    return TANK.replace(
+        '    flow fill:',
+        '    input noise: L/h = uniform(0 L/h, 1 L/h).draw()\n'
+        '    spill: L = 0 L in [0 L,]\n'
+        '    flow trickle: SOURCE -> this.spill\n'
+        '        request = this.noise\n'
+        '    flow fill:',
+    )
+
+
 def compiled(text=TANK):
     return compile_text(text, UNITS)
 
 
 def study(model, paths=('tank.water',), times=(4,), samples=24, seed=7, **options):
     return monte_carlo(
-        model.program, model.configuration, paths, times, SamplingSettings(samples, seed), model=model.declared, **options
+        model.program,
+        model.configuration,
+        paths,
+        times,
+        SamplingSettings(samples, seed),
+        model=model.declared,
+        **options,
     )
 
 
@@ -94,7 +113,10 @@ def test_each_sample_of_a_tally_equals_its_rate_times_the_time_and_the_summary_i
         math.sqrt(sum((x - sum(closed) / 24) ** 2 for x in closed) / 23), rel=1e-9
     )
     assert summary.sem == pytest.approx(summary.sd / math.sqrt(24), rel=1e-12)
-    assert summary.percentiles == pytest.approx([(p, type7(closed, p)) for p in (5, 25, 50, 75, 95)], rel=1e-12)
+    assert [p for p, _ in summary.percentiles] == [5, 25, 50, 75, 95]
+    assert [value for _, value in summary.percentiles] == pytest.approx(
+        [type7(closed, p) for p in (5, 25, 50, 75, 95)], rel=1e-12
+    )
     spread = found.spread('tank.water', 4)
     assert (spread.unit, spread.label) == ('L', 'Water in the tank')
 
@@ -109,7 +131,8 @@ def test_each_sample_of_a_decay_equals_its_exponential():
             flow drain: this.water -> SINK
                 request = formula(this.k * this.water)
         """)
-    found = monte_carlo(compiled(text).program, compiled(text).configuration, ['tank.water'], [1, 3], SamplingSettings(12, 3))
+    model = compiled(text)
+    found = monte_carlo(model.program, model.configuration, ['tank.water'], [1, 3], SamplingSettings(12, 3))
     for sample in found.samples:
         k = drawn(sample, 'tank.k.draw[0]')
         assert sample.values[0] == pytest.approx((100 * math.exp(-k), 100 * math.exp(-3 * k)), rel=1e-6)
@@ -136,7 +159,10 @@ def test_an_enum_draw_picks_a_rate_and_each_member_of_a_template_draws_its_own()
             assert sample.values[place][0] == pytest.approx(4 * (3 if plan == 'HIGH' else rate), rel=1e-12)
         assert sample.values[2][0] == drawn(sample, 'Pump.plan.draw[0]', 'east')
     assert {drawn(sample, 'Pump.plan.draw[0]', 'east') for sample in found.samples} == {'HIGH', 'LOW'}
-    rates = [(drawn(sample, 'Pump.rate.draw[0]', 'east'), drawn(sample, 'Pump.rate.draw[0]', 'west')) for sample in found.samples]
+    rates = [
+        (drawn(sample, 'Pump.rate.draw[0]', 'east'), drawn(sample, 'Pump.rate.draw[0]', 'west'))
+        for sample in found.samples
+    ]
     assert all(east != west for east, west in rates)
     plan = found.spread('east.plan', 4).summary
     assert not plan.estimated and plan.reason == 'a text has no mean' and plan.central == 'LOW'
@@ -169,9 +195,10 @@ def test_a_seed_gives_the_same_study_and_sample_k_does_not_depend_on_their_numbe
 
 def test_an_unrelated_uncertain_input_leaves_the_other_draws_alone():
     model = compiled()
-    other = compiled(TANK.replace('        water: L', '        input noise = uniform(0, 1).draw()\n        water: L'))
-    plain, noisy = study(model, samples=10), study(other, samples=10)
-    assert [drawn(sample) for sample in noisy.samples] == [drawn(sample) for sample in plain.samples]
+    other = compiled(noisy())
+    plain, both = study(model, samples=10), study(other, samples=10)
+    assert all(len(sample.draws) == 2 for sample in both.samples)
+    assert [drawn(sample) for sample in both.samples] == [drawn(sample) for sample in plain.samples]
 
 
 def test_the_central_run_is_the_median_run_whatever_the_mode_of_the_configuration():
@@ -253,7 +280,7 @@ def test_a_yes_or_no_has_the_share_of_the_samples_in_which_it_holds():
 def test_the_drivers_of_a_value_are_the_rank_correlations_of_the_draws_with_it():
     """The water at 4 h rises with the drawn rate: its correlation is 1. A noise that nothing reads has
     the rank correlation of its draws with the water, and comes after."""
-    model = compiled(TANK.replace('        water: L', '        input noise = uniform(0, 1).draw()\n        water: L'))
+    model = compiled(noisy())
     found = study(model, samples=30)
     water = [sample.values[0][0] for sample in found.samples]
     noise = [drawn(sample, 'tank.noise.draw[0]') for sample in found.samples]

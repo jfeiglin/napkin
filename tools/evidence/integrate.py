@@ -24,7 +24,7 @@ Records are upserted by id (existing ones keep their position, new ones append i
 order), digests are recomputed with napkin.model.evidence.claim_digest for every claim
 a pack writes, and the result must pass the compiler's library checks (schema and references)
 before anything is written. Re-applying the same packs is a no-op. Dry run by default;
---write updates one scenario folder. Regenerate its dossier with the publisher.
+--write updates one scenario folder; the publisher, an optional tool, makes its dossier again.
 A report goes to .work/reports/integrate.json.
 
 --check reproduces library excerpts from the original cached source bytes. With --complete
@@ -714,7 +714,7 @@ def coverage_report(root=ROOT):
     for sid, path in catalogue.entries(root).items():
         found = package_document(path)
         library = load_library(path, document=found, allow_unused=True)
-        declared, _ = built(path, library)
+        declared = built(path, library)
         reached = dependencies(found, library)
         owned = catalogue.locate(sid, root).collections()
         lines.append(f'  {_line(sid, summary(uses(declared)))}')

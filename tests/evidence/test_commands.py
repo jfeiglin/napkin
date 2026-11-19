@@ -1,6 +1,6 @@
 """The command lines of the evidence tools: each mode refuses the options of the other modes and leaves
-every file as it was, and the reports of pack integration and of the source check follow from their
-inputs by the documented rules.
+every file as it was, the reports of pack integration and of the source check follow from their
+inputs by the documented rules, and the trail prints what the values of a run rest on.
 
 The inputs are those of the evidence tool tests (`tests/evidence/support.py`): a synthetic catalogue
 scenario under tmp_path, a pack of claims on a cached synthetic document, and no network.
@@ -343,3 +343,31 @@ def test_the_coverage_mode_prints_the_report_of_the_checkout(catalogue, monkeypa
     printed = capsys.readouterr().out
     assert printed == integrate.coverage_report(catalogue) + '\n'
     assert printed.splitlines()[1].startswith('  SC99:')
+
+
+# trail: the evidence of the values that a run reports.
+
+
+def test_the_trail_prints_what_each_value_of_a_run_rests_on(tmp_path, capsys):
+    from tests.evidence.support import SERVICE, evidence_library
+    from tools.evidence import trail
+
+    entry = write_package(tmp_path, {'model.scn': SERVICE}, evidence_library())
+    assert trail.main([str(entry), 'service.served', '--run', 'half']) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == 'service.served'
+    assert (
+        '  value service.rate (service): read; access: C-ACCESS; halved (option Half rate): assumption RT-FIXTURE'
+        in lines
+    )
+    assert '  event service.stop (service): it started at 8 h; @assumption: assumption RT-FIXTURE' in lines
+    assert lines[-4:] == [
+        '  rests on: claims C-ACCESS (unverified), C-ACTION (unverified); assumptions RT-FIXTURE (unreviewed)',
+        '  disclosure: the claim C-ACCESS is unverified',
+        '  disclosure: the claim C-ACTION is unverified',
+        '  disclosure: the assumption RT-FIXTURE is unreviewed',
+    ]
+    # A value that the model does not have, and a run that it does not name, print why and fail.
+    assert trail.main([str(entry), 'service.missing']) == 1
+    assert trail.main([str(entry), 'service.served', '--run', 'nowhere']) == 1
+    assert capsys.readouterr().out == ''

@@ -12,6 +12,10 @@ TypeError, so nothing is keyed by its `repr`.
 A configuration's bytes leave out its request (what to record, and the horizon): a stored run serves
 any request that its manifest covers (R-A4a-08). A median run has no seed (`config.Configuration`),
 so two median runs of one setup have one key.
+
+`decode` reads the bytes back: it gives a value equal to the one that was encoded, whose nodes are the
+nodes of `napkin/core/expr` themselves (each is made once), so a program saved by one process and
+loaded by another has the same bytes and runs the same (`artifact.py` keeps a program in a file).
 """
 
 from __future__ import annotations
@@ -118,3 +122,133 @@ def configuration_bytes(configuration):
             _encode(getattr(configuration, item.name), out, memo)
     out.append(b'}')
     return b''.join(out)
+
+
+# ---- reading the bytes back ----------------------------------------------------------------------
+
+# The maker of each kind of node by its tag: each takes the fields of its node in their order.
+_MAKERS = {
+    b'r': nodes.ref,
+    b'u': nodes.unary,
+    b'b': nodes.binary,
+    b'p': nodes.compare,
+    b'o': nodes.boolean,
+    b'i': nodes.if_else,
+    b'l': nodes.call,
+}
+_FIELDS = {tag: len(names) for _, tag, names in _NODES}
+
+
+class Malformed(ValueError):
+    """Bytes that are no canonical value: where they stop being one, and why."""
+
+
+def decode(data, records):
+    """The value of canonical bytes: equal to the value that `value_bytes` encoded, with the nodes of
+    `napkin/core/expr` themselves. `records` maps the qualified name of each class of record that
+    the bytes may hold to the class, and a record must have the fields of its class, in their order.
+    Raises `Malformed` with the byte at which the bytes stop being a value."""
+    reader = _Reader(bytes(data), records)
+    value = reader.value()
+    if reader.at != len(reader.data):
+        reader.fail('the value ends before the bytes do')
+    return value
+
+
+class _Reader:
+    """A cursor over canonical bytes."""
+
+    def __init__(self, data, records):
+        self.data, self.records, self.at = data, records, 0
+
+    def fail(self, message):
+        raise Malformed(f'byte {self.at}: {message}')
+
+    def take(self, size):
+        end = self.at + size
+        if end > len(self.data):
+            self.fail('the bytes end inside a value')
+        found, self.at = self.data[self.at : end], end
+        return found
+
+    def until(self, stop):
+        """The bytes up to `stop`, which is passed."""
+        end = self.data.find(stop, self.at)
+        if end < 0:
+            self.fail(f'no {stop.decode()} ends the value')
+        found, self.at = self.data[self.at : end], end + 1
+        return found
+
+    def size(self):
+        written = self.until(b':')
+        if not written.isdigit():
+            self.fail(f'a size is a whole number, not {written!r}')
+        return int(written)
+
+    def expect(self, mark):
+        if self.take(1) != mark:
+            self.at -= 1
+            self.fail(f'{mark.decode()} was expected')
+
+    def number(self, read):
+        written = self.until(b';')
+        try:
+            return read(written.decode('ascii'))
+        except (ValueError, ZeroDivisionError):
+            self.fail(f'no number is written {written!r}')
+
+    def value(self):
+        tag = self.take(1)
+        if tag == b'N':
+            return None
+        if tag in (b'T', b'F'):
+            return tag == b'T'
+        if tag == b'i':
+            return self.number(int)
+        if tag == b'f':
+            return self.number(float.fromhex)
+        if tag == b'q':
+            return self.number(lambda text: Fraction(*map(int, text.split('/'))))
+        if tag == b's':
+            return self.take(self.size()).decode('utf-8', 'surrogatepass')
+        if tag == b'(':
+            items = tuple(self.value() for _ in range(self.size()))
+            self.expect(b')')
+            return items
+        if tag == b'E':
+            return self.node()
+        if tag == b'R':
+            return self.record()
+        self.at -= 1
+        self.fail(f'no value starts with {tag!r}')
+
+    def node(self):
+        tag = self.take(1)
+        if tag == b'c':
+            return nodes.const(self.value())
+        if tag not in _MAKERS:
+            self.at -= 1
+            self.fail(f'no node of a program has the tag {tag!r}')
+        return _MAKERS[tag](*(self.value() for _ in range(_FIELDS[tag])))
+
+    def record(self):
+        name = self.take(self.size()).decode('utf-8')
+        kind = self.records.get(name)
+        if kind is None:
+            self.fail(f'no record of this napkin is named {name}')
+        self.expect(b'{')
+        values = {}
+        for item in fields(kind):
+            if self.data[self.at : self.at + 1] == b'}':
+                self.fail(f'the record {name} ends before its field {item.name}')
+            found = self.value()
+            if found != item.name:
+                self.fail(f'the record {name} has the field {item.name} here, not {found!r}')
+            values[item.name] = self.value()
+        if self.data[self.at : self.at + 1] != b'}':
+            self.fail(f'the record {name} has more fields than this napkin gives it')
+        self.at += 1
+        try:
+            return kind(**values)
+        except (TypeError, ValueError) as error:
+            self.fail(f'the record {name} cannot be made: {error}')

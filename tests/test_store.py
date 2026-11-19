@@ -93,7 +93,9 @@ def test_another_seed_runs_again(tmp_path):
     # Two seeds draw two rates; each run holds its own rate times 4 h.
     rates = [record.entries('draw')[0].detail('value') for record in (first, other)]
     assert rates[0] != rates[1]
-    assert [water(record, model, [4])[0] for record in (first, other)] == pytest.approx([4 * r for r in rates])
+    assert [water(record, model, [4])[0] for record in (first, other)] == pytest.approx(
+        [4 * r for r in rates]
+    )
 
 
 def test_a_window_that_the_stored_run_lacks_runs_again(tmp_path):
@@ -135,7 +137,10 @@ def test_a_shorter_request_reads_the_stored_run_up_to_its_horizon_and_nothing_af
     """An event at 3 h adds 5 L: a request to 2 h gets no entry of it, and its values are those of a
     run to 2 h."""
     model = tank(
-        TANK.replace('    flow fill:', '    top_up = event():\n        after 3 h:\n            this.water += 5 L\n    flow fill:')
+        TANK.replace(
+            '    flow fill:',
+            '    top_up = event():\n        after 3 h:\n            this.water += 5 L\n    flow fill:',
+        )
         + 'tank.top_up.start()\n'
     )
     to_two = replace(model.configuration, request=Request(2))
@@ -160,7 +165,9 @@ def test_a_failure_is_stored_and_a_pause_is_not(tmp_path, monkeypatch):
     assert first == {'hits': 0, 'misses': 1} and second == {'hits': 1, 'misses': 0} and again == failed
     model = tank()
     pause = Entry(1.0, 1, 'pause', 'tank.decide', 'tank', (('site', 'tank.decide'),))
-    monkeypatch.setattr('napkin.engine.timeline.run', lambda program, configuration: Record(Manifest(4), (), (pause,)))
+    monkeypatch.setattr(
+        'napkin.engine.timeline.run', lambda program, configuration: Record(Manifest(4), (), (pause,))
+    )
     with store.use(tmp_path / 'paused'):
         store.run(model.program, model.configuration)
         _, used = counted(lambda: store.run(model.program, model.configuration))

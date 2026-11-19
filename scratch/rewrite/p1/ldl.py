@@ -25,6 +25,9 @@ from napkin.engine.solve import Budget, distance
 from napkin.engine.solve.solver import Work
 
 REFINE = 2  # steps of iterative refinement of each solve
+CHECKED = 1e-10  # a refined solve whose residual is above this, relative to the right side, is
+# made again by SuperLU on the same system (`_Factor.solve`); `--checked` turns it on
+SUPERLU = []  # the systems that went to SuperLU
 
 
 class _Factor:
@@ -44,10 +47,22 @@ class _Factor:
             solver.update(sp.csc_matrix(K))
         self.solver = solver
 
+    checked = False
+
     def solve(self, rhs):
         x = self.solver.solve(rhs)
         for _ in range(REFINE):
             x = x + self.solver.solve(rhs - self.K @ x)
+        if _Factor.checked:
+            bad = not np.all(np.isfinite(x))
+            if not bad:
+                scale = float(np.abs(rhs).max(initial=0.0)) or 1.0
+                bad = float(np.abs(rhs - self.K @ x).max(initial=0.0)) > CHECKED * scale
+            if bad:
+                from scipy.sparse.linalg import splu
+
+                SUPERLU.append(1)
+                return splu(sp.csc_array(self.K), permc_spec='MMD_AT_PLUS_A').solve(rhs)
         if not np.all(np.isfinite(x)):
             raise RuntimeError('a singular Newton system')
         return x
@@ -58,14 +73,20 @@ def use():
     distance.splu = lambda K, permc_spec=None: _Factor(K)
 
 
-def run(tag, repeat):
+def run(tag, repeat, checked=False):
     use()
+    _Factor.checked = checked
     state = lab.read(tag)
     times, answers, work = [], [], None
     for _ in range(repeat):
         work = Work()
         clock = time.perf_counter()
-        xi = distance.select(copy.deepcopy(state['face']), state['w'], Budget(), work)
+        try:
+            xi = distance.select(copy.deepcopy(state['face']), state['w'], Budget(), work)
+        except Exception as stopped:  # a named failure is the measurement here
+            print(f'{tag} library-ldl: stopped after {time.perf_counter() - clock:.1f} s: {stopped}; '
+                  f'Newton {work.newton}, superlu {len(SUPERLU)}', flush=True)
+            return
         times.append(time.perf_counter() - clock)
         answers.append(xi)
     same = all(np.array_equal(a, answers[0]) for a in answers[1:]) if repeat > 1 else None
@@ -74,8 +95,9 @@ def run(tag, repeat):
     except FileNotFoundError:
         reference = None
     found = lab.measures(state, answers[0], reference)
-    infos = dict(newton=work.newton, methods=work.methods, factorizations=work.factorizations, qp=work.qp)
-    record = dict(tag=tag, method='library-ldl', seconds=min(times), all=times, repeat=repeat, bitwise=same,
+    infos = dict(newton=work.newton, methods=work.methods, factorizations=work.factorizations, qp=work.qp,
+                 superlu=len(SUPERLU))
+    record = dict(tag=tag, method='library-ldl-checked' if checked else 'library-ldl', seconds=min(times), all=times, repeat=repeat, bitwise=same,
                   infos=infos, measures=found, load=lab.load(), version=lab.library_version())  # fmt: skip
     with open(f'{lab.DATA}/distance.jsonl', 'a') as f:
         f.write(json.dumps(record, default=str) + '\n')
@@ -90,4 +112,5 @@ if __name__ == '__main__':
         i = args.index('--repeat')
         repeat = int(args[i + 1])
         del args[i : i + 2]
-    run(args[0], repeat)
+    checked = '--checked' in args
+    run([a for a in args if not a.startswith('--')][0], repeat, checked)

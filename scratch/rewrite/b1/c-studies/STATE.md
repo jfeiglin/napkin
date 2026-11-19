@@ -14,7 +14,15 @@ NOT ported, waiting for S7: `napkin/session.py` (resolver, picks, controllers, `
 
 ## Done
 - store.py rewritten (records; one entry per key; `covers`/`served`/`_widened`; programs kept once
-  by digest; locks; LRU limit; `verify` runs an entry again). Tests: in progress.
+  by digest; locks; LRU limit; `verify` runs an entry again). tests/test_store.py (16) passes.
+- sampling.py (`SamplingSettings(samples, seed)`, `sample_seed`, `sampled`, `stream`), study.py
+  (`edits_for`, `configurations`, `run_all` with a spawn pool, `study`, `Cancelled`),
+  expectations.py (`Estimate`, `Summary`, `mean`, `quantile`, `exceedance`, `summary`, `spearman`),
+  uncertainty.py (`monte_carlo` -> `MonteCarlo`, `Sample`, `Spread`, `stopped`), spread.py
+  (`spread(model, paths, times, run=, edits=, samples=, seed=, jobs=)`).
+  tests/engine/test_monte_carlo_study.py (16) passes.
+- Next: test_expectations, test_sampling (drop latin/sobol tests), test_public_engine (study),
+  test_spread; delete test_admission_scope; engine/__init__.py exports; delete model/analysis.
 
 ## Decisions
 - Reuse rule: one entry per key holds one record; it serves a request with a horizon at or before

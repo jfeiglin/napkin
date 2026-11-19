@@ -556,7 +556,11 @@ def run(program, configuration):
             record, manifest = _held(directory, run_key, request)
             if record is None:
                 counts['misses'] += 1
-                ran = configuration if manifest is None else replace(configuration, request=_widened(manifest, request))
+                ran = (
+                    configuration
+                    if manifest is None
+                    else replace(configuration, request=_widened(manifest, request))
+                )
                 found = fresh(program, ran)
                 if paused(found) is not None:
                     return found

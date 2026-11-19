@@ -150,7 +150,9 @@ def monte_carlo(
     if failed:
         return replace(
             study,
-            refused='; '.join(f'sample {k} (seed {sample.seed}) stops: {sample.stopped}' for k, sample in failed),
+            refused='; '.join(
+                f'sample {k} (seed {sample.seed}) stops: {sample.stopped}' for k, sample in failed
+            ),
         )
     drawn = _drawn(samples)
     spreads = []
@@ -176,7 +178,7 @@ def _drawn(samples):
         if found is None:
             found = {draw: [value] for draw, value in once.items()}
         else:
-            found = {draw: values + [once[draw]] for draw, values in found.items() if draw in once}
+            found = {draw: [*values, once[draw]] for draw, values in found.items() if draw in once}
     return found or {}
 
 
