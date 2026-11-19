@@ -34,7 +34,15 @@ FINDINGS.md is refused to a subagent: its text goes in the last message (PLAN.md
   programs); tol 1e-7 keeps levels (<= 3e-11), one of 60 networks stops by name; FIX must stay
   1e-7 (FIX 1e-6 shifts later levels up to 1.5e-3); per-program cost is simplex iterations.
 - All methods bitwise deterministic with one thread (PIQP: build chosen by CPU).
+- 30,000: engine form, merged rows: library 377 s (455+3), qdldl 81 s; unmerged both DNF 15 min.
+  x1.7: every distance variant stops by name (500 or 2,000 Newton steps, then HiGHS's QP says
+  infeasible; the face is feasible at 1e-9, "infeasible" to HiGHS at 1e-7). Clarabel fails x1.45,
+  x1.7 and the engine's problem (merged too); PIQP ends at its iteration cap everywhere at 30,000.
+- Fair 30,000: parts on damaged 693 -> 22 programs, 174 -> 67 s, levels 5e-11; tol 1e-7: renewals
+  x1.45 29 -> 0, engine 16 -> 0 (tight 3 -> 0), levels within 7e-8, no claim moved > 1e-6.
+- qdldl regularized at -1e-10 (refined against K): SuperLU's answers on bench faces at 3,000, but
+  fails the engine's 3,000 face and does not finish 30,000 normal in 15 min: not adopted.
 
 ## Remains
-- Queue results at 30,000 (engine qdldl, merged engine, fair variants, other scenarios).
+- `queue2.txt` (log `logs/queue2.log`): qdldl x1.45 and damaged, highspy normal, fair x1.7 at 1e-7.
 - Last message: the summary (400 words) and the FINDINGS.md text.
