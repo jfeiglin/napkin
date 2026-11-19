@@ -4,6 +4,11 @@ A `Unit` is the dimensions of a value, its scale in execution units and its kind
 a text, or the plain zero, which has every unit of a number). A `UnitRegistry` holds the units that a
 model declares and composes the others from them.
 
+A quantity converts to execution units once and exactly (`normalize`): its number is the decimal that
+writes it (`rational`: `0.1` is 1/10, not the binary float nearest to it) and its scale the exact
+rational of its unit, and only the product is rounded to a float. So equal quantities are one number
+however they are spelled: `0.1 day`, `144 min` and `2.4 h` are each the float nearest to 12/5 hours.
+
 `unit_of` gives the unit of an expression of typed nodes, by the rule for units that the contract of
 each operation names (`ops.UNIT_RULES`): the function of each rule is in `RULES`, and the handler of an
 operation is the function of its rule. So an operation with a rule that has no function here is an
@@ -18,6 +23,7 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from fractions import Fraction
 from types import MappingProxyType
 
 from . import expr, ops
@@ -60,6 +66,18 @@ class Unit:
         )
 
 
+def rational(number):
+    """The exact rational of a number as a text writes it: an int or a Fraction is itself, and a float
+    is the shortest decimal that writes it (its `repr`, which a model's text, a JSON file and a
+    program's canonical text hold: `0.1` is 1/10). A float made by arithmetic reads as the decimal of
+    its own `repr`, within half a unit of its last place of the binary value."""
+    if isinstance(number, Fraction):
+        return number
+    if isinstance(number, int):
+        return Fraction(number)
+    return Fraction(float.__repr__(float(number)))
+
+
 NUMBER = Unit()
 BOOLEAN = Unit(kind='boolean')
 STRING = Unit(kind='string')
@@ -83,15 +101,16 @@ class UnitRegistry:
     composition: of the whole name, of a product of its parts and of the first parts of a quotient."""
 
     def __init__(self, definitions: Mapping):
-        self._units = {}
+        self._units, self._exact = {}, {}
         for name, spec in definitions.items():
             dimensions = spec.get('dimensions', spec.get('dimension'))
             if not isinstance(dimensions, Mapping):
                 raise ExpressionError(f'Unit {name!r} requires a dimensions mapping')
+            # A scale is a number of a units file, or the exact Fraction of a program's unit.
             scale = spec.get('scale', 1)
             if (
                 isinstance(scale, bool)
-                or not isinstance(scale, (int, float))
+                or not isinstance(scale, (int, float, Fraction))
                 or not math.isfinite(scale)
                 or scale <= 0
             ):
@@ -105,6 +124,7 @@ class UnitRegistry:
                 ):
                     raise ExpressionError(f'Invalid dimension in unit {name!r}')
             self._units[name] = Unit(tuple(sorted((k, v) for k, v in dimensions.items() if v)), float(scale))
+            self._exact[name] = rational(scale)
         self._units = MappingProxyType(self._units)
 
     @property
@@ -158,6 +178,18 @@ class UnitRegistry:
                 below = below.multiply(term)
         return above.multiply(below, divide=True)
 
+    def exact_scale(self, name):
+        """The exact scale of a unit, a Fraction: a declared unit's own, and a composed unit's the
+        product of its factors' scales to their powers. Raises ExpressionError for a name that is no
+        unit."""
+        found = self._exact.get(name) if isinstance(name, str) else None
+        if found is not None:
+            return found
+        scale = Fraction(1)
+        for part, power in self.factors(name):
+            scale *= self._exact[part] ** power
+        return scale
+
     def __contains__(self, name):
         """Whether `name` is a unit: declared, or composed of declared units."""
         try:
@@ -187,11 +219,17 @@ class UnitRegistry:
         return self.parse_unit(name)
 
     def normalize(self, value, name):
+        """A number in the unit `name` in execution units: the decimal that writes it times the unit's
+        exact scale, rounded once (see the module), so that `0.1 day` and `2.4 h` are one float."""
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
             raise ExpressionError(f'Expected a finite quantity in {name}')
-        result = value * self.parse_unit(name).scale
-        if not math.isfinite(result):
-            raise ExpressionError('Unit conversion overflow')
+        scale = self.exact_scale(name)
+        if scale == 1 or value == 0:
+            return float(value)  # a zero keeps its sign, as a product with a positive scale does
+        try:
+            result = float(rational(value) * scale)
+        except OverflowError:
+            raise ExpressionError('Unit conversion overflow') from None
         return result
 
 

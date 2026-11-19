@@ -18,8 +18,11 @@ the run at a breakpoint and edits it (`checkpoint.py`).
   the linear programs of one fair-sharing step, the Newton steps of each distance stage, and the
   iterations of its exact fallback. A step that cannot finish within its budget stops the run with
   a diagnostic that names it.
-- **The request** says until when and what to record. It is not part of what a run computes, so the
-  key of a stored run leaves it out (`canonical.configuration_bytes`, R-A4a-08).
+- **The request** says until when and what to record, within a budget of pieces (R-A4a-07): the
+  values that the record holds have at most that many pieces, and a record that would hold more ends
+  at the last time at which they fit, with a failure that names the budget (`record.Record.within`).
+  It is not part of what a run computes, so the key of a stored run leaves it out
+  (`canonical.configuration_bytes`, R-A4a-08).
 """
 
 from __future__ import annotations
@@ -110,7 +113,8 @@ class Numerics:
 @dataclass(frozen=True)
 class Request:
     """What to record: the horizon (h, an inclusive cutoff), and every value or only `keys`, within a
-    budget of pieces (R-A4a-07)."""
+    budget of pieces (R-A4a-07): the most pieces that the values of the record may have, which the
+    record enforces (see the module)."""
 
     horizon: Number
     everything: bool = True
@@ -120,6 +124,8 @@ class Request:
     def __post_init__(self):
         if isinstance(self.horizon, bool) or not isinstance(self.horizon, Number) or self.horizon < 0:
             raise ConfigurationError(f'the horizon must be a number of hours, not {self.horizon!r}')
+        if isinstance(self.pieces, bool) or not isinstance(self.pieces, int) or self.pieces < 1:
+            raise ConfigurationError(f'the budget of pieces must be a whole number from 1, not {self.pieces!r}')
 
 
 @dataclass(frozen=True)

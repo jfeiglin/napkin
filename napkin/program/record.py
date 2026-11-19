@@ -36,10 +36,23 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   the `pause` entry that ends its trace, says when (`Record.stop`). A value at a later time is
   `Unavailable` with the reason, on every path that reads one (`Record.value`, and the engine's
   reader), and never the value that the record held at the stop.
+- **What a record holds** (`Record.unavailable`, the one rule that every reader follows): the values
+  that its manifest names (every value, or the keys of its request), from 0 h to its end. A store's
+  ledger `external` (`tank.water.external`, what edits brought into it from outside) belongs to the
+  books of the store: a record that holds the store holds its ledger too, and a request may name the
+  ledger alone. A record may keep the histories of other values, which a formula that it holds reads
+  (the engine's reader evaluates the formula from them); it holds them for that, not for a read of
+  their own. A value that the record does not hold is `Unavailable` with the reason, never a default.
+- **The budget** (`Record.within`, R-A4a-07): the values that a record holds have at most the
+  request's number of pieces. A record that would hold more ends at the last time at which its pieces
+  fit, with a failure entry that names the budget (the detail `budget`): every later value is
+  `Unavailable` with that reason. Only the pieces of the values that the record holds count, so a
+  record of a request cut from a wider record has the same end as a fresh run of that request.
 """
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from dataclasses import dataclass
 from typing import Any
 
@@ -70,6 +83,18 @@ class Key:
 
     owner: str
     steps: tuple[str, ...]
+
+    def __str__(self):
+        """The path of the value, as a caller writes it (`tank.water`, `tank.receive#0.level`)."""
+        return '.'.join((self.owner, *self.steps) if self.owner else self.steps)
+
+    @property
+    def store(self):
+        """The key of the store whose ledger this key names (`tank.water` of `tank.water.external`),
+        or None for a key that names no ledger."""
+        if len(self.steps) >= 2 and self.steps[-1] == 'external':
+            return Key(self.owner, self.steps[:-1])
+        return None
 
 
 @dataclass(frozen=True)
@@ -168,9 +193,14 @@ class Manifest:
     everything: bool = True
     keys: tuple[Key, ...] = ()
 
+    def names(self, key):
+        """Whether a record with this manifest holds the value of a key: every value, or a key of its
+        request; the ledger of a store with the store (its books)."""
+        return self.everything or key in self.keys or (key.store is not None and key.store in self.keys)
+
     def holds(self, key, time):
-        """Whether the record can serve a read of a value at a time."""
-        return time <= self.horizon and (self.everything or key in self.keys)
+        """Whether the record can serve a read of a value at a time, from 0 h to the horizon."""
+        return 0 <= time <= self.horizon and self.names(key)
 
 
 @dataclass(frozen=True)
@@ -183,8 +213,9 @@ class Record:
     failure: Entry | None = None
 
     def history(self, key):
-        """The history of a value, or KeyError. The index by key is made on the first read and kept
-        beside the record, which cannot change."""
+        """The history that the record keeps of a value, or KeyError: what a reader evaluates a held
+        value from (a held value is read with `value`). The index by key is made on the first read and
+        kept beside the record, which cannot change."""
         index = self.__dict__.get('_index')
         if index is None:
             index = {history.key: history for history in reversed(self.histories)}
@@ -212,6 +243,8 @@ class Record:
         stop = self.stop
         if stop is None:
             return None
+        if stop.kind == 'failure' and stop.detail('budget') is not None:
+            return f'the record stops at {float(stop.t):g} h: {stop.detail("message")}'
         if stop.kind == 'failure':
             return f'the run failed at {float(stop.t):g} h: {stop.detail("message") or "the run failed"}'
         return (
@@ -226,10 +259,71 @@ class Record:
             return None
         return Unavailable(f'{self.stopped()}: the record holds no value at {float(time):g} h')
 
+    def unavailable(self, key, time):
+        """Why the record holds no value of a key at a time (see the module): a time before the run
+        or after its horizon, a time after its stop, a value that its manifest does not name; None
+        when it holds one. Every reader asks this first."""
+        time = float(time)
+        if time < 0:
+            return f'the record holds no value at {time:g} h: the run starts at 0 h'
+        if time > self.manifest.horizon:
+            return f'the record holds no value at {time:g} h: it reaches to its horizon, {float(self.manifest.horizon):g} h'
+        later = self.after(time)
+        if later is not None:
+            return later.reason
+        if not self.manifest.names(key):
+            return f'the record holds no value of {key}: the request of its run names other values'
+        return None
+
     def value(self, key, time):
-        """The value of a key at a time; after the end of a record that stopped early, `Unavailable`
-        with the reason."""
-        return self.after(time) or self.history(key).at(time)
+        """The value of a key at a time from what the record holds, or `Unavailable` with the reason
+        (`unavailable`; a value that did not exist yet; a value whose history the record does not
+        keep)."""
+        reason = self.unavailable(key, time)
+        if reason is not None:
+            return Unavailable(reason)
+        try:
+            return self.history(key).at(time)
+        except KeyError:
+            stopped = self.stopped()
+            return Unavailable(f'the record keeps no history of {key}' + (f': {stopped}' if stopped else ''))
+        except LookupError as problem:
+            return Unavailable(str(problem))
+
+    def within(self, pieces):
+        """The record within a budget of pieces (see the module): itself, when the values that it holds
+        have no more pieces; else the record to the last time at which they fit, which a failure entry
+        that names the budget ends (the histories and the trace to that time; none, when not even the
+        pieces at 0 h fit)."""
+        times = sorted(
+            float(piece.t)
+            for history in self.histories
+            if self.manifest.names(history.key)
+            for piece in history.pieces
+        )
+        if len(times) <= pieces:
+            return self
+        # The last time T at which the pieces at or before T are within the budget: before the time
+        # of the first piece that does not fit.
+        below = bisect_left(times, times[pieces]) if pieces > 0 else 0
+        end, empty = (times[below - 1], False) if below > 0 else (0.0, True)
+        histories = []
+        for history in self.histories:
+            kept = () if empty else tuple(piece for piece in history.pieces if piece.t <= end)
+            if kept:
+                histories.append(History(history.key, kept))
+        trace = tuple(entry for entry in self.trace if entry.t <= end)
+        unit = 'piece' if pieces == 1 else 'pieces'
+        message = f'the values that it holds would have more than its budget of {pieces} {unit} after it'
+        failure = Entry(
+            end,
+            trace[-1].round if trace else 0,
+            'failure',
+            '',
+            '',
+            (('message', message), ('budget', pieces)),
+        )
+        return Record(self.manifest, tuple(histories), (*trace, failure), failure)
 
     def entries(self, kind=None, part=None):
         """The entries of the trace of a kind, of a part, or both."""

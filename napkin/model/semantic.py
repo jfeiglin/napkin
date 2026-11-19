@@ -151,6 +151,7 @@ from fractions import Fraction
 from functools import cached_property
 
 from ..core.expr import DEEPEST
+from ..core.units import rational
 from .language import nodes as n
 from .language import tables
 from .language.format import expression as written_as
@@ -163,14 +164,15 @@ from .language.problems import LanguageError, Problem, SyntaxProblem
 class Units:
     """The units of a model: a spelling and its dimension (base dimensions with their powers) or a
     pair of the dimension and its scale, as `napkin.program.build.Builder` takes them. A spelling with
-    `*` and `/` is composed from the left (D12)."""
+    `*` and `/` is composed from the left (D12). Each scale is exact (`rational`: a float scale is the
+    decimal that writes it, so 0.01 is 1/100)."""
 
     def __init__(self, table):
         self.table = dict(table)
         self.base = {}
         for name, spec in self.table.items():
             dimension, scale = spec if isinstance(spec, tuple) else (spec, 1)
-            self.base[name] = (tuple(sorted((k, v) for k, v in dimension.items() if v)), Fraction(scale))
+            self.base[name] = (tuple(sorted((k, v) for k, v in dimension.items() if v)), rational(scale))
 
     def has(self, name):
         return name in self.base
@@ -418,10 +420,15 @@ class SolverOf:
 
 
 def compatible(a, b):
+    """Whether a value of type `a` stands where `b` is expected: numbers of one dimension, whatever
+    the units that spell them, and distributions and projections of such numbers; any other type is
+    itself (a collection of members is one of their template, whatever its key)."""
     if isinstance(a, Num) and isinstance(b, Num):
         return a.dimension == b.dimension
+    if isinstance(a, Dist) and isinstance(b, Dist):
+        return compatible(a.of, b.of)
     if isinstance(a, Many) and isinstance(b, Many):
-        return a.of == b.of
+        return compatible(a.of, b.of)
     return a == b
 
 

@@ -5,6 +5,7 @@ it is reached). It shares no code with the code that the package writes for a no
 
 import math
 import operator
+from fractions import Fraction
 
 from napkin import expressions
 from napkin.core import expr
@@ -12,8 +13,9 @@ from tests.units import library
 
 DEFINITIONS = library()['units']
 UNITS = expressions.UnitSystem(DEFINITIONS)
-# The scale of a unit is a float, so a quantity is a float whatever its number is.
-SCALES = {name: float(DEFINITIONS[name]['scale']) for name in ('h', 'days')}
+# The scale of a unit, exactly: a quantity is the decimal that writes its number times this, rounded
+# once to a float (`0.1 days` is the float nearest to 12/5 h), whatever its number is.
+SCALES = {name: Fraction(str(DEFINITIONS[name]['scale'])) for name in ('h', 'days')}
 FAILURES = (ArithmeticError, ValueError, TypeError, KeyError)
 ARITHMETIC = {'add': operator.add, 'sub': operator.sub, 'mul': operator.mul, 'div': operator.truediv}
 ORDER = {
@@ -103,7 +105,9 @@ def walked(node, env):
         number, unit = args
         if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number):
             raise ValueError('no number')
-        return real(number * SCALES[unit])
+        if number == 0:
+            return float(number)  # its sign stays, as in a product with a positive scale
+        return real(float(Fraction(repr(float(number))) * SCALES[unit]))
     if name == 'clip':
         value, low, high = args
         if low > high:
