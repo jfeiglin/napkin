@@ -49,7 +49,7 @@ from .collections import index_of, kept, looked_up, node_of, reduced
 from .component import Component, NetFlow, Network
 from .family import Family
 from .plan import LOOKUP, RATE, REDUCE, STARTS, STATE, Outside
-from .record import Recorder
+from .record import Recorder, remember
 
 
 def drawn(distribution, units, mode, seed, key):
@@ -67,6 +67,23 @@ def drawn(distribution, units, mode, seed, key):
     u = 0.5 if mode == MEDIAN else float(sampling._open(sampling.stream(seed, key), 1)[0])
     with np.errstate(divide='ignore'):
         return float(quantile(family.name, args, u))
+
+
+def _literal(node, units):
+    """The value of a constant or of a quantity `q(number, unit)` (a table's cell, a bound, what a
+    configuration gives), as `evaluate` has it, or None for any other node."""
+    if isinstance(node, nodes.Const) and isinstance(node.value, (bool, int, float)):
+        return node.value
+    if (
+        isinstance(node, nodes.Call)
+        and node.function == 'q'
+        and len(node.args) == 2
+        and all(isinstance(arg, nodes.Const) for arg in node.args)
+        and isinstance(node.args[0].value, (int, float))
+        and not isinstance(node.args[0].value, bool)
+    ):
+        return units.normalize(node.args[0].value, node.args[1].value)
+    return None
 
 
 @dataclass(frozen=True)
@@ -95,6 +112,7 @@ class Run:
         self.settings = run_settings(plan.numerics, self.cap)
         self.recorder = Recorder(plan, {}, {})
         self.recorder.run = self
+        remember(plan)
         self.now = 0.0  # the time that the run has reached, for a failure
         self.env = {'t': 0.0}  # the values at the start, by engine name
         self._kept, self._stepped, self._indexes = {}, {}, {}
@@ -152,17 +170,9 @@ class Run:
             self.recorder.entry(0.0, 'draw', found.site, found.member, value=value)
             return value
         kind = plan.values[name].kind
-        node = plan.values[name].node
-        if isinstance(node, nodes.Const) and isinstance(node.value, (bool, int, float)):
-            return node.value  # a table's cell, or what a configuration gives
-        if (
-            isinstance(node, nodes.Call)
-            and node.function == 'q'
-            and all(isinstance(arg, nodes.Const) for arg in node.args)
-            and isinstance(node.args[0].value, (int, float))
-            and not isinstance(node.args[0].value, bool)
-        ):
-            return plan.units.normalize(node.args[0].value, node.args[1].value)
+        found = _literal(plan.values[name].node, plan.units)
+        if found is not None:
+            return found
         if kind == REDUCE:
             return reduced(plan.reductions[name], env.__getitem__, plan.units, self.kept_of(name))
         if kind == LOOKUP:
@@ -175,6 +185,11 @@ class Run:
         env = self.env
         if name in env:
             return env[name]
+        value = self.plan.values.get(name)
+        found = _literal(value.node, self.plan.units) if value is not None else None
+        if found is not None:
+            env[name] = found  # a table's cell, a constant: it reads nothing
+            return found
         stack, expanded = [name], set()
         while stack:
             top = stack[-1]
@@ -226,6 +241,9 @@ class Run:
         def number(node):
             if node is None:
                 return None
+            found = _literal(node, plan.units)
+            if found is not None:
+                return float(found)
             for read in sorted(set(nodes.names(node)) - {'t'}):
                 self.value_of(read)
             return float(evaluate(node, self.env, plan.units))

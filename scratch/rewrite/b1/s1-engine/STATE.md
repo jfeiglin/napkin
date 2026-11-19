@@ -1,43 +1,49 @@
-# S1-E state: the engine, second slice (templates, tables, collections) — IN PROGRESS
+# S1-E state: the engine, second slice (templates, tables, collections) — DONE
 
 Brief: `briefs/s1.md` (S1-E), with `COMMON-B.md` and `s0-engine.md`.
 
-## Design (decided, built)
-- Kept S0's per-value plan (engine names `member.field`). New: `timeline/pools.py` (a pool per
-  template: ids, link columns, reverse CSR `Pool.back(link)`, `Keys` sorted index for `.at`),
-  `timeline/collections.py` (Entries/Reduction/Keyed, evaluator `reduced`/`looked_up`, `node_of`
-  for a component, exact `history_of`), `timeline/family.py` (`Family`: every set of one flow whose
-  rate reads nothing that moves, on arrays, exact lines; `Columns`: a formula shared by a
-  template's members evaluated once over the rows with `core.arrays.values`).
-- Plan kinds LINK (text: the linked member's id, recorded), REDUCE, LOOKUP (no record key; the
-  recorder keeps their histories internally; `read` evaluates them from recorded values; the
-  reader caches one plan per program). Value has `shape`/`binding` for column evaluation.
-- Entity read in an expression -> text const of the member id. Where tests per entry, constants
-  folded at plan time; `T.instances.where(item.link == this)` uses the reverse index. Membership
-  fixed for the run (found at start, `Run.kept_of`). A reduction/keyed read that reads no `this` is
-  one shared value (name `|spelling`), else `member|spelling`.
-- `.at(t)` stepped: `Run.stepped_of` (key times); the run is cut into windows at the key times of
-  the stepped reads that sets read: family first (row events), then components; at each key time
-  the component's store `S` entry is set, the family refreshes. `.at(x)` with x fixed -> fixed;
-  other x, or a lookup of a moving value -> Outside (S4).
-- Flow between stores of members of two templates -> Outside (S2). Assertions over inputs checked
-  once at start (failure at 0); over state -> Outside (S4). Literal naming a member twice -> setup
-  failure at 0 (`plan.failures`). Start is iterative (3,000-row link chain test).
-- Recorder: formula over held reads -> one piece per interval (no fit); bare-ref formula copies.
-- test_cumulative_integration dense fixture: the two single-flow accounts now read pending * 0,
-  to stay in the component (a single-flow set with held rate runs on arrays).
-- test_record: the link refusal case replaced by an assertion over state (S4).
+## Design (built)
+- S0's per-value plan kept (engine names `member.field`). New modules: `timeline/pools.py` (pool
+  per template: ids, link columns, reverse CSR `Pool.back(link)`, `Keys` sorted index for `.at`),
+  `timeline/collections.py` (Entries/Reduction/Keyed; `reduced`, `looked_up`; `node_of` for a
+  component; exact `history_of`: sums of lines by two pairwise trees, count/any/all/min/max of
+  held values), `timeline/family.py` (`Family`: every set of one flow whose rate reads nothing
+  that moves, on arrays, exact lines, at any size; `Columns`: a formula shared by a template's
+  members evaluated once over the rows with `core.arrays.values`). `trees.Pairwise` has min/max.
+- Plan kinds LINK (text id of the linked member, recorded), REDUCE, LOOKUP (no record key; the
+  recorder keeps their histories internally; `read` evaluates them from recorded values).
+  `Value.shape/binding` for column evaluation. `Expanded` (leaves, formulas, stepped, time).
+- Entity read in an expression -> text const of its id. Where tests per entry, constants folded
+  at plan time; `T.instances.where(item.link == this)` by the reverse index. Membership fixed for
+  the run (`Run.kept_of`). A derived value that reads no `this` is shared (`|spelling`).
+- `.at(t)`: `Run.stepped_of`; the run is cut at the key times read by rates: family first, then
+  components; a component reads the value from its store `S`, set at each key time. `.at(x)`, x
+  fixed -> fixed. Other x, or `.at` of a moving value -> Outside (S4).
+- Refused: a flow between stores of members of two templates (S2); an assertion over state (S4).
+  Assertions over inputs: checked at the start, failure at 0. A literal naming a member twice:
+  setup failure at 0 (`plan.failures`). Start is iterative (no recursion limit).
+- Recorder: a formula over held reads is one piece per interval; a bare-ref formula copies; the
+  family's request/capacity formulas come from the run; a narrow request computes only what it
+  needs. The reader reuses the last run's plan (`record.remember`), indexes histories by key.
 
 ## Done
-- Engine as above; tests/engine/test_collections.py (15); test_programs SUBSET + keyed_lookup,
-  oracle comparison accepts Unavailable where the oracle raises below the first key.
-- Exit set (tests/engine live, core, program, reference, commands): 1,624 passed.
+- Tests: `test_collections.py` (15, new); `test_programs.py` SUBSET + keyed_lookup (oracle may
+  raise below the first key: engine reads Unavailable). Ported (replace in place, take off
+  dormant.txt): `test_timeline_bounds.py` (2; the Plan.flat test deleted), 
+  `test_timeline_long_steps.py` (5; events removed: the fade stops by a switch of its rate, the
+  drain is held at its bound, the negative rate fails the run, the hump is one matrix-exponential
+  segment). Mended: `test_record.py` (link case -> assertion over state, S4),
+  `test_cumulative_integration.py` (dense fixture's single-flow accounts read pending * 0).
+- Exit set (tests/engine live, core, program, reference, commands): 1,624 passed; ports 7 passed.
+- Benchmark `b1/s1-engine/bench.py 30000`: build 1.4 s, plan 4.7 s, run+record 7.2 s (210,012
+  histories, 588,009 pieces), read 4 paths x 3 times 0.55 s; record of 2 values: 9.2 s.
 
-## Contract notes (for the last message)
-- check.Resolver: a path that ends on a collection value (`count(this.pumps)`) is refused
-  ("no collection"); `this.pumps.x` works.
+## For the main session (contract notes)
+- check.Resolver: `count(this.pumps)` (a path ending on a collection value) is refused.
+- `Record.history` is a linear scan (slow at 200k histories); an index would help.
+- build: a field named `start`/`draw`/`where`/`by`/`at`/`choose` cannot be read by a handle.
 
-## Next
-1. Port test_timeline_bounds.py, test_timeline_long_steps.py (parts without events).
-2. Benchmark 30,000 rows (scratch script), and speed of the plan at scale if needed.
-3. Lint/format; final message.
+## Not done
+- Per-row formulas other than a family's request/capacity are fitted row by row (slow at scale).
+- A failure inside one long numerical segment is timed at the segment's start (as in S0).
+- Setup reports for equal keys of `.at` and coverage at a lower bound (front end/setup).

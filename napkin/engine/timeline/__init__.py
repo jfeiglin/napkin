@@ -9,10 +9,16 @@ It reads a program (`napkin/program`) under a run configuration and gives the re
 - `read(record, program, paths, times)`: the values of named paths at chosen times, each in its
   declared unit (`record.py`).
 
-What it runs in this slice: inputs (set by the configuration or by their defaults, which a draw can
-give), stored numbers and yes/no values with their bounds, formulas, and directed flows between
-stores, from `SOURCE` or to `SINK`, each with a request and a capacity, captured once or live. Each
-connected set of stores and flows is one component of the continuous engine (`component.py`).
+What it runs so far: inputs (set by the configuration or by their defaults, which a draw can give),
+stored numbers and yes/no values with their bounds, formulas, and directed flows between stores,
+from `SOURCE` or to `SINK`, each with a request and a capacity, captured once or live (S0);
+templates with members written by hand and table rows, links and paths through them, collections
+(`Template.instances`, literals, `where` on fixed fields, `by`), projections, the six reductions,
+keyed reads `.at(x)` with their key times, assertions over inputs, and starting values in the order
+of what they read across members (S1). The members of each template are rows of a pool
+(`pools.py`); collections and reductions are in `collections.py`. A connected set of one flow whose
+rate reads nothing that moves runs with every other such set on arrays (`family.py`); any other
+connected set is one component of the continuous engine (`component.py`).
 """
 
 from __future__ import annotations

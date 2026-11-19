@@ -217,20 +217,22 @@ def history_of(reduction, entries, histories, end):
         # the rates, so the sum at a time reads the present lines only.
         intercepts, rates = Pairwise(np.zeros(count)), Pairwise(np.zeros(count))
 
-        def line(k, t, value, rate):
-            intercepts.set(k, value - rate * t)
-            rates.set(k, rate)
+        def lines(members, t, values, slopes):
+            values, slopes = np.asarray(values, dtype=float), np.asarray(slopes, dtype=float)
+            intercepts.set_many(members, values - slopes * t)
+            rates.set_many(members, slopes)
 
-        return _walk(changes, count, line, lambda t: (intercepts.total + rates.total * t, rates.total))
+        return _walk(changes, count, lines, lambda t: (intercepts.total + rates.total * t, rates.total))
     if any(rate != 0 for _, _, rate in flat):
         return None  # a count, an any or an all of values that move, or a least value of lines
     if op in ('count', 'any', 'all'):
         state = np.zeros(count, dtype=bool)
         total = [0]
 
-        def flag(k, t, value, rate):
-            total[0] += int(bool(value)) - int(state[k])
-            state[k] = bool(value)
+        def flag(members, t, values, slopes):
+            for k, value in zip(members, values):
+                total[0] += int(bool(value)) - int(state[k])
+                state[k] = bool(value)
 
         report = {
             'count': lambda t: (total[0], 0.0),
@@ -240,21 +242,27 @@ def history_of(reduction, entries, histories, end):
         return _walk(changes, count, flag, report)
     tree = Pairwise(np.full(count, math.inf if op == 'min' else -math.inf), op)
     return _walk(
-        changes, count, lambda k, t, value, rate: tree.set(k, float(value)), lambda t: (tree.total, 0.0)
+        changes,
+        count,
+        lambda members, t, values, slopes: tree.set_many(members, values),
+        lambda t: (tree.total, 0.0),
     )
 
 
 def _walk(changes, count, change, report):
     """The pieces of a reduction of `count` members: at each time at which a member has a piece,
-    each change at that time, then the reduction there, once every member has a value."""
+    the changes at that time (`change(members, t, values, rates)`; of a member with two pieces at
+    one time, the later), then the reduction there, once every member has a value."""
     pieces, seen, k = [], set(), 0
     while k < len(changes):
-        t = changes[k][0]
+        t, at = changes[k][0], {}
         while k < len(changes) and changes[k][0] == t:
             _, member, value, rate = changes[k]
-            change(member, t, value, rate)
-            seen.add(member)
+            at[member] = (value, rate)
             k += 1
+        members = list(at)
+        change(members, t, [at[member][0] for member in members], [at[member][1] for member in members])
+        seen.update(members)
         if len(seen) == count:
             pieces.append((t, *report(t)))
     return pieces

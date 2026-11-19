@@ -50,9 +50,7 @@ tests/engine/test_runtime.py
 tests/engine/test_settled_decisions.py
 tests/engine/test_switch_at_segment_start.py
 tests/engine/test_timeline.py
-tests/engine/test_timeline_bounds.py
 tests/engine/test_timeline_derivatives.py
-tests/engine/test_timeline_long_steps.py
 tests/engine/test_timeline_outcomes.py
 tests/engine/test_timeline_play.py
 tests/engine/test_timeline_reports.py

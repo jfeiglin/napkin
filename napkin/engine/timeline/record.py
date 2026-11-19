@@ -118,6 +118,8 @@ def fitted(values, start, end, tolerance):
 
 def _compact(pieces):
     """The pieces with each that continues the line of the one before it left out."""
+    if len(pieces) < 2:
+        return pieces
     kept = []
     for t, value, rate in pieces:
         if kept and not isinstance(rate, Curve) and not isinstance(value, (bool, str, Unavailable)):
@@ -213,8 +215,12 @@ class Recorder:
         """The record of the run, to the time `end` at which it stopped (the horizon, or the time of
         its failure)."""
         plan = self.plan
+        request = plan.configuration.request
+        needed = None if request.everything else self._needed(request.keys)
         histories = {}
         for name, value in plan.values.items():
+            if needed is not None and name not in needed:
+                continue
             if value.kind == RATE or name in plan.moving:
                 pieces = [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
                 if not pieces and name in self.constants:
@@ -226,8 +232,13 @@ class Recorder:
                 pieces = [(0.0, self.constants[name], 0.0)] if name in self.constants else []
             histories[name] = self._history(value.key, pieces)
         for name in plan.keyed:
-            histories[name] = self._history(None, self._keyed(name, end))
-        calculated = {name for name, value in plan.values.items() if value.kind in (FORMULA, REDUCE)}
+            if needed is None or name in needed:
+                histories[name] = self._history(None, self._keyed(name, end))
+        calculated = {
+            name
+            for name, value in plan.values.items()
+            if value.kind in (FORMULA, REDUCE) and (needed is None or name in needed)
+        }
         for name in plan.ordered(calculated):
             value = plan.values[name]
             if name in self.formulas:
@@ -241,7 +252,6 @@ class Recorder:
             else:
                 pieces = self.formula(name, histories, end)
             histories[name] = self._history(value.key, pieces)
-        request = plan.configuration.request
         # What a kept formula reads is kept too, so that `read` can evaluate it.
         keys = set(request.keys)
         for value in plan.values.values():
@@ -256,10 +266,25 @@ class Recorder:
         trace = tuple(self.trace) + ((failure,) if failure is not None else ())
         return Record(manifest, tuple(kept), trace, failure)
 
+    def _needed(self, keys):
+        """The engine names whose histories a record of only these keys needs: theirs, and what
+        their formulas and reductions read."""
+        plan, found = self.plan, set()
+        for key in keys:
+            name = name_of(key)
+            if name in plan.values:
+                found.add(name)
+                if plan.values[name].kind in (FORMULA, REDUCE):
+                    reads = plan.expanded(name)
+                    found |= reads.leaves | reads.formulas | reads.stepped
+        return found
+
     @staticmethod
     def _history(key, pieces):
         """The history of a value from its pieces (t, value, rate), a `Curve` in place of the rate of
         a curved piece."""
+        if len(pieces) == 1 and not isinstance(pieces[0][2], Curve):
+            return History(key, (Piece(*pieces[0]),))
         return History(
             key,
             tuple(
@@ -471,17 +496,24 @@ def unit_of(program, key):
     return getattr(part.type, 'unit', '')
 
 
-# The plan that the reader made last, with its program: a program is read again and again.
+# The plan of the program that a reader or a run used last: a program is read again and again.
 _PLANS = {}
 
 
+def remember(plan):
+    """Keep the plan of a run for the reader: what a configuration sets changes no formula, no
+    reduction and no keyed read, so the plan of any run of a program serves every record of it."""
+    _PLANS.clear()
+    _PLANS[id(plan.program)] = (plan.program, plan)
+
+
 def _plan_of(program):
-    """The plan of a bare request on a program, which names each formula with its node: what a
-    configuration sets changes no formula, so this plan serves every run of the program."""
+    """A plan of a program, which names each formula with its node: the plan that a run of it
+    kept, else the plan of a bare request."""
     found = _PLANS.get(id(program))
     if found is None or found[0] is not program:
-        _PLANS.clear()
-        found = _PLANS[id(program)] = (program, Plan.of(program, Configuration(Request(0))))
+        remember(Plan.of(program, Configuration(Request(0))))
+        found = _PLANS[id(program)]
     return found[1]
 
 

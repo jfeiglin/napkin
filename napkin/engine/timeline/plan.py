@@ -185,13 +185,16 @@ class Expanded:
     stepped: frozenset = frozenset()
     time: bool = False
 
-    def __or__(self, other):
-        return Expanded(
-            self.leaves | other.leaves,
-            self.formulas | other.formulas,
-            self.stepped | other.stepped,
-            self.time or other.time,
-        )
+    @staticmethod
+    def union(parts):
+        """What all of several expansions read (one pass: no set is copied for each part)."""
+        leaves, formulas, stepped, time = set(), set(), set(), False
+        for part in parts:
+            leaves |= part.leaves
+            formulas |= part.formulas
+            stepped |= part.stepped
+            time = time or part.time
+        return Expanded(frozenset(leaves), frozenset(formulas), frozenset(stepped), time)
 
 
 def _renamed(node, names):
@@ -313,9 +316,7 @@ class Plan:
         """A keyed read of what moves, and an assertion over state, are refused (S4)."""
         moving = self.moving
         for keyed in self.keyed.values():
-            found = Expanded()
-            for read in keyed.reads():
-                found |= self.expanded(read)
+            found = Expanded.union(self.expanded(read) for read in keyed.reads())
             if (
                 found.time
                 or found.stepped
@@ -339,9 +340,7 @@ class Plan:
                 continue  # a draw, which only an input's initializer executes
             if value.kind != LOOKUP:
                 return False
-            inner = Expanded()
-            for read in self.keyed[leaf].reads():
-                inner |= self.expanded(read)
+            inner = Expanded.union(self.expanded(read) for read in self.keyed[leaf].reads())
             if not self._fixed(inner):
                 return False
         return True
@@ -818,12 +817,10 @@ class Plan:
         if not followed:
             return Expanded(leaves=frozenset({name}))
         self._expanded[name] = _VISITING
-        found = Expanded()
         if value.kind == FORMULA:
             found = self.expansion(value.node)
         else:
-            for read in self.reads(name):
-                found |= self.expanded(read)
+            found = Expanded.union(self.expanded(read) for read in self.reads(name))
         if value.kind == LOOKUP:
             found = Expanded(found.leaves, found.formulas, found.stepped | {name}, found.time)
         else:
@@ -833,10 +830,9 @@ class Plan:
 
     def expansion(self, node):
         """What a node reads through formulas and reductions (`Expanded`)."""
-        found = Expanded(time='t' in nodes.names(node))
-        for name in sorted(set(nodes.names(node)) - {'t'}):
-            found |= self.expanded(name)
-        return found
+        names = nodes.names(node)
+        parts = [self.expanded(name) for name in sorted(set(names) - {'t'})]
+        return Expanded.union([Expanded(time='t' in names), *parts])
 
     def formula_reads(self, node):
         """The names other than formulas and reductions that a node reads, through them (the keyed
@@ -894,9 +890,7 @@ class Plan:
                 sets[root(('store', name))][0].append(name)
         made = []
         for stores, flows in sets.values():
-            found = Expanded()
-            for flow in flows:
-                found |= reads[flow]
+            found = Expanded.union(reads[flow] for flow in flows)
             arrays = len(flows) == 1 and not found.time and not (found.leaves & moving)
             made.append(
                 Connected(

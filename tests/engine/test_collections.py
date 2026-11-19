@@ -10,6 +10,7 @@ on small tanks that drain at constant rates: a line until the tank is empty. Whe
 
 from __future__ import annotations
 
+import math
 from fractions import Fraction
 
 import pytest
@@ -411,3 +412,28 @@ def test_what_a_later_slice_brings_is_refused_by_name():
         )
         with pytest.raises(Outside, match='S4'):
             run(b.finish(), configured(1))
+
+
+def test_a_rate_that_reads_a_reduction_of_moving_stores_joins_them_in_one_component():
+    """Tanks a (6 L) and b (2 L) each drain at a tenth of their total an hour: the total S falls as
+    S' = -S / 5, so S = 8 exp(-t / 5), and each tank loses half of what the total lost:
+    a = 6 - (8 - S) / 2 and b = 2 - (8 - S) / 2, until b is empty at S = 4 L, t = 5 ln 2. After that
+    a alone drains at its total over 10 h: a = 4 exp(-(t - 5 ln 2) / 10)."""
+    b = Builder(UNITS)
+    tank = b.template(
+        'Tank',
+        value('water', 'L', 1, lower=0),
+        flow('out', this.water, SINK, request=formula(fsum(TANK.instances.water) / q(10, 'h'))),
+    )
+    b.member(tank, 'a', water=q(6, 'L'))
+    b.member(tank, 'b', water=q(2, 'L'))
+    program = b.finish()
+    record = run(program, configured(8))
+    assert record.failure is None
+    empty = 5 * math.log(2)
+    for time in (1.0, 3.0):
+        total = 8 * math.exp(-time / 5)
+        assert at(record, program, 'a.water', time) == pytest.approx([6 - (8 - total) / 2], rel=1e-8)
+        assert at(record, program, 'b.water', time) == pytest.approx([2 - (8 - total) / 2], rel=1e-8)
+    assert at(record, program, 'b.water', 4.0, 8) == pytest.approx([0, 0], abs=1e-8)
+    assert at(record, program, 'a.water', 7.5) == pytest.approx([4 * math.exp(-(7.5 - empty) / 10)], rel=1e-8)

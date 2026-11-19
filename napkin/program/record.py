@@ -153,11 +153,13 @@ class Record:
     failure: Entry | None = None
 
     def history(self, key):
-        """The history of a value, or KeyError."""
-        for history in self.histories:
-            if history.key == key:
-                return history
-        raise KeyError(key)
+        """The history of a value, or KeyError. The index by key is made on the first read and kept
+        beside the record, which cannot change."""
+        index = self.__dict__.get('_index')
+        if index is None:
+            index = {history.key: history for history in reversed(self.histories)}
+            object.__setattr__(self, '_index', index)
+        return index[key]
 
     def value(self, key, time):
         """The value of a key at a time."""
