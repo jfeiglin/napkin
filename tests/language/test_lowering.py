@@ -331,7 +331,7 @@ def test_a_construct_of_a_later_stage_is_refused_by_name(text, construct, slice_
         ('use pumps.common\n', 'use', 1),
         ('tank:\n    x = 2\nchange tank:\n    x = 3\n', 'change', 3),
         ('variant "Wet"\n    horizon 1 h\n', 'scenario', 1),
-        # A value is set where it is declared, by a member's own line or by a change.
+        # A value has one initializer; a setting of a part is written under it or by its full path.
         ('tank:\n    x = 1\ntank.x = 3\n', 'property', 3),
         ('tank:\n    x = 1\n    flow out: this.x -> SINK\n    out.request = 1/h\n', 'property', 4),
     ],

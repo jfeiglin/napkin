@@ -101,7 +101,12 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   that it declares a new initializer, of its kind and type, as a member's own value is (`own`): an
   entity's or a template's declaration takes it, and a member's own line gives way to it; two
   changes of one value are an error (R-A5-03), and its text, `title`, `role` and records replace
-  those of what it names. A value set by its path is no form of the language (`property`).
+  those of what it names.
+- **The setup scope's initializers** (`wired`): `clinic.delivery.request = 3 L/h` at the top level is
+  the initializer under its declaration, and the tree is read with it there: a value or a setting
+  of an entity written once, of a leg or of an endpoint, or a member's own value. A path has one
+  initializer (`property`, naming both lines); a readonly value takes it, since readonly bars an
+  assignment and not an initializer.
 - **Options and runs** (`DeclaredOption`, `DeclaredRun`): a setting names an input by its full path
   (R-A5-04) and gives it a constant of its type, in the input's unit and range (D2, `constant`); a
   number or a yes/no that an option or a change sets cites its record (R-A5-05, `recorded`). An
@@ -1158,9 +1163,10 @@ class Resolver:
     `read_table` (see `tables.in_folder`)."""
 
     def __init__(self, tree, units, read_table, files=()):
-        self.tree, self.units, self.read_table = tree, units, read_table
+        self.units, self.read_table = units, read_table
         self.files = Files(tuple(files))
         self.problems, self.deferred = [], []
+        self.tree = tree = self.wired(tree)
         # The changes of the model: each line by the path of the value that it sets
         # (`pool.start_water`, `a1.ask`), with the name that its change names; the changes of labels
         # by that name.
@@ -2133,7 +2139,9 @@ class Resolver:
         value_type = init.type if declared is None else declared
         if declared is not None and not compatible(init.type, declared):
             code = 'unit' if isinstance(declared, Num) and isinstance(init.type, Num) else 'type'
-            self.fail(code, f'{node.name} is declared {declared}, and its initializer is {init.type}', node)
+            self.fail(
+                code, f'{node.name} is declared {declared}, and its initializer is {init.type}', node.value
+            )
         if isinstance(init, Retain) and isinstance(init.type, (Ent, Many)):
             self.fail(
                 'formula', 'a formula gives a number, a yes/no or a text, not a member or a collection', node
@@ -3695,7 +3703,7 @@ class Resolver:
                 self.report(refused.code, refused.message, refused.line or node.line, refused.column)
             return None
         if isinstance(node, n.Property):
-            self.report('property', PROPERTY_PATH.format('.'.join(node.path)), node.line)
+            self.report('property', PROPERTY_IN_ENTITY.format('.'.join(node.path)), node.line)
             return None
         return Deferred(path, 'a status display', 'C', node.line)
 
@@ -3745,8 +3753,6 @@ class Resolver:
                 run_lines.extend(item.runs)
             elif isinstance(item, n.Use):
                 self.report('use', USE_ALONE, item.line)
-            elif isinstance(item, n.Property):
-                self.report('property', PROPERTY_PATH.format('.'.join(item.path)), item.line)
             elif isinstance(item, n.Table):
                 declared, rows = self.table(item)
                 if declared is not None:
@@ -3797,6 +3803,133 @@ class Resolver:
             runs=runs,
             files=self.files.files,
         )
+
+    # ---- the setup scope's initializers ------------------------------------------------------------
+
+    def wired(self, tree):
+        """The tree with each initializer of the setup scope in its place: `clinic.delivery.request =
+        3 L/h` at the top level is the same initializer as `request = 3 L/h` under the flow (spec,
+        "Flows and algebraic solvers"), so it becomes that line, and so do a value of an entity
+        written once (`tank.water = 8 L`), a setting of a store's endpoint (`tank.water.outflow.capacity
+        = 10 L/h`), a property of a leg (`site.restore.labor.request = 4 L/h`) and a member's own value
+        (`a1.ask = 2 L/h`). It then stands where that initializer stands in the order of R-A5-03, so a
+        `change`, an option and an edit still win over it. A path is initialized once: a second
+        initializer, by the declaration, a member's own line or another setup line, is an error that
+        names both lines. A template's parts, a row's cells and the parts of events and solvers are
+        initialized where they are written."""
+        items = [item for item in tree.items if not isinstance(item, n.Property)]
+        place = {
+            item.name: k
+            for k, item in enumerate(items)
+            if isinstance(item, (n.Entity, n.Declaration, n.Table)) and getattr(item, 'name', None)
+        }
+        first = {}  # the line of the setup initializer of each path, for a second one
+        for item in tree.items:
+            if not isinstance(item, n.Property):
+                continue
+            path = '.'.join(item.path)
+            k = place.get(item.path[0]) if len(item.path) > 1 else None
+            try:
+                found = self.wire(None if k is None else items[k], item, first.get(path))
+            except Refused as refused:
+                self.report(refused.code, refused.message, refused.line or item.line, refused.column)
+                continue
+            # The entity or the member takes the initializer in its own place in the tree.
+            items[k] = found
+            first[path] = item.line
+        return replace(tree, items=tuple(items))
+
+    def wire(self, head, item, earlier):
+        """The entity or the member `head` with the initializer of the setup line `item` under the
+        declaration that its path names; `earlier` is the line of an earlier setup line of that path."""
+        path = '.'.join(item.path)
+        if isinstance(head, n.Table) or (isinstance(head, n.Entity) and not head.name[:1].islower()):
+            what = (
+                'a row of a table, whose values are its cells' if isinstance(head, n.Table) else 'a template'
+            )
+            self.fail('property', f'{path}: {head.name} is {what}: {SETUP_TARGETS}', item)
+        if isinstance(head, n.Declaration) and head.value is None and isinstance(head.type, n.NamedType):
+            # A member written by hand: its own value, as a line under it.
+            if len(item.path) != 2:
+                self.fail(
+                    'property',
+                    f'{path}: a member gives the values and the links of its template, and its template '
+                    'the settings of its parts',
+                    item,
+                )
+            line = n.Property(
+                item.path[1:],
+                item.value,
+                cites=item.cites,
+                text=item.text,
+                evidence=item.evidence,
+                line=item.line,
+                column=item.column,
+            )
+            self.once(path, [own for own in head.properties if own.path == line.path], earlier, item)
+            return replace(head, properties=(*head.properties, line))
+        if not isinstance(head, n.Entity):
+            self.fail('unknown_name', f'{path} names no part of an entity or a member: {SETUP_TARGETS}', item)
+        name, *rest = item.path[1:]
+        part = next((member for member in head.members if getattr(member, 'name', None) == name), None)
+        if isinstance(part, n.Declaration) and not rest:
+            if part.value is not None:
+                self.fail(
+                    'property',
+                    f'{path} is initialized twice: {self.on_line(earlier or part.line)} and '
+                    f'{self.on_line(item.line)}; a value has one initializer',
+                    item,
+                )
+            found = replace(
+                part,
+                value=item.value,
+                cites=(*part.cites, *item.cites),
+                evidence=(*part.evidence, *item.evidence),
+            )
+        elif (isinstance(part, n.Declaration) and len(rest) == 2 and rest[0] in SIDES) or (
+            isinstance(part, n.Flow) and len(rest) == 1
+        ):
+            # An endpoint's setting under its store, or a property of a flow.
+            found = self.wired_property(part, tuple(rest), item, earlier)
+        elif isinstance(part, n.Flow) and len(rest) == 2 and any(leg.name == rest[0] for leg in part.legs):
+            legs = tuple(
+                self.wired_property(leg, (rest[1],), item, earlier) if leg.name == rest[0] else leg
+                for leg in part.legs
+            )
+            found = replace(part, legs=legs)
+        else:
+            parts = [member.name for member in head.members if getattr(member, 'name', None)]
+            self.fail(
+                'property',
+                f'{path} names no value, flow, leg or endpoint setting of {head.name}: {SETUP_TARGETS}'
+                + close(name, parts),
+                item,
+            )
+        return replace(head, members=tuple(found if member is part else member for member in head.members))
+
+    def wired_property(self, part, steps, item, earlier):
+        """A declaration or a flow with the property `steps` that the setup line `item` initializes."""
+        line = n.Property(
+            steps,
+            item.value,
+            cites=item.cites,
+            text=item.text,
+            evidence=item.evidence,
+            line=item.line,
+            column=item.column,
+        )
+        self.once('.'.join(item.path), [own for own in part.properties if own.path == steps], earlier, item)
+        return replace(part, properties=(*part.properties, line))
+
+    def once(self, path, found, earlier, item):
+        """A path that a line already initializes is not initialized again."""
+        if found:
+            self.fail(
+                'property',
+                f'{path} is initialized twice: {self.on_line(earlier or found[0].line)} and '
+                f'{self.on_line(item.line)}; a value has one initializer',
+                item,
+            )
 
     # ---- packages: changes, options and runs ------------------------------------------------------
 
@@ -4352,9 +4485,14 @@ USE_ALONE = "use names a module of a package: a model with modules is read from 
 VARIANT_ALONE = (
     "a variant is read with its package's main file, from variants/<name>/model.scn of the package"
 )
-PROPERTY_PATH = (
-    '{} is set by its path, which the language does not do: a value is set where it is declared, '
-    "by a member's own line, or by a change (change name:, with name = value under it)"
+PROPERTY_IN_ENTITY = (
+    '{} is a setting of a part: it is written under the part, or at the top level by its full path, '
+    'as clinic.delivery.request = 3 L/h'
+)
+# What the setup scope initializes by a path.
+SETUP_TARGETS = (
+    "the setup scope initializes a value, a flow's request or capacity, a leg's or an endpoint's "
+    'setting of an entity written once, or a value of a member written by hand'
 )
 
 

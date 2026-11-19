@@ -462,3 +462,20 @@ def test_the_notes_of_several_files_merge_key_by_key(tmp_path):
     notes = {note.key: note for note in load_scenario(folder / 'model.scn').declared.notes}
     assert notes['by'].value.value == 'The tanks'
     assert [note.key for note in notes['limitations'].notes] == ['module_only', 'tanks_only']
+
+
+def test_a_setup_line_stands_where_the_initializer_of_its_declaration_stands(tmp_path):
+    """R-A5-03: the main file initializes the pool's start water in its setup scope, which is its
+    declaration's initializer; the variant's change wins over it, an option of the run over the change
+    and an edit over the option."""
+    common = COMMON.replace('input start_water: L = 30 L in', 'input start_water: L in')
+    folder = package(tmp_path, {'common.scn': common, 'model.scn': MAIN + '\npool.start_water = 30 L\n'})
+    main = load_scenario(folder / 'model.scn')
+    assert program_bytes(main.program) == program_bytes(hand_program(folder / 'model.scn'))
+    entry = folder / 'variants/east/model.scn'
+    east = load_scenario(entry)
+    assert program_bytes(east.program) == program_bytes(hand_program(entry, 20, 4))
+    water = InputValue('pool', 'start_water', Quantity(12, 'L'))
+    assert water in east.configure('fast_low').inputs
+    edits = {'schema_version': '0.0.1', 'model_hash': east.model_hash, 'set': {'pool.start_water': 9}}
+    assert InputValue('pool', 'start_water', Quantity(9, 'L')) in east.configure('fast_low', edits).inputs

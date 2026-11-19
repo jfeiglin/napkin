@@ -40,7 +40,11 @@ Brief: `scratch/rewrite/briefs/s6.md` (S6-F), with `COMMON-B.md`, `s0-front.md`,
   the bounds are numbers; a JSON number is in the input's unit, a string has its unit.
 - C6 A record is needed for a number, yes/no or distribution set by an option or change; not for a
   text, an enum member, a link, a formula.
-- C7 A value set by its path has no form (`property`): the override is `change`.
+- C7 (mended after 30ba800, spec line 203) A setup line `path = expr` is the initializer under its
+  declaration (`Resolver.wired`): entity values, flow/route/leg properties, endpoint settings, a
+  hand member's own value; a second initializer is `property` naming both lines; readonly values
+  take it (readonly bars assignment). Templates, rows, member part settings: refused.
+  tests/language/test_setup_initializers.py (16), test_packages.py precedence case.
 - C8 Within a level, a member's line beats `Template.instances`; across options too (no conflict).
 - C9 The default run (no name) takes no option; `set` edits reach it.
 
