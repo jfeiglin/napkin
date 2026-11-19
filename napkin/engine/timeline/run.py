@@ -177,7 +177,10 @@ class Run:
         if value.kind == DELAYED:
             return sorted(read for read in plan.reads(name) if read not in env)
         if value.kind == RATE:
-            raise Outside(f'{name}: a starting value that reads an actual rate (S2)')
+            raise SimulationError(
+                f'{name} is read before its flows first settle: a starting value reads it, and the '
+                'rates settle after the setup; read it through a formula, or capture it in a stage'
+            )
         if value.kind == RESULT:
             raise SimulationError(f'{name} is read before its first solve: a starting value reads it')
         if value.kind in (REDUCE, LOOKUP):

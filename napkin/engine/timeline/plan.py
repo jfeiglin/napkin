@@ -33,9 +33,14 @@ continuous engine and the record read these names; nothing reads the spelling of
   moves as the time does. `delayed(x, d)` (kind DELAYED, `delays`) is the committed value of x at d
   before the read, from 0. Each reads a stored value: an input, a stored value, a link or a captured
   setting, of a member, of the root or of an occurrence.
-- **Keyed reads.** `.at(x)` with an x that reads only fixed values is fixed for the run; with x the
-  time `t`, it changes only at the keys of its collection, its key times, which go on the timeline
-  of the run (`stepped`).
+- **Keyed reads.** `.at(t)` on keys that the inputs fix is stepped (`stepped`): it selects a member
+  at each key of its collection, its key times, which go on the timeline of the run, and reads that
+  member's value as it is then. Any other keyed read (a key that reads a value, which a stage may
+  write or a flow may move, or a function of the time; keys that move) is evaluated where it is
+  read, from what it reads, which its expansion follows: a set that reads it is built again when
+  what it reads is written, and moves when that moves (`lookup_moves`); its rates then run on the
+  sparse integrator, which holds the member that it selects through a segment and ends the segment
+  where it selects another.
 - **Flows** (`Flow`) are of three kinds, and meet the stores by their connections (`Connection`):
   a directed flow is its one connection, with its actual rate; a reversible route
   (`west.water <-> east.water`) has one signed actual rate, positive from its first end to its
@@ -93,10 +98,15 @@ continuous engine and the record read these names; nothing reads the spelling of
   a rate of its own set is a relation between unknowns of one calculation, which only a declared
   solver states, as a relation of its own: the run fails, naming the rate.
 
-What a later slice runs is refused by name (`Outside`), with the slice that brings it: the
-assignment of a formula or a collection in a stage, a key of `.at(...)` that moves or is a function
-of the time other than `t`, and a keyed read of a value that moves (S4). A configuration's
-controllers name members, and its picks the sites of choices.
+- **Definitions.** A commit that gives a formula, a request or a capacity `= formula(...)` gives it
+  a new definition from then on, and a number written to a request or a capacity that was a formula
+  captures it (`define`): what reads it reads the new one, and the trace keeps each definition
+  (the detail `defines` of a commit), from which a reader reads the value of each time
+  (`definitions_of`).
+
+A part that the engine does not run is refused by name (`Outside`) with its reason: an assignment
+of a collection in a stage (links are fixed for the run), and the type errors that the program's
+check lets through. A configuration's controllers name members, and its picks the sites of choices.
 """
 
 from __future__ import annotations
@@ -165,8 +175,8 @@ LIMIT = 150  # the most stores of a component of the continuous engine (R-A4a-04
 
 
 class Outside(Exception):
-    """A part of a program that this engine does not run yet. The message names the part and the
-    slice of the rewrite that brings it."""
+    """A part of a program that this engine does not run: the message names the part and the
+    reason, a rule of the spec or a type error that the program's check lets through."""
 
 
 def name_of(key):
@@ -576,13 +586,11 @@ class Plan:
     # ---- what this slice refuses ----------------------------------------------------------------
 
     def _refuse_parts(self):
-        """Status displays (C), and the assignment of a collection in a stage, which the language
-        does not have: a collection's members are links to them, fixed for the run. The controllers
-        and the picks of the configuration must name members and the sites of choices."""
+        """The assignment of a collection in a stage, which the language does not have: a
+        collection's members are links to them, fixed for the run. The controllers and the picks of
+        the configuration must name members and the sites of choices. A status display is text for a
+        report, which reads its cases over the record: the run computes nothing of it."""
         program = self.program
-        for template in program.templates:
-            if template.status is not None:
-                raise Outside(f'{template.status.origin or template.name}: a status display (C)')
         for origin, statement in _program_statements(program):
             if isinstance(statement, p.Assign) and isinstance(statement.value, Path):
                 raise Outside(
@@ -713,7 +721,10 @@ class Plan:
             return  # a collection has no value of its own: a path that steps into it reads its init
         if value.kind == p.LINK:
             if member is None:
-                raise Outside(f'{value.origin}: a link of the root (a later slice)')
+                raise Outside(
+                    f'{value.origin}: a link of the root, which the language does not have: a link '
+                    'belongs to an entity or a template (at the top level, `name: Template` is a member)'
+                )
             target = self.program.template(value.type.template)
             linked = target.members[member.link(value.name)].id
             self._add(Value(name, key, LINK, nodes.const(linked)))
@@ -724,7 +735,7 @@ class Plan:
             self._declare_distribution(value, scope, name, init)
             return
         if not isinstance(value.type, (p.Number, p.Bool, p.EnumType, p.Text)):
-            raise Outside(f'{value.origin}: a value of type {type(value.type).__name__} (a later slice)')
+            raise Outside(f'{value.origin}: a value of type {type(value.type).__name__} (a type error)')
         unit = value.type.unit if isinstance(value.type, p.Number) else ''
         boolean = isinstance(value.type, p.Bool)
         given = self._given.pop((key.owner, value.name), None)
@@ -1368,7 +1379,10 @@ class Plan:
         """The node of an expression with engine names, and the engine name of each of its names
         (None when it reads an entity, whose name becomes a text)."""
         if not isinstance(expression, Expr):
-            raise Outside(f'{origin}: an initializer of kind {type(expression).__name__} (a later slice)')
+            raise Outside(
+                f'{origin}: an initializer of kind {type(expression).__name__} where a value is expected '
+                '(a type error)'
+            )
         names, binding = {}, {}
         for name, read in expression.reads:
             if isinstance(read, Time):
@@ -1384,7 +1398,10 @@ class Plan:
                 elif point[0] in ('member', 'occurrence'):
                     names[name], binding = nodes.const(point[1]), None
                 else:
-                    raise Outside(f'{origin}: {spelled(read)} where a value is expected (a later slice)')
+                    raise Outside(
+                        f'{origin}: {spelled(read)} where a value is expected: an expression gives a '
+                        'number, a yes/no or a text (a type error)'
+                    )
             elif isinstance(read, Reduce):
                 found = self._reduction(read, scope, origin, item)
                 names[name] = nodes.ref(found)
@@ -1415,7 +1432,7 @@ class Plan:
                 found = self._dynamic(read, 'latest', ('occurrences', point[1], point[2]), (), scope, item)
                 names[name], binding = nodes.binary('sub', nodes.ref('t'), nodes.ref(found)), None
             else:
-                raise Outside(f'{origin}: the read {spelled(read)} (S4)')
+                raise Outside(f'{origin}: the read {spelled(read)}, which no expression has (a type error)')
         node = _renamed(expression.node, names)
         return node, (None if binding is None else tuple(sorted(binding.items())))
 
@@ -1472,7 +1489,7 @@ class Plan:
             if frame is None or start.name not in frame.names:
                 raise Outside(f'{origin}: no bare name {start.name} in this scope (a type error)')
             return frame.names[start.name]
-        raise Outside(f'{origin}: the start of a path {type(start).__name__} (a later slice)')
+        raise Outside(f'{origin}: the start of a path {type(start).__name__} (a type error)')
 
     def _step(self, point, name, origin):
         """The point that a step from a point names."""
@@ -1525,7 +1542,10 @@ class Plan:
             entries = point[1]
             points = tuple(self._step(each, name, origin) for each in entries.points)
             if any(each[0] == 'many' for each in points):
-                raise Outside(f'{origin}: a collection of collections (a later slice)')
+                raise Outside(
+                    f'{origin}: a projection of collections, which is no collection: reduce it on the '
+                    'member, then reduce that value (a type error)'
+                )
             return ('many', replace(entries, points=points, whole=False))
         if kind == 'value' and name in SIDES and point[1] in self._stores:
             self.end_of(point[1], name, origin)
@@ -1617,8 +1637,16 @@ class Plan:
             return reverse
         points, tests, keys = [], [], []
         for point, before, key in zip(entries.points, entries.tests, entries.keys):
+            if point[0] == 'value':
+                raise Outside(
+                    f'{origin}: a where over values, which the language leaves out: a collection holds '
+                    'entities, flows or occurrences; put the value on a member and reduce the field'
+                )
             if point[0] != 'member':
-                raise Outside(f'{origin}: a where over values, not members (a later slice)')
+                raise Outside(
+                    f'{origin}: a where over flows: this engine keeps members of entities by a where, '
+                    'as the front end admits'
+                )
             node = self.node(test, scope, origin, item=point[1])
             if not nodes.names(node):
                 if not evaluate(node, {}, self.units):
@@ -1717,7 +1745,8 @@ class Plan:
             points = tuple(self._step(point, step, origin) for point in points)
         if any(point[0] != 'value' for point in points):
             raise Outside(
-                f'{origin}: {spelled(path)}, a member or a flow read through `.at(...)` (a later slice)'
+                f'{origin}: {spelled(path)}, a member or a flow read whole through `.at(...)`: an '
+                'expression gives a number, a yes/no or a text (a type error)'
             )
         names = tuple(point[1] for point in points)
         self._derived[key] = name

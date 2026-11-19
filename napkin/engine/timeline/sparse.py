@@ -55,10 +55,13 @@ class Vector:
     module). `stores` are the names of the state, in its order; `held` gives, for a keyed read that
     an instance holds through its segment, the entry that it selects (`Sparse`)."""
 
-    def __init__(self, run, stores, held=None):
+    def __init__(self, run, stores, held=None, rates=None):
         self.run, self.plan = run, run.plan
         self.place = {name: k for k, name in enumerate(stores)}
         self.held = {} if held is None else held
+        # The rates that the instance gives as it evaluates its levels: the rates of a level that a
+        # later level reads, at the same time and state (`Sparse`).
+        self.rates = {} if rates is None else rates
 
     def compiled(self, names):
         """A function (t, y) -> the array of the values of `names`, in their order."""
@@ -73,6 +76,8 @@ class Vector:
             if name in place:
                 held_at.append(k)
                 held_from.append(place[name])
+            elif name in self.rates:
+                steps.append(([k], lambda t, y, name=name: self.rates[name]))
             elif name == 't':
                 steps.append(([k], lambda t, y: t))
             elif kind == FORMULA and value.shape is not None:
@@ -198,37 +203,60 @@ class Vector:
 
 
 class Sparse:
-    """One connected set on the sparse integrator from the time `t` on (see the module), a way of a
-    run (`ways.py`): each step of the solver is made when the run first asks for its end (`peek`), as
-    far as the next moment that the run knows (`run.limit`), and committed when the run reaches its
-    end (`step`), or cut at a moment inside it (`cut`)."""
+    """Connected sets on the sparse integrator from the time `t` on (see the module), a way of a run
+    (`ways.py`): one set, or the sets of `sets` in the order of their levels (`levels`), where the
+    settings of a set read the rates of a set of an earlier level that move, so that they integrate
+    together. Each step of the solver is made when the run first asks for its end (`peek`), as far as
+    the next moment that the run knows (`run.limit`), and committed when the run reaches its end
+    (`step`), or cut at a moment inside it (`cut`)."""
 
-    def __init__(self, run, connected, values, t, key):
+    def __init__(self, run, sets, values, t, key, levels=None):
         plan = self.plan = run.plan
         sizes = run.sizes
+        sets = list(sets)
+        levels = [0] * len(sets) if levels is None else list(levels)
         self.key, self.alive = key, True
         self.solver, self.pending = None, None
         self.run, self.recorder = run, run.recorder
-        stores = list(connected.stores)
+        stores = [store for connected in sets for store in connected.stores]
         place = self.place = {name: k for k, name in enumerate(stores)}
-        self.net, connections, self.recorded = network_of(run, [connected], stores)
+        self.net, connections, self.recorded = network_of(run, sets, stores)
         self.stores, self.flows = stores, list(self.net.flows)
-        self.stepped = frozenset(connected.stepped)
+        self.stepped = frozenset(name for connected in sets for name in connected.stepped)
         self.capped = [k for k, connection in enumerate(connections) if connection.capacity is not None]
         self.end_settings = []  # (side, store, which)
         names = [connection.request for connection in connections]
         names += [connections[k].capacity for k in self.capped]
+        # The level of each setting: of its connection's set, or of its endpoint's store's set.
+        level_of = [levels[int(k)] for k in self.net.flow_sets.tolist()]
+        level_of += [level_of[k] for k in self.capped]
         for (store, side), end in plan.ends.items():
             if store in place:
                 for which in ('request', 'capacity'):
                     if getattr(end, which) is not None:
                         self.end_settings.append((SIDES.index(side), place[store], which))
                         names.append(getattr(end, which))
+                        level_of.append(levels[int(self.net.store_sets[place[store]])])
         # A keyed read of the settings that moves holds the entry that it selects through a
-        # segment, which ends where it selects another (`_switch`).
-        self.selection = {}
-        vector = Vector(run, stores, self.selection)
+        # segment, which ends where it selects another (`_switch`). The rates of a level that a later
+        # level reads are those of this evaluation (`current`).
+        self.selection, self.current = {}, {}
+        given = [name for k, name in enumerate(self.recorded) if levels[self._set_of_flow(k)] < max(levels)]
+        self.current.update(dict.fromkeys(given, 0.0))
+        vector = Vector(run, stores, self.selection, self.current)
         self.settings = vector.compiled(names)
+        self.size = len(names)
+        # Each level: the places of its settings, their values, and the rates that it gives.
+        self.levels = []
+        if max(levels) > 0:
+            for level in sorted(set(levels)):
+                at = [k for k, found in enumerate(level_of) if found == level]
+                gives = [
+                    (k, name) for k, name in enumerate(self.recorded) if levels[self._set_of_flow(k)] == level
+                ]
+                self.levels.append(
+                    (np.array(at, dtype=np.int64), vector.compiled([names[k] for k in at]), gives)
+                )
         self.y = np.array([float(values[name]) for name in stores])
         self.lower = np.array([run.bounds[name][0] for name in stores])
         self.upper = np.array([run.bounds[name][1] for name in stores])
@@ -245,11 +273,16 @@ class Sparse:
             ),
             shape=(len(stores), len(connections)),
         )
-        # The stores that the settings of each flow read, and those of the endpoints at its ends.
+        # The stores that the settings of each flow read, and those of the endpoints at its ends; a
+        # flow whose settings read the rates of an earlier level reads its stores too.
         self.reads = []
-        for f in self.flows:
-            found = plan.expansion_of(plan.settings_of(plan.flows[f]))
-            self.reads.append(sorted(place[name] for name in found.leaves if name in place))
+        for f, flow in enumerate(self.flows):
+            found = plan.expansion_of(plan.settings_of(plan.flows[flow]))
+            mine = {place[name] for name in found.leaves if name in place}
+            level = levels[self._set_of_flow(f)]
+            if level > 0:
+                mine |= {k for k in range(len(stores)) if levels[int(self.net.store_sets[k])] < level}
+            self.reads.append(sorted(mine))
         self.evaluations = 0
         self.lower_flags = np.zeros(len(stores), dtype=bool)
         self.upper_flags = np.zeros(len(stores), dtype=bool)
@@ -318,12 +351,19 @@ class Sparse:
                     found |= plan.expanded(formula).leaves & plan.moving
         return found
 
+    def _set_of_flow(self, f):
+        """The place in `sets` of the set of the flow `f`."""
+        return int(self.net.flow_sets[int(self.net.first[f]) if not self.net.plain else f])
+
     # ---- the field --------------------------------------------------------------------------------
 
     def asked(self, t, y):
         """What the connections and the endpoints ask at time t and state y."""
+        return self._asked(self.settings(t, y), t)
+
+    def _asked(self, found, t):
+        """What the connections and the endpoints ask, from the values of their settings."""
         count, size = len(self.stores), len(self.net.source)
-        found = self.settings(t, y)
         request = asked_of(self.net, found[:size], t)
         capacity = np.full(size, math.inf)
         capacity[self.capped] = found[size : size + len(self.capped)]
@@ -350,8 +390,20 @@ class Sparse:
         trial = np.minimum(np.maximum(y, self.lower), self.upper)
         trial[self.lower_flags] = self.lower[self.lower_flags]
         trial[self.upper_flags] = self.upper[self.upper_flags]
-        asked = self.asked(t, trial)
-        values = Instant(self.net, asked, self.lower_flags, self.upper_flags).values()
+        if not self.levels:
+            asked = self.asked(t, trial)
+            values = Instant(self.net, asked, self.lower_flags, self.upper_flags).values()
+            return values, self.net.carried(values, asked)
+        # Level by level: the sets share no store, so the local sharing of a level is its own, and
+        # the settings of the next read the rates that it gave (the later ones ask nothing yet).
+        found = np.zeros(self.size)
+        for at, settings, gives in self.levels:
+            found[at] = settings(t, trial)
+            asked = self._asked(found, t)
+            values = Instant(self.net, asked, self.lower_flags, self.upper_flags).values()
+            for k, name in gives:
+                if name in self.current:
+                    self.current[name] = float(values[k])
         return values, self.net.carried(values, asked)
 
     def field(self, t, y):

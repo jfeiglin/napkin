@@ -28,8 +28,9 @@ solve library (`napkin/engine/solve/`):
   on its first class, then on its first two, and so on, each a claim alone in a tier of its own.
 
 The expressions of the solver read its unknowns as symbols (`Affine`): a formula, a reduction or a
-dynamic read that reads an unknown is expanded where it is read, and any other value is a number of
-the instant, read from the run. The forms are those of the spec: affine `==`, `<=` and `>=`, their
+dynamic read that reads an unknown is expanded where it is read, a keyed read whose key and keys are
+known numbers reads the member that it selects (one keyed by an unknown is refused by name, as the
+spec leaves it out), and any other value is a number of the instant, read from the run. The forms are those of the spec: affine `==`, `<=` and `>=`, their
 conjunction, `all(...)` and sums, products and quotients by known numbers, and positive parts
 (`max` of an unknown is `a + max(0, b - a)`, one INTERNAL unknown of the library for each), where
 they are convex: minimized, or on the small side of `<=`. A strict relation, `!=`, `or`, `any`,

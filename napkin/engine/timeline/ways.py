@@ -50,8 +50,13 @@ from .component import ComponentWay
 from .declared import DeclaredWay, MovingDeclared
 from .family import Family
 from .lines import Lines
-from .plan import COMPONENT, DECLARED, FAMILY, LINES, ROUTE, SPARSE, Outside
+from .plan import COMPONENT, DECLARED, FAMILY, LINES, ROUTE, SPARSE
 from .sparse import Sparse
+
+
+def _moves(connected):
+    """Whether the rates of a connected set move between moments."""
+    return connected.way in (COMPONENT, SPARSE) or (connected.way == DECLARED and connected.moves)
 
 
 class Ways:
@@ -67,6 +72,7 @@ class Ways:
         self.kept, self.last = {}, {}  # solver id -> its `solve.Solver`; -> (last problem, answer)
         self.references = {}  # a stored number that a solver determines -> its reference
         self.instances = []
+        self.grouped = set()  # the ids of the sets that integrate with others in one instance
         self._next = 0
 
     # ---- what the ways hold now ----------------------------------------------------------------
@@ -176,6 +182,24 @@ class Ways:
             found |= self.readers.get(name, set())
         return found
 
+    def moving_sources(self, sets):
+        """The ids of the sets now whose rates move between moments and that the settings of the
+        connected sets `sets` read: they integrate with them (`build`)."""
+        found = set()
+        for connected in sets:
+            for name in connected.rates:
+                key = self.result_of.get(name)
+                if key is None:
+                    key = self.set_of.get(name.rsplit('.', 1)[0])
+                if key is not None and self.moving(key):
+                    found.add(key)
+        return found
+
+    def moving(self, key):
+        """Whether the rates of a set now move between moments: by its way, or because it integrates
+        with a set whose rates move."""
+        return _moves(self.sets[key][0]) or key in self.grouped
+
     def readers_of_rates(self, ids):
         """The ids of the sets that read an actual rate, a served fraction or a result of the sets
         `ids`."""
@@ -213,6 +237,7 @@ class Ways:
                 if found is not None:
                     found.discard(key)
             self.levels.pop(key, None)
+            self.grouped.discard(key)
         self.instances = [instance for instance in self.instances if instance.alive]
         return values
 
@@ -255,20 +280,61 @@ class Ways:
 
         for index in range(len(made)):
             level_of(index, frozenset())
-        for connected in made:
+        # A set whose settings read a rate of another set that moves between moments integrates
+        # with it, on the sparse integrator, level by level (`Sparse`): they are one instance.
+        together = list(range(len(made)))
+
+        def root(index):
+            while together[index] != index:
+                together[index] = together[together[index]]
+                index = together[index]
+            return index
+
+        moving = [False] * len(made)  # whether the rates of each new set move between moments
+        for index in sorted(range(len(made)), key=lambda index: level[index]):
+            connected = made[index]
+            moving[index] = _moves(connected)
             for name in connected.rates:
                 owner = new_rates.get(name)
-                found = made[owner] if owner is not None else self.sets[rate_sets[name]][0]
-                if found.way in (COMPONENT, SPARSE) or (found.way == DECLARED and found.moves):
-                    raise Outside(
+                if owner is None:
+                    if self.moving(rate_sets[name]):
+                        raise SimulationError(
+                            f'{name}: a rate that moves, read by a set built again without its own set'
+                        )
+                    continue
+                if not moving[owner]:
+                    continue
+                moving[index] = True
+                found = made[owner]
+                if DECLARED in (found.way, connected.way):
+                    raise SimulationError(
                         f'{(connected.flows or (connected.solver,))[0]}: a request, a capacity or a '
                         f'problem that reads {name}, a rate or a result of another connected set that '
-                        'moves between moments: two connected sets that integrate together, which this '
-                        'engine does not do (no stage of the plan brings it)'
+                        'moves between moments, where one of the two is a declared solver\'s: the engine '
+                        "integrates the set of a moving solver alone, so it does not run one that follows "
+                        'it or that it follows'
                     )
+                together[root(index)] = root(owner)
+        joined = {}
+        for index in range(len(made)):
+            joined.setdefault(root(index), []).append(index)
         created = []
+        for members in joined.values():
+            if len(members) < 2:
+                continue
+            members.sort(key=lambda index: level[index])
+            keys = [self._register(made[index], level[index]) for index in members]
+            self.grouped.update(keys)
+            low = level[members[0]]
+            instance = Sparse(
+                self.run, [made[index] for index in members], values, t, keys[0],
+                [level[index] - low for index in members],
+            )
+            self._hold(instance, keys)
+            created.append(instance)
+        alone = {members[0] for members in joined.values() if len(members) == 1}
         for depth in sorted(set(level)):
-            here = [index for index in range(len(made)) if level[index] == depth]
+            here = [index for index in range(len(made)) if level[index] == depth and index in alone]
             groups = {}
             for index in here:
                 groups.setdefault(made[index].way, []).append(index)
@@ -291,7 +357,7 @@ class Ways:
                         kind = MovingDeclared if made[index].moves else DeclaredWay
                         instance = kind(self.run, made[index], values, t, key)
                     else:
-                        instance = Sparse(self.run, made[index], values, t, key)
+                        instance = Sparse(self.run, [made[index]], values, t, key)
                     self._hold(instance, [key])
                     created.append(instance)
         return created

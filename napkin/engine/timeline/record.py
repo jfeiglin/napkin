@@ -545,10 +545,13 @@ class Recorder:
                 firsts.append(at(time))
             except FAILURES as problem:
                 firsts.append(Unavailable(str(problem)))
+        # A yes/no and a text (an enum member) change by steps; a number is fitted.
+        discrete = boolean or any(isinstance(found, str) for found in firsts)
+        cast = bool if boolean else (lambda found: found if isinstance(found, str) else float(found))
         # The size of the formula, as a store's: the largest magnitude that it takes at a time at
         # which what it reads has a piece.
         size = 1.0
-        if not boolean:
+        if not discrete:
             for found in firsts:
                 if not isinstance(found, Unavailable):
                     size = max(size, abs(float(found)))
@@ -560,9 +563,9 @@ class Recorder:
                 continue
             if b <= a or (not timed and all(holders[read](a) for read in reads)):
                 # What the formula reads holds its value from a to b: so does the formula.
-                pieces.append((a, bool(first) if boolean else float(first), 0.0))
-            elif boolean:
-                pieces += _switches(at, a, b, bool(first), plan.numerics.crossing)
+                pieces.append((a, cast(first), 0.0))
+            elif discrete:
+                pieces += _switches(lambda time: cast(at(time)), a, b, cast(first), plan.numerics.crossing)
             else:
                 try:
                     found = fitted(lambda ts: np.array([[float(at(t))] for t in ts]), a, b, tolerance)[0]
@@ -602,21 +605,21 @@ class Recorder:
 
 
 def _switches(at, a, b, first, crossing):
-    """The pieces of a yes/no from a to b: one at a, and one at each change, which bisection locates
-    between the points of a fit to within the crossing tolerance."""
+    """The pieces of a yes/no or a text from a to b: one at a, and one at each change, which
+    bisection locates between the points of a fit to within the crossing tolerance."""
     pieces, value = [(a, first, 0.0)], first
     points = _times(a, b, np.concatenate([[-1.0], _CHECKS[1:-1], [1.0]]))
     for before, after in pairwise(points):
-        if bool(at(after)) == value:
+        if at(after) == value:
             continue
         left, right = before, after
         while right - left > crossing:
             middle = 0.5 * (left + right)
-            if bool(at(middle)) == value:
+            if at(middle) == value:
                 left = middle
             else:
                 right = middle
-        value = not value
+        value = at(right)
         pieces.append((right, value, 0.0))
     return pieces
 
