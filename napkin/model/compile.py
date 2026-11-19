@@ -42,7 +42,7 @@ from .language.problems import LanguageError, Problem, SyntaxProblem
 from .language.tables import in_folder, in_memory
 from .lowering import lower, reports, side_table
 from .semantic import DeclaredModel, Files, declare
-from .support import unsupported
+from .support import cited_data, unsupported
 
 HORIZON = 'the scenario line gives the horizon of the default run: horizon 30 days'
 LIBRARY = 'a variant reads the library of its package: the main file names it'
@@ -53,8 +53,9 @@ class Compiled:
     """A model as the front end gives it: its declared model, its program, the configuration of one
     of its runs (None for a text with no horizon), the setup's reports (`lowering.reports`), each a
     `Problem` at its place that refuses nothing (equal keys in a keyed view that `.at(...)` reads, a
-    lookup below its first key at a known lower bound, and each part that rests on no record,
-    `support.unsupported`), and its hash (`identity.model_hash`). `base` is
+    lookup below its first key at a known lower bound, each part that rests on no record,
+    `support.unsupported`, and of a package, each value that differs from a datum that its record
+    cites, `support.cited_data`), and its hash (`identity.model_hash`). `base` is
     the configuration of its default run, from which `configure` makes another run's. `table` is the
     program's side table, which no hash covers."""
 
@@ -92,8 +93,9 @@ def compile_text(text, units, file='', tables=None, *, run=None, edits=None):
     return _compiled(tree, units, reader, (), file, run, edits)
 
 
-def _compiled(tree, units, reader, files, file, run, edits):
-    """The compiled model of a tree (of a text, or of a package's files with their `files`)."""
+def _compiled(tree, units, reader, files, file, run, edits, library=None):
+    """The compiled model of a tree (of a text, or of a package's files with their `files`); a
+    package's `library` gives the data that its records cite (`support.cited_data`)."""
     place = Files(files)
 
     def placed(problems):
@@ -113,6 +115,8 @@ def _compiled(tree, units, reader, files, file, run, edits):
         raise LanguageError(placed(error.problems), file) from None
     base = default_run(declared)
     setup = (*reports(declared, program), *unsupported(declared))
+    if library is not None:
+        setup += cited_data(declared, library)
     found = tuple(replace(item, file=item.file or file) for item in placed(setup))
     table = side_table(declared, program, file)
     compiled = Compiled(declared, program, base, found, model_hash(declared, program, base), base, table)
@@ -185,7 +189,14 @@ def load_scenario(path, *, run=None, edits=None):
             [placed_diagnostic(item, lines(tree), files) for item in error.diagnostics]
         ) from None
     compiled = _compiled(
-        tree, library_units(library), in_folder(found.package), tuple(files), path.as_posix(), run, edits
+        tree,
+        library_units(library),
+        in_folder(found.package),
+        tuple(files),
+        path.as_posix(),
+        run,
+        edits,
+        library,
     )
     if compiled.base is None:
         line = Files(tuple(files)).place(tree.scenario.line)

@@ -10,7 +10,8 @@ Repeat it for several paths. --deep adds matching deep tests.
 --skip-summaries reuses existing publication results for a focused scenario check.
 
 The evidence stage compiles each selected package (every one with --all) and fails when a value of
-it rests on no record, the compiler's `no_record` warning (the evidence rule, change 16).
+it rests on no record, the compiler's `no_record` warning (the evidence rule, change 16), or differs
+from a datum that its record cites, its `datum` warning.
 
 --all retains the complete tests and catalogue publication comparison.
 --all --deep also runs exhaustive admission tests and replays three stored simulations.
@@ -190,14 +191,15 @@ def scope_of(paths, scenario_ids, readers=None):
 
 def unsupported(scope=None, root=ROOT):
     """{owner: [message]} of each owner of the catalogue at `root` that runs as a model of its own
-    (`catalogue.entries`), or of those that `scope` names, whose model rests a value on no record: the
+    (`catalogue.entries`), or of those that `scope` names, whose model a record does not support: the
     warnings of the evidence rule (item 16 of the plan's changes after G0), the reports of its compile
-    with the code `no_record` (`napkin.model.support`), each at its file and line. A model being
+    with the code `no_record`, a value that rests on no record, or `datum`, a value that differs from a
+    datum that its record cites (`napkin.model.support`), each at its file and line. A model being
     explored still runs with them, but a scenario package of the catalogue has none. A model that does
     not compile gives its first problem, since its evidence cannot be read."""
     from napkin.model.compile import load_scenario
     from napkin.model.language.problems import LanguageError
-    from napkin.model.support import CODE
+    from napkin.model.support import CODE, DATUM
 
     def place(problem):
         file = Path(problem.file)
@@ -215,20 +217,21 @@ def unsupported(scope=None, root=ROOT):
                 f'{place(first)}: it does not compile, so its evidence is not read: {first.message}'
             ]
             continue
-        warned = [f'{place(item)}: {item.message}' for item in reports if item.code == CODE]
+        warned = [f'{place(item)}: {item.message}' for item in reports if item.code in (CODE, DATUM)]
         if warned:
             found[name] = warned
     return found
 
 
 def evidence(scope=None, root=ROOT):
-    """The stage of the evidence rule: 0 when no selected package rests a value on no record
+    """The stage of the evidence rule: 0 when a record supports every value of each selected package
     (`unsupported`), else 1, with each warning."""
     if scope == ():
         return 0
     found = unsupported(scope, root)
     for name, messages in found.items():
-        print(f'{name}: {len(messages)} {"part rests" if len(messages) == 1 else "parts rest"} on no record')
+        count = len(messages)
+        print(f'{name}: {count} {"part" if count == 1 else "parts"} without the support of a record')
         for message in messages:
             print(f'  {message}')
     return 1 if found else 0

@@ -274,6 +274,9 @@ def _type(kind):
         return build.dist_of(_type(kind.of))
     if isinstance(kind, s.Ent):
         return build.ref_to(kind.template)
+    if isinstance(kind, s.Occ):
+        template, _, event = kind.event.rpartition('.')
+        return build.occurrence_of(template, event)
     return build.BOOL if kind == s.BOOL else build.TEXT
 
 
@@ -345,13 +348,13 @@ def status_of(display):
 
 
 def initial(init):
-    """An initializer as the builder takes it: a formula, a distribution, the path of a collection, or
-    an expression."""
+    """An initializer as the builder takes it: a formula, a distribution, the path of a collection or
+    of an occurrence (a reference to it), or an expression."""
     if isinstance(init, s.Retain):
         return build.formula(handle(init.body))
     if isinstance(init, s.Distribution):
         return distribution(init)
-    if isinstance(init, s.Read) and isinstance(init.type, s.Many):
+    if isinstance(init, s.Read) and isinstance(init.type, (s.Many, s.Occ)):
         return build.X.read(_path(init))
     return handle(init)
 

@@ -9,9 +9,9 @@ import pytest
 
 from napkin.model import semantic as s
 from napkin.model.compile import library_units
-from napkin.model.library import empty_library
 from napkin.model.language.parse import parse
 from napkin.model.language.problems import LanguageError
+from napkin.model.library import empty_library
 from tests.program.examples import UNITS
 
 
@@ -205,8 +205,12 @@ def test_equal_quantities_are_equal_however_they_are_written():
         'x: L = 0.001 kL in [1000 mL, 1 L]\n',
     ):
         declared(text, RESPELT)
-    assert '2.5 h is above the range of x' in refused_with('input x: h = 2 h + 30 min in [0 h, 2 h]\n', RESPELT, 'range')
-    assert 'above the range of x' in refused_with('input x: h = 0.11 day in [2.4 h, 2.4 h]\n', RESPELT, 'range')
+    assert '2.5 h is above the range of x' in refused_with(
+        'input x: h = 2 h + 30 min in [0 h, 2 h]\n', RESPELT, 'range'
+    )
+    assert 'above the range of x' in refused_with(
+        'input x: h = 0.11 day in [2.4 h, 2.4 h]\n', RESPELT, 'range'
+    )
 
 
 @pytest.mark.parametrize(
@@ -266,9 +270,14 @@ def test_a_square_root_and_a_power_read_the_dimension_and_not_the_spelling():
     ]
     assert (types['b'].unit, types['e'], types['f'].unit, types['k'].unit) == ('h', s.PLAIN, 'h*h', '1/h')
     message = refused_with('x = sqrt(4 h)\n', RESPELT, 'unit')
-    assert message == 'sqrt of h: its dimension is time, and a square root needs each power of it even, as in h*h or h*day'
+    assert (
+        message
+        == 'sqrt of h: its dimension is time, and a square root needs each power of it even, as in h*h or h*day'
+    )
     assert 'each power of it times 1.5 must be whole' in refused_with('x = (2 h) ** 1.5\n', RESPELT, 'unit')
-    assert 'raised only to a number written in place' in refused_with('y = 2\nx = (2 h) ** y\n', RESPELT, 'unit')
+    assert 'raised only to a number written in place' in refused_with(
+        'y = 2\nx = (2 h) ** y\n', RESPELT, 'unit'
+    )
 
 
 def test_the_cyber_drafts_square_root_of_two_ratios_compiles():
@@ -300,7 +309,9 @@ def test_a_distribution_reads_its_parameters_exactly():
     mode at its minimum, `uniform(0.1 day, 2.4 h)` has its minimum at its maximum, and the support
     of `uniform(2.4 h, 3 h)` lies in [0.1 day, 12 h]."""
     declared('input x = triangular(0.1 h, 6 min, 1 h).draw()\n', RESPELT)
-    assert 'min below max' in refused_with('input x = uniform(0.1 day, 2.4 h).draw()\n', RESPELT, 'distribution')
+    assert 'min below max' in refused_with(
+        'input x = uniform(0.1 day, 2.4 h).draw()\n', RESPELT, 'distribution'
+    )
     declared('input x = uniform(2.4 h, 3 h).draw() in [0.1 day, 12 h]\n', RESPELT)
     found = declared('input x = uniform(0.1 day, 3 h).draw()\n', RESPELT).root[0].init.source
     assert found.params == (0.1, Fraction(1, 8)) and found.type.of.unit == 'day'

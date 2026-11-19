@@ -767,3 +767,151 @@ def test_a_case_with_nothing_under_it_formats_and_parses_to_the_same_tree():
     assert format_text(text) == text and parse(format_text(text)) == parse(text)
     (switch,) = compiled(text).program.template('m').events[0].steps[0].body
     assert [(case.member, case.body) for case in switch.cases][1] == ('B', ())
+
+
+# ---- what lives as long as what (the audit's row 14) ------------------------------------------------
+
+LIVES = """
+    scenario "Lives"
+        horizon 10 h
+    crew:
+        level: L = 4 L
+        rate: formula(L/h) = formula(0 L/h)
+        held: L = 0 L
+        flow fill: SOURCE -> this.held
+            request = 0 L/h
+        repair = event(amount: L):
+            crew_size = 1
+            mine: formula(L/h) = formula(0 L/h)
+            flow pipe: SOURCE -> this.held
+                request = 0 L/h
+            after 5 h
+        check = event(amount: L):
+            share = 2
+            job = this.repair.occurrences.at(t)
+            mine: formula(L/h) = formula(0 L/h)
+            flow pipe: SOURCE -> this.held
+                request = 0 L/h
+            after 1 h:
+{stage}
+    crew.repair.start(3 L)
+    crew.check.start(5 L)
+    """
+# Where a formula goes, and whether that place lives as long as the occurrence that installs it: a
+# value or a flow of the entity lives for the run, and a local of another occurrence as long as that.
+TARGETS = {
+    'this.rate': False,
+    'this.fill.request': False,
+    'this.held.inflow.capacity': False,
+    'job.mine': False,
+    'this.repair.occurrences.at(t).mine': False,
+    'mine': True,
+    'pipe.request': True,
+}
+# What a formula reads, and whether it is the occurrence's own: a parameter, a local, a reference.
+READS = {
+    'this.level / (1 h)': False,
+    'amount / (1 h)': True,
+    'share * 1 L/h': True,
+    'job.amount / (1 h)': True,
+    'this.repair.occurrences.at(t).amount / (1 h)': False,
+}
+
+
+@pytest.mark.parametrize('target', sorted(TARGETS))
+@pytest.mark.parametrize('reading', sorted(READS))
+def test_a_formula_reads_only_what_lives_at_least_as_long_as_it(target, reading):
+    """The rule of lifetimes (spec, "State owned by an invocation"): a formula that a stage installs
+    may read only what lives at least as long as the place that holds it, or a copy. Over every place
+    and every read here: the formula is refused (`lifetime`) exactly when its place outlives the
+    occurrence and it reads one of the occurrence's own names, and the value read now (no formula)
+    is never refused."""
+    formula = LIVES.format(stage=f'                {target} = formula({reading})')
+    if not TARGETS[target] and READS[reading]:
+        problem = next(item for item in refused(formula).problems if item.code == 'lifetime')
+        assert problem.message.startswith(f'{target} outlives this occurrence of crew.check')
+    else:
+        compiled(formula)
+    if target.endswith(('request', 'capacity')):
+        # A setting takes a rate as well as a formula: the rate read now is a copy.
+        compiled(LIVES.format(stage=f'                {target} = {reading}'))
+
+
+def test_an_entity_formula_that_reads_a_parameter_is_refused_and_its_value_is_kept():
+    """The audit's row 14: an entity's formula that captured a parameter compiled and was read
+    after the occurrence ended. It is refused with what to do; the captured value runs."""
+    stage = '                this.rate = formula(amount / (2 h))'
+    problem = next(item for item in refused(LIVES.format(stage=stage)).problems if item.code == 'lifetime')
+    assert problem.message == (
+        'this.rate outlives this occurrence of crew.check, and its formula reads amount, a parameter of the '
+        'occurrence, which ends with it: give this.rate the value now (this.rate = ... without formula), or '
+        'read only what lives as long as it'
+    )
+
+
+def test_a_saved_reference_to_an_occurrence_is_a_typed_local_whose_fields_resolve_against_its_event():
+    """The audit's row 14: a field read through a saved occurrence reference failed to compile. The
+    reference is a local of the event of the type of its occurrence (`OccurrenceType`), set from the
+    path of an occurrence, and `job.crew_size` reads that occurrence's local."""
+    program = program_of(LIVES.format(stage='                this.held = job.amount'))
+    check = program.template('crew').part('check')
+    job = next(part for part in check.locals if part.name == 'job')
+    assert job.type == p.OccurrenceType('crew', 'repair') and job.kind == p.STATE
+    assert isinstance(job.init, Path) and isinstance(job.init.start, Lookup) and job.init.steps == ()
+    (write,) = check.steps[0].body
+    assert dict(write.value.reads)['job.amount'] == Path(Local('job'), ('amount',))
+
+
+@pytest.mark.parametrize(
+    ('text', 'code'),
+    [
+        (
+            'crew:\n    latest = crew.repair.occurrences.at(t)\n    repair = event():\n        after 1 h\n',
+            'occurrence',
+        ),
+        (
+            'crew:\n    latest = formula(this.repair.occurrences.at(t))\n    repair = event():\n        after 1 h\n',
+            'formula',
+        ),
+        (
+            'crew:\n    repair = event():\n        after 1 h\n    check = event():\n        job = this.repair.occurrences.at(t)\n        after 1 h:\n            job = this.repair.occurrences.at(t)\n',
+            'fixed_write',
+        ),
+        (
+            'crew:\n    repair = event():\n        after 1 h\n    check = event():\n        job = this.repair.occurrences.at(t)\n        after 1 h:\n            job.missing = 1\n',
+            'unknown_name',
+        ),
+    ],
+)
+def test_a_reference_to_an_occurrence_is_a_local_fixed_once_it_is_set(text, code):
+    """Only a local of an event holds an occurrence: a value of an entity starts before any
+    occurrence, a formula gives a number, a yes/no or a text, and no statement assigns the reference;
+    a field that its event does not have names nothing."""
+    assert code in refused(text).codes
+
+
+def test_a_saved_reference_keeps_naming_its_occurrence_after_later_starts():
+    """Spec, "A finished occurrence is a stable record": a saved reference names the repair that was
+    newest when the check entered (amount 3 L), after a later repair (amount 7 L) starts, and reads
+    its frozen amount once it finishes."""
+    text = """
+        scenario "Saved"
+            horizon 10 h
+        crew:
+            seen: L = 0 L
+            repair = event(amount: L):
+                after 2 h
+            check = event():
+                job = this.repair.occurrences.at(t)
+                after 4 h:
+                    this.seen = job.amount
+            again = event():
+                after 1 h:
+                    this.repair.start(7 L)
+        crew.repair.start(3 L)
+        crew.check.start()
+        crew.again.start()
+        """
+    model = compiled(text)
+    (seen,) = read(run(model.program, model.configuration), model.program, ['crew.seen'], [5])
+    assert seen.values == (3,)

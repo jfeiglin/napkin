@@ -201,6 +201,26 @@ def write_package(root, files, library=None, *, owner='SC99'):
     return catalogue.locate(owner, root).entry
 
 
+def datum_package(root, *, rate='2 people/h', datum=(2, 'people/h'), end='34 h', delay=(34, 'h'), half=None):
+    """The service package of the synthetic catalogue, whose record `access` (cited by the rate)
+    names the datum `rate` of C-ACCESS and whose record `timing` (cited by the end) the datum `delay`
+    of C-ACTION; `half` is the record of the option "Half rate" in place of `@halved`."""
+    library = evidence_library()
+    library['claims'] = [
+        fixture_claim('C-ACCESS', data={'rate': {'value': datum[0], 'unit': datum[1]}}),
+        fixture_claim('C-ACTION', data={'delay': {'value': delay[0], 'unit': delay[1]}}),
+    ]
+    text = SERVICE.replace('input rate: people/h = 2 people/h', f'input rate: people/h = {rate}')
+    text = text.replace(
+        'input end: h = 8 h in [1 h, 10 h]  @fixture', f'input end: h = {end} in [1 h, 100 h]  @timing'
+    )
+    text = text.replace('        C-ACCESS\n', '        C-ACCESS\n            datum: rate\n')
+    text += 'record timing: source "The time before the service stops."\n    claims:\n        C-ACTION\n            datum: delay\n'
+    if half is not None:
+        text = text.replace('service.rate = 1 people/h  @halved', f'service.rate = 1 people/h  {half}')
+    return write_package(root, {'model.scn': text}, library)
+
+
 # A package whose records cite no record of a library: a queue that one person joins each hour.
 QUEUE = """\
 scenario "Queue"

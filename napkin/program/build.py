@@ -519,6 +519,14 @@ def group_of(template):
     return p.CollectionType(template)
 
 
+def occurrence_of(template, event):
+    """The type of a local that refers to an occurrence of the event `event` of a template
+    (`parts.OccurrenceType`); its initializer is the path of an occurrence, as `this.repair.
+    occurrences.at(t)`."""
+    name = template.name if isinstance(template, TemplateHandle) else template
+    return p.OccurrenceType(name, event)
+
+
 def dist_of(of):
     """The type of a distribution of numbers in a unit, or of an enum's members."""
     return p.DistributionType(_type(of))
@@ -594,7 +602,10 @@ def _initial(value, value_type):
     if (
         isinstance(value, X)
         and value._path is not None
-        and isinstance(value._path.start, (Literal, Instances, Where, By))
+        and (
+            isinstance(value._path.start, (Literal, Instances, Where, By))
+            or isinstance(value_type, p.OccurrenceType)
+        )
     ):
         return value._path
     unit = value_type.unit if isinstance(value_type, p.Number) else ''

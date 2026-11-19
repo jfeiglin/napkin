@@ -20,13 +20,16 @@ The codes:
 - `duplicate_name`: two templates, enums, members, or parts of one scope with one name.
 - `unknown_unit`: a unit spelling that is not in the program's table.
 - `kind`: a record whose kind and contents disagree (a formula without a `Formula`, a range on a
-  yes/no, a flow with legs and ends, a parameter with an initializer, an unknown rating).
+  yes/no, a flow with legs and ends, a parameter with an initializer, an unknown rating, a reference
+  to an occurrence that is no local of an event or starts from no path of an occurrence of its
+  event, `parts.OccurrenceType`).
 - `link_unset`, `no_value`: a member that leaves a link without a row, or a value with no starting
   value (D4).
 - `two_writers`: a value or a rate that a solver determines and a stage, a second solver or a flow
   also writes. A flow's actual rate is the engine's, or one solver's.
 - `readonly_write`, `fixed_write`, `result_write`, `assign_value`: an assignment to a readonly
-  value; to what is fixed for the run (an input, a link, a flow's end, an event); to what the run
+  value; to what is fixed for the run (an input, a link, a flow's end, an event) or once its
+  occurrence enters (a reference to an occurrence); to what the run
   computes (an actual rate, a served fraction, a solver's unknown, an occurrence's built-in); or of
   a value of the wrong form (a scalar into a formula, `+=` on a yes/no).
 - `flow_end`, `parameter_end`, `route_end`, `flow_units`, `move_end`: a flow's end that is no stored
@@ -315,6 +318,11 @@ class Resolver:
             return None
         if kind == 'value':
             value = found.part
+            if isinstance(value.type, p.OccurrenceType):
+                event = self.occurrence_event(value.type)
+                return (
+                    None if event is None else self.step(Found('occurrence', event[1], event[0], many), name)
+                )
             target = entity_template(value.type)
             if target is not None:
                 collection = isinstance(value.type, p.CollectionType)
@@ -366,6 +374,12 @@ class Resolver:
                     return Found('unknown', unknown, found.part, many)
             return None
         return None
+
+    def occurrence_event(self, value_type):
+        """(template, event) that an `OccurrenceType` names, or None."""
+        template = self.templates.get(value_type.template)
+        event = template.part(value_type.event) if template is not None else None
+        return (template, event) if isinstance(event, p.Event) else None
 
     def fixed_test(self, test, scope, where):
         """A `where` filters on what is fixed for each member: links, inputs and the ends of flows."""
@@ -587,6 +601,13 @@ class _Checker(Resolver):
             self.fail('kind', where, f'endpoint settings on {value.name!r}, which is no stored number')
         if value.kind == p.LINK and not isinstance(value.type, p.EntityType):
             self.fail('kind', where, f'the link {value.name!r} names no template')
+        if isinstance(value.type, p.OccurrenceType) and (
+            scope.event is None or parameter or value.kind != p.STATE or members is not None
+        ):
+            self.fail(
+                'kind', where, f'{value.name!r} refers to an occurrence: only a local of an event holds one'
+            )
+            return
         if parameter or value.kind == p.LINK:
             if value.init is not None:
                 self.fail('kind', where, f'{value.name!r} takes its value from its argument or its row')
@@ -607,9 +628,24 @@ class _Checker(Resolver):
             p.COLLECTION: (Path,),
             p.DISTRIBUTION: (Distribution, Path),
             p.INPUT: (Distribution,) if isinstance(value.type, p.DistributionType) else (Expr,),
-        }.get(value.kind, (Expr,))
+        }.get(value.kind, (Path,) if isinstance(value.type, p.OccurrenceType) else (Expr,))
         if not isinstance(init, expected):
             self.fail('kind', where, f'{value.name!r} ({value.kind}) cannot start from {type(init).__name__}')
+            return
+        if isinstance(value.type, p.OccurrenceType):
+            found = self.resolve(init, scope, where)
+            if found is not None and found.kind == 'value' and found.part.type == value.type:
+                return  # another reference to an occurrence of the event
+            event = self.occurrence_event(value.type)
+            if found is not None and (
+                found.kind != 'occurrence' or found.many or event is None or found.part != event[1]
+            ):
+                self.fail(
+                    'kind',
+                    where,
+                    f'{value.name!r} refers to an occurrence of {value.type.template}.{value.type.event}: it starts '
+                    f'from the path of one, not `{spelled(init)}`',
+                )
             return
         if isinstance(init, Formula):
             self.check_expr(init.expr, scope, where, 'a formula')
@@ -634,6 +670,9 @@ class _Checker(Resolver):
                 self.fail('unknown_name', where, f'no template {value_type.template!r}')
         elif isinstance(value_type, p.DistributionType):
             self.type(value_type.of, where)
+        elif isinstance(value_type, p.OccurrenceType):
+            if self.occurrence_event(value_type) is None:
+                self.fail('unknown_name', where, f'no event {value_type.template}.{value_type.event}')
         elif not isinstance(value_type, (p.Bool, p.Text)):
             self.fail('kind', where, f'no type: {type(value_type).__name__}')
 
@@ -798,7 +837,7 @@ class _Checker(Resolver):
                 if part.kind in (p.INPUT, p.LINK):
                     self.fail('kind', part.origin, f'the local {part.name!r} is no input or link')
                 self.value(part, scope, None)
-                plain = [s for s in (part.init, part.lower, part.upper) if isinstance(s, Expr)]
+                plain = [s for s in (part.init, part.lower, part.upper) if isinstance(s, (Expr, Path))]
             self.local_order(event, index, part, plain)
         for step in event.steps:
             if isinstance(step, p.After):
@@ -963,6 +1002,11 @@ class _Checker(Resolver):
         if part.kind in (p.INPUT, p.LINK) or isinstance(part.type, p.EntityType):
             self.fail('fixed_write', where, f'`{spelled(target)}` is fixed for the run')
             return
+        if isinstance(part.type, p.OccurrenceType):
+            self.fail(
+                'fixed_write', where, f'`{spelled(target)}` refers to an occurrence, set when its own enters'
+            )
+            return
         if part.readonly:
             self.fail(
                 'readonly_write',
@@ -1065,7 +1109,8 @@ class _Checker(Resolver):
 
 
 def _locals_read(expression):
-    """The bare names that an expression reads, also inside its collections and keyed reads."""
+    """The bare names that an expression reads, also inside its collections and keyed reads; or that
+    a path reads (the initializer of a reference to an occurrence)."""
     found = set()
 
     def path(item):
@@ -1080,7 +1125,7 @@ def _locals_read(expression):
             if isinstance(start, (Where, Lookup)):
                 found.update(_locals_read(start.test if isinstance(start, Where) else start.key))
 
-    for _, read in expression.reads:
+    for _, read in ((None, expression),) if isinstance(expression, Path) else expression.reads:
         for item in (
             read,
             getattr(read, 'source', None),

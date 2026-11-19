@@ -21,6 +21,8 @@ the proofs and the oracle read programs; tests build them with `build.py`.
   number of the member that it names, in the link's template.
 - **No `none` (D4).** Every link of every member names a row, every stored value has a starting
   value, and no constant is None.
+- **References to occurrences.** A local of an event may hold one (`OccurrenceType`), set from the
+  path of an occurrence when its own occurrence enters; its fields are that occurrence's.
 
 What an engine may rely on is checked by `check.check`, which `build.Builder.finish` runs.
 """
@@ -109,7 +111,21 @@ class DistributionType:
     of: Number | EnumType
 
 
-Type = Bool | Text | Number | EnumType | EntityType | CollectionType | DistributionType
+@dataclass(frozen=True)
+class OccurrenceType:
+    """A reference to an occurrence of the event `event` of the template `template`, which only a
+    local of an event holds (spec: a saved reference to an occurrence keeps naming that occurrence
+    after later starts, R-A2-11). Its initializer is the path of one occurrence (`Path` to
+    `this.repair.occurrences.at(t)`), read once when the holding occurrence enters, in written order
+    (D14); a read through it (`Path(Local('job'), ('crew_size',))`) reads that occurrence's parameter,
+    local, flow or built-in field, live while it runs and frozen once it finishes (D7), and a write
+    through it writes a writable local of a live one. No statement assigns the reference itself."""
+
+    template: str
+    event: str
+
+
+Type = Bool | Text | Number | EnumType | EntityType | CollectionType | DistributionType | OccurrenceType
 
 # ---- values ---------------------------------------------------------------------------------------
 

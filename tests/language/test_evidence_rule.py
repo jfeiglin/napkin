@@ -16,6 +16,8 @@ from napkin.model.compile import compile_text, load_scenario
 from napkin.model.ir import ModelError
 from napkin.model.language.problems import LanguageError
 from napkin.model.library import model_document
+from napkin.model.support import DATUM
+from tests.evidence.support import datum_package
 from tests.program.examples import UNITS
 
 TEXT = """\
@@ -172,3 +174,50 @@ def test_a_record_that_names_no_assumption_is_refused_at_its_file_and_line(tmp_p
     (item,) = caught.value.diagnostics
     assert (item['code'], Path(item['file']).name, item['line']) == ('provenance', 'common.scn', 2)
     assert 'A-NOWHERE' in item['message']
+
+
+# ---- a value and the datum that its record cites (the audit's row 17) ------------------------------
+
+
+def data_warnings(path):
+    return [(item.message, item.line) for item in load_scenario(path).reports if item.code == DATUM]
+
+
+@pytest.mark.parametrize(
+    ('rate', 'datum', 'end', 'delay'),
+    [
+        ('2 people/h', (2, 'people/h'), '34 h', (34, 'h')),
+        ('2 people/h', (48, 'people/day'), '1 days + 10 h', (34.0, 'h')),
+        ('2.0 people/h', (2.0, 'people/h'), '36 h', (1.5, 'days')),
+        ('0.5 people/h * 4', (48, 'people/day'), '0.25 days * 4 + 10 h', (34, 'h')),
+    ],
+)
+def test_a_value_equal_to_its_cited_datum_however_spelled_is_no_warning(tmp_path, rate, datum, end, delay):
+    """A datum states a number and a unit: a value that cites it is that number, read in dimension
+    and scale and exactly, however either is spelled (a unit, a decimal, a sum or product of such
+    numbers). A float of the library is the decimal that writes it (`core.units.rational`)."""
+    path = datum_package(tmp_path, rate=rate, datum=datum, end=end, delay=delay)
+    assert data_warnings(path) == []
+
+
+def test_a_value_that_differs_from_its_cited_datum_is_a_warning_with_both_numbers(tmp_path):
+    """The audit's row 17: an input of 99 h whose record cites a datum of 34 h compiled silently. It
+    warns now at the value's line, with both numbers; so does a value near its datum, since a datum
+    states no precision (a value of 2.4 people/h is not the datum 2 people/h, nor 34.04 h the datum
+    34.0 h: such a value needs a derivation or an assumption), a datum of another dimension, and an
+    option's setting whose record cites the datum."""
+    path = datum_package(tmp_path / 'a', end='99 h')
+    line = next(k for k, row in enumerate(path.read_text().split('\n'), 1) if 'input end' in row)
+    assert data_warnings(path) == [
+        ('service.end: @timing cites the datum delay of C-ACTION, 34 h, and 99 h differs from it', line)
+    ]
+    (rate,) = data_warnings(datum_package(tmp_path / 'b', rate='2.4 people/h'))
+    assert rate[0].endswith('the datum rate of C-ACCESS, 2 people/h, and 2.4 people/h differs from it')
+    (near,) = data_warnings(datum_package(tmp_path / 'c', end='34.04 h', delay=(34.0, 'h')))
+    assert near[0].endswith('the datum delay of C-ACTION, 34.0 h, and 34.04 h differs from it')
+    (other,) = data_warnings(datum_package(tmp_path / 'd', delay=(34, 'people')))
+    assert other[0].endswith('34 people, and 34 h is of another dimension')
+    (option,) = data_warnings(datum_package(tmp_path / 'e', half='@access'))
+    assert option[0].startswith(
+        'service.rate: @access cites the datum rate of C-ACCESS, 2 people/h, and 1 people/h'
+    )

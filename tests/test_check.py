@@ -313,7 +313,7 @@ def test_the_evidence_stage_refuses_a_package_that_rests_a_value_on_no_record(tm
     assert check.evidence(('SC97',), tmp_path) == 0 and check.evidence((), tmp_path) == 0
     capsys.readouterr()
     assert check.evidence(None, tmp_path) == 1
-    assert 'SC98: 1 part rests on no record' in capsys.readouterr().out
+    assert 'SC98: 1 part without the support of a record' in capsys.readouterr().out
 
 
 def test_the_summaries_take_the_committed_spreads_unless_spreads_are_asked(monkeypatch):

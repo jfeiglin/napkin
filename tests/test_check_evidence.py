@@ -1,11 +1,13 @@
 """The evidence stage of `tools.check` (item 16 of the plan's changes after G0): a scenario package of
-the catalogue whose model rests a value on no record fails the check, though the model still runs.
+the catalogue whose model rests a value on no record, or gives a value that differs from a datum that
+its record cites, fails the check, though the model still runs.
 
 Each test writes a small catalogue of its own, with packages that the tests' reserved IDs name, and
 asks the stage about it. The line of each warning is counted by hand in the texts below."""
 
 import textwrap
 
+from tests.evidence.support import datum_package
 from tools import check
 
 # A tank whose water, drain and event rest on a record. Its rate is an input that rests on none
@@ -49,8 +51,31 @@ def test_a_package_with_a_value_on_no_record_fails_and_names_the_value_at_its_li
     assert message.startswith('scenarios/SC97/model.scn:7: tank.rate: an input rests on no record')
     assert check.evidence(root=root) == 1
     printed = capsys.readouterr().out
-    assert 'SC97: 1 part rests on no record' in printed
+    assert 'SC97: 1 part without the support of a record' in printed
     assert 'SC98' not in printed
+
+
+def test_a_package_with_a_value_that_differs_from_its_cited_datum_fails_with_both_numbers(tmp_path, capsys):
+    """The audit's row 17: an input of 99 h whose record cites a datum of 34 h. The compiler warns
+    (`napkin.model.support.DATUM`); the catalogue check refuses it, as a value on no record. The
+    package with the value of its datum (whose `open` rests on no record) has every refusal of the
+    99 h package but that one."""
+    datum_package(tmp_path / 'equal')
+    base = check.unsupported(root=tmp_path / 'equal').get('SC99', [])
+    entry = datum_package(tmp_path / 'apart', end='99 h')
+    line = next(k for k, row in enumerate(entry.read_text().split('\n'), 1) if 'input end' in row)
+    expected = (
+        f'scenarios/SC99/model.scn:{line}: service.end: @timing cites the datum delay of C-ACTION, 34 h, '
+        'and 99 h differs from it'
+    )
+    assert sorted(check.unsupported(root=tmp_path / 'apart')['SC99']) == sorted([*base, expected])
+    capsys.readouterr()
+    assert check.evidence(root=tmp_path / 'apart') == 1
+    count = len(base) + 1
+    assert (
+        f'SC99: {count} part{"s" if count > 1 else ""} without the support of a record'
+        in capsys.readouterr().out
+    )
 
 
 def test_a_package_whose_every_value_rests_on_a_record_passes(tmp_path):

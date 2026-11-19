@@ -182,15 +182,19 @@ FAMILIES = {
     'share': {'ratio': Fraction(1), 'fraction': Fraction(1), 'percent': Fraction(1, 100)},
 }
 DIMENSIONS = {'time': {'time': 1}, 'volume': {'volume': 1}, 'share': {}}
-SPELLED = {name: (DIMENSIONS[family], scale) for family, units in FAMILIES.items() for name, scale in units.items()}
+SPELLED = {
+    name: (DIMENSIONS[family], scale) for family, units in FAMILIES.items() for name, scale in units.items()
+}
 # A canonical step of each family whose multiples are finite decimals in every unit of the family.
 STEPS = {'time': Fraction(24, 100), 'volume': Fraction(1, 1000), 'share': Fraction(1, 100)}
 
 
 def written(value, unit):
     """A canonical value in `unit` as a decimal text with its unit (`0.1 day`)."""
-    number = Decimal(value.numerator) / Decimal(value.denominator) / (
-        Decimal(FAMILIES_OF[unit][unit].numerator) / Decimal(FAMILIES_OF[unit][unit].denominator)
+    number = (
+        Decimal(value.numerator)
+        / Decimal(value.denominator)
+        / (Decimal(FAMILIES_OF[unit][unit].numerator) / Decimal(FAMILIES_OF[unit][unit].denominator))
     )
     return f'{format(number.normalize(), "f")} {unit}'
 
@@ -264,7 +268,10 @@ def test_respelling_a_unit_never_changes_a_check_or_a_value(texts):
     assert one.configuration.request.horizon == two.configuration.request.horizon
     paths = ['x', 'inside', 'root', 'square', 'drawn']
     found = [
-        [canonical(reading, model.program) for reading in read(run(model.program, model.configuration), model.program, paths, [0])]
+        [
+            canonical(reading, model.program)
+            for reading in read(run(model.program, model.configuration), model.program, paths, [0])
+        ]
         for model in (one, two)
     ]
     for path, left, right in zip(paths, *found):
@@ -272,3 +279,28 @@ def test_respelling_a_unit_never_changes_a_check_or_a_value(texts):
             assert left == right, (path, texts)
         else:
             assert left == pytest.approx(right, rel=1e-12), (path, texts)
+
+
+def test_a_run_reads_equal_quantities_as_one_number():
+    """The run converts each quantity once and exactly (`napkin.core.units.UnitRegistry.normalize`):
+    `0.1 day`, `144 min` and `2.4 h` are one float, so a test of one against another is decided as
+    the quantities are; and a square root or a power reads the dimension, `sqrt(24 h * 1 day)` being
+    24 h by the arithmetic of hours."""
+    text = (
+        'scenario "Equal"\n    horizon 1 h\n'
+        'a = 0.1 day\nb = 144 min\nc = 2.4 h\nsame = (0.1 day == 2.4 h)\n'
+        'inside = (2.4 h in [0.1 day, 144 min])\nroot = sqrt(24 h * 1 day)\nhalf = (4 h * 1 day) ** 0.5\n'
+    )
+    model = compile_text(text, SPELLED)
+    found = {
+        reading.path: canonical(reading, model.program)[0]
+        for reading in read(
+            run(model.program, model.configuration),
+            model.program,
+            ['a', 'b', 'c', 'same', 'inside', 'root', 'half'],
+            [0],
+        )
+    }
+    assert found['a'] == found['b'] == found['c'] == float(Fraction(12, 5))
+    assert found['same'] is True and found['inside'] is True
+    assert found['root'] == 24.0 and found['half'] == pytest.approx(96**0.5, rel=1e-15)

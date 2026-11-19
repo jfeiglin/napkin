@@ -7,6 +7,8 @@ the same model, and each refusal has its code and its line."""
 import textwrap
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from napkin.engine import read, run
 from napkin.model import semantic as s
@@ -486,3 +488,165 @@ def test_mutual_links_are_no_cycle():
     text = 'Pair:\n    other: Pair\n    x = formula(this.other.x0)\n    x0 = 1\na: Pair\n    other = b\nb: Pair\n    other = a\n'
     found = compiled(text).program.template('Pair')
     assert [dict(member.links) for member in found.members] == [{'other': 1}, {'other': 0}]
+
+
+# ---- a key fixed when the model compiles ------------------------------------------------------------
+
+KEYS = """\
+scenario "Keys"
+    horizon 1 h
+Node:
+    demand: L = 1 L
+    input key: number = 0
+    total: L = this.demand
+    pick: L = this.demand
+{members}"""
+
+
+def keyed_text(order, reader, demands, rows_at, reading):
+    """The text of members written by hand in `order`, with the table `rows` at the place `rows_at`
+    among them; the member `reader` reads `reading` (a dict of its own lines)."""
+    lines = []
+    for k, name in enumerate(order):
+        if k == rows_at:
+            lines.append('rows: Node from "rows.csv"\n')
+        lines.append(f'{name}: Node\n    demand = {demands[name]} L\n')
+        if name == reader:
+            lines.extend(f'    {key} = {value}\n' for key, value in reading.items())
+    if rows_at >= len(order):
+        lines.append('rows: Node from "rows.csv"\n')
+    return KEYS.format(members=''.join(lines))
+
+
+def outcome(text, table):
+    """(the codes of the problems, or None), and the values at the start of each member's total and
+    pick, by member."""
+    try:
+        model = compile_text(text, UNITS, tables={'rows.csv': table})
+    except LanguageError as error:
+        return sorted({item.code for item in error.problems}), None
+    members = [member.id for member in model.program.template('Node').members]
+    paths = [f'{member}.{name}' for member in members for name in ('total', 'pick')]
+    record = run(model.program, model.configuration)
+    return None, {item.path: item.values for item in read(record, model.program, paths, [0])}
+
+
+@settings(derandomize=True, max_examples=40, deadline=None)
+@given(st.data())
+def test_a_fixed_key_reads_the_entry_that_it_selects_and_no_other(data):
+    """Spec, "Collections, keys and projections", and the audit's row 15: `c.at(x)` reads the member
+    with the greatest key at or below `x`, and a key fixed when the model compiles selects that entry
+    there, so a value that reads it depends on that entry alone. For random members written by hand
+    and rows of a table with ids, the instances of the template or a literal of some of them, and a
+    fixed key, the reading member's total gives what it gives with the selected entry written by its
+    id, refused as a cycle exactly when that entry is the reader; and the entry is the one that the
+    run's own lookup selects with the same key given as an input. The keys are the creation numbers
+    of the program's members (written by hand in the order of the text, the table's rows in the order
+    of their ids), read from the program, not from the front end."""
+    count = data.draw(st.integers(1, 3))
+    order = data.draw(st.permutations([f'm{k}' for k in range(count)]))
+    ids = data.draw(st.lists(st.sampled_from(['a', 'b', 'c']), unique=True, min_size=1, max_size=3))
+    rows_at = data.draw(st.integers(0, count))
+    reader = data.draw(st.sampled_from(order))
+    demands = {name: 10 * (k + 1) for k, name in enumerate(order)}
+    table = 'id,demand: L\n' + ''.join(f'{id},{k + 1}\n' for k, id in enumerate(ids))
+    base = keyed_text(order, reader, demands, rows_at, {})
+    created = [
+        member.id
+        for member in compile_text(base, UNITS, tables={'rows.csv': table}).program.template('Node').members
+    ]
+    if data.draw(st.booleans()):
+        source, members = 'Node.instances', created
+    else:
+        chosen = data.draw(st.lists(st.sampled_from(created), min_size=1, unique=True))
+        source, members = f'<{", ".join(chosen)}>', chosen
+    numbers = sorted(created.index(member) for member in members)
+    key = data.draw(st.sampled_from([numbers[0], *(number + 0.5 for number in numbers), len(created) + 1]))
+    selected = created[max(number for number in numbers if number <= key)]
+    fixed = outcome(
+        keyed_text(
+            order,
+            reader,
+            demands,
+            rows_at,
+            {
+                'total': f'this.demand + {source}.at({key}).total',
+                'pick': f'{source}.at({key}).demand',
+            },
+        ),
+        table,
+    )
+    direct = outcome(
+        keyed_text(
+            order,
+            reader,
+            demands,
+            rows_at,
+            {
+                'total': f'this.demand + {selected}.total',
+                'pick': f'{selected}.demand',
+            },
+        ),
+        table,
+    )
+    assert fixed == direct, (source, key, selected)
+    assert (fixed[0] == ['cycle']) == (selected == reader)
+    if fixed[0] is None:
+        given_key = outcome(
+            keyed_text(
+                order,
+                reader,
+                demands,
+                rows_at,
+                {
+                    'key': key,
+                    'total': f'this.demand + {selected}.total',
+                    'pick': f'{source}.at(this.key).demand',
+                },
+            ),
+            table,
+        )
+        assert given_key == direct, (source, key, selected)
+
+
+def test_a_fixed_key_over_each_members_own_collection_reads_its_entry_alone():
+    """The audit's row 15: `<leaf, top>.at(0)` selects leaf, so top's total reads leaf's and no cycle
+    runs through top; so do the instances of the template, a collection of each member's own, a
+    where over links and a by of starting values written out. `.at(1)` selects top itself: a cycle,
+    with its chain."""
+    head = 'scenario "Tree"\n    horizon 1 h\nNode:\n    demand: L = 1 L\n    rank: number = 0\n    children: <Node> = <>\n    total: L = this.demand\n'
+    for reading in (
+        '<leaf, top>.at(0)',
+        'Node.instances.at(0)',
+        'this.children.at(0)',
+        'Node.instances.where(this == this).at(0)',
+        'Node.instances.by(rank).at(6)',
+        '<leaf, top>.at(0.5)',
+    ):
+        text = head + (
+            'leaf: Node\n    rank = 5\n'
+            'top: Node\n    demand = 2 L\n    rank = 9\n    children = <leaf, top>\n'
+            f'    total = this.demand + {reading}.total\n'
+        )
+        model = compiled(text)
+        found = read(run(model.program, model.configuration), model.program, ['leaf.total', 'top.total'], [0])
+        assert [item.values[0] for item in found] == [1, 3], reading
+    looped = head + 'leaf: Node\ntop: Node\n    total = this.demand + <leaf, top>.at(1).total\n'
+    assert (
+        refused(looped, 'cycle').message == 'top.total reads top.total: the values on a cycle have no order'
+    )
+
+
+def test_a_fixed_formula_reads_the_entry_that_its_key_selects():
+    """A formula that reads `<leaf, top>.at(0).total` reads leaf's total: the program reads it by
+    the member's id, so the run finds no formula that reads itself."""
+    text = (
+        'scenario "Tree"\n    horizon 1 h\nNode:\n    demand: L = 1 L\n    total = formula(this.demand)\n'
+        'leaf: Node\ntop: Node\n    demand = 2 L\n    total = formula(this.demand + <leaf, top>.at(0).total)\n'
+    )
+    model = compiled(text)
+    found = read(run(model.program, model.configuration), model.program, ['leaf.total', 'top.total'], [0])
+    assert [item.values[0] for item in found] == [1, 3]
+    (top,) = (member for member in model.program.template('Node').members if member.id == 'top')
+    (formula_read,) = (read for _, read in dict(top.values)['total'].expr.reads if read.steps == ('total',))
+    assert formula_read == Path(Named('leaf'), ('total',))
