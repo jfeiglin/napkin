@@ -200,7 +200,9 @@ PARTS = {
     ),
     'a flow capacity': (
         lambda n: (
-            f'    flow extra: SOURCE -> this.served\n        request = 1000 person/h\n        capacity = formula({deep(n)})\n'
+            '    flow extra: SOURCE -> this.served\n'
+            '        request = 1000 person/h\n'
+            f'        capacity = formula({deep(n)})\n'
         ),
         's.served',
         1200,
@@ -215,14 +217,22 @@ PARTS = {
     ),
     'a trigger condition': (
         lambda n: (
-            f'    seen = event():\n        when {deep(n)} >= 300 person/h:\n            this.seen.start()\n            reset when false\n        after 0 h:\n            this.level = 1 person\n'
+            '    seen = event():\n'
+            f'        when {deep(n)} >= 300 person/h:\n'
+            '            this.seen.start()\n'
+            '            reset when false\n'
+            '        after 0 h:\n'
+            '            this.level = 1 person\n'
         ),
         's.level',
         1,
     ),
     'a stage assignment': (
         lambda n: (
-            f'    refill = event():\n        after 1 h:\n            this.level = ({deep(n)}) * 1 h\ns.refill.start()\n'
+            '    refill = event():\n'
+            '        after 1 h:\n'
+            f'            this.level = ({deep(n)}) * 1 h\n'
+            's.refill.start()\n'
         ),
         's.level',
         300,

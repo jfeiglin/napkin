@@ -159,6 +159,7 @@ def stub_stages(monkeypatch):
         lambda scope, jobs, spreads=False: calls.append(('summaries', scope, jobs, spreads)) or 0,
     )
     monkeypatch.setattr(check, 'verify_store', lambda: calls.append(('store',)) or 0)
+    monkeypatch.setattr(check, 'evidence', lambda scope: calls.append(('evidence', scope)) or 0)
     return calls
 
 
@@ -217,13 +218,14 @@ def test_explicit_test_paths_do_not_run_publication_or_store_replay(monkeypatch,
 def test_focused_deep_check_does_not_replay_unrelated_stored_runs(monkeypatch):
     calls = stub_stages(monkeypatch)
     assert check.main(['--scenario', 'SC98', '--deep', '--skip-summaries']) == 0
-    assert [row[0] for row in calls] == ['lint', 'tests']
+    assert calls[2:] == [('evidence', ('SC98',))]
+    assert [row[0] for row in calls] == ['lint', 'tests', 'evidence']
 
 
 def test_full_deep_check_retains_exhaustive_stages(monkeypatch):
     calls = stub_stages(monkeypatch)
     assert check.main(['--all', '--deep']) == 0
-    assert [row[0] for row in calls] == ['lint', 'tests', 'store', 'summaries']
+    assert [row[0] for row in calls] == ['lint', 'tests', 'evidence', 'store', 'summaries']
     assert calls[-1] == ('summaries', None, 4, False)
 
 
@@ -291,6 +293,27 @@ def test_the_stored_runs_stage_runs_in_a_process_of_its_own(monkeypatch):
     monkeypatch.setattr(check, 'run', lambda command, **kwargs: calls.append(command) or 0)
     assert check.verify_store() == 0
     assert calls == [[sys.executable, '-B', '-m', 'tools.check', '--verify-store', '3']]
+
+
+def test_the_evidence_stage_refuses_a_package_that_rests_a_value_on_no_record(tmp_path, capsys):
+    """Item 16 of the plan's changes after G0: a package of the catalogue has no part that rests on no
+    record. The synthetic catalogue holds the queue of `tests/evidence/support.py`, each of whose parts
+    cites its record, and a copy whose arrivals cite none."""
+    from tests.evidence.support import QUEUE, write_package
+
+    write_package(tmp_path, {'model.scn': QUEUE}, owner='SC97')
+    bare = QUEUE.replace('in [0 people/h, 10 people/h]  @fixture', 'in [0 people/h, 10 people/h]')
+    write_package(tmp_path, {'model.scn': bare}, owner='SC98')
+    line = (
+        bare.split('\n').index('    input arrivals: people/h = 1 people/h in [0 people/h, 10 people/h]') + 1
+    )
+    found = check.unsupported(None, tmp_path)
+    assert list(found) == ['SC98'] and len(found['SC98']) == 1
+    assert found['SC98'][0].startswith(f'scenarios/SC98/model.scn:{line}: queue.arrivals:')
+    assert check.evidence(('SC97',), tmp_path) == 0 and check.evidence((), tmp_path) == 0
+    capsys.readouterr()
+    assert check.evidence(None, tmp_path) == 1
+    assert 'SC98: 1 part rests on no record' in capsys.readouterr().out
 
 
 def test_the_summaries_take_the_committed_spreads_unless_spreads_are_asked(monkeypatch):

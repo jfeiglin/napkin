@@ -70,15 +70,12 @@ def served(t):
     return 0.0 if t <= REPAIR else USERS * (1 - math.exp(-K * (t - REPAIR)))
 
 
-def run_of(text, run_name=None, edits=None, units=UNITS):
-    model = compile_text(text, units)
+def run_of(text, run_name=None, edits=None):
+    """(the compiled model of `text`, the record of its run `run_name` under the edits `edits`)."""
+    model = compile_text(text, UNITS)
     configuration = model.configuration
     if run_name is not None or edits is not None:
-        document = (
-            None
-            if edits is None
-            else {'schema_version': SCHEMA_VERSION, 'model_hash': model.model_hash, **edits}
-        )
+        document = edits and {'schema_version': SCHEMA_VERSION, 'model_hash': model.model_hash, **edits}
         configuration = model.configure(run_name, document)
     record = run(model.program, configuration)
     assert record.failure is None, record.failure.detail('message')

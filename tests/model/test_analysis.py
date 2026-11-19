@@ -87,28 +87,29 @@ queue:
 """
 
 
-def levels(upper='this.cap', edits=None, times=(3, 10, 20)):
+def queue(upper='this.cap', edits=None):
+    """(the record of a run of the queue whose level's upper bound is `upper`, under the edits
+    `edits`; the compiled model)."""
     model = compile_text(BOUNDED.format(upper=upper), UNITS)
     configuration = model.configuration
     if edits is not None:
-        configuration = model.configure(
-            edits={'schema_version': SCHEMA_VERSION, 'model_hash': model.model_hash, **edits}
-        )
-    record = run(model.program, configuration)
-    return record, model, times
+        document = {'schema_version': SCHEMA_VERSION, 'model_hash': model.model_hash, **edits}
+        configuration = model.configure(edits=document)
+    return run(model.program, configuration), model
 
 
 def test_a_bound_that_reads_an_input_holds_the_store_at_the_value_of_the_run():
     """The level rises 2 L an hour from 30 L and is held at its upper bound: min(30 + 2 t, cap)."""
+    times = [3, 10, 20]
     for edits, cap in ((None, 40), ({'set': {'queue.cap': 55}}, 55)):
-        record, model, times = levels(edits=edits)
+        record, model = queue(edits=edits)
         assert record.failure is None
-        (level,) = read(record, model.program, ['queue.level'], list(times))
+        (level,) = read(record, model.program, ['queue.level'], times)
         assert level.values == pytest.approx([min(30 + 2 * t, cap) for t in times], rel=1e-9)
 
 
 def test_a_bound_that_cannot_be_a_number_stops_the_run_and_names_its_expression():
-    record, _, _ = levels(upper='1 L * (this.cap / (this.cap - this.cap))')
+    record, _ = queue(upper='1 L * (this.cap / (this.cap - this.cap))')
     assert record.failure is not None
     message = record.failure.detail('message')
     assert 'queue.cap - queue.cap' in message and 'division by zero' in message

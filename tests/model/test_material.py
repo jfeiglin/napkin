@@ -51,8 +51,9 @@ def time_to_serve(amount):
     return -math.log(1 - amount / USERS) / K
 
 
-def values(parts, names, times, text=SERVICE):
-    model = compile_text(text.format(parts=parts), UNITS)
+def values(parts, names, times):
+    """The values of `names` at `times` in a run of the service with `parts`."""
+    model = compile_text(SERVICE.format(parts=parts), UNITS)
     record = run(model.program, model.configuration)
     assert record.failure is None, record.failure.detail('message')
     return [reading.values for reading in read(record, model.program, names, list(times))]
