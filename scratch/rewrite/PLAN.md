@@ -270,6 +270,14 @@ These override the text of this plan below, wherever the two differ. The owner's
    catalogue it touches only the first hours of `iv_fluid_shortage`, whose lagged values are 0 at
    the start.
 
+23. **No roles in the model (owner, 2026-11-19).** An entity and a template take no `role` either,
+   so no part of a model has one: the model refuses `role` anywhere, by name, and says where it goes.
+   Who plays a part is the wrapper's (`roles.toml`, read by the publisher and the UI) and, for the
+   pictures, the stylesheet's: `style.toml` has a `[role]` table beside its `[icon]`
+   (`operator = ["pump", "Utility"]`), from which `napkin draw` takes each card's icon when `[icon]`
+   names none, its "who acts" words and its group, so a picture is as it was. The translator moves
+   each old role to both.
+
 ### If the session is cut off
 
 Everything that matters is in the repository, pushed. The working memory of an agent is not: it
