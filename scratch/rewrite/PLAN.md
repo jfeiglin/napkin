@@ -44,7 +44,8 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] the join: `napkin run` lists a route's legs and a flow with legs' fields in file order, each leg in its own unit, and a link as the name of its member
   - [ ] performance, for later: about 3/4 of the moving benchmark's 299 s goes to 2,948 two-store components, each run and fitted alone
 - [ ] S4 occurrences and time (`briefs/s4.md`). The largest slice: its engine comes in two parts, one after the other; the front end does the whole slice beside the first part
-  - [ ] the front end, the whole slice, with the refusal of an assignment through `.source` or `.sink`; then the reachability of D16, ported from `81b367b`, if usage allows
+  - [x] the front end, the whole slice (`b1/s4-front/STATE.md`): the 32 examples that need no solver lower to their bytes; a write through `.source` or `.sink` is refused (`fixed_write`); reachability under a configuration (D16) is proof metadata in `napkin/program/reach.py`, ported from `81b367b`, each template's members merged into one state. An enum is named by its spelling. A distribution whose parameters are values is refused (`distribution`): the program holds numbers. Draws and choices stand only where a value is captured once. An event local holds no entity; occurrences are read through `.at(t)` (a local may keep one). Ported and deleted: the five front-end files of `tests/model/` for S4; `test_initiation.py` deleted (the old start of an incident)
+  - [ ] for C: `napkin/model/views.py` is rewritten on the compiled model; `draw/` and `commands/play.py` still call the old API
   - [ ] the engine, part one: occurrences, stages, gates, triggers, moves, retirement, history, limits (23 examples)
   - [ ] the engine, part two: draws and run modes in stages, inputs that are distributions, choices and the pause, assertions over state, `elapsed` and `delayed` (9 examples)
 - [ ] S5 solvers
