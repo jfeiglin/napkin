@@ -235,6 +235,16 @@ These override the text of this plan below, wherever the two differ. The owner's
    - **Before the migration branch starts**, the bugs are fixed on this branch, each with its failing
      example as a test, and the migration checker gains a step that runs the old and the new model to
      the horizon and fails on a difference that the package's `changed.md` does not list.
+20. **Triggers on values that turn (owner, 2026-11-19).** A continuous condition whose value can
+   rise and fall between moments (the reservoir's `water >= level`, filled by a storm and drained by
+   a spill that grows with the water) is certified step by step, not refused. In each integration
+   step: far from the boundary, one comparison of the distance with the most the value can move in
+   the step skips it; near it, a step in which the value's rate keeps one sign is certain from its
+   ends, and a crossing is found by bracketed root-finding on the integrator's own dense output;
+   where the value may turn near the boundary, the step is halved, reading the same output (no
+   extra integration and no new rates), until each piece is certain or shorter than the time
+   tolerance. A value that comes within tolerance of the boundary without crossing is a near-tie
+   (change 10). What still cannot be certified stops the run by name; nothing polls at fixed times.
 
 ### If the session is cut off
 
