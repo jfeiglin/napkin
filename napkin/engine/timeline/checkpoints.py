@@ -68,24 +68,28 @@ from .plan import BUILTINS, STARTS, STATE, _statements
 
 _SOURCES = ('engine', 'program', 'core')  # the folders of the package whose code a run runs
 _FILES = ('__init__.py', 'expressions.py', 'distributions.py')
-_version = []
+
+
+def _engine_version():
+    """The SHA-256 of the code that a run runs: the files of `engine/`, `program/` and `core/`, and
+    the modules of expressions and distributions, as they are when the engine is imported."""
+    root = Path(__file__).resolve().parents[2]
+    files = sorted(
+        [path for folder in _SOURCES for path in (root / folder).rglob('*.py')] + [root / name for name in _FILES]
+    )
+    digest = hashlib.sha256()
+    for path in files:
+        digest.update(path.relative_to(root).as_posix().encode() + b'\0')
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
+_VERSION = _engine_version()
 
 
 def engine_version():
-    """The version of the engine: the SHA-256 of the code that a run runs (the files of `engine/`,
-    `program/` and `core/`, and the modules of expressions and distributions), made once."""
-    if not _version:
-        root = Path(__file__).resolve().parents[2]
-        files = sorted(
-            [path for folder in _SOURCES for path in (root / folder).rglob('*.py')]
-            + [root / name for name in _FILES]
-        )
-        digest = hashlib.sha256()
-        for path in files:
-            digest.update(path.relative_to(root).as_posix().encode() + b'\0')
-            digest.update(hashlib.sha256(path.read_bytes()).digest())
-        _version.append(digest.hexdigest())
-    return _version[0]
+    """The version of the engine that runs (`_engine_version`), which a checkpoint names."""
+    return _VERSION
 
 
 def program_digest(program):

@@ -15,6 +15,8 @@ import pytest
 
 from napkin.engine.report import Lag, report
 from napkin.engine.timeline import Plan, Run, read, resume, run
+from napkin.engine.timeline.plan import name_of
+from napkin.engine.timeline.record import unit_of
 from napkin.program.build import (
     SOURCE,
     Builder,
@@ -26,10 +28,10 @@ from napkin.program.build import (
     this,
     value,
 )
-from napkin.program.checkpoint import Checkpoint, CheckpointError, dumps, loads
+from napkin.program.checkpoint import Breakpoint, Checkpoint, CheckpointError, dumps, loads
 from napkin.program.config import Configuration, Request
-from napkin.program.record import Key
 from tests.engine.test_checkpoints import SCENARIOS, UNITS, in_a_fresh_process, ticks
+from tests.program.examples import DISPATCH_SWITCH, PAUSES, At, pump_dispatch
 from tests.reference.from_program import run_of, value_at
 
 
@@ -55,7 +57,12 @@ def test_an_edit_at_a_stop_before_a_stage_commits_at_once(tmp_path):
     assert stopped[1].stop.t == 2 and stopped[1].state.value('tank.water') == 6
     (entry,) = final.entries('edit')
     assert (entry.t, entry.part, entry.owner) == (2, 'tank.tick.step[1]', 'tank.tick#0')
-    assert dict(entry.details) == {'breakpoint': 'tank.tick', 'target': 'tank.water', 'old': 6, 'new': 9}
+    assert dict(entry.details) == {
+        'breakpoint': 'tank.tick.step[1]',
+        'target': 'tank.water',
+        'old': 6,
+        'new': 9,
+    }
     assert [entry.t for entry in final.entries('start', 'tank.alarm')] == [pytest.approx(5, abs=1e-12)]
     (water,) = read(final, case.program, ['tank.water'], [2, 3, 5, 6.5, 7])
     assert water.values == pytest.approx([9, 7, 3, 0, 0], abs=1e-12)
@@ -89,39 +96,56 @@ def test_edits_in_a_stage_join_its_writes_and_commit_once_across_two_stops(tmp_p
     assert in_a_fresh_process('ordering', made, tmp_path) == [*stopped[1:], final]
 
 
-def test_the_dispatch_resumes_untouched_and_with_its_order_changed(tmp_path):
-    """Unattended, the forecast waits: one wait, no send. Paused before its branch, saved and resumed in
-    a fresh process untouched, the same. Resumed with `order` changed from WAIT to SEND, the send branch
-    runs once (no spare left, one sent, no wait); the draw of WAIT stays in the trace, and the edit
-    explains the change."""
-    case = SCENARIOS['dispatch']()
-    alone = run(case.program, case.configuration)
-    names = ['depot.waits', 'depot.spares', 'sent', 'depot.request_pump#0.order']
-    unattended = [reading.values[0] for reading in read(alone, case.program, names, [1])]
-    assert unattended == [1, 1, 0, 'WAIT']
-    oracle, failed = run_of(case.program, case.configuration)
-    assert failed is None
-    keys = [Key('depot', ('waits',)), Key('depot', ('spares',)), Key('', ('sent',))]
-    assert [value_at(oracle, case.program, key, 1) for key in keys] == unattended[:3]
-    checkpoint = run(case.program, case.configuration, case.breakpoints)
-    assert checkpoint.state.value('depot.request_pump#0.order') == 'WAIT'
-    assert in_a_fresh_process('dispatch', [checkpoint], tmp_path) == [alone]
-    sending = checkpoint.edit('depot.request_pump#0.order', 'SEND')
-    (sent,) = in_a_fresh_process('dispatch', [sending], tmp_path)
-    made = Run(Plan.of(case.program, case.configuration), case.breakpoints)
-    made.run()
-    made.edit('depot.request_pump#0.order', 'SEND')
-    assert made.resume() == sent
-    assert [reading.values[0] for reading in read(sent, case.program, names, [1])] == [0, 0, 1, 'SEND']
-    assert [entry.owner for entry in sent.entries('start')] == ['depot.request_pump#0', 'depot.send_pump#0']
-    (drawn,) = sent.entries('draw')
-    assert drawn.detail('value') == 'WAIT' and drawn.owner == 'depot.request_pump#0'
-    (entry,) = sent.entries('edit')
-    assert (entry.detail('target'), entry.detail('old'), entry.detail('new')) == (
-        'depot.request_pump#0.order',
-        'WAIT',
-        'SEND',
+def held(record, program, item):
+    """Whether a record holds an expectation of `examples.py`: a value at a time, in its declared
+    unit, or the times of the entries of a kind and a part."""
+    if isinstance(item, At):
+        (found,) = read(record, program, [item.key], [float(item.t)])
+        return found.values[0] == pytest.approx(item.value)
+    return [entry.t for entry in record.entries(item.kind, item.part)] == pytest.approx(item.times)
+
+
+@pytest.mark.parametrize('name', sorted(PAUSES))
+def test_the_acceptance_example_of_change_15(name, tmp_path):
+    """`examples.PAUSES`: the dispatch stopped before its switch (and before its draw), edited there,
+    resumed in place and in a fresh process: untouched it is the unattended run; with `order` changed
+    from WAIT to SEND the send branch runs once and the drawn WAIT stays in the trace; with no spare
+    SEND is not eligible; two stops in the stage keep both edits once. The oracle agrees."""
+    spares, stops, expected = PAUSES[name]
+    program, configuration = pump_dispatch(spares), Configuration(Request(1))
+    breakpoints = tuple(Breakpoint(stop.at, stop.occurrence or '') for stop in stops)
+    made = Run(Plan.of(program, configuration), breakpoints)
+    found, stopped, edits_made = made.run(), [], []
+    for stop in stops:
+        assert isinstance(found, Checkpoint) and (found.stop.at, found.stop.owner) == (
+            stop.at,
+            stop.occurrence,
+        )
+        stopped.append(found)
+        for key, value_ in stop.edits:
+            scale = unit_of(program, key)[1] if isinstance(value_, int | float) else 1
+            found = made.edit(name_of(key), value_ * scale if scale != 1 else value_)
+        edits_made.append(found)
+        found = made.resume()
+    assert not isinstance(found, Checkpoint) and found.failure is None
+    assert all(held(found, program, item) for item in expected)
+    if not any(stop.edits for stop in stops):
+        assert found == run(program, configuration)
+    oracle, failed = run_of(
+        program, configuration, [(stop.at, stop.occurrence, stop.edits) for stop in stops]
     )
+    assert failed is None
+    for item in expected:
+        if isinstance(item, At):
+            assert value_at(oracle, program, item.key, item.t) == item.value
+    (drawn,) = found.entries('draw')
+    assert drawn.detail('value') == 'WAIT'
+    edits = [entry for entry in found.entries('edit') if entry.detail('target').endswith('order')]
+    assert [(entry.detail('old'), entry.detail('new')) for entry in edits] == [
+        ('WAIT', 'SEND') for stop in stops if stop.edits and stop.at == DISPATCH_SWITCH
+    ]
+    fresh = 'dispatch' if spares else 'dispatch_no_spare'
+    assert in_a_fresh_process(fresh, edits_made, tmp_path) == [*stopped[1:], found]
 
 
 def test_an_edit_that_breaks_a_rule_of_the_run_is_refused_by_name():
@@ -142,6 +166,8 @@ def test_an_edit_that_breaks_a_rule_of_the_run_is_refused_by_name():
         made.edit('depot.request_pump#0.order', 'MAYBE')
     with pytest.raises(CheckpointError, match='outside its range'):
         made.edit('depot.spares', -1)
+    with pytest.raises(CheckpointError, match='a parameter or a built-in field of its occurrence'):
+        made.edit('depot.request_pump#0.active', False)
     family = SCENARIOS['family']()
     made = Run(Plan.of(family.program, family.configuration), family.breakpoints)
     found = made.run()
@@ -160,7 +186,7 @@ def test_an_edit_of_an_input_is_refused_when_the_run_goes_on():
     b.entity('tank', input_('size', 'L', 5), value('ticks', '', 0), ticks(1, 2))
     b.setup(start(named('tank').tick))
     program = b.finish()
-    made = Run(Plan.of(program, Configuration(Request(3))), SCENARIOS['family']().breakpoints)
+    made = Run(Plan.of(program, Configuration(Request(3))), (Breakpoint('tank.tick.step[0]'),))
     made.run()
     with pytest.raises(CheckpointError, match=r'tank\.size: an edit changes a stored value'):
         made.edit('tank.size', 6)
@@ -183,7 +209,7 @@ def test_an_edit_that_lowers_a_tally_withdraws_its_never_falls_proof_for_the_run
     lags = {'tank.served': Lag(0.5, 1)}
     plain = report(run(program, configuration), program, configuration, ['tank.served'], [4], lags)
     assert plain.values[0].lag == Lag(0.5, 1)
-    made = Run(Plan.of(program, configuration), SCENARIOS['family']().breakpoints)
+    made = Run(Plan.of(program, configuration), (Breakpoint('tank.tick.step[0]'),))
     made.run()
     made.edit('tank.served', 1)
     record = made.resume()

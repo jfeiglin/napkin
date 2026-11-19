@@ -38,10 +38,7 @@ from napkin.program.build import (
     add,
     after,
     assign,
-    categorical,
     constraint,
-    count,
-    dist_of,
     draw,
     endpoint,
     event,
@@ -58,14 +55,11 @@ from napkin.program.build import (
     solver,
     sqrt,
     start,
-    subtract,
-    switch,
     this,
     uniform,
     value,
     when,
 )
-from napkin.program.build import case as on
 from napkin.program.checkpoint import (
     Breakpoint,
     Checkpoint,
@@ -77,7 +71,7 @@ from napkin.program.checkpoint import (
     loads,
 )
 from napkin.program.config import SAMPLED, Configuration, Request
-from tests.program.examples import EXAMPLES
+from tests.program.examples import DISPATCH, DISPATCH_SWITCH, EXAMPLES, pump_dispatch
 
 ROOT = Path(__file__).resolve().parents[2]
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -97,6 +91,11 @@ def ticks(*times):
         steps.append(after(q(time - at, 'h'), add(this.ticks, 1)))
         at = time
     return event('tick', *steps)
+
+
+def stages(event_, count):
+    """Breakpoints at each of the first `count` stages of an event (`tank.tick`)."""
+    return tuple(Breakpoint(f'{event_}.step[{k}]') for k in range(count))
 
 
 def alarm(test):
@@ -122,7 +121,7 @@ def _draining(sparse):
     return Case(
         b.finish(),
         Configuration(Request(5)),
-        (Breakpoint('tank.tick'),),
+        stages('tank.tick', 5),
         frozenset({SPARSE if sparse else COMPONENT}),
     )
 
@@ -150,7 +149,7 @@ def family():
         alarm(this.water <= q(3, 'L')),
     )
     b.setup(start(named('tank').tick))
-    return Case(b.finish(), Configuration(Request(7)), (Breakpoint('tank.tick'),), frozenset({FAMILY}))
+    return Case(b.finish(), Configuration(Request(7)), stages('tank.tick', 6), frozenset({FAMILY}))
 
 
 def lines():
@@ -168,7 +167,7 @@ def lines():
         alarm(this.water >= q(6, 'L')),
     )
     b.setup(start(named('tank').tick))
-    return Case(b.finish(), Configuration(Request(7)), (Breakpoint('tank.tick'),), frozenset({LINES}))
+    return Case(b.finish(), Configuration(Request(7)), stages('tank.tick', 6), frozenset({LINES}))
 
 
 def ordering():
@@ -234,7 +233,7 @@ def pumping():
         ),
     )
     b.setup(start(named('tank').tick))
-    return Case(b.finish(), Configuration(Request(2)), (Breakpoint('tank.tick'),), frozenset({DECLARED}))
+    return Case(b.finish(), Configuration(Request(2)), stages('tank.tick', 2), frozenset({DECLARED}))
 
 
 def tapering():
@@ -268,45 +267,36 @@ def tapering():
         ),
     )
     b.setup(start(named('clock').tick))
-    return Case(b.finish(), Configuration(Request(1.5)), (Breakpoint('clock.tick'),), frozenset({DECLARED}))
+    return Case(b.finish(), Configuration(Request(1.5)), stages('clock.tick', 2), frozenset({DECLARED}))
 
 
-def dispatch():
-    """The acceptance example of change 15: a depot's request draws the dispatcher's forecast (which
-    always waits) into its field `order` and switches on it; sending needs a spare. A breakpoint
-    before the switch."""
-    b = Builder(UNITS)
-    action = b.enum('enum[SEND, WAIT]', 'SEND', 'WAIT')
-    dispatcher = b.entity(
-        'dispatcher', value('forecast', dist_of(action), categorical(action, SEND=0, WAIT=1))
-    )
-    depot = b.entity(
-        'depot',
-        value('spares', '', 1, lower=0),
-        value('waits', '', 0),
-        event(
-            'request_pump',
-            value('order', action, draw(dispatcher.forecast)),
-            after(
-                q(0, 'h'),
-                switch(
-                    local.order,
-                    on(action.SEND, start(this.send_pump), when=this.spares >= 1),
-                    on(action.WAIT, add(this.waits, 1)),
-                ),
-            ),
-        ),
-        event('send_pump', after(q(0, 'h'), subtract(this.spares, 1))),
-    )
-    b.setup(start(depot.request_pump))
-    b.root(value('sent', '', formula(count(depot.send_pump.occurrences))))
-    breakpoints = (Breakpoint('depot.request_pump.step[0].do[0]'),)
-    return Case(b.finish(), Configuration(Request(1)), breakpoints, frozenset())
+def dispatch(spares=1):
+    """The acceptance example of change 15 (`examples.pump_dispatch`): a depot's request draws the
+    dispatcher's forecast, which always waits, into its field `order` and switches on it; sending
+    needs a spare. A breakpoint before the switch."""
+    breakpoints = (Breakpoint(DISPATCH_SWITCH, DISPATCH),)
+    return Case(pump_dispatch(spares), Configuration(Request(1)), breakpoints, frozenset())
+
+
+def dispatch_no_spare():
+    """The acceptance example with no spare."""
+    return dispatch(0)
 
 
 SCENARIOS = {
     case.__name__: case
-    for case in (draining, draining_sparse, family, lines, ordering, staffing, pumping, tapering, dispatch)
+    for case in (
+        draining,
+        draining_sparse,
+        family,
+        lines,
+        ordering,
+        staffing,
+        pumping,
+        tapering,
+        dispatch,
+        dispatch_no_spare,
+    )
 }
 
 # A fresh process: it builds the scenario's program and resumes each checkpoint that it is given.
@@ -468,6 +458,7 @@ def stops_of(case, *breakpoints):
 
 def test_a_breakpoint_names_an_event_a_stage_or_a_statement_for_any_owner_or_one():
     case = family()
+    assert stops_of(case, Breakpoint('tank.tick')) == [('tank.tick.step[0]', 'tank.tick#0', 1)]
     assert stops_of(case, Breakpoint('tank.tick.step[1]')) == [('tank.tick.step[1]', 'tank.tick#0', 2)]
     assert stops_of(case, Breakpoint('tank.tick', 'tank.tick#1')) == []
     assert stops_of(case, Breakpoint('tank.alarm', 'tank')) == [('tank.alarm.step[0]', 'tank.alarm#0', 3.5)]
