@@ -8,7 +8,8 @@
 scenarios/
 tests/draw/test_catalogue.py
 tests/publish/
-tests/evidence/
+tests/evidence/test_catalogue.py
+tests/evidence/test_scientific_spec.py
 tests/release/
 tests/engine/test_admission_scope.py
 tests/engine/test_decision_resolver.py
@@ -32,7 +33,6 @@ tests/model/test_local_bases.py
 tests/model/test_long_expressions.py
 tests/model/test_material.py
 tests/model/test_notes.py
-tests/model/test_pages.py
 tests/model/test_parts.py
 tests/model/test_resolved.py
 tests/model/test_shared_formulas.py

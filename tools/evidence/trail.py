@@ -3,6 +3,10 @@ values that a report reads (`napkin/engine/report.py`), resolved in the model's 
 
     python -m tools.evidence.trail MODEL PATH... [--run NAME]
 
+The command runs the default run of a package's entry file, or its named run, reports each path at
+the horizon, and prints each part of each value's trail with its records, what the value rests on
+and could rest on, and the disclosures (`lines_of`).
+
 - **A use** (`Use`) is one record at one place of the declared model: the path of the part that it
   supports, the option that writes it (for a setting of an option), the record's name (None for a
   record written in place), its kind, the claims that it names and the assumptions and conventions

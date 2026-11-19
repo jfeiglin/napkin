@@ -156,7 +156,14 @@ def test_scenario_manifest_import_commands_keep_the_owner(tmp_path):
     write_package(tmp_path, {'model.scn': QUEUE})
     (tmp_path / 'packs').mkdir()
     (tmp_path / 'packs' / 'doc.json').write_text(json.dumps(pack(tmp_path, 'doc', [claim('V-1')])))
-    options = ['--root', str(tmp_path), '--packs', str(tmp_path / 'packs'), '--cache', str(tmp_path / 'cache')]
+    options = [
+        '--root',
+        str(tmp_path),
+        '--packs',
+        str(tmp_path / 'packs'),
+        '--cache',
+        str(tmp_path / 'cache'),
+    ]
     assert integrate_main([*options, '--report', str(tmp_path / 'report.json'), '--write']) == 0
     document = json.loads(artifacts(tmp_path)[PATH])
     (row,) = document['scenarios']
