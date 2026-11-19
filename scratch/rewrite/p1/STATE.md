@@ -42,7 +42,13 @@ FINDINGS.md is refused to a subagent: its text goes in the last message (PLAN.md
   x1.45 29 -> 0, engine 16 -> 0 (tight 3 -> 0), levels within 7e-8, no claim moved > 1e-6.
 - qdldl regularized at -1e-10 (refined against K): SuperLU's answers on bench faces at 3,000, but
   fails the engine's 3,000 face and does not finish 30,000 normal in 15 min: not adopted.
+- 30,000 last: qdldl damaged 60 s (355+4), x1.45 did not finish in 15 min; highspy normal 158 s
+  vs 150 s, same 28,436 iterations, levels bitwise; x1.7 at tol 1e-7: renewals 43 -> 0, one claim
+  1.2e-6 (near-tie); UPDATES 1,000: normal -5%, x1.45 +24% (114 renewals): keep 100. Clarabel and
+  parts bitwise across two processes at 30,000.
+- Version: all records 922afd1210e6 (cb6661d) but the last three fair ones (fc1f9ff178e1, ef2d9bf:
+  adds Kept.fresh/of and Solver.renew, off the path of a first solve).
 
-## Remains
-- `queue2.txt` (log `logs/queue2.log`): qdldl x1.45 and damaged, highspy normal, fair x1.7 at 1e-7.
-- Last message: the summary (400 words) and the FINDINGS.md text.
+## Done. Not done
+- SuperLU distance on x1.45 and damaged at 30,000; a parametric or bisection step; holding every
+  stuck claim by a strictly complementary dual (programs ~ levels: at most 1% but damaged).
