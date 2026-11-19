@@ -86,7 +86,20 @@ from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
 from .collections import selected
 from .family import Columns
 from .lines import asked_of
-from .network import BACKWARD, FORWARD, IN, LEG, LEGS, OUT, ROUTE, SIDES, network_of
+from .network import (
+    BACKWARD,
+    FORWARD,
+    IN,
+    LEG,
+    LEGS,
+    OUT,
+    ROUTE,
+    SIDES,
+    claim_level,
+    network_of,
+    room_depths,
+    supply_depths,
+)
 from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE
 from .reads import lazily
 from .record import fitted
@@ -154,12 +167,14 @@ class Former:
         plan = self.plan
         # The engine names that are unknowns of the problem: the value of each flow, and the results.
         self.unknown = {}
+        self.named = set(self.declared.flows)  # the flows whose values the solver determines
+        self.undecided = set()  # the values of the set's other flows, which local sharing gives
         for flow in net.flows:
             found = plan.flows[flow]
-            self.unknown[f'{flow}.served_fraction' if found.kind == 'legs' else f'{flow}.actual_rate'] = (
-                'flow',
-                flow,
-            )
+            name = f'{flow}.served_fraction' if found.kind == 'legs' else f'{flow}.actual_rate'
+            self.unknown[name] = ('flow', flow)
+            if flow not in self.named:
+                self.undecided.add(name)
         for name in connected.results:
             self.unknown[name] = ('value', name)
         self._reads = {}
@@ -206,7 +221,16 @@ class Former:
                 f'{self.connections[k].name}: a capacity that is {capacity[k]:g} at {t:g} h'
             )
         self.requests = requests
-        claims = []
+        level = claim_level(net, supply_depths(net, lower), room_depths(net, lower, upper))
+
+        def place(f, connections):
+            """The place of a flow's claim in the order: the solver's claims on one level, by their
+            layer; a claim of a flow that it does not name at its level of local sharing after them."""
+            if net.flows[f] in self.named:
+                return (0, 0, int(net.layer[f]))
+            return (1, level(connections), int(net.layer[f]))
+
+        claims = []  # (terms, request, place in the order)
         for f, flow in enumerate(net.flows):
             mine = net.conns.of(f).tolist() if not net.plain else [f]
             kind = int(net.kinds[f])
@@ -226,7 +250,7 @@ class Former:
                             )
                         )
                 if asks:
-                    claims.append(({column: 1.0}, 1.0, f))
+                    claims.append(({column: 1.0}, 1.0, place(f, mine)))
                 self.cols[f'{flow}.served_fraction'] = column
                 continue
             if kind == ROUTE:
@@ -236,13 +260,13 @@ class Former:
                 cap = capacity[mine[0]]
                 column = problem.unknown(('flow', flow), -cap, cap, FLOW, signed)
                 if signed != 0:
-                    claims.append(({column: 1.0 if signed > 0 else -1.0}, abs(signed), f))
+                    claims.append(({column: 1.0 if signed > 0 else -1.0}, abs(signed), place(f, mine)))
             else:
                 column = problem.unknown(
                     ('flow', flow), 0.0, capacity[mine[0]], FLOW, float(requests[mine[0]])
                 )
                 if requests[mine[0]] > 0:
-                    claims.append(({column: 1.0}, float(requests[mine[0]]), f))
+                    claims.append(({column: 1.0}, float(requests[mine[0]]), place(f, mine)))
             self.cols[f'{flow}.actual_rate'] = column
         for name in self.connected.results:
             self.cols[name] = self._result(name)
@@ -259,7 +283,12 @@ class Former:
                         f'{store}.{SIDES[side]}.request with a route at that endpoint, in the solver '
                         f'{declared.id}: a request on the positive parts of a route is not convex'
                     )
-                claims.append((total.terms, wanted, None))
+                # An endpoint's claim is in the first layer: the solver's when it determines
+                # every connection of the endpoint, else at its level of local sharing.
+                if all(net.flows[int(net.of[c])] in self.named for c in here):
+                    claims.append((total.terms, wanted, (0, 0, 1)))
+                else:
+                    claims.append((total.terms, wanted, (1, level(here), 1)))
                 # The preferred routes of the aggregate request carry it first, class after class
                 # (spec: "A preferred route has first access to useful requested work, up to the
                 # outstanding claim it serves"): as much of it as can be on the first class, then on
@@ -313,15 +342,13 @@ class Former:
         )
         for terms in objectives:
             problem.minimize(made(terms))
-        last = 0
-        for terms, wanted, f in claims:
-            tier = int(net.layer[f]) - 1 if f is not None else 0
-            problem.claim(made(terms), wanted, tier)
-            last = max(last, tier)
+        tiers = {key: k for k, key in enumerate(sorted({key for _, _, key in claims}))}
+        for terms, wanted, key in claims:
+            problem.claim(made(terms), wanted, tiers[key])
         # Each preferred class is a tier of its own after the others, in the order in which the
         # oracle meets the endpoints: one claim alone in a tier is served as far as it can be.
         for k, (_, terms, wanted) in enumerate(sorted(preferred, key=lambda item: item[0])):
-            problem.claim(made(terms), wanted, last + 1 + k)
+            problem.claim(made(terms), wanted, len(tiers) + k)
         return problem
 
     def _first_touch(self, s):
@@ -562,6 +589,12 @@ class Former:
     def _name(self, name):
         """A name that reads an unknown: the unknown, or what a formula, a reduction or a dynamic
         read gives of it."""
+        if name in self.undecided:
+            raise Unsupported(
+                f'the solver {self.declared.id} reads {name}, which it does not determine: a flow that '
+                'a solver does not name keeps the local sharing of its endpoints; name it in solve_for '
+                'to decide it'
+            )
         if name in self.cols:
             return Affine({self.cols[name]: 1.0})
         value = self.plan.values[name]

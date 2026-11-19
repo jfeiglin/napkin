@@ -72,7 +72,12 @@ TYPE_WORDS = frozenset({'bool', 'text', 'number'})
 RATINGS = ('ok', 'degraded', 'failed', 'inactive')
 RECORD_KINDS = ('source', 'source_transfer', 'assumption', 'identity', 'convention')
 SECTIONS = ('inputs', 'solve_for', 'constraints', 'objective')
-HEADER = ('summary', 'horizon', 'scope', 'library', 'timescales', 'resolution')
+HEADER = ('summary', 'horizon', 'scope', 'library', 'resolution')
+# `timescales` left the scenario line (PLAN, change 19 after G0): it is refused by name.
+TIMESCALES = (
+    'timescales is no longer a line of the scenario: the engine chooses its own steps, and a run that '
+    'needs finer ones sets max_step in its configuration'
+)
 COMPARISONS = frozenset({'<', '<=', '>', '>=', '==', '!='})
 UP, DOWN = frozenset({'<', '<='}), frozenset({'>', '>='})
 MEMBERSHIP = 'to keep the result of a membership test, put the whole test in brackets: ok = (x in [lo, hi])'
@@ -97,10 +102,32 @@ EVENT = (
     'a line of an event is its text, its evidence, a local value or a flow (before the steps), a trigger '
     '(`when C:`), or a step (`after D:`, `after D when C:`, `after D`, `until C`)'
 )
+# Who plays a part belongs to the scenario's wrapper, not to the model (PLAN, change 19 after G0): a
+# role stands under an entity or a template only, for the pictures (`napkin draw`), and any other is
+# refused by name, so that none is lost.
+WRAPPER = "belongs to the scenario's wrapper (its UI or brief.toml), not to the model"
+ROLES = {
+    'event': f'an event has no role: who plays it {WRAPPER}',
+    'case': f'a case has no role: who plays it {WRAPPER}',
+    'member': f"a member has its template's role: a role of its own {WRAPPER}",
+    'change': f'a change sets no role: who plays a part in a variant {WRAPPER}',
+}
 ACTION = (
     'a line of a stage assigns (`x = v`, `x += v`, `x -= v`), starts an event (`e.start(...)`), moves '
     '(`move A from S to D`) or branches (`if C:`, `switch E:`)'
 )
+
+
+def is_role(line):
+    """Whether a line is `role word`."""
+    tokens = line.tokens
+    return len(tokens) == 2 and tokens[0].is_name('role') and tokens[1].kind == 'name'
+
+
+def is_title(line):
+    """Whether a line starts as `title "Text"`."""
+    tokens = line.tokens
+    return len(tokens) > 1 and tokens[0].is_name('title') and tokens[1].kind == 'text'
 
 
 def small(name):
@@ -655,6 +682,15 @@ class Parser:
             raise SyntaxProblem('nothing goes under a text', line.under[0].number, 0, 'layout')
         return tokens[0].value
 
+    def title_line(self, line):
+        """The text of `title "Text"`: the name that the reports and the playback give a member."""
+        cursor = Cursor(line)
+        cursor.i = 1
+        found = cursor.text('title is a text in quotes')
+        cursor.end()
+        self.no_body(line, 'a title')
+        return found
+
     def evidence_row(self, line):
         """A row that starts with `@`: names (`@a @b`), or a record in place (`@kind "text"`) with the
         IDs and claims that it rests on under it."""
@@ -987,18 +1023,14 @@ class Parser:
         for child in line.under:
             sub = Cursor(child)
             key = sub.name(f'the lines under the {word} line are {", ".join(HEADER)}')
+            if key == 'timescales':
+                sub.fail(TIMESCALES, child.first, 'retired')
             if key not in HEADER:
                 sub.fail(f'the {word} line has no line {key}; its lines are {", ".join(HEADER)}', child.first)
             if key in found:
                 sub.fail(f'{key} is written twice', child.first)
             if key in ('summary', 'scope', 'library'):
                 found[key] = sub.text(f'{key} is a text in quotes')
-            elif key == 'timescales':
-                items = [self.expression(sub)]
-                while sub.at_op(','):
-                    sub.i += 1
-                    items.append(self.expression(sub))
-                found[key] = tuple(items)
             else:
                 if sub.done():
                     sub.fail(f'{key} is a time: {key} 30 days')
@@ -1055,18 +1087,13 @@ class Parser:
                 if text is not None:
                     raise SyntaxProblem('an entity has one text: its description', child.number, 0, 'layout')
                 text = self.text_line(child)
-            elif first.is_name('title') and second is not None and second.kind == 'text':
-                sub = Cursor(child)
-                sub.i = 1
-                title = sub.text('title is a text in quotes')
-                sub.end()
-                self.no_body(child, 'a title')
-            elif (
-                first.is_name('role')
-                and second is not None
-                and second.kind == 'name'
-                and len(child.tokens) == 2
-            ):
+            elif is_title(child):
+                if title is not None:
+                    raise SyntaxProblem('an entity has one title', child.number, 0, 'layout')
+                title = self.title_line(child)
+            elif is_role(child):
+                if role is not None:
+                    raise SyntaxProblem('an entity has one role', child.number, 0, 'layout')
                 role = second.value
                 self.no_body(child, 'a role')
             else:
@@ -1174,10 +1201,20 @@ class Parser:
             scale = self.expression(cursor, bare_in=False)
         cites = cursor.cites()
         cursor.end()
-        found = {'range': range_, 'scale': scale, 'row': False}
+        found = {'range': range_, 'scale': scale, 'row': False, 'title': None}
         properties = []
+        # `name: Template` at the top level, with no value, is a member written by hand.
+        member = owner == 'top' and value is None and isinstance(declared, n.NamedType)
+        member = member and not small(declared.name)
 
         def under(child):
+            if member and is_title(child):
+                if found['title'] is not None:
+                    raise SyntaxProblem('a member has one title', child.number, 0, 'layout')
+                found['title'] = self.title_line(child)
+                return True
+            if member and is_role(child):
+                raise SyntaxProblem(ROLES['member'], child.number, child.first.column, 'role')
             sub = Cursor(child)
             if sub.at_name('in'):
                 if found['range'] is not None:
@@ -1209,6 +1246,7 @@ class Parser:
             found['range'],
             found['scale'],
             tuple(properties),
+            found['title'],
             range_row=found['row'],
             cites=cites,
             text=text,
@@ -1377,6 +1415,8 @@ class Parser:
             if first.kind != 'name':
                 sub.fail(EVENT)
             word = first.value
+            if is_role(child):
+                sub.fail(ROLES['event'], first, 'role')
             if word == 'when':
                 triggers.append(self.trigger(child, name))
             elif word == 'after':
@@ -1577,6 +1617,8 @@ class Parser:
         if first.kind != 'name':
             cursor.fail(ACTION)
         word = first.value
+        if is_role(line):
+            cursor.fail(ROLES['case'], first, 'role')
         if word == 'switch':
             return self.switch(line)
         if word == 'move':
@@ -1654,16 +1696,15 @@ class Parser:
             sub.op(':', 'a case is a member of the enum and a colon, with its actions under it: REPAIR:')
             cites = sub.cites()
             sub.end('a case has one member, an optional guard, and its actions under it')
+            # A case may do nothing (PLAN, change 19): its text alone, or nothing under it, is a case.
             text, evidence, rest = None, [], []
-            for item in self.body(child, 'a case'):
+            for item in child.under:
                 if item.first.kind == 'at' and not rest:
                     evidence += self.evidence_row(item)
                 elif item.first.kind == 'text' and text is None and not rest:
                     text = self.text_line(item)
                 else:
                     rest.append(item)
-            if not rest:
-                raise SyntaxProblem('a case has its actions under it', child.number, 0, 'layout')
             cases.append(
                 n.Case(
                     first.value,
@@ -1863,22 +1904,13 @@ class Parser:
         rest, labels = [], {}
 
         def label(child):
-            # `title "Text"` and `role word`, as under an entity; any other line is a value or a link.
-            first, second = child.first, child.tokens[1] if len(child.tokens) > 1 else None
-            if first.is_name('title') and second is not None and second.kind == 'text':
-                sub = Cursor(child)
-                sub.i = 1
-                labels['title'] = sub.text('title is a text in quotes')
-                sub.end()
-                self.no_body(child, 'a title')
-            elif (
-                first.is_name('role')
-                and second is not None
-                and second.kind == 'name'
-                and len(child.tokens) == 2
-            ):
-                labels['role'] = second.value
-                self.no_body(child, 'a role')
+            # `title "Text"`, as under an entity; any other line is a value or a link.
+            if is_role(child):
+                raise SyntaxProblem(ROLES['change'], child.number, child.first.column, 'role')
+            if is_title(child):
+                if 'title' in labels:
+                    raise SyntaxProblem('a change has one title', child.number, 0, 'layout')
+                labels['title'] = self.title_line(child)
             else:
                 rest.append(child)
 

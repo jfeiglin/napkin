@@ -222,8 +222,8 @@ def merged(trees):
                     problems.append(Problem('scenario', LIBRARY, item.line))
                 written = {
                     key: getattr(item, key)
-                    for key in ('summary', 'horizon', 'scope', 'timescales', 'resolution')
-                    if getattr(item, key) not in (None, ())
+                    for key in ('summary', 'horizon', 'scope', 'resolution')
+                    if getattr(item, key) is not None
                 }
                 scenario = replace(
                     scenario,

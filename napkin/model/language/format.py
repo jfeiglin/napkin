@@ -319,12 +319,10 @@ def line_rows(node, depth):
         under = []
         for key in HEADER:
             value = getattr(node, key)
-            if value is None or value == ():
+            if value is None:
                 continue
             if key in ('summary', 'scope', 'library'):
                 under += text_rows(f'{inner}{key} ', value, depth + 1)
-            elif key == 'timescales':
-                under.append(f'{inner}{key} {", ".join(expression(item) for item in value)}')
             else:
                 under.append(f'{inner}{key} {expression(value)}')
         return _rows(node, depth, f'{node.role} {text_text(node.title)}', under)
@@ -351,7 +349,10 @@ def line_rows(node, depth):
         under = []
         if node.range is not None and node.range_row:
             under.append(f'{inner}in {interval(node.range.low, node.range.high)}')
-        under += _described(node, depth) + _block(node.properties, depth + 1)
+        under += [] if node.text is None else text_rows(inner, node.text, depth + 1)
+        if node.title is not None:
+            under += text_rows(f'{inner}title ', node.title, depth + 1)
+        under += evidence_rows(node.evidence, depth + 1) + _block(node.properties, depth + 1)
         return _rows(node, depth, _declaration_head(node), under)
     if isinstance(node, n.Property):
         head = f'{".".join(node.path)} = {expression(node.value, bare_in=False)}{_cites(node.cites)}'
@@ -453,8 +454,6 @@ def line_rows(node, depth):
         under = [] if node.text is None else text_rows(inner, node.text, depth + 1)
         if node.title is not None:
             under += text_rows(f'{inner}title ', node.title, depth + 1)
-        if node.role is not None:
-            under.append(f'{inner}role {node.role}')
         under += evidence_rows(node.evidence, depth + 1) + _block(node.members, depth + 1)
         return _rows(node, depth, f'change {node.name}:{_cites(node.cites)}', under)
     if isinstance(node, n.Options):

@@ -27,10 +27,15 @@ its rate in the direction of its request, of a flow with legs on its fraction (a
 when a leg asks anything; when none does, the fraction is zero), and of an endpoint on its total.
 Its tier is (its level, its layer):
 
-- the **level** is the supply depth of the stores that its connections draw from, so that claims
-  are settled in the direction of supply: 0 for SOURCE or a store that holds stock, and for a store
-  at its lower bound one more than the deepest store that feeds it. A junction shares what reaches
-  it, after its feeders decided;
+- the **level** is the largest of the supply depth of the stores that its connections draw from
+  and the room depth of the stores that they fill (`claim_level`). Supply is settled in its
+  direction: 0 for SOURCE or a store that holds stock, and for a store at its lower bound one more
+  than the deepest store that feeds it, so a junction shares what reaches it after its feeders
+  decided. Room is settled against it: a full store (at its upper bound, not at its lower bound)
+  passes on the room that its outflows make, and its depth is one more than that of the deepest full
+  store that its outflows fill, 0 when they fill none (so one full store shares on the levels of
+  supply). With two full tanks in series, the claims into the upper tank wait for the room that the
+  lower tank's outflows make;
 - the **layer** orders the flows that some endpoint ranks (`priority(a, b)`, which names
   connections: a leg ranks its flow): a flow comes after every flow ranked ahead of it, and flows
   whose ranks contradict each other share a layer (R-A2-12). The claim of an endpoint is in the
@@ -61,8 +66,8 @@ capacity or a request. A part is solved alone, by a closed form where one holds,
   fractions within the capacities (water-filling).
 
 Where local sharing has no answer that the oracle defines, the run stops with a failure that names
-the stores (`SimulationError`): a ring of stores at their lower bound that feed one another, and room
-passed upstream through two full stores (the oracle raises `NotCovered` for both).
+the stores (`SimulationError`): a ring of stores at their lower bound that feed one another, and a
+ring of full stores that pass room around (the oracle raises `NotCovered` for both).
 """
 
 from __future__ import annotations
@@ -151,6 +156,89 @@ def water(requests, capacities, available):
         rates[capped] = capacities[capped]
         remaining = max(0.0, remaining - float(capacities[capped].sum()))
         pending = np.setdiff1d(pending, capped)
+
+
+def supply_depths(net, lower):
+    """A function: the supply depth of a store of a network, 0 for -1 (SOURCE). A store at its
+    lower bound passes on what flows in, so its depth is one more than that of the deepest store that
+    feeds it; any other store holds stock, at depth 0. A ring of stores at their lower bound has no
+    depth: finding one fails, naming the ring."""
+    return _depths(
+        net,
+        lower,
+        lambda s: net.source[net.ends[IN].of(s)].tolist(),
+        'a ring of stores at their lower bound passes supply around: {}; local sharing settles in '
+        'the direction of supply and has no answer here',
+    )
+
+
+def room_depths(net, lower, upper):
+    """A function: the room depth of a store of a network, 0 for -1 (SINK). A full store (at its
+    upper bound and not at its lower bound) passes on the room that its outflows make. Its depth is
+    one more than that of the deepest full store that its outflows fill, and 0 when they fill none,
+    so a full store alone shares on the levels of supply, as it does without this depth. A store
+    with room, and a store held at both bounds, which local sharing settles in the direction of
+    supply, are at depth 0. A ring of full stores has no depth: finding one fails, naming the ring."""
+    full = np.asarray(upper, dtype=bool) & ~np.asarray(lower, dtype=bool)
+    depth = _depths(
+        net,
+        full,
+        lambda s: net.sink[net.ends[OUT].of(s)].tolist(),
+        'a ring of stores at their upper bound passes room around: {}; local sharing settles room '
+        'against the direction of flow and has no answer here',
+    )
+    return lambda s: max(0, depth(s) - 1)
+
+
+def claim_level(net, supply, room):
+    """A function: the level of a claim from the connections that serve it (see the module), with
+    `supply` and `room` the depths of the stores. A claim waits for the supply of the store that its
+    connections draw from and for the room of the store that they fill; each is found only for a
+    claim, as the oracle finds it."""
+
+    def level(connections):
+        return max(max(supply(int(net.source[c])), room(int(net.sink[c]))) for c in connections)
+
+    return level
+
+
+def _depths(net, active, onward, ring):
+    """A function, found as asked: 0 for -1 and for a store that is not `active`, else one more than
+    the largest of the stores that `onward(s)` gives; a cycle of active stores fails with the text
+    `ring`, which names the stores of the cycle."""
+    memo = {}
+
+    def depth(s0):
+        if s0 < 0 or not active[s0]:
+            return 0
+        if s0 in memo:
+            return memo[s0]
+        stack, on, best = [(s0, iter(onward(s0)))], [s0], {s0: 0}
+        while stack:
+            s, pending = stack[-1]
+            for t in pending:
+                if t < 0 or not active[t]:
+                    continue
+                if t in memo:
+                    best[s] = max(best[s], memo[t])
+                    continue
+                if t in best:
+                    cycle = [*on[on.index(t) :], t]
+                    raise SimulationError(ring.format(' -> '.join(net.stores[r] for r in cycle)))
+                best[t] = 0
+                on.append(t)
+                stack.append((t, iter(onward(t))))
+                break
+            else:
+                stack.pop()
+                on.pop()
+                memo[s] = 1 + best.pop(s)
+                if stack:
+                    parent = stack[-1][0]
+                    best[parent] = max(best[parent], memo[s])
+        return memo[s0]
+
+    return depth
 
 
 class Network:
@@ -420,74 +508,19 @@ class Instant:
         """The values of the flows of one coupled part, in its order."""
         if len(part) == 1 and not self.coupled(part[0]):
             return self.alone(part)
-        self._check_full(part)
         found = self._groups(part) if (self.net.kinds[part] == DIRECTED).all() else None
         return found if found is not None else self._general(part)
 
     def _name(self, s):
         return self.net.stores[s]
 
-    def _check_full(self, part):
-        """Room passed upstream through two full stores has no answer of local sharing."""
-        net, lower, upper = self.net, self.lower, self.upper
-        for f in part:
-            for c in self._connections(f):
-                s, d = net.source[c], net.sink[c]
-                if (
-                    s >= 0
-                    and d >= 0
-                    and upper[s]
-                    and not lower[s]
-                    and upper[d]
-                    and self.claimed[net.flow_sets[c]]
-                ):
-                    raise SimulationError(
-                        f'{self._name(s)} and {self._name(d)}: room passed upstream through two full '
-                        'stores; local sharing settles in the direction of supply and has no answer here'
-                    )
-
     def depths(self):
-        """A function: the supply depth of a store (0 for -1, which is SOURCE), found as asked."""
-        net, lower, memo = self.net, self.lower, {}
+        """A function: the supply depth of a store (`supply_depths`)."""
+        return supply_depths(self.net, self.lower)
 
-        def feeders(s):
-            return net.source[net.ends[IN].of(s)].tolist()
-
-        def depth(s0):
-            if s0 < 0 or not lower[s0]:
-                return 0
-            if s0 in memo:
-                return memo[s0]
-            stack, on, best = [(s0, iter(feeders(s0)))], [s0], {s0: 0}
-            while stack:
-                s, pending = stack[-1]
-                for t in pending:
-                    if t < 0 or not lower[t]:
-                        continue
-                    if t in memo:
-                        best[s] = max(best[s], memo[t])
-                        continue
-                    if t in best:
-                        ring = [*on[on.index(t) :], t]
-                        raise SimulationError(
-                            'a ring of stores at their lower bound passes supply around: '
-                            + ' -> '.join(self._name(r) for r in ring)
-                            + '; local sharing settles in the direction of supply and has no answer here'
-                        )
-                    best[t] = 0
-                    on.append(t)
-                    stack.append((t, iter(feeders(t))))
-                    break
-                else:
-                    stack.pop()
-                    on.pop()
-                    memo[s] = 1 + best.pop(s)
-                    if stack:
-                        parent = stack[-1][0]
-                        best[parent] = max(best[parent], memo[s])
-            return memo[s0]
-
-        return depth
+    def rooms(self):
+        """A function: the room depth of a store (`room_depths`)."""
+        return room_depths(self.net, self.lower, self.upper)
 
     def _groups(self, part):
         """The rates of a part of directed flows by groups in supply order (see the module), or None
@@ -566,7 +599,7 @@ class Instant:
         place = {f: k for k, f in enumerate(part)}
         n = len(part)
         rows = Rows(n)
-        depth = self.depths()
+        level = claim_level(net, self.depths(), self.rooms())
         mine = {f: self._connections(f) for f in part}
         stores = sorted(
             {int(s) for f in part for c in mine[f] for s in (net.source[c], net.sink[c]) if s >= 0}
@@ -617,8 +650,7 @@ class Instant:
                     if parts:
                         route = next(c for c in here if net.roles[c] in (FORWARD, BACKWARD))
                         self._no_request(side, s, int(net.of[route]))
-                    level = max(depth(int(net.source[c])) for c in here)
-                    claims.append(((level, 1), total, wanted))
+                    claims.append(((level(here), 1), total, wanted))
                     ranked = net.classes.get((side, s))
                     if ranked:
                         carried = np.zeros(n)
@@ -635,9 +667,7 @@ class Instant:
             one[k] = 1.0
 
             def claim(served, wanted, cs=cs, f=f):
-                # The level of a claim is found only for a claim, as the oracle finds it.
-                level = max(depth(int(net.source[c])) for c in cs)
-                claims.append(((level, int(net.layer[f])), served, wanted))
+                claims.append(((level(cs), int(net.layer[f])), served, wanted))
 
             if kind == DIRECTED:
                 c = cs[0]

@@ -14,9 +14,14 @@ Then it goes through its steps in order (spec, "Time, waiting and completion"):
 
 - `after D` captures D when the step is reached, a finite duration from zero, and is due D later:
   its stage commits then (`moment.py`). Stages due together commit in the order in which their
-  occurrences were made (D5). A D that a stage reaches and that reads a rate or a result of a
-  declared solver takes them after the round's settling, so a solve that the round affects gives
-  its settled answer; what else it reads is captured when the step is reached (`delays`);
+  occurrences were made (D5). Two times nearer than the time tolerance (`Numerics.crossing`) are one
+  moment, and a sum of delays is no exact time (0.1 h + 0.2 h is 0.30000000000000004 h in binary,
+  and no exact sum of the binary numbers gives 0.3 h): so the first round of a moment at t takes
+  each step due by t + crossing when the moment begins, the horizon's moment too, as due at t. A
+  step reached during the moment with a delay above zero is due later, at its own moment. A D that
+  a stage reaches and that reads a rate or a result of a declared solver takes them after the
+  round's settling, so a solve that the round affects gives its settled answer; what else it reads
+  is captured when the step is reached (`delays`);
 - `until C` is a gate: the occurrence waits there until the conditions of a round find C true
   (`triggers.py`), and goes on in that round.
 
@@ -277,13 +282,15 @@ class Occurrences:
             heapq.heappop(schedule)
         return schedule[0][0] if schedule else None
 
-    def due(self, t):
-        """The occurrences whose steps are due at time t, in the order in which they were made."""
+    def due(self, until):
+        """The occurrences whose steps are due by the time `until`, in the order in which they were
+        made (D5): a moment's first round takes those due within the time tolerance after it (see the
+        module)."""
         found = []
-        while self.next_due() is not None and self.schedule[0][0] <= t:
+        while self.next_due() is not None and self.schedule[0][0] <= until:
             _, _, occ, _ = heapq.heappop(self.schedule)
             found.append(self.live[occ])
-        return found
+        return sorted(found, key=lambda live: live.number)
 
     def met(self, store):
         """A move meets a store: one of an occurrence must be empty when it finishes."""

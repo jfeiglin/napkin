@@ -405,6 +405,34 @@ def test_a_change_rebinds_a_link_and_replaces_labels(tmp_path):
     assert load_scenario(folder / 'model.scn').program.template('Tank').members[0].link('source') == 0
 
 
+def test_a_member_keeps_its_title_and_a_change_replaces_it(tmp_path):
+    """A member's title is its own line's, and a variant's change of the member gives it another
+    (PLAN, change 19): before the audit the change compiled and its title was lost. A member with no
+    title, and a row of a table, has none."""
+    common = COMMON.replace('first: Tank\n', 'first: Tank\n    title "The first tank"\n')
+    variant = EAST.replace('change second:\n', 'change second:\n    title "The second tank"\n')
+    folder = package(tmp_path, {'common.scn': common, 'variants/east/model.scn': variant})
+    main = load_scenario(folder / 'model.scn').declared
+    assert (main.title('first'), main.title('second'), main.part('second').title) == ('The first tank', None, None)
+    east = load_scenario(folder / 'variants/east/model.scn').declared
+    assert (east.title('first'), east.title('second')) == ('The first tank', 'The second tank')
+    assert east.part('second').title == 'The second tank'
+
+
+def test_an_entity_keeps_its_title_and_a_change_replaces_it(tmp_path):
+    common = COMMON.replace('pool:\n    "The pool."\n', 'pool:\n    "The pool."\n    title "The pool"\n')
+    variant = EAST.replace('change pool:\n', 'change pool:\n    title "The east pool"\n')
+    folder = package(tmp_path, {'common.scn': common, 'variants/east/model.scn': variant})
+    assert load_scenario(folder / 'model.scn').declared.title('pool') == 'The pool'
+    assert load_scenario(folder / 'variants/east/model.scn').declared.title('pool') == 'The east pool'
+
+
+def test_a_change_that_sets_a_role_is_refused_at_its_line(tmp_path):
+    variant = EAST.replace('change second:\n', 'change second:\n    role operator\n')
+    (problem,) = problems(package(tmp_path, {'variants/east/model.scn': variant}) / 'variants/east/model.scn')
+    assert (problem.code, problem.file, problem.line) == ('role', 'variants/east/model.scn', 9)
+
+
 # ---- the hash of a model --------------------------------------------------------------------------
 
 

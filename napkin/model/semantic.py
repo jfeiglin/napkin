@@ -139,6 +139,7 @@ from functools import cached_property
 from ..core.expr import DEEPEST
 from .language import nodes as n
 from .language import tables
+from .language.format import expression as written_as
 from .language.parse import parse_expression
 from .language.problems import LanguageError, Problem, SyntaxProblem
 
@@ -1029,7 +1030,6 @@ class Scenario:
     library: str | None = None
     horizon: object = None
     resolution: object = None
-    timescales: tuple = ()
     line: int = 0
 
 
@@ -1188,6 +1188,15 @@ SETTINGS = ('capacity', 'request', 'allocation')
 ALLOCATIONS = ('priority', 'proportional')
 KEYED = ('where', 'by', 'at')
 SHAPES = {'lognormal': {1}}  # the positions of the plain (shape) arguments of a family: the gsd
+# The parameters of each family in their order (spec, "Distributions"), for its rule (`_broken`).
+PARAMETERS = {
+    'uniform': ('min', 'max'),
+    'triangular': ('min', 'mode', 'max'),
+    'pert': ('min', 'mode', 'max'),
+    'loguniform': ('min', 'max'),
+    'normal': ('mean', 'sd', 'min', 'max'),
+    'lognormal': ('median', 'gsd', 'min', 'max'),
+}
 ARITY = {
     'uniform': (2,),
     'triangular': (3,),
@@ -1236,7 +1245,8 @@ class Resolver:
         self.changes, self.labels = {}, {}
         self.entities, self.templates, self.instances, self.tables = {}, {}, {}, {}
         self.root, self.records = {}, {}
-        self.syntax, self.done, self.active = {}, {}, set()
+        # The values whose resolution is under way, outermost first (a dict as an ordered set).
+        self.syntax, self.done, self.active = {}, {}, {}
         self.ids, self.data = {}, {}  # the ids of the rows of each table that was read, and its form
         self.owned = {}  # the paths of the values of each template, once a member asks for them
         self.inputs_only = {}  # whether each formula that an assertion reaches reads inputs only
@@ -2237,7 +2247,9 @@ class Resolver:
 
     def value(self, path):
         """The declared value of a path, resolved once; a value with a problem refuses its readers
-        quietly (`depends`), since its own problem is reported."""
+        quietly (`depends`), since its own problem is reported. A value that its own resolution reads
+        (a template's, through other members) is read as its declaration types it (`provisional`):
+        whether a member reads itself is the members' connections' to say (`Order`)."""
         if path in self.done:
             found = self.done[path]
             if found is None:
@@ -2245,12 +2257,21 @@ class Resolver:
             return found
         owner, syntax = self.syntax[path]
         if path in self.active:
-            self.fail(
-                'cycle',
-                f'{path} reads itself through its initializer: its starting value has no order',
-                syntax,
-            )
-        self.active.add(path)
+            found = self.provisional(path, syntax)
+            if found is not None:
+                return found
+            active = list(self.active)
+            chain = ' reads '.join([*active[active.index(path) :], path])
+            if any(self.syntax[each][0] in self.templates for each in active[active.index(path) :]):
+                self.fail(
+                    'cycle',
+                    f'{chain}: its type is not known before its value, so declare its type '
+                    f'({syntax.name}: type = value), and the connections of the members decide whether '
+                    'one of them reads itself',
+                    syntax,
+                )
+            self.fail('cycle', f'{chain}: the values on a cycle have no order', syntax)
+        self.active[path] = None
         try:
             scope = self.scope_of(owner)
             if isinstance(syntax, n.Param):
@@ -2265,9 +2286,22 @@ class Resolver:
             self.done[path] = None
             raise
         finally:
-            self.active.discard(path)
+            self.active.pop(path, None)
         self.done[path] = found
         return found
+
+    def provisional(self, path, syntax):
+        """The value of a path that its own resolution reads: its declared kind and type, with no
+        initializer yet, so that the read has its type. None when the declaration gives no type, or
+        gives a link or a collection, whose readers need its initializer."""
+        if not isinstance(syntax, n.Declaration) or syntax.type is None:
+            return None
+        declared, retained = self.declared_type(syntax.type)
+        if not isinstance(declared, (Num, Word, EnumOf)):
+            return None
+        kind = FORMULA if retained else INPUT if syntax.modifier == 'input' else STATE
+        readonly = syntax.modifier == 'readonly'
+        return DeclaredValue(path, syntax.name, kind, declared, None, readonly=readonly, line=syntax.line)
 
     def param(self, path, scope, node):
         """A parameter of an event: a value copy (a number, a yes/no, a text, a member of an enum) or a
@@ -2287,6 +2321,12 @@ class Resolver:
             lower, upper = (
                 self.bound(end, scope, declared, node) for end in (node.range.low, node.range.high)
             )
+            if self.reversed(lower, upper):
+                self.fail(
+                    'range',
+                    f'the range of {node.name} is reversed: [{_written(lower)}, {_written(upper)}]',
+                    node.range,
+                )
         kind = LINK if isinstance(declared, Ent) else STATE
         return DeclaredValue(path, node.name, kind, declared, None, lower, upper, line=node.line)
 
@@ -2384,10 +2424,10 @@ class Resolver:
             lower, upper = (
                 self.bound(end, scope, value_type, node) for end in (node.range.low, node.range.high)
             )
-            if isinstance(lower, Const) and isinstance(upper, Const) and lower.value > upper.value:
+            if self.reversed(lower, upper):
                 self.fail(
                     'range',
-                    f'the range of {node.name} is reversed: [{lower.value}, {upper.value}]',
+                    f'the range of {node.name} is reversed: [{_written(lower)}, {_written(upper)}]',
                     node.range,
                 )
         if node.scale is not None:
@@ -2470,6 +2510,13 @@ class Resolver:
                 'unit', f'the range and the scale of {owner.name} are in {unit}, not {found.type}', node
             )
         return found
+
+    def reversed(self, lower, upper):
+        """Whether the ends of a range, both numbers written out, are reversed: compared in one unit, so
+        that [6 h, 1 day] runs from 6 h to 24 h."""
+        if not (isinstance(lower, Const) and isinstance(upper, Const)):
+            return False
+        return Fraction(lower.value) * self.scale(lower.type) > Fraction(upper.value) * self.scale(upper.type)
 
     def within(self, found, value, node):
         """A number written in place (a starting value, a member's value, a cell) lies in the value's
@@ -2566,6 +2613,10 @@ class Resolver:
                 )
             else:
                 params.append(value)
+        broken = _broken(node.function, params)
+        if broken is not None:
+            names = ', '.join(PARAMETERS[node.function][: len(params)])
+            self.fail('distribution', f'{written_as(node)}: {node.function}({names}) needs {broken}', node)
         return Distribution(node.function, tuple(params), Dist(target))
 
     def support(self, source, lower, upper, node):
@@ -3385,10 +3436,10 @@ class Resolver:
             lower, upper = (
                 self.bound(end, scope, declared, node) for end in (node.range.low, node.range.high)
             )
-            if isinstance(lower, Const) and isinstance(upper, Const) and lower.value > upper.value:
+            if self.reversed(lower, upper):
                 self.fail(
                     'range',
-                    f'the domain of {node.name} is reversed: [{lower.value}, {upper.value}]',
+                    f'the domain of {node.name} is reversed: [{_written(lower)}, {_written(upper)}]',
                     node.range,
                 )
         if node.scale is not None:
@@ -4443,7 +4494,6 @@ class Resolver:
             node.library,
             hours(node.horizon, 'horizon'),
             hours(node.resolution, 'resolution'),
-            tuple(hours(item, 'timescales') for item in node.timescales),
             node.line,
         )
 
@@ -4554,15 +4604,57 @@ class Order:
         source = self.walk(start[1], member, item, found)
         if kind == 'where':
             found.update(self.needs(start[2], member, tuple(source)))
-        elif kind == 'by':
+            return {each: None for each in source if self.decided(start[2], member, each) is not False}
+        if kind == 'by':
             found.update(dict.fromkeys((each, start[2]) for each in source))
         else:
             found.update(self.needs(start[2], member, item))
         return source
 
+    def decided(self, test, member, item):
+        """The value of a where's test for one member of its source (`item`), when the test compares
+        links, which the model fixes when it compiles (`seller == this`, with `and`, `or` and `not`);
+        None when it reads anything else, which only a run knows, so that the where keeps the member."""
+        if isinstance(test, Const) and test.type == BOOL:
+            return test.value
+        if not isinstance(test, Apply):
+            return None
+        found = [self.decided(each, member, item) for each in test.args]
+        if test.op == 'not':
+            return None if found[0] is None else not found[0]
+        if test.op in ('and', 'or'):
+            stop = test.op == 'or'  # the value that decides: true for `or`, false for `and`
+            if stop in found:
+                return stop
+            return None if None in found else not stop
+        if test.op != 'compare' or test.detail not in (('==',), ('!=',)):
+            return None
+        ends = [self.linked(each, member, item) for each in test.args]
+        if None in ends:
+            return None
+        return (ends[0] == ends[1]) == (test.detail == ('==',))
+
+    def linked(self, read, member, item):
+        """The member that a read through links names (`this`, the member under test, a named member,
+        and their links), or None for any other read."""
+        if not isinstance(read, Read) or not isinstance(read.type, Ent):
+            return None
+        current = {'this': member, 'item': item}.get(read.start[0])
+        if read.start[0] == 'named':
+            current = read.start[1]
+        for step in read.steps:
+            part = self.parts.get(self.template.get(current), {}).get(step)
+            if part is None or part.kind != LINK:
+                return None
+            given = self.own[current].get(step)
+            current = given.init if given is not None else part.init and part.init.start[1]
+        return current or None
+
     def cycles(self):
-        """The problems of the cycles among the starting values: one for each cycle that the search
-        meets, at the line of a value on it."""
+        """The problems of the cycles among the members' values, each with its chain, at the line of a
+        value on it: one for each shape of a cycle that the search meets, by the template values on it,
+        so that a template whose every member reads itself is one problem and not one for each
+        member."""
         nodes = [('', name) for name in self.root]
         for member, template in self.template.items():
             nodes += [(member, name) for name, part in self.parts[template].items() if part.kind != LINK]
@@ -4584,8 +4676,9 @@ class Order:
                 elif state[following] == 'open':
                     path = [each for each, _ in stack]
                     ring = [each for each in path[path.index(following) :] if each[0] != '*']
-                    if frozenset(ring) not in seen:
-                        seen.add(frozenset(ring))
+                    shape = frozenset((self.template.get(member, ''), name) for member, name in ring)
+                    if shape not in seen:
+                        seen.add(shape)
                         problems.append(self.problem(ring))
         return problems
 
@@ -4599,8 +4692,8 @@ class Order:
         return self.needs(init, node[0])
 
     def problem(self, ring):
-        """The problem of a cycle, at the line of its first value: a member's own, in the file of the
-        member, or its template's."""
+        """The problem of a cycle, its chain (`a.total reads b.total reads a.total`), at the line of
+        its first value: a member's own, in the file of the member, or its template's."""
         names = [f'{member}.{name}' if member else name for member, name in ring]
         member, name = ring[0]
         if member == '':
@@ -4609,12 +4702,8 @@ class Order:
             line, file = self.own[member][name].line, self.files[member]
         else:
             line, file = self.parts[self.template[member]][name].line, ''
-        message = (
-            f'the starting values of {" and ".join(names)} read each other: they have no order'
-            if len(names) > 1
-            else f'the starting value of {names[0]} reads itself: it has no order'
-        )
-        return Problem('cycle', message, line, 0, file)
+        chain = ' reads '.join([*names, names[0]])
+        return Problem('cycle', f'{chain}: the values on a cycle have no order', line, 0, file)
 
 
 def _own(read, bound=False):
@@ -4675,6 +4764,57 @@ def _spelled(node):
     if isinstance(node, (n.Member, n.Method)):
         return f'{_spelled(node.base)}.{node.name}' + ('(...)' if isinstance(node, n.Method) else '')
     return 'this expression'
+
+
+def _broken(family, params):
+    """What the parameters of a distribution of numbers break of its family's rule, as the words that
+    follow `needs` in its refusal, or None when they hold it. The parameters are in one unit (a
+    lognormal's gsd is plain), so `uniform(1 day, 20 h)` compares 24 h with 20 h. The rules are those
+    by which the engine draws (`napkin.distributions`): a bounded normal or lognormal keeps some
+    probability between its bounds, or no draw has a meaning."""
+    a = dict(zip(PARAMETERS[family], params))
+    if family == 'uniform':
+        return None if a['min'] < a['max'] else 'min below max'
+    if family in ('triangular', 'pert'):
+        held = a['min'] <= a['mode'] <= a['max'] and a['min'] < a['max']
+        return None if held else 'min <= mode <= max, with min below max'
+    if family == 'loguniform':
+        return None if 0 < a['min'] < a['max'] else '0 < min < max'
+    if family == 'normal':
+        if not a['sd'] > 0:
+            return 'sd above 0'
+        if 'min' not in a:
+            return None
+        if not a['min'] < a['max']:
+            return 'min below max'
+        low, high = ((a[end] - a['mean']) / a['sd'] for end in ('min', 'max'))
+    else:
+        if not a['median'] > 0:
+            return 'median above 0'
+        if not a['gsd'] > 1:
+            return 'gsd above 1'
+        if 'min' not in a:
+            return None
+        if not 0 <= a['min'] < a['max']:
+            return '0 <= min < max'
+        spread, centre = math.log(a['gsd']), math.log(a['median'])
+        low = (math.log(a['min']) - centre) / spread if a['min'] > 0 else -math.inf
+        high = (math.log(a['max']) - centre) / spread
+    return None if _mass(low, high) > 0 else 'bounds that hold some probability'
+
+
+def _mass(low, high):
+    """The probability of a standard normal between two bounds, from its smaller tail, as the engine
+    reckons it (`napkin.distributions`): 0 when it underflows."""
+    root = math.sqrt(2)
+    if low > 0:
+        return (math.erfc(low / root) - math.erfc(high / root)) / 2
+    return (math.erfc(-high / root) - math.erfc(-low / root)) / 2
+
+
+def _written(value):
+    """A number written out with its unit, for a message: `1 day`, `6`."""
+    return f'{value.value} {value.type.unit}'.strip()
 
 
 def _zero(value):

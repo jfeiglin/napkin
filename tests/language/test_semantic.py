@@ -149,6 +149,34 @@ def test_an_input_range_must_hold_the_support_of_its_distribution():
     assert value.upper == s.Const(12, value.type)
 
 
+DAYS = {**UNITS, 'day': ({'time': 1}, 24)}
+
+
+def refused_with(text, units, code):
+    with pytest.raises(LanguageError) as caught:
+        declared(text, units)
+    assert caught.value.codes == [code], caught.value
+    return caught.value.problems[0].message
+
+
+def test_the_ends_of_a_range_are_compared_in_one_unit():
+    """`8 h in [6 h, 1 day]` is the range from 6 h to 24 h (the audit's example): its ends compare in
+    one unit, as `[6 h, 24 h]` does, so it is not reversed; 30 h lies above it, and `[1 day, 6 h]` is
+    reversed. The domain of a solver's unknown compares its ends the same way."""
+    value = declared('input x: h = 8 h in [6 h, 1 day]\n', DAYS).root[0]
+    assert (value.lower, value.upper) == (s.Const(6, s.Num('h', (('time', 1),))), s.Const(1, s.Num('day', (('time', 1),))))
+    assert 'above the range of x' in refused_with('input x: h = 30 h in [6 h, 1 day]\n', DAYS, 'range')
+    assert 'reversed' in refused_with('input x: h = 8 h in [1 day, 6 h]\n', DAYS, 'range')
+    unknown = 'm:\n    plan = solver:\n        solve_for:\n            wait: h = 8 h in [6 h, 1 day]\n        objective:\n            minimize(wait)\n'
+    assert declared(unknown, DAYS).entities[0].parts[0].unknowns[0].upper.value == 1
+    reversed_unknown = unknown.replace('[6 h, 1 day]', '[1 day, 6 h]')
+    assert 'the domain of wait is reversed' in refused_with(reversed_unknown, DAYS, 'range')
+    event = 'm:\n    go = event(wait: h in [6 h, 1 day]):\n        after wait\n'
+    assert declared(event, DAYS).entities[0].parts[0].params[0].upper.value == 1
+    reversed_event = event.replace('[6 h, 1 day]', '[1 day, 6 h]')
+    assert 'the range of wait is reversed: [1 day, 6 h]' in refused_with(reversed_event, DAYS, 'range')
+
+
 # ---- kinds, paths and texts ---------------------------------------------------------------------
 
 

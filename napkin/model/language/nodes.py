@@ -297,7 +297,6 @@ class Scenario(Line):
     horizon: Node | None = None
     scope: str | None = None
     library: str | None = None
-    timescales: tuple[Node, ...] = ()
     resolution: Node | None = None
 
 
@@ -319,7 +318,8 @@ class Property(Described):
 @dataclass(frozen=True)
 class Declaration(Described):
     """`[readonly | input] name[: type] [= value] [in [lo, hi]] [scale s]`, with its properties under
-    it. With no value and a template as its type, it is an instance of that template."""
+    it. With no value and a template as its type, it is an instance of that template, which may have
+    its `title`."""
 
     modifier: str
     name: str
@@ -328,6 +328,7 @@ class Declaration(Described):
     range: Range | None = None
     scale: Node | None = None
     properties: tuple[Property, ...] = ()
+    title: str | None = None
     range_row: bool = _layout(False)
 
 
@@ -547,12 +548,11 @@ class Table(Described):
 @dataclass(frozen=True)
 class Change(Described):
     """`change name:`: lines that change an entity, a template or a member written by hand of an
-    earlier file: values and links under it, and its text, `title` and `role`."""
+    earlier file: values and links under it, and its text and `title`."""
 
     name: str
     members: tuple[Line, ...] = ()
     title: str | None = None
-    role: str | None = None
 
 
 @dataclass(frozen=True)

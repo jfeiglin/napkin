@@ -10,9 +10,22 @@ claims wait for the claims that bring that supply: claims are settled level by l
 direction of supply ("upstream supply first"). The level of a claim is the supply depth of the
 stores that it draws from: 0 for SOURCE or a store that holds stock, and one more than its deepest
 feeder for a store at its lower bound. So with 1 L/h into a junction that feeds A and a second
-junction of B and C, the first junction splits 1/2 and 1/2 and the second 1/4 and 1/4. Inside one
-level the fair-sharing rank of the selection order applies. A declared solver shares across all of
-its claims: they stand on one level, and A, B and C then receive 1/3 each.
+junction of B and C, the first junction splits 1/2 and 1/2 and the second 1/4 and 1/4. Where a
+store is full, the flows into it can only take the room that its outflows make, so room is settled
+against the direction of flow: the claims into a full store wait for those into the full stores that
+its outflows fill, and the level of a claim is also at least the room depth of the stores that it
+fills (one more than the deepest full store that their outflows fill, 0 for none, so one full store
+shares on the levels of supply). Inside one level the fair-sharing rank of the selection order
+applies.
+
+**A declared solver decides only what it names** (the owner's rule after G2). The claims of the
+rates and fractions that it determines share across endpoints on one level, before any other claim
+of its calculation: a solver over the four requesting flows of the junctions gives A, B and C 1/3
+each. A flow of the calculation that it does not name keeps the local sharing of its endpoints: the
+solver sees it through its bounds and the rows that it meets, so that the books still balance, and
+its claim keeps its level of local sharing after the solver's claims. A solver that names only the
+feed of the junctions sends its 1 L/h, which the junctions split 1/2, 1/4 and 1/4. A relation or an
+objective of the solver that reads such a flow is refused: to decide who is served, it names them.
 
 `motion` gives the level of each store and the rate of each flow as polynomials in the time after
 the moment, and the times at which a rate input or a store bound asks for a new settlement.
@@ -273,6 +286,33 @@ def _supply_depths(view, at_store):
     return of
 
 
+def _room_depths(view, at_store):
+    """The room depth of a store (None is SINK). A full store, at its upper bound and not at its
+    lower bound, passes on the room that its outflows make: its depth is one more than that of the
+    deepest full store that its outflows fill, and 0 when they fill none, so that one full store
+    shares on the levels of supply. Any other store is at depth 0: a store with room, and a store
+    held at both bounds, which local sharing settles in the direction of supply."""
+    depth = {}
+
+    def full(cell):
+        return cell is not None and _at_bound(view, cell, 'hi') and not _at_bound(view, cell, 'lo')
+
+    def of(cell, path=()):
+        if not full(cell):
+            return 0
+        if cell in path:
+            raise NotCovered(
+                f'{label(cell)}: a ring of stores at their upper bound passes room around; the oracle settles '
+                'room against the direction of flow'
+            )
+        if cell not in depth:
+            fills = [c.dst for c, _ in at_store[cell]['outflow'] if full(c.dst)]
+            depth[cell] = max((1 + of(d, (*path, cell)) for d in fills), default=0)
+        return depth[cell]
+
+    return of
+
+
 def assemble(run, comp, ev, follow=None):
     """The problem of one component at this instant.
 
@@ -282,6 +322,7 @@ def assemble(run, comp, ev, follow=None):
     view = run.view
     rows, objectives, claims, prefs, rankings = [], [], [], [], []
     flow_targets, other_targets = {}, {}
+    decided = {v for _, _, _, claimed in comp.sols for v in claimed}  # what the solver determines
     leg_request = {}
     at_store = {}
 
@@ -317,7 +358,7 @@ def assemble(run, comp, ev, follow=None):
                     rows.append(relation(x * r, '<=', cap))
             asks = any(leg_request[one] > 0 for one in f.legs.values())
             if asks:
-                claims.append((f, x, Fraction(1), connections(f)))
+                claims.append((f, x, Fraction(1), connections(f), var_of(f) in decided))
             else:
                 rows.append(relation(x, '==', 0))  # every leg asks for nothing: the fraction is zero
             flow_targets['frac', f] = (Fraction(1 if asks else 0), Fraction(1))
@@ -334,12 +375,12 @@ def assemble(run, comp, ev, follow=None):
                 if cap is not None:
                     rows.append(relation(x, '<=', cap))
                 if req > 0:
-                    claims.append((f, x, req, [f]))
+                    claims.append((f, x, req, [f], var_of(f) in decided))
             else:
                 if cap is not None:
                     rows += [relation(x, '<=', cap), relation(x, '>=', -cap)]
                 if req != 0:  # the signed request names the direction of the one claim
-                    claims.append((f, x if req > 0 else -x, abs(req), connections(f)))
+                    claims.append((f, x if req > 0 else -x, abs(req), connections(f), var_of(f) in decided))
             # Every number is in the canonical unit of its dimension, so one canonical unit is 1.
             flow_targets['rate', f] = (req, Fraction(1))
         for c in connections(f):
@@ -386,7 +427,8 @@ def assemble(run, comp, ev, follow=None):
             if req > 0:
                 if total.parts:
                     raise NotCovered(f'{label(end)}.request with a reversible flow at that endpoint')
-                claims.append((end, total, req, [c for c, _ in here]))
+                mine = all(var_of(f) in decided for _, f in here)
+                claims.append((end, total, req, [c for c, _ in here], mine))
             alloc = owner_ev.setting(Cell(end, 'allocation'))
             if alloc is not None and alloc.classes:
                 present = dict(here)
@@ -437,17 +479,24 @@ def assemble(run, comp, ev, follow=None):
                 declared = run.fields.get(var[1])
                 other_targets[var] = (view.cells[var[1]], scale(declared.scale if declared else None, lo, hi))
         for c in decl.constraints:
-            rows += _rows(se.val(c))
+            found = _rows(se.val(c))
+            for rel in found:
+                _refuse_undecided(sol, rel.lin, decided, show(c))
+            rows += found
         for sense, e in decl.objective:
             v = se.val(e)
             if isinstance(v, Lin):
+                _refuse_undecided(sol, v, decided, show(e))
                 objectives.append((v if sense == 'min' else -v, show(e)))
 
+    # The claims of what the solver determines share on one level, first; every other claim keeps
+    # the order of local sharing after them (the owner's rule after G2).
     tiers = {}
     layer = _layers(comp.flows, rankings)
-    level = _levels(view, comp, claims, at_store)
-    for node, amount, r, conns in claims:
-        tiers.setdefault((level(conns), layer.get(node, 1)), []).append((amount, r))
+    level = _levels(view, at_store)
+    for node, amount, r, conns, mine in claims:
+        place = (0, 0) if mine else (1, level(conns))
+        tiers.setdefault((*place, layer.get(node, 1)), []).append((amount, r))
     tiers = [tiers[k] for k in sorted(tiers)]
     signature = (
         tuple(sorted((r.op, _canon(r.lin)) for r in rows)),
@@ -467,22 +516,26 @@ def assemble(run, comp, ev, follow=None):
     }
 
 
-def _levels(view, comp, claims, at_store):
+def _levels(view, at_store):
     """How a claim is placed in the order of local sharing: a function of the connections that
-    serve it. A declared solver puts all of its claims on one level."""
-    if comp.sols or not claims:
-        return lambda conns: 0
-    for cell, sides in at_store.items():
-        # A full store passes room upstream: the oracle does not follow room through two of them.
-        if _at_bound(view, cell, 'hi') and not _at_bound(view, cell, 'lo'):
-            for c, _ in sides['outflow']:
-                if c.dst is not None and _at_bound(view, c.dst, 'hi'):
-                    raise NotCovered(
-                        f'{label(cell)} and {label(c.dst)}: room passed upstream through two full stores; '
-                        'the oracle settles local sharing in the direction of supply'
-                    )
-    depth = _supply_depths(view, at_store)
-    return lambda conns: max(depth(c.src) for c in conns) if conns else 0
+    serve it, the largest of the supply depth of the stores that they draw from and the room depth
+    of the stores that they fill. A depth is found only for a claim that asks for it."""
+    supply, room = _supply_depths(view, at_store), _room_depths(view, at_store)
+    return lambda conns: max((max(supply(c.src), room(c.dst)) for c in conns), default=0)
+
+
+def _refuse_undecided(sol, value, decided, text):
+    """A relation or an objective of a solver that reads the rate of a flow of its calculation that
+    it does not determine is refused: such a flow keeps the local sharing of its endpoints."""
+    for v in value.c:
+        if v[0] in ('rate', 'frac') and v not in decided:
+            raise Diagnostic(
+                f'{label(sol)}: {text} reads {label(v)}, which the solver does not determine; a flow '
+                'that a solver does not name keeps the local sharing of its endpoints: name it in '
+                'solve_for to decide it'
+            )
+    for part in value.parts:
+        _refuse_undecided(sol, part, decided, text)
 
 
 def _live(view, c):

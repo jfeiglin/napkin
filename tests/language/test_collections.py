@@ -8,6 +8,7 @@ import textwrap
 
 import pytest
 
+from napkin.engine import read, run
 from napkin.model import semantic as s
 from napkin.model.compile import compile_text
 from napkin.model.language.problems import LanguageError
@@ -360,6 +361,123 @@ def test_starting_values_follow_their_dependencies_across_members_whatever_the_o
 def test_a_cycle_of_starting_values_across_members_is_refused_at_a_value_on_it(text, line):
     found = refused(text, 'cycle', line)
     assert 'no order' in found.message
+
+
+# Every utility's total is its own demand and the totals of its children (PLAN, change 19). The
+# template reads itself, and no member does: c reads a and b, b reads a, and a reads nothing.
+UTILITIES = """
+    scenario "Utilities"
+        horizon 1 h
+    Utility:
+        demand: L/h = 1 L/h
+        children: <Utility> = <>
+        total: formula(L/h) = formula(this.demand + sum(this.children.total))
+        held: L = 1 h * this.demand + sum(this.children.held)
+    a: Utility
+        demand = 2 L/h
+    b: Utility
+        demand = 3 L/h
+        children = <a>
+    c: Utility
+        demand = 5 L/h
+        children = <a, b>
+    """
+
+
+def test_a_template_that_reads_itself_through_other_members_is_no_cycle():
+    """The cycles are checked on the members' connections, which links fix when the model compiles
+    (R-A1-30): a formula and a starting value that sum the children's are computed child first. The
+    totals are a = 2, b = 3 + 2 = 5 and c = 5 + 2 + 5 = 12 L/h, and the starting values the same
+    in litres."""
+    model = compiled(UTILITIES)
+    record = run(model.program, model.configuration)
+    found = read(record, model.program, [f'{m}.{name}' for name in ('total', 'held') for m in 'abc'], [0])
+    assert [item.values[0] for item in found] == [2, 5, 12, 2, 5, 12]
+
+
+def test_a_cycle_among_the_members_is_reported_as_its_chain():
+    """a and b are each other's child: a's total reads b's, which reads a's, and so do their starting
+    values. Each cycle is one problem, at the line of the template's value."""
+    text = UTILITIES.replace('demand = 2 L/h\n', 'demand = 2 L/h\n        children = <b>\n')
+    with pytest.raises(LanguageError) as caught:
+        compiled(text)
+    found = [(item.code, item.line, item.message) for item in caught.value.problems]
+    assert found == [
+        ('cycle', 7, 'a.total reads b.total reads a.total: the values on a cycle have no order'),
+        ('cycle', 8, 'a.held reads b.held reads a.held: the values on a cycle have no order'),
+    ]
+
+
+def test_a_member_that_reads_itself_is_reported_as_its_chain():
+    found = refused(UTILITIES.replace('children = <a>', 'children = <b>'), 'cycle')
+    assert found.message.startswith('b.total reads b.total: ')
+
+
+# The ties of the water model (HANDOFF, question 4): what a utility asks of its sellers is its need,
+# which counts what its own buyers ask of it. Through the templates, `Utility.asks` reads `Tie.ask`,
+# which reads `Utility.need`, which reads `Utility.asks`; member by member, a sells to b and b to c.
+TIES = """
+    scenario "Ties"
+        horizon 1 h
+    Utility:
+        demand: L/h = 1 L/h
+        sells: <Tie> = Tie.instances.where(seller == this)
+        asks: formula(L/h) = formula(sum(this.sells.ask))
+        need: formula(L/h) = formula(this.demand + this.asks)
+    Tie:
+        seller: Utility
+        buyer: Utility
+        ask: formula(L/h) = formula(this.buyer.need)
+    a: Utility
+        demand = 2 L/h
+    b: Utility
+        demand = 3 L/h
+    c: Utility
+        demand = 5 L/h
+    ab: Tie
+        seller = a
+        buyer = b
+    bc: Tie
+        seller = b
+        buyer = c
+    """
+
+
+def test_a_where_over_links_keeps_the_members_that_it_names_when_cycles_are_checked():
+    """A where that compares links is decided when the model compiles: a's sales are the tie ab
+    alone. So c needs 5, b needs 3 + 5 = 8 and a needs 2 + 8 = 10 L/h, and the ties ask 8 and 5."""
+    model = compiled(TIES)
+    record = run(model.program, model.configuration)
+    found = read(record, model.program, ['a.need', 'b.need', 'c.need', 'ab.ask', 'bc.ask'], [0])
+    assert [item.values[0] for item in found] == [10, 8, 5, 8, 5]
+
+
+def test_a_circle_of_ties_is_reported_as_its_chain():
+    found = refused(TIES + 'ca: Tie\n        seller = c\n        buyer = a\n', 'cycle', 7)
+    assert found.message == (
+        'a.asks reads ab.ask reads b.need reads b.asks reads bc.ask reads c.need reads c.asks reads ca.ask '
+        'reads a.need reads a.asks: the values on a cycle have no order'
+    )
+
+
+def test_a_template_whose_every_member_reads_itself_is_one_problem():
+    """A cycle of one shape (the template's total reads itself through each member) is reported once,
+    at its first member, and not once for each of the three."""
+    text = UTILITIES.replace('children: <Utility> = <>', 'children: <Utility> = <this>')
+    text = text.replace('        children = <a>\n', '').replace('        children = <a, b>\n', '')
+    with pytest.raises(LanguageError) as caught:
+        compiled(text)
+    assert [item.message.split(':')[0] for item in caught.value.problems] == [
+        'a.total reads a.total',
+        'a.held reads a.held',
+    ]
+
+
+def test_a_template_that_reads_itself_declares_the_type_that_its_members_read():
+    """Its type is not known before its value, so a template's value that reads itself through its
+    members declares its type; the members' connections then decide."""
+    found = refused(UTILITIES.replace('total: formula(L/h) =', 'total ='), 'cycle')
+    assert found.message.startswith('Utility.total reads Utility.total') and 'declare its type' in found.message
 
 
 def test_mutual_links_are_no_cycle():

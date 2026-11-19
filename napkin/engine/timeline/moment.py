@@ -197,7 +197,10 @@ class Moment:
                 if self.round > limit:
                     raise SimulationError(self._round_limit(t, limit))
                 self.again = False
-                queue = run.occurrences.due(t)
+                # The first round takes the steps due within the time tolerance after t when the
+                # moment begins, as due at t (`Occurrences.due`).
+                window = self.plan.numerics.crossing if self.round == 1 else 0.0
+                queue = run.occurrences.due(t + window)
                 # A run can stop in the stages of a round: each solver takes its next solve on a fresh
                 # instance with its basis, so that its state there is data (`saved.py`).
                 run.ways.renew()
@@ -407,7 +410,9 @@ class Moment:
 
     def move(self, statement, tx, scope):
         """`move amount from source to destination`: both inventories are checked before anything
-        changes, and a move that would leave less than the tolerance of its source moves all."""
+        changes, and a move that would leave less than the tolerance of its source moves all. Two ends
+        that name one store (two arguments of an event that name one member) give and take the same
+        amount together: the debit and the credit cancel, and its inventory stays as it is."""
         run, origin = self.run, statement.origin
         amount = self.truth(statement.amount, scope, origin, tx)
         if (
@@ -420,6 +425,9 @@ class Moment:
         amount = float(amount)
         source = self.target(statement.source, scope, origin)
         destination = self.target(statement.destination, scope, origin)
+        if source == destination:
+            tx.moves.append((source, destination, amount, origin))
+            return
         had = float(run.value(source, tx=tx))
         lower = run.bounds.get(source, (-math.inf, math.inf))[0]
         left = had - amount
@@ -484,10 +492,10 @@ class Moment:
         producer = node.name if isinstance(node, nodes.Ref) else None
         if producer in plan.draws:
             barred = {case.member for case, ok in zip(statement.cases, eligible) if not ok}
-            allowed = [member for member in run.chance.outcomes(producer) if member not in barred]
+            allowed = [member for member in run.chance.outcomes(producer, tx) if member not in barred]
             if not allowed:
                 return statement.orelse
-            chosen = run.chance.draw(producer, allowed)
+            chosen = run.chance.draw(producer, allowed, tx)
         else:
             chosen = run.truth(node, tx)
         for case, ok in zip(statement.cases, eligible):

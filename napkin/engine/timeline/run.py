@@ -441,7 +441,7 @@ class Run:
         found = plan.values.get(name)
         kind = found.kind if found is not None else None
         if kind is None and name in plan.draws:
-            return self.chance.draw(name)  # executed: a node of a stage reads it once
+            return self.chance.draw(name, tx=tx)  # executed: a node of a stage reads it once
         if kind == RATE:
             if self.moment.phase == 'stages':
                 self.ways.fresh(name, tx)
@@ -453,7 +453,7 @@ class Run:
         if kind == CHANGED:
             return self.changed_at(name, tx)
         if kind == DESCRIBED:
-            return self.chance.described(name)
+            return self.chance.described(name, tx)
         if kind == FORMULA:
             frozen = self.frozen.get(name)
             if frozen is not None:

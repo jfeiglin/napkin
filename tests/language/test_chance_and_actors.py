@@ -11,6 +11,7 @@ from fractions import Fraction
 
 import pytest
 
+from napkin import SCHEMA_VERSION
 from napkin.model.compile import compile_text
 from napkin.model.language.problems import LanguageError
 from napkin.program import parts as p
@@ -75,6 +76,65 @@ def test_the_bounded_forms_take_their_bounds_in_order_and_their_shape_plain():
 )
 def test_a_distribution_that_its_input_cannot_take_is_refused_by_its_code(line, code):
     assert codes(f'service:\n    {line}\n') == [code]
+
+
+@pytest.mark.parametrize(
+    ('written', 'rule'),
+    [
+        ('uniform(5 h, 2 h)', 'uniform(min, max) needs min below max'),
+        ('uniform(2 h, 2 h)', 'uniform(min, max) needs min below max'),
+        # 1 day is 24 h, above 20 h: the parameters compare in one unit.
+        ('uniform(1 day, 20 h)', 'uniform(min, max) needs min below max'),
+        ('triangular(1 h, 5 h, 3 h)', 'triangular(min, mode, max) needs min <= mode <= max, with min below max'),
+        ('pert(4 h, 2 h, 6 h)', 'pert(min, mode, max) needs min <= mode <= max, with min below max'),
+        ('pert(3 h, 3 h, 3 h)', 'pert(min, mode, max) needs min <= mode <= max, with min below max'),
+        ('loguniform(0 h, 3 h)', 'loguniform(min, max) needs 0 < min < max'),
+        ('loguniform(3 h, 1 h)', 'loguniform(min, max) needs 0 < min < max'),
+        ('normal(5 h, 0 h)', 'normal(mean, sd) needs sd above 0'),
+        ('normal(5 h, -1 h)', 'normal(mean, sd) needs sd above 0'),
+        ('normal(5 h, 1 h, 8 h, 6 h)', 'normal(mean, sd, min, max) needs min below max'),
+        # The bounds lie 100 and 200 standard deviations above the mean: no probability is left.
+        ('normal(0 h, 1 h, 100 h, 200 h)', 'normal(mean, sd, min, max) needs bounds that hold some probability'),
+        ('lognormal(0 h, 1.5)', 'lognormal(median, gsd) needs median above 0'),
+        ('lognormal(4 h, 1)', 'lognormal(median, gsd) needs gsd above 1'),
+        ('lognormal(4 h, 1.5, 6 h, 2 h)', 'lognormal(median, gsd, min, max) needs 0 <= min < max'),
+    ],
+)
+def test_a_distribution_whose_parameters_break_its_family_is_refused_by_name(written, rule):
+    """A backwards `uniform(5 h, 2 h)` ran before the audit; now each family's rule on its parameters
+    holds, or the distribution is refused with that rule, wherever it is written."""
+    for line in (f'input end: h = {written}.draw()', f'times = {written}', f'go = event():\n        after {written}.draw()'):
+        with pytest.raises(LanguageError) as caught:
+            compiled(f'service:\n    {line}\n')
+        (problem,) = caught.value.problems
+        at = 2 + line.count('\n')
+        assert (problem.code, problem.line, problem.message) == ('distribution', at, f'{written}: {rule}'), line
+
+
+def test_a_distribution_that_holds_its_rules_at_their_edges_is_kept():
+    """A mode at an end of a triangular, a lognormal bounded from 0 and a normal bounded far into one
+    tail but not past its probability are distributions."""
+    for written in ('triangular(1 h, 1 h, 3 h)', 'pert(1 h, 3 h, 3 h)', 'lognormal(4 h, 1.5, 0 h, 9 h)', 'normal(0 h, 1 h, 5 h, 6 h)'):
+        assert compiled(f'service:\n    input end: h = {written}.draw()\n')
+
+
+def test_an_option_and_an_edit_that_set_a_backwards_distribution_are_refused():
+    text = """
+        scenario "Service"
+            horizon 2 h
+        service:
+            input repair = uniform(1 h, 3 h)  @r
+        options "Repair":
+            "Slow":
+                service.repair = uniform(5 h, 2 h)  @r
+        record r: assumption "A fixture."
+        """
+    assert codes(text) == ['distribution']
+    model = compiled(text.replace('uniform(5 h, 2 h)', 'uniform(2 h, 5 h)'))
+    edits = {'schema_version': SCHEMA_VERSION, 'model_hash': model.model_hash, 'set': {'service.repair': 'uniform(5 h, 2 h)'}}
+    with pytest.raises(LanguageError) as caught:
+        model.configure(None, edits)
+    assert caught.value.codes == ['distribution']
 
 
 def test_a_refusal_of_a_distribution_is_at_its_line():

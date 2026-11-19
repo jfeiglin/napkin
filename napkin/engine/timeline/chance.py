@@ -13,6 +13,9 @@
   (R-A2-17). So an unexecuted branch, an extra read, a report or the step size of an integrator moves
   no draw. The number is the first 64 bits of the SHA-256 of `seed|site|owner` (`uniform`), as the
   oracle draws it. Each executed draw is an entry of the trace, with its value.
+- **A distribution that a stage replaced** gives the draws after the replacement, the stage's own
+  included: a stage sees its own writes, so a draw, a `switch` on a draw, and a mean or a standard
+  deviation read in it take the new distribution at once (`distribution`).
 - **Eligibility** (D1): a `switch` whose selector is a draw reads its case guards first
   (`moment.Moment.select`); an outcome that a false guard bars is not eligible, and the draw is made
   among the others, their weights scaled to sum to one. With none eligible, the `else` body runs and
@@ -165,24 +168,27 @@ class Chance:
         n = self.firing.get(owner)
         return owner if n is None else f'{owner}!{n}'
 
-    def distribution(self, source):
+    def distribution(self, source, tx=None):
         """The distribution of a draw: written in place, or the present distribution of a
-        distribution-valued value, which a stage may have replaced."""
+        distribution-valued value, which a stage may have replaced: the stage that runs (`tx`) sees
+        its own replacement, as it sees its other writes."""
         if not isinstance(source, str):
             return source
+        if tx is not None and source in tx.writes:
+            return tx.writes[source]
         found = self.run.env.get(source)
         return found if found is not None else self.plan.distributions[source]
 
-    def described(self, name):
+    def described(self, name, tx=None):
         """The mean or the standard deviation of the present distribution of a distribution-valued
-        value (`plan.Plan.described`)."""
+        value (`plan.Plan.described`), through the writes of the stage that runs (`tx`)."""
         source, which = self.plan.described[name]
-        return described(self.distribution(source), self.plan.units, which)
+        return described(self.distribution(source, tx), self.plan.units, which)
 
-    def outcomes(self, name):
+    def outcomes(self, name, tx=None):
         """The outcomes of the categorical distribution of a draw, in declared order."""
         found = self.plan.draws[name]
-        distribution = self.distribution(found.source)
+        distribution = self.distribution(found.source, tx)
         if distribution.family != 'categorical':
             raise SimulationError(f'{found.site}: a switch draws from a categorical distribution')
         return distribution.outcomes
@@ -196,11 +202,13 @@ class Chance:
             raise SimulationError(f'{site}: a switch draws from a categorical distribution')
         return numeric(distribution, self.plan.units, 0.5 if u is None else u)
 
-    def draw(self, name, eligible=None):
-        """An executed draw (see the module), with its entry of the trace."""
+    def draw(self, name, eligible=None, tx=None):
+        """An executed draw (see the module), with its entry of the trace; in a stage (`tx`), from the
+        distribution that the stage may have given the value that it draws from."""
         drawn = self.plan.draws[name]
         owner = self.owner(drawn.owner)
-        found = self.value(self.distribution(drawn.source), f'{drawn.site}|{owner}', eligible, drawn.site)
+        source = self.distribution(drawn.source, tx)
+        found = self.value(source, f'{drawn.site}|{owner}', eligible, drawn.site)
         if (drawn.site, owner) not in self.kept:
             self.run.recorder.entry(self.run.now, 'draw', drawn.site, owner, value=found)
         self.made.append((drawn.site, owner, found))

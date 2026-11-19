@@ -1,5 +1,5 @@
-"""The setup's starts, a stage that waits and then acts only if its guard holds, and the time scales of
-the scenario line. Every expectation is a closed form of the inputs.
+"""The setup's starts, a stage that waits and then acts only if its guard holds, and the retired time
+scales of the scenario line. Every expectation is a closed form of the inputs.
 
 The setup starts an attacker's operation and the responders' clean-up at t = 0 (spec, "Time, waiting
 and completion"). The operation prepares for `prepare` hours, and its stage then switches the service
@@ -7,6 +7,8 @@ off and starts its repair only if the attacker has not been removed: the guard i
 stage comes due. The repair takes `repair` hours. While the service is up it serves the users who wait
 at `k` times their number, so the users served are `users (1 - exp(-k u))`, with `u` the hours that
 the service has been up.
+
+The engine chooses its own steps: `timescales` left the scenario line (PLAN, change 19).
 
 Copies of a template (`* k` and `copy`) and units that name a text left the language (spec, "What
 the first version leaves out"): a template's members are written by hand or are the rows of a table.
@@ -105,19 +107,13 @@ def test_a_guard_read_when_the_stage_comes_due_skips_its_body():
 # ---- time scales ---------------------------------------------------------------------------------
 
 
-def with_timescales(written):
-    return OPERATION.replace('    horizon 150 h\n', f'    horizon 150 h\n    timescales {written}\n')
-
-
-def test_the_time_scales_of_the_scenario_line_are_times_in_hours():
-    model = compile_text(with_timescales('2 h, 3 days, 0.5 h'), {**UNITS, 'days': ({'time': 1}, 24)})
-    assert model.declared.scenario.timescales == (2, 72, 0.5)
-
-
-@pytest.mark.parametrize('written', ['service.repair', '3 person', '30 h / 4'])
-def test_a_time_scale_is_a_time_written_as_a_number_on_the_scenario_line(written):
+@pytest.mark.parametrize('written', ['2 h', '2 h, 3 h', 'service.repair'])
+def test_timescales_are_retired_with_the_steps_that_the_engine_chooses(written):
+    """The engine chooses its own steps (PLAN, change 19): `timescales` is refused by name, whatever it
+    lists, with the configuration's `max_step` for a run that needs finer steps."""
+    text = OPERATION.replace('    horizon 150 h\n', f'    horizon 150 h\n    timescales {written}\n')
     with pytest.raises(LanguageError) as raised:
-        compile_text(with_timescales(written), UNITS)
+        compile_text(text, UNITS)
     (problem,) = raised.value.problems
-    assert (problem.code, problem.line) == ('scenario', 1)
-    assert 'timescales is a time' in problem.message
+    assert (problem.code, problem.line) == ('retired', 3)
+    assert 'the engine chooses its own steps' in problem.message and 'max_step' in problem.message

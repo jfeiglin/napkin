@@ -6,6 +6,7 @@ import textwrap
 
 import pytest
 
+from napkin.engine import read, run
 from napkin.model.compile import compile_text
 from napkin.model.language.format import format_text
 from napkin.model.language.parse import parse
@@ -717,3 +718,48 @@ def test_delayed_is_refused_by_name_with_the_event_that_models_a_delayed_observa
     (problem,) = found.problems
     assert (problem.code, problem.line, problem.column) == ('delayed', 4, 22)
     assert problem.message.startswith('the language has no delayed read') and '`after D:`' in problem.message
+
+
+# ---- an empty case (PLAN, change 19) ----------------------------------------------------------------
+
+RESERVOIR = """
+    scenario "A reservoir"
+        horizon 2 h
+    reservoir:
+        gate: enum[CLOSED, OPEN] = CLOSED
+    operator:
+        decide = event(order: enum[OPEN, WAIT]):
+            after 1 h:
+                switch order:
+                    OPEN:
+                        "The operator opens the spillway."
+                        reservoir.gate = OPEN
+                    WAIT:
+                        "The operator waits, and the spillway stays closed."
+    operator.decide.start({order})
+    """
+
+
+@pytest.mark.parametrize(('order', 'gate'), [('WAIT', 'CLOSED'), ('OPEN', 'OPEN')])
+def test_a_case_with_only_its_text_does_nothing_and_keeps_its_text_as_its_card(order, gate):
+    """The reservoir's WAIT case has its text and no action: it compiles, the side table gives the case
+    its text as its card, and the run that takes it leaves the gate closed, while OPEN opens it."""
+    model = compiled(RESERVOIR.format(order=order))
+    origin = 'operator.decide.step[0].do[0].WAIT'
+    (case,) = [part for part in model.program.template('operator').events[0].steps[0].body[0].cases if part.member == 'WAIT']
+    assert case.body == () and case.origin == origin
+    location = model.table.location(origin)
+    assert (location.kind, location.label) == ('case', 'The operator waits, and the spillway stays closed.')
+    record = run(model.program, model.configuration)
+    (found,) = read(record, model.program, ['reservoir.gate'], [2])
+    assert found.values == (gate,)
+
+
+def test_a_case_with_nothing_under_it_formats_and_parses_to_the_same_tree():
+    text = (
+        'm:\n    s: enum[A, B] = A\n    go = event():\n        after 0 h:\n'
+        '            switch this.s:\n                A:\n                    this.s = B\n                B:\n'
+    )
+    assert format_text(text) == text and parse(format_text(text)) == parse(text)
+    (switch,) = compiled(text).program.template('m').events[0].steps[0].body
+    assert [(case.member, case.body) for case in switch.cases][1] == ('B', ())

@@ -7,6 +7,7 @@ import textwrap
 import pytest
 
 from napkin.model.language import nodes as n
+from napkin.model.language.format import format_text
 from napkin.model.language.lex import lines
 from napkin.model.language.parse import parse, parse_expression
 from napkin.model.language.problems import SyntaxProblem
@@ -228,6 +229,39 @@ def test_entities_templates_tables_and_instances():
     assert place.members[0] == n.Declaration('', 'origin', n.NamedType('Place'))
     assert (sites.template, sites.file) == ('Place', 'places.csv')
     assert pump == n.Declaration('', 'first_pump', n.NamedType('Pump'))
+
+
+def test_a_member_written_by_hand_has_its_title_which_formats_and_parses_back():
+    """A member may have a title (PLAN, change 19), a text for the reports and the playback that name
+    it, under its line beside its text and its values."""
+    text = 'dc: Utility\n    "The utility of the district."\n    title "DC Water"\n    demand = 2 L/h\n'
+    member = only(text)
+    assert (member.name, member.text, member.title) == ('dc', 'The utility of the district.', 'DC Water')
+    assert member.properties[0].path == ('demand',)
+    assert format_text(text) == text and parse(format_text(text)) == parse(text)
+    refused('dc: Utility\n    title "DC Water"\n    title "Again"\n', 'layout', 3)
+    refused('Utility:\n    x: L = 1 L\n        title "A value"\n', 'layout', 3)
+
+
+@pytest.mark.parametrize(
+    ('text', 'line'),
+    [
+        ('m:\n    go = event():\n        role operator\n        after 0 h\n', 3),
+        (
+            'm:\n    s: enum[A, B] = A\n    go = event():\n        after 0 h:\n            switch this.s:\n'
+            '                A:\n                    role operator\n',
+            7,
+        ),
+        ('dc: Utility\n    role operator\n', 2),
+        ('change dc:\n    role operator\n', 2),
+    ],
+    ids=['event', 'case', 'member', 'change'],
+)
+def test_a_role_outside_an_entity_or_a_template_is_refused_with_the_wrapper_that_holds_it(text, line):
+    """An event's role, a case's and a member's belong to the scenario's wrapper (PLAN, change 19), and
+    so does a variant's: the model refuses each by name rather than lose it."""
+    found = refused(text, 'role', line)
+    assert "belongs to the scenario's wrapper (its UI or brief.toml)" in found.problem.message
 
 
 def test_a_flow_has_its_ends_properties_and_legs():
