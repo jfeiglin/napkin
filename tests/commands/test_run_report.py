@@ -156,12 +156,11 @@ record cohort: assumption "A cohort of 100 people of a test, which finishes at a
 
 
 def mean_finished(t, shortest=2, longest=6):
-    """The mean of finished over [t - longest, t - shortest], which holds 0 before time 0: with
+    """The mean of finished over [t - longest, t - shortest], a window within the run: with
     C(x) = 100 (x + 10 (e^(-x/10) - 1)), the integral of finished from 0 to x, the mean is
-    (C(max(0, t - shortest)) - C(max(0, t - longest))) / (longest - shortest)."""
+    (C(t - shortest) - C(t - longest)) / (longest - shortest)."""
 
     def integral(x):
-        x = max(0.0, x)
         return 100 * (x + 10 * math.expm1(-x / 10))
 
     return (integral(t - shortest) - integral(t - longest)) / (longest - shortest)
@@ -173,7 +172,12 @@ def test_a_lag_of_a_value_that_never_falls_is_the_mean_of_its_window(tmp_path, c
     assert found.code == 0, found.err
     finished = found.doc['values']['s.finished']
     assert finished['lag'] == {'shortest': 2, 'longest': 6}
-    assert finished['values'] == pytest.approx([mean_finished(t) for t in (0, 1, 8, 20)], rel=1e-8, abs=1e-7)
+    # A window that begins before 0 h holds no value: the record has no history before the run.
+    assert [value['unavailable'][:28] for value in finished['values'][:2]] == [
+        'the lag of s.finished at 0 h',
+        'the lag of s.finished at 1 h',
+    ]
+    assert finished['values'][2:] == pytest.approx([mean_finished(t) for t in (8, 20)], rel=1e-8, abs=1e-7)
     assert 's.finish of s' in finished['note']
     text = napkin(capsys, 'run', model, '--at', '8h', '--lag', 's.finished=2h..6h', '--value', 's.finished')
     assert text.code == 0 and text.err == ''
@@ -185,10 +189,12 @@ def test_a_lag_of_a_value_that_never_falls_is_the_mean_of_its_window(tmp_path, c
 
 
 def test_a_fixed_delay_reads_the_value_that_long_before(tmp_path, capsys):
-    """One delay of 3 h: at 5 h the value at 2 h, 100 (1 - e^(-0.2)); at 1 h the value at time 0."""
+    """One delay of 3 h: at 5 h the value at 2 h, 100 (1 - e^(-0.2)); at 3 h the value at time 0; at
+    1 h none, since the record holds no value at -2 h."""
     model = package(tmp_path / 'decay', DECAY)
-    found = napkin(capsys, 'run', model, '--json', '--at', '1h,5h', '--lag', 's.finished=3h')
-    values = found.doc['values']['s.finished']['values']
+    found = napkin(capsys, 'run', model, '--json', '--at', '1h,3h,5h', '--lag', 's.finished=3h')
+    early, *values = found.doc['values']['s.finished']['values']
+    assert 'reads it from -2 h, before the run starts at 0 h' in early['unavailable']
     assert values == pytest.approx([0, 100 * -math.expm1(-0.2)], rel=1e-8, abs=1e-9)
 
 

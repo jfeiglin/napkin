@@ -45,7 +45,7 @@ from napkin.program.config import (
     Quantity,
     Request,
 )
-from napkin.program.record import Curve, History, Key, Piece
+from napkin.program.record import Curve, History, Key, Piece, Unavailable
 
 UNITS = {
     'h': {'time': 1},
@@ -210,8 +210,8 @@ def test_the_reader_names_each_path_by_its_member_and_gives_its_declared_unit():
     assert (feed.unit, feed.values) == ('kW', pytest.approx((1, 1)))
     assert (peak.unit, peak.values) == ('kW', pytest.approx((3, 3)))
     assert stored.values == pytest.approx((2000, 2000 + 2000))
-    with pytest.raises(LookupError, match='no value at 3'):
-        read(record, program, ['peak'], [3])
+    (late,) = read(record, program, ['peak'], [3])[0].values
+    assert late == Unavailable('the record holds no value at 3 h: it reaches to its horizon, 2 h')
 
 
 def test_the_fields_of_a_leg_read_in_the_legs_own_unit():

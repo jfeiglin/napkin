@@ -27,7 +27,7 @@ from napkin.program.build import BOOL, SINK, Builder, X, flow, formula, input_, 
 from napkin.program.canonical import program_bytes
 from napkin.program.config import Configuration, ConfigurationError, InputValue, Numerics, Quantity, Request
 from napkin.program.parts import Unit
-from napkin.program.record import Curve, Key
+from napkin.program.record import Curve, Key, Unavailable
 from napkin.program.refs import THIS, Path
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -179,5 +179,7 @@ def test_a_record_of_some_values_keeps_what_their_formulas_read():
     record = run(program, Configuration(Request(2, everything=False, keys=keys)))
     assert {history.key for history in record.histories} == {Key('tank', ('low',)), Key('tank', ('water',))}
     assert at(record, program, 'tank.low', 0.5, 1.5) == [False, True]
-    with pytest.raises(LookupError, match='no value'):
-        read(record, program, ['tank.water'], [1])
+    ((unheld,),) = (found.values for found in read(record, program, ['tank.water'], [1]))
+    assert isinstance(unheld, Unavailable) and unheld.reason.startswith(
+        'the record holds no value of tank.water'
+    )

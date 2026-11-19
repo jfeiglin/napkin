@@ -33,37 +33,52 @@ parts of a program, member by member.
   falls, a product by a fixed number from zero and a quotient by a fixed positive number.
 - A formula that a stage or the setup can give a new definition can fall, and so can a rate of a flow,
   a solver's unknown, `since`, `elapsed`, a keyed read whose key moves, and any other read.
-- A change from outside (`Change`: an edit at a stop, PLAN change 15) is one more writer of the run
-  that it changed, of known sign: one that lowers a stored number that a form counts, or raises one
-  that it subtracts, makes the form fall. So `never_falls(key, changes)` withdraws the proof for that
-  run, for the edited value and for every formula that rests on it, with the change's reason.
+- Only a number is averaged over a window: a yes/no, a text, an enum member, a link or a distribution
+  is refused by name before anything else, also when it is fixed for the run.
+
+**An edited run** (`Proofs(program, configuration, changes)`): each change from outside (`Change`, an
+edit at a stop, PLAN change 15) is one more writer of the run that it changed, at its time, from its
+old value to its new one, and every proof of that run follows from this one premise, as it follows
+from the program's own writers: none is computed for the unedited run and then patched by kind of
+edit. A change of a stored number is a writer of known sign: one that lowers what a form counts, or
+raises what it subtracts, makes the form fall, so the proof is withdrawn for that run, for the edited
+value and for every formula that rests on it, with the change's reason; one that does not break it
+keeps it (PLAN 15). A change of a named state (a yes/no or an enum member) lets the state take its new
+value, so reachability is derived again (`reach`): an event that it lets start writes, and is no
+longer "cannot start", and a stage that it lets run can give a formula a new definition.
 
 **What a value reads** (`reads(program, configuration, key)`): the parts that the value can depend
 on, each as one member runs it (`Part`), with the parts that each of them reads. It starts at a named
-value, at the flow of a field of a flow, or at a member's status display, which reads what its
-cases read. A stored value reads
-its starting value, its bounds and its writers; a formula, what its expression reads; a flow, its
-request and its capacity, its ends, the settings of the endpoints at its ends, and the other flows
-there, which share them; a stage, its guard, its statements and the stores of its moves, and its
-event; an event, its triggers
+value, at the flow of a field of a flow, or at a member's status display, which reads its cases, each
+a part (`case`) that reads what its condition reads, each after the first only when those before it
+do not hold. A read through a reference to an occurrence (`parts.OccurrenceType`) reads that field of
+an occurrence of its event, as `.at(t)` does. A stored value reads its starting value, its
+bounds and its writers; a formula, what its expression reads; a flow, its request and its capacity,
+its ends, the settings of the endpoints at its ends, and the other flows there, which share them; a
+stage, its guard, its statements and the stores of its moves, and its event; an event, its triggers
 and the stages that start it; a trigger, its condition; a solver, its inputs, its constraints and its
-objectives. An event that cannot start under the configuration is `blocked`, with the reason (D16:
-"this event cannot fire with the plant closed"); what a run exercised is the record's to say.
+objectives. A part that an expression reads only on a branch (a side of a choice, a later term of
+`and` or `or`: `always`) is in `sometimes` of the part that reads it, unless another of its
+expressions reads it on every evaluation. An event that cannot start under the configuration is
+`blocked`, with the reason (D16: "this event cannot fire with the plant closed"); what a run
+exercised is the record's to say.
 
-`Proofs(program, configuration)` finds the writers and the reachability of a program once, for each
-key that a caller asks about (`never_falls`, `reads`); the functions of the same names make one.
+`Proofs(program, configuration, changes)` finds the writers and the reachability of a program once,
+for each key that a caller asks about (`never_falls`, `reads`); the functions of the same names make
+one.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from fractions import Fraction
 
 from ..core import expr as nodes
 from ..core.errors import ExpressionError
 from ..core.evaluation import checked_value
-from ..core.units import UnitSystem
+from ..core.units import UnitSystem, rational
 from . import parts as p
-from .reach import reach
+from .reach import _Reach, reach
 from .record import Key
 from .refs import (
     By,
@@ -100,13 +115,21 @@ class Proof:
 
 @dataclass(frozen=True)
 class Change:
-    """A change from outside of a stored number in one run (an edit at a stop): the record key of the
-    number (`record.Key`), the amount that it added in canonical units (below zero for one that
-    lowered it), and what it did, which a proof that it withdraws gives as its reason."""
+    """A change from outside of a stored value in one run (an edit at a stop): the record key of the
+    value (`record.Key`), its value before and after, in canonical units (a number, a yes/no, an enum
+    member's name, a text), and what it did, which a proof that it withdraws gives as its reason."""
 
     key: Key
-    amount: float
+    old: object
+    new: object
     why: str
+
+    @property
+    def amount(self):
+        """What a change of a number added (below zero for one that lowered it), or None."""
+        if all(_number(value) for value in (self.old, self.new)):
+            return float(self.new) - float(self.old)
+        return None
 
 
 @dataclass(frozen=True)
@@ -122,19 +145,41 @@ class Part:
 
 @dataclass(frozen=True)
 class Reads:
-    """What a value reads: from `start`, each part with the parts that it reads (`edges`), and each
-    event that cannot start under the configuration, with the reason (`blocked`)."""
+    """What a value reads: from `start`, each part with the parts that it reads (`edges`), of those the
+    parts that it reads only on a branch (`sometimes`), and each event that cannot start under the
+    configuration, with the reason (`blocked`)."""
 
     start: Part
     edges: dict = field(default_factory=dict)
     blocked: dict = field(default_factory=dict)
+    sometimes: dict = field(default_factory=dict)
 
 
 def never_falls(program, configuration, key, changes=()):
     """Whether the value of a record key (`record.Key`) never falls over a run of the program under the
     configuration (None for the program's own inputs), with the reason; with `changes`, over the run
     that they changed (see the module)."""
-    return Proofs(program, configuration).never_falls(key, changes)
+    return Proofs(program, configuration, changes).never_falls(key)
+
+
+def always(node):
+    """The names that every evaluation of a node reads (that does not fail first): all of them but
+    those on a side of a choice that the other side does not read too, in a term of `and` or `or`
+    after the first, and in a comparison of a chain after the first (`a < b < c` reads `c` only when
+    `a < b`)."""
+    if isinstance(node, nodes.Ref):
+        return frozenset((node.name,))
+    if isinstance(node, nodes.IfElse):
+        return always(node.test) | (always(node.body) & always(node.orelse))
+    if isinstance(node, nodes.BoolOp):
+        return always(node.values[0])
+    if isinstance(node, nodes.Compare):
+        return always(node.operands[0]) | always(node.operands[1])
+    if isinstance(node, nodes.Call) and node.function in ('any', 'all') and len(node.args) > 1:
+        return always(node.args[0])  # the `or` or the `and` of its members
+    if isinstance(node, nodes.Foreign):
+        return frozenset()
+    return frozenset().union(*map(always, node.children))
 
 
 def reads(program, configuration, key):
@@ -218,21 +263,43 @@ class Proofs:
     """The proofs of one program under one configuration (see the module), which find the writers and
     the reachability of the program once for every key that they are asked about."""
 
-    def __init__(self, program, configuration):
+    def __init__(self, program, configuration, changes=()):
         self.program = program
         self.rows = {
             member.id: (template, member) for template in program.templates for member in template.members
         }
         self.given = {(item.member, item.name): item.value for item in getattr(configuration, 'inputs', ())}
         self.units = UnitSystem(
-            {
-                unit.name: {'dimensions': dict(unit.dimension), 'scale': float(unit.scale)}
-                for unit in program.units
-            }
+            {unit.name: {'dimensions': dict(unit.dimension), 'scale': unit.scale} for unit in program.units}
         )
-        self.events = reach(program, configuration).events
+        # The changes from outside of the run (see the module): every proof follows from them.
+        self.changes = tuple(changes)
+        self.declared = reach(program, configuration).events  # what the configuration alone reaches
+        states = [found for change in self.changes if (found := self._state(change)) is not None]
+        self.events = self.declared if not states else _reached(program, configuration, states).events
         self._index = None
-        self._changes = ()  # the changes from outside of the run that `never_falls` is asked about
+
+    def _state(self, change):
+        """The named state that a change gives a value (reach's key, its new value, the reason), or
+        None for a change of a number or a text, which reachability reads as any value."""
+        point = (
+            self.value_point(change.key.owner, change.key.steps[0]) if len(change.key.steps) == 1 else None
+        )
+        if point is None or not isinstance(point[2].type, (p.Bool, p.EnumType)):
+            return None
+        _, _, part, at = point
+        # A state is one for all the members of a template, or for all the occurrences of an event.
+        scope = at.event.origin if at.event is not None else at.template.name if at.template else ''
+        return (f'{scope}.{part.name}' if scope else part.name, frozenset({change.new}), change.why)
+
+    def withdrawn(self, event):
+        """Why the configuration alone proves that an event cannot start, when the changes of the run
+        let it start (see the module), with the changes of named states that do; else None."""
+        can, reason = self.declared.get(event, (True, ''))
+        if can or self.blocked(event) is not None:
+            return None
+        edits = [change.why for change in self.changes if self._state(change) is not None]
+        return f'{"; ".join(edits)}: this withdrew for this run the proof that it cannot start: {reason}'
 
     # ---- paths, member by member ----------------------------------------------------------------------
 
@@ -298,6 +365,12 @@ class Proofs:
                     # An entity parameter can pass any member of its template (D13).
                     template = self.program.template(part.type.template)
                     return [(('member', template, member), False) for member in template.members]
+                if isinstance(part, p.Value) and isinstance(part.type, p.OccurrenceType):
+                    # A reference names one occurrence of its event, of any member of the template:
+                    # a read through it reads that occurrence's field, as `.at(t)` does.
+                    template = self.program.template(part.type.template)
+                    event = template.part(part.type.event)
+                    return [(('occurrence', template, member, event), False) for member in template.members]
                 kind = 'value' if isinstance(part, p.Value) else 'flow'
                 return [((kind, at.owner, part, at), True)]
         return [(('other', f'the bare name {name}'), True)]
@@ -413,8 +486,9 @@ class Proofs:
                 return given.member
             if isinstance(given, Distribution):
                 return None
+            # The decimal that a configuration writes times the unit's exact scale, rounded once.
             unit = given.unit if isinstance(given.unit, p.Unit) else self.program.unit(given.unit)
-            return float(given.number) * float(unit.scale)
+            return float(rational(given.number) * Fraction(unit.scale))
         init = at.member.value(part.name) if at.member is not None and at.event is None else None
         init = init if init is not None else part.init
         if init is None or not hasattr(init, 'node'):
@@ -590,9 +664,10 @@ class Proofs:
         """The value point of a record key, or _Fall."""
         point = self.value_point(key.owner, key.steps[0]) if len(key.steps) == 1 else None
         if point is None:
-            name = '.'.join((key.owner, *key.steps)) if key.owner else '.'.join(key.steps)
+            if key.store is not None:
+                raise _Fall(f'{key} is the ledger of a store, what edits brought into it: no named number')
             raise _Fall(
-                f'{name} is no named number: a rate, a setting or a field of a flow follows its sharing, '
+                f'{key} is no named number: a rate, a setting or a field of a flow follows its sharing, '
                 'which can fall'
             )
         return point
@@ -613,25 +688,23 @@ class Proofs:
             part, at = self.program.root_value(name), _At()
         return ('value', at.owner, part, at) if isinstance(part, p.Value) else None
 
-    def never_falls(self, key, changes=()):
-        """Whether the value of a record key never falls over a run, with the reason (`Proof`); with
-        `changes` (`Change`), over the run that they changed."""
-        self._changes = tuple(changes)
+    def never_falls(self, key):
+        """Whether the value of a record key never falls over the run (edited by the changes, if any),
+        with the reason (`Proof`)."""
         try:
             return Proof(True, self.value(key))
         except _Fall as fall:
             return Proof(False, str(fall))
-        finally:
-            self._changes = ()
 
     def value(self, key):
-        """Why the value of a key never falls, or _Fall."""
+        """Why the value of a key never falls, or _Fall: only a number is averaged over a window, so the
+        type comes first, also for what is fixed for the run."""
         point = self.point_of(key)
         part = point[2]
+        if not isinstance(part.type, p.Number):
+            raise _Fall(f'{part.origin} is {kind_of(part.type)}, and only a number is averaged over a window')
         if part.kind in (p.INPUT, p.LINK):
             return 'it is fixed for the run'
-        if not isinstance(part.type, p.Number):
-            raise _Fall(f'{part.origin} is no number: only a number is averaged over a window')
         return self.rises([(point, True)], frozenset())
 
     def rises(self, points, seen):
@@ -812,11 +885,17 @@ class Proofs:
                 if why is not None:
                     idle.append(f'{writer.event} cannot start: {why}')
                     continue
-                self.writer(writer, form)
+                try:
+                    self.writer(writer, form)
+                except _Fall as fall:
+                    # A writer that only the changes of the run let run says which change did.
+                    withdrawn = self.withdrawn(writer.event) if writer.event is not None else None
+                    raise _Fall(f'{fall} ({withdrawn})' if withdrawn else str(fall)) from None
                 adds.append(_named(writer))
-        for change in self._changes:
+        for change in self.changes:
+            amount = change.amount  # a change of a named state writes no number; it reaches (`events`)
             lo, hi = form.get(_term(change.key), (0.0, 0.0))
-            if (change.amount < 0 and hi > 0) or (change.amount > 0 and lo < 0):
+            if amount is not None and ((amount < 0 and hi > 0) or (amount > 0 and lo < 0)):
                 raise _Fall(change.why)
         reasons = []
         if adds:
@@ -877,10 +956,11 @@ class Proofs:
 
     def reads(self, key):
         """What the value of a key reads (`Reads`): a named value, a field of a flow or of a leg (the
-        flow), a field of an endpoint (its store), or a member's status display (what its cases read)."""
+        flow), a field of an endpoint (its store), or a member's status display (its cases, each of
+        which reads what its condition reads)."""
         index = self.index()
         start, places = self.start_of(key)
-        found, blocked = {}, {}
+        found, blocked, sometimes = {}, {}, {}
         pending = [start]
         while pending:
             part = pending.pop()
@@ -890,9 +970,12 @@ class Proofs:
                 why = self.blocked(part.origin)
                 if why is not None:
                     blocked[part] = why
-            found[part] = tuple(dict.fromkeys(self._edges(part, index, places)))
+            edges, maybe = self._edges(part, index, places)
+            found[part] = tuple(dict.fromkeys(edges))
+            if maybe:
+                sometimes[part] = frozenset(maybe)
             pending.extend(each for each in found[part] if each not in found)
-        return Reads(start, found, blocked)
+        return Reads(start, found, blocked, sometimes)
 
     def start_of(self, key):
         """The part of a record key where what it reads starts, and the places of the parts found."""
@@ -925,17 +1008,39 @@ class Proofs:
         return parts[0], places
 
     def _edges(self, part, index, places):
-        """The parts that one part reads; `places` keeps the point of each value that they name."""
-        edges = []
+        """The parts that one part reads, and those of them that it reads only on a branch of each
+        expression that reads them (`always`); `places` keeps the point of each value that they name."""
+        edges, surely = [], set()
 
-        def expression(expr, at):
+        def expression(expr, at, branch=False):
+            # On a branch of a stage (an `if`, a case), even what its expression always reads is read
+            # only when the branch runs.
             expr = expr.expr if isinstance(expr, Formula) else expr
-            for _, read in getattr(expr, 'reads', ()):
-                edges.extend(self._read_parts(read, at, places))
+            node = getattr(expr, 'node', None)
+            every = always(node) if node is not None and not branch else frozenset()
+            for name, read in getattr(expr, 'reads', ()):
+                found = self._read_parts(read, at, places)
+                edges.extend(found)
+                if name in every:
+                    surely.update(found)
+
+        def certain(found):
+            found = list(found)
+            edges.extend(found)
+            surely.update(found)
 
         if part.kind == 'status':
+            # Its cases in order: each after the first is read only when those before it do not hold.
             display, at = places[part]
-            for case in display.cases:
+            for k, case in enumerate(display.cases):
+                made = Part('case', case.origin, part.owner)
+                places.setdefault(made, (case, at))
+                edges.append(made)
+                if k == 0:
+                    surely.add(made)
+        elif part.kind == 'case':
+            case, at = places[part]
+            if case.test is not None:
                 expression(case.test, at)
         elif part.kind == 'value':
             _, owner, value, at = places[part]
@@ -944,38 +1049,39 @@ class Proofs:
                 expression(own if own is not None else value.init, at)
             expression(value.lower, at)
             expression(value.upper, at)
-            edges.extend(writer.part for writer in index.writers.get((owner, value.name), ()))
+            certain(writer.part for writer in index.writers.get((owner, value.name), ()))
         elif part.kind == 'flow' and part in index.flows:
             writer = index.flows[part]
             expression(writer.value.request, writer.at)
             expression(writer.value.capacity, writer.at)
             for key, _ in (*writer.sources, *writer.sinks):
                 point = self.value_point(*key)
-                edges.extend(self._point_parts(point, places))
+                certain(self._point_parts(point, places))
                 for side in (point[2].outflow, point[2].inflow):
                     if side is not None:
                         expression(side.capacity, point[3])
                         expression(side.request, point[3])
                 # The other flows at an end share it with this one.
-                edges.extend(
-                    other.part for other in index.writers.get(key, ()) if other.kind in ('flow', 'route')
-                )
-            edges.extend(index.settings.get(part, ()))
+                certain(other.part for other in index.writers.get(key, ()) if other.kind in ('flow', 'route'))
+            certain(index.settings.get(part, ()))
             if writer.event is not None:
-                edges.append(Part('event', writer.event, part.owner))
+                certain([Part('event', writer.event, part.owner)])
         elif part.kind == 'stage' and part in index.stages:
             step, at = index.stages[part]
             expression(step.guard, at)
-            for statement in _flat(step.body):
+            for statement, branch in _flat(step.body):
                 for expr in _statement_exprs(statement):
-                    expression(expr, at)
+                    expression(expr, at, branch)
                 if isinstance(statement, p.Move):  # a move fits its stores, or fails whole
                     for end in (statement.source, statement.destination):
                         for point, _ in self.points(end, at, True):
-                            edges.extend(self._point_parts(point, places))
-            edges.append(Part('event', at.event.origin, part.owner))
+                            found = self._point_parts(point, places)
+                            edges.extend(found)
+                            if not branch:
+                                surely.update(found)
+            certain([Part('event', at.event.origin, part.owner)])
         elif part.kind == 'event':
-            edges.extend(index.starters.get(part, ()))
+            certain(index.starters.get(part, ()))
         elif part.kind == 'trigger' and part in index.triggers:
             trigger, at = index.triggers[part]
             expression(trigger.test, at)
@@ -984,13 +1090,14 @@ class Proofs:
             template, member = self.rows[part.owner]
             for binding in solver.inputs:
                 for point, _ in self.points(binding.source, _At(template, member), True):
-                    edges.extend(self._point_parts(point, places))
+                    certain(self._point_parts(point, places))
             at = _At(template, member, solver=solver)
             for item in solver.constraints:
                 expression(item.test, at)
             for item in solver.objective:
                 expression(item.expr, at)
-        return [edge for edge in edges if edge != part]
+        edges = [edge for edge in edges if edge != part]
+        return edges, {edge for edge in edges if edge not in surely}
 
     def _read_parts(self, read, at, places):
         """The parts that one read of an expression names."""
@@ -1063,14 +1170,48 @@ def _named(writer):
     return f'{writer.origin} of {writer.part.owner}' if writer.part.owner else writer.origin
 
 
-def _flat(statements):
-    """The statements of a body, with those of its branches."""
+def kind_of(value_type):
+    """A type in words, as a refusal names it: `a number`, `a yes/no`, `a text`, `a member of the enum
+    Mode`, `a link to a Tank`, `a collection`, `a distribution`, `a reference to an occurrence of
+    crew.repair`."""
+    if isinstance(value_type, p.Number):
+        return 'a number'
+    if isinstance(value_type, p.Bool):
+        return 'a yes/no'
+    if isinstance(value_type, p.Text):
+        return 'a text'
+    if isinstance(value_type, p.EnumType):
+        return f'a member of the enum {value_type.enum}'
+    if isinstance(value_type, p.EntityType):
+        return f'a link to a {value_type.template}'
+    if isinstance(value_type, p.DistributionType):
+        return 'a distribution'
+    if isinstance(value_type, p.OccurrenceType):
+        return f'a reference to an occurrence of {value_type.template}.{value_type.event}'
+    return 'a collection'
+
+
+def _reached(program, configuration, states):
+    """The reachability of a program under a configuration (`reach`) when some named states can also
+    take the values that the changes of a run give them, from the start: (state, values, reason)."""
+    found = _Reach(program, configuration)
+    for state, values, reason in states:
+        if state in found.domains:
+            found.add(state, values, reason)
+    return found.run()
+
+
+def _flat(statements, branch=False):
+    """The statements of a body, with those of its branches: (statement, whether it is on a branch, a
+    side of an `if` or the body of a case, which runs only when the branch is taken)."""
     for statement in statements:
-        yield statement
+        yield statement, branch
         if isinstance(statement, p.If):
-            yield from _flat((*statement.then, *statement.orelse))
+            yield from _flat((*statement.then, *statement.orelse), True)
         elif isinstance(statement, p.Switch):
-            yield from _flat((*(each for case in statement.cases for each in case.body), *statement.orelse))
+            yield from _flat(
+                (*(each for case in statement.cases for each in case.body), *statement.orelse), True
+            )
 
 
 def _statement_exprs(statement):

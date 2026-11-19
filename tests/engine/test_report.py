@@ -97,19 +97,21 @@ DECAY = """
 
 def test_a_uniform_lag_is_the_mean_of_its_window_in_closed_form():
     """A decaying stock fills a tally, finished = 100 (1 - e^(-t/10)), and a moment at 7 h splits the
-    history. The lag of 2 h to 6 h is the mean of finished over [t - 6, t - 2], which holds its value at
-    time 0, zero, before it. With C(x) = 100 (x + 10 (e^(-x/10) - 1)), the integral of finished from 0
-    to x, the mean is (C(max(0, t - 2)) - C(max(0, t - 6))) / 4."""
+    history. The lag of 2 h to 6 h is the mean of finished over [t - 6, t - 2]. With C(x) = 100 (x + 10
+    (e^(-x/10) - 1)), the integral of finished from 0 to x, the mean is (C(t - 2) - C(t - 6)) / 4. A
+    window that begins before 0 h is unavailable: the record has no history before the run."""
     times = [0, 1, 2, 3, 5, 6, 7, 8, 9.5, 13, 20]
 
     def integral(x):
-        x = max(0.0, x)
         return 100 * (x + 10 * math.expm1(-x / 10))
 
     found = reported(compiled(DECAY), ['s.finished'], times, lags={'s.finished': Lag(2, 6)}).values[0]
     assert found.lag == Lag(2, 6) and 's.finish of s' in found.note
     for t, value in zip(times, found.values, strict=True):
-        assert value == pytest.approx((integral(t - 2) - integral(t - 6)) / 4, rel=1e-8, abs=1e-7), t
+        if t < 6:
+            assert isinstance(value, Unavailable) and 'before the run starts at 0 h' in value.reason, t
+        else:
+            assert value == pytest.approx((integral(t - 2) - integral(t - 6)) / 4, rel=1e-8, abs=1e-7), t
 
 
 SERVICE = """
@@ -130,12 +132,15 @@ SERVICE = """
 def test_a_fixed_delay_and_a_window_over_a_ramp_and_a_jump():
     """One person is served an hour and two more at once at 5 h: served(s) = s + 2 [s >= 5]. At 7 h a
     fixed 3 h delay reads served(4) = 4; a window of 1 h to 3 h is the mean over [4, 6], (10 + 2) / 2 =
-    6, half of the jump; at 1 h a fixed 3 h delay reads the value at time 0."""
+    6, half of the jump; at 3 h a fixed 3 h delay reads the value at time 0, and at 1 h nothing: the
+    record holds no value at -2 h."""
     paths = ['service.served']
     model = compiled(SERVICE)
-    fixed = reported(model, paths, [1, 7], lags={'service.served': Lag(3, 3)}).values[0]
+    fixed = reported(model, paths, [1, 3, 7], lags={'service.served': Lag(3, 3)}).values[0]
     window = reported(model, paths, [7], lags={'service.served': Lag(1, 3)}).values[0]
-    assert fixed.values == pytest.approx((0, 4))
+    early, *rest = fixed.values
+    assert isinstance(early, Unavailable) and 'reads it from -2 h, before the run starts' in early.reason
+    assert rest == pytest.approx([0, 4])
     assert window.values == pytest.approx((6,))
 
 
@@ -149,8 +154,10 @@ def test_a_lag_of_a_value_that_can_fall_is_refused_and_the_plain_read_stays():
     now, volume = found.values
     assert now.lag is None and now.values == pytest.approx((10, 0))
     assert now.note.startswith('the lag is refused: unserved_now can fall: ')
-    # The volume is 10 s until 5 h: its mean over [-2, 2] is 20 / 4 and over [0, 4] is 80 / 4.
-    assert volume.lag == Lag(2, 6) and volume.values == pytest.approx((5, 20))
+    # The volume is 10 s until 5 h: its mean over [0, 4] is 80 / 4; [-2, 2] begins before the run.
+    early, late = volume.values
+    assert volume.lag == Lag(2, 6) and late == pytest.approx(20)
+    assert isinstance(early, Unavailable) and 'before the run starts at 0 h' in early.reason
 
 
 CREW = """
@@ -203,7 +210,8 @@ def test_a_stopped_run_reads_up_to_its_stop_and_says_so():
     )
     one, two, three = found.values[0].values
     assert (one, two) == pytest.approx((8, 6))
-    assert isinstance(three, Unavailable) and three.reason == found.stopped
+    assert isinstance(three, Unavailable)
+    assert three.reason == f'{stopped.record.stopped()}: the record holds no value at 3 h'
 
 
 def test_a_failed_run_reads_up_to_its_failure():

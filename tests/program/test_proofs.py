@@ -3,6 +3,7 @@ over a run (D10), and what a value reads. Each expected conclusion is worked by 
 ("Formulas and the values a caller can read", "What a proof establishes") and the rules of the
 module's docstring: which writers can take from what a value counts."""
 
+from fractions import Fraction
 from itertools import pairwise
 
 import pytest
@@ -23,6 +24,7 @@ from napkin.program.build import (
     formula,
     fsum,
     given,
+    ifelse,
     input_,
     item,
     local,
@@ -409,3 +411,64 @@ def test_endpoint_settings_are_read_by_the_flows_that_meet_them():
         Part('value', 'reservoir.limit', 'reservoir')
         in found.edges[Part('flow', 'garden.delivery', 'garden')]
     )
+
+
+# ---- what the agent of units left to the proofs (scratch/rewrite/b1/audit2-d/STATE.md, "For C") -----
+
+
+def spans(given=None):
+    """A member whose input `span` is 2.4 h, or as a configuration gives it; a tally that a pump fills
+    and a stock that a drain empties; `picked` counts the tally when the span equals 0.1 day and 6 min
+    equals 0.1 h, and the stock when either does not."""
+    b = Builder(
+        {
+            'h': {'time': 1},
+            'day': ({'time': 1}, 24),
+            'min': ({'time': 1}, Fraction(1, 60)),
+            'L': {'volume': 1},
+        }
+    )
+    b.entity(
+        'm',
+        input_('span', 'h', q(2.4, 'h')),
+        value('tally', 'L', 0, lower=0),
+        value('stock', 'L', 10, lower=0),
+        flow('pump', SOURCE, this.tally, request=q(1, 'L/h')),
+        flow('drain', this.stock, SINK, request=q(1, 'L/h')),
+        value(
+            'picked',
+            'L',
+            formula(
+                ifelse((this.span == q(0.1, 'day')) & (q(6, 'min') == q(0.1, 'h')), this.tally, this.stock)
+            ),
+        ),
+    )
+    inputs = () if given is None else (InputValue('m', 'span', Quantity(*given)),)
+    return b.finish(), Configuration(Request(10), inputs=inputs)
+
+
+@pytest.mark.parametrize('given', [None, (2.4, 'h'), (0.1, 'day')], ids=['default', 'in hours', 'in days'])
+def test_a_proof_reads_each_quantity_at_its_exact_scale(given):
+    """0.1 day is 2.4 h and 6 min is 0.1 h exactly, however a default or a configuration writes them (in
+    floats, 0.1 * 24 is 2.4000000000000004 h, and 6 times the float of 1/60 is 0.09999999999999999 h):
+    `picked` is the tally, which never falls."""
+    program, configuration = spans(given)
+    proof = never_falls(program, configuration, Key('m', ('picked',)))
+    assert proof.holds, proof.reason
+
+
+def test_a_read_through_a_reference_to_an_occurrence_reads_that_occurrence():
+    """A check saves a reference to the newest repair and writes the repair's amount into `held`
+    through it: what `held` reads is the writing stage and the amount of the repair's occurrences, and
+    a lag of the reference is refused by what it is."""
+    from tests.language.test_events import LIVES, program_of
+
+    program = program_of(LIVES.format(stage='                this.held = job.amount'))
+    found = reads(program, RUN, Key('crew', ('held',)))
+    assert Part('stage', 'crew.check.step[0]', 'crew') in found.edges
+    assert (
+        Part('value', 'crew.repair.amount', 'crew.repair#')
+        in found.edges[Part('stage', 'crew.check.step[0]', 'crew')]
+    )
+    proof = never_falls(program, RUN, Key('crew.check#', ('job',)))
+    assert not proof.holds and 'a reference to an occurrence of crew.repair' in proof.reason

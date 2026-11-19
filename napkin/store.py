@@ -26,18 +26,23 @@ within the tolerances of the run (change 11 of the plan).
 
 **The reuse rule.** What to record, and until when (the request), is no part of the key: one entry
 holds one record of the run, and it serves every request that it covers (`covers`): a horizon at or
-before its own, and values that it holds (every value, or each value that the request names). The
-record that a request gets is the stored one cut to the request (`served`): its pieces, its trace
-and its failure up to the request's horizon, and the request's manifest, so a report of it says
-nothing of what happened later. Its values agree with those of a run to that horizon within the
-tolerances of the run; a request that the entry covers gets the same record each time. A request
-that the entry does not cover (a later horizon, a value that it does not hold) runs again, with a
-request wide enough for both (`_widened`), and the new record takes the entry's place: an entry never
-covers less than before. A run that fails is stored, with its failure: the same run fails the same
-way. Nothing is stored for a run that the engine refuses with an exception, or for a log that does
-not play again (`CheckpointError`). A run with edits is stored under its log and serves only that
-log. A session (`napkin.session.Session`) that waits at a stop is not over, and stores nothing: the
-run of its log goes through the store (`run(program, configuration, log)`).
+before its own, and values that it holds (every value, or each value that the request names, a
+store's ledger with the store: `Manifest.names`). The record that a request gets is the stored one
+cut to the request (`served`): its pieces, its trace and its failure up to the request's horizon,
+the request's manifest, and the request's budget of pieces (`Record.within`), so it answers as a
+fresh run of the request would: a report of it says nothing of what happened later, and holds no
+value that the request does not name (the record's reader and the trail read only what its manifest
+names). Its values agree with those of a run to that horizon within the tolerances of the run; a
+request that the entry covers gets the same record each time. A request that the entry does not
+cover (a later horizon, a value that it does not hold) runs again, with a request wide enough for
+both (`_widened`), and the new record takes the entry's place: an entry never covers less than
+before. A run that fails is stored, with its failure: the same run fails the same way. A record that
+its budget cut is not stored, since a request of fewer values or with another budget holds more of
+the same run; when the wider run is cut, the request runs alone. Nothing is stored for a run that
+the engine refuses with an exception, or for a log that does not play again (`CheckpointError`). A
+run with edits is stored under its log and serves only that log. A session
+(`napkin.session.Session`) that waits at a stop is not over, and stores nothing: the run of its log
+goes through the store (`run(program, configuration, log)`).
 
 Each entry is a compressed pickle in `<directory>/<2 hex>/<key>.run`, written to a temporary file and
 renamed into place, with the configuration that it ran, its log (None for none) and the digest of its
@@ -409,21 +414,22 @@ def key(program, configuration, log=None):
 
 def covers(manifest, request):
     """Whether a record with this manifest serves a request: its horizon reaches the request's, and it
-    holds every value, or each value that the request names."""
+    holds every value, or each value that the request names (`Manifest.names`)."""
     if request.horizon > manifest.horizon:
         return False
-    return manifest.everything or (not request.everything and set(request.keys) <= set(manifest.keys))
+    return manifest.everything or (not request.everything and all(map(manifest.names, request.keys)))
 
 
 def served(record, request):
-    """The record that a request gets from a stored record that covers it: its pieces, its trace and
-    its failure up to the request's horizon, with the request's manifest. A value whose first piece
-    comes after that horizon (an occurrence that started later) is left out."""
+    """The record that a request gets from a stored record that covers it, as a fresh run of the
+    request gives it: its pieces, its trace and its failure up to the request's horizon, with the
+    request's manifest, within the request's budget of pieces. A value whose first piece comes after
+    that horizon (an occurrence that started later) is left out."""
     from .program.record import History, Manifest, Record
 
     manifest = Manifest(request.horizon, request.everything, request.keys)
     if record.manifest.horizon == request.horizon:
-        return Record(manifest, record.histories, record.trace, record.failure)
+        return Record(manifest, record.histories, record.trace, record.failure).within(request.pieces)
     end = request.horizon
     histories = []
     for history in record.histories:
@@ -432,7 +438,12 @@ def served(record, request):
             histories.append(History(history.key, pieces))
     trace = tuple(entry for entry in record.trace if entry.t <= end)
     failure = record.failure if record.failure is not None and record.failure.t <= end else None
-    return Record(manifest, tuple(histories), trace, failure)
+    return Record(manifest, tuple(histories), trace, failure).within(request.pieces)
+
+
+def _cut(record):
+    """Whether its budget of pieces cut a record (`Record.within`)."""
+    return record.failure is not None and record.failure.detail('budget') is not None
 
 
 def _widened(manifest, request):
@@ -621,6 +632,9 @@ def run(program, configuration, log=None):
                     else replace(configuration, request=_widened(manifest, request))
                 )
                 found = _fresh(program, ran, log)
+                if _cut(found):
+                    # A record that its budget cut is not stored; the request alone may hold more.
+                    return found if ran is configuration else _fresh(program, configuration, log)
                 _save(directory, run_key, program, ran, found, log)
                 return served(found, request)
     counts['hits'] += 1

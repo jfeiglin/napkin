@@ -296,14 +296,10 @@ class Record:
         """The record within a budget of pieces (see the module): itself, when the values that it holds
         have no more pieces; else the record before the time of the first piece that does not fit (its
         histories and its trace), which a failure entry at that time ends, naming the budget."""
-        times = sorted(
-            float(piece.t)
-            for history in self.histories
-            if self.manifest.names(history.key)
-            for piece in history.pieces
-        )
-        if len(times) <= pieces:
+        held = [history for history in self.histories if self.manifest.names(history.key)]
+        if sum(len(history.pieces) for history in held) <= pieces:
             return self
+        times = sorted(float(piece.t) for history in held for piece in history.pieces)
         end = times[pieces]
         histories = []
         for history in self.histories:

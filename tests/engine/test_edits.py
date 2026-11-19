@@ -219,7 +219,7 @@ def test_an_edit_that_lowers_a_tally_withdraws_its_never_falls_proof_for_the_run
     record = made.resume()
     (found,) = report(record, program, configuration, ['tank.served'], [4], lags).values
     assert found.lag is None
-    assert 'can fall: an edit at 2 h, at tank.tick.step[0], lowered it from 2 to 1 L' in found.note
+    assert 'can fall: an edit at 2 h, at tank.tick.step[0], lowered tank.served from 2 to 1 L' in found.note
     assert found.values == (pytest.approx(3),)
 
 
@@ -308,6 +308,8 @@ def test_an_edit_withdraws_the_proof_that_an_event_cannot_start():
     made.edit(Key('plant', ('open',)), True)
     record = made.resume()
     found = repair(record)
-    assert found.exercised and found.why.startswith('it started at 1 h (the edit at 0.5 h')
+    assert found.exercised and found.why.startswith(
+        'it started at 1 h (an edit at 0.5 h, at plant.tick.step[0], set plant.open from false to true: '
+    )
     assert 'withdrew for this run the proof that it cannot start' in found.why
     assert read(record, program, ['plant.used'], [4])[0].values == (pytest.approx(2),)

@@ -71,3 +71,60 @@ def test_a_manifest_serves_what_it_holds():
     assert not everything.holds(WATER, 11)
     assert some.holds(WATER, 5)
     assert not some.holds(Key('clinic', ('delivery', 'actual_rate')), 5)
+
+
+def test_a_record_holds_a_stores_ledger_with_the_store_and_nothing_before_the_run():
+    """A store's ledger belongs to its books: a record of the store holds it, and a request may name
+    the ledger alone; nothing is held before 0 h."""
+    ledger = Key('tank', ('water', 'external'))
+    some = Manifest(10, everything=False, keys=(WATER,))
+    alone = Manifest(10, everything=False, keys=(ledger,))
+    assert some.holds(ledger, 5) and alone.holds(ledger, 5) and not alone.holds(WATER, 5)
+    assert not some.holds(WATER, -1) and ledger.store == WATER and WATER.store is None
+    assert str(ledger) == 'tank.water.external' and str(Key('', ('peak',))) == 'peak'
+
+
+def test_a_record_gives_a_value_only_from_what_it_holds_else_the_reason():
+    """`Record.value` reads a held history; a value outside the manifest, a time before the run or after
+    the horizon, and a key with no history are `Unavailable`, each with its reason."""
+    other = Key('tank', ('other',))
+    record = Record(Manifest(3, everything=False, keys=(WATER, other)), (History(WATER, (Piece(0, 8, -3),)),))
+    assert record.value(WATER, 1) == 5
+    assert record.value(Key('tank', ('level',)), 1) == Unavailable(
+        'the record holds no value of tank.level: the request of its run names other values'
+    )
+    assert record.value(WATER, -1) == Unavailable('the record holds no value at -1 h: the run starts at 0 h')
+    assert record.value(WATER, 4) == Unavailable(
+        'the record holds no value at 4 h: it reaches to its horizon, 3 h'
+    )
+    assert record.value(other, 1) == Unavailable('the record keeps no history of tank.other')
+
+
+def test_a_budget_of_pieces_ends_a_record_before_the_first_piece_that_does_not_fit():
+    """Two values with pieces at 0, 1 and 2 h and at 0 and 2 h: within 3 pieces the record holds the
+    three before 2 h and ends at 2 h; within 1 piece not even the two at 0 h fit, and it holds none;
+    within 5 it is itself. A value that the manifest does not hold does not count."""
+    level = Key('tank', ('level',))
+    record = Record(
+        Manifest(4, everything=False, keys=(WATER, level)),
+        (
+            History(WATER, (Piece(0, 8, -1), Piece(1, 7), Piece(2, 5))),
+            History(level, (Piece(0, 1), Piece(2, 2))),
+            History(Key('tank', ('kept',)), (Piece(0, 0), Piece(1, 1), Piece(3, 2))),
+        ),
+        (
+            Entry(0, 0, 'start', 'tank.tick', 'tank.tick#0'),
+            Entry(2, 1, 'commit', 'tank.tick.step[0]', 'tank.tick#0'),
+        ),
+    )
+    assert record.within(5) is record
+    three = record.within(3)
+    assert three.end == 2 and three.failure.detail('budget') == 3
+    assert [entry.kind for entry in three.trace] == ['start', 'failure']
+    assert three.value(WATER, 1.5) == 7 and three.value(level, 1) == 1
+    assert three.value(WATER, 2).reason.startswith(
+        'the record stops at 2 h: from this time the values that it'
+    )
+    assert sum(len(history.pieces) for history in three.histories if three.manifest.names(history.key)) == 3
+    one = record.within(1)
+    assert one.end == 0 and not one.histories and isinstance(one.value(WATER, 0), Unavailable)

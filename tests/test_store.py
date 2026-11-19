@@ -27,7 +27,7 @@ from napkin.engine.timeline import run as fresh
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, CheckpointError
 from napkin.program.config import SAMPLED, Configuration, Request
-from napkin.program.record import Entry, Key, Manifest, Record
+from napkin.program.record import Entry, Key, Manifest, Record, Unavailable
 from napkin.session import Session, play
 from tests.program.examples import DISPATCH, DISPATCH_SWITCH, EXAMPLES, UNITS, pump_dispatch
 
@@ -131,8 +131,10 @@ def test_a_window_that_the_stored_run_lacks_runs_again(tmp_path):
     assert used == {'hits': 0, 'misses': 1} and again == {'hits': 1, 'misses': 0}
     assert water(longer, model, [6]) == pytest.approx((12,))
     assert shorter.manifest == Manifest(4) and water(shorter, model, [4]) == pytest.approx((8,))
-    with pytest.raises(LookupError):
-        water(shorter, model, [5])
+    # The cut answers as a run to 4 h would: nothing at 5 h, though the entry holds the run to 6 h.
+    assert water(shorter, model, [5]) == (
+        Unavailable('the record holds no value at 5 h: it reaches to its horizon, 4 h'),
+    )
 
 
 def test_a_value_that_the_stored_run_lacks_runs_again_and_the_entry_then_holds_both(tmp_path):
@@ -150,8 +152,10 @@ def test_a_value_that_the_stored_run_lacks_runs_again_and_the_entry_then_holds_b
     assert whole == {'hits': 0, 'misses': 1}  # every value is more than the two
     assert level.manifest == Manifest(4, everything=False, keys=(LEVEL,))
     assert read(level, model.program, ['tank.level'], [4])[0].values == pytest.approx((1,))
-    with pytest.raises(LookupError):
-        water(level, model, [4])
+    (unheld,) = water(level, model, [4])
+    assert unheld == Unavailable(
+        'the record holds no value of tank.water: the request of its run names other values'
+    )
 
 
 def test_a_shorter_request_reads_the_stored_run_up_to_its_horizon_and_nothing_after(tmp_path):
@@ -400,3 +404,41 @@ def test_a_fingerprint_reads_a_record_and_nothing_else():
     assert store.fingerprint(record) != store.fingerprint(replace(record, trace=()))
     with pytest.raises(TypeError):
         store.fingerprint(object())
+
+
+# ---- the budget of pieces (the re-audit's row 18) ------------------------------------------------
+
+
+def test_a_request_with_a_budget_is_cut_from_the_stored_run_as_a_fresh_run_would_be(tmp_path):
+    """The whole run is stored; a request of it within two pieces is a hit, cut where a fresh run of
+    that request ends, with the same failure that names the budget."""
+    model = tank()
+    small = replace(model.configuration, request=Request(4, pieces=2))
+    with store.use(tmp_path):
+        store.run(model.program, model.configuration)
+        cut, used = counted(lambda: store.run(model.program, small))
+    alone = fresh(model.program, small)
+    assert used == {'hits': 1, 'misses': 0}
+    assert cut.end == alone.end and cut.failure == alone.failure and cut.failure.detail('budget') == 2
+
+
+def test_a_record_that_its_budget_cuts_is_not_stored_and_a_wider_cut_run_gives_way_to_the_request(tmp_path):
+    """A record that its budget cuts is not stored: the same request misses again. The stored run of
+    the water serves no request of the level; the run of both would not fit the level's budget, so the
+    level runs alone, holds its whole run, and the entry of the water stays."""
+    model = tank()
+
+    def asking(*keys, pieces=10_000_000):
+        return replace(model.configuration, request=Request(4, everything=False, keys=keys, pieces=pieces))
+
+    with store.use(tmp_path):
+        first, one = counted(lambda: store.run(model.program, asking(WATER, pieces=1)))
+        _, two = counted(lambda: store.run(model.program, asking(WATER, pieces=1)))
+        assert one == two == {'hits': 0, 'misses': 1} and first.failure.detail('budget') == 1
+        store.run(model.program, asking(WATER))
+        level = fresh(model.program, asking(LEVEL))
+        budget = sum(len(history.pieces) for history in level.histories if level.manifest.names(history.key))
+        found, used = counted(lambda: store.run(model.program, asking(LEVEL, pieces=budget)))
+        _, water_again = counted(lambda: store.run(model.program, asking(WATER)))
+    assert used == {'hits': 0, 'misses': 1} and found.failure is None and found.end == 4
+    assert water_again == {'hits': 1, 'misses': 0}

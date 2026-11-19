@@ -24,14 +24,17 @@ and could rest on, and the disclosures (`lines_of`).
   (`napkin.program.proofs.reads`): a part's own records; a value's, also those of the own line of
   the member that runs it and of every option that sets it; a stage's, also those of the cases of
   its switches; a trigger's, those of its captures; a solver's, those of its unknowns; a leg's,
-  those of its flow; a status display's, those of its cases.
+  those of its flow. A status display reads its cases, each a part with its own records, so a case
+  that did not apply is no part that the value rests on.
 - **The evidence of a report** (`evidence`): for each value that a report reads, each part of its
   evidence trail with its uses and whether the run exercised it, then what the records of the parts
   that the run exercised reach in the library (`napkin.model.evidence.dependencies`): the claims with
   their verification status, the assumptions with their review status, the sources and the
-  conventions. `possible` holds what only the parts that the run did not exercise reach. A
-  disclosure names each claim that is not verified and each assumption that is not confirmed, of the
-  exercised parts (`disclosures`).
+  conventions. The trail says exercised for what the value read (a side of a choice that it did not
+  take, a case after the one that applied, is not), so `possible` holds what only the parts that
+  the run did not exercise reach, or that the record cannot say it exercised (`Used.exercised` None).
+  A disclosure names each claim that is not verified and each assumption that is not confirmed, of
+  the exercised parts (`disclosures`).
 
 `built(path, library)` declares a package as `napkin.model.compile.load_scenario` does, with the
 library that the caller reads, so the coverage report (`integrate --coverage`) reads a model whose
@@ -239,7 +242,7 @@ def part_uses(declared, part, options=None):
         return []
     places = [(found.path, getattr(found, 'evidence', ()))]
     if isinstance(found, s.DeclaredStatus):
-        places = [(case.path, case.evidence) for case in found.cases]
+        places = []  # its cases are parts of their own, each with its records (`proofs.reads`)
     elif isinstance(found, s.DeclaredStage):
         places += [
             (item.path, item.evidence) for item in s.statements_of(found.body) if hasattr(item, 'evidence')
@@ -332,6 +335,7 @@ def evidence(found, declared, library, options=()):
     out = []
     for value in found.values:
         parts = tuple((used, tuple(part_uses(declared, used, options))) for used in value.trail)
+        # A part that the record cannot say the run exercised (None) is what the value could rest on.
         exercised = [use for used, each in parts if used.exercised for use in each]
         other = [use for used, each in parts if not used.exercised for use in each]
         held, could = reached(exercised, library), reached(other, library)

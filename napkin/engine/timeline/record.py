@@ -69,8 +69,10 @@ makes the record's occurrences again from the starts of its trace (`Plan.replay`
 
 from __future__ import annotations
 
+import math
 from bisect import bisect_right
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import pairwise
 
 import numpy as np
@@ -80,7 +82,7 @@ from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import evaluate
 from ...program.config import Configuration, Request
-from ...program.parts import DistributionType
+from ...program.parts import DistributionType, OccurrenceType
 from ...program.proofs import always
 from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Record, Unavailable
 from ..continuous.kernels import Affine, MatrixExponential
@@ -713,39 +715,64 @@ def key_of(program, path):
 
 
 def unit_of(program, key):
-    """The spelling of the declared unit of the value at a key and its scale: of a value, its type's
-    unit; of a flow's actual rate, request or capacity, the flow's unit, and of a leg's, the leg's;
-    of an endpoint's, its store's unit per hour (time is in hours, at scale 1); `''` for a plain
-    number or a yes/no, such as a `served_fraction`."""
+    """The spelling of the declared unit of the value at a key and its scale, a float (`declared`
+    gives it exactly)."""
+    unit, scale = declared(program, key)
+    return unit, float(scale)
+
+
+def declared(program, key):
+    """The spelling of the declared unit of the value at a key and its exact scale (a Fraction): of a
+    value, its type's unit; of a flow's actual rate, request or capacity, the flow's unit, and of a
+    leg's, the leg's; of an endpoint's, its store's unit per hour (time is in hours, at scale 1); `''`
+    for a plain number or a yes/no, such as a `served_fraction`. A key that names no value is a
+    KeyError, and so is a reference to an occurrence (`parts.OccurrenceType`): it names an
+    occurrence, whose values the record holds under its own path, and no record holds the reference."""
     if '#' in key.owner:
         receiver, event = key.owner.rsplit('#', 1)[0].rsplit('.', 1)
         found = program.member(receiver)[0].part(event)
         if key.steps[0] in ('started', 'done', 'active'):
-            return '', 1.0  # the time of the start is in hours; the others are yes/no values
+            return '', Fraction(1)  # the time of the start is in hours; the others are yes/no values
         part = next((each for each in (*found.params, *found.locals) if each.name == key.steps[0]), None)
     elif key.owner:
         template = program.member(key.owner)[0]
         part = template.part(key.steps[0])
         if part is None and key.steps == ('status',) and template.status is not None:
-            return '', 1.0  # a status display: the text of the case that applies
+            return '', Fraction(1)  # a status display: the text of the case that applies
     else:
         part = program.root_value(key.steps[0])
     if part is None:
         raise KeyError(f'{key}: no value of the program')
+    value_type = getattr(part, 'type', None)
+    if isinstance(value_type, OccurrenceType):
+        raise KeyError(
+            f'{key}: a reference to an occurrence of {value_type.template}.{value_type.event} is no value that '
+            'a record holds: read the occurrence that it names by its own path'
+        )
     if getattr(part, 'legs', ()) and len(key.steps) >= 3:
         # A field of a leg is in the leg's unit; the parent's `served_fraction` is a plain number.
         part = next((leg for leg in part.legs if leg.name == key.steps[1]), part)
-    value_type = getattr(part, 'type', None)
+        value_type = getattr(part, 'type', None)
     if hasattr(part, 'unit'):  # a flow has a unit
         unit = part.unit
     elif isinstance(value_type, DistributionType):  # `.mean` and `.std` are in its numbers' unit
         unit = getattr(value_type.of, 'unit', '')
     else:
         unit = getattr(value_type, 'unit', '')
-    scale = 1.0 if unit == '' else float(program.unit(unit).scale)
+    scale = Fraction(1) if unit == '' else Fraction(program.unit(unit).scale)
     if len(key.steps) >= 3 and key.steps[1] in ('outflow', 'inflow'):
         return (f'{unit}/h' if unit else '1/h'), scale
     return unit, scale
+
+
+def in_unit(value, scale):
+    """A number in canonical units in the unit of an exact scale, rounded once; any other value (a
+    yes/no, a text, `Unavailable`) as it is."""
+    if isinstance(value, (bool, str, Unavailable)):
+        return value
+    if scale == 1 or not math.isfinite(value):
+        return float(value)
+    return float(Fraction(value) / scale)
 
 
 # The plan of the program that a reader or a run used last: a program is read again and again.
@@ -808,6 +835,7 @@ class Reader:
         self.read = {}  # (engine name, time) -> the engine names that its evaluation read, in order
         self.kept = {}
         self._stores = None
+        self._always = {}  # the id of a node -> what every evaluation of it reads (`proofs.always`)
 
     # ---- what a caller asks -------------------------------------------------------------------------
 
@@ -817,14 +845,9 @@ class Reader:
         found = []
         for path in paths:
             key = key_of(self.program, path)
-            unit, scale = unit_of(self.program, key)
-            values = []
-            for t in times:
-                value = self.value(key, t)
-                if not isinstance(value, (bool, str, Unavailable)):
-                    value = float(value) / scale
-                values.append(value)
-            found.append(Reading(name_of(path) if isinstance(path, Key) else path, key, unit, tuple(values)))
+            unit, scale = declared(self.program, key)
+            values = tuple(in_unit(self.value(key, t), scale) for t in times)
+            found.append(Reading(name_of(path) if isinstance(path, Key) else path, key, unit, values))
         return found
 
     def value(self, key, t):
@@ -834,7 +857,9 @@ class Reader:
         that cannot be read. A ledger that names no store is a KeyError: it is no value."""
         t = float(t)
         if key.store is not None and name_of(key.store) not in self.stores():
-            raise KeyError(f'{key}: {key.store} is no store, and only a store has a ledger of what came from outside')
+            raise KeyError(
+                f'{key}: {key.store} is no store, and only a store has a ledger of what came from outside'
+            )
         reason = self.record.unavailable(key, t)
         if reason is not None:
             return Unavailable(reason)
@@ -879,6 +904,15 @@ class Reader:
         value: what its formula asked for, the members and the entries that a collection read; none
         for a value read from its history."""
         return self.read.get((name, float(t)), ())
+
+    def evaluates(self, name):
+        """Whether the reader finds the value of an engine name by an evaluation of what it reads (a
+        formula, a collection, the time of a change) rather than from its history."""
+        value = self.plan.values.get(name)
+        return value is not None and (
+            self.plan.original(name).kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED)
+            or name in self.definitions
+        )
 
     # ---- the values of engine names ---------------------------------------------------------------
 
@@ -949,13 +983,17 @@ class Reader:
         elif value.kind == CHANGED:
             found = self._changed(name, t, read)
         elif value.kind != FORMULA or (owner is not None and read(f'{owner}.active') is False):
-            # A value, or a formula of a finished occurrence, which keeps its value (D7).
-            found = self._stored(value).at(t)
+            # A value, or a formula of a finished occurrence, which keeps its value (D7): read from
+            # its history, it is no evaluation (`reads` gives none).
+            return self._stored(value).at(t)
         else:
             # What the formula reads is read where its evaluation asks for it (`reads.py`): a read
             # that has no value then makes the formula unavailable, with its reason. What every
             # evaluation of it reads is found first, together.
-            self._ready(always(value.node), t)
+            sure = self._always.get(id(value.node))
+            if sure is None:
+                sure = self._always[id(value.node)] = always(value.node)
+            self._ready(sure, t)
             try:
                 found = evaluate(value.node, Reads(nodes.names(value.node), read, t), self.plan.units)
                 found = bool(found) if value.boolean else found if isinstance(found, str) else float(found)

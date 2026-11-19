@@ -3,48 +3,58 @@ record of the run (D10), each with its unit, its label, its lag, its evidence tr
 near-ties of the run.
 
 `report(record, program, configuration, paths, times, lags=None, model=None)` reads one record. The
-model has no report of its own: any named value can be reported, and the caller chooses which.
+model has no report of its own: any named value can be reported, and the caller chooses which. A
+report claims nothing that the record does not show.
 
 - **A value** is read as `napkin.engine.read` reads it, in its declared unit: a number, a yes/no, a
-  text, or `Unavailable` with the reason (D7). Its label is the first text under its declaration in
-  the declared model (`model`; of the flow for a field of a flow, of the store for an endpoint's).
-  Where the report names a member (the owner of a value's path, of a part of a trail, of a near-tie;
-  of an occurrence, its receiver), it gives the member's title too (`DeclaredModel.title`: "DC
-  Water"), a label that no value depends on.
+  text, or `Unavailable` with the reason (D7), from what the record holds and from nothing else
+  (`Record.unavailable`). Each value is read at its own time, so the values follow the times in the
+  caller's order, whatever that order is. Its label is the first text under its declaration in the
+  declared model (`model`; of the flow for a field of a flow, of the store for an endpoint's). Where
+  the report names a member (the owner of a value's path, of a part of a trail, of a near-tie; of an
+  occurrence, its receiver), it gives the member's title too (`DeclaredModel.title`: "DC Water"), a
+  label that no value depends on.
 - **A status display** (`member.status`) reads, at each time, the case that the record holds as
   applying (`Shown`): its rating, its text, and its origin, so that two cases with one rating keep
   their own explanations.
 - **A reporting lag** (`Lag`) is a transformation that the caller selects. A uniform lag from S to L
   hours gives the mean of the value's history from L hours before to S hours before, and draws
-  nothing; equal ends are a fixed delay. Before time 0 the history holds its value at time 0: the
+  nothing; equal ends are a fixed delay. A window that begins before 0 h is `Unavailable`: the
   record has no history before the run. The mean is read over the pieces of the value's history,
   five Gauss-Legendre points in each, which is exact for a store's lines and curves (`DEGREE` 8 of
-  `timeline/record.py`). A lag is valid only when a proof says that the value never falls over the
-  run (`napkin.program.proofs.never_falls`); then its note is the proof's reason, else the note is
-  the diagnostic and the values are the plain read. An edit at a stop (an entry `edit` of the trace,
-  `napkin/program/checkpoint.py`) is a change from outside of the stored number that it edits, which
-  the proof takes as one more writer of known sign (`_changes`): an edit that lowers what the value
-  counts, or raises what it subtracts, withdraws the proof for the run, for the edited value and
-  for every formula that rests on it, and the note says which edit.
+  `timeline/record.py`). A lag is valid only for a number (a yes/no, a text, an enum member, a status
+  display is refused by name) that a proof says never falls over the run
+  (`napkin.program.proofs.never_falls`); then its note is the proof's reason, else the note is the
+  diagnostic and the values are the plain read.
+- **An edited run.** The proofs of a run with edits at its stops (entries `edit` of the trace,
+  `napkin/program/checkpoint.py`) are derived for that run, with each edit one more writer of it
+  (`_changes`, `Proofs`): an edit that lowers what the value counts, or raises what it subtracts,
+  withdraws the proof that it never falls, for the edited value and for every formula that rests on
+  it, and an edit of a yes/no or an enum member that lets an event start withdraws the proof that it
+  cannot start; the note and the trail say which edit.
 - **The evidence trail** of a value (`Used`) lists the parts that it can read (`proofs.reads`), each
   with the records that its evidence cites for its member under the options that the run takes
-  (`DeclaredModel.evidence`), whether this run exercised it and why: a flow that moved material, an
-  event that started, a trigger that fired, a stage that committed, a solver that solved, and every
-  value read through exercised parts. An event that cannot start under the configuration is never
-  exercised, and says so; "could have and did not" is what the trace says (D16). An edit at a stop
-  withdraws those proofs for the run, and the trail of such an event says which edit. A part reached
-  only through parts that the run did not exercise is not exercised either. A flow whose rate a
-  record of some values does not hold is `not recorded`: the record cannot say whether it moved,
-  and the trail says neither (`exercised` is None).
+  (`DeclaredModel.evidence`), whether this run exercised it and why. A part is reached through what
+  was read: what the value's own evaluation read at the report's times (`timeline.record.Reader`;
+  a side of a choice that it did not take, a case of a status display after the one that applied, is
+  not read), and through that, what the run evaluated: a flow that existed, an event that started, a
+  trigger's condition, a stage that committed, a solver that solved. Such a part's expression read on
+  every evaluation what lies outside its branches; a part that it reads only on a branch the record
+  cannot say the run read (`exercised` None). A reached part is exercised when it acted: a flow that
+  moved material, an event that started, a trigger that fired, a stage that committed, a solver that
+  solved, a value that was read, a case that applied. An event that cannot start under the
+  configuration is never exercised, and says so; "could have and did not" is what the trace says
+  (D16). A flow whose rate the record does not hold is `not recorded`: the record cannot say whether
+  it moved, and the trail says neither (`exercised` is None).
 - **Near-ties** (change 10): each decision that the engine made within tolerance of its boundary
   (`Record.near_ties`), with a message by the kind of its entry: a trigger that fired (`fire`), or
   that came within tolerance of its threshold and did not fire (`miss`); a test of a stage that
   committed (`commit`), or a false guard of a stage that ran nothing (`skip`); a gate that released
   its occurrence (`release`); a split of who is served at a settling (`settle`). The report lists
   them and computes nothing more precisely.
-- **A run that stopped**: a failure, or the stop at a breakpoint, ends the record (`Record.stop`). The
-  report reads up to that time, each time after it is `Unavailable` with the reason, and `stopped`
-  says when and why.
+- **A run that stopped**: a failure, a stop at a breakpoint or the budget of its record ends the
+  record (`Record.stop`). The report reads up to that time, each time after it is `Unavailable` with
+  the reason, and `stopped` says when and why.
 """
 
 from __future__ import annotations
@@ -56,10 +66,10 @@ from itertools import pairwise
 import numpy as np
 
 from ..program import parts as p
-from ..program.proofs import Change, Part, Proofs
+from ..program.proofs import Change, Part, Proofs, kind_of
 from ..program.record import Key, Unavailable
-from .timeline import read
-from .timeline.record import key_of, unit_of
+from .timeline.plan import FORMULA, name_of
+from .timeline.record import Reader, declared, in_unit, key_of
 
 # Gauss-Legendre points and weights on [-1, 1]: five points integrate a polynomial of degree 9 exactly.
 _POINTS, _WEIGHTS = np.polynomial.legendre.leggauss(5)
@@ -172,36 +182,48 @@ def report(record, program, configuration, paths, times, lags=None, model=None, 
     if unknown:
         raise ValueError(f'a lag of {unknown[0]}, which the report does not select')
     end, stopped = _end(record, horizon)
-    proofs = Proofs(program, configuration)
-    trail = _Trail(record, program, model, proofs, tuple(options))
+    reader = Reader(record, program)
+    proofs = Proofs(program, configuration, _changes(record, program))
+    trail = _Trail(record, program, model, proofs, reader, tuple(options))
     reported = []
     for path in paths:
         key = key_of(program, path)
-        unit, _ = unit_of(program, key)
-        origin = _origin(program, key)
-        label = _text(model, origin)
-        within = [t for t in times if t <= end]
+        unit, scale = declared(program, key)
+        label = _text(model, _origin(program, key))
         lag, note = lags.get(path), None
-        if _is_display(program, key):
-            values = _shown(record, program, model, key, within)
-            if lag is not None:
-                lag, note = (
-                    None,
-                    f'the lag is refused: {path} is a status display, and a lag averages a number',
-                )
-        elif lag is not None:
-            proof = proofs.never_falls(key, _changes(record, program, key))
-            if proof.holds:
-                values, note = _lagged(record, program, key, within, lag), proof.reason
+        if lag is not None:
+            kind = _kind(program, proofs, key)
+            proof = proofs.never_falls(key) if kind == 'a number' else None
+            if proof is None:
+                lag, note = None, f'the lag is refused: {path} is {kind}, and a lag averages a number'
+            elif proof.holds:
+                note = proof.reason
             else:
                 lag, note = None, f'the lag is refused: {path} can fall: {proof.reason}'
-                values = read(record, program, [key], within)[0].values
+        # The times at which the report reads the value: its own, or the points of the windows of
+        # its lag. Its trail follows what it read then.
+        read_at = []
+        if _is_display(program, key):
+            values = tuple(_shown(reader, program, model, key, t) for t in times)
+            read_at = list(times)
+        elif lag is not None:
+            values = tuple(_lagged(record, reader, key, scale, t, lag, read_at) for t in times)
         else:
-            values = read(record, program, [key], within)[0].values
-        values = tuple(values) + (Unavailable(stopped),) * (len(times) - len(within))
+            values = tuple(in_unit(reader.value(key, t), scale) for t in times)
+            read_at = list(times)
         title = _title(model, key.owner)
-        reported.append(Reported(path, unit, label, values, lag, note, trail.of(key), title))
+        reported.append(Reported(path, unit, label, values, lag, note, trail.of(key, read_at), title))
     return Report(times, tuple(reported), _near_ties(record, model), end, stopped, trail.records())
+
+
+def _kind(program, proofs, key):
+    """What the value of a key is, in words (`proofs.kind_of`): `a status display`, `a number`, `a
+    yes/no`, `a text`, `a member of the enum ...`; a field of a flow, a ledger and a property of a
+    distribution are numbers."""
+    if _is_display(program, key):
+        return 'a status display'
+    point = proofs.value_point(key.owner, key.steps[0]) if len(key.steps) == 1 else None
+    return 'a number' if point is None else kind_of(point[2].type)
 
 
 def _title(model, owner):
@@ -213,25 +235,34 @@ def _title(model, owner):
     return model.title(owner.rsplit('#', 1)[0].rsplit('.', 1)[0] if '#' in owner else owner)
 
 
-def _changes(record, program, key):
-    """The edits of a record as changes from outside of the numbers that they edit, for the proof
-    that the value of `key` never falls (`Proofs.never_falls`), in the order of the trace: each with
-    what it did, in the edited value's declared unit ("it" for the value itself)."""
+def _changes(record, program):
+    """The edits of a record as changes from outside of the values that they edit (`proofs.Change`),
+    in the order of the trace: every edit that changed its value, of any type, each with what it did,
+    in the edited value's declared unit. The proofs of the run follow from them (`Proofs`)."""
     found = []
     for entry in record.entries('edit'):
         old, new = entry.detail('old'), entry.detail('new')
-        if not all(isinstance(each, int | float) and not isinstance(each, bool) for each in (old, new)):
-            continue
-        if new == old:
+        if new == old and type(new) is type(old):
             continue
         target = key_of(program, entry.detail('target'))
-        spelling, scale = unit_of(program, target)
-        name = 'it' if target == key else entry.detail('target')
-        verb = 'lowered' if new < old else 'raised'
-        numbers = f'from {old / scale:g} to {new / scale:g} {spelling}'.rstrip()
-        why = f'an edit at {float(entry.t):g} h, at {entry.part}, {verb} {name} {numbers}'
-        found.append(Change(target, float(new) - float(old), why))
+        numbers = all(isinstance(each, int | float) and not isinstance(each, bool) for each in (old, new))
+        if numbers:
+            spelling, scale = declared(program, target)
+            verb = 'lowered' if new < old else 'raised'
+            what = (
+                f'{verb} {target} from {in_unit(old, scale):g} to {in_unit(new, scale):g} {spelling}'.rstrip()
+            )
+        else:
+            what = f'set {target} from {_spelled(old)} to {_spelled(new)}'
+        found.append(Change(target, old, new, f'an edit at {float(entry.t):g} h, at {entry.part}, {what}'))
     return tuple(found)
+
+
+def _spelled(value):
+    """A value of an edit as a model writes it: `true`, `false`, an enum member, a quoted text."""
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    return f'{value}'
 
 
 def _end(record, horizon):
@@ -277,64 +308,47 @@ def _is_display(program, key):
     return template.status is not None and template.part('status') is None
 
 
-def _shown(record, program, model, key, times):
-    """The case of a member's status display at each time, as `Shown`."""
-    cases = program.member(key.owner)[0].status.cases
-    found = []
-    for value in read(record, program, [key], times)[0].values:
-        if isinstance(value, Unavailable):
-            found.append(value)
-            continue
-        case = cases[int(value[len('case[') : -1])]
-        found.append(Shown(case.rating, _text(model, case.origin), case.origin))
-    return tuple(found)
+def _shown(reader, program, model, key, t):
+    """The case of a member's status display at a time, as `Shown`, or `Unavailable`."""
+    value = reader.value(key, t)
+    if isinstance(value, Unavailable):
+        return value
+    case = program.member(key.owner)[0].status.cases[int(value[len('case[') : -1])]
+    return Shown(case.rating, _text(model, case.origin), case.origin)
 
 
-def _lagged(record, program, key, times, lag):
-    """The lagged values of a key at each time (see the module): the mean of its history over each
-    window, read at five points in each piece of the history inside the window, in the declared
-    unit; a window with a value that is unavailable is unavailable with its reason."""
+def _lagged(record, reader, key, scale, t, lag, read_at):
+    """The lagged value of a key at a time (see the module), in the declared unit of its scale: the
+    mean of its history over the window, read at five points in each piece of the history inside it,
+    which `read_at` keeps; `Unavailable` for a time after the record's stop, a window that begins
+    before 0 h, or a window with a value that is unavailable, each with its reason."""
+    stopped = record.after(t)
+    if stopped is not None:
+        return stopped
+    low, high = t - lag.longest, t - lag.shortest
+    if low < 0:
+        return Unavailable(
+            f'the lag of {key} at {t:g} h reads it from {low:g} h, before the run starts at 0 h: the '
+            'record holds no value then'
+        )
+    if lag.longest == lag.shortest:
+        read_at.append(high)
+        return in_unit(reader.value(key, high), scale)
     try:
-        cuts = sorted({float(piece.t) for piece in record.history(key).pieces})
+        cuts = sorted({float(piece.t) for piece in record.history(key).pieces if low < piece.t < high})
     except KeyError:
-        raise LookupError(f'{key}: the record holds no history of it to average') from None
-    windows, points = [], []
-    for t in times:
-        low, high = t - lag.longest, t - lag.shortest
-        if lag.longest == lag.shortest:
-            windows.append(('at', len(points)))
-            points.append(max(high, 0.0))
-            continue
-        # The part of the window before time 0 holds the value at time 0.
-        before = max(0.0, min(high, 0.0) - low)
-        spans = []
-        if before > 0:
-            spans.append((before, len(points)))
-            points.append(0.0)
-        a, b = max(low, 0.0), max(high, 0.0)
-        ends = [a, *(cut for cut in cuts if a < cut < b), b] if b > a else []
-        for left, right in pairwise(ends):
-            half, middle = 0.5 * (right - left), 0.5 * (right + left)
-            spans.append((half * _WEIGHTS, len(points)))
-            points.extend(float(point) for point in middle + half * _POINTS)
-        windows.append(('mean', spans))
-    values = read(record, program, [key], points)[0].values if points else ()
-    found = []
-    for kind, spans in windows:
-        if kind == 'at':
-            found.append(values[spans])
-            continue
-        total = 0.0
-        for weight, first in spans:
-            weights = np.atleast_1d(weight)
-            taken = values[first : first + len(weights)]
-            missing = next((value for value in taken if isinstance(value, Unavailable)), None)
-            if missing is not None:
-                total = missing
-                break
-            total += float(np.dot(weights, [float(value) for value in taken]))
-        found.append(total if isinstance(total, Unavailable) else total / (lag.longest - lag.shortest))
-    return tuple(found)
+        cuts = []  # no history to cut the window: its reads say why
+    total = 0.0
+    for left, right in pairwise([low, *cuts, high]):
+        half, middle = 0.5 * (right - left), 0.5 * (right + left)
+        points = [float(point) for point in middle + half * _POINTS]
+        read_at.extend(points)
+        values = [reader.value(key, point) for point in points]
+        missing = next((value for value in values if isinstance(value, Unavailable)), None)
+        if missing is not None:
+            return missing
+        total += half * float(np.dot(_WEIGHTS, [float(value) for value in values]))
+    return in_unit(total / (lag.longest - lag.shortest), scale)
 
 
 _NEAR = {
@@ -373,45 +387,54 @@ def _near_ties(record, model=None):
 
 
 class _Trail:
-    """The evidence trails of the values of one record (see the module)."""
+    """The evidence trails of the values of one record (see the module). `reader` read the values,
+    and keeps what each evaluation read."""
 
-    def __init__(self, record, program, model, proofs, options=()):
+    def __init__(self, record, program, model, proofs, reader, options=()):
         self.record, self.program, self.model, self.proofs = record, program, model, proofs
-        self.options = options
-        # An edit at a stop withdraws, for the run, the proofs that an event cannot start: the value
-        # that the proof reads may take what it rules out (`napkin/program/checkpoint.py`).
-        self.edited = record.entries('edit')
+        self.reader, self.options = reader, options
         self.started = record.entries('start')
+        self._ran = {}  # what each flow's settings read in the run, as the record shows it (`ran`)
         self.cited = {}
         self.entries = {}
         for entry in record.trace:
             self.entries.setdefault((entry.kind, entry.part), []).append(entry)
-        # The histories of the actual rates of the flows, by their owner (`tank.receive#` for every
-        # occurrence of an event on a receiver) and their steps.
+        # The histories of the actual rates of the flows that the record holds, by their owner
+        # (`tank.receive#` for every occurrence of an event on a receiver) and their steps.
         self.rates = {}
         for history in record.histories:
-            if history.key.steps and history.key.steps[-1] == 'actual_rate':
+            if (
+                history.key.steps
+                and history.key.steps[-1] == 'actual_rate'
+                and record.manifest.names(history.key)
+            ):
                 owner = history.key.owner
                 owner = owner.rsplit('#', 1)[0] + '#' if '#' in owner else owner
                 self.rates.setdefault((owner, history.key.steps), []).append(history)
 
-    def of(self, key):
-        """The trail of the value of a key: each part that it can read, ordered by origin and owner. A
-        part is reached through parts whose reads the run evaluated (`evaluated`), and exercised when
-        it is reached and acted itself (`acted`)."""
+    def of(self, key, times):
+        """The trail of the value of a key that the report read at `times`: each part that it can read,
+        ordered by origin and owner, reached through what was read (`reached`), and exercised when it
+        is reached and acted."""
         found = self.proofs.reads(key)
-        reached, pending = set(), [found.start]
-        while pending:
-            part = pending.pop()
-            if part in reached:
-                continue
-            reached.add(part)
-            if self.evaluated(part, found):
-                pending.extend(found.edges.get(part, ()))
+        sure, maybe, unread, applied = self.reached(key, found, sorted(set(times)))
         used = []
         for part in sorted(found.edges, key=lambda each: (each.origin, each.owner, each.kind)):
-            did, why = self.acted(part, found)
-            if part not in reached and (part not in found.blocked or self.edited):
+            if part in sure:
+                did, why = self.acted(part, found, applied)
+            elif part in maybe:
+                did, why = (
+                    None,
+                    (
+                        'it is read only on a branch of an expression that the run evaluated, and the record '
+                        'does not show whether the run took that branch'
+                    ),
+                )
+            elif part.kind == 'event' and part in found.blocked:
+                did, why = self.acted(part, found, applied)
+            elif part in unread:
+                did, why = False, unread[part]
+            else:
                 did, why = False, 'it is read only through parts that the run did not exercise'
             records = self.cites(part.origin, part.owner)
             used.append(
@@ -419,43 +442,217 @@ class _Trail:
             )
         return tuple(used)
 
+    def reached(self, key, found, times):
+        """The parts that the value of a key reaches surely and those that it reaches only on a branch
+        that the record does not show; the parts that an evaluation of the reader could read and did
+        not, each with why; and, of each case of a status display that it reaches, the times at which
+        it applied. A
+        part that the reader evaluated at `times` reaches what it read; any other that the run
+        evaluated (`evaluated`) reaches what it reads, on a branch only maybe (`Reads.sometimes`)."""
+        evaluated = self.reader.read
+        start = name_of(key)
+        names = frozenset({start} if any((start, t) in evaluated for t in times) else ())
+        sure, maybe, unread, applied, seen = set(), set(), {}, {}, set()
+        if not names and self.reader.evaluates(start):
+            # The report read no value of the formula at its times (each was unavailable before it
+            # was evaluated): it read nothing through it.
+            why = 'it was not read at the reported times: the report holds no value of the value there'
+            return {found.start}, maybe, dict.fromkeys(found.edges.get(found.start, ()), why), applied
+        another = 'it was not read at the reported times: the evaluation took another branch'
+        pending = [(found.start, True, names)]
+        while pending:
+            state = pending.pop()
+            part, certain, inner = state
+            if state in seen or (not certain and (part, True, inner) in seen):
+                continue
+            seen.add(state)
+            (sure if certain else maybe).add(part)
+            edges = found.edges.get(part, ())
+            if inner and part.kind == 'status':
+                # Its cases in order, each read until one applies: the case at each time is its value.
+                places = [self.case_at(key, t) for t in times]
+                for k, case in enumerate(edges):
+                    if any(place is not None and k <= place for place in places):
+                        applied[case] = [t for t, place in zip(times, places, strict=True) if place == k]
+                        pending.append((case, certain, inner))
+                    else:
+                        unread[case] = another
+            elif inner:
+                read = self.read(inner, times)
+                for other in edges:
+                    hit = self.names_of(other, read)
+                    if hit is None:
+                        pending.append((other, False, frozenset()))
+                    elif hit:
+                        again = frozenset(name for name in hit if any((name, t) in evaluated for t in times))
+                        pending.append((other, certain, again))
+                    else:
+                        unread[other] = another
+            elif self.evaluated(part, found):
+                branch = found.sometimes.get(part, frozenset())
+                # What a flow's settings read on a branch, the record may show (`ran`).
+                shown = self.ran(part) if branch and part.kind == 'flow' else None
+                for other in edges:
+                    hit = None if other not in branch or shown is None else self.names_of(other, shown)
+                    if other not in branch or hit:
+                        pending.append((other, certain, frozenset()))
+                    elif hit is None:
+                        pending.append((other, False, frozenset()))
+                    else:
+                        unread[other] = (
+                            'the run did not read it: the record shows that each evaluation that could read it '
+                            'took another branch'
+                        )
+        maybe -= sure
+        return sure, maybe, {part: why for part, why in unread.items() if part not in sure | maybe}, applied
+
+    def read(self, names, times):
+        """The engine names that the reader read at `times` in evaluating `names`, through the values
+        that it evaluated in turn."""
+        found, done = set(), set()
+        pending = [(name, t) for name in names for t in times]
+        while pending:
+            name, t = pending.pop()
+            if (name, t) in done:
+                continue
+            done.add((name, t))
+            for other in self.reader.reads(name, t):
+                found.add(other)
+                if (other, t) in self.reader.read:
+                    pending.append((other, t))
+        return found
+
+    def ran(self, part):
+        """The engine names that the run's evaluations of a flow's request and capacity read, as the
+        record shows them, or None when it cannot. Each is evaluated at every time from the flow's
+        start at which what it reads has a piece or it takes a new definition: that is exact when all
+        of what it reads holds its value between pieces (no line, no curve, no time, no keyed read by
+        the time), since nothing it reads changes in between; a value that moves between moments can
+        change a branch between two pieces, and the record does not show it."""
+        if part not in self._ran:
+            self._ran[part] = self._settings_read(part)
+        return self._ran[part]
+
+    def _settings_read(self, part):
+        """What `ran` gives, found once for each flow."""
+        plan, record = self.reader.plan, self.record
+        template = self.program.member(part.owner)[0]
+        steps = part.origin[len(template.name) + 1 :].split('.')
+        if self.event_of(part) is not None:
+            head = f'{part.owner}.{steps[0]}#'
+            owners = [(entry.owner, float(entry.t)) for entry in self.started if entry.owner.startswith(head)]
+            steps = steps[1:]
+        else:
+            owners = [(part.owner, 0.0)]
+        found = set()
+        for owner, start in owners:
+            for which in ('request', 'capacity'):
+                name = name_of(Key(owner, (*steps, which)))
+                if name not in plan.values:
+                    continue
+                definitions = self.reader.definitions.get(name, [(start, plan.original(name))])
+                times = {start, *(float(at) for at, _ in definitions if start <= at <= record.end)}
+                for _, value in definitions:
+                    if value.kind != FORMULA:
+                        continue
+                    expanded = plan.expansion(value.node)
+                    if expanded.time or expanded.stepped:
+                        return None
+                    for leaf in expanded.leaves:
+                        held = self._held_times(plan.values[leaf].key, start)
+                        if held is None:
+                            return None
+                        times |= held
+                for t in sorted(times):
+                    try:
+                        self.reader.at(name, t)
+                    except LookupError:
+                        continue
+                    found |= {name} | self.read({name}, [t])
+        return found
+
+    def _held_times(self, key, start):
+        """The times of the pieces of a history from `start` to the end of the record, when each holds
+        its value until the next; None when one moves, or the record does not keep the history."""
+        try:
+            pieces = self.record.history(key).pieces
+        except KeyError:
+            return None
+        if any(piece.curve is not None or piece.rate != 0 for piece in pieces if piece.t >= start):
+            return None
+        return {float(piece.t) for piece in pieces if start <= piece.t <= self.record.end}
+
+    def case_at(self, key, t):
+        """The place of the case of a status display that applies at a time, or None."""
+        value = self.reader.value(key, t)
+        return None if isinstance(value, Unavailable) else int(value[len('case[') : -1])
+
+    def names_of(self, part, read):
+        """The engine names of a part among those that an evaluation read (`read`), or None when its
+        engine names are not ones that a formula reads (a stage, a trigger)."""
+        owner = part.owner
+        if part.kind == 'value':
+            name = part.origin.rsplit('.', 1)[-1]
+            if owner.endswith('#'):
+                return {each for each in read if _field(each, owner) == name}
+            return {each for each in read if each == (f'{owner}.{name}' if owner else name)}
+        if part.kind in ('flow', 'event', 'solver'):
+            template = self.program.member(owner)[0]
+            steps = part.origin[len(template.name) + 1 :].split('.')
+            if part.kind == 'event' or (part.kind == 'flow' and self.event_of(part) is not None):
+                # An occurrence's fields: `tank.receive#0.level`, `tank.receive#0.pipe.actual_rate`.
+                head, rest = f'{owner}.{steps[0]}#', '.'.join(steps[1:])
+                return {
+                    each
+                    for each in read
+                    if (field := _field(each, head)) is not None
+                    and (not rest or field.startswith(rest + '.'))
+                }
+            prefix = f'{owner}.{".".join(steps)}.'
+            return {each for each in read if each.startswith(prefix)}
+        return None
+
     def evaluated(self, part, found):
-        """Whether the run read what a part reads: a value's reads; a flow's while it existed (a flow of
-        an event, once the event started on its receiver), and so whether it moved or not; a
-        trigger's condition, read at every round; an event's, a stage's and a solver's when it acted."""
-        if part.kind in ('value', 'status', 'trigger'):
+        """Whether the run read what a part reads: a value's reads; a case's condition, read until a
+        case applies; a flow's while it existed (a flow of an event, once the event started on its
+        receiver), and so whether it moved or not; a trigger's condition, read at every round; an
+        event's, a stage's and a solver's when it acted."""
+        if part.kind in ('value', 'status', 'case', 'trigger'):
             return True
         if part.kind == 'flow':
             event = self.event_of(part)
-            return event is None or self.acted(event, found)[0]
-        return self.acted(part, found)[0]
+            return event is None or self.acted(event, found, {})[0]
+        return self.acted(part, found, {})[0]
 
-    def acted(self, part, found):
+    def acted(self, part, found, applied):
         """Whether a part acted in the run itself, and why: a flow moved material, an event started,
-        a trigger fired, a stage committed, a solver solved; a value is read."""
+        a trigger fired, a stage committed, a solver solved; a value is read; a case applied at a
+        reported time (`applied`)."""
         if part.kind in ('value', 'status'):
             return True, 'read'
+        if part.kind == 'case':
+            times = applied.get(part, ())
+            if not times:
+                return False, 'its condition was read and did not hold at the reported times'
+            return True, f'it applied at {", ".join(f"{t:g} h" for t in times)}'
         if part.kind == 'flow':
             moved = self.moved(part)
             if moved is None:
                 return None, f'not recorded: the record of this run does not hold the rate of {part.origin}'
             return moved, 'it moved material' if moved else 'it moved nothing in this run'
         withdrawn = ''
-        if part.kind == 'event' and part in found.blocked:
-            if not self.edited:
+        if part.kind == 'event':
+            if part in found.blocked:
                 return False, f'it cannot start under this configuration: {found.blocked[part]}'
-            first = self.edited[0]
-            withdrawn = (
-                f' (the edit at {float(first.t):g} h, at {first.part}, withdrew for this run the proof that it '
-                f'cannot start: {found.blocked[part]})'
-            )
+            why = self.proofs.withdrawn(part.origin)
+            withdrawn = f' ({why})' if why is not None else ''
         if part.kind == 'stage' and part.origin == 'setup':
             return True, 'the setup ran at 0 h'
         kind = {'event': 'start', 'trigger': 'fire', 'stage': 'commit', 'solver': 'solve'}[part.kind]
         entries = [entry for entry in self.entries.get((kind, part.origin), ()) if _runs(entry, part)]
         verb = {'start': 'started', 'fire': 'fired', 'commit': 'committed', 'solve': 'solved'}[kind]
         if not entries:
-            return False, f'it did not {kind if kind != "solve" else "solve"} in this run{withdrawn}'
+            return False, f'it did not {kind} in this run{withdrawn}'
         if len(entries) == 1:
             return True, f'it {verb} at {float(entries[0].t):g} h{withdrawn}'
         return True, f'it {verb} {len(entries)} times from {float(entries[0].t):g} h{withdrawn}'
@@ -468,9 +665,9 @@ class _Trail:
         return Part('event', event.origin, part.owner) if isinstance(event, p.Event) else None
 
     def moved(self, part):
-        """Whether a flow moved material in the run: its actual rate is not zero on some piece. None
-        when it did not on the pieces that the record holds and a record of some values does not hold
-        its rate (of the flow, or of an occurrence of its event that started): it cannot say."""
+        """Whether a flow moved material in the run: its actual rate is not zero on some piece that the
+        record holds. None when it did not on those and the record does not hold its rate (of the
+        flow, or of an occurrence of its event that started): it cannot say."""
         template = self.program.member(part.owner)[0]
         steps = part.origin[len(template.name) + 1 :].split('.')
         owner, rate = part.owner, (*steps, 'actual_rate')
@@ -486,8 +683,7 @@ class _Trail:
             for piece in history.pieces
         ):
             return True
-        held = {history.key for history in histories}
-        if self.record.manifest.everything or all(key in held for key in keys):
+        if all(self.record.manifest.names(key) for key in keys):
             return False
         return None
 
@@ -516,6 +712,15 @@ class _Trail:
         return tuple(
             (name, known[name].kind, known[name].text) for name in sorted(self.cited) if name in known
         )
+
+
+def _field(name, owner):
+    """The steps of an engine name of an occurrence of the owner `tank.receive#` after its number
+    (`level` of `tank.receive#0.level`), or None for a name of no occurrence of it."""
+    if not name.startswith(owner):
+        return None
+    number, _, steps = name[len(owner) :].partition('.')
+    return steps if number.isdigit() else None
 
 
 def _runs(entry, part):

@@ -89,9 +89,12 @@ CLOSURE = (
     'program/__init__.py',
     'program/artifact.py',
     'program/canonical.py',
+    'program/check.py',
     'program/checkpoint.py',
     'program/config.py',
     'program/parts.py',
+    'program/proofs.py',
+    'program/reach.py',
     'program/record.py',
     'program/refs.py',
 )

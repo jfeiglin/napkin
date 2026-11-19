@@ -114,3 +114,55 @@ def test_the_report_names_the_reached_and_unused_claims_and_the_red_team_records
         '      machine red-team record: SC99:RT-FIXTURE',
         '      machine red-team record: SC99:RT-UNUSED',
     ]
+
+
+def test_a_report_rests_on_the_case_of_a_display_that_applied_and_the_branch_that_a_value_took():
+    """The re-audit's row 16: the display's first case always holds, so the value rests on that case's
+    record and only could rest on its fallback's; a number that took the second side of a choice rests
+    on that side's record, not the first's."""
+    from napkin.engine import run
+    from napkin.engine.report import report
+    from tools.evidence.trail import evidence
+
+    model = compile_text(
+        textwrap.dedent(
+            """
+            scenario "Branches"
+                horizon 4 h
+            plant:
+                input high: bool = false  @first
+                a: people = 1 people  @first
+                b: people = 2 people  @second
+                chosen = formula(this.a if this.high else this.b)
+                status ok when t >= 0 h  @first_case
+                    "Always first"
+                status failed  @fallback
+                    "Fallback"
+            record first: source "A."
+            record second: source "B."
+            record first_case: source "First case."
+            record fallback: source "Fallback case."
+            """
+        ),
+        library_units(evidence_library()),
+    )
+    record = run(model.program, model.configuration)
+    found = report(
+        record,
+        model.program,
+        model.configuration,
+        ['plant.chosen', 'plant.status'],
+        [2],
+        model=model.declared,
+    )
+    chosen, shown = evidence(found, model.declared, {})
+    uses = {
+        each.path: {
+            (used.origin, used.exercised): sorted(use.name for use in uses) for used, uses in each.parts
+        }
+        for each in (chosen, shown)
+    }
+    assert uses['plant.chosen'][('plant.a', False)] == ['first']
+    assert uses['plant.chosen'][('plant.b', True)] == ['second']
+    assert uses['plant.status'][('plant.status.case[0]', True)] == ['first_case']
+    assert uses['plant.status'][('plant.status.case[1]', False)] == ['fallback']
