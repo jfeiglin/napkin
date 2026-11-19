@@ -49,7 +49,9 @@ class Lines:
     def __init__(self, run, sets, values, t=0.0, keys=None):
         plan = self.plan = run.plan
         self.t0 = float(t)
+        self.sets = list(sets)  # its sets, which a checkpoint names (`saved.py`)
         keys = list(keys if keys is not None else range(len(sets)))
+        self.keys = keys
         self.run, self.recorder, self.columns = run, run.recorder, Columns(run)
         stores = [name for connected in sets for name in connected.stores]
         place = {name: k for k, name in enumerate(stores)}

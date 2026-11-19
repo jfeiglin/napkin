@@ -60,15 +60,37 @@ from .record import fitted
 class Vector:
     """The values of engine names at a time and a state of a set's stores, as arrays (see the
     module). `stores` are the names of the state, in its order; `held` gives, for a keyed read that
-    an instance holds through its segment, the entry that it selects (`Sparse`)."""
+    an instance holds through its segment, the entry that it selects (`Sparse`). A value that holds
+    between moments is read once, when it is compiled (`constants`: its value, or the reason why it
+    has none), or taken from `given`, the constants that a restored instance had (`saved.py`). A
+    yes/no, an enum member or a text is held as it is, and an array that holds one holds objects."""
 
-    def __init__(self, run, stores, held=None, rates=None):
+    def __init__(self, run, stores, held=None, rates=None, given=None):
         self.run, self.plan = run, run.plan
         self.place = {name: k for k, name in enumerate(stores)}
         self.held = {} if held is None else held
         # The rates that the instance gives as it evaluates its levels: the rates of a level that a
         # later level reads, at the same time and state (`Sparse`).
         self.rates = {} if rates is None else rates
+        self.given = given
+        self.constants = {}  # name -> (value, None), or (nan, the reason why it has no value)
+
+    def constant(self, name):
+        """(the value now of a name that holds between moments, or nan, and None or the reason)."""
+        if self.given is not None and name in self.given:
+            found = self.given[name]
+        else:
+            try:
+                value = self.run.value_of(name)
+            except ExpressionError as problem:
+                # A value that has none now (`since(e)` before the first start): what reads it fails
+                # where its evaluation takes it, and no sooner.
+                found = (math.nan, str(problem))
+            else:
+                plain = isinstance(value, bool | str) or not isinstance(value, int | float)
+                found = (value if plain else float(value), None)
+        self.constants[name] = found
+        return found
 
     def compiled(self, names):
         """A function (t, y) -> the array of the values of `names`, in their order."""
@@ -99,23 +121,22 @@ class Vector:
                 steps.append(([k], self._lookup(name)))
             else:
                 constant_at.append(k)
-                try:
-                    constants.append(float(run.value_of(name)))
-                except ExpressionError as problem:
-                    # A value that has none now (`since(e)` before the first start): what reads it
-                    # fails where its evaluation takes it, and no sooner.
-                    constants.append(math.nan)
-                    failed.append(str(problem))
+                value, reason = self.constant(name)
+                constants.append(value)
+                if reason is not None:
+                    failed.append(reason)
         for members in groups.values():
             steps.append(([k for k, _ in members], self._group([name for _, name in members])))
         held_at, held_from = np.array(held_at, dtype=np.int64), np.array(held_from, dtype=np.int64)
-        constant_at, constants = np.array(constant_at, dtype=np.int64), np.array(constants)
+        plain = any(isinstance(value, bool | str) for value in constants)
+        kind = object if plain else float
+        constant_at, constants = np.array(constant_at, dtype=np.int64), np.array(constants, dtype=kind)
         size = len(unique)
 
         def values(t, y):
             if failed:
                 raise ExpressionError(failed[0])
-            found = np.empty(size)
+            found = np.empty(size, dtype=kind)
             found[held_at] = y[held_from]
             found[constant_at] = constants
             for at, step in steps:
@@ -159,7 +180,7 @@ class Vector:
 
         def value(t, y):
             # Each read is made when the evaluation asks for it (`reads.py`).
-            return float(lazily(node, lambda read: float(subs[read](t, y)[0]), plan.units, t))
+            return float(lazily(node, lambda read: _plain(subs[read](t, y)[0]), plan.units, t))
 
         return value
 
@@ -169,7 +190,7 @@ class Vector:
         subs = [self.compiled([selected]) for selected in stepped.names]
 
         def value(t, y):
-            return float(subs[stepped.place(t)](t, y)[0])
+            return _plain(subs[stepped.place(t)](t, y)[0])
 
         return value
 
@@ -201,7 +222,7 @@ class Vector:
             sub = subs.get(name)
             if sub is None:
                 sub = subs[name] = self.compiled([name])
-            return float(sub(t, y)[0])
+            return _plain(sub(t, y)[0])
 
         return read
 
@@ -222,6 +243,12 @@ class Vector:
         return value
 
 
+def _plain(value):
+    """A value of an array as a Python value: a number as a float, a yes/no, an enum member or a text
+    as it is."""
+    return value if isinstance(value, bool | str) else float(value)
+
+
 class Sparse:
     """Connected sets on the sparse integrator from the time `t` on (see the module), a way of a run
     (`ways.py`): one set, or the sets of `sets` in the order of their levels (`levels`), where the
@@ -230,11 +257,12 @@ class Sparse:
     the next moment that the run knows (`run.limit`), and committed when the run reaches its end
     (`step`), or cut at a moment inside it (`cut`)."""
 
-    def __init__(self, run, sets, values, t, key, levels=None):
+    def __init__(self, run, sets, values, t, key, levels=None, given=None):
         plan = self.plan = run.plan
         sizes = run.sizes
         sets = list(sets)
         levels = [0] * len(sets) if levels is None else list(levels)
+        self.sets, self.set_levels = sets, levels  # which a checkpoint names (`saved.py`)
         self.key, self.alive = key, True
         self.solver, self.pending = None, None
         self.run, self.recorder = run, run.recorder
@@ -263,7 +291,7 @@ class Sparse:
         self.selection, self.current = {}, {}
         given = [name for k, name in enumerate(self.recorded) if levels[self._set_of_flow(k)] < max(levels)]
         self.current.update(dict.fromkeys(given, 0.0))
-        vector = Vector(run, stores, self.selection, self.current)
+        vector = self.vector = Vector(run, stores, self.selection, self.current, given)
         self.settings = vector.compiled(names)
         self.size = len(names)
         # Each level: the places of its settings, their values, and the rates that it gives.

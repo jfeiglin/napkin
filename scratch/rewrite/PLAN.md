@@ -199,6 +199,16 @@ These override the text of this plan below, wherever the two differ. The owner's
    session. Everything up to G2 is done here, and M is made ready: A5's translator and check script
    brought to the language as it now is, the steps to rebuild the old compiler's worktree
    (`git worktree add /home/user/napkin-base 8488047`), and a handover in `briefs/m.md`.
+18. **Speedups (owner, 2026-11-19).** Once P1 reports, the speedups that change no answer go in
+   before G2: those that give the same answers up to roundoff, such as merging a store held at
+   [0, 0] into one equality row, `qdldl` in the exact distance method (a new dependency, if its
+   license is permissive and it has wheels for the platforms), and fair sharing split into
+   independent pieces. What trades precision or robustness for speed (a looser fair tolerance, an
+   interior-point path) and precision profiles (`default`, `fast`) are deferred to a written plan
+   that outlives `scratch/` (`docs/scoping/solver-speed.md`): P1's measured tables, what was
+   adopted and why, the profile design (named profiles in the run's identity, invariants exact in
+   every profile, fallback by name, published runs on `default`), the open case (need x1.7 at
+   30,000 places), and the commit that holds P1's scripts.
 
 ### If the session is cut off
 

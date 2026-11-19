@@ -109,6 +109,7 @@ class Family:
     def __init__(self, run, sets, values, t=0.0, keys=None):
         plan = self.plan = run.plan
         self.t0 = float(t)
+        self.sets = list(sets)  # its sets, one for each row, which a checkpoint names (`saved.py`)
         self.keys = {key: k for k, key in enumerate(keys if keys is not None else range(len(sets)))}
         self.run, self.recorder, self.columns = run, run.recorder, Columns(run)
         flows = [plan.flows[connected.flows[0]] for connected in sets]

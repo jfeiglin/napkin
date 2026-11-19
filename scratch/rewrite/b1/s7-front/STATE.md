@@ -1,60 +1,49 @@
 # S7-F: the loadable program, its side table, no player machinery — state
-Brief: `scratch/rewrite/briefs/s7.md` (S7-F), `PLAN.md` "Changes after G0" item 15, `COMMON-B.md`.
+Brief: `scratch/rewrite/briefs/s7.md` (S7-F), `PLAN.md` "Changes after G0" items 15-16, `COMMON-B.md`.
 
-## M1 done: the loadable program and its side table
-
-- `program/canonical.py`: `decode(data, records)` (inverse of `value_bytes`), `Malformed`.
-- `program/artifact.py`: `FORMAT_VERSION = 1`, `LANGUAGE_VERSION` (moved from identity.py);
-  `Evidence`, `Location`, `SideTable`, `KINDS`, `EXECUTABLE`, `origins`, `kind_of`; `Artifact`
-  (`.digest`, `.data()`, `.save()`), `loads`, `load`, `value_of`, `RECORDS`, `ArtifactError`.
-- `model/lowering.py` `side_table`; `compile.py` `Compiled.table`, `Compiled.artifact()`.
-- Tests: tests/program/test_artifact.py (76), tests/model/test_compiled_artifact.py (4, a
-  subprocess that never imports napkin.model).
+## Done
+- M1: `program/canonical.py` `decode`; `program/artifact.py` (format, loader, side table, digest,
+  `LANGUAGE_VERSION`); `model/lowering.py` `side_table`; `Compiled.table`, `.artifact()`. Tests:
+  tests/program/test_artifact.py, tests/model/test_compiled_artifact.py (fresh process).
+- M2: oracle breakpoints and edits (tests/reference run.py, model.py, from_program.py,
+  test_breakpoints.py); examples.py `pump_dispatch`, `PAUSES`, `Stop`, `pump_dispatch_unattended`;
+  the language refuses `choose(...)` (`choose`) and `sees` (`sees`) with the hint
+  (semantic.py `CHOOSE`, `SEES`). tests/draw, tests/acceptance and napkin/draw rewritten to match.
+- M3 of the contract (coordinator, after S7-E's bc46b19): gone `refs.Choice`, `Template.sees`,
+  config `Controller`/`Pick`/`controllers`/`picks`/`FORECAST`/`PLAYER` (with the two RECORDS lines
+  of checkpoint.py, approved), `build.choose`/`sees`, `views.actors`, the four `dispatcher_*`;
+  the oracle's choices; `FORMAT_VERSION = 2`. Oracle tests of a person's choice deleted or turned
+  into breakpoints (test_branches.py, test_rulings.py test_14).
 
 ## Decisions
-
-- D1 File: `napkin program 1\n`, `language 0.1.0\n`, `program <size> <sha256>\n<bytes>`,
-  `table <size>\n<bytes>`; both sections in the canonical encoding (one codec, no JSON).
-- D2 Version rule: FORMAT_VERSION goes up with any change of the layout or of a field of a record
-  of the contract; LANGUAGE_VERSION with what a program computes. Refusals: `not_a_program`,
-  `format_version`, `language_version`, `damaged` (also a record whose fields are not this napkin's).
-- D3 The side table covers every part with an origin (not only executable ones): kind, name, file,
-  line, column (the line's first word, from 1), label (the declared part's text), evidence (a cite
-  resolved to the record's content). Members and table cells are not in it.
-- D4 No configuration in the artifact (`value_of` reads one's `value_bytes`). Engine records hold
-  NumPy floats, which `value_bytes` refuses: the test compares them through `plain`.
+- D1 File: `napkin program 2`, `language 0.1.0`, `program <size> <sha256>`+bytes, `table <size>`+
+  bytes, canonical encoding. Version rule: FORMAT_VERSION up with any change of the layout or of a
+  field of a contract record; LANGUAGE_VERSION with what a program computes. Refusals:
+  `not_a_program`, `format_version`, `language_version`, `damaged`.
+- D2 Side table: every part with an origin; column of the line's first word; cites with content.
+- D3 Oracle edits: stored values of members and occurrence locals; before a stage commit at once.
+- D4 Evidence rule (`model/support.py`): see its docstring; per status case; a yes/no and a status
+  rest on their thing's records; a column's warning at line 1 of its table file.
 
 ## For S7-E
+- `load(path).program/.table/.digest`; `origins(program)[origin]`; `table.location(origin)`.
+- `LEFT` in tests/engine/test_programs.py is dead now (no example reads `choose`): yours to drop.
+- `record.KINDS` still lists `choice` (yours). `report._Trail.cites` should call the front end's
+  `DeclaredModel.evidence(origin, member, options)` once it exists (item 3, in progress).
+- An edit can make an event that `reach` proves cannot start start: a report that uses reach
+  should withdraw that, as for never-falls.
 
-- Load: `from napkin.program.artifact import load, loads, value_of`; `load(path).program`,
-  `.table`, `.digest` (name the program in a checkpoint by it).
-- A location: `origins(program)[origin]` gives the part; `artifact.table.location(origin)` its kind,
-  file, line, column; `table.executable()` the breakpointable ones; `kind_of(part)`.
-- Acceptance example (examples.py): `pump_dispatch(spares)`, `pump_dispatch_unattended`, `PAUSES`
-  {untouched, sends, no_spare, two_stops}: (spares, stops, expected); `Stop(at, occurrence, edits)`,
-  edits `(Key, value in declared unit)`; `DISPATCH_SWITCH`, `DISPATCH` (`depot.request_pump#0`).
-- Oracle: `run_of(program, configuration, stops)`, stops `(origin, occurrence|None, edits)`; or
-  `Run.breakpoints`, `run()`, `paused` {why, at, time, member, occurrence, next, inside}, `edit(owner,
-  name, value)`, `resume()`, `edit_log`, trace kind `edit` (origin = the breakpoint). Breakpoint origins: a statement (stops before it, inside its stage), a stage (before
-  its guard; an edit there commits at once), an event (its first stage). Edits: stored values of
-  members and occurrence locals (not params, built-ins, inputs, formulas, links); type and range
-  kept; a finished occurrence refused; a store's edit is a ledger `('edit', t, cell, delta)`.
-- The removals of "M2 to do" land only once the engine stops importing them (say so in your state
-  file); then `SUBSET` in test_programs.py names `pump_dispatch_unattended` for the `dispatcher_*`.
+## For M-prep (tools/check.py)
+- The evidence warning: a `Problem` with code `no_record` (`napkin.model.support.CODE`) in
+  `Compiled.reports`, beside the setup's other reports (`equal_keys`, `below_first_key`); tell it
+  apart by `problem.code == 'no_record'`. Each has its file and line (a column: its table file, 1).
+  A number, a yes/no or a distribution that an option or a `change` sets without a record stays a
+  `LanguageError` with code `record`.
 
-## M2 done so far
-
-- Oracle (tests/reference model.py, run.py, from_program.py): stops, edits, resume;
-  tests/reference/test_breakpoints.py (10). examples.py: `pump_dispatch`, `PAUSES`, `Stop`,
-  `pump_dispatch_unattended` (its text in tests/language/test_events.py `SOURCES`).
-- Language: `choose(...)` (code `choose`) and `sees` (code `sees`) refused by name with the hint
-  (semantic.py `CHOOSE`, `SEES`); `Chosen`, `DeclaredSees` and their lowering removed. At the
-  coordinator's request: tests/draw, tests/acceptance rewritten; napkin/draw lost the choice words
-  and the actor badge (card key `actor`, legend "Decides"). examples/reservoir is old language.
-
-## M2 to do (waits for S7-E's M3)
-
-- Program: remove `refs.Choice`, `Template.sees`, `build.choose`/`sees`, config `Controller`,
-  `Pick`, `controllers`, `picks`, `FORECAST`/`PLAYER`, check.py/proofs.py uses, `views.actors`;
-  the four `dispatcher_*` examples; the oracle's choices (run.py `choose`, `answers`, Config
-  `controllers`/`choices`); bump `FORMAT_VERSION` to 2 (records change).
+## In progress
+- Item 2: wire `support.unsupported` into `compile._compiled` reports; tests.
+- Item 3 (c-evidence gaps): `library.model_document` reads all a package's files; `proofs.reads`
+  follows a stage that assigns a flow's request or capacity; `DeclaredModel.evidence(origin, member,
+  options)` for the trail; provenance diagnostics with a line and no list indexes
+  (`language/evidence.py` paths). The datum check is left for later.
+- Others' live code hit: napkin/commands/play.py imports `views.actors` (C-K).

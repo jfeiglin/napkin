@@ -374,7 +374,7 @@ class ComponentWay:
     the run reaches its end (`step`), or cut at a moment inside it (`cut`): the state there is the
     segment's at that time. The recorder takes the pieces of each segment as it is committed."""
 
-    def __init__(self, run, connected, values, t, key):
+    def __init__(self, run, connected, values, t, key, captured=None):
         plan, numerics = run.plan, run.plan.numerics
         self.run, self.key, self.connected = run, key, connected
         self.stores, self.flows = list(connected.stores), list(connected.flows)
@@ -409,13 +409,16 @@ class ComponentWay:
             leaves |= plan.expansion(flow.rate).leaves
         stepped = set(connected.stepped)
         known, missing = {name: values[name] for name in stores}, {}
-        for name in sorted(name for name in leaves if name not in stores and name not in stepped):
-            try:
-                known[name] = run.held(name)
-            except ExpressionError as problem:
-                # A value that has none now (`since(e)` before the first start): a rate fails where
-                # it reads it, on a side that it takes (`continuous/system.Formulas`).
-                missing[name] = str(problem)
+        if captured is None:
+            for name in sorted(name for name in leaves if name not in stores and name not in stepped):
+                try:
+                    known[name] = run.held(name)
+                except ExpressionError as problem:
+                    # A value that has none now (`since(e)` before the first start): a rate fails
+                    # where it reads it, on a side that it takes (`continuous/system.Formulas`).
+                    missing[name] = str(problem)
+        else:
+            known, missing = dict(captured[0]), dict(captured[1])  # what it had (`saved.py`)
         parameters = sorted(name for name in known if name not in stores)
         network = Network(
             stores[0],
@@ -452,7 +455,12 @@ class ComponentWay:
             run.settings,
             missing,
         )
-        rigid = [name for name in connected.flows if plan.rigid(plan.flows[name], run.held)]
+        if captured is None:
+            rigid = [name for name in connected.flows if plan.rigid(plan.flows[name], run.held)]
+        else:
+            rigid = list(captured[2])
+        # What it read when it was built, which holds while it lasts and a checkpoint saves.
+        self.captured = (known, missing, rigid)
         self.component = Component(system, context, [values[name] for name in stores], rigid)
         self.component.state.time = float(t)
         self.place = {name: k for k, name in enumerate(stores)}
