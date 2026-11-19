@@ -9,7 +9,6 @@ scenarios/
 tests/draw/
 tests/publish/
 tests/evidence/
-tests/dynamics/
 tests/release/
 tests/engine/test_admission_scope.py
 tests/engine/test_decision_resolver.py

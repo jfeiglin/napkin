@@ -28,7 +28,6 @@ from napkin.dynamics import (
     newton,
     vector_field,
 )
-from tests.build import compiled
 from tests.dynamics.models import (
     CENTRE,
     cubic,
@@ -50,13 +49,13 @@ def cubic_root():
 
 @pytest.mark.parametrize('mu', [0.25, 1.0, 4.0])
 def test_the_fold_has_two_equilibria_of_opposite_stability(mu):
-    field = vector_field(compiled(fold(mu)), 'a')
-    found = equilibria(field, starts=16, seed=3, box={'s.x': (CENTRE - 4, CENTRE + 4)})
+    field = vector_field(*fold(mu))
+    found = equilibria(field, starts=16, seed=3, box={'tank.x': (CENTRE - 4, CENTRE + 4)})
     assert len(found) == 2
     low, high = found
     root = math.sqrt(mu)
-    assert low.value('s.x') == pytest.approx(CENTRE - root, abs=1e-8)
-    assert high.value('s.x') == pytest.approx(CENTRE + root, abs=1e-8)
+    assert low.value('tank.x') == pytest.approx(CENTRE - root, abs=1e-8)
+    assert high.value('tank.x') == pytest.approx(CENTRE + root, abs=1e-8)
     assert (low.stability, high.stability) == (UNSTABLE, STABLE)
     assert low.eigenvalues[0].real == pytest.approx(2 * root, rel=1e-5)
     assert high.eigenvalues[0].real == pytest.approx(-2 * root, rel=1e-5)
@@ -64,15 +63,15 @@ def test_the_fold_has_two_equilibria_of_opposite_stability(mu):
 
 
 def test_the_fold_has_no_equilibrium_below_its_fold():
-    field = vector_field(compiled(fold(-1.0)), 'a')
-    assert equilibria(field, starts=16, seed=3, box={'s.x': (CENTRE - 4, CENTRE + 4)}) == []
+    field = vector_field(*fold(-1.0))
+    assert equilibria(field, starts=16, seed=3, box={'tank.x': (CENTRE - 4, CENTRE + 4)}) == []
     _, converged = newton(field, np.array([CENTRE]))
     assert not converged
 
 
 def test_a_linear_field_has_one_equilibrium_with_the_eigenvalues_of_its_matrix():
     a = ((-1.0, -2.0), (2.0, -1.0))
-    field = vector_field(compiled(linear(a)), 'a')
+    field = vector_field(*linear(a))
     (found,) = equilibria(field, starts=8, seed=1)
     assert found.state == pytest.approx([CENTRE, CENTRE], abs=1e-9)
     assert sorted(found.eigenvalues, key=lambda z: z.imag) == pytest.approx(
@@ -101,12 +100,12 @@ def test_the_search_crosses_a_kink_where_the_residual_has_a_local_minimum(y0):
     # Above y = -5/6, X' = -1/2 - |y|. From any start above the kink, Newton's steps on each linear piece
     # overshoot to the other piece, and the line search ends on the kink y = 0, where |X'| has its least
     # value 1/2 and the central difference is zero. The flow X' < 0 carries the state down to the rest.
-    field = vector_field(compiled(kinked_stall(start=CENTRE + y0)), 'a')
+    field = vector_field(*kinked_stall(start=CENTRE + y0))
     x, converged = newton(field, field.start)
     assert converged
     assert x[0] == pytest.approx(CENTRE - 1.5, abs=1e-9)
     (found,) = equilibria(field, starts=0)
-    assert found.value('s.x') == pytest.approx(CENTRE - 1.5, abs=1e-9)
+    assert found.value('tank.x') == pytest.approx(CENTRE - 1.5, abs=1e-9)
     assert found.stability == STABLE and not found.kink
     assert found.eigenvalues[0].real == pytest.approx(-2.0, rel=1e-6)
 
@@ -115,7 +114,7 @@ def test_the_search_crosses_a_kink_where_the_residual_has_a_local_minimum(y0):
 def test_the_search_passes_a_smooth_local_minimum_of_the_residual(y0):
     # |X'| = |y^3 - 2 y + 2| has a local minimum at y = sqrt(2/3), above the root, where the derivative is
     # zero and X' is not. X' < 0 everywhere above the root, so the flow reaches it.
-    field = vector_field(compiled(cubic(start=CENTRE + y0)), 'a')
+    field = vector_field(*cubic(start=CENTRE + y0))
     x, converged = newton(field, field.start)
     assert converged
     root = cubic_root()
@@ -127,8 +126,8 @@ def test_the_search_passes_a_smooth_local_minimum_of_the_residual(y0):
 
 def test_a_line_of_rests_is_one_equilibrium_with_one_neutral_mode():
     mu = 1.0
-    field = vector_field(compiled(ridge(mu)), 'a')
-    box = {'s.x': (CENTRE - 4, CENTRE + 4), 's.w': (CENTRE - 4, CENTRE + 4)}
+    field = vector_field(*ridge(mu))
+    box = {'tank.x': (CENTRE - 4, CENTRE + 4), 'tank.w': (CENTRE - 4, CENTRE + 4)}
     # Pairs of starts that end at different points of each line: Newton's steps cross the lines along
     # (1, 1), so (c + 3, c + 1) ends at (c + 2, c) and (c + 1, c + 3) at (c, c + 2).
     include = [
@@ -155,11 +154,11 @@ def test_a_fold_point_has_a_null_direction_but_no_neutral_mode():
     # Both rests have the derivative [[0, 1], [0, -1]] or diag(0, -1): the eigenvalues 0 and -1, and the
     # null direction (1, 0). Along it, the linear field keeps a line of rests (W' = 0 at W = c, for every
     # X), and the fold X' = -(X - c)^2 has none.
-    line = vector_field(compiled(linear(((0.0, 1.0), (0.0, -1.0)))), 'a')
+    line = vector_field(*linear(((0.0, 1.0), (0.0, -1.0))))
     rest = equilibrium_at(line, np.array([CENTRE + 1, CENTRE]))
     assert (rest.neutral, rest.stability) == (1, STABLE)
     assert rest.transverse == pytest.approx([-1.0], rel=1e-6)
-    fold_point = equilibrium_at(vector_field(compiled(fold_and_decay(0.0)), 'a'), np.array([CENTRE, CENTRE]))
+    fold_point = equilibrium_at(vector_field(*fold_and_decay(0.0)), np.array([CENTRE, CENTRE]))
     assert sorted(fold_point.eigenvalues.real) == pytest.approx([-1.0, 0.0], abs=1e-6)
     assert (fold_point.neutral, fold_point.stability) == (0, NONHYPERBOLIC)
 
@@ -169,7 +168,7 @@ def test_a_rest_on_a_kink_takes_the_class_of_its_less_stable_side(decay, expecte
     # X' = min(a y, -b y): X falls back from above the rest at the rate b and runs away below it at the
     # rate a. The central difference (a - b) / 2 < 0 alone calls the rest stable.
     a, b = 0.5, 2.0
-    field = vector_field(compiled(semistable(a, b, decay=decay)), 'a')
+    field = vector_field(*semistable(a, b, decay=decay))
     found = equilibrium_at(field, field.start)
     others = [] if decay is None else [-decay]
     assert sorted(found.eigenvalues.real) == pytest.approx(sorted([(a - b) / 2, *others]), rel=1e-6)
@@ -187,7 +186,7 @@ def test_a_rest_on_a_kink_takes_the_class_of_its_less_stable_side(decay, expecte
 def test_a_smooth_rest_is_no_kink_however_curved(mu):
     # The one-sided differences of X' = mu - (X - c)^2 differ by the curvature -2 times the step: a jump
     # of 1e-4 of the slope at mu = 1e-2. The jump halves with the step, as no kink's does.
-    field = vector_field(compiled(fold(mu)), 'a')
+    field = vector_field(*fold(mu))
     for sign in (1.0, -1.0):
         x = np.array([CENTRE + sign * math.sqrt(mu)])
         found = equilibrium_at(field, x)

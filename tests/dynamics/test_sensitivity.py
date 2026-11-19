@@ -3,7 +3,8 @@
 Exact properties need no tolerance: a linear function has the same elementary effect everywhere, and
 an input that a function does not read has a first-order and a total index of exactly zero. The
 estimators are checked against the analytic indices of two test functions, the Ishigami function and
-the Sobol G function, at fixed seeds, within six of their bootstrap standard errors."""
+the Sobol G function, at fixed seeds, within six of their bootstrap standard errors. A run function
+reads a value of a real run, which a drain's closed form gives."""
 
 from __future__ import annotations
 
@@ -12,8 +13,8 @@ import math
 import numpy as np
 import pytest
 
-from napkin.dynamics import Factor, factors_from_model, model_function, morris, sobol
-from tests.build import compiled, flow, output, parameter, stock, system
+from napkin.dynamics import Factor, input_factors, morris, run_function, sobol
+from tests.dynamics.models import drain, fold
 
 PI = math.pi
 ISHIGAMI = [Factor(f'x{i}', -PI, PI) for i in (1, 2, 3)]
@@ -105,20 +106,22 @@ def test_the_sobol_g_indices_match_their_closed_form():
         assert abs(result.total[i] - total[i]) <= 6 * result.total_error[i] + 1e-12
 
 
-def decay():
-    """A stock that drains at k per hour: x(T) = x0 exp(-k T)."""
-    return system(
-        parameter('k', 0.2, 'per_h', 0.01, 1, doc='Drain rate'),
-        stock('x', 10, 'people', size=10, doc='X'),
-        flow('drain', 'x ->', 'k * x'),
-        outputs=(output('left', 's.x', 'people', 'level', doc='People left'),),
-    )
-
-
-def test_a_model_function_gives_the_output_of_a_run_with_the_values():
-    model = compiled(decay())
-    (factor,) = factors_from_model(model, ['s.k'])
-    assert (factor.low, factor.high) == (0.01, 1)
-    f = model_function(model, 'a', 'left')
+def test_a_run_function_gives_a_value_of_a_run_with_the_input_values():
+    # A tank that drains at k x from 10 people holds 10 exp(-k T) at the horizon T = 10 h, and
+    # 10 exp(-k 4) at 4 h. The admitted range of k is its factor.
+    program, configuration = drain(0.2, start=10.0, horizon=10)
+    (factor,) = input_factors(program, configuration, ['tank.k'])
+    assert (factor.name, factor.low, factor.high) == ('tank.k', 0.0, 1.0)
+    f = run_function(program, configuration, 'tank.x')
+    at_four = run_function(program, configuration, 'tank.x', time=4)
     for k in (0.05, 0.5):
-        assert f({'s.k': k}) == pytest.approx(10 * math.exp(-k * 10), rel=1e-7)
+        assert f({'tank.k': k}) == pytest.approx(10 * math.exp(-k * 10), rel=1e-7)
+        assert at_four({'tank.k': k}) == pytest.approx(10 * math.exp(-k * 4), rel=1e-7)
+
+
+def test_a_factor_needs_a_number_input_with_a_range():
+    program, configuration = fold()
+    with pytest.raises(ValueError):
+        input_factors(program, configuration, ['tank.x'])  # a stored value
+    with pytest.raises(KeyError):
+        input_factors(program, configuration, ['tank.nothing'])

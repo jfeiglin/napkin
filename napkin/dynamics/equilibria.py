@@ -1,8 +1,8 @@
 """Equilibria of a run's field and their stability (docs/python-api.md, "Dynamics").
 
-An equilibrium is a state of the active quantities where every rate is zero. The search works in units
-of each quantity's size, and its iterates stay within the bounds. The residual is the largest drift of
-a quantity over the run's horizon, as a share of its size.
+An equilibrium is a state of the active stores where every rate is zero. The search works in units of
+each store's size, and its iterates stay within the bounds. The residual is the largest drift of a
+store over the run's horizon, as a share of its size.
 
 - **The search.** Newton's method first, with a line search that halves the step until the residual
   falls. The line search stalls where the field has a kink, as at a min() or a max(), and where the
@@ -36,7 +36,7 @@ from .field import OutsideDomain, VectorField
 STABLE, UNSTABLE, SADDLE, NONHYPERBOLIC = 'stable', 'unstable', 'saddle', 'nonhyperbolic'
 # The classes from the most stable to the least stable: at a kink, the least stable side decides.
 ORDER = (STABLE, NONHYPERBOLIC, SADDLE, UNSTABLE)
-# Two equilibria are one when no quantity differs by more than this share of its size.
+# Two equilibria are one when no store differs by more than this share of its size.
 SAME = 1e-6
 # A singular value below this share of the largest one is zero, as an eigenvalue is in `classify`.
 NEUTRAL = 1e-7
@@ -70,7 +70,7 @@ class Side:
 
 @dataclass(frozen=True)
 class Equilibrium:
-    """An equilibrium of the active quantities `names` at `state` (execution units) and time `t`."""
+    """An equilibrium of the active stores `names` at `state` (canonical units) and time `t`."""
 
     names: tuple
     state: np.ndarray
@@ -80,7 +80,7 @@ class Equilibrium:
     eigenvalues: np.ndarray  # per hour, of the central derivative: the neutral modes included
     stability: str  # on the directions other than the neutral ones; at a kink, of the least stable side
     at_bound: tuple
-    neutral_modes: np.ndarray  # (quantities, modes): unit directions in units of the sizes
+    neutral_modes: np.ndarray  # (stores, modes): unit directions in units of the sizes
     transverse: np.ndarray  # per hour: the eigenvalues on the directions other than the neutral ones
     sides: tuple = ()  # at a kink: the forward and the backward Side
 
@@ -99,7 +99,7 @@ class Equilibrium:
 
 
 def residual(field: VectorField, x, t):
-    """The largest drift of a quantity over the horizon, as a share of its size."""
+    """The largest drift of a store over the horizon, as a share of its size."""
     horizon = max(field.horizon, 1.0)
     return float(np.max(np.abs(field(x, t)) * horizon / field.scales)) if len(x) else 0.0
 
@@ -140,7 +140,7 @@ def solve(matrix, rhs):
 
 
 class _Problem:
-    """The field at the time t in units of each quantity's size: z = x / size, and the drift g(z) over the
+    """The field at the time t in units of each store's size: z = x / size, and the drift g(z) over the
     horizon in sizes."""
 
     def __init__(self, field: VectorField, t):
@@ -249,7 +249,7 @@ def _transient(problem: _Problem, z, until, steps=TRANSIENT_STEPS):
 
 
 def newton(field: VectorField, x0, *, t=0.0, tol=1e-10, max_iterations=80):
-    """(state, converged) of the search for an equilibrium from `x0` (execution units). Newton's method
+    """(state, converged) of the search for an equilibrium from `x0` (canonical units). Newton's method
     first; where its line search stalls, pseudo-transient continuation from `x0` to the residual SWITCH,
     then Newton's method again; and where that stalls too, pseudo-transient continuation to `tol`.
     Without a converged search, the state is the one with the smallest residual."""
@@ -352,7 +352,7 @@ def equilibrium_at(field: VectorField, x, t=0.0):
 
 
 def same(field: VectorField, x, other: Equilibrium):
-    """Whether the state `x` is the equilibrium `other`: no quantity differs by more than SAME of its
+    """Whether the state `x` is the equilibrium `other`: no store differs by more than SAME of its
     size, once the parts along the neutral modes of `other` are left out."""
     d = (np.asarray(x, dtype=float) - other.state) / field.scales
     modes = other.neutral_modes
@@ -362,7 +362,7 @@ def same(field: VectorField, x, other: Equilibrium):
 
 
 def starting_points(field: VectorField, count, seed, box=None):
-    """The base state, then `count` seeded points of the box: {name: (low, high)} in execution units,
+    """The base state, then `count` seeded points of the box: {name: (low, high)} in canonical units,
     by default the base value plus or minus three sizes, within the bounds."""
     generator = np.random.Generator(np.random.PCG64(seed))
     start = field.start

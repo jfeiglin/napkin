@@ -45,7 +45,7 @@ from ..program.build import X, expr_of, q
 from ..program.config import InputValue, Quantity
 from ..program.refs import EnumValue
 
-# The relative step of a finite difference, in units of a quantity's size.
+# The relative step of a finite difference, in units of a store's size.
 DIFFERENCE_STEP = 1e-6
 # A derivative has a kink where the forward and the backward differences of an entry differ by more
 # than this share of the largest entry (in units of the sizes), and the difference stays when the step
@@ -80,6 +80,16 @@ def _member_of(program, value_type, value, path):
     return EnumValue(value_type.enum, value)
 
 
+def _typed(program, value_type, value, path):
+    """A value as a configuration gives it: a number as a quantity in the declared unit, the name of
+    an enum member as that member; any other as it is, which the engine checks against the type."""
+    if isinstance(value_type, p.Number):
+        return Quantity(float(value), value_type.unit)
+    if isinstance(value_type, p.EnumType):
+        return _member_of(program, value_type, value, path)
+    return value
+
+
 def configured(program, configuration, values):
     """The configuration with the input values `values`: {path of an input: its value}, a number in
     the input's declared unit, a yes/no, the name of an enum member, a text or a distribution. The
@@ -89,11 +99,7 @@ def configured(program, configuration, values):
         member, name, part = value_at(program, path)
         if part.kind != p.INPUT:
             raise KeyError(f'{path} is no input: a configuration sets only inputs')
-        if isinstance(part.type, p.Number):
-            value = Quantity(float(value), part.type.unit)
-        elif isinstance(part.type, p.EnumType):
-            value = _member_of(program, part.type, value, path)
-        given[(member, name)] = InputValue(member, name, value)
+        given[(member, name)] = InputValue(member, name, _typed(program, part.type, value, path))
     return replace(configuration, inputs=tuple(given.values()))
 
 
@@ -117,7 +123,7 @@ def started(program, values):
             continue
         template, row = program.member(member)
         own = template.members[row]
-        inits = tuple((found, each) for found, each in own.values if found != name) + ((name, init),)
+        inits = (*((found, each) for found, each in own.values if found != name), (name, init))
         members = list(template.members)
         members[row] = replace(own, values=inits)
         templates = tuple(
@@ -202,7 +208,9 @@ class VectorField:
         resting = [name for name in self.state_ids if name not in reads]
         resting += [store for connected in still for store in connected.stores]
         self.passive = tuple(sorted(set(resting), key=place.__getitem__))
-        held = {name for name in reads - set(self.state_ids) if name in place and plan.values[name].kind == STATE}
+        held = {
+            name for name in reads - set(self.state_ids) if name in place and plan.values[name].kind == STATE
+        }
         self.held = tuple(sorted(held, key=place.__getitem__))
         self.scales = np.array([float(sizes[name]) for name in self.names], dtype=float)
         self.lower = np.array([run.bounds[name][0] for name in self.names], dtype=float)

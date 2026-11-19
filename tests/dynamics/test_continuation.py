@@ -16,12 +16,11 @@ import numpy as np
 import pytest
 
 from napkin.dynamics import STABLE, UNSTABLE, continue_equilibrium, fold_curve
-from tests.build import compiled
 from tests.dynamics.models import CENTRE, cusp, fold, fold_in_time, fold_with_empty_stock, hopf, queue, ridge
 
 
 def test_a_branch_turns_at_the_fold_and_returns_on_the_unstable_side():
-    branch = continue_equilibrium(compiled(fold(1.0)), 'a', 's.mu', (1.0, -1.0), start=np.array([CENTRE + 1]))
+    branch = continue_equilibrium(*fold(1.0), 'tank.mu', (1.0, -1.0), start=np.array([CENTRE + 1]))
     (turn,) = branch.folds
     assert turn.parameter == pytest.approx(0.0, abs=1e-7)
     assert turn.state[0] == pytest.approx(CENTRE, abs=1e-3)
@@ -37,9 +36,8 @@ def test_a_branch_turns_at_the_fold_and_returns_on_the_unstable_side():
 
 def test_a_branch_in_time_turns_where_the_driver_reaches_the_fold():
     mu0, slope = -2.0, 0.5
-    model = compiled(fold_in_time(mu0, slope))
     # At t = 8 h, mu = 2: start on the stable branch and follow it back in time.
-    branch = continue_equilibrium(model, 'a', 't', (8.0, 0.0), start=np.array([CENTRE + 1.5]))
+    branch = continue_equilibrium(*fold_in_time(mu0, slope), 't', (8.0, 0.0), start=np.array([CENTRE + 1.5]))
     (turn,) = branch.folds
     assert turn.parameter == pytest.approx(-mu0 / slope, abs=1e-6)
 
@@ -47,11 +45,10 @@ def test_a_branch_in_time_turns_where_the_driver_reaches_the_fold():
 @pytest.mark.parametrize('lam', [1.0, 3.0, 4.5])
 def test_the_cusp_has_two_folds_at_the_closed_form(lam):
     edge = 2 * (lam / 3) ** 1.5
-    model = compiled(cusp(-2 * edge, lam))
     roots = np.roots([-1, 0, lam, -2 * edge])  # mu + lam y - y^3 = 0 at mu = -2 edge: one real root
     lower = CENTRE + min(r.real for r in roots if abs(r.imag) < 1e-9)
     branch = continue_equilibrium(
-        model, 'a', 's.mu', (-2 * edge, 2 * edge), start=np.array([lower]), max_step=0.02
+        *cusp(-2 * edge, lam), 'tank.mu', (-2 * edge, 2 * edge), start=np.array([lower]), max_step=0.02
     )
     turns = [fold.parameter for fold in branch.folds]
     assert turns == pytest.approx([edge, -edge], abs=1e-6)
@@ -59,16 +56,16 @@ def test_the_cusp_has_two_folds_at_the_closed_form(lam):
 
 
 def test_the_cusp_without_lambda_has_no_fold():
-    model = compiled(cusp(-2.0, 0.0))
-    branch = continue_equilibrium(model, 'a', 's.mu', (-2.0, 2.0), start=np.array([CENTRE - 2 ** (1 / 3)]))
+    branch = continue_equilibrium(
+        *cusp(-2.0, 0.0), 'tank.mu', (-2.0, 2.0), start=np.array([CENTRE - 2 ** (1 / 3)])
+    )
     assert branch.folds == []
     assert all(p.stability in (STABLE, 'nonhyperbolic') for p in branch.points)
 
 
 def test_the_fold_curve_follows_the_edges_of_the_bistable_region():
-    model = compiled(cusp(-6.0, 3.0))
     grid = [1.5, 3.0, 4.5]
-    rows = fold_curve(model, 'a', 's.mu', (-6.0, 6.0), 's.lam', grid, max_step=0.02)
+    rows = fold_curve(*cusp(-6.0, 3.0), 'tank.mu', (-6.0, 6.0), 'tank.lam', grid, max_step=0.02)
     for lam, turns in rows:
         edge = 2 * (lam / 3) ** 1.5
         assert sorted(turns) == pytest.approx([-edge, edge], abs=1e-6)
@@ -76,8 +73,9 @@ def test_the_fold_curve_follows_the_edges_of_the_bistable_region():
 
 def test_the_hopf_point_is_where_the_centre_loses_its_stability():
     omega = 2.0
-    model = compiled(hopf(-0.5, omega))
-    branch = continue_equilibrium(model, 'a', 's.mu', (-0.5, 0.5), start=np.array([CENTRE, CENTRE]))
+    branch = continue_equilibrium(
+        *hopf(-0.5, omega), 'tank.mu', (-0.5, 0.5), start=np.array([CENTRE, CENTRE])
+    )
     (point,) = branch.hopfs
     assert point.parameter == pytest.approx(0.0, abs=1e-7)
     assert point.frequency == pytest.approx(omega, rel=1e-5)
@@ -89,8 +87,9 @@ def test_the_hopf_point_is_where_the_centre_loses_its_stability():
 
 def test_a_stock_that_stays_empty_does_not_stop_a_branch():
     # E starts on its bound 0 and drains at k E, so it stays there: the branch is the fold's.
-    model = compiled(fold_with_empty_stock(1.0))
-    branch = continue_equilibrium(model, 'a', 's.mu', (1.0, -1.0), start=np.array([CENTRE + 1, 0.0]))
+    branch = continue_equilibrium(
+        *fold_with_empty_stock(1.0), 'tank.mu', (1.0, -1.0), start=np.array([CENTRE + 1, 0.0])
+    )
     assert branch.stop == 'span'
     (turn,) = branch.folds
     assert turn.parameter == pytest.approx(0.0, abs=1e-7)
@@ -104,7 +103,7 @@ def test_a_branch_of_lines_of_rests_turns_at_its_fold():
     # Each point lies on a line of rests s = +-sqrt(mu): one neutral mode, and the eigenvalue -3 s on the
     # other direction, so the branch is stable above the fold and unstable below it.
     branch = continue_equilibrium(
-        compiled(ridge(1.0)), 'a', 's.mu', (1.0, -1.0), start=np.array([CENTRE + 1, CENTRE + 1])
+        *ridge(1.0), 'tank.mu', (1.0, -1.0), start=np.array([CENTRE + 1, CENTRE + 1])
     )
     assert branch.stop == 'span'
     (turn,) = branch.folds
@@ -124,9 +123,7 @@ def test_a_branch_steps_over_the_corner_where_a_queue_stops_filling():
     # Above mu = 1 the departures run at capacity and every queue of 2 people or more is a rest, so the
     # queue keeps its start. At mu = 1 the branch has a corner: no direction of rests moves mu. Below it
     # the one rest is the queue of Little's law, B = mu T, with T = 2 h and the eigenvalue -1 / T.
-    branch = continue_equilibrium(
-        compiled(queue(1.5, start=2.2)), 'a', 's.mu', (1.5, 0.5), start=np.array([2.2])
-    )
+    branch = continue_equilibrium(*queue(1.5, start=2.2), 'queue.arrivals', (1.5, 0.5), start=np.array([2.2]))
     assert branch.stop == 'span'
     assert branch.folds == [] and branch.hopfs == []
     above = [p for p in branch.points if p.parameter > 1 + 1e-6]
@@ -140,3 +137,13 @@ def test_a_branch_steps_over_the_corner_where_a_queue_stops_filling():
         assert (point.neutral, point.stability) == (0, STABLE)
         assert point.eigenvalues == pytest.approx([-0.5], rel=1e-6)
     assert min(p.parameter for p in below) <= 0.5
+
+
+def test_a_branch_stops_where_the_program_refuses_the_parameter():
+    # Without lambda the cusp has one rest, y = mu^(1/3), for every mu; the input mu admits at most
+    # 10 people/h, so the branch from mu = 1 toward 12 stops just below 10.
+    branch = continue_equilibrium(*cusp(1.0, 0.0), 'tank.mu', (1.0, 12.0), start=np.array([CENTRE + 1]))
+    assert branch.stop == 'inadmissible'
+    assert branch.points[-1].parameter == pytest.approx(10.0, abs=1e-5)
+    for point in branch.points:
+        assert point.state[0] == pytest.approx(CENTRE + np.cbrt(point.parameter), abs=1e-8)

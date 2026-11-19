@@ -211,7 +211,7 @@ def run_function(program, configuration, path, *, time=None):
             raise ValueError(f'The run with the values {inputs} fails: {record.failure.detail("message")}')
         at = float(given.request.horizon if time is None else time)
         (value,) = read(record, program, [path], [at])[0].values
-        if isinstance(value, Unavailable) or isinstance(value, bool | str):
+        if isinstance(value, Unavailable | bool | str):
             raise ValueError(f'{path} is no number at {at:g} h: {value}')
         return float(value)
 
