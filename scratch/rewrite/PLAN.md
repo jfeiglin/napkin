@@ -36,9 +36,9 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
 - [ ] S2 the flow network and sharing (`briefs/s2.md`); the carry-over of S1 is in it
   - [x] the front end: endpoints, priority over flows and ranked projections, flows across entities, junctions; the three contract fixes; the setup reports print as warnings
   - [x] the engine (its agent stopped at a restart of the container after step 8 of 9; the main session finished it): one sparse network, local sharing settled in the direction of supply, lines for rates held between moments, a sparse integrator for moving sets; 300 random networks agree with the oracle (2,000 under `deep`)
-  - [ ] the moving benchmark at 30,000 places; not yet ported: `test_chattering.py`, `test_closed_form_short.py`, `test_roundoff_properties.py`
+  - [ ] carried into S3: the moving benchmark at 30,000 places stops at 41.94 h with a failure of local sharing that names no part (3,000 places run to the end); not yet ported: `test_chattering.py`, `test_closed_form_short.py`, `test_roundoff_properties.py`
   - [ ] performance, separate from behaviour: rates held between moments on 30,000 places run in 87 s (one set of 52,038 stores, 113,009 line starts), where the prototype's lines took 1.4 s
-- [ ] S3 reversible flows and flows with legs
+- [ ] S3 reversible flows and flows with legs: two tracks at work (`briefs/s3.md`), with the carry-over of S2
 - [ ] S4 occurrences and time
 - [ ] S5 solvers
 - [ ] S6 packages and configurations
