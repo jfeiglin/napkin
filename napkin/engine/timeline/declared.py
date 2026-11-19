@@ -81,10 +81,10 @@ from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ..errors import SimulationError
 from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
+from .collections import selected
 from .family import Columns
 from .lines import asked_of
 from .network import BACKWARD, FORWARD, IN, LEG, LEGS, OUT, ROUTE, SIDES, network_of
-from .collections import selected
 from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE
 from .reads import lazily
 from .record import fitted

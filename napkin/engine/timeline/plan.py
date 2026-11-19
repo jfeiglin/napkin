@@ -514,7 +514,9 @@ class Plan:
         # A value that a commit gave a new definition -> [(time, its `Value` from then on)], the
         # first its own from its start (`define`); `version` counts the definitions.
         self.defined, self.version = {}, 0
-        self._stepped_reads = {}  # a keyed read -> whether it is stepped (`stepped`)
+        # (the id of a collection that reads no `this`, steps) -> its members' tests, keys, values and
+        # the collection (`_keyed`); (ids of those) -> what they read that can change (`_members_part`)
+        self._collections, self._members = {}, {}
         self._statements = None  # the statements of the program by their origin (`definitions_of`)
         self._refuse_parts()
         self.dynamic = {}  # engine name -> `Dynamic`: a read of a collection that changes in a run
@@ -657,36 +659,56 @@ class Plan:
                 continue  # a draw, which only an input's initializer executes
             if value.kind != LOOKUP:
                 return False
-            inner = Expanded.union(self.expanded(read) for read in self.keyed[leaf].reads())
-            if not self._fixed(inner):
+            if not self._fixed(self.lookup_reads(leaf)):
                 return False
         return True
+
+    def _members_part(self, keyed):
+        """What the members of a keyed read read that the inputs do not fix (`Expanded`): of their
+        keys and their tests, and of the values that they project; found once for members that
+        several keyed reads share. What the inputs fix never changes, so nothing needs to know
+        that it is read."""
+        key = (id(keyed.tests), id(keyed.keys), id(keyed.names))
+        found = self._members.get(key)
+        if found is None:
+            ordering = {name for test in keyed.tests if test is not None for name in nodes.names(test)}
+            ordering |= {each for each in keyed.keys if isinstance(each, str)}
+            parts = []
+            for reads in (ordering, set(keyed.names)):
+                expansions = [self.expanded(read) for read in sorted(reads - {'t'})]
+                parts.append(Expanded.union([part for part in expansions if not self._fixed(part)]))
+            found = (tuple(parts), keyed)  # the keyed read keeps the ids of its tuples
+            self._members[key] = found
+        return found[0]
+
+    def fixed_keys(self, name):
+        """Whether the inputs fix the keys and the tests of the members of a keyed read: its index of
+        keys is then the same for the whole run."""
+        found = self._members_part(self.keyed[name])[0]
+        return not (found.leaves or found.formulas or found.stepped or found.time)
 
     def stepped(self, name):
         """Whether a keyed read is by the time with keys that the inputs fix: it selects a member at
         each of its key times, which are moments of the run, and reads that member's value then
         (`run.Stepped`). Any other keyed read is evaluated where it is read (`collections.looked_up`)."""
-        found = self._stepped_reads.get(name)
-        if found is None:
-            keyed = self.keyed[name]
-            keys = [key for key in keyed.keys if isinstance(key, str)]
-            found = keyed.by_time and self._fixed(self.expansion_of(keys))
-            self._stepped_reads[name] = found
-        return found
+        return self.keyed[name].by_time and self.fixed_keys(name)
+
+    def lookup_reads(self, name):
+        """What a keyed read reads that can change (`Expanded`): its key, and what its members read
+        that the inputs do not fix (of a stepped one, the values of its members only)."""
+        keyed = self.keyed[name]
+        ordering, values = self._members_part(keyed)
+        if self.stepped(name):
+            return values
+        return Expanded.union([ordering, values, self.expansion(keyed.key)])
 
     def lookup_moves(self, name, moving):
         """Whether a keyed read changes between moments, where `moving` holds the stores that do:
         the value of a member that it can select moves, or, for one that is not stepped, its key or
         a key of its members does, the time included (a stepped one changes its member only at its
         key times, which are moments)."""
-        keyed = self.keyed[name]
-        if self.stepped(name):
-            found = self.reads_now(self.expansion_of(keyed.names))
-            timed = found.time
-        else:
-            found = self.reads_now(self.expansion_of(keyed.reads()))
-            timed = found.time or 't' in nodes.names(keyed.key)
-        return timed or any(leaf in moving for leaf in found.leaves)
+        found = self.reads_now(self.lookup_reads(name))
+        return found.time or any(leaf in moving for leaf in found.leaves)
 
     def number(self, name):
         """The creation number of a flow or a connection, from 1: its natural key."""
@@ -1733,24 +1755,32 @@ class Plan:
         by_time = isinstance(lookup.key.node, nodes.Ref) and isinstance(
             lookup.key.read(lookup.key.node.name), Time
         )
-        source = self.resolve(lookup.source, scope, origin, item)
-        if source[0] == 'dynamic':
-            if source[1][0] != 'occurrences' or source[2] or not by_time:
-                raise Outside(f'{origin}: {spelled(path)}: occurrences are read at the time t only')
-            return self._dynamic(path, 'at', source[1], path.steps, scope, item)
-        entries = self._many(lookup.source, scope, origin, item)
+        # The members of a collection that reads no `this` are the same for every member that reads
+        # it with its own key: they are found once, and shared (`_members_part`).
+        shared = not any(_uses(lookup.source, kind) for kind in (This, Item, Local))
+        found = self._collections.get((id(lookup.source), path.steps)) if shared else None
+        if found is None:
+            source = self.resolve(lookup.source, scope, origin, item)
+            if source[0] == 'dynamic':
+                if source[1][0] != 'occurrences' or source[2] or not by_time:
+                    raise Outside(f'{origin}: {spelled(path)}: occurrences are read at the time t only')
+                return self._dynamic(path, 'at', source[1], path.steps, scope, item)
+            entries = self._many(lookup.source, scope, origin, item)
+            points = entries.points
+            for step in path.steps:
+                points = tuple(self._step(point, step, origin) for point in points)
+            if any(point[0] != 'value' for point in points):
+                raise Outside(
+                    f'{origin}: {spelled(path)}, a member or a flow read whole through `.at(...)`: an '
+                    'expression gives a number, a yes/no or a text (a type error)'
+                )
+            found = (entries.tests, entries.keys, tuple(point[1] for point in points), lookup.source)
+            if shared:
+                self._collections[(id(lookup.source), path.steps)] = found
+        tests, keys, names, _ = found
         x = self.node(lookup.key, scope, origin, item)
-        points = entries.points
-        for step in path.steps:
-            points = tuple(self._step(point, step, origin) for point in points)
-        if any(point[0] != 'value' for point in points):
-            raise Outside(
-                f'{origin}: {spelled(path)}, a member or a flow read whole through `.at(...)`: an '
-                'expression gives a number, a yes/no or a text (a type error)'
-            )
-        names = tuple(point[1] for point in points)
         self._derived[key] = name
-        self.keyed[name] = Keyed(name, entries.tests, entries.keys, names, x, by_time, spelled(path))
+        self.keyed[name] = Keyed(name, tests, keys, names, x, by_time, spelled(path))
         unit = self._unit_of(names[0]) if names else ''
         boolean = bool(names) and self.values[names[0]].boolean
         self._add(Value(name, None, LOOKUP, None, unit, boolean))
@@ -1891,12 +1921,13 @@ class Plan:
     # ---- what a value reads --------------------------------------------------------------------------
 
     def reads(self, name):
-        """The names that the value `name` reads, directly (a reduction and a keyed read: what their
-        entries read)."""
+        """The names that the value `name` reads, directly (a reduction: what its entries read; a
+        keyed read: what can change of what it reads, `lookup_reads`)."""
         if name in self.reductions:
             return self.reductions[name].reads()
         if name in self.keyed:
-            return self.keyed[name].reads()
+            found = self.lookup_reads(name)
+            return set(found.leaves | found.formulas | found.stepped) - {name}
         if name in self.dynamic:
             return self.dynamic_reads(name)
         if name in self.changed:
@@ -1975,9 +2006,9 @@ class Plan:
         self._expanded[name] = _VISITING
         if value.kind == FORMULA:
             found = self.expansion(value.node)
-        elif value.kind == LOOKUP and self.stepped(name):
-            # Its key is the time and its keys are fixed: what it reads is the values of its members.
-            found = self.expansion_of(self.keyed[name].names)
+        elif value.kind == LOOKUP:
+            # What can change of it: its key, and what its members read that the inputs do not fix.
+            found = self.lookup_reads(name)
         else:
             found = Expanded.union(self.expanded(read) for read in self.reads(name))
         if value.kind == LOOKUP and self.stepped(name):
@@ -1985,8 +2016,7 @@ class Plan:
         elif value.kind == LOOKUP:
             # Any other keyed read is evaluated where it is read, from what it reads: it is a leaf
             # beside them, so that what holds values between moments holds it too.
-            time = found.time or 't' in nodes.names(self.keyed[name].key)
-            found = Expanded(found.leaves | {name}, found.formulas, found.stepped, time)
+            found = Expanded(found.leaves | {name}, found.formulas, found.stepped, found.time)
         else:
             found = Expanded(found.leaves, found.formulas | {name}, found.stepped, found.time)
         self._expanded[name] = found
@@ -2221,7 +2251,8 @@ class Plan:
             # A keyed read that moves between moments is evaluated at each state: no component holds
             # it as a number of its segment.
             looked = any(
-                leaf in self.keyed and self.lookup_moves(leaf, moving) for leaf in found.leaves | found.stepped
+                leaf in self.keyed and self.lookup_moves(leaf, moving)
+                for leaf in found.leaves | found.stepped
             )
             if sid is not None:
                 way = DECLARED

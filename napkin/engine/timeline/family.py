@@ -67,7 +67,9 @@ class Columns:
         if kind == LOOKUP and plan.stepped(name):
             return self.one(run.stepped_of(name).name_at(t), t)
         if kind == LOOKUP:
-            return looked_up(plan.keyed[name], lambda read: self.one(read, t), plan.units, t)
+            return looked_up(
+                plan.keyed[name], lambda read: self.one(read, t), plan.units, t, run.index_for(name)
+            )
         return run.value_of(name)
 
     def at(self, names, t):

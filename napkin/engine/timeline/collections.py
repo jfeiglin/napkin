@@ -13,8 +13,10 @@ rest), so which entries a collection keeps is fixed for the run and found at its
   (`trees.Pairwise`), so its bits depend on the present values only.
 - `Keyed`: `.at(x)`, the value that the entry with the greatest key at or below x projects; of equal
   keys the one created later wins (`pools.Keys`). Below the first key, or on an empty collection, it
-  fails when it is read. A key x that reads only fixed values gives a value fixed for the run; x
-  that is the time `t` gives a value that changes only at the keys, its key times (`stepped`).
+  fails when it is read. x the time `t` on fixed keys selects its entry only at the keys, its key
+  times (`Plan.stepped`); any other x, and keys that change, select it where the read is evaluated
+  (`selected`). The keyed reads of one collection share its entries, its kept entries and, where
+  the inputs fix its keys, its index (`Plan.lookup_reads`, `Run.index_for`).
 
 `reduced` and `looked_up` compute a value from the values of engine names (`value(name)`), at the
 start of a run, in a family's rates and in the reader. `node_of` gives a component the node of a

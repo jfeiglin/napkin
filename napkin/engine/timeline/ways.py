@@ -32,8 +32,12 @@ the results of another set settles after it: its level is one more than the leve
 it reads. Instances are made level by level, so a setting reads rates that are settled, and each
 affected solver is solved once, in dependency order. A rate or a result that another set reads
 changes at a moment or at an event of its instance; the sets that read it are touched then. A set
-whose settings read a rate that moves between moments (of a component or of a sparse set) has no
-closed answer here and is refused (`Outside`).
+whose settings read a rate that moves between moments (of a component or of a sparse set, or of a
+set that follows one) integrates with that set (D3): the sets run in one instance of the sparse
+integrator, level by level, each reading the rates that the levels before it give at the same time
+and state, and a moment that builds one of them again builds them all. A set of a declared solver
+whose problem moves runs alone: a set that would follow it, or that it would follow, stops the run
+by name.
 
 **A result read before it settles** (D5): while the stages of a round run, a rate or a result of a
 declared solver's set whose inputs changed in the round (a write of a commit or of the stage, a store
@@ -200,6 +204,11 @@ class Ways:
         with a set whose rates move."""
         return _moves(self.sets[key][0]) or key in self.grouped
 
+    def touched_outside(self, names, instance):
+        """The ids of the sets that hold or read any of `names`, outside an instance: the sets that
+        integrate in one instance read one another's rates there, at each state, with no moment."""
+        return {key for key in self.touched_by(names) if self.sets[key][1] is not instance}
+
     def readers_of_rates(self, ids):
         """The ids of the sets that read an actual rate, a served fraction or a result of the sets
         `ids`."""
@@ -310,8 +319,8 @@ class Ways:
                     raise SimulationError(
                         f'{(connected.flows or (connected.solver,))[0]}: a request, a capacity or a '
                         f'problem that reads {name}, a rate or a result of another connected set that '
-                        'moves between moments, where one of the two is a declared solver\'s: the engine '
-                        "integrates the set of a moving solver alone, so it does not run one that follows "
+                        "moves between moments, where one of the two is a declared solver's: the engine "
+                        'integrates the set of a moving solver alone, so it does not run one that follows '
                         'it or that it follows'
                     )
                 together[root(index)] = root(owner)
@@ -327,7 +336,11 @@ class Ways:
             self.grouped.update(keys)
             low = level[members[0]]
             instance = Sparse(
-                self.run, [made[index] for index in members], values, t, keys[0],
+                self.run,
+                [made[index] for index in members],
+                values,
+                t,
+                keys[0],
                 [level[index] - low for index in members],
             )
             self._hold(instance, keys)

@@ -26,7 +26,8 @@ At a time, rounds. One round is:
 2. **Settle.** The connected sets that the round touched are built again from the state there
    (`ways.py`): those that hold a store that a commit wrote, or read a value that changed (a written
    value, a collection of occurrences or of flows whose members changed, a rate or a result of a set
-   built again, a keyed read at its key time), and those that a flow joins or leaves. A store that no
+   built again, a keyed read at its key time), those that a flow joins or leaves, and the sets whose
+   moving rates they read, which integrate with them. A store that no
    flow meets any more holds its value. So each declared solver that the round affected is solved
    once, after the stages commit, in dependency order, and its results are published together
    (`declared.py`); the sets of declared solvers first settle after the setup's commit. Then each
@@ -483,6 +484,9 @@ class Moment:
             status |= {store for store in gone if store not in region_ends}
             extra |= ways.touched_by(status) - touched
             extra |= ways.readers_of_rates(touched) - touched
+            # A set whose settings read a moving rate of a set that stays integrates with it: both
+            # are built again, as one instance (`ways.build`).
+            extra |= ways.moving_sources(made) - touched
             if not extra:
                 break
             touched |= extra

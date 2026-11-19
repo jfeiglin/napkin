@@ -20,8 +20,10 @@ pieces of each value of a run:
 - **The family** (`family.py`) gives exact lines: a piece of each store and of each actual rate at
   each change of its line, and a piece of a request or a capacity that is a formula at each change
   of its value.
-- **A keyed read by the time** has a piece at the start and at each of its key times; below its
-  first key it holds `Unavailable`. A keyed read with a fixed key has one piece. A reduction has its
+- **A keyed read by the time on fixed keys** has, over each of its key intervals, the pieces of the
+  value of the member that it selects there; below its first key it holds `Unavailable`. Any other
+  keyed read is made from the histories of what can change of what it reads (its key, and what its
+  members read that the inputs do not fix), as a formula is. A reduction has its
   pieces from the histories of its kept entries (`collections.history_of`): a sum of lines, a count,
   an any, an all, a least or a greatest value of values that hold between moments are exact; any
   other is fitted as a formula is. Neither has a key in the record: the formulas that read them read
@@ -409,14 +411,22 @@ class Recorder:
         except FAILURES as problem:
             return [(0.0, Unavailable(str(problem)), 0.0)]
         if stepped is None:
+            # What can change of what it reads has a history; what the inputs fix holds its start.
+            found = plan.lookup_reads(name)
+            index = run.index_for(name)
+
+            def compute(env):
+                value = lambda read: env[read] if read in env else run.value_of(read)  # noqa: E731
+                return looked_up(keyed, value, plan.units, env['t'], index)
+
             return self.formula(
                 name,
                 histories,
                 end,
-                sorted(keyed.reads()),
-                lambda env: looked_up(keyed, env.__getitem__, plan.units, env['t']),
+                sorted(found.leaves | found.formulas | found.stepped),
+                compute,
                 boolean,
-                timed='t' in nodes.names(keyed.key),
+                timed=found.time,
             )
         times = stepped.times.tolist()
         pieces = []

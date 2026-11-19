@@ -81,7 +81,6 @@ from .plan import (
     RESULT,
     STARTS,
     STATE,
-    Outside,
 )
 from .reads import lazily
 from .record import Recorder, remember
@@ -142,7 +141,9 @@ class Run:
         remember(plan)
         self.now = 0.0  # the time that the run has reached, for a failure
         self.env = {'t': 0.0}  # the values of the start, and later each value held between moments
-        self._kept, self._stepped, self._indexes = {}, {}, {}
+        # The kept entries, the keyed reads by the time and the indexes of keys of the collections
+        # (by name, and by the tuples that the reads of one collection share); the keys known.
+        self._kept, self._stepped, self._indexes, self._known = {}, {}, {}, {}
         self.started = False  # once true, `value_of` reads the present
         self.written = {}  # a store of a set that a commit of this moment wrote, and its value
         self.frozen = {}  # a formula of a finished occurrence -> its value or `Unavailable` (D7)
@@ -196,10 +197,13 @@ class Run:
                     if derived.names
                     else []
                 )
-            reads = {derived.keys[k] for k in entries if isinstance(derived.keys[k], str)}
-            missing = sorted(read for read in reads if read not in env)
-            if missing:
-                return missing
+            if self._known.get(id(derived.keys)) is not derived.keys:
+                reads = {derived.keys[k] for k in entries if isinstance(derived.keys[k], str)}
+                missing = sorted(read for read in reads if read not in env)
+                if missing:
+                    return missing
+                # The keys of this collection are known: the keyed reads that share it ask no more.
+                self._known[id(derived.keys)] = derived.keys
             found = self._found(name)
             return [] if found is None or found in env else [found]
         return []
@@ -308,18 +312,39 @@ class Run:
         return tuple(classes) + ((rest,) if rest else ())
 
     def kept_of(self, name):
-        """The places of the entries that the where tests of a reduction or a keyed read keep."""
-        if name not in self._kept:
+        """The places of the entries that the where tests of a reduction or a keyed read keep: the
+        tests read what is fixed for each member, so the reads of one collection share them."""
+        found = self._kept.get(name)
+        if found is None:
             derived = self.plan.reductions.get(name) or self.plan.keyed[name]
-            self._kept[name] = kept(derived.tests, self.value_of, self.plan.units)
-        return self._kept[name]
+            shared = self._kept.get(id(derived.tests))
+            if shared is None or shared[1] is not derived.tests:
+                shared = self._kept[id(derived.tests)] = (
+                    kept(derived.tests, self.value_of, self.plan.units),
+                    derived.tests,
+                )
+            found = self._kept[name] = shared[0]
+        return found
 
     def _index(self, name):
-        if name not in self._indexes:
-            self._indexes[name] = index_of(
-                self.plan.keyed[name], self.value_of, self.plan.units, self.kept_of(name)
-            )[0]
-        return self._indexes[name]
+        """The index of the keys of a keyed read's kept entries at the start, which the keyed reads
+        of one collection share."""
+        found = self._indexes.get(name)
+        if found is None:
+            keyed = self.plan.keyed[name]
+            shared = self._indexes.get((id(keyed.keys), id(keyed.tests)))
+            if shared is None or shared[1] is not keyed.keys:
+                made = index_of(keyed, self.value_of, self.plan.units, self.kept_of(name))[0]
+                shared = self._indexes[(id(keyed.keys), id(keyed.tests))] = (made, keyed.keys)
+            found = self._indexes[name] = shared[0]
+        return found
+
+    def index_for(self, name):
+        """(the index of keys, the kept entries) of a keyed read whose keys the inputs fix, which holds
+        for the whole run; None for one whose keys change, whose index is made at each read."""
+        if not self.plan.fixed_keys(name):
+            return None
+        return self._index(name), self.kept_of(name)
 
     def stepped_of(self, name):
         """The stepped keyed read `name` (`Stepped`), from the keys of its kept entries."""
@@ -458,7 +483,9 @@ class Run:
         if kind == LOOKUP:
             if plan.stepped(name):
                 return self.value(self.stepped_of(name).name_at(t), t, tx)
-            return looked_up(plan.keyed[name], lambda read: self.value(read, t, tx), plan.units, t)
+            return looked_up(
+                plan.keyed[name], lambda read: self.value(read, t, tx), plan.units, t, self.index_for(name)
+            )
         if kind == DYNAMIC:
             dynamic = plan.dynamic[name]
             return dynamic_value(
@@ -803,7 +830,9 @@ class Run:
                 self.now = at
                 stores, rates, jumped = instance.step()
                 changed = set(stores) | set(rates)
-                if (jumped and self.triggers.reads_any(changed)) or self.ways.touched_by(rates):
+                if (jumped and self.triggers.reads_any(changed)) or self.ways.touched_outside(
+                    rates, instance
+                ):
                     self.ways.cut(at)
                     return at, changed
                 self.triggers.predict(changed)

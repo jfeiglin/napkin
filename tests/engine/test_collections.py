@@ -16,7 +16,6 @@ from fractions import Fraction
 import pytest
 
 from napkin.engine import read, run
-from napkin.engine.timeline import Outside
 from napkin.program.build import (
     BOOL,
     SINK,
@@ -384,10 +383,10 @@ def test_a_large_table_of_like_rows_runs_on_arrays_to_its_closed_forms():
     assert at(record, program, 'tanks.t0700.water', 699.5, 700, 1000) == pytest.approx([0.5, 0, 0], abs=1e-9)
 
 
-# ---- what a later slice brings ----------------------------------------------------------------------
+# ---- flows across templates --------------------------------------------------------------------------
 
 
-def test_what_a_later_slice_brings_is_refused_by_name():
+def test_a_flow_between_members_of_two_templates_runs():
     b = Builder(UNITS)
     b.template('Basin', value('level', 'L', 0, lower=0))
     b.member('Basin', 'basin')
@@ -399,21 +398,9 @@ def test_what_a_later_slice_brings_is_refused_by_name():
     )
     b.member(pump, 'pump', into=named('basin'))
     program = b.finish()
-    record = run(program, configured(1))  # a flow between members of two templates runs (S2)
+    record = run(program, configured(1))
     assert at(record, program, 'pump.store', 1) == pytest.approx([4])
     assert at(record, program, 'basin.level', 1) == pytest.approx([1])
-    for key in (t + q(1, 'h'), this.water):
-        b = Builder(UNITS)
-        reading = b.template('Reading', input_('hour', 'h', 0), input_('factor', '', 1))
-        b.member(reading, 'r')
-        b.entity(
-            'tank',
-            value('water', 'L', 4, lower=0),
-            flow('drain', this.water, SINK, request=q(1, 'L/h')),
-            value('seen', '', formula(reading.instances.by('hour').at(key).factor)),
-        )
-        with pytest.raises(Outside, match='S4'):
-            run(b.finish(), configured(1))
 
 
 def test_a_rate_that_reads_a_reduction_of_moving_stores_joins_them_in_one_component():

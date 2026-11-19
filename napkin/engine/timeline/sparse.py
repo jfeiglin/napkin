@@ -1,4 +1,5 @@
-"""The sparse integrator: a connected set whose rates move, of any size (D3), on one network.
+"""The sparse integrator: a connected set whose rates move, of any size (D3), on one network, or
+several sets that integrate together because the settings of one read the moving rates of another.
 
 A set runs here when a request or a capacity of its flows or endpoints reads a store that moves (or
 the time), and it is no component of the continuous engine (`plan.py`, `Connected.way`): it shares
@@ -13,6 +14,12 @@ only the sides that it takes (`reads.py`): a value that has none now (`since(e)`
 start) fails where an evaluation takes it, and a column with no value for a row that another row's
 branch reads makes each row evaluate by itself. A route's signed
 request may cross zero: its legs carry the positive parts of its rate, which stays continuous.
+
+Sets that integrate together are levels: the settings of a level read the rates that the levels
+before it give, and since the sets share no store, local sharing settles them level by level at each
+time and state (the stores of the levels before a flow are in the pattern of what it reads). A keyed
+read of the settings whose key or members move holds the member that it selects through a segment,
+which ends where the read selects another, found to within the crossing tolerance.
 
 SciPy's Radau integrates it step by step, with the sparse pattern of its Jacobian: the stores that the
 settings of a flow read, joined across each coupled part. The flags of the bounds hold through a
@@ -172,18 +179,31 @@ class Vector:
         segment (`held`), the value of that entry."""
         plan, held = self.plan, self.held
         keyed = plan.keyed[name]
-        subs = {read: self.compiled([read]) for read in sorted(keyed.reads())}
+        index, read = self.run.index_for(name), self._reader()
 
         def value(t, y):
             if name in held:
                 entry = held[name]
                 if entry is None:
-                    x = float(lazily(keyed.key, lambda read: float(subs[read](t, y)[0]), plan.units, t))
+                    x = float(lazily(keyed.key, lambda found: read(found, t, y), plan.units, t))
                     raise ExpressionError(f'{keyed.spelled}: no member has a key at or below {x:g}')
-                return float(subs[keyed.names[entry]](t, y)[0])
-            return float(looked_up(keyed, lambda read: float(subs[read](t, y)[0]), plan.units, t))
+                return read(keyed.names[entry], t, y)
+            return float(looked_up(keyed, lambda found: read(found, t, y), plan.units, t, index))
 
         return value
+
+    def _reader(self):
+        """A function (name, t, y) -> its value, each name compiled when it is first read: a keyed
+        read reads its key and the member that it selects, not every member."""
+        subs = {}
+
+        def read(name, t, y):
+            sub = subs.get(name)
+            if sub is None:
+                sub = subs[name] = self.compiled([name])
+            return float(sub(t, y)[0])
+
+        return read
 
     def _reduction(self, name):
         """A reduction of the values of its kept entries."""
@@ -306,12 +326,10 @@ class Sparse:
         """A function (t, y) -> the entry that a keyed read selects there (None below its first
         key), from what its key, its members' keys and their tests read."""
         plan = self.plan
-        reads = sorted(keyed.reads() - set(keyed.names))
-        values = vector.compiled(reads)
+        index, read = self.run.index_for(keyed.name), vector._reader()
 
         def select(t, y):
-            found = dict(zip(reads, values(t, y).tolist()))
-            return selected(keyed, found.__getitem__, plan.units, t)
+            return selected(keyed, lambda name: read(name, t, y), plan.units, t, index)
 
         return select
 
