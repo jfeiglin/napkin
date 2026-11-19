@@ -22,9 +22,11 @@ from tests.reference.model import (
     flow,
     fmax,
     formula,
+    if_,
     link,
     lit,
     move,
+    q,
     set_,
     since,
     start,
@@ -199,6 +201,41 @@ def test_a_falling_rate_leaves_the_gate_waiting():
     r = Run(ramp(5, -2), horizon=10).run()
     assert r.read(N.tank.water, F(5, 2)) == r.read(N.tank.water, 10) == F(25, 4)
     assert r.read(DONE, 10) == 0 and r.read(N.tank.receive.occurrences.at(t).active, 10) is True
+
+
+def drained(water, request, events=(), setup=()):
+    """A tank of `water` litres in [0,] with a member's flow to SINK that requests `request`."""
+    m = Model()
+    m.entity(
+        'tank',
+        fields=[value('water', water, 0)],
+        flows=[flow('drain', this.water, SINK, request=request)],
+        events=list(events),
+    )
+    m.setup = list(setup)
+    return Run(m, horizon=5).run()
+
+
+def test_a_rate_that_rises_from_zero_moves_its_store():
+    """D3: `request = formula(t * 1 L/h/h)` on a member's flow is zero at 0 h and then rises, and the
+    flow follows it: a tank of 100 L holds 100 - t^2/2 litres, 92 L at 4 h, while the rate is t,
+    4 L/h. An empty tank cannot start that flow: it stays empty, at rate zero."""
+    r = drained(100, formula(t * q(1, 'L/h/h')))
+    assert [r.read(N.tank.water, at) for at in (0, 2, 4)] == [100, 98, 92]
+    assert r.read(N.tank.drain.actual_rate, 4) == 4
+    r = drained(0, formula(t * q(1, 'L/h/h')))
+    assert (r.read(N.tank.water), r.read(N.tank.drain.actual_rate)) == (0, 0)
+
+
+def test_a_rate_that_reads_since_rises_from_the_start_of_its_event():
+    """The request `since(e) * 1 L/h/h`, guarded by `count(e.occurrences) > 0`, is zero until e
+    starts at 1 h and then rises: the tank of 100 L holds 100 - (t - 1)^2/2 litres after 1 h, 98 L
+    at 3 h and 92 L at 5 h."""
+    began = count(this.e.occurrences) > 0
+    request = formula(if_(began, since(this.e) * q(1, 'L/h/h'), q(0, 'L/h')))
+    plan = event('plan', steps=[after(1, [start(this.e)])])
+    r = drained(100, request, events=[event('e'), plan], setup=[start(N.tank.plan)])
+    assert [r.read(N.tank.water, at) for at in (1, 3, 5)] == [100, 98, 92]
 
 
 def alarm(condition):

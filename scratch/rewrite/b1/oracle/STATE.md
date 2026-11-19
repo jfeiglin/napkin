@@ -4,9 +4,8 @@
 - Package `tests/reference/`: `model.py` (the description: E nodes, records, `Config`, units
   `q()`), and the code that runs it: `run.py`, `evaluate.py`, `network.py`, `order.py` (A2's
   select.py), `exact.py`, `poly.py`, `errors.py`. Imports nothing from napkin (scipy for LPs).
-- Tests, one file per topic (flows, solvers, events, rounds, branches, values, limits, rulings:
-  each A2 ruling as settled). Run them with
-  `NAPKIN_STORE=off .venv/bin/python -m pytest -q -p no:cacheprovider -n 2 tests/reference`.
+- Tests, one file per topic (flows, solvers, events, rounds, branches, values, limits, rulings).
+  Run: `NAPKIN_STORE=off .venv/bin/python -m pytest -q -p no:cacheprovider -n 2 tests/reference`.
 
 ## Decisions (and why)
 - A2's `Rules` switches removed: G0 settled every ruling, an alternative would be dead code.
@@ -43,17 +42,18 @@
   a read of a stopped run at its stop time gives the committed state; new read nodes (member by
   id, n-th occurrence, `where` with an item); Model keeps the program's units and sites.
 
-## Fixes after the join — DONE (tests/reference 204 passed; the engine's 3 comparison files 626)
-- `delayed(x, D)` reads D before the time of the state read (`ev.view.t`, D = 0 too): a formula
-  read after the run at 5 h reads 3 h. OPEN, not chosen: before the start it reads the record at
-  0 h, which the first moment lacks, so a trigger on `delayed` fails at the setup; the spec
-  ("documented domains"), R-A2-09 (D = 0) and G0 do not say what such a read gives.
+## Fixes after the join — DONE (tests/reference 206 passed; the engine comparisons agree)
+- `delayed(x, D)` reads D before the time of the state read (`ev.view.t`, D = 0 too). OPEN, not
+  chosen: before the start it reads the record at 0 h, which the first moment lacks, so a trigger
+  on `delayed` fails at the setup; the spec, R-A2-09 (D = 0) and G0 do not say what it gives.
 - R-A2-17: a firing owns the draws of its captures, body and `reset after` (`key!n`, n from 1, as
   the engine spells it); the setup's belong to the root `''` (was 'model').
 - Categorical weights: nonnegative, scaled by their sum. All zero stay zero: a draw fails in both
   modes (as eligible outcomes of total zero); a person may still pick.
 - An occurrence's store has endpoint settings as a member's (`Run._endpoints`): plain ones in
-  written order (D14, `_forward`), frozen at the finish (D7, `_holder`). 12 new tests.
+  written order (D14, `_forward`), frozen at the finish (D7, `_holder`).
+- A moving request that is zero at a moment and rises (`t`, `since(e)` from its start) is followed
+  (D3, `network._rises`); a store held at the bound that the flow would leave keeps it at zero.
 
 ## Remaining
 - Rows only partly covered: `48 h/2` vs `48 h / 2` (no parser: one expression; value checked);

@@ -489,6 +489,20 @@ def _live(view, c):
     return (c.flow if isinstance(c, LegRT) else c) in view.live
 
 
+def _rises(view, f, request):
+    """A flow at rate zero whose moving request is zero at this moment and positive just after, as
+    `t * 1 L/h/h` at 0 h or `since(e) * 1 L/h/h` when e starts: it follows its request (D3) unless
+    an end of it is a store held at the bound that the flow would leave, which the flow cannot
+    start to move by itself; such a flow, and one whose rate is zero below a positive request, is
+    held at zero, starved."""
+    return (
+        request(0) == 0
+        and request.sign_after() > 0
+        and not (f.src is not None and _at_bound(view, f.src, 'lo'))
+        and not (f.dst is not None and _at_bound(view, f.dst, 'hi'))
+    )
+
+
 # --- between two moments -----------------------------------------------------------------------------
 
 
@@ -523,7 +537,7 @@ def motion(run):
             continue
         rate = view.results.get(('rate', f), Fraction(0))
         p = follow.get(f)
-        if p is not None and rate != 0:  # a request that moves: the flow follows it when nothing limits it
+        if p is not None and (rate != 0 or _rises(view, f, p)):  # the flow follows a moving request
             ends = [(c, s) for c, s in ((f.src, 'outflow'), (f.dst, 'inflow')) if c is not None]
             free = (
                 not run.component_of['rate', f].sols
