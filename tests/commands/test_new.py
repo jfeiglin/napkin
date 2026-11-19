@@ -38,7 +38,8 @@ def test_new_writes_a_starter_that_compiles_with_the_prelude_and_one_record(tmp_
     found = napkin(capsys, 'new', folder)
     assert found.code == 0, found.err
     files = written(folder)
-    assert list(files) == [paths.ENTRY]
+    # The model, and the stylesheet whose `[role]` gives the starter's picture its icon (change 24).
+    assert list(files) == [paths.ENTRY, 'style.toml']
     assert format_text(files[paths.ENTRY]) == files[paths.ENTRY]
     declared = load_scenario(folder / paths.ENTRY).declared
     assert set(declared.units.base) == set(json.loads(PRELUDE.read_text(encoding='utf-8')))
@@ -83,9 +84,10 @@ def test_new_with_variants_writes_variants_that_change_one_input(tmp_path, capsy
     files = written(folder)
     assert set(files) == {
         paths.ENTRY,
+        'style.toml',
         *(f'{paths.VARIANTS}/{name}/{paths.ENTRY}' for name in ('east', 'west')),
     }
-    assert all(format_text(text) == text for text in files.values())
+    assert all(format_text(text) == text for name, text in files.items() if name.endswith('.scn'))
     main = load_scenario(folder / paths.ENTRY)
     for k, name in enumerate(('east', 'west'), start=1):
         variant = load_scenario(folder / paths.VARIANTS / name / paths.ENTRY)
