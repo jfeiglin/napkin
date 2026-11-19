@@ -1,0 +1,455 @@
+{
+  "schema_version": "0.0.1",
+  "id": "vocabulary",
+  "title": "Shared vocabulary",
+  "conventions": [
+    {
+      "id": "CURRENCY",
+      "title": "Currency",
+      "statement": "Money is in US dollars.",
+      "values": {
+        "currency": "USD"
+      }
+    },
+    {
+      "id": "PRICE-YEAR",
+      "title": "Price year",
+      "statement": "Money is at the prices of 2025.",
+      "values": {
+        "price_year": 2025
+      }
+    },
+    {
+      "id": "ACCOUNTING-WINDOW",
+      "title": "Accounting window",
+      "statement": "The accounting of a scenario covers 43,800 h, five years of 8,760 h, from the start.",
+      "values": {
+        "accounting_window_h": 43800
+      }
+    },
+    {
+      "id": "YEAR-ONE",
+      "title": "Year one",
+      "statement": "The first year of a scenario is its first 8,760 h.",
+      "values": {
+        "year_one_h": 8760
+      }
+    },
+    {
+      "id": "TIME-ORIGIN",
+      "title": "Time origin",
+      "statement": "Elapsed hours begin at the scheduled initiating cyber action; the initiating effect follows it as declared in `initiation`."
+    },
+    {
+      "id": "CONDITIONING",
+      "title": "Conditioning",
+      "statement": "Each scenario is conditional on the initiating action executing; no attack probability is modeled."
+    },
+    {
+      "id": "INTERPOLATION",
+      "title": "Interpolation",
+      "statement": "Report samples evaluate the retained continuous trajectory; display sampling does not define integration or event times."
+    },
+    {
+      "id": "COUNTING",
+      "title": "Counting",
+      "statement": "Deaths and casualties count unique people, and economic loss counts losses that do not overlap.",
+      "values": {
+        "deaths": "Unique people whose deaths the event caused or accelerated within five years.",
+        "casualties": "Unique people counted at first death or qualifying serious harm. At a reporting instant: cumulative unique casualties = cumulative deaths + living people already counted as casualties, if the declared cohort scope is closed. Eventual serious survivors are a distinct end-horizon measure.",
+        "economic_loss": "Non-overlapping damaged assets, incremental response resources, output not made up later, qualifying unrecovered principal."
+      }
+    },
+    {
+      "id": "HAZUS-SEVERITY",
+      "title": "Hazus casualty severity levels",
+      "statement": "Casualties use the Hazus casualty severity levels: S1, basic medical aid; S2, hospital care, not life-threatening; S3, life-threatening without prompt care; S4, killed or mortally injured. A death is S4, and serious harm is S3 with lasting impairment.",
+      "values": {
+        "basis": "Hazus casualty severity levels",
+        "S1": "basic medical aid",
+        "S2": "hospital care, not life-threatening",
+        "S3": "life-threatening without prompt care",
+        "S4": "killed or mortally injured",
+        "project_mapping": {
+          "deaths": "S4",
+          "serious_harm": "S3 plus lasting impairment"
+        }
+      }
+    },
+    {
+      "id": "TIME-UNITS",
+      "title": "Time units",
+      "statement": "Fixed model day=24 h; year=365 days; month=year/12. No implicit calendar or currency/price-year conversions."
+    },
+    {
+      "id": "EVIDENCE",
+      "title": "Evidence",
+      "statement": "A verified source claim confirms only the recorded fact and scope. Model transfers, illustrative assumptions, and parameter bounds need independent justification. Unverified and partial claims remain visibly qualified."
+    }
+  ],
+  "units": {
+    "people/h": {
+      "kind": "rate",
+      "dimensions": {
+        "people": 1,
+        "time": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: people^1, time^-1; scale 1 in execution units."
+    },
+    "per_day": {
+      "kind": "hazard_rate",
+      "dimensions": {
+        "time": -1
+      },
+      "scale": 0.041666666666666664,
+      "description": "Dimensions: time^-1; scale 0.0416667 in execution units."
+    },
+    "per_degC": {
+      "dimensions": {
+        "temperature": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: temperature^-1; scale 1 in execution units."
+    },
+    "per_year": {
+      "kind": "hazard_rate",
+      "dimensions": {
+        "time": -1
+      },
+      "scale": 0.00011415525114155251,
+      "description": "Dimensions: time^-1; scale 0.000114155 in execution units."
+    },
+    "cases/person-day": {
+      "kind": "hazard_rate",
+      "dimensions": {
+        "cases": 1,
+        "people": -1,
+        "time": -1
+      },
+      "scale": 0.041666666666666664,
+      "description": "Dimensions: cases^1, people^-1, time^-1; scale 0.0416667 in execution units."
+    },
+    "USD2025/person-hour": {
+      "kind": "unit_cost",
+      "dimensions": {
+        "USD2025": 1,
+        "people": -1,
+        "time": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: USD2025^1, people^-1, time^-1; scale 1 in execution units."
+    },
+    "person-days": {
+      "kind": "exposure",
+      "dimensions": {
+        "people": 1,
+        "time": 1
+      },
+      "scale": 24,
+      "description": "Dimensions: people^1, time^1; scale 24 in execution units."
+    },
+    "cases": {
+      "kind": "count",
+      "dimensions": {
+        "cases": 1
+      },
+      "scale": 1,
+      "description": "Dimensions: cases^1; scale 1 in execution units."
+    },
+    "USD2025_bn": {
+      "kind": "money",
+      "dimensions": {
+        "USD2025": 1
+      },
+      "scale": 1000000000.0,
+      "description": "Dimensions: USD2025^1; scale 1e+09 in execution units."
+    },
+    "USD2025_bn/yr": {
+      "kind": "money_rate",
+      "dimensions": {
+        "USD2025": 1,
+        "time": -1
+      },
+      "scale": 114155.25114155251,
+      "description": "Dimensions: USD2025^1, time^-1; scale 114155 in execution units."
+    },
+    "USD2025/person-day": {
+      "kind": "unit_cost",
+      "dimensions": {
+        "USD2025": 1,
+        "people": -1,
+        "time": -1
+      },
+      "scale": 0.041666666666666664,
+      "description": "Dimensions: USD2025^1, people^-1, time^-1; scale 0.0416667 in execution units."
+    },
+    "USD2025/person": {
+      "kind": "unit_cost",
+      "dimensions": {
+        "USD2025": 1,
+        "people": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: USD2025^1, people^-1; scale 1 in execution units."
+    },
+    "per_unmet_day": {
+      "kind": "hazard_rate",
+      "dimensions": {
+        "time": -1
+      },
+      "scale": 0.041666666666666664,
+      "description": "Dimensions: time^-1; scale 0.0416667 in execution units."
+    },
+    "people/day": {
+      "kind": "rate",
+      "dimensions": {
+        "people": 1,
+        "time": -1
+      },
+      "scale": 0.041666666666666664,
+      "description": "Dimensions: people^1, time^-1; scale 0.0416667 in execution units."
+    },
+    "USD/person": {
+      "kind": "unit_cost",
+      "dimensions": {
+        "USD": 1,
+        "people": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: USD^1, people^-1; scale 1 in execution units."
+    },
+    "USD/person-day": {
+      "kind": "unit_cost",
+      "dimensions": {
+        "USD": 1,
+        "people": -1,
+        "time": -1
+      },
+      "scale": 0.041666666666666664,
+      "description": "Dimensions: USD^1, people^-1, time^-1; scale 0.0416667 in execution units."
+    },
+    "USD_bn/yr": {
+      "kind": "money_rate",
+      "dimensions": {
+        "USD": 1,
+        "time": -1
+      },
+      "scale": 114155.25114155251,
+      "description": "Dimensions: USD^1, time^-1; scale 114155 in execution units."
+    },
+    "USD_m": {
+      "kind": "money",
+      "dimensions": {
+        "USD": 1
+      },
+      "scale": 1000000.0,
+      "description": "Dimensions: USD^1; scale 1e+06 in execution units."
+    },
+    "per_h": {
+      "dimensions": {
+        "time": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: time^-1; scale 1 in execution units."
+    },
+    "L": {
+      "dimensions": {
+        "L": 1
+      },
+      "scale": 1,
+      "description": "Dimensions: L^1; scale 1 in execution units."
+    },
+    "L/h": {
+      "dimensions": {
+        "L": 1,
+        "time": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: L^1, time^-1; scale 1 in execution units."
+    },
+    "L/day": {
+      "dimensions": {
+        "L": 1,
+        "time": -1
+      },
+      "scale": 0.041666666666666664,
+      "description": "Dimensions: L^1, time^-1; scale 0.0416667 in execution units."
+    },
+    "L/people": {
+      "dimensions": {
+        "L": 1,
+        "people": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: L^1, people^-1; scale 1 in execution units."
+    },
+    "USD2025": {
+      "dimensions": {
+        "USD2025": 1
+      },
+      "scale": 1,
+      "description": "Dimensions: USD2025^1; scale 1 in execution units."
+    },
+    "USD2025_m": {
+      "dimensions": {
+        "USD2025": 1
+      },
+      "scale": 1000000.0,
+      "description": "Dimensions: USD2025^1; scale 1e+06 in execution units."
+    },
+    "USD2025/h": {
+      "dimensions": {
+        "USD2025": 1,
+        "time": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: USD2025^1, time^-1; scale 1 in execution units."
+    },
+    "USD2005/person": {
+      "dimensions": {
+        "USD2005": 1,
+        "people": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: USD2005^1, people^-1; scale 1 in execution units."
+    },
+    "USD2020/person": {
+      "dimensions": {
+        "USD2020": 1,
+        "people": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: USD2020^1, people^-1; scale 1 in execution units."
+    },
+    "USD2024_bn/yr": {
+      "dimensions": {
+        "USD2024": 1,
+        "time": -1
+      },
+      "scale": 114155.25114155251,
+      "description": "Dimensions: USD2024^1, time^-1; scale 114155 in execution units."
+    },
+    "people/case": {
+      "dimensions": {
+        "people": 1,
+        "cases": -1
+      },
+      "scale": 1,
+      "kind": "conversion",
+      "description": "Dimensions: cases^-1, people^1; scale 1 in execution units."
+    },
+    "USD2025-hours": {
+      "kind": "exposure",
+      "dimensions": {
+        "USD2025": 1,
+        "time": 1
+      },
+      "scale": 1,
+      "description": "Dimensions: USD2025^1, time^1; scale 1 in execution units."
+    },
+    "USD2025/L": {
+      "dimensions": {
+        "USD2025": 1,
+        "L": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: L^-1, USD2025^1; scale 1 in execution units."
+    },
+    "person-hours": {
+      "kind": "exposure",
+      "dimensions": {
+        "people": 1,
+        "time": 1
+      },
+      "scale": 1,
+      "description": "Dimensions: people^1, time^1; scale 1 in execution units."
+    },
+    "cases/people": {
+      "kind": "conversion",
+      "dimensions": {
+        "cases": 1,
+        "people": -1
+      },
+      "scale": 1,
+      "description": "Dimensions: cases^1, people^-1; scale 1 in execution units."
+    },
+    "kg": {
+      "dimensions": {
+        "mass": 1
+      },
+      "scale": 1,
+      "description": "Dimensions: mass^1; scale 1 in execution units."
+    },
+    "m/s": {
+      "dimensions": {
+        "speed": 1
+      },
+      "scale": 1,
+      "description": "Dimensions: speed^1; scale 1 in execution units."
+    },
+    "degC": {
+      "dimensions": {
+        "temperature": 1
+      },
+      "scale": 1,
+      "description": "Dimensions: temperature^1; scale 1 in execution units."
+    },
+    "ppm": {
+      "dimensions": {},
+      "scale": 1e-06,
+      "label": "parts per million",
+      "description": "Dimensions: dimensionless; scale 1e-06 in execution units."
+    },
+    "gal": {
+      "dimensions": {
+        "L": 1
+      },
+      "scale": 3.785411784,
+      "description": "Dimensions: L^1; scale 3.78541 in execution units."
+    },
+    "Mgal": {
+      "dimensions": {
+        "L": 1
+      },
+      "scale": 3785411.784,
+      "description": "Dimensions: L^1; scale 3.78541e+06 in execution units."
+    },
+    "gal/day": {
+      "dimensions": {
+        "L": 1,
+        "time": -1
+      },
+      "scale": 0.157725491,
+      "description": "Dimensions: L^1, time^-1; scale 0.157725 in execution units."
+    },
+    "Mgal/day": {
+      "dimensions": {
+        "L": 1,
+        "time": -1
+      },
+      "scale": 157725.491,
+      "description": "Dimensions: L^1, time^-1; scale 157725 in execution units."
+    },
+    "Mgal/h": {
+      "dimensions": {
+        "L": 1,
+        "time": -1
+      },
+      "scale": 3785411.784,
+      "description": "Dimensions: L^1, time^-1; scale 3.78541e+06 in execution units."
+    },
+    "gal/person-day": {
+      "dimensions": {
+        "L": 1,
+        "people": -1,
+        "time": -1
+      },
+      "scale": 0.157725491,
+      "description": "Dimensions: L^1, people^-1, time^-1; scale 0.157725 in execution units."
+    }
+  },
+  "sources": [],
+  "claims": [],
+  "assumptions": []
+}

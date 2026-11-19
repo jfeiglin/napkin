@@ -488,6 +488,7 @@ class Moment:
         run = self.run
         for part, owner, details in tx.edits:  # an edit at a stop in the stage (`checkpoints.py`)
             run.recorder.entry(run.now, 'edit', part, owner, **details)
+            run.breaks.transferred(details)
             run.occurrences.met(details['target'])
         for source, destination, amount, origin in tx.moves:
             run.recorder.entry(

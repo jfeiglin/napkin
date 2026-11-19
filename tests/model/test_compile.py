@@ -1,170 +1,83 @@
-"""One rejected model file per class of build diagnostic, each located at the line that it names;
-and copies, which are numbered with names that expressions read."""
+"""The entry of the front end (`napkin/model/compile.py`): one refused model text for each stage that
+can refuse it, each a `LanguageError` whose problem has its code, the file that the caller names and
+the line that it is about. The lexer refuses a row that it cannot cut into tokens, the parser a line
+that is not written as the language writes it, the declared model a part that breaks a rule of names,
+types, units or ranges, and the program's checker an invariant that the engine relies on, at the line
+of the declared part that it names. A text that is refused at one line is accepted with that line
+mended, so each case refuses its own line only.
+
+Copies of a template left the language (spec, "What the first version leaves out"): a template's
+members are written by hand or are the rows of a table (`tests/language/test_collections.py`).
+"""
 
 from __future__ import annotations
 
 import pytest
 
-from napkin.engine.report import evaluate_outputs
-from napkin.model import ModelError
-from napkin.model.ir import thaw
-from napkin.model.language import front
-from tests.acceptance.helpers import LIBRARY, fixture
-from tests.build import (
-    block,
-    compiled,
-    document,
-    edit,
-    entity,
-    event,
-    formula,
-    library,
-    member,
-    output,
-    rejected,
-    replace,
-    run,
-    stock,
-    template,
-)
+from napkin.model.compile import compile_text
+from napkin.model.language.problems import LanguageError
+from tests.program.examples import UNITS
 
-# {class: (fixture, edit, code, place of the diagnostic, the start of the line that it names)}. The
-# parser names a line that breaks the form of the language (`syntax`, at no place); the resolver a
-# part that breaks its rules (`structure`); the builder a part that it cannot build (`build`); the
-# compiler's checks keep their codes.
+TANK = """\
+scenario "Tank"
+    horizon 4 h
+
+tank:
+    water: L = 8 L in [0 L, 20 L]
+        outflow.allocation = priority(this.drain)
+    spare: L = 0 L in [0 L,]
+    flow drain: this.water -> SINK
+        request = 1 L/h
+    flow fill: SOURCE -> this.spare
+        request = 1 L/h
+    alarm = event():
+        when this.water <= 2 L:
+            this.alarm.start()
+            reset when false
+        after 0 h:
+            move 1 L from this.spare to this.water
+"""
+
+# {case: (the line as the fixture writes it, the line with its fault, the code)}, one for each stage.
 CASES = {
-    # A line that the language does not have.
-    'unknown_key': ('F5', [member('tank/drained', 'kindd: stock')], 'syntax', '', 'kindd: stock'),
-    # A formula that reads a name that no entity has.
-    'unknown_name': (
-        'F5',
-        [member('tank', 'let seen: L = basn.water  @fixture')],
-        'build',
-        'tank/seen',
-        'let seen:',
-    ),
-    # An event that acts on what it reads, with no record for it.
-    'trigger_basis': (
-        'F5',
-        [member('basin', block('event noticed when tank.drain is "open":', 'logs += 1'))],
-        'build',
-        'basin/noticed',
-        'event noticed',
-    ),
-    # Two writes to one value in one step.
-    'written_twice': ('F5', [member('basin/log', 'logs = logs')], 'build', 'basin/log/done/2', 'logs = logs'),
-    # Two events that fire each other.
-    'calls_itself': (
-        'F5',
-        [member('basin/log', 'relog'), member('basin', block('event relog:', 'log'))],
-        'build',
-        'basin/log',
-        'event log:',
-    ),
-    # An event with no memory: it can trigger again on a crossing, and it sets nothing that its
-    # condition reads.
-    'trigger_memory': (
-        'F5',
-        [member('tank', block('event again when water <= 50 L:  @fixture', '"The tank is low."'))],
-        'unsupported_condition',
-        'tank/again/when:',
-        'event again when',
-    ),
-    'expression': (
-        'F5',
-        [replace('move 5 L from water to spill', 'move 1 h from water to spill')],
-        'expression',
-        'basin/log/done/0',
-        'move 1 h from',
-    ),
-    'unsupported_condition': (
-        'F5',
-        [replace('water <= 70 L:', 'water * water <= 70 L * 70 L:')],
-        'unsupported_condition',
-        'tank/alarm/when:',
-        'event alarm when siren is "off" and water * water',
-    ),
-    'bounds': (
-        'F5',
-        [replace('var water: L = level0 size 120 L', 'var water: L = level0 in 5 L to 1 L size 120 L')],
-        'bounds',
-        'tank/water',
-        'var water',
+    # The lexer: a tab is no indentation.
+    'tab': ('    spare: L = 0 L in [0 L,]', '\tspare: L = 0 L in [0 L,]', 'tab'),
+    # The parser: a flow names both of its ends.
+    'syntax': ('    flow fill: SOURCE -> this.spare', '    flow fill: -> this.spare', 'syntax'),
+    # The declared model: a name that names nothing, ...
+    'unknown_name': ('        request = 1 L/h\n    flow fill', '        request = this.rate\n    flow fill', 'unknown_name'),
+    # ... a range whose ends are in the wrong order, ...
+    'range': ('    water: L = 8 L in [0 L, 20 L]', '    water: L = 8 L in [20 L, 0 L]', 'range'),
+    # ... a condition that is a number, ...
+    'type': ('        when this.water <= 2 L:', '        when this.water:', 'type'),
+    # ... and a move whose amount is a time.
+    'unit': ('            move 1 L from', '            move 1 h from', 'unit'),
+    # The program's checker: a priority names flows of its own endpoint.
+    'priority_item': (
+        '        outflow.allocation = priority(this.drain)',
+        '        outflow.allocation = priority(this.fill)',
+        'priority_item',
     ),
 }
 
 
-def diagnostics(family, steps):
-    """(the rows of the edited file, the diagnostics that reject it)."""
-    text = edit(fixture(family), *steps)
-    origin = f'{family}.scn'
-    with pytest.raises(ModelError) as caught:
-        front.compile_file(front.read(text, origin), origin, thaw(LIBRARY))
-    return text.split('\n'), caught.value.diagnostics
-
-
 @pytest.mark.parametrize('name', sorted(CASES))
-def test_rejected_source_names_its_class_and_line(name):
-    family, steps, code, place, row = CASES[name]
-    rows, found = diagnostics(family, steps)
-    found = [d for d in found if d['code'] == code]
-    assert found, found
-    assert any(d['path'] == place for d in found), [d['path'] for d in found]
-    assert all(d.get('file') == f'{family}.scn' for d in found)
-    # Each one names the line of the edited file that it is about.
-    assert all(rows[d['line'] - 1].strip().startswith(row) for d in found if d['path'] == place)
+def test_each_stage_refuses_its_fault_with_its_code_file_and_line(name):
+    old, new, code = CASES[name]
+    assert TANK.count(old) == 1
+    text = TANK.replace(old, new)
+    with pytest.raises(LanguageError) as raised:
+        compile_text(text, UNITS, 'tank.scn')
+    (problem,) = raised.value.problems
+    line = next(number for number, row in enumerate(text.split('\n'), 1) if row.startswith(new.split('\n')[0]))
+    assert (problem.code, problem.file, problem.line) == (code, 'tank.scn', line)
+    assert str(raised.value).startswith(f'tank.scn:{line}:')
 
 
-def number_state(name):
-    """A free number state that starts at zero."""
-    return stock(name, 0, 'fraction', minimum=None, kind='state')
-
-
-def copies(*readers, members=(), count='2', outputs=()):
-    """A file with the template System, two copies of it, `s.1` and `s.2`, and `readers`."""
-    return document(
-        'Numerical fixture',
-        template('System', number_state('x'), *members, doc='A numerical fixture.'),
-        entity('s', template='System', copies=count),
-        *readers,
-        *outputs,
-        horizon=10,
-    )
-
-
-@pytest.mark.parametrize(
-    ('link', 'read'), [(None, 'seen = s.2.x'), ('let target = s.2', 'seen = target.x')], ids=['name', 'link']
-)
-def test_copies_are_numbered_with_names_that_expressions_can_read(link, read):
-    """Copy k of the set `s`, from 1, is `s.k` in the file and `s_k` in the structure, a name that
-    expressions can read. Each copy reads its number as `copy`; another entity reads one copy by its
-    name, or through a link that names it, and the top level reads the set with `sum()`. Copies with
-    keys are not a part of the language, and a copy that the set does not have is no name."""
-
-    def source(count='2', reading=read):
-        reader = entity(
-            'u',
-            *([link] if link else []),
-            number_state('seen'),
-            event('see', 't >= 2 h', reading),
-            doc='A reader of one copy.',
-            title='Reader',
-        )
-        return copies(
-            reader,
-            members=(formula('number', 'copy', 'fraction'), event('go', 't >= 1 h', 'x = number')),
-            count=count,
-            outputs=(
-                output('total', 'sum(s.x)', 'fraction', 'level', doc='The numbers that the copies took'),
-            ),
-        )
-
-    assert dict(compiled(source()).entities) == {'s_1': 's.1', 's_2': 's.2', 'u': 'u'}
-    rs, trajectory = run(source())
-    final = trajectory.env_at(10)
-    assert (final['s_1.x'], final['s_2.x'], final['u.seen']) == (1, 2, 2)
-    rows = evaluate_outputs({'resolved': rs, 'trajectory': trajectory}, library(), [10])
-    assert rows[0]['values'] == {'total': 1 + 2}
-    assert rejected(source(count='["a", "b"]')) == {('syntax', '')}
-    if link is None:
-        assert rejected(source(reading='seen = s.3.x')) == {('build', 'u/see/done/0')}
+def test_the_fixture_itself_is_accepted_and_a_text_with_no_horizon_has_no_run():
+    assert compile_text(TANK, UNITS).configuration is not None
+    bare = compile_text(TANK.split('\n', 2)[2], UNITS)
+    assert bare.configuration is None
+    with pytest.raises(LanguageError) as raised:
+        bare.configure()
+    assert raised.value.codes == ['scenario']

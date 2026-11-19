@@ -1,0 +1,338 @@
+[
+  {
+    "id": "camden_mercerme2025_canal_road",
+    "type": "article-newspaper",
+    "title": "NJ American Water Highlights Treatment Plant as Hopewell Weighs Sale",
+    "author": [
+      {
+        "family": "Siditsky",
+        "given": "Seth"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2025,
+          7,
+          31
+        ]
+      ]
+    },
+    "URL": "https://mercerme.com/nj-american-water-highlights-treatment-plant-as-hopewell-weighs-sale/",
+    "container-title": "MercerMe",
+    "genre": "News article",
+    "custom": {
+      "metadata_status": "Checked against the retrieved page on 2026-10-25: the title, the byline (Seth Siditsky) and the date (July 31, 2025, also in the page's datePublished) are on the page. The requested short link https://mercerme.com/?p=135989 redirects to the article URL.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://mercerme.com/nj-american-water-highlights-treatment-plant-as-hopewell-weighs-sale/",
+        "notes": "Retrieved https://mercerme.com/nj-american-water-highlights-treatment-plant-as-hopewell-weighs-sale/ at 2026-10-25T16:04:31Z (curl, HTTP 200, 249803 bytes, sha256 cf4a8b904d4805bb3c69315ae0fa8056df8baf03a65d9d899b0e386b55228f05); text by html.parser-py3.14 blocks-v1, sha256 b70f985fef9804604626fbcd4ad0a41e728d5103aa00deb5f28ba0a5ae2afd1d.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://mercerme.com/?p=135989",
+          "final_url": "https://mercerme.com/nj-american-water-highlights-treatment-plant-as-hopewell-weighs-sale/",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:04:31Z",
+          "tool": "curl",
+          "media_type": "text/html; charset=UTF-8",
+          "bytes": 249803,
+          "sha256": "cf4a8b904d4805bb3c69315ae0fa8056df8baf03a65d9d899b0e386b55228f05",
+          "text": {
+            "extractor": "html.parser-py3.14 blocks-v1",
+            "sha256": "b70f985fef9804604626fbcd4ad0a41e728d5103aa00deb5f28ba0a5ae2afd1d"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "camden_msex2025_10k",
+    "type": "report",
+    "title": "Middlesex Water Company Annual Report on Form 10-K for the fiscal year ended December 31, 2024",
+    "author": [
+      {
+        "literal": "Middlesex Water Company"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2025,
+          2,
+          28
+        ]
+      ]
+    },
+    "URL": "https://www.sec.gov/Archives/edgar/data/66004/000117494725000251/msex-20241231.htm",
+    "publisher": "U.S. Securities and Exchange Commission, EDGAR",
+    "genre": "Annual report on Form 10-K",
+    "custom": {
+      "metadata_status": "Checked against the text rendered by the third-party tool on 2026-10-25: Form 10-K, annual report for the fiscal year ended December 31, 2024, signed on behalf of Middlesex Water Company by its President and Chief Executive Officer on February 28, 2025, which stands as the issue date; the EDGAR accession number is 0001174947-25-000251.",
+      "verification": {
+        "status": "partial",
+        "date": "2026-10-25",
+        "method": "third_party_primary_retrieval",
+        "url": "https://www.sec.gov/Archives/edgar/data/66004/000117494725000251/msex-20241231.htm",
+        "notes": "Retrieved https://www.sec.gov/Archives/edgar/data/66004/000117494725000251/msex-20241231.htm at 2026-10-25T16:06:36Z (tinyfish, HTTP None, 291862 bytes, sha256 f6f1cc60d1ed0a264e0a51bc2339d68447b414c5b95216e030bf8e50944d642b); text by utf8-decode-v1, sha256 f6f1cc60d1ed0a264e0a51bc2339d68447b414c5b95216e030bf8e50944d642b. Access failed: https://www.sec.gov/Archives/edgar/data/66004/000117494725000251/msex-20241231.htm via curl (HTTP 403): curl: (22) The requested URL returned error: 403 (SEC refuses clients without a declared user agent; the user agent was not changed). Access failed: https://web.archive.org/cdx/search/cdx?url=sec.gov/Archives/edgar/data/66004/000117494725000251/msex-20241231.htm via archive (HTTP None): Connection reset: the tunnel to web.archive.org closed before the CDX lookup completed (three tries on 2026-10-25).",
+        "access": "third_party_primary_retrieval",
+        "retrieval": {
+          "requested_url": "https://www.sec.gov/Archives/edgar/data/66004/000117494725000251/msex-20241231.htm",
+          "final_url": "https://www.sec.gov/Archives/edgar/data/66004/000117494725000251/msex-20241231.htm",
+          "http_status": null,
+          "retrieved_at": "2026-10-25T16:06:36Z",
+          "tool": "tinyfish",
+          "media_type": "text/plain",
+          "bytes": 291862,
+          "sha256": "f6f1cc60d1ed0a264e0a51bc2339d68447b414c5b95216e030bf8e50944d642b",
+          "text": {
+            "extractor": "utf8-decode-v1",
+            "sha256": "f6f1cc60d1ed0a264e0a51bc2339d68447b414c5b95216e030bf8e50944d642b"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "camden_njaw2022_shields_direct",
+    "type": "report",
+    "title": "Direct Testimony of Donald C. Shields, Exhibit P-5, Petition of New Jersey-American Water Company, Inc. for Approval of Increased Tariff Rates and Charges for Water and Wastewater Service",
+    "author": [
+      {
+        "family": "Shields",
+        "given": "Donald C."
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2022,
+          1,
+          14
+        ]
+      ]
+    },
+    "URL": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1253503",
+    "publisher": "New Jersey Board of Public Utilities, Public Document Search",
+    "number": "BPU Docket No. WR2201____",
+    "genre": "Direct testimony in a base rate case",
+    "custom": {
+      "metadata_status": "Checked against the retrieved PDF on 2026-10-25: the cover page gives the caption, BPU Docket No. WR2201____, 'Direct Testimony of Donald C. Shields', January 14, 2022 and Exhibit P-5; the running header names New Jersey-American Water Company, Inc.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1253503",
+        "notes": "Retrieved https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1253503 at 2026-10-25T16:15:04Z (curl, HTTP 200, 1011530 bytes, sha256 31a2dc76d1ab1d8b180d1e964142f7c1777df5656684c81a03befc3d73068338); text by gs-10.07.1 txtwrite-pages, sha256 6c2177220783f2cd96673ae1e7bd230527d81b8882dc4a5a6caba733f2be2e7c.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1253503",
+          "final_url": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1253503",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:15:04Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 1011530,
+          "sha256": "31a2dc76d1ab1d8b180d1e964142f7c1777df5656684c81a03befc3d73068338",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "6c2177220783f2cd96673ae1e7bd230527d81b8882dc4a5a6caba733f2be2e7c"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "camden_njaw2024_resic_foundational",
+    "type": "report",
+    "title": "2024 RESIC Foundational Filing",
+    "author": [
+      {
+        "literal": "New Jersey-American Water Company, Inc."
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024,
+          4,
+          19
+        ]
+      ]
+    },
+    "URL": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1339438",
+    "publisher": "New Jersey Board of Public Utilities, Public Document Search",
+    "number": "BPU Docket No. WR2404____",
+    "genre": "Regulatory filing (Resiliency and Environmental System Investment Charge foundational filing)",
+    "custom": {
+      "metadata_status": "Checked against the retrieved PDF on 2026-10-25: a cover letter of April 19, 2024 from Christopher M. Arfaa, Director, Corporate Counsel, to the BPU Secretary encloses the New Jersey-American Water Company, Inc. 2024 RESIC Foundational Filing, BPU Docket No. WR2404____ (number not yet assigned in the letter). The running header of each page names the company and the filing.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1339438",
+        "notes": "Retrieved https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1339438 at 2026-10-25T16:03:32Z (curl, HTTP 200, 1488394 bytes, sha256 93663949a34801965c1949c28ce7e5b0006d0e3ef6207339bf30e2364484e4ed); text by gs-10.07.1 txtwrite-pages, sha256 d643dfebd9467164c7f52194e48253d0ecfec9a028dd6c88833f4fc5deb9813b.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1339438",
+          "final_url": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1339438",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:03:32Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 1488394,
+          "sha256": "93663949a34801965c1949c28ce7e5b0006d0e3ef6207339bf30e2364484e4ed",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "d643dfebd9467164c7f52194e48253d0ecfec9a028dd6c88833f4fc5deb9813b"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "camden_njaw2024_shields_direct",
+    "type": "report",
+    "title": "Direct Testimony of Donald C. Shields, Exhibit P-5, Petition of New Jersey-American Water Company, Inc. for Approval of Increased Tariff Rates and Charges for Water and Wastewater Service, Change in Depreciation Rates, and Other Tariff Modifications",
+    "author": [
+      {
+        "family": "Shields",
+        "given": "Donald C."
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024,
+          1,
+          19
+        ]
+      ]
+    },
+    "URL": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1326549",
+    "publisher": "New Jersey Board of Public Utilities, Public Document Search",
+    "number": "BPU Docket No. WR2401____",
+    "genre": "Direct testimony in a base rate case",
+    "custom": {
+      "metadata_status": "Checked against the retrieved PDF on 2026-10-25: the cover page gives the caption, BPU Docket No. WR2401____, 'Direct Testimony of Donald C. Shields', January 19, 2024 and Exhibit P-5; the running header names New Jersey-American Water Company, Inc.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1326549",
+        "notes": "Retrieved https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1326549 at 2026-10-25T16:03:23Z (curl, HTTP 200, 242110 bytes, sha256 dc049fca7206ba033c140276f88af42dac043b4ab75a98e93c71dbb9d93fd109); text by gs-10.07.1 txtwrite-pages, sha256 df32a813ad37b24de78525010cf155cd7a36b455dabb8a382b315e8bbb346a79.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1326549",
+          "final_url": "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1326549",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:03:23Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 242110,
+          "sha256": "dc049fca7206ba033c140276f88af42dac043b4ab75a98e93c71dbb9d93fd109",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "df32a813ad37b24de78525010cf155cd7a36b455dabb8a382b315e8bbb346a79"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "camden_njbpu2025_msex_pwac_order",
+    "type": "legal_case",
+    "title": "In the Matter of the Petition of Middlesex Water Company for Approval to Change the Levels of its Purchased Water Adjustment Clause Pursuant to N.J.A.C. 14:9-7.1, et seq.: Order Adopting Stipulation",
+    "author": [
+      {
+        "literal": "New Jersey Board of Public Utilities"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2025,
+          2,
+          12
+        ]
+      ]
+    },
+    "URL": "https://nj.gov/bpu/pdf/boardorders/2025/20250212/5A%20ORDER%20Middlesex%20Water%20Company%20PWAC.pdf",
+    "publisher": "New Jersey Board of Public Utilities",
+    "number": "BPU Docket No. WR24100782",
+    "genre": "Board order adopting a stipulation of settlement, with exhibits",
+    "custom": {
+      "metadata_status": "Checked against the retrieved PDF on 2026-10-25: the caption, 'Order Adopting Stipulation', BPU Docket No. WR24100782 and Agenda Date 2/12/25, Agenda Item 5A are on the first page; the agenda date stands as the issue date. The stipulation's Exhibit E (updated 11-12-24) holds the purchased water schedules.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://nj.gov/bpu/pdf/boardorders/2025/20250212/5A%20ORDER%20Middlesex%20Water%20Company%20PWAC.pdf",
+        "notes": "Retrieved https://nj.gov/bpu/pdf/boardorders/2025/20250212/5A%20ORDER%20Middlesex%20Water%20Company%20PWAC.pdf at 2026-10-25T16:06:53Z (curl, HTTP 200, 6376694 bytes, sha256 36377515044fe0126c390e23e68827d3c9aaf6466ea1202bdd898da6a628550d); text by gs-10.07.1 txtwrite-pages, sha256 d3bd211a0704a62bdd8589b6935539c717f1b7e190f699b337383ca826f28a83.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://nj.gov/bpu/pdf/boardorders/2025/20250212/5A%20ORDER%20Middlesex%20Water%20Company%20PWAC.pdf",
+          "final_url": "https://nj.gov/bpu/pdf/boardorders/2025/20250212/5A%20ORDER%20Middlesex%20Water%20Company%20PWAC.pdf",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:06:53Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 6376694,
+          "sha256": "36377515044fe0126c390e23e68827d3c9aaf6466ea1202bdd898da6a628550d",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "d3bd211a0704a62bdd8589b6935539c717f1b7e190f699b337383ca826f28a83"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "camden_njdep2024_raritan_pwsdetail",
+    "type": "webpage",
+    "title": "Water supply deficit/surplus detail: New Jersey American Water Company - Raritan System (PWSID 2004002)",
+    "author": [
+      {
+        "literal": "New Jersey Department of Environmental Protection, Division of Water Supply & Geoscience"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2024,
+          1,
+          30
+        ]
+      ]
+    },
+    "URL": "https://www.nj.gov/cgi-bin/dep/watersupply/pwsdetail.pl?id=2004002",
+    "publisher": "New Jersey Department of Environmental Protection",
+    "genre": "Public water system firm capacity and demand record, web page",
+    "custom": {
+      "metadata_status": "Checked against the retrieved page on 2026-10-25: the page names the system (New Jersey American Water Company - Raritan System), PWSID 2004002, county Union and 'Last Updated: 01/30/2024', which stands as the issue date. The page heading names the NJDEP Division of Water Supply & Geoscience; no person is named.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://www.nj.gov/cgi-bin/dep/watersupply/pwsdetail.pl?id=2004002",
+        "notes": "Retrieved https://www.nj.gov/cgi-bin/dep/watersupply/pwsdetail.pl?id=2004002 at 2026-10-25T16:03:03Z (curl, HTTP 200, 17131 bytes, sha256 7951d0296ca1073de102cdac2ddfa3f71c9d60b97606591ebb2eead6da8e2f90); text by html.parser-py3.14 blocks-v1, sha256 af33a96b7b58f8a1623dc5105f3482b56d3ef155d754794ef15d7e01382cd394.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://www.nj.gov/cgi-bin/dep/watersupply/pwsdetail.pl?id=2004002",
+          "final_url": "https://www.nj.gov/cgi-bin/dep/watersupply/pwsdetail.pl?id=2004002",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:03:03Z",
+          "tool": "curl",
+          "media_type": "text/html",
+          "bytes": 17131,
+          "sha256": "7951d0296ca1073de102cdac2ddfa3f71c9d60b97606591ebb2eead6da8e2f90",
+          "text": {
+            "extractor": "html.parser-py3.14 blocks-v1",
+            "sha256": "af33a96b7b58f8a1623dc5105f3482b56d3ef155d754794ef15d7e01382cd394"
+          }
+        }
+      }
+    }
+  }
+]

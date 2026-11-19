@@ -1,0 +1,337 @@
+[
+  {
+    "id": "E-SC43-CLAYTON-CLAYTON-COUNTY-SYSTEM",
+    "source": "clayton_ccwa2025_acfr",
+    "locator": "Introductory Section, Overview of the System and Interconnections (printed p. 11, PDF p. 18); Schedule 17 note 3 (printed p. 153, PDF p. 162)",
+    "evidence_type": "financial_report",
+    "shows": "The overview of the system gives three production facilities with 42 MGD capacity and 28 MGD produced, five reservoirs, and water storage in three clear wells (6.7 MG), seven ground storage tanks (23 MG) and four elevated tanks (2.5 MG), 32.2 MG in all (derived). The Authority has six connections with the City of Atlanta that can be activated on demand, with piping for about 5 MGD of additional supply, and more connections with the DeKalb and Fayette County systems. A note to the table of largest customers says that CCWA has a wholesale agreement with the City of College Park.",
+    "limits": "Rounded figures for the fiscal year ended April 30, 2025. The 28 MGD is an annual average, and the report gives no highest day. The interconnections are for supply on demand, not routine purchases. The College Park note gives no volume.",
+    "data": {
+      "production_capacity": {
+        "value": 42,
+        "unit": "Mgal/day",
+        "note": "Printed: overview, '42 MGD Capacity'."
+      },
+      "average_production": {
+        "value": 28,
+        "unit": "Mgal/day",
+        "note": "Printed: overview, '28 MGD Produced'."
+      },
+      "clear_wells": {
+        "value": 6.7,
+        "unit": "Mgal",
+        "note": "Printed: '3 Clear Wells: 6.7 MG'."
+      },
+      "ground_storage_tanks": {
+        "value": 23,
+        "unit": "Mgal",
+        "note": "Printed: '7 Ground Storage Tanks: 23 MG'."
+      },
+      "elevated_tanks": {
+        "value": 2.5,
+        "unit": "Mgal",
+        "note": "Printed: '4 Elevated Tanks: 2.5 MG'."
+      },
+      "storage_total": {
+        "value": 32.2,
+        "unit": "Mgal",
+        "note": "Derived: 6.7 + 23 + 2.5 MG."
+      },
+      "atlanta_interconnection_supply": {
+        "value": 5,
+        "unit": "Mgal/day",
+        "note": "Printed: 'piping capable of providing about 5 MGD, in additional supply from these connections'."
+      }
+    },
+    "valid_for": {
+      "place": "Clayton County, Georgia",
+      "period": "fiscal year May 1, 2024 to April 30, 2025",
+      "as_of": "FY2025 report"
+    },
+    "quotes": [
+      {
+        "locator": "Overview of the System (printed p. 11)",
+        "text": "•3 Production Facilities"
+      },
+      {
+        "locator": "Overview of the System (printed p. 11)",
+        "text": "•42 MGD Capacity"
+      },
+      {
+        "locator": "Overview of the System (printed p. 11)",
+        "text": "•28 MGD Produced"
+      },
+      {
+        "locator": "Overview of the System (printed p. 11)",
+        "text": "•3 Clear Wells: 6.7 MG"
+      },
+      {
+        "locator": "Overview of the System (printed p. 11)",
+        "text": "•7 Ground Storage"
+      },
+      {
+        "locator": "Overview of the System (printed p. 11), next line",
+        "text": "Tanks: 23 MG"
+      },
+      {
+        "locator": "Overview of the System (printed p. 11)",
+        "text": "•4 Elevated Tanks: 2.5"
+      },
+      {
+        "locator": "Interconnections (printed p. 11)",
+        "text": "Drinking Water: The Authority has six connections with the City of"
+      },
+      {
+        "locator": "Interconnections (printed p. 11)",
+        "text": "capable of providing about 5 MGD, in additional supply from these"
+      },
+      {
+        "locator": "Schedule 17, note 3 (printed p. 153)",
+        "text": "CCWA has a wholesale agreement with City of College Park."
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "locator_checked": "Introductory Section, Overview of the System and Interconnections (printed p. 11, PDF p. 18); Schedule 17 note 3 (printed p. 153, PDF p. 162)",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Read the introductory section and the statistical section. The overview is set in three columns, so each figure is quoted on its own line. Schedule 9 (printed p. 145, PDF p. 154) and Schedule 17 are images without extracted text. Read from the rendered page, Schedule 9 gives total water produced in FY2025 of 10,029 million gallons, imported water through interconnections of 0 in FY2025 (306 in FY2023 and 30,992 in FY2024, the last larger than total production) and a daily capacity of 15 MGD for the interconnections; Schedule 17 gives College Park water revenue of $600,561 (0.86%). These figures are not quoted or used as data.",
+      "content_sha256": "61775c3e7c3e785ae79e4faddba07bba7d42d975e982dc3da10540f925b8b215",
+      "retrieval_sha256": "c7a657eb9d4371cf7a211cb5d6ad2639d289c2eed6c65b17d4f70329c53f5e03",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 10,
+        "total": 10
+      }
+    }
+  },
+  {
+    "id": "E-SC43-CLAYTON-CLAYTON-COUNTY-PLANTS",
+    "source": "clayton_ccwa2026_budget_fy2027",
+    "locator": "Introduction, Overview of the System (printed p. 21, PDF p. 22) and Water Operations (printed p. 23, PDF p. 24)",
+    "evidence_type": "budget_document",
+    "shows": "The Authority is primarily a retail water utility that sells water directly to end users. It delivers about 9.9 billion gallons of potable water a year to over 87,000 customers. It produces its water from its reservoirs, with supplemental raw water from the Flint River. Its facilities provide a capacity of 42 MGD, and current operations give an average production of 28.15 MGD. The W.J. Hooper facility can provide up to 20 MGD of potable water, the J.W. Smith facility up to 12 MGD and the Terry R. Hicks facility 10 MGD. The overview repeats the storage of the 2025 report: clear wells 6.7 MG, ground storage tanks 23 MG and elevated tanks 2.5 MG.",
+    "limits": "Rated capacities and an annual average; the document gives no highest day. The 20, 12 and 10 MGD are the potable water that each plant with its reservoirs can provide. The average production includes the water sold to College Park.",
+    "data": {
+      "average_production": {
+        "value": 28.15,
+        "unit": "Mgal/day",
+        "note": "Printed: 'Current operations have resulted in an average production of 28.15 MGD.'"
+      },
+      "hooper_capacity": {
+        "value": 20,
+        "unit": "Mgal/day",
+        "note": "Printed: 'supply sufficient resources to provide up to 20 MGD of potable water'."
+      },
+      "smith_capacity": {
+        "value": 12,
+        "unit": "Mgal/day",
+        "note": "Printed: 'the J.W. Smith facility with the resources to provide up to 12 MGD of potable water'."
+      },
+      "hicks_capacity": {
+        "value": 10,
+        "unit": "Mgal/day",
+        "note": "Printed: 'The Terry R. Hicks facility has the capacity to provide 10 MGD of potable water'."
+      },
+      "production_capacity": {
+        "value": 42,
+        "unit": "Mgal/day",
+        "note": "Printed: 'provide capacity of 42 MGD'; equals 20 + 12 + 10 MGD."
+      }
+    },
+    "valid_for": {
+      "place": "Clayton County, Georgia",
+      "period": "current operations before fiscal year 2026-2027",
+      "as_of": "2026 adopted budget"
+    },
+    "quotes": [
+      {
+        "locator": "Water Operations (printed p. 23)",
+        "text": "The Authority is primarily a retail water utility that sells water directly to end users."
+      },
+      {
+        "locator": "Water Operations (printed p. 23)",
+        "text": "The Authority produces its potable water from raw water taken from its reservoirs and supplemental raw water withdrawals from the Flint River."
+      },
+      {
+        "locator": "Water Operations (printed p. 23)",
+        "text": "Current operations have resulted in an average production of 28.15 MGD."
+      },
+      {
+        "locator": "Water Operations (printed p. 23)",
+        "text": "Blalock and Shamrock supply sufficient resources to provide up to 20 MGD of potable water."
+      },
+      {
+        "locator": "Water Operations (printed p. 23)",
+        "text": "This provides the J.W. Smith facility with the resources to provide up to 12 MGD of potable water."
+      },
+      {
+        "locator": "Water Operations (printed p. 23)",
+        "text": "The Terry R. Hicks facility has the capacity to provide 10 MGD of potable water"
+      },
+      {
+        "locator": "Overview of the System (printed p. 21)",
+        "text": "•3 Clear Wells: 6.7 MG"
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "locator_checked": "Introduction, Overview of the System (printed p. 21, PDF p. 22) and Water Operations (printed p. 23, PDF p. 24)",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Read the introduction (printed pp. 7-25). The page text has extraction gaps inside some words (for example \"reclaimed wate r\"), so the quotes avoid those words. The sentence with the 42 MGD capacity breaks at such a gap and is not quoted; the 42 MGD is also printed in the overview and equals the sum of the three plants.",
+      "content_sha256": "74a25e291da12aecb182204e9cad66bc780c04980e67c57635051485baa6a075",
+      "retrieval_sha256": "7e73d122bf1e577b05481d3796dd71e1ad0369aec48a05bdc2c49c2cd3c21359",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 7,
+        "total": 7
+      }
+    }
+  },
+  {
+    "id": "E-SC43-CLAYTON-CLAYTON-COUNTY-INTERCONNECTIONS",
+    "source": "clayton_ccwa2026_budget_fy2027",
+    "locator": "Introduction, Interconnections (printed p. 25, PDF p. 26); Statistical Information, Ten Largest Customers, note 3 (printed p. 374, PDF p. 375)",
+    "evidence_type": "budget_document",
+    "shows": "The Authority has six connections, all with the City of Atlanta, which it can activate on demand under a contract; its piping can bring about 8 MGD of additional supply through them. Connections with the DeKalb and Fayette County systems can supply up to two MGD. A note to the table of largest customers says CCWA has a wholesale agreement with the City of College Park.",
+    "limits": "Connections for supply on demand, not routine purchases: the document reports no water bought in normal operation. The 8 MGD differs from the about 5 MGD of the 2025 financial report. The College Park note gives no volume.",
+    "data": {
+      "atlanta_interconnection_supply": {
+        "value": 8,
+        "unit": "Mgal/day",
+        "note": "Printed: 'piping capable of providing about 8 MGD, in additional supply from these connections'."
+      },
+      "dekalb_fayette_supply": {
+        "value": 2,
+        "unit": "Mgal/day",
+        "note": "Printed: 'which can supply up to two MGD'."
+      }
+    },
+    "valid_for": {
+      "place": "Clayton County, Georgia",
+      "period": "2026",
+      "as_of": "2026 adopted budget"
+    },
+    "quotes": [
+      {
+        "locator": "Interconnections (printed p. 25)",
+        "text": "Drinking Water: The Authority has six connections, all with the City of Atlanta, which can be activated on demand pursuant to a contract"
+      },
+      {
+        "locator": "Interconnections (printed p. 25)",
+        "text": "The Authority has piping capable of providing about 8 MGD, in additional supply from these connections. Additional connections exist with the water systems of neighboring DeKalb and Fayette Counties, which can supply up to two MGD."
+      },
+      {
+        "locator": "Ten Largest Customers, note 3 (printed p. 374)",
+        "text": "CCWA has a wholesale agreement with City of College Park."
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "locator_checked": "Introduction, Interconnections (printed p. 25, PDF p. 26); Statistical Information, Ten Largest Customers, note 3 (printed p. 374, PDF p. 375)",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes",
+        "data"
+      ],
+      "notes": "Read the interconnection section and the statistical tables. The largest-customer table itself is an image; only its notes are in the extracted text.",
+      "content_sha256": "ac542fb944677da805e283b1b077c5a16e8b0f79309d6b684e3cf220e7b68826",
+      "retrieval_sha256": "7e73d122bf1e577b05481d3796dd71e1ad0369aec48a05bdc2c49c2cd3c21359",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 3,
+        "total": 3
+      }
+    }
+  },
+  {
+    "id": "E-SC43-CLAYTON-CLAYTON-COUNTY-COLLEGE-PARK",
+    "source": "clayton_collegepark2023_council_agenda",
+    "locator": "Not opened; a web search summary attributes the figures to this agenda document",
+    "evidence_type": "municipal_record",
+    "shows": "A web search summary of this College Park document says that College Park receives treated water through three interconnects: the City of East Point supplies 2.8 MGD, the Clayton County Water Authority (CCWA) supplies 0.7 MGD, and the City of Atlanta is an emergency connection. The same search summarizes the College Park 2024 water quality report as giving its supply as 83% from East Point, 15% from CCWA and 2% from ground water.",
+    "limits": "Unverified: no one has read the document in this pass, and the figures come from a search engine summary. It is not clear whether 0.7 MGD is a capacity, a contract amount or a normal flow. The scenario takes it as the most CCWA sends College Park on a peak day.",
+    "data": {
+      "ccwa_supply_to_college_park": {
+        "value": 0.7,
+        "unit": "Mgal/day",
+        "note": "Printed, as a web search summary reports it (not opened): 'CCWA supplies 0.7 MGD'."
+      }
+    },
+    "valid_for": {
+      "place": "City of College Park, Fulton and Clayton Counties, Georgia",
+      "period": "2023",
+      "as_of": "November 6, 2023 agenda"
+    },
+    "verification": {
+      "status": "unverified",
+      "date": "2026-10-25",
+      "method": "access_attempt",
+      "checked_fields": [],
+      "notes": "Not opened: HTTP 403 from the site, TinyFish target unreachable, Internet Archive unreachable. The College Park 2024 water quality report (https://collegepark.hosted.civiclive.com/news/what_s_new/2024_annual_drinking_water_quality_report) also returned HTTP 403 to both tools. Reverify before the value is relied on.",
+      "content_sha256": "88a5693f8fd6bf8e6ee18c4fa2f13a80162a72fc6159962cdd74a35e54a227a0"
+    }
+  },
+  {
+    "id": "E-SC43-CLAYTON-CLAYTON-COUNTY-BUYERS",
+    "source": "clayton_epa2026_sdwis_ccwa_buyers",
+    "locator": "All eight records of the query result",
+    "evidence_type": "official_statistic",
+    "shows": "SDWIS lists eight consecutive connections with the Clayton County Water Authority as the seller. Five are active: GA1210002 (College Park) with availability code P (permanent), and GA1130001 (Fayette County), GA1510001 (Henry County Water Authority), GA2550000 (Griffin) and GA2550036 (Spalding County) with availability code E (emergency). Three connections to other Clayton County systems are inactive.",
+    "limits": "A registry of connections, not of volumes or capacities. The system names come from the SDWIS WATER_SYSTEM table, not from this query.",
+    "valid_for": {
+      "place": "Clayton County, Georgia",
+      "period": "current SDWIS records",
+      "as_of": "2026-10-25 retrieval"
+    },
+    "quotes": [
+      {
+        "locator": "record for GA1210002",
+        "text": "\"pwsid\": \"GA1210002\", \"primacy_agency_code\": \"GA\", \"epa_region\": \"04\", \"facility_id\": \"23487\""
+      },
+      {
+        "locator": "record for GA1210002",
+        "text": "\"water_type_code\": \"SW\", \"availability_code\": \"P\", \"seller_treatment_code\": \"F\", \"seller_pwsid\": \"GA0630000\""
+      },
+      {
+        "locator": "every record",
+        "text": "\"seller_pws_name\": \"CLAYTON COUNTY WATER AUTHORITY\""
+      }
+    ],
+    "verification": {
+      "status": "verified",
+      "date": "2026-10-25",
+      "method": "primary_full_text",
+      "locator_checked": "All eight records of the query result",
+      "checked_fields": [
+        "shows",
+        "limits",
+        "quotes"
+      ],
+      "notes": "Read all eight records. The names of GA1210002 (COLLEGE PARK), GA1130001 (FAYETTE COUNTY), GA1510001 (HENRY COUNTY WATER AUTHORITY), GA2550000 (GRIFFIN) and GA2550036 (SPALDING COUNTY WATER SYSTEM) were checked in the SDWIS WATER_SYSTEM table on the same day.",
+      "content_sha256": "0dcb96fb1e4678c3be2b36a6b567887142db8435d6611a574e24438507d58207",
+      "retrieval_sha256": "7b64954bb9bb0d54fe478b031029c9015cbec9337c80b537a2e2bb915af8ad5e",
+      "quote_match": {
+        "normalization": "nfkc-lig-v2",
+        "matched": 3,
+        "total": 3
+      }
+    }
+  }
+]

@@ -422,3 +422,23 @@ def test_the_preferred_routes_of_a_request_carry_it_first_inside_a_solver(order,
     for name, rate in zip(('main', 'backup'), rates):
         expected = value_at(oracle, program, Key('clinic', (name, 'actual_rate')), 0)
         assert float(expected) == rate
+
+
+def test_a_formula_that_reads_an_enforced_equality_holds_within_the_solvers_tolerance():
+    """R-A3-02: the worked network's `rate_follows_levels` (a route's signed rate equals its pull times
+    the difference of the levels), which the solver enforces, holds at every time; the solver leaves
+    the idle route at 4e-26 W against 0 W, which an exact comparison reads as false from 2 h. The
+    solver reads the equality; its readers compare to 1e-7 relative, one canonical unit at least."""
+    from dataclasses import replace
+
+    from tests.program.examples import EXAMPLES
+
+    example = EXAMPLES['network']()
+    configuration = replace(example.configuration, request=Request(4))
+    record = run(example.program, configuration)
+    names = ['links.garden_junction.rate_follows_levels', 'links.junction_clinic.rate_follows_levels']
+    for reading in read(record, example.program, names, [0, 1, 2, 2.5, 3, 4]):
+        assert reading.values == (True,) * 6
+    plan = Plan.of(example.program, configuration)
+    assert set(plan.enforced) == set(names)
+    assert all(plan.enforced[name].ops == ('eq',) for name in names)

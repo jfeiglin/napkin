@@ -1,157 +1,115 @@
-"""Scenario files own their evidence and units; shared vocabulary is the only common input."""
+"""A package owns its units and its evidence; the library that its main file names shares the rest
+(`napkin/model/library.py`). The packages here are those of a synthetic catalogue in `tmp_path`
+(`tests/evidence/support.py`): the package's folder owns its units and its records, and the shared
+library its vocabulary.
+
+A unit is in one place only: a units file never redefines a unit of the prelude or of the shared
+library, nor does the library redefine a unit of the prelude, even with the same definition. Each
+record that a used record rests on is there; a record of the package's folder that the model does not
+use is refused, except to an author who loads the library to adopt or draft records; and each evidence
+file holds an array of records. Another package's folder neither supplies a missing record nor
+changes the hash of the model. That the hash covers no record and no label is in
+`tests/language/test_packages.py` and `tests/evidence/test_index.py`.
+"""
+
+from __future__ import annotations
 
 import json
 
 import pytest
 
-from napkin.model import ModelError, load_json, load_library, load_scenario
+from napkin.model import ModelError, load_library, load_scenario
 from napkin.model.evidence import claim_digest
-from napkin.model.ir import thaw
 from napkin.model.library import prelude_units
-from tests.build import compiled, edit, evidence_library, fixture_claim, member, parameter, sc99
-from tests.owned import write_scenario
+from tests.evidence.support import SERVICE, evidence_library, fixture_claim, write_package
 from tools import catalogue
 
 
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(thaw(value)), encoding='utf-8')
+    path.write_text(json.dumps(value), encoding='utf-8')
 
 
-def owned_files(root, library=None):
-    """(the model.scn of the folder of SC99 in `root`, with its own units and evidence and the shared
-    vocabulary of `library`; the model of the same text that `library` builds in memory)."""
-    library = evidence_library() if library is None else library
-    path, _ = write_scenario(root, sc99(), library)
-    return path, compiled(sc99(), library)
+def package(root, library=None):
+    """The main file of the package SC99 below `root`, with the records of `library` in its folder."""
+    return write_package(root, {'model.scn': SERVICE}, evidence_library() if library is None else library)
 
 
-def test_physical_ownership_preserves_projection_and_requires_no_central_library(tmp_path):
-    path, projected = owned_files(tmp_path)
+def refused(path, load=load_scenario):
+    with pytest.raises(ModelError) as raised:
+        load(path)
+    return raised.value.diagnostics
+
+
+def test_a_package_loads_with_its_own_units_and_records_and_the_shared_vocabulary(tmp_path):
+    path = package(tmp_path)
     assert not (tmp_path / catalogue.LIBRARY / 'library.json').exists()
-    actual = load_scenario(path)
-    assert actual.model_hash == projected.model_hash
-    assert actual.library_hash == projected.library_hash
-    assert actual.structures == projected.structures
-    first = next(iter(projected.runs))
-    assert actual.resolve(first) == projected.resolve(first)
+    library = load_library(path)
+    # The prelude's units, the shared ones and the records of the package's folder.
+    assert set(prelude_units()) <= set(library['units']) and 'people/h' in library['units']
+    assert [claim['id'] for claim in library['claims']] == ['C-ACCESS', 'C-ACTION']
+    assert load_scenario(path).configuration.request.horizon == 10
 
 
-def test_local_unit_cannot_reuse_a_shared_name_even_with_the_same_definition(tmp_path):
-    path, _ = owned_files(tmp_path)
+def test_a_local_unit_cannot_reuse_a_shared_name_even_with_the_same_definition(tmp_path):
+    path = package(tmp_path)
     vocabulary = json.loads((tmp_path / catalogue.LIBRARY / 'vocabulary.json').read_text())
     write_json(path.parent / 'units.json', {'people/h': vocabulary['units']['people/h']})
-    with pytest.raises(ModelError, match='local unit may not reuse'):
-        load_scenario(path)
+    (found,) = refused(path)
+    assert (found['code'], found['path']) == ('unit_collision', 'units/people/h')
+    assert 'may not reuse a shared name' in found['message']
 
 
-def test_no_library_and_no_units_file_redefines_a_unit_of_the_prelude(tmp_path):
+def test_no_units_file_and_no_library_redefines_a_unit_of_the_prelude(tmp_path):
     """The prelude's names are every model's: a units file and a library that write one, even with the
     prelude's own definition, are errors at that unit."""
-    path, _ = owned_files(tmp_path)
-    prelude = prelude_units()
-    write_json(path.parent / 'units.json', {'people': prelude['people']})
-    with pytest.raises(ModelError, match='unit of the prelude') as raised:
-        load_scenario(path)
-    assert [item['path'] for item in raised.value.diagnostics] == ['units/people']
+    path = package(tmp_path)
+    write_json(path.parent / 'units.json', {'people': prelude_units()['people']})
+    assert [(item['code'], item['path']) for item in refused(path)] == [('unit_collision', 'units/people')]
     write_json(path.parent / 'units.json', {})
     vocabulary_path = tmp_path / catalogue.LIBRARY / 'vocabulary.json'
     vocabulary = json.loads(vocabulary_path.read_text())
-    vocabulary['units']['days'] = prelude['days']
+    vocabulary['units']['days'] = prelude_units()['days']
     write_json(vocabulary_path, vocabulary)
-    with pytest.raises(ModelError, match='unit of the prelude') as raised:
-        load_scenario(path)
-    assert [item['path'] for item in raised.value.diagnostics] == ['library/units/days']
+    assert [(item['code'], item['path']) for item in refused(path)] == [
+        ('unit_collision', 'library/units/days')
+    ]
 
 
-def test_local_record_dependencies_must_be_present(tmp_path):
+def test_each_record_that_a_used_record_rests_on_must_be_present(tmp_path):
     library = evidence_library()
     library['claims'][0]['related'] = [{'claim': 'LINKED', 'relation': 'context_limitations'}]
     library['claims'][0]['verification']['content_sha256'] = claim_digest(library['claims'][0])
     library['claims'].append(fixture_claim('LINKED'))
-    path, _ = owned_files(tmp_path, library)
+    path = package(tmp_path, library)
     claims_path = path.parent / 'evidence/claims.json'
     records = json.loads(claims_path.read_text())
     write_json(claims_path, [record for record in records if record['id'] != 'LINKED'])
-    with pytest.raises(ModelError, match='Unknown claim LINKED'):
-        load_library(path)
+    assert any('Unknown claim LINKED' in item['message'] for item in refused(path, load_library))
 
 
-def test_unused_local_records_are_rejected_but_authoring_can_load_them(tmp_path):
-    path, _ = owned_files(tmp_path)
+def test_an_unused_record_of_the_package_is_refused_but_an_author_can_load_it(tmp_path):
+    path = package(tmp_path)
     claims_path = path.parent / 'evidence/claims.json'
-    records = json.loads(claims_path.read_text())
-    records.append(fixture_claim('UNUSED'))
-    write_json(claims_path, records)
-    with pytest.raises(ModelError, match='Local record is not used'):
-        load_scenario(path)
-    assert any(record['id'] == 'UNUSED' for record in load_library(path, allow_unused=True)['claims'])
+    write_json(claims_path, [*json.loads(claims_path.read_text()), fixture_claim('UNUSED')])
+    assert [(item['code'], item['path']) for item in refused(path)] == [
+        ('unused_evidence', 'evidence/claims/UNUSED')
+    ]
+    assert 'UNUSED' in [claim['id'] for claim in load_library(path, allow_unused=True)['claims']]
 
 
-def test_another_scenario_neither_supplies_missing_records_nor_changes_identity(tmp_path):
-    path, projected = owned_files(tmp_path)
+def test_another_package_neither_supplies_a_missing_record_nor_changes_the_hash(tmp_path):
+    path = package(tmp_path)
+    first = load_scenario(path).model_hash
     other = tmp_path / 'scenarios/SC98/evidence'
     write_json(other / 'claims.json', [fixture_claim('UNUSED')])
-    write_json(other / 'sources.json', [{'id': 'src', 'title': 'Different independent copy'}])
-    assert load_scenario(path).model_hash == projected.model_hash
-    sources_path = path.parent / 'evidence/sources.json'
-    write_json(sources_path, [])
-    with pytest.raises(ModelError, match='Unknown source src'):
-        load_scenario(path)
+    write_json(other / 'sources.json', [{'id': 'src', 'title': 'A copy in another package'}])
+    assert load_scenario(path).model_hash == first
+    write_json(path.parent / 'evidence/sources.json', [])
+    assert any('Unknown source src' in item['message'] for item in refused(path))
 
 
-def test_record_array_shape_is_validated_before_merging(tmp_path):
-    path, _ = owned_files(tmp_path)
+def test_an_evidence_file_holds_an_array_of_records(tmp_path):
+    path = package(tmp_path)
     write_json(path.parent / 'evidence/claims.json', {'bad': 'shape'})
-    with pytest.raises(ModelError, match='array of objects'):
-        load_library(path)
-
-
-def test_edits_to_owned_content_change_identity_without_changing_other_folders(tmp_path):
-    path, first = owned_files(tmp_path)
-    claims_path = path.parent / 'evidence/claims.json'
-    records = json.loads(claims_path.read_text())
-    records[0]['shows'] = 'Changed owned scientific content.'
-    records[0]['verification']['content_sha256'] = claim_digest(records[0])
-    write_json(claims_path, records)
-    assert load_scenario(path).model_hash != first.model_hash
-
-
-def test_each_owned_evidence_and_units_file_is_in_the_identity(tmp_path):
-    """A change to each file of the model's own evidence (its sources, claims and assumptions) and to
-    its local units changes the model hash, one file after another."""
-    records = evidence_library()
-    records['units']['care_slots'] = {'dimensions': {'care_slots': 1}, 'scale': 1}
-    text = edit(sc99(), member('service', parameter('slots', 1, 'care_slots', 0, 2)))
-    source, model = write_scenario(tmp_path, text, records)
-    previous = model.model_hash
-    files = {
-        'sources': source.parent / 'evidence/sources.json',
-        'claims': source.parent / 'evidence/claims.json',
-        'assumptions': source.parent / 'evidence/assumptions.json',
-        'units': source.parent / 'units.json',
-    }
-    for collection, path in files.items():
-        contents = load_json(path)
-        if collection == 'sources':
-            contents[0]['title'] += ', revised'
-        elif collection == 'claims':
-            contents[0]['shows'] += ' Revised.'
-            contents[0]['verification']['content_sha256'] = claim_digest(contents[0])
-        elif collection == 'assumptions':
-            contents[0]['rationale'] += ' Revised.'
-        else:
-            contents['care_slots']['description'] = 'Revised local unit description.'
-        path.write_text(json.dumps(contents))
-        current = load_scenario(source).model_hash
-        assert current != previous, collection
-        previous = current
-
-
-def test_shared_unit_changes_change_identity(tmp_path):
-    path, first = owned_files(tmp_path)
-    vocabulary_path = tmp_path / catalogue.LIBRARY / 'vocabulary.json'
-    vocabulary = json.loads(vocabulary_path.read_text())
-    vocabulary['units']['people/h']['description'] = 'People per hour; a revised shared definition.'
-    write_json(vocabulary_path, vocabulary)
-    assert load_scenario(path).model_hash != first.model_hash
+    assert any('array of objects' in item['message'] for item in refused(path, load_library))

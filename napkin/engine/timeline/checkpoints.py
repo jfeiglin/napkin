@@ -42,8 +42,9 @@ from ...program.checkpoint import (
     Trigger,
     encode,
 )
-from ...program.record import Entry
-from .plan import BUILTINS, STARTS, STATE, _statements
+from ...program.record import Entry, Key
+from .plan import BUILTINS, STARTS, STATE, _statements, name_of
+from .record import unit_of
 from .saved import save
 
 _SOURCES = ('engine', 'program', 'core')  # the folders of the package whose code a run runs
@@ -201,7 +202,7 @@ class Breaks:
         """An edit at a stop: into the writes of the stage `tx`, traced when it commits, or committed
         now (`napkin/program/checkpoint.py`)."""
         run = self.run
-        name, value = edit.target, self.checked(edit)
+        name, value = self.checked(edit)
         old = run.value(name, tx=tx)
         details = {'breakpoint': stop.breakpoint.at, 'target': name, 'old': old, 'new': value}
         if tx is not None:
@@ -209,14 +210,32 @@ class Breaks:
             tx.edits.append((stop.at, stop.owner, details))
             return
         run.recorder.entry(run.now, 'edit', stop.at, stop.owner, **details)
+        self.transferred(details)
         run.write(name, value)
         run.occurrences.met(name)
 
+    def transferred(self, details):
+        """An edit of a store (a stored number that a flow meets) that commits is a transfer from or
+        to outside in its books (`Recorder.external`)."""
+        run, name = self.run, details['target']
+        old, new = details['old'], details['new']
+        if isinstance(new, bool) or not isinstance(new, int | float) or new == old:
+            return
+        stores = {end for c in run.plan.connections.values() for end in (c.source, c.sink) if end is not None}
+        if name in stores:
+            run.recorder.external(name, run.now, float(new) - float(old), run.changed_start(name))
+
     def checked(self, edit):
-        """The new value of an edit, once the engine's rules hold: a stored value, not of a finished
-        occurrence, of its type (a member of its enum), within its bounds."""
+        """(the engine name, the new value in canonical units) of an edit, once the engine's rules
+        hold: a stored value, not of a finished occurrence, of its type (a member of its enum),
+        within its bounds."""
         run, plan = self.run, self.run.plan
         name, value = edit.target, edit.value
+        if isinstance(name, Key):
+            # A value as the model names it, in its declared unit: the engine's name, in canonical units.
+            key, name = name, name_of(name)
+            if name in plan.values and isinstance(value, int | float) and not isinstance(value, bool):
+                value = value * unit_of(plan.program, key)[1]
         found = plan.values.get(name)
         if found is None or found.kind != STATE:
             what = 'no value of the run' if found is None else f'a value of kind {found.kind}'
@@ -233,19 +252,19 @@ class Breaks:
         if isinstance(current, bool) or isinstance(value, bool):
             if not (isinstance(current, bool) and isinstance(value, bool)):
                 raise CheckpointError(f'{name} holds {current!r}, and an edit gives it {value!r}')
-            return value
+            return name, value
         if isinstance(current, str):
             members = _members(plan, name)
             if not isinstance(value, str) or (members is not None and value not in members):
                 allowed = f'a member of {", ".join(members)}' if members is not None else 'a text'
                 raise CheckpointError(f'{name} takes {allowed}, not {value!r}')
-            return value
+            return name, value
         if not isinstance(value, int | float) or not math.isfinite(value):
             raise CheckpointError(f'{name} takes a finite number, not {value!r}')
         lower, upper = run.bounds.get(name, (-math.inf, math.inf))
         if not lower <= value <= upper:
             raise CheckpointError(f'{name} = {value:g} is outside its range [{lower:g}, {upper:g}]')
-        return float(value)
+        return name, float(value)
 
     # ---- checkpoints ----------------------------------------------------------------------------
 

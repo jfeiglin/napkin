@@ -1,13 +1,16 @@
-"""Units (docs/language.md, §2.1): the prelude, and the units that no entry declares, which are composed
-of declared units. `a/b` divides, `a-b` is a product, which binds tighter than `/`, and `a^n` is a power
-with a whole exponent; an entry always wins over a composition. Each expected scale and dimension here
-comes from exact rational arithmetic on the declared parts (`fractions.Fraction`), never from the
-registry's own arithmetic."""
+"""Units (spec, "Units, comparisons and layout"; D12): a spelling with `*` and `/` composes the units of
+the library from the left (`semantic.Units`), so `a/b*c` is (a/b)·c and `a/b/c` is a per b per c, and
+a name that is no unit makes the spelling no unit. The prelude gives every model its times and people.
+Each expected scale and dimension here comes from exact rational arithmetic on the declared parts
+(`fractions.Fraction`), never from the registry's own arithmetic.
+
+A package with units of its own composes them with the prelude's: a rate in tunings per tuner per year
+runs per hour, and the hash of the model follows the scales of the units that its program uses, and
+neither an unused unit nor a unit's description (`napkin/model/identity.py`)."""
 
 from __future__ import annotations
 
 import json
-import math
 from collections import Counter
 from fractions import Fraction
 
@@ -15,11 +18,12 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from napkin.expressions import ExpressionError, UnitSystem
-from napkin.model import ModelError
-from napkin.model.library import PRELUDE, prelude_units
+from napkin.engine import read, run
+from napkin.model.compile import library_units, load_scenario
+from napkin.model.language.problems import LanguageError
+from napkin.model.library import PRELUDE, empty_library, prelude_units
 from napkin.model.load import schema_errors
-from napkin.model.model import build_model
+from napkin.model.semantic import Units
 
 # Declared units, name: (dimensions, scale), with scales that are not all exact in binary.
 DECLARED = {
@@ -29,116 +33,54 @@ DECLARED = {
     'person': ({'people': 1}, 1),
     'tuner': ({'tuners': 1}, 1),
     'tunings': ({'tunings': 1}, 1),
-    'gal': ({'volume': 1}, 3.785411784),
-    'ft': ({'length': 1}, 0.3048),
-    'percentage_points': ({}, 0.01),
+    'gal': ({'volume': 1}, Fraction('3.785411784')),
+    'ft': ({'length': 1}, Fraction('0.3048')),
+    'percentage_points': ({}, Fraction(1, 100)),
     'USD_k': ({'USD': 1}, 1000),
 }
 
 
-def registry(extra=None):
-    table = {**DECLARED, **(extra or {})}
-    return UnitSystem({name: {'dimensions': dims, 'scale': scale} for name, (dims, scale) in table.items()})
+def registry():
+    return Units(DECLARED)
 
 
-def exact(factors, table=DECLARED):
-    """(dimensions, scale) of the product of `factors`, [(name, power)], in exact arithmetic: the
-    dimensions add, each times its power, and the scale is the product of the scales, each raised to its
-    power."""
+def exact(factors):
+    """(dimensions, scale) of the factors [(+1 or -1, name)], as `Units.of` gives them: the dimensions
+    add, each times its sign, and the scale is the product of the scales, each to the power of its
+    sign."""
     dimensions, scale = Counter(), Fraction(1)
-    for name, power in factors:
-        own, size = table[name]
+    for sign, name in factors:
+        own, size = DECLARED[name]
         for key, value in own.items():
-            dimensions[key] += value * power
-        scale *= Fraction(size) ** power
-    return {key: value for key, value in dimensions.items() if value}, scale
+            dimensions[key] += sign * value
+        scale = scale * Fraction(size) if sign > 0 else scale / Fraction(size)
+    return tuple(sorted((key, value) for key, value in dimensions.items() if value)), scale
 
 
-def written(name, power):
-    return name if power == 1 else f'{name}^{power}'
-
-
-def same(unit, dimensions, scale):
-    return dict(unit.dimensions) == dimensions and math.isclose(unit.scale, float(scale), rel_tol=1e-13)
-
-
-FACTOR = st.tuples(st.sampled_from(sorted(DECLARED)), st.integers(-3, 3))
-PRODUCT = st.lists(FACTOR, min_size=1, max_size=3)
+NAME = st.sampled_from(sorted(DECLARED))
 
 
 @settings(derandomize=True, max_examples=300, deadline=None)
-@given(PRODUCT, st.lists(PRODUCT, max_size=2))
-def test_a_composed_unit_is_the_product_of_its_parts_with_their_powers(numerator, denominators):
-    """`a-b^2/c-d/e` is a·b²/(c·d)/e: the scale is the product of the parts' scales raised to their
-    powers, and the dimensions add."""
-    name = '/'.join(
-        '-'.join(written(*factor) for factor in product) for product in (numerator, *denominators)
-    )
-    factors = [*numerator, *((part, -power) for product in denominators for part, power in product)]
-    dimensions, scale = exact(factors)
-    assert same(registry().parse_unit(name), dimensions, scale), name
-    assert name in registry()
+@given(NAME, st.lists(st.tuples(st.sampled_from('*/'), NAME), max_size=4))
+def test_a_spelling_is_its_factors_from_the_left(first, rest):
+    """Each factor after `*` multiplies what is on its left, and each after `/` divides it."""
+    spelling = first + ''.join(op + name for op, name in rest)
+    signed = [(1, first), *((1 if op == '*' else -1, name) for op, name in rest)]
+    assert registry().of(spelling) == exact(signed), spelling
 
 
-def test_a_product_binds_tighter_than_a_quotient():
-    """`tunings/tuner-year` is tunings per tuner per year: the product `tuner-year` divides."""
+def test_a_product_after_a_quotient_multiplies_the_quotient():
+    """`tunings/tuner*year` is tunings years per tuner (D12); tunings per tuner per year is
+    `tunings/tuner/year`, or `tunings / (tuner * year)` in a type."""
     units = registry()
-    found = units.parse_unit('tunings/tuner-year')
-    assert same(found, *exact([('tunings', 1), ('tuner', -1), ('year', -1)]))
-    assert found == units.parse_unit('tunings/tuner/year')
-    assert not same(found, *exact([('tunings', 1), ('tuner', -1), ('year', 1)]))
+    assert units.of('tunings/tuner*year') == exact([(1, 'tunings'), (-1, 'tuner'), (1, 'year')])
+    assert units.of('tunings/tuner/year') == exact([(1, 'tunings'), (-1, 'tuner'), (-1, 'year')])
+    assert units.of('tunings/tuner*year') != units.of('tunings/tuner/year')
 
 
-def test_an_entry_wins_over_a_composition_of_the_whole_name_and_of_each_part():
-    """An entry of the whole name wins, and so does an entry of a product or of the first part of a
-    quotient that a longer name is made of, even when its definition is not the composition's."""
-    declared = {
-        'tunings/tuner-year': ({'tunings': 1, 'tuners': -1, 'time': -1}, 2),
-        'tuner-year': ({'tuners': 1, 'time': 1}, 5),
-        'gal/day': ({'volume': 1, 'time': -1}, 7),
-    }
-    units = registry(declared)
-    table = {**DECLARED, **declared}
-    assert same(units.parse_unit('tunings/tuner-year'), {'tunings': 1, 'tuners': -1, 'time': -1}, 2)
-    # Tunings per (the declared tuner-year), and the declared gal/day per person.
-    assert same(units.parse_unit('USD_k/tuner-year'), *exact([('USD_k', 1), ('tuner-year', -1)], table))
-    assert same(units.parse_unit('gal/day/person'), *exact([('gal/day', 1), ('person', -1)], table))
-    assert same(units.parse_unit('tunings-tuner-year'), *exact([('tunings', 1), ('tuner-year', 1)], table))
-    # Without those entries, the same names are their compositions.
-    plain = registry()
-    assert same(plain.parse_unit('USD_k/tuner-year'), *exact([('USD_k', 1), ('tuner', -1), ('year', -1)]))
-
-
-@pytest.mark.parametrize(
-    'name',
-    ['h/2', 'tunings/yr', 'h//day', '/h', 'h/', '-h', 'h-', 'h^', 'h^x', 'h^1.5', 'h^^2', '2', '', 'h day'],
-)
-def test_a_name_that_is_not_made_of_declared_units_is_no_unit(name):
-    units = registry()
-    assert name not in units
-    with pytest.raises(ExpressionError):
-        units.parse_unit(name)
-
-
-def test_a_power_in_an_expression_is_two_stars_and_a_caret_writes_a_units_power():
-    import ast
-
-    from napkin.model.language.expressions import tokens_of, tree
-    from napkin.model.language.lex import SyntaxProblem
-
-    with pytest.raises(SyntaxProblem, match=r'\*\*'):
-        tree(tokens_of('area ^ 2'))
-    node, _ = tree(tokens_of('5 m^2 * 2'))
-    assert "'m^2'" in ast.unparse(node)
-
-
-def test_an_unknown_unit_suggests_the_composition_closest_to_it():
-    """A part that names no unit is the closest declared name in the suggestion (`tunings/yr` →
-    `tunings/year`), and each suggestion is a unit."""
-    units = registry()
-    found = units.suggestions('tunings/yr')
-    assert 'tunings/year' in found
-    assert all(name in units for name in found)
+@pytest.mark.parametrize('spelling', ['furlong', 'tunings/yr', 'h/2', 'gal/h*lb'])
+def test_a_spelling_with_a_name_that_is_no_unit_is_no_unit(spelling):
+    assert registry().of(spelling) is None
 
 
 # ---- the prelude ------------------------------------------------------------------------------------
@@ -146,66 +88,36 @@ def test_an_unknown_unit_suggests_the_composition_closest_to_it():
 
 def test_the_prelude_is_a_valid_units_file_of_times_people_and_ratios():
     """Every unit of the prelude is a unit of a units file; each alias has the definition of the unit
-    that it names, and a week is seven days."""
+    that it names, a day is 24 hours and a week seven days."""
     units = prelude_units()
     assert schema_errors(json.loads(PRELUDE.read_text(encoding='utf-8')), 'scenario-units') == []
-    for alias, unit in (
-        ('hour', 'h'),
-        ('hours', 'h'),
-        ('day', 'days'),
-        ('month', 'months'),
-        ('year', 'years'),
-    ):
+    for alias, unit in (('hour', 'h'), ('hours', 'h'), ('day', 'days'), ('month', 'months'), ('year', 'years')):
         assert units[alias] == units[unit], alias
     assert units['person'] == units['people'] and units['weeks'] == units['week']
-    system = UnitSystem(units)
-    assert system.parse_unit('week').scale == 7 * system.parse_unit('days').scale
-    assert system.parse_unit('days').scale == 24 * system.parse_unit('h').scale
+    found = Units(library_units(empty_library()))
+    assert found.of('days/h') == ((), Fraction(24)) and found.of('week/days') == ((), Fraction(7))
 
 
-# ---- a model with composed units --------------------------------------------------------------------
+# ---- a package with units of its own -------------------------------------------------------------
 
-TUNERS = """scenario "Piano tuners"
+TUNERS = """\
+scenario "Piano tuners"
     summary "Tuners tune pianos. A synthetic fixture for tests only."
     horizon 2 weeks
-    scope "The tuners of one town."
 
-tuners:  @counted
+tuners:
     "The tuners of the town."
-    role environment
-    input rate: tunings/tuner-year = 1000 tunings/tuner-year in 0 tunings/tuner-year to 2000 tunings/tuner-year
-        @counted
+    input rate: tunings/tuner/year = 1000 tunings/tuner/year in [0 tunings/tuner/year, 2000 tunings/tuner/year]  @counted
         "Tunings that one tuner does in a year"
-    input staff: tuner = 3 tuner in 1 tuner to 10 tuner  @counted
+    input staff: tuner = 3 tuner in [1 tuner, 10 tuner]  @counted
         "Tuners"
-    var done: tunings = 0 tunings size 1000 tunings  @counted
+    done: tunings = 0 tunings  @counted
         "Tunings done"
-    flow tune: -> done at rate * staff  @counted
-    event start when t >= 0 h:  @counted
-        "The tuners start."
+    flow tune: SOURCE -> this.done  @counted
+        request = formula(this.rate * this.staff)
 
-output tunings_done: tunings = tuners.done  @counted
-    "Tunings done"
-
-record counted: assumption A-TUNERS "Fixture counts."
+record counted: assumption "Fixture counts."
 """
-
-
-def tuners(tmp_path, units):
-    folder = tmp_path / 'tuners'
-    folder.mkdir(parents=True)
-    (folder / 'model.scn').write_text(TUNERS, encoding='utf-8')
-    (folder / 'units.json').write_text(json.dumps(units), encoding='utf-8')
-    assumption = {
-        'id': 'A-TUNERS',
-        'statement': 'Fixture.',
-        'rationale': 'Fixture.',
-        'review': {'status': 'unreviewed'},
-    }
-    (folder / 'evidence').mkdir()
-    (folder / 'evidence/assumptions.json').write_text(json.dumps([assumption]), encoding='utf-8')
-    return folder / 'model.scn'
-
 
 COUNTS = {
     'tunings': {'dimensions': {'tunings': 1}, 'scale': 1},
@@ -213,27 +125,42 @@ COUNTS = {
 }
 
 
-def test_a_package_with_two_units_of_its_own_writes_tunings_per_tuner_year(tmp_path):
-    """`tunings/tuner-year` needs no entry: the package declares tunings and tuner, and the prelude the
-    year and the week. A rate in it runs in execution units, per hour."""
-    model = build_model(tuners(tmp_path, COUNTS))
-    values = model.resolve('base').values
-    year = prelude_units()['year']['scale']
-    assert math.isclose(values['tuners.rate'], float(Fraction(1000) / Fraction(year)), rel_tol=1e-13)
-    assert model.time['horizon'] == 2 * prelude_units()['week']['scale']
+def tuners(folder, units, text=TUNERS):
+    """The main file of a package in `folder` that owns the units `units`."""
+    folder.mkdir(parents=True)
+    (folder / 'model.scn').write_text(text, encoding='utf-8')
+    (folder / 'units.json').write_text(json.dumps(units), encoding='utf-8')
+    return folder / 'model.scn'
 
 
-def test_the_model_hash_covers_the_parts_of_a_composed_unit_and_no_unused_unit(tmp_path):
-    first = build_model(tuners(tmp_path / 'a', COUNTS)).model_hash
+def test_a_package_with_two_units_of_its_own_runs_tunings_per_tuner_per_year_per_hour(tmp_path):
+    """The package declares tunings and tuner, and the prelude the year and the week: the horizon is
+    two weeks of 168 hours, and three tuners at 1000 tunings a year each do 3000 * 336 / 8760 tunings
+    in it."""
+    model = load_scenario(tuners(tmp_path / 'tuners', COUNTS))
+    hours = 2 * prelude_units()['week']['scale']
+    assert model.configuration.request.horizon == hours == 336
+    (done,) = read(run(model.program, model.configuration), model.program, ['tuners.done'], [hours])
+    assert done.values == pytest.approx((3000 * hours / prelude_units()['year']['scale'],), rel=1e-12)
+
+
+def test_the_hash_follows_the_scales_that_the_program_uses_and_no_unused_unit_or_description(tmp_path):
+    first = load_scenario(tuners(tmp_path / 'a', COUNTS)).model_hash
     unused = {**COUNTS, 'pianos': {'dimensions': {'pianos': 1}, 'scale': 1}}
-    assert build_model(tuners(tmp_path / 'b', unused)).model_hash == first
+    assert load_scenario(tuners(tmp_path / 'b', unused)).model_hash == first
     described = {**COUNTS, 'tuner': {**COUNTS['tuner'], 'description': 'One tuner, working full time.'}}
-    assert build_model(tuners(tmp_path / 'c', described)).model_hash != first
+    assert load_scenario(tuners(tmp_path / 'c', described)).model_hash == first
+    # Tunings counted by the dozen make every number of tunings another number of the program.
+    dozens = {**COUNTS, 'tunings': {'dimensions': {'tunings': 1}, 'scale': 12}}
+    assert load_scenario(tuners(tmp_path / 'd', dozens)).model_hash != first
 
 
-def test_a_unit_that_is_no_unit_is_an_error_with_the_closest_composition(tmp_path):
-    path = tuners(tmp_path, COUNTS)
-    path.write_text(TUNERS.replace('input staff: tuner =', 'input staff: tuner/yr ='), encoding='utf-8')
-    with pytest.raises(ModelError) as raised:
-        build_model(path)
-    assert any('tuner/year' in item['message'] for item in raised.value.diagnostics)
+def test_a_name_that_is_no_unit_is_refused_at_its_line_with_the_closest_unit(tmp_path):
+    text = TUNERS.replace('input staff: tuner =', 'input staff: tuner/yr =')
+    path = tuners(tmp_path / 'tuners', COUNTS, text)
+    with pytest.raises(LanguageError) as raised:
+        load_scenario(path)
+    line = next(number for number, row in enumerate(text.split('\n'), 1) if 'input staff' in row)
+    found = [item for item in raised.value.problems if item.code == 'unit']
+    assert [(item.file, item.line) for item in found] == [(path.as_posix(), line)]
+    assert found[0].message.endswith('did you mean year?')

@@ -17,8 +17,22 @@ scratch/rewrite/a5/, scratch/rewrite/briefs/m.md, tools/check.py, tests/test_che
   of bare members is no switch selector (`enum_member`); categorical weights are numbers in place;
   no `role` under an event; no `about`/`category`/`scope` under a value; braces in texts mean nothing.
 
+## Done
+- Step 1: a5/translate.py (old compiler) writes a5/translated/now/ (A5's translated/auto and hand
+  drafts stay as they were: A5's spelling); a5/newmodel.py (compiler of now) compiles. Measured:
+  reservoir 47/49 lines (95.9%), compiles, no warning; water model+water+jamestown 1216/1220
+  (99.7%); jamestown refused: cycle 1 (Utility.tie_asks, template level), unit 2 (`facility-hours`:
+  library units whose parts are no unit, 33 such units listed), depends 4.
+
 ## Decisions
-(none yet)
+- What the language has no place for goes into notes, by what it was: `reporting` (about, scope,
+  category, lag of outputs), `not_estimated` (D4), `comparisons` (versus, D9), `titles`, `roles`
+  (of members written by hand). Event roles become comments; `sees` is dropped.
+- Old `at R`: request and capacity (S0's D-8). Legs: request only, named target or owner_target.
+- An empty outcome cannot be a case (a case needs an action): left for a person, its text kept.
+- Outcomes by condition: local `outcome` + switch (a conditional of bare members is no selector).
+- A state that an option sets starts from a new input `x_start` (R-A5-04); a value `status`
+  beside status lines is renamed `state`.
 
 ## In progress
-- step 1
+- step 2: check.py

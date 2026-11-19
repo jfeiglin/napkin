@@ -221,6 +221,7 @@ def save(run):
                 ('formulas', tuple(sorted(recorder.formulas))),
                 ('round', recorder.round),
                 ('wanted', None if recorder._wanted is None else tuple(sorted(recorder._wanted))),
+                ('transfers', tuple((name, start, tuple(moved)) for name, (start, moved) in recorder.transfers.items())),
             ),
         ),
         ('draws', (('kept', tuple(sorted(run.chance.kept))),)),
@@ -581,6 +582,7 @@ def _recorder(recorder, found):
     recorder.formulas = set(found['formulas'])
     recorder.round = found['round']
     recorder._wanted = None if found['wanted'] is None else set(found['wanted'])
+    recorder.transfers = {name: (start, list(moved)) for name, start, moved in found['transfers']}
 
 
 def _occurrences(run, found, made):

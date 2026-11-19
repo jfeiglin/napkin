@@ -1,0 +1,324 @@
+[
+  {
+    "id": "juneau_akpublic2013_cruise_water",
+    "type": "article-newspaper",
+    "title": "Juneau Has Cruise Industry Feeling Thirsty",
+    "author": [
+      {
+        "family": "Phu",
+        "given": "Lisa"
+      }
+    ],
+    "publisher": "Alaska Public Media",
+    "container-title": "Alaska Public Media",
+    "issued": {
+      "date-parts": [
+        [
+          2013,
+          11,
+          21
+        ]
+      ]
+    },
+    "accessed": {
+      "date-parts": [
+        [
+          2026,
+          10,
+          25
+        ]
+      ]
+    },
+    "URL": "https://alaskapublic.org/2013/11/21/juneau-has-cruise-industry-feeling-thirsty/",
+    "genre": "News report",
+    "custom": {
+      "metadata_status": "Checked against the retrieved page on 2026-10-25: headline 'Juneau Has Cruise Industry Feeling Thirsty', byline Lisa Phu, 'Published November 21, 2013 at 3:08 PM AKST', Alaska Public Media; the photo credit is KTOO - Juneau.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://alaskapublic.org/2013/11/21/juneau-has-cruise-industry-feeling-thirsty/",
+        "notes": "Retrieved https://alaskapublic.org/2013/11/21/juneau-has-cruise-industry-feeling-thirsty/ at 2026-10-25T17:24:13Z (curl, HTTP 200, 166480 bytes, sha256 4c9f62eb28691774beb2d7529c00ce0bc064cfaeb859539941eda2005818f330); text by html.parser-py3.14 blocks-v1, sha256 293a0432acb77fe60e7601519601ec816e616b882d609808d6634c829399b5d0.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://alaskapublic.org/2013/11/21/juneau-has-cruise-industry-feeling-thirsty/",
+          "final_url": "https://alaskapublic.org/2013/11/21/juneau-has-cruise-industry-feeling-thirsty/",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T17:24:13Z",
+          "tool": "curl",
+          "media_type": "text/html;charset=UTF-8",
+          "bytes": 166480,
+          "sha256": "4c9f62eb28691774beb2d7529c00ce0bc064cfaeb859539941eda2005818f330",
+          "text": {
+            "extractor": "html.parser-py3.14 blocks-v1",
+            "sha256": "293a0432acb77fe60e7601519601ec816e616b882d609808d6634c829399b5d0"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "juneau_cbj2012_water_supply_plan",
+    "type": "report",
+    "title": "Municipal Drinking Water Supply Plan",
+    "author": [
+      {
+        "literal": "Rorie Watt, CBJ Engineering Director"
+      }
+    ],
+    "publisher": "City and Borough of Juneau",
+    "issued": {
+      "date-parts": [
+        [
+          2012,
+          6,
+          5
+        ]
+      ]
+    },
+    "accessed": {
+      "date-parts": [
+        [
+          2026,
+          10,
+          25
+        ]
+      ]
+    },
+    "URL": "http://media.ktoo.org/2016/07/FINAL-Municipal-Drinking-Water-Supply-Plan.pdf",
+    "genre": "Draft municipal water supply plan (copy hosted by KTOO)",
+    "custom": {
+      "metadata_status": "Checked against the retrieved PDF on 2026-10-25: the cover reads DRAFT, Municipal Drinking Water Supply Plan, Rorie Watt, CBJ Engineering Director, June 5, 2012. The file name on the KTOO media server says FINAL, but the document itself is marked DRAFT; it is cited as the draft of June 5, 2012.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "http://media.ktoo.org/2016/07/FINAL-Municipal-Drinking-Water-Supply-Plan.pdf",
+        "notes": "Retrieved http://media.ktoo.org/2016/07/FINAL-Municipal-Drinking-Water-Supply-Plan.pdf at 2026-10-25T16:39:40Z (curl, HTTP 200, 929153 bytes, sha256 24108b6e65e97937276cb8d032bd0c578fafd04758f9b0bd45b3bb9a84267724); text by gs-10.07.1 txtwrite-pages, sha256 5adbf7f5c90cc23cd078c970f38c964283024ffed24aae1c4ed876dae8e9606f.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "http://media.ktoo.org/2016/07/FINAL-Municipal-Drinking-Water-Supply-Plan.pdf",
+          "final_url": "http://media.ktoo.org/2016/07/FINAL-Municipal-Drinking-Water-Supply-Plan.pdf",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:39:40Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 929153,
+          "sha256": "24108b6e65e97937276cb8d032bd0c578fafd04758f9b0bd45b3bb9a84267724",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "5adbf7f5c90cc23cd078c970f38c964283024ffed24aae1c4ed876dae8e9606f"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "juneau_cbj2025_acfr_fy24",
+    "type": "report",
+    "title": "City and Borough of Juneau Annual Comprehensive Financial Report for the Fiscal Year July 1, 2023 through June 30, 2024",
+    "author": [
+      {
+        "literal": "City and Borough of Juneau, Department of Finance"
+      }
+    ],
+    "publisher": "City and Borough of Juneau",
+    "issued": {
+      "date-parts": [
+        [
+          2025,
+          2,
+          14
+        ]
+      ]
+    },
+    "accessed": {
+      "date-parts": [
+        [
+          2026,
+          10,
+          25
+        ]
+      ]
+    },
+    "URL": "https://juneau.org/wp-content/uploads/2025/02/CBJ-FY24-ACFR.pdf",
+    "genre": "Annual comprehensive financial report",
+    "custom": {
+      "metadata_status": "Checked against the retrieved PDF on 2026-10-25: the cover reads Annual Comprehensive Financial Report For the Fiscal Year July 1, 2023 through June 30, 2024, prepared by the Department of Finance; the letter of transmittal and the auditor's report are dated February 14, 2025.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://juneau.org/wp-content/uploads/2025/02/CBJ-FY24-ACFR.pdf",
+        "notes": "Retrieved https://juneau.org/wp-content/uploads/2025/02/CBJ-FY24-ACFR.pdf at 2026-10-25T17:33:47Z (curl, HTTP 200, 6076941 bytes, sha256 76f3c3dd9cf17b7bb202483cc54014823625110b634641705c01c159d79af5a0); text by gs-10.07.1 txtwrite-pages, sha256 ce9be6058b6ced1313f715a0cbd29bd88053133fcae8f0c32eeebc3f2a117934.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://juneau.org/wp-content/uploads/2025/02/CBJ-FY24-ACFR.pdf",
+          "final_url": "https://juneau.org/wp-content/uploads/2025/02/CBJ-FY24-ACFR.pdf",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T17:33:47Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 6076941,
+          "sha256": "76f3c3dd9cf17b7bb202483cc54014823625110b634641705c01c159d79af5a0",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "ce9be6058b6ced1313f715a0cbd29bd88053133fcae8f0c32eeebc3f2a117934"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "juneau_cbj2026_sc_outage_plan",
+    "type": "webpage",
+    "title": "Drinking Water Utility 2026 Water Management Plan during the Upcoming Water Supply System Outage",
+    "author": [
+      {
+        "literal": "City and Borough of Juneau, Utilities Division"
+      }
+    ],
+    "publisher": "City and Borough of Juneau",
+    "accessed": {
+      "date-parts": [
+        [
+          2026,
+          10,
+          25
+        ]
+      ]
+    },
+    "URL": "https://juneau.org/engineering-public-works/utilities-division/drinking-water-utility-2026-water-management-plan",
+    "genre": "Utility web page (undated; written before April 1, 2026)",
+    "custom": {
+      "metadata_status": "Checked against the retrieved page on 2026-10-25: the heading reads 'Drinking Water Utility 2026 Water Management Plan during the Upcoming Water Supply System Outage'. The page shows no date; it speaks of the outage that starts April 1, 2026 as upcoming.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://juneau.org/engineering-public-works/utilities-division/drinking-water-utility-2026-water-management-plan",
+        "notes": "Retrieved https://juneau.org/engineering-public-works/utilities-division/drinking-water-utility-2026-water-management-plan at 2026-10-25T17:56:23Z (curl, HTTP 200, 1056988 bytes, sha256 57c1c430565c948d0c15786a8d12c4dc22a7fd778140a8a7335090c9fdb4b4e3); text by html.parser-py3.14 blocks-v1, sha256 003fc637763d0cd9bcadabe15b51d02cdd9eea07d6db60100889729b0717f42e.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://juneau.org/?p=340631",
+          "final_url": "https://juneau.org/engineering-public-works/utilities-division/drinking-water-utility-2026-water-management-plan",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T17:56:23Z",
+          "tool": "curl",
+          "media_type": "text/html; charset=UTF-8",
+          "bytes": 1056988,
+          "sha256": "57c1c430565c948d0c15786a8d12c4dc22a7fd778140a8a7335090c9fdb4b4e3",
+          "text": {
+            "extractor": "html.parser-py3.14 blocks-v1",
+            "sha256": "003fc637763d0cd9bcadabe15b51d02cdd9eea07d6db60100889729b0717f42e"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "juneau_cbj2026_water_system_page",
+    "type": "webpage",
+    "title": "Water Utility Water System Information",
+    "author": [
+      {
+        "literal": "City and Borough of Juneau, Utilities Division"
+      }
+    ],
+    "publisher": "City and Borough of Juneau",
+    "accessed": {
+      "date-parts": [
+        [
+          2026,
+          10,
+          25
+        ]
+      ]
+    },
+    "URL": "https://juneau.org/engineering-public-works/utilities-division/joshuatestpage",
+    "genre": "Utility web page (undated)",
+    "custom": {
+      "metadata_status": "Checked against the retrieved page on 2026-10-25: the heading reads 'Water Utility Water System Information'; the HTML title is 'Joshua’s Test Page – City and Borough of Juneau', from its URL slug. The page shows no date; its footer reads '© 2001-2026 City and Borough of Juneau' and its list of water quality reports ends at 2018.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://juneau.org/engineering-public-works/utilities-division/joshuatestpage",
+        "notes": "Retrieved https://juneau.org/engineering-public-works/utilities-division/joshuatestpage at 2026-10-25T16:39:45Z (curl, HTTP 200, 1059599 bytes, sha256 11cc1ecfec20d48def853ef9cc1c8fd8e4c3ddb4c1441662226f6bc0d78a2231); text by html.parser-py3.14 blocks-v1, sha256 9867eeedc18bde8cbee5f965256e2be4c1c811a211deb9be2bab6ea32c67deb0.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://juneau.org/engineering-public-works/utilities-division/joshuatestpage",
+          "final_url": "https://juneau.org/engineering-public-works/utilities-division/joshuatestpage",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:39:45Z",
+          "tool": "curl",
+          "media_type": "text/html; charset=UTF-8",
+          "bytes": 1059599,
+          "sha256": "11cc1ecfec20d48def853ef9cc1c8fd8e4c3ddb4c1441662226f6bc0d78a2231",
+          "text": {
+            "extractor": "html.parser-py3.14 blocks-v1",
+            "sha256": "9867eeedc18bde8cbee5f965256e2be4c1c811a211deb9be2bab6ea32c67deb0"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "juneau_ktoo2014_water_conservation",
+    "type": "article-newspaper",
+    "title": "City urges water conservation",
+    "author": [
+      {
+        "family": "Alexander",
+        "given": "Rosemarie"
+      }
+    ],
+    "publisher": "KTOO Public Media",
+    "container-title": "KTOO",
+    "issued": {
+      "date-parts": [
+        [
+          2014,
+          5,
+          9
+        ]
+      ]
+    },
+    "accessed": {
+      "date-parts": [
+        [
+          2026,
+          10,
+          25
+        ]
+      ]
+    },
+    "URL": "https://www.ktoo.org/2014/05/09/city-urges-water-conservation/",
+    "genre": "News report",
+    "custom": {
+      "metadata_status": "Checked against the text rendered by the third-party tool on 2026-10-25: title 'City urges water conservation', author Rosemarie Alexander, published 2014-05-10T01:10:20+00:00 (the evening of May 9 in Alaska); the text holds the original story of Friday, May 9, 2014 and an update of Monday, May 12, 2014.",
+      "verification": {
+        "status": "partial",
+        "date": "2026-10-25",
+        "method": "third_party_primary_retrieval",
+        "url": "https://www.ktoo.org/2014/05/09/city-urges-water-conservation/",
+        "notes": "Retrieved https://www.ktoo.org/2014/05/09/city-urges-water-conservation/ at 2026-10-25T18:47:29Z (tinyfish, HTTP None, 3619 bytes, sha256 dc0a60296a3a79b025d8dda95d94a13329c745eead05cffd03662bff33a6f961); text by utf8-decode-v1, sha256 dc0a60296a3a79b025d8dda95d94a13329c745eead05cffd03662bff33a6f961. Access failed: https://www.ktoo.org/2014/05/09/city-urges-water-conservation/ via curl (HTTP 403): curl: (22) The requested URL returned error: 403 (the user agent was not changed). Access failed: https://web.archive.org/cdx/search/cdx?url=ktoo.org/2014/05/09/city-urges-water-conservation/&output=json&limit=-3 via archive (HTTP None): Connection reset: the tunnel to web.archive.org closed before the CDX lookup completed (two tries on 2026-10-25).",
+        "access": "third_party_primary_retrieval",
+        "retrieval": {
+          "requested_url": "https://www.ktoo.org/2014/05/09/city-urges-water-conservation/",
+          "final_url": "https://www.ktoo.org/2014/05/09/city-urges-water-conservation/",
+          "http_status": null,
+          "retrieved_at": "2026-10-25T18:47:29Z",
+          "tool": "tinyfish",
+          "media_type": "text/plain",
+          "bytes": 3619,
+          "sha256": "dc0a60296a3a79b025d8dda95d94a13329c745eead05cffd03662bff33a6f961",
+          "text": {
+            "extractor": "utf8-decode-v1",
+            "sha256": "dc0a60296a3a79b025d8dda95d94a13329c745eead05cffd03662bff33a6f961"
+          }
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,173 @@
+[
+  {
+    "id": "jackson_jxnwater2025_q2_report",
+    "type": "report",
+    "title": "The Consolidated Report of Activities for the quarter ended June 30, 2025, for the Interim Stipulated Order in Case Number 3:22-cv-00686-HTW-LGI, The United States v The City of Jackson, Mississippi",
+    "author": [
+      {
+        "family": "Henifin",
+        "given": "Edward \"Ted\""
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2025,
+          7,
+          31
+        ]
+      ]
+    },
+    "accessed": {
+      "date-parts": [
+        [
+          2026,
+          10,
+          25
+        ]
+      ]
+    },
+    "URL": "https://www.epa.gov/system/files/documents/2026-03/q2-2025-water-report.pdf",
+    "publisher": "US Environmental Protection Agency (posted copy)",
+    "genre": "Quarterly report of the Interim Third-Party Manager",
+    "custom": {
+      "metadata_status": "Checked against the retrieved PDF on 2026-10-25: the cover names the Consolidated Report of Activities for the quarter ended June 30, 2025, for the Interim Stipulated Order entered on November 29, 2022, dated July 31, 2025 and prepared by Edward \"Ted\" Henifin, P.E., the Interim Third-Party Manager; the copy is posted on epa.gov.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://www.epa.gov/system/files/documents/2026-03/q2-2025-water-report.pdf",
+        "notes": "Retrieved https://www.epa.gov/system/files/documents/2026-03/q2-2025-water-report.pdf at 2026-10-25T16:28:24Z (curl, HTTP 200, 5176867 bytes, sha256 ca20204bcf1a5103591b73d8281ffb1324f2b97055080b86bdbdb30bd6a46e7c); text by gs-10.07.1 txtwrite-pages, sha256 d58357b420a51990bf32d3522f22f1b0c5d95d1ef68766a7c68cf254918a5495.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://www.epa.gov/system/files/documents/2026-03/q2-2025-water-report.pdf",
+          "final_url": "https://www.epa.gov/system/files/documents/2026-03/q2-2025-water-report.pdf",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:28:24Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 5176867,
+          "sha256": "ca20204bcf1a5103591b73d8281ffb1324f2b97055080b86bdbdb30bd6a46e7c",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "d58357b420a51990bf32d3522f22f1b0c5d95d1ef68766a7c68cf254918a5495"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "jackson_jxnwater2026_q2_report",
+    "type": "report",
+    "title": "The Consolidated Report of Activities for the quarter ended June 30, 2026, for the Interim Stipulated Order in Case Number 3:22-cv-00686-HTW-LGI, The United States v The City of Jackson, Mississippi (water)",
+    "author": [
+      {
+        "family": "Henifin",
+        "given": "Edward \"Ted\""
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2026,
+          7,
+          31
+        ]
+      ]
+    },
+    "accessed": {
+      "date-parts": [
+        [
+          2026,
+          10,
+          25
+        ]
+      ]
+    },
+    "URL": "https://jxnwater.com/wp-content/uploads/2026/08/Q2-2026-Water-Report.pdf",
+    "publisher": "JXN Water",
+    "genre": "Quarterly report of the Interim Third-Party Manager",
+    "custom": {
+      "metadata_status": "Checked against the retrieved PDF on 2026-10-25: the cover names the Consolidated Report of Activities for the quarter ended June 30, 2026, for the Interim Stipulated Order entered on November 29, 2022 in Case Number 3:22-cv-00686-HTW-LGI, dated July 31, 2026 and prepared by Edward \"Ted\" Henifin, P.E.; JXN Water hosts the file.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://jxnwater.com/wp-content/uploads/2026/08/Q2-2026-Water-Report.pdf",
+        "notes": "Retrieved https://jxnwater.com/wp-content/uploads/2026/08/Q2-2026-Water-Report.pdf at 2026-10-25T16:31:42Z (curl, HTTP 200, 3865968 bytes, sha256 8817069c457ad2a43759ac9e0f7673cb64db448152e1893913725e3451b30532); text by gs-10.07.1 txtwrite-pages, sha256 704d2ba3279c259d0442a1dca0f79865e9273fdec9866065c9bb64dc0ecc8f3d.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://jxnwater.com/wp-content/uploads/2026/08/Q2-2026-Water-Report.pdf",
+          "final_url": "https://jxnwater.com/wp-content/uploads/2026/08/Q2-2026-Water-Report.pdf",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:31:42Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 3865968,
+          "sha256": "8817069c457ad2a43759ac9e0f7673cb64db448152e1893913725e3451b30532",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "704d2ba3279c259d0442a1dca0f79865e9273fdec9866065c9bb64dc0ecc8f3d"
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "jackson_msdh2021_inspection",
+    "type": "report",
+    "title": "Report of Inspection of Drinking Water Supply: City of Jackson (PWS 0250008), November 2021, with the FY 2022 Capacity Assessment Form and Design Capacity Sheet",
+    "author": [
+      {
+        "literal": "Mississippi State Department of Health, Bureau of Public Water Supply"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021,
+          12,
+          13
+        ]
+      ]
+    },
+    "accessed": {
+      "date-parts": [
+        [
+          2026,
+          10,
+          25
+        ]
+      ]
+    },
+    "URL": "https://msdh.ms.gov/msdhsite/files/JacksonWater/inspection-reports/Jackson_water_inspection_2021_Nov.pdf",
+    "publisher": "Mississippi State Department of Health",
+    "publisher-place": "Jackson, Mississippi",
+    "genre": "Sanitary survey report",
+    "custom": {
+      "metadata_status": "Checked against the retrieved PDF on 2026-10-25: inspection of the City of Jackson water supply (PWS 0250008, Hinds County) made on 11/08/2021, completed by Amy L. McLeod, E.I. on 12/09/2021 and reviewed by Greg Caraway, P.E. on 12/13/2021; the design capacity sheet is dated 12/08/2021, and the PDF pages say Generated November 28, 2022. The review date stands as the issue date.",
+      "verification": {
+        "status": "verified",
+        "date": "2026-10-25",
+        "method": "primary_full_text",
+        "url": "https://msdh.ms.gov/msdhsite/files/JacksonWater/inspection-reports/Jackson_water_inspection_2021_Nov.pdf",
+        "notes": "Retrieved https://msdh.ms.gov/msdhsite/files/JacksonWater/inspection-reports/Jackson_water_inspection_2021_Nov.pdf at 2026-10-25T16:28:35Z (curl, HTTP 200, 100139 bytes, sha256 8cc2b73afea13978a4ae733f062286c7b7c07970d09028300b82f15f4e13529d); text by gs-10.07.1 txtwrite-pages, sha256 9a4f20bc9292d564ced9e8c0db21053357212462cd565ebe95c28182d7fbdff5.",
+        "access": "accessible",
+        "retrieval": {
+          "requested_url": "https://msdh.ms.gov/msdhsite/files/JacksonWater/inspection-reports/Jackson_water_inspection_2021_Nov.pdf",
+          "final_url": "https://msdh.ms.gov/msdhsite/files/JacksonWater/inspection-reports/Jackson_water_inspection_2021_Nov.pdf",
+          "http_status": 200,
+          "retrieved_at": "2026-10-25T16:28:35Z",
+          "tool": "curl",
+          "media_type": "application/pdf",
+          "bytes": 100139,
+          "sha256": "8cc2b73afea13978a4ae733f062286c7b7c07970d09028300b82f15f4e13529d",
+          "text": {
+            "extractor": "gs-10.07.1 txtwrite-pages",
+            "sha256": "9a4f20bc9292d564ced9e8c0db21053357212462cd565ebe95c28182d7fbdff5"
+          }
+        }
+      }
+    }
+  }
+]

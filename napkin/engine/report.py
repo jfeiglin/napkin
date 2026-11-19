@@ -22,11 +22,13 @@ model has no report of its own: any named value can be reported, and the caller 
   entry `edit` of the trace, `napkin/program/checkpoint.py`) withdraws the proof for the run, and
   the note says which edit.
 - **The evidence trail** of a value (`Used`) lists the parts that it can read (`proofs.reads`), each
-  with the records that its evidence cites, whether this run exercised it and why: a flow that moved
-  material, an event that started, a trigger that fired, a stage that committed, a solver that
-  solved, and every value read through exercised parts. An event that cannot start under the
-  configuration is never exercised, and says so; "could have and did not" is what the trace says
-  (D16). A part reached only through parts that the run did not exercise is not exercised either.
+  with the records that its evidence cites for its member under the options that the run takes
+  (`DeclaredModel.evidence`), whether this run exercised it and why: a flow that moved material, an
+  event that started, a trigger that fired, a stage that committed, a solver that solved, and every
+  value read through exercised parts. An event that cannot start under the configuration is never
+  exercised, and says so; "could have and did not" is what the trace says (D16). An edit at a stop
+  withdraws those proofs for the run, and the trail of such an event says which edit. A part reached
+  only through parts that the run did not exercise is not exercised either.
 - **Near-ties** (change 10): each firing or commit that the engine decided within tolerance of its
   boundary (`Record.near_ties`), with a message ("this trigger fired within tolerance of its
   threshold"). The report lists them and computes nothing more precisely.
@@ -139,10 +141,11 @@ class Report:
     records: tuple[tuple[str, str, str], ...] = ()
 
 
-def report(record, program, configuration, paths, times, lags=None, model=None):
+def report(record, program, configuration, paths, times, lags=None, model=None, options=()):
     """The report of a run (see the module): `paths` and `times` are the caller's, `lags` maps a path
-    to its `Lag`, and `model` is the declared model whose texts and evidence the report shows (None
-    for a program built by hand). A time outside [0, horizon] is a ValueError."""
+    to its `Lag`, `model` is the declared model whose texts and evidence the report shows (None for a
+    program built by hand), and `options` the names of the model's options that the run takes, whose
+    settings a trail cites. A time outside [0, horizon] is a ValueError."""
     lags = dict(lags or {})
     times = tuple(float(t) for t in times)
     horizon = float(record.manifest.horizon)
@@ -154,7 +157,7 @@ def report(record, program, configuration, paths, times, lags=None, model=None):
         raise ValueError(f'a lag of {unknown[0]}, which the report does not select')
     end, stopped = _end(record, horizon)
     proofs = Proofs(program, configuration)
-    trail = _Trail(record, program, model, proofs)
+    trail = _Trail(record, program, model, proofs, tuple(options))
     reported = []
     for path in paths:
         key = key_of(program, path)
@@ -334,8 +337,12 @@ def _near_ties(record):
 class _Trail:
     """The evidence trails of the values of one record (see the module)."""
 
-    def __init__(self, record, program, model, proofs):
+    def __init__(self, record, program, model, proofs, options=()):
         self.record, self.program, self.model, self.proofs = record, program, model, proofs
+        self.options = options
+        # An edit at a stop withdraws, for the run, the proofs that an event cannot start: the value
+        # that the proof reads may take what it rules out (`napkin/program/checkpoint.py`).
+        self.edited = record.entries('edit')
         self.cited = {}
         self.entries = {}
         for entry in record.trace:
@@ -365,9 +372,9 @@ class _Trail:
         used = []
         for part in sorted(found.edges, key=lambda each: (each.origin, each.owner, each.kind)):
             did, why = self.acted(part, found)
-            if part not in reached and part not in found.blocked:
+            if part not in reached and (part not in found.blocked or self.edited):
                 did, why = False, 'it is read only through parts that the run did not exercise'
-            used.append(Used(part.kind, part.origin, part.owner, self.cites(part.origin), did, why))
+            used.append(Used(part.kind, part.origin, part.owner, self.cites(part.origin, part.owner), did, why))
         return tuple(used)
 
     def evaluated(self, part, found):
@@ -389,18 +396,25 @@ class _Trail:
         if part.kind == 'flow':
             moved = self.moved(part)
             return moved, 'it moved material' if moved else 'it moved nothing in this run'
+        withdrawn = ''
         if part.kind == 'event' and part in found.blocked:
-            return False, f'it cannot start under this configuration: {found.blocked[part]}'
+            if not self.edited:
+                return False, f'it cannot start under this configuration: {found.blocked[part]}'
+            first = self.edited[0]
+            withdrawn = (
+                f' (the edit at {float(first.t):g} h, at {first.part}, withdrew for this run the proof that it '
+                f'cannot start: {found.blocked[part]})'
+            )
         if part.kind == 'stage' and part.origin == 'setup':
             return True, 'the setup ran at 0 h'
         kind = {'event': 'start', 'trigger': 'fire', 'stage': 'commit', 'solver': 'solve'}[part.kind]
         entries = [entry for entry in self.entries.get((kind, part.origin), ()) if _runs(entry, part)]
         verb = {'start': 'started', 'fire': 'fired', 'commit': 'committed', 'solve': 'solved'}[kind]
         if not entries:
-            return False, f'it did not {kind if kind != "solve" else "solve"} in this run'
+            return False, f'it did not {kind if kind != "solve" else "solve"} in this run{withdrawn}'
         if len(entries) == 1:
-            return True, f'it {verb} at {float(entries[0].t):g} h'
-        return True, f'it {verb} {len(entries)} times from {float(entries[0].t):g} h'
+            return True, f'it {verb} at {float(entries[0].t):g} h{withdrawn}'
+        return True, f'it {verb} {len(entries)} times from {float(entries[0].t):g} h{withdrawn}'
 
     def event_of(self, part):
         """The event of a flow of an event's occurrences, as a part of its receiver, or None."""
@@ -424,12 +438,15 @@ class _Trail:
             for piece in history.pieces
         )
 
-    def cites(self, origin):
-        """The records of the evidence of the declared part of an origin: each record that it cites by
-        name, and each written in place as its kind and its text."""
-        part = self.model.part(origin) if self.model is not None else None
+    def cites(self, origin, member=''):
+        """The records of the evidence of the declared part of an origin for one member, under the
+        options of the run (`DeclaredModel.evidence`: the part's own, the member's own line or its
+        table's column, the settings of the options that set it): each record that it cites by name,
+        and each written in place as its kind and its text."""
+        if self.model is None:
+            return ()
         found = []
-        for item in getattr(part, 'evidence', ()):
+        for item in self.model.evidence(origin, member, self.options):
             name = getattr(item, 'name', None)
             if name is not None:
                 found.append(name)

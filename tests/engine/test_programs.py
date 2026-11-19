@@ -25,8 +25,7 @@ from tests.reference.from_program import run_of, value_at
 # (S1); endpoints, local sharing, junctions and flows across members (S2); reversible routes and flows
 # with legs (S3); events, occurrences, stages, triggers, gates, moves and retirement (the first part
 # of S4); draws and inputs that are distributions (the second part of S4); declared solvers (S5,
-# `SOLVED`); the acceptance example of change 15. An actor's choice left the language with change 15:
-# an example that still reads one is refused by name (`LEFT`) until it leaves `examples.py` (S7-F).
+# `SOLVED`); the acceptance example of change 15.
 SOLVED = {
     'two_junctions_solver',
     'network',
@@ -94,7 +93,6 @@ SUBSET = SOLVED | {
     'two_junctions',
 }
 SLICE = re.compile(r'\((S[0-6]|C)(, S[0-6])*\)$')
-LEFT = re.compile(r'\.choose\(.*left it with change 15')
 
 
 def outcome(name):
@@ -134,7 +132,7 @@ def test_an_example_gives_its_results_or_is_refused_by_its_slice(name):
     example, found = outcome(name)
     if isinstance(found, Outside):
         assert name not in SUBSET, found
-        assert SLICE.search(str(found)) or LEFT.search(str(found)), f'the refusal names no slice: {found}'
+        assert SLICE.search(str(found)), f'the refusal names no slice: {found}'
         return
     record = found
     failure = next((item for item in example.expected if isinstance(item, Fails)), None)

@@ -14,21 +14,28 @@ import pytest
 
 from napkin.engine.report import Lag, report
 from napkin.engine.timeline import Plan, Run, read, resume, run
-from napkin.engine.timeline.plan import name_of
-from napkin.engine.timeline.record import unit_of
 from napkin.program.build import (
+    BOOL,
+    SINK,
     SOURCE,
     Builder,
+    after,
+    event,
     flow,
     input_,
+    move,
     named,
     q,
+    reset_when,
     start,
+    t,
     this,
     value,
+    when,
 )
 from napkin.program.checkpoint import Breakpoint, Checkpoint, CheckpointError, dumps, loads
 from napkin.program.config import Configuration, Request
+from napkin.program.record import Key
 from tests.engine.test_checkpoints import SCENARIOS, UNITS, in_a_fresh_process, ticks
 from tests.program.examples import DISPATCH_SWITCH, PAUSES, At, pump_dispatch
 from tests.reference.from_program import run_of, value_at
@@ -121,9 +128,8 @@ def test_the_acceptance_example_of_change_15(name, tmp_path):
             stop.occurrence,
         )
         stopped.append(found)
-        for key, value_ in stop.edits:
-            scale = unit_of(program, key)[1] if isinstance(value_, int | float) else 1
-            found = made.edit(name_of(key), value_ * scale if scale != 1 else value_)
+        for key, value_ in stop.edits:  # the oracle's form: a record key, a value in its declared unit
+            found = made.edit(key, value_)
         edits_made.append(found)
         found = made.resume()
     assert not isinstance(found, Checkpoint) and found.failure is None
@@ -222,3 +228,86 @@ def test_a_saved_edited_checkpoint_reads_back_with_its_edits():
     checkpoint = run(case.program, case.configuration, case.breakpoints).edit('tank.water', 9)
     assert loads(dumps(checkpoint)).edits == checkpoint.edits
     assert resume(case.program, loads(dumps(checkpoint))).edits == checkpoint.edits
+
+
+def scaled():
+    """A tank of 2 kL that drains at 1 kL/h, and a tick at 1 h."""
+    b = Builder({'h': {'time': 1}, 'L': {'volume': 1}, 'kL': ({'volume': 1}, 1000)})
+    b.entity(
+        'tank',
+        value('water', 'kL', 2, lower=0),
+        value('ticks', '', 0),
+        flow('drain', this.water, SINK, request=q(1, 'kL/h')),
+        ticks(1),
+    )
+    b.setup(start(named('tank').tick))
+    return b.finish(), Configuration(Request(3))
+
+
+@pytest.mark.parametrize('target', [Key('tank', ('water',)), 'tank.water'], ids=['key', 'engine'])
+def test_an_edit_names_a_value_as_the_model_does_in_its_unit_or_by_its_engine_name(target, tmp_path):
+    """At 1 h the tank holds 1 kL; edited to 1.5 kL (by its key, in kL) or to 1,500 L (by its engine
+    name, in canonical litres), it is empty at 2.5 h; its books hold 0.5 kL brought in from outside."""
+    program, configuration = scaled()
+    made = Run(Plan.of(program, configuration), (Breakpoint('tank.tick.step[0]'),))
+    checkpoint = made.run()
+    edited = made.edit(target, 1.5 if isinstance(target, Key) else 1500)
+    final = made.resume()
+    water, external = read(final, program, ['tank.water', 'tank.water.external'], [1, 2, 2.5, 3])
+    assert water.values == pytest.approx([1.5, 0.5, 0, 0], abs=1e-12)
+    assert external.values == pytest.approx([0.5, 0.5, 0.5, 0.5])
+    (entry,) = final.entries('edit')
+    assert (entry.detail('target'), entry.detail('old'), entry.detail('new')) == ('tank.water', 1000, 1500)
+    assert checkpoint.edit(target, 1.5 if isinstance(target, Key) else 1500) == edited
+    assert in_a_fresh_process(program, [edited], tmp_path) == [final]
+    with pytest.raises(CheckpointError, match='outside its range'):
+        made_again = Run(Plan.of(program, configuration), (Breakpoint('tank.tick.step[0]'),))
+        made_again.run()
+        made_again.edit(Key('tank', ('water',)), -0.5)
+
+
+def test_an_edit_of_a_store_is_a_transfer_from_or_to_outside_in_its_books():
+    """The family's tank: 6 L at 2 h edited to 9 L (3 L in), then at 4 h, holding 5 L, to 1 L (4 L out):
+    its books hold +3 L from 2 h and -1 L from 4 h, and it is empty at 4.5 h."""
+    case = SCENARIOS['family']()
+    _, _, final = edited(case, {1: (('tank.water', 9),), 4: (('tank.water', 1),)})
+    water, external = read(final, case.program, ['tank.water', 'tank.water.external'], [1, 2, 3, 4, 4.5])
+    assert water.values == pytest.approx([8, 9, 7, 1, 0], abs=1e-12)
+    assert external.values == pytest.approx([0, 3, 3, -1, -1])
+
+
+def test_an_edit_withdraws_the_proof_that_an_event_cannot_start():
+    """A repair starts when the road is open, which nothing writes: it cannot start (a proof). Opened
+    by an edit at 0.5 h, it starts at 1 h, and the trail says that the edit withdrew the proof."""
+    b = Builder(UNITS)
+    b.entity(
+        'plant',
+        value('open', BOOL, False),
+        value('used', 'L', 0, lower=0),
+        value('stock', 'L', 10, lower=0),
+        value('ticks', '', 0),
+        flow('idle', this.stock, SINK, request=q(0, 'L/h')),
+        event(
+            'repair',
+            when(this.open & (t >= q(1, 'h')), start(this.repair), reset=reset_when(False)),
+            after(q(1, 'h'), move(q(2, 'L'), this.stock, this.used)),
+        ),
+        ticks(0.5),
+    )
+    b.setup(start(named('plant').tick))
+    program, configuration = b.finish(), Configuration(Request(4))
+
+    def repair(record):
+        (found,) = report(record, program, configuration, ['plant.used'], [4]).values
+        return next(used for used in found.trail if (used.kind, used.origin) == ('event', 'plant.repair'))
+
+    alone = repair(run(program, configuration))
+    assert not alone.exercised and alone.why.startswith('it cannot start under this configuration: ')
+    made = Run(Plan.of(program, configuration), (Breakpoint('plant.tick.step[0]'),))
+    made.run()
+    made.edit(Key('plant', ('open',)), True)
+    record = made.resume()
+    found = repair(record)
+    assert found.exercised and found.why.startswith('it started at 1 h (the edit at 0.5 h')
+    assert 'withdrew for this run the proof that it cannot start' in found.why
+    assert read(record, program, ['plant.used'], [4])[0].values == (pytest.approx(2),)

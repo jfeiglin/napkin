@@ -318,18 +318,27 @@ def old_tree(expr):
 class Scope:
     """Where an old expression stands: the names of its model (`oldmodel.Symbols`), the thing that it
     is read in (None: the top level), and the names of the outputs of the scenario, which a top-level
-    expression can read."""
+    expression can read. `renames` gives a member a new name: {(declaring thing, member): name}."""
 
-    def __init__(self, symbols, thing, outputs=(), own='this.'):
+    def __init__(self, symbols, thing, outputs=(), own='this.', renames=None):
         self.symbols = symbols
         self.thing = thing
         self.outputs = set(outputs)
         # What stands before a member of the thing itself: `this.` in the thing, and the thing's own
         # name where the expression stands outside it (a line of an option).
         self.own = own
+        self.renames = renames or {}
 
     def path(self, name):
         """The new path of an old dotted name, and what it reads (`Symbols.read`)."""
+        written, found = self._path(name)
+        if found[0] == 'value' and (self.symbols.declarer(found[2]), found[3]) in self.renames:
+            head, _, _ = written.rpartition('.')
+            new = self.renames[(self.symbols.declarer(found[2]), found[3])]
+            written = f'{head}.{new}' if head else new
+        return written, found
+
+    def _path(self, name):
         found = self.symbols.read(name, self.thing)
         parts = name.split('.')
         head = parts[0]

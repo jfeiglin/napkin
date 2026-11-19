@@ -25,15 +25,21 @@ occurrence. The engine stops before the stage or the statement and gives a `Chec
 
 **Edits** (`Checkpoint.edit`) are the actions of a caller at a stop: an edit gives a live stored
 value of a member or of an occurrence (not a parameter or a built-in field of an occurrence, an
-input, a link or a formula) a new value, in the canonical unit of its dimension, as `State` holds it.
-Its type and its bounds hold, and a value of a finished occurrence is frozen; derived values and
-rates follow by the usual rules. An edit at a stop before a statement joins the writes of its stage: the stage sees it,
-and the rest of the run once the stage commits; an edit at a stop before a stage commits at once.
-Each edit is an entry `edit` of the trace (the time, the breakpoint, the target, the old value and
-the new), traced when it commits: an edit of a store is a transfer from outside in its books, and
-one that lowers a value withdraws, for the run, a proof that the value never falls. A stage that runs
-again from its start takes the edits made at its stops again, in order, at their places, and commits
-each once.
+input, a link or a formula) a new value. It names the value as the model does, by its record key
+(`record.Key`, or its path as text with `key=True`: `depot.request_pump#0.order`), with the value in
+its declared unit (a number in that unit, an enum member by its name, a yes/no, a text), as `read`
+gives values; or by its engine name, with the value in the canonical unit of its dimension, as
+`State` holds it. Its type and its bounds hold, and a value of a finished occurrence is frozen;
+derived values and rates follow by the usual rules. An edit at a stop before a statement joins the
+writes of its stage: the stage sees it, and the rest of the run once the stage commits; an edit at a
+stop before a stage commits at once. Each edit is an entry `edit` of the trace (the time, the
+breakpoint, the target, the old value and the new, in canonical units), traced when it commits. An
+edit of a store (a stored number that a flow meets) is a transfer from or to outside in its books:
+the record holds, beside the store, its history `external` (`tank.water.external`), what edits
+brought into it so far (a withdrawal is negative). An edit that lowers a value withdraws, for the
+run, a proof that the value never falls, and one in a run withdraws the proofs that an event cannot
+start (the report says so). A stage that runs again from its start takes the edits made at its
+stops again, in order, at their places, and commits each once.
 
 **Exact resume** (the owner's rule): with the same program, engine version, numerical settings and
 seed, on one platform, a stopped and resumed run gives the same recorded values, draw results, event
@@ -150,11 +156,12 @@ class State:
 
 @dataclass(frozen=True)
 class Edit:
-    """An edit (see the module): the number of the stop at which it is made (`Stop.hit`), the engine
-    name of the stored value that it changes, and its new value."""
+    """An edit (see the module): the number of the stop at which it is made (`Stop.hit`), the stored
+    value that it changes (a record key, its new value in the value's declared unit; or an engine
+    name, its new value in canonical units), and its new value."""
 
     hit: int
-    target: str
+    target: record.Key | str
     value: Any
 
 
@@ -172,24 +179,45 @@ class Checkpoint:
     edits: tuple[Edit, ...] = ()
     saved: tuple = ()
 
-    def edit(self, target, value):
-        """This checkpoint with one more edit at its stop. The value that it changes must be in its
-        state, of the same type, and not of a finished occurrence; the engine checks the rest when
-        the run goes on (a stored value, its bounds, the members of its enum)."""
+    def edit(self, target, value, key=False):
+        """This checkpoint with one more edit at its stop: `target` a record key, or its path as text
+        with `key`, and `value` in its declared unit; or `target` an engine name, and `value` in
+        canonical units (see the module). The value that it changes must be in its state, of the same
+        type, and not of a finished occurrence; the engine checks the rest when the run goes on (a
+        stored value, its bounds, the members of its enum)."""
+        if key and isinstance(target, str):
+            target = _key(target)
+        name = _name(target)
         try:
-            old = self.state.value(target)
+            old = self.state.value(name)
         except KeyError:
-            raise CheckpointError(f'{target}: no value of the state at the stop has this name') from None
+            raise CheckpointError(f'{name}: no value of the state at the stop has this name') from None
         for occurrence in self.state.occurrences:
-            if target.startswith(f'{occurrence.id}.') and not occurrence.active:
-                raise CheckpointError(
-                    f'{target} belongs to the finished occurrence {occurrence.id}, which is frozen'
-                )
+            if name.startswith(f'{occurrence.id}.') and not occurrence.active:
+                raise CheckpointError(f'{name} belongs to the finished occurrence {occurrence.id}, which is frozen')
         if _kind(old) != _kind(value):
-            raise CheckpointError(f'{target} holds {_kind(old)}, and {value!r} is {_kind(value)}')
+            raise CheckpointError(f'{name} holds {_kind(old)}, and {value!r} is {_kind(value)}')
         if isinstance(value, int) and not isinstance(value, bool):
             value = float(value)
         return replace(self, edits=(*self.edits, Edit(self.stop.hit, target, value)))
+
+
+def _name(target):
+    """The engine name of the target of an edit: a record key's owner and steps, joined by dots."""
+    if isinstance(target, record.Key):
+        return '.'.join((target.owner, *target.steps) if target.owner else target.steps)
+    return target
+
+
+def _key(path):
+    """The record key of a path as text: an occurrence's id and its steps, or a member's id and the
+    last step (a member's id may hold dots: `sites.clinic.level`, of a table's row)."""
+    head, mark, rest = path.partition('#')
+    if mark:
+        number, _, steps = rest.partition('.')
+        return record.Key(f'{head}#{number}', tuple(steps.split('.')) if steps else ())
+    owner, _, field = path.rpartition('.')
+    return record.Key(owner, (field,))
 
 
 def _kind(value):

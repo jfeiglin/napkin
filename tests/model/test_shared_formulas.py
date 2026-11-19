@@ -1,74 +1,54 @@
 """Formulas that many formulas read: an analysis reads each one once, and gives the answer of the
 definition, which follows every way to a formula.
 
-Two analyses follow the formulas that an expression reads: the resolver, which says whether an `assert`
-reads inputs only (`Resolver.of_inputs`), and the proof that an expression is constant on the zero
-faces of the stocks (`expressions.stock_face_dependencies`). Each keeps what it found for a formula. The
-tests here state the definition with no memory, on small graphs of formulas, and compare; and they
-compile and prove chains in which each formula reads the one before it twice, which have 2^40 ways and
-more to their first formula.
+Two analyses follow the formulas that an expression reads: the front end, which says whether an
+assertion reads only what is fixed for the run (`semantic.DeclaredAssert.fixed`), and the proof that
+an expression is constant on the zero faces of the stocks (`expressions.stock_face_dependencies`),
+which the continuous engine reads. Each keeps what it found for a formula. The tests here state the
+definition with no memory, on small graphs of formulas, and compare. The chain of 40 formulas, each
+reading the one before it twice, is in `tests/language/test_collections.py` for the assertions.
 """
 
 import random
+import textwrap
 
 import pytest
 
 from napkin import expressions
 from napkin.core.expr import read
-from tests import build as b
+from napkin.model.compile import compile_text
+from tests.program.examples import UNITS
+from tests.units import UNITS as LIBRARY_UNITS
 
 DEPTH = 40  # a chain of this depth has 2^40 ways from its last formula to its first
 
-
-def chain(depth, first):
-    """The formulas `f0` to `f<depth>`: `f0` is `first`, and each other one reads the one before it twice."""
-    formulas = [b.formula('f0', first, 'people')]
-    formulas += [b.formula(f'f{k}', f'(f{k - 1} + f{k - 1}) / 2', 'people') for k in range(1, depth + 1)]
-    return formulas
-
-
-def checks_of(text):
-    """(the asserts that are checked before the run, the asserts that are checked at each step)."""
-    (structure,) = b.compiled(text).structures.values()
-    return structure.input_checks, structure.state_checks
+DIAMOND = """
+    s:
+        input p: person = 2 person
+        w: person = 5 person
+        shared = formula({shared})
+        left = formula(this.shared + this.p)
+        right = formula(this.shared + this.shared)
+        top = formula(this.left + this.right)
+        apart = formula(this.p + this.p)
+    """
 
 
-def test_an_assert_on_a_deep_chain_of_shared_formulas_is_a_check_of_the_inputs():
-    members = [b.parameter('p', 0.5, 'people'), b.stock('w', 5, 'people'), *chain(DEPTH, 'p')]
-    before, at_each_step = checks_of(b.system(*members, checks=[b.check(f's.f{DEPTH} >= 0 people')]))
-    assert len(before) == 1 and not at_each_step
-    # The same chain on a stock: no formula of it reads inputs only, whichever formula the assert reads.
-    members = [b.parameter('p', 0.5, 'people'), b.stock('w', 5, 'people'), *chain(DEPTH, 'w')]
-    asserts = [b.check(f's.f{DEPTH} >= 0 people'), b.check('s.f1 >= 0 people'), b.check('s.p >= 0 people')]
-    before, at_each_step = checks_of(b.system(*members, checks=asserts))
-    assert [item.path for item in before.values()] == ['assert:/2']
-    assert [item.path for item in at_each_step.values()] == ['assert:/0', 'assert:/1']
+def fixed(shared, order):
+    """{formula: whether the assertion that reads it is fixed}, with the assertions in `order`."""
+    text = textwrap.dedent(DIAMOND.format(shared=shared))
+    text += ''.join(f'assert s.{name} >= 0 person\n' for name in order)
+    return dict(zip(order, (item.fixed for item in compile_text(text, UNITS).declared.asserts)))
 
 
-def test_one_formula_on_a_stock_makes_each_assert_that_reaches_it_a_check_at_each_step():
+def test_one_formula_on_a_stock_makes_each_assertion_that_reaches_it_one_over_state():
     """A diamond: `top` reads `left` and `right`, and both read `shared`. The answer for `top` is the
-    same when another assert has read `left`, `right` or `shared` before it."""
-
-    def members(shared):
-        return [
-            b.parameter('p', 2, 'people'),
-            b.stock('w', 5, 'people'),
-            b.formula('shared', shared, 'people'),
-            b.formula('left', 'shared + p', 'people'),
-            b.formula('right', 'shared + shared', 'people'),
-            b.formula('top', 'left + right', 'people'),
-            b.formula('apart', 'p + p', 'people'),
-        ]
-
+    same when another assertion has read `left`, `right` or `shared` before it."""
     names = ['shared', 'left', 'right', 'top', 'apart']
     for order in (names, names[::-1], ['top', 'apart', 'shared', 'right', 'left']):
-        asserts = [b.check(f's.{name} >= 0 people') for name in order]
-        before, at_each_step = checks_of(b.system(*members('p'), checks=asserts))
-        assert len(before) == len(order) and not at_each_step
-        before, at_each_step = checks_of(b.system(*members('w'), checks=asserts))
+        assert fixed('this.p', order) == dict.fromkeys(order, True)
         # Only `apart` does not reach the stock.
-        assert [item.path for item in before.values()] == [f'assert:/{order.index("apart")}']
-        assert len(at_each_step) == len(order) - 1
+        assert fixed('this.w', order) == {name: name == 'apart' for name in order}
 
 
 # ---- the proof on the zero faces ----------------------------------------------------------------------
@@ -78,7 +58,7 @@ STATIC, MOVING, ZERO = ('p', 'q'), ('m',), ('w', 'v')
 
 @pytest.fixture(scope='module')
 def units():
-    return expressions.UnitSystem(b.library()['units'])
+    return expressions.UnitSystem(LIBRARY_UNITS)
 
 
 def text_of(items):

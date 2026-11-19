@@ -33,6 +33,9 @@ pieces of each value of a run:
 - **A dynamic read** (the occurrences of an event, the flows present at an endpoint) has its pieces
   from the histories of what its members project and of the fields that say when each is a member:
   an occurrence is a member from its start, a flow of an occurrence while it is active.
+- **An edit of a store** at a stop (`checkpoints.py`) is a transfer from or to outside in its books:
+  the store's history `external` (`tank.water.external`, in the store's unit) is what edits brought
+  into it so far, from its start, a piece at each edit; a withdrawal lowers it.
 - **The time of a change** that `elapsed` reads has a piece at the start of its value and at each
   commit that changed it. It has no key in the record: the reader finds it from the history of the
   value that it reads.
@@ -164,6 +167,8 @@ class Recorder:
         self.run = None  # the run, which knows the entries that each collection keeps
         self.round = 0  # the round of the moment where the run is
         self._wanted = None  # the engine names whose histories a record of some keys needs
+        # A store that edits changed -> (its start, [(time, amount from outside)]) (`external`).
+        self.transfers = {}
 
     def entry(self, t, kind, part, owner='', **details):
         """One entry of the trace, in the round where the run is (`round`: 0 is the setup)."""
@@ -172,6 +177,12 @@ class Recorder:
     def failure(self, t, message):
         """The entry of the failure that stopped a run at time t."""
         return Entry(t, self.round, 'failure', '', '', (('message', message),))
+
+    def external(self, store, t, amount, start):
+        """An edit at a stop moved `amount` into a store from outside (a withdrawal is negative): its
+        books hold it as an external transfer, the history `external` beside the store, what edits
+        brought in so far, from the store's start."""
+        self.transfers.setdefault(store, (start, []))[1].append((t, amount))
 
     def segment(self, component, segment, stores, flows):
         """The pieces of the stores and the flows of a component over one of its segments."""
@@ -317,6 +328,16 @@ class Recorder:
                 finish = next(piece[0] for piece in self.pieces[name])
                 pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, run.frozen[name], 0.0)]
             histories[name] = self._history(value.key, pieces)
+        for name, (start, moved) in self.transfers.items():
+            key = plan.values[name].key
+            if name not in histories or key is None:
+                continue
+            total, pieces = 0.0, [(start, 0.0, 0.0)]
+            for at, amount in moved:
+                if at <= end:
+                    total += amount
+                    pieces.append((at, total, 0.0))
+            histories[f'{name}.external'] = self._history(Key(key.owner, (*key.steps, 'external')), pieces)
         # What a kept formula, reduction or dynamic read reads is kept too, so that `read` can
         # evaluate it (`_needed`).
         keys = set(request.keys)
@@ -870,10 +891,17 @@ def read(record, program, paths, times):
         unit, scale = unit_of(program, key)
         values = []
         for t in times:
-            if not record.manifest.holds(key, t):
+            external = key.steps[-1:] == ('external',)
+            if not record.manifest.holds(Key(key.owner, key.steps[:-1]) if external else key, t):
                 raise LookupError(f'{path}: the record holds no value at {t} h')
             try:
-                value = values_at.at(name_of(key), t)
+                if external:
+                    # What edits brought into a store from outside (`Recorder.external`): none, for a
+                    # store that no edit changed.
+                    history = values_at.histories.get(key)
+                    value = 0.0 if history is None else history.at(float(t))
+                else:
+                    value = values_at.at(name_of(key), t)
             except LookupError:
                 if '#' not in key.owner:
                     raise

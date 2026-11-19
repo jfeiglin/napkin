@@ -1,0 +1,138 @@
+{
+  "work_h": {
+    "kind": "work",
+    "dimensions": {
+      "work": 1
+    },
+    "scale": 1,
+    "description": "Standardized work equivalent to one hour at the declared reference processing rate; distinct from elapsed time and not an empirical staff-productivity estimate."
+  },
+  "work_h/h": {
+    "kind": "work_rate",
+    "dimensions": {
+      "work": 1,
+      "time": -1
+    },
+    "scale": 1,
+    "description": "Standardized work processed per elapsed model hour."
+  },
+  "parts": {
+    "kind": "count",
+    "dimensions": {
+      "parts": 1
+    },
+    "scale": 1,
+    "description": "Replacement controllers or other components, counted one by one."
+  },
+  "parts/work_h": {
+    "kind": "conversion",
+    "dimensions": {
+      "parts": 1,
+      "work": -1
+    },
+    "scale": 1,
+    "description": "Replacement parts installed for each standardized hour of replacement work."
+  },
+  "facilities": {
+    "kind": "count",
+    "dimensions": {
+      "facilities": 1
+    },
+    "scale": 1,
+    "description": "Hospitals or other essential facilities, counted one by one."
+  },
+  "facility-hours": {
+    "kind": "exposure",
+    "dimensions": {
+      "facilities": 1,
+      "time": 1
+    },
+    "scale": 1,
+    "description": "Hours summed over facilities: one facility for one hour counts one."
+  },
+  "strikes": {
+    "kind": "count",
+    "dimensions": {
+      "strikes": 1
+    },
+    "scale": 1,
+    "description": "Times the attacker has put a group's restored controls out of action again."
+  },
+  "customers": {
+    "dimensions": {
+      "customers": 1
+    },
+    "scale": 1,
+    "kind": "count"
+  },
+  "parts/h": {
+    "kind": "rate",
+    "dimensions": {
+      "parts": 1,
+      "time": -1
+    },
+    "scale": 1,
+    "description": "Replacement parts issued in an hour."
+  },
+  "Mgal/yr": {
+    "kind": "rate",
+    "dimensions": {
+      "L": 1,
+      "time": -1
+    },
+    "scale": 432.1246328767123,
+    "description": "Million US gallons a year, a year being 365 days."
+  },
+  "gal/yr": {
+    "kind": "rate",
+    "dimensions": {
+      "L": 1,
+      "time": -1
+    },
+    "scale": 0.00043212463287671234,
+    "description": "US gallons a year, a year being 365 days."
+  },
+  "gal/min": {
+    "kind": "rate",
+    "dimensions": {
+      "L": 1,
+      "time": -1
+    },
+    "scale": 227.12470704,
+    "description": "US gallons a minute."
+  },
+  "acre-ft": {
+    "kind": "volume",
+    "dimensions": {
+      "L": 1
+    },
+    "scale": 1233481.83754752,
+    "description": "Acre-feet: 43,560 cubic feet, about 325,851 US gallons."
+  },
+  "acre-ft/yr": {
+    "kind": "rate",
+    "dimensions": {
+      "L": 1,
+      "time": -1
+    },
+    "scale": 140.80842894378083,
+    "description": "Acre-feet a year, a year being 365 days."
+  },
+  "ft3/s": {
+    "kind": "rate",
+    "dimensions": {
+      "L": 1,
+      "time": -1
+    },
+    "scale": 101940.6477312,
+    "description": "Cubic feet a second."
+  },
+  "USD_k": {
+    "kind": "money",
+    "dimensions": {
+      "USD": 1
+    },
+    "scale": 1000.0,
+    "description": "Thousands of US dollars of the year that the claim states."
+  }
+}

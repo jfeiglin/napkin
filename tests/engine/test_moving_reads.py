@@ -31,6 +31,7 @@ from napkin.program.build import (
     after,
     assign,
     constraint,
+    endpoint,
     event,
     fany,
     flow,
@@ -371,3 +372,30 @@ def test_a_set_that_follows_a_moving_solver_stops_the_run_by_name():
     message = record.failure.detail('message')
     assert record.failure.t == 0
     assert 'tank.fill.actual_rate' in message and 'integrates the set of a moving solver alone' in message
+
+
+def test_a_moving_rate_that_reads_an_enum_value_runs_on_the_sparse_integrator():
+    """A tank with an outflow capacity (the sparse integrator) drains at a tenth of its water an hour
+    while its valve, an enum value, is OPEN: 100 e^(-t/10) L to 2 h, when a stage closes it, and from
+    then it holds. The enum is held as it is, not as a number."""
+    b = Builder(UNITS)
+    valve = b.enum('enum[OPEN, CLOSED]', 'OPEN', 'CLOSED')
+    b.entity(
+        'tank',
+        value('water', 'L', 100, lower=0, outflow=endpoint(capacity=q(50, 'L/h'))),
+        value('valve', valve, valve.OPEN),
+        flow(
+            'drain',
+            this.water,
+            SINK,
+            request=formula(ifelse(this.valve == valve.OPEN, this.water / q(10, 'h'), q(0, 'L/h'))),
+        ),
+        event('shut', after(q(2, 'h'), assign(this.valve, valve.CLOSED))),
+    )
+    b.setup(start(named('tank').shut))
+    program = b.finish()
+    record = run(program, Configuration(Request(4)))
+    assert record.failure is None
+    (water,) = read(record, program, ['tank.water'], [1, 2, 3, 4])
+    expected = [100 * math.exp(-0.1), 100 * math.exp(-0.2), 100 * math.exp(-0.2), 100 * math.exp(-0.2)]
+    assert water.values == pytest.approx(expected, rel=1e-7)

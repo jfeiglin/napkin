@@ -77,6 +77,7 @@ CLOSURE = (
     'engine/timeline/reads.py',
     'engine/timeline/record.py',
     'engine/timeline/run.py',
+    'engine/timeline/saved.py',
     'engine/timeline/selection.py',
     'engine/timeline/sparse.py',
     'engine/timeline/trees.py',

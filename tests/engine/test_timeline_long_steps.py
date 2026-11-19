@@ -244,3 +244,53 @@ def test_a_value_that_is_over_a_mark_only_for_a_short_time_is_read_there():
     component = way.component
     segment = component.next(300 * DAY)
     assert isinstance(segment.solution, MatrixExponential) and segment.end == 300 * DAY
+
+
+def test_a_linear_chain_of_three_compartments_is_its_closed_form_and_quick():
+    """a -> b -> c -> SINK at 1, 1/2 and 1/3 an hour, from 100 at a: the Bateman equations give
+    a = 100 e^-t, b = 200 (e^(-t/2) - e^-t), c = 50 (3 e^-t - 12 e^(-t/2) + 9 e^(-t/3)). The segment
+    is a matrix exponential, which the record reads at each point of its fits: SciPy's took 4 to 10
+    ms for this 4 x 4 matrix on several BLAS threads, and the run 9 to 12 s; the engine's own takes
+    microseconds (`continuous/kernels.expm`), and agrees with SciPy's to rounding."""
+    import time
+
+    import numpy as np
+    from scipy.linalg import expm as scipy_expm
+
+    from napkin.engine.continuous.kernels import expm
+
+    b = Builder({'h': {'time': 1}, 'L': {'volume': 1}})
+    b.entity(
+        'chain',
+        value('a', 'L', 100, lower=0),
+        value('b', 'L', 0, lower=0),
+        value('c', 'L', 0, lower=0),
+        flow('ab', this.a, this.b, request=formula(this.a / q(1, 'h'))),
+        flow('bc', this.b, this.c, request=formula(this.b / q(2, 'h'))),
+        flow('out', this.c, build.SINK, request=formula(this.c / q(3, 'h'))),
+    )
+    program = b.finish()
+    begun = time.perf_counter()
+    made = Run(Plan.of(program, Configuration(Request(24))))
+    record = made.run()
+    took = time.perf_counter() - begun
+    assert record.failure is None and {connected.way for connected, _ in made.ways.sets.values()} == {
+        'component'
+    }
+    times = [1, 5, 24]
+    found = read(record, program, ['chain.a', 'chain.b', 'chain.c'], times)
+    e = math.exp
+    # Within the relative tolerance of the run, or the absolute one of a store (1e-10 of its 100 L).
+    near = {'rel': 1e-7, 'abs': 1e-8}
+    assert found[0].values == pytest.approx([100 * e(-at) for at in times], **near)
+    assert found[1].values == pytest.approx([200 * (e(-at / 2) - e(-at)) for at in times], **near)
+    assert found[2].values == pytest.approx(
+        [50 * (3 * e(-at) - 12 * e(-at / 2) + 9 * e(-at / 3)) for at in times], **near
+    )
+    assert took < 3
+    rng = np.random.default_rng(3)
+    for n in (1, 3, 8):
+        for scale in (1e-3, 1, 50):
+            matrix = rng.normal(size=(n, n)) * scale / n
+            theirs = scipy_expm(matrix)
+            assert np.abs(expm(matrix) - theirs).max() <= 1e-11 * max(1.0, np.abs(theirs).max())
