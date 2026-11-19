@@ -518,6 +518,16 @@ class Proofs:
         """The writers, the definitions and the starts of the statements of a stage. The setup writes
         at time 0, before any read of the run, so only its definitions and starts count."""
         for statement in statements:
+            if isinstance(statement, p.Assign) and statement.target.steps[-1:] in (
+                ('request',),
+                ('capacity',),
+            ):
+                # A setting of a flow: the flow then follows the stage that assigns it.
+                setting = Path(statement.target.start, statement.target.steps[:-1])
+                for point, _ in self.points(setting, at, True):
+                    if point[0] == 'flow':
+                        for flow in self._point_parts(point, {}):
+                            found.settings.setdefault(flow, []).append(stage)
             if isinstance(statement, p.Assign):
                 if isinstance(statement.value, Formula):
                     for key, _ in self._ends(statement.target, at):
@@ -924,6 +934,7 @@ class Proofs:
                 edges.extend(
                     other.part for other in index.writers.get(key, ()) if other.kind in ('flow', 'route')
                 )
+            edges.extend(index.settings.get(part, ()))
             if writer.event is not None:
                 edges.append(Part('event', writer.event, part.owner))
         elif part.kind == 'stage' and part in index.stages:
@@ -997,11 +1008,13 @@ class Proofs:
 class _Index:
     """What the proofs find once in a program: the writers of each stored number by its key; the
     definitions that stages and the setup give each formula, as (origin, event); the parts that
-    start each event on each receiver; and each flow, stage, trigger and solver by its part."""
+    start each event on each receiver; the stages that assign a setting of each flow (its request or
+    its capacity); and each flow, stage, trigger and solver by its part."""
 
     writers: dict = field(default_factory=dict)
     defines: dict = field(default_factory=dict)
     starters: dict = field(default_factory=dict)
+    settings: dict = field(default_factory=dict)
     flows: dict = field(default_factory=dict)
     stages: dict = field(default_factory=dict)
     triggers: dict = field(default_factory=dict)

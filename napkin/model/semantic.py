@@ -1043,6 +1043,34 @@ class DeclaredModel:
         """The named run of a name, or None."""
         return next((item for item in self.runs if item.name == name), None)
 
+    def evidence(self, origin, member='', options=()):
+        """The records that the part of an origin rests on for one member under the options of a run,
+        in this order: the declared part's own; for a value of a template, the member's own line (a
+        member written by hand) or the column of its table (a row, as `nodes.Cite`); and each setting
+        of the options named in `options` that sets this value of this member, or of every member
+        of its template. Each is a `nodes.Cite` or a `nodes.Inline`; an evidence trail cites them."""
+        part = self.part(origin)
+        found = list(getattr(part, 'evidence', ()))
+        if not isinstance(part, DeclaredValue):
+            return tuple(found)
+        template, _, name = origin.rpartition('.')  # a value of the top level has no template
+        owner = self.part(member) if member else None
+        if isinstance(owner, DeclaredMember) and owner.template == template:
+            if owner.table is None:
+                found += [item for given in owner.values if given.name == name for item in given.evidence]
+            else:
+                table = self.part(owner.table)
+                for column in table.columns if isinstance(table, DeclaredTable) else ():
+                    if column.name == name:
+                        found += [n.Cite(cited) for cited in column.cites]
+        for option in (self.option(each) for each in options):
+            for setting in option.settings if option is not None else ():
+                if setting.name == name and (
+                    setting.member == member or (template and setting.instances == template)
+                ):
+                    found += setting.evidence
+        return tuple(found)
+
     def part(self, path):
         """The declared part of a path (an entity, a template, a value, the settings of an
         endpoint, a flow, a leg, an event or a solver and each part of it, a status display and each

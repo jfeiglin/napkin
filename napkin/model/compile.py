@@ -35,7 +35,7 @@ from ..program.parts import Program
 from . import runs
 from .identity import model_hash
 from .language import nodes as n
-from .language.evidence import document
+from .language.evidence import document, lines
 from .language.modules import files as package_files
 from .language.parse import parse
 from .language.problems import LanguageError, Problem, SyntaxProblem
@@ -152,6 +152,7 @@ def load_scenario(path, *, run=None, edits=None):
     configuration of its run `run` (None for its default run) under the edit document `edits`. A
     missing file raises FileNotFoundError; a file that is no model, a problem of its files or a
     scenario line with no horizon, a LanguageError."""
+    from .ir import ModelError
     from .library import load_library
 
     path = Path(path)
@@ -177,7 +178,12 @@ def load_scenario(path, *, run=None, edits=None):
                 for item in scenario_problems
             ]
         )
-    library = load_library(path, document=document(tree))
+    try:
+        library = load_library(path, document=document(tree))
+    except ModelError as error:
+        raise ModelError(
+            [placed_diagnostic(item, lines(tree), files) for item in error.diagnostics]
+        ) from None
     compiled = _compiled(
         tree, library_units(library), in_folder(found.package), tuple(files), path.as_posix(), run, edits
     )
@@ -185,6 +191,17 @@ def load_scenario(path, *, run=None, edits=None):
         line = Files(tuple(files)).place(tree.scenario.line)
         raise LanguageError([Problem('scenario', HORIZON, line[1], 0, line[0])])
     return compiled
+
+
+def placed_diagnostic(item, written, files):
+    """A diagnostic of the library about a record of the model (its path starts with the path of the
+    line that writes or cites the record, `language.evidence.document`), with the file and the line
+    of that line; any other unchanged."""
+    line = written.get(str(item.get('path', '')).split('/')[0])
+    if not line:
+        return item
+    file, at = Files(tuple(files)).place(line)
+    return {**item, 'file': file, 'line': at}
 
 
 def merged(trees):

@@ -366,6 +366,28 @@ def test_what_a_value_reads_reaches_its_writers_their_events_and_triggers():
     assert found.blocked == {}
 
 
+def test_a_stage_that_sets_a_flow_s_request_is_part_of_what_its_store_reads():
+    """The tank drains at 1 L/h until a stage at 2 h sets the drain's request to 0 L/h: the water
+    reads the flow, and the flow the stage that sets it and so the stage's event."""
+    b = Builder(UNITS)
+    tank = b.entity(
+        'tank',
+        value('water', 'L', 10, lower=0),
+        flow('drain', this.water, SINK, request=q(1, 'L/h')),
+        event('stop', after(q(2, 'h'), assign(this.drain.request, q(0, 'L/h')))),
+    )
+    b.setup(start(tank.stop))
+    found = reads(b.finish(), Configuration(Request(4)), Key('tank', ('water',)))
+    chain = [
+        Part('value', 'tank.water', 'tank'),
+        Part('flow', 'tank.drain', 'tank'),
+        Part('stage', 'tank.stop.step[0]', 'tank'),
+        Part('event', 'tank.stop', 'tank'),
+    ]
+    for part, then in pairwise(chain):
+        assert then in found.edges[part], (part, then)
+
+
 def test_an_event_that_cannot_start_is_blocked_with_its_reason():
     off = Configuration(Request(10), inputs=(InputValue('depot', 'recalls', False),))
     found = reads(_depot(), off, Key('depot', ('delivered',)))

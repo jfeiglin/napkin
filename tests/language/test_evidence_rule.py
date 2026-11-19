@@ -1,14 +1,21 @@
 """The owner's evidence rule (item 16 of the plan's changes after G0, `napkin/model/support.py`): a
 warning, code `no_record`, for each part that rests on no record, of the kinds for which the
 compiler before the rewrite refused a model, at the part's line. A value that an option or a
-`change` sets keeps its error (R-A5-05). The lines below are counted by hand in the texts."""
+`change` sets keeps its error (R-A5-05). Then what the evidence tools need of the front end: the
+records of a value for a member and a run (`DeclaredModel.evidence`), the document of a whole
+package (`library.model_document`), and a record's error at its file and line. The lines below are
+counted by hand in the texts."""
 
+import json
 import textwrap
+from pathlib import Path
 
 import pytest
 
-from napkin.model.compile import compile_text
+from napkin.model.compile import compile_text, load_scenario
+from napkin.model.ir import ModelError
 from napkin.model.language.problems import LanguageError
+from napkin.model.library import model_document
 from tests.program.examples import UNITS
 
 TEXT = """\
@@ -93,3 +100,75 @@ def test_a_value_that_an_option_sets_with_no_record_stays_an_error():
     with pytest.raises(LanguageError) as caught:
         compile_text(text, UNITS)
     assert caught.value.codes == ['record']
+
+
+# A template value with its record, a member's own value with another, a row whose column cites a
+# third, and an option that sets the value of every member with a fourth.
+TRAIL = """\
+record base: assumption "The capacity of a pump."
+record own: source "The north pump, measured."
+record column: source "The table of the pumps."
+record big: assumption "Big pumps."
+Pump:
+    input capacity: L = 5 L  @base
+north: Pump
+    capacity = 7 L  @own
+rows: Pump from "rows.csv"
+options "Size":
+    "Big":
+        "Every pump is big."
+        Pump.instances.capacity = 9 L  @big
+"""
+
+
+def test_the_evidence_of_a_value_for_a_member_and_a_run_takes_its_own_lines_and_its_options():
+    """The trail of a member's value cites the template's records, the member's own line or its
+    table's column, and the settings of the options that the run takes (`DeclaredModel.evidence`)."""
+    declared = compile_text(TRAIL, UNITS, tables={'rows.csv': 'id,capacity: L @column\na,6\n'}).declared
+
+    def names(member, options=()):
+        return [item.name for item in declared.evidence('Pump.capacity', member, options)]
+
+    assert names('north') == ['base', 'own']
+    assert names('rows.a') == ['base', 'column']
+    assert names('north', ('Big',)) == ['base', 'own', 'big']
+    assert names('') == ['base']
+
+
+SERVICE = """\
+service:
+    water: L = 8 L
+        @assumption "A guess of a test."
+            assumption A-NOWHERE
+    status ok when this.water > 1 L
+        @fixture
+    status failed
+
+record fixture: assumption "A fixture of a test."
+"""
+
+
+def service_package(tmp_path):
+    """A package whose main file uses the module `common`, which writes the service."""
+    folder = tmp_path / 'service'
+    folder.mkdir()
+    (folder / 'units.json').write_text(json.dumps({'L': {'dimensions': {'volume': 1}, 'scale': 1}}))
+    (folder / 'model.scn').write_text('scenario "Service"\n    horizon 2 h\nuse common\n', encoding='utf-8')
+    (folder / 'common.scn').write_text(SERVICE, encoding='utf-8')
+    return folder / 'model.scn'
+
+
+def test_the_document_of_a_package_reads_its_modules_and_names_parts_as_the_model_does(tmp_path):
+    """`library.model_document` reads each file that the model reads, and names a case of a status
+    display by the path that the declared model gives it, not by its place in a list."""
+    found = model_document(service_package(tmp_path))
+    assert {'service.water', 'service.status.case[0]', 'record fixture'} <= set(found)
+
+
+def test_a_record_that_names_no_assumption_is_refused_at_its_file_and_line(tmp_path):
+    entry = service_package(tmp_path)
+    with pytest.raises(ModelError) as caught:
+        load_scenario(entry)
+    (item,) = caught.value.diagnostics
+    assert (item['code'], Path(item['file']).name, item['line']) == ('provenance', 'common.scn', 2)
+    assert 'A-NOWHERE' in item['message']

@@ -28,8 +28,8 @@ Brief: `scratch/rewrite/briefs/s7.md` (S7-F), `PLAN.md` "Changes after G0" items
 ## For S7-E
 - `load(path).program/.table/.digest`; `origins(program)[origin]`; `table.location(origin)`.
 - `LEFT` in tests/engine/test_programs.py is dead now (no example reads `choose`): yours to drop.
-- `record.KINDS` still lists `choice` (yours). `report._Trail.cites` should call the front end's
-  `DeclaredModel.evidence(origin, member, options)` once it exists (item 3, in progress).
+- `record.KINDS` still lists `choice` (yours). `report._Trail.cites` should call
+  `model.evidence(origin, part.owner, options)`, with the options of the run (report needs them).
 - An edit can make an event that `reach` proves cannot start start: a report that uses reach
   should withdraw that, as for never-falls.
 
@@ -37,13 +37,17 @@ Brief: `scratch/rewrite/briefs/s7.md` (S7-F), `PLAN.md` "Changes after G0" items
 - The evidence warning: a `Problem` with code `no_record` (`napkin.model.support.CODE`) in
   `Compiled.reports`, beside the setup's other reports (`equal_keys`, `below_first_key`); tell it
   apart by `problem.code == 'no_record'`. Each has its file and line (a column: its table file, 1).
+  `napkin compile` prints each; `--json` gives them under `warnings`.
   A number, a yes/no or a distribution that an option or a `change` sets without a record stays a
   `LanguageError` with code `record`.
 
-## In progress
-- Item 2: wire `support.unsupported` into `compile._compiled` reports; tests.
-- Item 3 (c-evidence gaps): `library.model_document` reads all a package's files; `proofs.reads`
-  follows a stage that assigns a flow's request or capacity; `DeclaredModel.evidence(origin, member,
-  options)` for the trail; provenance diagnostics with a line and no list indexes
-  (`language/evidence.py` paths). The datum check is left for later.
-- Others' live code hit: napkin/commands/play.py imports `views.actors` (C-K).
+## Done after M3 (coordinator's items 2 and 3)
+- Evidence rule: `model/support.py` (`unsupported`, code `no_record`) in `Compiled.reports`;
+  `napkin compile` lists each, other commands print one line (`common.warn`); `--json` documents
+  of compile, run and sample have `warnings`. tests/language/test_evidence_rule.py; the 11 tests of
+  tests/commands given records; two tests of the rules in tests/commands/test_compile.py.
+- Gaps: `library.model_document` reads every file of a package; `proofs.reads` follows a stage
+  that sets a flow's request or capacity (`_Index.settings`); `DeclaredModel.evidence(origin,
+  member, options)`; the walker names `status.case[k]`, `assert[k]`; `language.evidence.lines`;
+  `compile.placed_diagnostic` puts a library error at its file and line. Datum check: later.
+- Others' live code hit: napkin/commands/play.py imports `views.actors` (gone).

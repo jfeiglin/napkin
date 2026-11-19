@@ -93,12 +93,16 @@ def compiled(entry, listed=False):
         text, prefix = str(error), f'{error.path}:{error.line}: ' if error.line else f'{error.path}: '
         raise Failed([problem('source', text.removeprefix(prefix), error.path, error.line)]) from None
     except ModelError as error:
-        # A problem of the units or the records of the library names its place in them, not a file.
+        # A problem of the units or the records of the library names its place in them; one about a
+        # record of the model also has the file and the line that write or cite the record.
         found = []
         for item in error.diagnostics:
             where = f'{item["path"]}: ' if item.get('path') else ''
+            message = f'the library: {where}{item["message"]}'
             found.append(
-                problem(item.get('code') or 'library', f'the library: {where}{item["message"]}', entry)
+                problem(
+                    item.get('code') or 'library', message, item.get('file') or entry, item.get('line', 0)
+                )
             )
         raise Failed(found) from None
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
