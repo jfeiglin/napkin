@@ -21,8 +21,10 @@ PACED = """\
 scenario "Paced tank"
     horizon 4 h
 
+record tank_size: assumption "The tank of a test holds 8 L."
+
 tank:
-    readonly water: L = 8 in [0, 20]
+    readonly water: L = 8 in [0, 20]  @tank_size
 
 clinic:
     input pace: L/h = 3 L/h in [0 L/h, 10 L/h]  @pace
@@ -125,11 +127,13 @@ scenario "Decay"
     horizon 20 h
 
 s:
-    pending: person = 100 person in [0 person,]
-    finished: person = 0 person in [0 person,]
+    pending: person = 100 person in [0 person,]  @cohort
+    finished: person = 0 person in [0 person,]  @cohort
         "People who finished"
     flow finish: this.pending -> this.finished
         request = formula(this.pending / (10 h))
+
+record cohort: assumption "A cohort of 100 people of a test, which finishes at a tenth an hour."
 """
 
 

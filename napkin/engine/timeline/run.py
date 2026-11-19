@@ -80,6 +80,7 @@ from .plan import (
 )
 from .reads import lazily
 from .record import Recorder, remember
+from .saved import restore
 from .triggers import Triggers
 from .ways import Ways
 
@@ -126,10 +127,9 @@ class Stepped:
 
 
 class Run:
-    """See the module. `breakpoints` stop the run (`checkpoints.py`); `expected` is the checkpoint
-    that a run of its program resumes, which it checks at the stop and passes."""
+    """See the module. `breakpoints` stop the run (`checkpoints.py`)."""
 
-    def __init__(self, plan, breakpoints=(), expected=None):
+    def __init__(self, plan, breakpoints=()):
         self.plan = plan
         self.cap = step_cap(plan.numerics)
         self.settings = run_settings(plan.numerics, self.cap)
@@ -153,7 +153,7 @@ class Run:
         self.waiting, self.waiting_names = [], set()
         self.changes = {}  # a stored value -> the times of the commits that changed it (`elapsed`)
         self.checkpoint = None  # the checkpoint of a run stopped at a breakpoint, until `resume`
-        self.breaks = Breaks(self, breakpoints, expected.stop.hit if expected else 0, expected)
+        self.breaks = Breaks(self, breakpoints)
         self.chance = Chance(self)
         self.ways = Ways(self)
         self.occurrences = Occurrences(self)
@@ -715,6 +715,16 @@ class Run:
         self.breaks.edit(checkpoint)
         self.checkpoint = checkpoint
         return checkpoint
+
+    @classmethod
+    def restored(cls, plan, checkpoint):
+        """The run of a plan that a checkpoint stopped, made again from its saved state (`saved.py`),
+        waiting at its stop: `resume` goes on, `edit` edits."""
+        made = cls(plan, checkpoint.breakpoints)
+        restore(made, checkpoint.saved)
+        made.breaks.restored(checkpoint)
+        made.checkpoint = checkpoint
+        return made
 
     def _start(self):
         self.prepare()

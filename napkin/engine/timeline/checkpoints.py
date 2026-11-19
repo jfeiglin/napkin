@@ -14,34 +14,14 @@ then the rest of the run: its hits are counted again from the stage's start, so 
 passes and the next stops; the draws that the stage made before the stop are keyed (`chance.py`), so
 they are the same and are traced once. Nothing else of the run changed at the stop.
 
-**Resume in a fresh process** runs the program again from its start, with the checkpoint's
-configuration and breakpoints, passing its hits up to the stop (`timeline.resume`): there, the stop,
-the state and the record so far must equal the checkpoint's, or the resume is refused by name
-(`CheckpointError`), so a checkpoint never goes on as another run. So the run that goes on is the
-run straight through, number for number: the same code takes the same steps from the same state.
+**Resume in a fresh process** (`timeline.resume`) makes the run again from the checkpoint's saved
+state (`saved.py`) and goes on from the stop, as in place: nothing before the stop runs twice. What a
+run carries across a moment that its future reads is in that state, or starts again at each moment
+on every path (`saved.py` says which), so the run that goes on is the run straight through, number
+for number. The restored run's logical state must be the checkpoint's (`State`), or the resume is
+refused by name (`CheckpointError`), so a checkpoint never goes on as another run.
 
-That is the choice for the numerical state that a run carries across a moment, which its future reads
-and a checkpoint of the logical state alone would lose. What carries it today:
-
-- the sparse integrator keeps its Radau solver (step size, Jacobian, factorizations) across a
-  moment that falls on the end of one of its steps (`sparse.py`, `cut`);
-- a declared solver's `solve.Solver` keeps its HiGHS instance for the run (its basis,
-  factorization and scaling: a warm answer agrees with a fresh one within the tolerances, not bit
-  for bit), and the last problem and answer, which decide whether a solve is made and traced;
-- the family, the lines and a declared solver's lines hold each store as a line from the time at
-  which it last changed, and the time at which it meets a bound; the same store rebuilt at a moment
-  from its value there gives other last bits;
-- each instance holds what it captured when it was built (the parameters of a component, the
-  constants of the sparse integrator, what a flow asks), which the stages of a round read until the
-  round's settling builds it again;
-- the plan makes values as the run first reads them (reductions, keyed reads), named in that order.
-
-Saving all of that as data, or starting it again at each moment on every path (which rebuilds every
-set at every moment, and solves every declared solver cold), costs code in each way of running, or
-time at each moment of every run. Running the program again costs nothing on a run that does not
-stop, and the time of the run to the stop once, when a checkpoint is resumed in a fresh process.
-
-The checkpoint's logical state (`State`) is what a caller inspects, and what the replay checks.
+The checkpoint's logical state (`State`) is what a caller inspects and edits.
 """
 
 from __future__ import annotations
@@ -64,6 +44,7 @@ from ...program.checkpoint import (
 )
 from ...program.record import Entry
 from .plan import BUILTINS, STARTS, STATE, _statements
+from .saved import save
 
 _SOURCES = ('engine', 'program', 'core')  # the folders of the package whose code a run runs
 _FILES = ('__init__.py', 'expressions.py', 'distributions.py')
@@ -125,9 +106,9 @@ def _locations(program):
 
 class Breaks:
     """The breakpoints of one run and its hits (see the module). `passing` is the number of hits that
-    pass; `expected`, the checkpoint that a replay checks at its stop."""
+    pass."""
 
-    def __init__(self, run, breakpoints, passing=0, expected=None):
+    def __init__(self, run, breakpoints, passing=0):
         self.run = run
         self.breakpoints = tuple(breakpoints)
         self.stages, self.statements = {}, {}
@@ -150,13 +131,11 @@ class Breaks:
                 )
         self.hits = 0  # the hits so far
         self.passing = passing
-        self.expected = expected
         self.start = 0  # the hits before the stage that runs (or the setup)
         self.next = ''  # the stage that runs, by its origin, or `setup`
         # The edits of the run, in order, and the places of those made at a stop before a stage,
         # which commit once.
-        self.edits = list(expected.edits) if expected is not None else []
-        self.done = set()
+        self.edits, self.done = [], set()
 
     # ---- hits -------------------------------------------------------------------------------------
 
@@ -196,8 +175,6 @@ class Breaks:
         stop = Stop(
             'breakpoint', breakpoint, at, owner, member, run.now, run.recorder.round, self.hits, self.next
         )
-        if self.expected is not None and self.hits == self.expected.stop.hit:
-            self._check(stop)
         if self.hits <= self.passing:
             for k, edit in enumerate(self.edits):
                 if edit.hit == stop.hit and (tx is not None or k not in self.done):
@@ -284,6 +261,7 @@ class Breaks:
             self.state(),
             run.recorder.record(run.now, pause=pause_entry(stop)),
             tuple(self.edits),
+            save(run),
         )
 
     def state(self):
@@ -320,22 +298,22 @@ class Breaks:
         )
         return State(tuple(values), occurrences, pending, triggers)
 
-    def _check(self, stop):
-        """A replay reaches the stop of the checkpoint that it resumes: the stop, the state and the
-        record so far must be the checkpoint's."""
-        expected, self.expected = self.expected, None
-        found = self.checkpoint(stop)
-        for what, mine, theirs in (
-            ('where the run stops', found.stop, expected.stop),
-            ('the state', found.state, expected.state),
-            ('the record so far', found.record, expected.record),
-        ):
-            # Equal values, or values of equal bits (a NaN equals itself there).
-            if mine != theirs and encode(mine) != encode(theirs):
-                raise CheckpointError(
-                    f'the checkpoint does not resume: {what} differs from the run of its program '
-                    f'({_difference(mine, theirs)})'
-                )
+    def restored(self, checkpoint):
+        """A run made again from a checkpoint (`saved.restore`) is the run that stopped there: its
+        logical state is the checkpoint's, or the checkpoint does not resume here. The edits of the
+        checkpoint are the run's; one at a stop before a stage commits now, once."""
+        found = self.state()
+        if found != checkpoint.state and encode(found) != encode(checkpoint.state):
+            raise CheckpointError(
+                'the checkpoint does not resume: its saved state does not make its state again '
+                f'({_difference(found, checkpoint.state)})'
+            )
+        stop = checkpoint.stop
+        self.edits = list(checkpoint.edits)
+        for k, edit in enumerate(self.edits):
+            if edit.hit == stop.hit and stop.at == stop.next and k not in self.done:
+                self.done.add(k)
+                self.apply(edit, stop, None)
 
 
 def pause_entry(stop):

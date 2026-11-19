@@ -161,12 +161,16 @@ def shared_library(model_path):
 
 
 def model_document(path):
-    """What the evidence walkers read of a model file: its records, by the path of each line that
-    has evidence (`language.evidence.document`)."""
+    """What the evidence walkers read of a model: its records, by the path of each line that has
+    evidence (`language.evidence.document`), from every file that the model reads, as the compiler
+    reads them (`language.modules.files`, `compile.merged`): the modules that it uses and, for a
+    variant, its package's main file."""
+    from .compile import merged
     from .language.evidence import document
+    from .language.modules import files
     from .language.parse import parse
 
-    return document(parse(Path(path).read_text(encoding='utf-8')))
+    return document(merged([parse(text) for _, text in files(Path(path)).files])[0])
 
 
 def load_library(model_path, *, document=None, allow_unused=False, references=True):

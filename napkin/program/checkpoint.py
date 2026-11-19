@@ -21,6 +21,7 @@ occurrence. The engine stops before the stage or the statement and gives a `Chec
   version of the engine (the SHA-256 of its code), `configuration` and `breakpoints`: what the run
   ran with.
 - `edits` (`Edit`): every edit of the run so far, each at the stop where it was made, in order.
+- `saved`: the state of the engine at the stop, as data (`napkin/engine/timeline/saved.py`).
 
 **Edits** (`Checkpoint.edit`) are the actions of a caller at a stop: an edit gives a live stored
 value of a member or of an occurrence (not a parameter or a built-in field of an occurrence, an
@@ -38,11 +39,13 @@ each once.
 seed, on one platform, a stopped and resumed run gives the same recorded values, draw results, event
 times and event order as the run straight through, and a breakpoint alone never changes which
 branch fires. The engine resumes a run that stopped in its own process in place, and a checkpoint
-in a fresh process by running the program again to the stop, where the state and the record must
-equal the checkpoint's (`napkin/engine/timeline/checkpoints.py` says why). A checkpoint of another
-program or engine version is refused by name (`CheckpointError`).
+in a fresh process from its saved state (`saved`): the state of the engine at the stop, as data,
+from which the run is made again and goes on, with nothing before the stop run twice
+(`napkin/engine/timeline/saved.py` says what it holds). The restored run's logical state must be the
+checkpoint's `state`, and a checkpoint of another program or engine version is refused by name
+(`CheckpointError`).
 
-**The representation** (`dumps`, `loads`) is text: a first line `napkin checkpoint 1`, then one JSON
+**The representation** (`dumps`, `loads`) is text: a first line `napkin checkpoint 2`, then one JSON
 value. A JSON array is a tuple; a record of the program package is an object with its class's name
 under `"$"` and its fields by name (`{"$": "Piece", "t": 0.0, "value": 2.5, "rate": 0.0, "curve":
 null}`); a float is a JSON number, which reads back to the same float, except a float that JSON
@@ -61,7 +64,7 @@ from typing import Any
 
 from . import config, parts, record, refs
 
-HEADER = 'napkin checkpoint 1'
+HEADER = 'napkin checkpoint 2'
 
 
 class CheckpointError(ValueError):
@@ -167,6 +170,7 @@ class Checkpoint:
     state: State
     record: record.Record
     edits: tuple[Edit, ...] = ()
+    saved: tuple = ()
 
     def edit(self, target, value):
         """This checkpoint with one more edit at its stop. The value that it changes must be in its

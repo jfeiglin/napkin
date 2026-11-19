@@ -68,17 +68,60 @@ scenario "Readings"
     horizon 4 h
 
 Reading:
-    input hour: h = 0
-    input factor = 1
+    input hour: h = 0  @log
+    input factor = 1  @log
 
 readings: Reading from "readings.csv"
 
 factor_now = formula(Reading.instances.by(hour).at(t).factor)
+
+record log: source "The readings of a test."
 """
     model = package(tmp_path / 'readings', text, UNITS)
-    (model / 'readings.csv').write_text('id,hour: h,factor\nmorning,0,2\nnoon,0,3\n', encoding='utf-8')
+    (model / 'readings.csv').write_text(
+        'id,hour: h @log,factor @log\nmorning,0,2\nnoon,0,3\n', encoding='utf-8'
+    )
     found = napkin(capsys, 'compile', model)
     assert found.code == 0
     (line,) = found.err.splitlines()
     assert line.startswith(f'{model / "readings.csv"}:3: warning: ')
     assert line.endswith('[equal_keys]')
+
+
+# ---- the evidence rule: the parts that rest on no record (napkin.model.support) --------------------
+
+# The tank of `call.TANK` with a second store: neither cites a record, and a flow needs none.
+UNRECORDED = TANK.replace(
+    '    readonly water: L = 8 in [0, 20]\n', '    readonly water: L = 8 in [0, 20]\n    spare: L = 2 L\n'
+)
+MISSING = 'a stored value rests on no record: cite one (@name) or write one under it [no_record]'
+
+
+def test_compile_lists_each_part_that_rests_on_no_record_at_its_line(tmp_path, capsys):
+    """`napkin compile` is the checking command: a warning for each store, at its line, and the model
+    compiles; `--json` keeps each warning with its place."""
+    model = package(tmp_path / 'tank', UNRECORDED, UNITS)
+    found = napkin(capsys, 'compile', model)
+    assert found.code == 0
+    assert found.err.splitlines() == [
+        f'{model / "model.scn"}:5: warning: tank.water: {MISSING}',
+        f'{model / "model.scn"}:6: warning: tank.spare: {MISSING}',
+    ]
+    warnings = napkin(capsys, 'compile', model, '--json').doc['warnings']
+    assert [(item['code'], item['file'], item['line']) for item in warnings] == [
+        ('no_record', str(model / 'model.scn'), 5),
+        ('no_record', str(model / 'model.scn'), 6),
+    ]
+
+
+def test_another_command_counts_the_parts_that_rest_on_no_record_in_one_line(tmp_path, capsys):
+    """Every other command writes one line that counts them, so a model being explored gets one line
+    of noise; its `--json` keeps each warning with its place."""
+    model = package(tmp_path / 'tank', UNRECORDED, UNITS)
+    found = napkin(capsys, 'run', model)
+    assert found.code == 0
+    assert found.err.splitlines() == [
+        'warning: 2 values have no record (napkin compile lists them) [no_record]'
+    ]
+    warnings = napkin(capsys, 'run', model, '--json').doc['warnings']
+    assert [(item['code'], item['line']) for item in warnings] == [('no_record', 5), ('no_record', 6)]

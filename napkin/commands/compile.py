@@ -9,6 +9,11 @@ its inputs, stores, formulas and distributions, its flows with their ends, the u
 and its hash, which an edit document names (`model_hash`). `--json` prints the same as one JSON
 document, with `diagnostics` empty or the problems.
 
+Each report of the setup is a warning on the error stream, `file:line: warning: message [code]`, and
+so is each part of the model that rests on no record (`no_record`, `napkin.model.support`): this
+command lists them, where every other command counts them in one line. `--json` gives each warning
+under `warnings`.
+
 The command also checks the file that only the picture reads: the stylesheet of the model
 (`napkin.draw.style.of`: the variant's own `style.toml`, else its package's). A stylesheet with a
 problem gives its diagnostics, each with its file and its key, after the summary.
@@ -53,7 +58,7 @@ def main(args):
     """Compile the model that the arguments name and print its summary; give the exit code."""
     entry = common.entry_of(args.model)
     try:
-        model = common.compiled(entry)
+        model = common.compiled(entry, listed=True)
     except common.Failed as failed:
         if not args.json:
             raise
@@ -66,7 +71,12 @@ def main(args):
     problems = style_problems(model)
     if args.json:
         common.write_json(
-            {'model': common.shown(entry), **found, 'diagnostics': list(map(common.problem_json, problems))},
+            {
+                'model': common.shown(entry),
+                **found,
+                'diagnostics': list(map(common.problem_json, problems)),
+                'warnings': list(map(common.problem_json, model.reports)),
+            },
             sys.stdout,
         )
         return 1 if problems else 0

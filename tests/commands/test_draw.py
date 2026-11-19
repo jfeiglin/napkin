@@ -23,14 +23,16 @@ WARDS = """\
 scenario "Wards"
     horizon 10 h
 
+record fixture: assumption "The values and events of a test."
+
 north:
     "A district."
     role community
-    input x: h = 2 h in [1 h, 5 h]
+    input x: h = 2 h in [1 h, 5 h]  @fixture
         "X"
-    people: people = 10 people in [0,]
+    people: people = 10 people in [0,]  @fixture
         "People"
-    served: people = 0 people in [0,]
+    served: people = 0 people in [0,]  @fixture
         "People served"
     flow serve: this.people -> this.served
         request = 1 people/h
@@ -38,14 +40,14 @@ north:
 shop:
     "A shop."
     role operator
-    input staffed: bool = false
-    open: bool = true
-    close = event():
+    input staffed: bool = false  @fixture
+    open: bool = true  @fixture
+    close = event():  @fixture
         when t >= 3 h:
             this.close.start()
         after 0 h:
             this.open = false
-    reopen = event():
+    reopen = event():  @fixture
         when this.staffed and t >= 5 h:
             this.reopen.start()
         after 0 h:

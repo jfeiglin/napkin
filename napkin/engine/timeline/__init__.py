@@ -65,14 +65,17 @@ def run(program, configuration, breakpoints=()):
 
 
 def resume(program, checkpoint):
-    """Go on with a checkpoint of a run of a program, in this process or another: the program runs
-    again to the stop, which must give the checkpoint's state and record, then on (`checkpoints.py`).
-    Gives the record of the run straight through, or the checkpoint of its next stop. A checkpoint of
-    another program or of another version of the engine is refused (`CheckpointError`)."""
+    """Go on with a checkpoint of a run of a program, in this process or another: the run is made
+    again from the checkpoint's saved state (`saved.py`), with its edits, and goes on from the stop.
+    Gives the record of the run straight through (or of the run with its edits), or the checkpoint of
+    its next stop. A checkpoint of another program or of another version of the engine is refused
+    (`CheckpointError`), and so is one whose saved state does not make its state again."""
     if program_digest(program) != checkpoint.program:
         raise CheckpointError('the checkpoint is of another program: the SHA-256 of its bytes differs')
     if engine_version() != checkpoint.engine:
         raise CheckpointError(
             'the checkpoint was made by another version of the engine: resume it with that version'
         )
-    return Run(Plan.of(program, checkpoint.configuration), checkpoint.breakpoints, checkpoint).run()
+    if not checkpoint.saved:
+        raise CheckpointError('the checkpoint holds no saved state of the engine')
+    return Run.restored(Plan.of(program, checkpoint.configuration), checkpoint).resume()

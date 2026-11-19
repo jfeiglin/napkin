@@ -234,9 +234,10 @@ class Ways:
     # ---- rebuilding sets -------------------------------------------------------------------------
 
     def retire(self, ids, t):
-        """The sets `ids` leave their instances at time t; gives the values of their stores there."""
+        """The sets `ids` leave their instances at time t; gives the values of their stores there, in
+        the order of the sets' ids (a set of ids has no order of its own)."""
         values = {}
-        for key in ids:
+        for key in sorted(ids):
             connected, instance = self.sets.pop(key)
             for store in connected.stores:
                 values[store] = instance.level_at(store, t)
@@ -381,10 +382,12 @@ class Ways:
                     created.append(instance)
         return created
 
-    def _register(self, connected, depth):
-        """A new set: its id, its level and what it reads."""
-        key = self._next
-        self._next += 1
+    def _register(self, connected, depth, key=None):
+        """A new set: its id, its level and what it reads; a restored set keeps its own id
+        (`saved.py`)."""
+        if key is None:
+            key = self._next
+            self._next += 1
         self.sets[key] = (connected, None)
         self.levels[key] = depth
         for name in (*connected.stores, *connected.flows):

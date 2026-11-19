@@ -558,12 +558,12 @@ def test_the_representation_reads_back_every_value_it_holds():
 
 
 def test_another_format_or_a_damaged_checkpoint_is_refused_by_name():
-    with pytest.raises(CheckpointError, match='format 2; this napkin reads format 1'):
-        loads(b'napkin checkpoint 2\n{}')
+    with pytest.raises(CheckpointError, match='format 1; this napkin reads format 2'):
+        loads(b'napkin checkpoint 1\n{}')
     with pytest.raises(CheckpointError, match='not a napkin checkpoint'):
         loads(b'{"$": "Breakpoint"}')
     with pytest.raises(CheckpointError, match='holds no record'):
-        loads(b'napkin checkpoint 1\n{"$": "Plan"}')
+        loads(b'napkin checkpoint 2\n{"$": "Plan"}')
 
 
 def test_a_checkpoint_resumes_only_its_own_run():
@@ -576,7 +576,7 @@ def test_a_checkpoint_resumes_only_its_own_run():
         resume(case.program, replace(checkpoint, engine='0' * 64))
     values = tuple((name, 9.0 if name == 'tank.ticks' else found) for name, found in checkpoint.state.values)
     changed = replace(checkpoint, state=replace(checkpoint.state, values=values))
-    with pytest.raises(CheckpointError, match='the state differs'):
+    with pytest.raises(CheckpointError, match='its saved state does not make its state again'):
         resume(case.program, changed)
     stops, _, _ = in_one_process(case)
     assert resume(case.program, checkpoint) == stops[1]

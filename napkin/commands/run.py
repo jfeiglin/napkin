@@ -34,7 +34,9 @@ gives the same dimension and scale (`Wh/h` as `W`), so the number is the record'
 the edits, the times in hours and, for each path, its unit, its label, its values as the record
 holds them (`{"unavailable": reason}` for a value that has none, `{"rating", "text", "case"}` for a
 status display), its lag and its note, and its evidence trail; the records that the trails cite;
-the near-ties; why the run stopped; and the diagnostics.
+the near-ties; why the run stopped; the diagnostics; and every warning of the model, with its
+place (`warnings`: the text gives the parts that rest on no record as one line that counts them,
+`common.warn`).
 
 The run goes through the run store (`napkin.store`): a run that the store holds is read, not run
 again; `NAPKIN_STORE=off` turns it off.
@@ -425,4 +427,5 @@ def document(model, entry, args, configuration, times, found, stopped):
         ],
         'stopped': found.stopped,
         'diagnostics': [common.problem_json(item) for item in stopped],
+        'warnings': [common.problem_json(item) for item in model.reports],
     }

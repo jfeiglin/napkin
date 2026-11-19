@@ -75,10 +75,11 @@ def problem(code, message, file='', line=0, column=0):
     return Problem(code, str(message), line, column, str(file))
 
 
-def compiled(entry):
+def compiled(entry, listed=False):
     """The compiled model of a main file (`napkin.model.compile.load_scenario`): its declared model,
-    its program and the configuration of its default run. Raises Failed with the problems of the
-    front end, or with the file of the model or of its library that cannot be read."""
+    its program and the configuration of its default run, with its warnings written (`warn`). Raises
+    Failed with the problems of the front end, or with the file of the model or of its library that
+    cannot be read."""
     from ..model.compile import load_scenario
     from ..model.ir import ModelError
     from ..model.language.problems import LanguageError
@@ -104,11 +105,29 @@ def compiled(entry):
         raise Failed([unreadable(entry, error)]) from None
     except OSError as error:
         raise Failed([problem('file', error.strerror or str(error), error.filename or entry)]) from None
-    # The reports of the setup refuse nothing: each is a warning on the error stream, so that what a
-    # command writes on its output stays as it is.
-    for item in found.reports:
-        sys.stderr.write(located(item, 'warning') + '\n')
+    warn(found, listed)
     return found
+
+
+def warn(found, listed=False):
+    """Write the warnings of a compiled model on the error stream, so that what a command writes on
+    its output stays as it is. The reports of the setup refuse nothing: each is one line. The parts
+    that rest on no record (`napkin.model.support`) are each one line with `listed`, as `napkin
+    compile`, the checking command, gives them; any other command writes one line that counts them,
+    so a model being explored gets one line and not fifty."""
+    from ..model.support import CODE
+
+    missing = [item for item in found.reports if item.code == CODE]
+    for item in found.reports:
+        if listed or item.code != CODE:
+            sys.stderr.write(located(item, 'warning') + '\n')
+    if missing and not listed:
+        sys.stderr.write(f'warning: {counted(len(missing))} no record (napkin compile lists them) [{CODE}]\n')
+
+
+def counted(number):
+    """`1 value has`, `3 values have`."""
+    return '1 value has' if number == 1 else f'{number} values have'
 
 
 def unreadable(entry, error):

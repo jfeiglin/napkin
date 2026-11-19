@@ -29,7 +29,9 @@ diagnostics (exit 1). A path, a run or a time that the model does not have is a 
 `--json` prints one document: the model, the run, the edits, the settings and the time; for each
 value its unit, its label, the central value, the mean with its interval, the standard deviation and
 error, the least and the greatest value, the percentiles and the tails, the drivers and the
-exceedances; and each sample's seed, values and draws (site, owner, value in canonical units).
+exceedances; each sample's seed, values and draws (site, owner, value in canonical units); and every
+warning of the model, with its place (`warnings`: the text gives the parts that rest on no record as
+one line that counts them, `common.warn`).
 """
 
 import argparse
@@ -278,6 +280,7 @@ def document(model, entry, args, configuration, when, found, rows, exceed, drawn
             }
             for sample in found.samples
         ],
+        'warnings': [common.problem_json(item) for item in model.reports],
     }
 
 

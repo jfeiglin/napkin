@@ -94,7 +94,7 @@ class Vector:
 
     def compiled(self, names):
         """A function (t, y) -> the array of the values of `names`, in their order."""
-        plan, run, place = self.plan, self.run, self.place
+        plan, place = self.plan, self.place
         unique = list(dict.fromkeys(names))
         back = np.array([unique.index(name) for name in names], dtype=np.int64)
         held_at, held_from, constant_at, constants, steps = [], [], [], [], []
