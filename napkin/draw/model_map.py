@@ -32,7 +32,6 @@ from pathlib import Path
 
 from .. import paths
 from ..model import semantic as s
-from ..model.views import actors
 from . import style as styles
 from .defaults import (
     ARROW_KINDS,
@@ -370,8 +369,6 @@ class _Drawing:
         self.held, self.arrows = set(), {}
         for each in self.runs:
             self.join(self.walk.held((each,)))
-        # The things that decide: each actor (`napkin.model.views.actors`) with a choice.
-        self.deciders = {item['name'] for item in actors(found.compiled) if item['choices']}
         self.starters = {
             found.card_of.get(member)
             for start in found.declared.setup
@@ -431,8 +428,7 @@ class _Drawing:
     def card(self, entry):
         """A card of the picture: `id`; `title`; `role`, one of `ROLES` or None; `icon`; `template`,
         the template of a member or a table, else None; `copies`, the number of rows of a table, else
-        1; `actor`, whether it is an actor with a choice (`napkin.model.views.actors`); `starts`,
-        whether the setup starts an event of it; `file`, the file that writes its line, from the
+        1; `starts`, whether the setup starts an event of it; `file`, the file that writes its line, from the
         folder of the package; `place`, `{column, row}` from `[place]` or None; its stocks, pipes and
         state machines; `stock_order`, the rows that `[stocks]` gives it (D-52); `hidden_stocks`,
         always 0 (the layout collapses stocks); and `triggers`, what the card shows of its events
@@ -448,7 +444,6 @@ class _Drawing:
             'icon': self.icons[entry],
             'template': card.shown_template,
             'copies': len(card.members) if card.kind == TABLE else 1,
-            'actor': card.template in self.deciders,
             'starts': entry in self.starters,
             'file': self.file_of(entry),
             'place': None if place is None else {'column': place[0], 'row': place[1]},

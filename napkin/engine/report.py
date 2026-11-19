@@ -18,7 +18,9 @@ model has no report of its own: any named value can be reported, and the caller 
   five Gauss-Legendre points in each, which is exact for a store's lines and curves (`DEGREE` 8 of
   `timeline/record.py`). A lag is valid only when a proof says that the value never falls over the
   run (`napkin.program.proofs.never_falls`); then its note is the proof's reason, else the note is
-  the diagnostic and the values are the plain read.
+  the diagnostic and the values are the plain read. An edit at a stop that lowered the value (an
+  entry `edit` of the trace, `napkin/program/checkpoint.py`) withdraws the proof for the run, and
+  the note says which edit.
 - **The evidence trail** of a value (`Used`) lists the parts that it can read (`proofs.reads`), each
   with the records that its evidence cites, whether this run exercised it and why: a flow that moved
   material, an event that started, a trigger that fired, a stage that committed, a solver that
@@ -170,10 +172,11 @@ def report(record, program, configuration, paths, times, lags=None, model=None):
                 )
         elif lag is not None:
             proof = proofs.never_falls(key)
-            if proof.holds:
+            lowered = _lowered(record, key, unit_of(program, key))
+            if proof.holds and lowered is None:
                 values, note = _lagged(record, program, key, within, lag), proof.reason
             else:
-                lag, note = None, f'the lag is refused: {path} can fall: {proof.reason}'
+                lag, note = None, f'the lag is refused: {path} can fall: {lowered or proof.reason}'
                 values = read(record, program, [key], within)[0].values
         else:
             values = read(record, program, [key], within)[0].values
@@ -182,12 +185,34 @@ def report(record, program, configuration, paths, times, lags=None, model=None):
     return Report(times, tuple(reported), _near_ties(record), end, stopped, trail.records())
 
 
+def _lowered(record, key, unit):
+    """Why the proof that a value never falls is withdrawn for a run: the first edit that lowered
+    it, with its numbers in the value's unit; or None."""
+    name = '.'.join((key.owner, *key.steps) if key.owner else key.steps)
+    spelling, scale = unit
+    for entry in record.entries('edit'):
+        old, new = entry.detail('old'), entry.detail('new')
+        if (
+            entry.detail('target') == name
+            and all(isinstance(each, int | float) and not isinstance(each, bool) for each in (old, new))
+            and new < old
+        ):
+            numbers = f'from {old / scale:g} to {new / scale:g} {spelling}'.rstrip()
+            return f'an edit at {float(entry.t):g} h, at {entry.part}, lowered it {numbers}'
+    return None
+
+
 def _end(record, horizon):
     """The time to which a record reaches, and why it stops before the horizon (None at it)."""
     if record.failure is not None:
         message = record.failure.detail('message') or 'the run failed'
         return float(record.failure.t), f'the run failed at {float(record.failure.t):g} h: {message}'
     pause = paused(record)
+    if pause is not None and pause.detail('breakpoint') is not None:
+        return float(pause.t), (
+            f'the run stopped at {float(pause.t):g} h at the breakpoint {pause.detail("breakpoint")}, '
+            f'before {pause.part}: the report reads it up to its stop'
+        )
     if pause is not None:
         site = pause.detail('site') or pause.part
         return float(pause.t), (

@@ -1,8 +1,8 @@
 """A checkpoint: a run stopped at a breakpoint, as data that a fresh process loads, inspects and
 resumes (PLAN, change 15).
 
-A caller sets breakpoints at locations of the compiled program (`Breakpoint`): an event, a stage or a
-statement, named by its origin (`depot.request_pump`, `depot.request_pump.step[0]`,
+A caller sets breakpoints at locations of the compiled program (`Breakpoint`): an event (its first
+step), a stage or a statement, named by its origin (`depot.request_pump`, `depot.request_pump.step[0]`,
 `depot.request_pump.step[0].do[0]`, `setup[0]`), for every occurrence or for one member or one
 occurrence. The engine stops before the stage or the statement and gives a `Checkpoint`:
 
@@ -23,9 +23,10 @@ occurrence. The engine stops before the stage or the statement and gives a `Chec
 - `edits` (`Edit`): every edit of the run so far, each at the stop where it was made, in order.
 
 **Edits** (`Checkpoint.edit`) are the actions of a caller at a stop: an edit gives a live stored
-value a new value, in the canonical unit of its dimension, as `State` holds it. Its type and its
-bounds hold, and a value of a finished occurrence is frozen; derived values and rates follow by the
-usual rules. An edit at a stop before a statement joins the writes of its stage: the stage sees it,
+value of a member or of an occurrence (not a parameter or a built-in field of an occurrence, an
+input, a link or a formula) a new value, in the canonical unit of its dimension, as `State` holds it.
+Its type and its bounds hold, and a value of a finished occurrence is frozen; derived values and
+rates follow by the usual rules. An edit at a stop before a statement joins the writes of its stage: the stage sees it,
 and the rest of the run once the stage commits; an edit at a stop before a stage commits at once.
 Each edit is an entry `edit` of the trace (the time, the breakpoint, the target, the old value and
 the new), traced when it commits: an edit of a store is a transfer from outside in its books, and
@@ -69,9 +70,10 @@ class CheckpointError(ValueError):
 
 @dataclass(frozen=True)
 class Breakpoint:
-    """A location of the compiled program at which a run stops: the origin of an event (before each
-    of its stages), of a stage, or of a statement (before it runs, inside its stage), for every
-    occurrence (`owner` empty) or for one member or one occurrence (`depot.request_pump#0`)."""
+    """A location of the compiled program at which a run stops: the origin of an event (before the
+    first step of each occurrence, when it is a stage), of a stage, or of a statement (before it
+    runs, inside its stage), for every occurrence (`owner` empty) or for one member or one occurrence
+    (`depot.request_pump#0`)."""
 
     at: str
     owner: str = ''

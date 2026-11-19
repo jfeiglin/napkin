@@ -1,8 +1,9 @@
 """Breakpoints, checkpoints and exact resume (PLAN, change 15; `napkin/program/checkpoint.py`).
 
 **Breakpoints.** A run with breakpoints (`Run(plan, breakpoints)`) counts each hit: a stage that comes
-due whose step or event a breakpoint names, before its guard is read, and a statement of a stage or of
-the setup that a breakpoint names, before it runs, each for the breakpoint's member or occurrence.
+due whose step a breakpoint names, or whose event when it is the occurrence's first step, before its
+guard is read, and a statement of a stage or of the setup that a breakpoint names, before it runs,
+each for the breakpoint's member or occurrence.
 The first hit after the `passing` ones stops the run (`Stopped`) with a checkpoint (`Breaks.checkpoint`):
 the stage and the stages after it in its round are held, as the pause of a choice holds them
 (`moment.py`), and nothing of the stage is visible, since a stage commits only at its end. A firing
@@ -47,6 +48,7 @@ The checkpoint's logical state (`State`) is what a caller inspects, and what the
 from __future__ import annotations
 
 import hashlib
+import math
 from pathlib import Path
 
 from ...program import parts as p
@@ -62,7 +64,7 @@ from ...program.checkpoint import (
     encode,
 )
 from ...program.record import Entry
-from .plan import STARTS, _statements
+from .plan import BUILTINS, STARTS, STATE, _statements
 
 _SOURCES = ('engine', 'program', 'core')  # the folders of the package whose code a run runs
 _FILES = ('__init__.py', 'expressions.py', 'distributions.py')
@@ -146,6 +148,10 @@ class Breaks:
         self.expected = expected
         self.start = 0  # the hits before the stage that runs (or the setup)
         self.next = ''  # the stage that runs, by its origin, or `setup`
+        # The edits of the run, in order, and the places of those made at a stop before a stage,
+        # which commit once.
+        self.edits = list(expected.edits) if expected is not None else []
+        self.done = set()
 
     # ---- hits -------------------------------------------------------------------------------------
 
@@ -153,15 +159,16 @@ class Breaks:
         """The setup begins: a stop in it runs it again from its start."""
         self.start, self.next = self.hits, 'setup'
 
-    def stage(self, made, step):
-        """A stage of the occurrence `made` comes due: a breakpoint at it or at its event stops it."""
+    def stage(self, made, step, first):
+        """A stage of the occurrence `made` comes due: a breakpoint at it, or at its event when it is
+        the occurrence's first step (`first`), stops it."""
         self.start, self.next = self.hits, step.origin
         if not self.stages:
             return
-        for at in (step.origin, made.event.origin):
+        for at in (step.origin, made.event.origin) if first else (step.origin,):
             for breakpoint in self.stages.get(at, ()):
                 if breakpoint.owner in ('', made.id, made.member):
-                    self._hit(breakpoint, step.origin, made.id, made.member)
+                    self._hit(breakpoint, step.origin, made.id, made.member, None)
                     return
 
     def statement(self, statement, tx):
@@ -173,20 +180,90 @@ class Breaks:
         member = live.plan.member if live is not None else ''
         for breakpoint in found:
             if breakpoint.owner in ('', tx.owner, member):
-                self._hit(breakpoint, statement.origin, tx.owner, member)
+                self._hit(breakpoint, statement.origin, tx.owner, member, tx)
                 return
 
-    def _hit(self, breakpoint, at, owner, member):
+    def _hit(self, breakpoint, at, owner, member, tx):
+        """A hit before a stage (`tx` None) or before a statement of the stage `tx`: it passes, with
+        the edits made at it, or it stops the run."""
         run = self.run
         self.hits += 1
-        stop = Stop('breakpoint', breakpoint, at, owner, member, run.now, run.recorder.round, self.hits, self.next)
+        stop = Stop(
+            'breakpoint', breakpoint, at, owner, member, run.now, run.recorder.round, self.hits, self.next
+        )
         if self.expected is not None and self.hits == self.expected.stop.hit:
             self._check(stop)
         if self.hits <= self.passing:
+            for k, edit in enumerate(self.edits):
+                if edit.hit == stop.hit and (tx is not None or k not in self.done):
+                    self.done.add(k)
+                    self.apply(edit, stop, tx)
             return
         # The stage runs again from its start when the run resumes: its hits are counted again.
         self.hits = self.start
         raise Stopped(stop)
+
+    # ---- edits ----------------------------------------------------------------------------------
+
+    def edit(self, checkpoint):
+        """The last edit of a checkpoint of this run, made at its stop in place: one at a stop before a
+        stage commits now; one at a stop before a statement joins the stage when it runs again."""
+        edit, stop = checkpoint.edits[-1], checkpoint.stop
+        self.checked(edit)
+        self.edits.append(edit)
+        if stop.at == stop.next:
+            self.done.add(len(self.edits) - 1)
+            self.apply(edit, stop, None)
+
+    def apply(self, edit, stop, tx):
+        """An edit at a stop: into the writes of the stage `tx`, traced when it commits, or committed
+        now (`napkin/program/checkpoint.py`)."""
+        run = self.run
+        name, value = edit.target, self.checked(edit)
+        old = run.value(name, tx=tx)
+        details = {'breakpoint': stop.breakpoint.at, 'target': name, 'old': old, 'new': value}
+        if tx is not None:
+            tx.writes[name] = value
+            tx.edits.append((stop.at, stop.owner, details))
+            return
+        run.recorder.entry(run.now, 'edit', stop.at, stop.owner, **details)
+        run.write(name, value)
+        run.occurrences.met(name)
+
+    def checked(self, edit):
+        """The new value of an edit, once the engine's rules hold: a stored value, not of a finished
+        occurrence, of its type (a member of its enum), within its bounds."""
+        run, plan = self.run, self.run.plan
+        name, value = edit.target, edit.value
+        found = plan.values.get(name)
+        if found is None or found.kind != STATE:
+            what = 'no value of the run' if found is None else f'a value of kind {found.kind}'
+            raise CheckpointError(f'{name}: an edit changes a stored value, and this is {what}')
+        owner = plan.occurrence_of(name)
+        if owner is not None and not run.occurrences.live[owner].active:
+            raise CheckpointError(f'{name} belongs to the finished occurrence {owner}, which is frozen')
+        if owner is not None and _fixed(plan, name):
+            raise CheckpointError(
+                f'{name}: an edit changes a stored value, and this is a parameter or a built-in field of '
+                'its occurrence, which its start gives'
+            )
+        current = _present(run, name)
+        if isinstance(current, bool) or isinstance(value, bool):
+            if not (isinstance(current, bool) and isinstance(value, bool)):
+                raise CheckpointError(f'{name} holds {current!r}, and an edit gives it {value!r}')
+            return value
+        if isinstance(current, str):
+            members = _members(plan, name)
+            if not isinstance(value, str) or (members is not None and value not in members):
+                allowed = f'a member of {", ".join(members)}' if members is not None else 'a text'
+                raise CheckpointError(f'{name} takes {allowed}, not {value!r}')
+            return value
+        if not isinstance(value, int | float) or not math.isfinite(value):
+            raise CheckpointError(f'{name} takes a finite number, not {value!r}')
+        lower, upper = run.bounds.get(name, (-math.inf, math.inf))
+        if not lower <= value <= upper:
+            raise CheckpointError(f'{name} = {value:g} is outside its range [{lower:g}, {upper:g}]')
+        return float(value)
 
     # ---- checkpoints ----------------------------------------------------------------------------
 
@@ -201,6 +278,7 @@ class Breaks:
             stop,
             self.state(),
             run.recorder.record(run.now, pause=pause_entry(stop)),
+            tuple(self.edits),
         )
 
     def state(self):
@@ -247,7 +325,8 @@ class Breaks:
             ('the state', found.state, expected.state),
             ('the record so far', found.record, expected.record),
         ):
-            if encode(mine) != encode(theirs):
+            # Equal values, or values of equal bits (a NaN equals itself there).
+            if mine != theirs and encode(mine) != encode(theirs):
                 raise CheckpointError(
                     f'the checkpoint does not resume: {what} differs from the run of its program '
                     f'({_difference(mine, theirs)})'
@@ -274,6 +353,34 @@ def _present(run, name):
     if name in run.ways.set_of:
         return run.ways.value(name, run.now)
     return run.env.get(name)
+
+
+def _fixed(plan, name):
+    """Whether a value of an occurrence is a parameter of its event or a built-in field."""
+    key = plan.values[name].key
+    _, _, member, _ = plan.frames[key.owner]
+    event = plan.events[(member.id, key.owner.rsplit('#', 1)[0].rsplit('.', 1)[1])][3]
+    return key.steps[0] in BUILTINS or key.steps[0] in {param.name for param in event.params}
+
+
+def _members(plan, name):
+    """The members of the enum of a stored value, or None for a text: from its declaration, of the
+    root, of a member's template or of an occurrence's event."""
+    key = plan.values[name].key
+    owner, field = key.owner, key.steps[0]
+    if not owner:
+        parts = plan.program.root
+    elif '#' in owner:
+        _, _, member, _ = plan.frames[owner]
+        head = owner.rsplit('#', 1)[0]
+        event = plan.events[(member.id, head.rsplit('.', 1)[1])][3]
+        parts = (*event.params, *event.locals)
+    else:
+        parts = plan.program.member(owner)[0].values
+    for part in parts:
+        if part.name == field and isinstance(part.type, p.EnumType):
+            return plan.program.enum(part.type.enum).members
+    return None
 
 
 def _difference(mine, theirs):

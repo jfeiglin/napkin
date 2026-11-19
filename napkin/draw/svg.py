@@ -79,7 +79,6 @@ COLOURS = {
     'card': ('#f6f8fa', '#151b23'),
     'edge': ('#8c959f', '#3d444d'),
     'icon': ('#59636e', '#9198a1'),
-    'actor': ('#1f2328', '#e6edf3'),
     'stock': ('#ddf4ff', '#0c2d6b'),
     'stock-edge': ('#54aeff', '#1f6feb'),
     'tally': ('#fff8c5', '#3b2e00'),
@@ -310,7 +309,6 @@ def _style(ids=(), panels=False):
         f'.napkin-draw .label{{font-size:{TEXT_SIZE}px}}',
         f'.napkin-draw .small,.napkin-draw .more,.napkin-draw .key,.napkin-draw .subheading{{font-size:{SMALL_SIZE}px}}',
         '.napkin-draw .badge{fill:var(--paper);stroke:var(--edge)}',
-        '.napkin-draw .decides{fill:var(--actor)}',
         '.napkin-draw .starts{fill:var(--start)}',
         '.napkin-draw .tank{fill:var(--stock);stroke:var(--stock-edge)}',
         '.napkin-draw .meter{fill:var(--tally);stroke:var(--tally-edge)}',
@@ -445,8 +443,6 @@ def _card(card, titles, links=()):
         lines.append(f'{card.copies} copies of {card.template}' if card.template else f'{card.copies} copies')
     elif card.template:
         lines.append(f'Made from {card.template}')
-    if card.actor:
-        lines.append('It decides.')
     if card.starts:
         lines.append('Its start event begins each run.')
     if card.file:
@@ -475,20 +471,6 @@ def _card(card, titles, links=()):
             _text(x, y + 15 * k, line, 'card-title', _light('ink'), **{'font-size': f'{TITLE_SIZE}'})
         )
     right = box.right - PAD
-    if card.actor:
-        cx, cy = right - 5, box.y + PAD + 9
-        inner.append(
-            _tag(
-                'path',
-                {
-                    'class': 'decides',
-                    'd': f'M{number(cx)} {number(cy - 5)}L{number(cx + 5)} {number(cy)}'
-                    f'L{number(cx)} {number(cy + 5)}L{number(cx - 5)} {number(cy)}Z',
-                    'fill': _light('actor'),
-                },
-            )
-        )
-        right -= 16
     if card.starts:
         cx, cy = right - 5, box.y + PAD + 9
         inner.append(
@@ -1040,26 +1022,15 @@ def _sample(mark, box, looks=None):
         )
     if mark == 'state':
         return _rect(type(box)(x, y - 7, 28, 14), 'pill', _light('state'), _light('state-edge'), rx='7')
-    if mark == 'transition':
-        return _tag(
-            'path',
-            {
-                'class': 'step',
-                'd': f'M{number(x)} {number(y)}L{number(x + 28)} {number(y)}',
-                'fill': 'none',
-                'stroke': _light('transition'),
-                'stroke-width': '1.2',
-                'marker-end': 'url(#head-step)',
-            },
-        )
-    cx = x + 14
-    return _tag(
+    return _tag(  # a transition
         'path',
         {
-            'class': 'decides',
-            'd': f'M{number(cx)} {number(y - 5)}L{number(cx + 5)} {number(y)}L{number(cx)} {number(y + 5)}'
-            f'L{number(cx - 5)} {number(y)}Z',
-            'fill': _light('actor'),
+            'class': 'step',
+            'd': f'M{number(x)} {number(y)}L{number(x + 28)} {number(y)}',
+            'fill': 'none',
+            'stroke': _light('transition'),
+            'stroke-width': '1.2',
+            'marker-end': 'url(#head-step)',
         },
     )
 

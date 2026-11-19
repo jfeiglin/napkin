@@ -98,6 +98,7 @@ class Tx:
         # formula, or a captured number in place of a request's or a capacity's formula.
         self.defined = {}
         self.near = ()  # the near-ties of its tests (`near_ties`)
+        self.edits = []  # (part, owner, details) of the trace entry of each edit made in it
 
     def details(self):
         """The details of the trace entry of the commit: the definitions that it gives, by the
@@ -229,7 +230,7 @@ class Moment:
         tx = Tx(made.id)
         tx.origin = step.origin
         run.chance.made = []
-        run.breaks.stage(made, step)  # a breakpoint at the stage stops it before its guard is read
+        run.breaks.stage(made, step, live.step == 0)  # a breakpoint stops it before its guard is read
         ran = step.guard is None or self.test(step.guard, made.scope, step.origin, tx)
         if ran:
             try:
@@ -479,6 +480,9 @@ class Moment:
     def commit(self, tx):
         """Publish the writes of a stage and register the occurrences that it queued."""
         run = self.run
+        for part, owner, details in tx.edits:  # an edit at a stop in the stage (`checkpoints.py`)
+            run.recorder.entry(run.now, 'edit', part, owner, **details)
+            run.occurrences.met(details['target'])
         for source, destination, amount, origin in tx.moves:
             run.recorder.entry(
                 run.now, 'move', origin, tx.owner, amount=amount, source=source, destination=destination

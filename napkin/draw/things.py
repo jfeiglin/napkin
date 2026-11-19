@@ -95,9 +95,7 @@ def walk_expression(expression, item=()):
             yield from walk_expression(arg, item)
     elif isinstance(expression, s.Retain):
         yield from walk_expression(expression.body, item)
-    elif isinstance(expression, (s.Drawn, s.Chosen)):
-        if isinstance(expression, s.Chosen):
-            yield from walk_expression(expression.actor, item)
+    elif isinstance(expression, s.Drawn):
         if isinstance(expression.source, s.Read):
             yield from walk_expression(expression.source, item)
     elif isinstance(expression, s.History):

@@ -20,7 +20,7 @@ The nodes, each a frozen dataclass:
   more case, in order.
 - `Call`: a function of the language (`min`, `max`, `clip`, `abs`, `sqrt`, `exp`, `ln`, …); a
   distribution (`uniform`, `pert`, `categorical` with a keyword argument for each outcome); `draw`
-  and `choose` of a distribution; and the reads of a flow or a store that are no value of their own:
+  of a distribution; and the reads of a flow or a store that are no value of their own:
   `request(f)`, `capacity(f)`, `outflow(S)`, `inflow(S)`, `mean(d)` and `std(d)`. `Sum`: `sum`,
   `any`, `all`, `count`, `min` or `max` of a collection whose members the model fixes, with the value
   of each member (`terms`).
@@ -320,7 +320,7 @@ _BINARY = {name: op for op, name in OPERATORS.items()}
 
 def build(expression, keys):
     """The node of an expression of the typed form (`semantic.Const`, `Read`, `Apply`, `Reduced`,
-    `Retain`, `History`, `Distribution`, `Drawn`, `Chosen`); `keys(read)` gives the node of each read,
+    `Retain`, `History`, `Distribution`, `Drawn`); `keys(read)` gives the node of each read,
     and `keys.reduced(node)` that of a reduction (`Keys`). Raises ValueError for a part that is not in
     the notation."""
     if isinstance(expression, s.Const):
@@ -340,8 +340,6 @@ def build(expression, keys):
         return distribution(expression)
     if isinstance(expression, s.Drawn):
         return Call('draw', (build(expression.source, keys),))
-    if isinstance(expression, s.Chosen):
-        return Call('choose', (build(expression.source, keys),))
     if isinstance(expression, s.Apply):
         return _apply(expression, keys)
     raise ValueError(f'{type(expression).__name__} is not a part of the notation')
@@ -401,7 +399,7 @@ def assignment(statement, keys):
     stands for (a setting of a flow or of an endpoint)."""
     target = keys(statement.target)
     if not isinstance(target, Sym) or not isinstance(
-        statement.value, (s.Const, s.Read, s.Apply, s.Reduced, s.History, s.Drawn, s.Chosen, s.Retain)
+        statement.value, (s.Const, s.Read, s.Apply, s.Reduced, s.History, s.Drawn, s.Retain)
     ):
         raise ValueError('the target of the assignment is no value of the notation')
     return Assign(target.key, statement.op, build(statement.value, keys))

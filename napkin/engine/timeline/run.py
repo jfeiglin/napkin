@@ -56,6 +56,7 @@ import numpy as np
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import evaluate
+from ...program.checkpoint import CheckpointError
 from ...program.config import ConfigurationError
 from ...program.record import Unavailable
 from ..continuous.system import run_settings, step_cap
@@ -709,6 +710,16 @@ class Run:
             self.chance.picks[(pick.site, pick.occurrence)] = pick.value
         self.pause = None
         return self._go(self._resume)
+
+    def edit(self, target, value):
+        """Edit a stored value at the stop where the run waits (`checkpoint.Checkpoint.edit`), in
+        place; gives the checkpoint with the edit, which a fresh process resumes as this run goes on."""
+        if self.checkpoint is None:
+            raise CheckpointError('the run waits at no stop')
+        checkpoint = self.checkpoint.edit(target, value)
+        self.breaks.edit(checkpoint)
+        self.checkpoint = checkpoint
+        return checkpoint
 
     def _start(self):
         self.prepare()

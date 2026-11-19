@@ -133,7 +133,6 @@ LEGEND_WORDS = {
     'pipe': 'Flow',
     'state': 'State',
     'transition': 'Event that changes the state',
-    'decides': 'Decides',
 }
 MARKS = tuple(LEGEND_WORDS)
 
@@ -497,7 +496,6 @@ class Card:
     icon: str | None
     template: str | None
     copies: int
-    actor: bool
     box: Box
     column: int
     sub: int
@@ -1217,13 +1215,11 @@ class _Card:
         return rows
 
     def _badges(self):
-        """The width of the badges of the title: the number of copies, the mark of an actor and the mark
-        of the thing that makes the start event (D-59)."""
+        """The width of the badges of the title: the number of copies and the mark of the thing that
+        makes the start event (D-59)."""
         width = 0.0
         if int(self.card.get('copies') or 1) > 1:
             width += BADGE_GAP + text_width(f'×{self.card["copies"]}', SMALL_SIZE) + 8
-        if self.card.get('actor'):
-            width += BADGE_GAP + 10
         if self.card.get('starts'):
             width += BADGE_GAP + 10
         return width
@@ -1313,7 +1309,6 @@ class _Card:
             icon=card.get('icon'),
             template=card.get('template'),
             copies=int(card.get('copies') or 1),
-            actor=bool(card.get('actor')),
             box=Box(x, y, width, height),
             column=column,
             sub=sub,
@@ -3027,8 +3022,6 @@ def layout(picture, style=None):
         marks.update(stock.kind for stock in (*card.stocks, *card.meters))
         if card.pipes:
             marks.add('pipe')
-        if card.actor:
-            marks.add('decides')
     for machine in (*machines, *(m for card in cards for m in card.machines)):
         marks.add('state')
         if machine.transitions:

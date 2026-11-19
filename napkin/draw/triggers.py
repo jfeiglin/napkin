@@ -44,7 +44,7 @@ The choices of the words:
   "waits d"; a gate "until c". The changes name each target after its verb, the verb once for each
   run of the same verb: "sets a, b, adds to c, moves from d to e, starts <card>: <event>". A branch
   reads "if c: …, else: …"; a switch names what selects its case ("draws fixed (chance 0.7) or
-  failed (chance 0.3)", "dispatcher chooses send or wait", "by mode") and what each case changes.
+  failed (chance 0.3)", "by order") and what each case changes.
 - **Runs.** "only with <option>" or "not with <option>" when some runs cannot start the event
   (`things.Things.startable`); "" when every run can.
 
@@ -193,8 +193,6 @@ class _Words:
             source = node.source
             found = self.distribution(source) if isinstance(source, s.Distribution) else self.text(source)
             return f'a draw of {found}', ATOM
-        if isinstance(node, s.Chosen):
-            return f'the choice of {self.text(node.actor)}', ATOM
         if isinstance(node, s.Apply):
             return self.apply(node)
         return str(node), ATOM
@@ -380,11 +378,8 @@ def _reads(expression):
         yield from _reads(expression.body)
     elif isinstance(expression, s.History):
         yield from _reads(expression.source)
-    elif isinstance(expression, (s.Drawn, s.Chosen)):
-        if isinstance(expression, s.Chosen):
-            yield expression.actor
-        if isinstance(expression.source, s.Read):
-            yield expression.source
+    elif isinstance(expression, s.Drawn) and isinstance(expression.source, s.Read):
+        yield expression.source
 
 
 class namer:
@@ -554,12 +549,11 @@ def _statement_expressions(statement):
         return [statement.test]
     if isinstance(statement, s.DeclaredSwitch):
         selector = statement.selector
-        if isinstance(selector, s.Drawn) and isinstance(selector.source, s.Distribution):
-            found = []
-        elif isinstance(selector, s.Chosen):
-            found = [selector.actor]  # the line names who chooses, and the cases
-        else:
-            found = [selector]
+        found = (
+            []
+            if isinstance(selector, s.Drawn) and isinstance(selector.source, s.Distribution)
+            else [selector]
+        )
         return found + [case.guard for case in statement.cases if case.guard is not None]
     return []
 
@@ -691,8 +685,6 @@ class _Lines:
             head = 'draws ' + ' or '.join(f'{words(m)} (chance {number(weights.get(m, 0))})' for m in members)
         elif isinstance(selector, s.Drawn):
             head = f'draws {" or ".join(words(m) for m in members)} from {say(selector.source)}'
-        elif isinstance(selector, s.Chosen):
-            head = f'{say(selector.actor)} chooses {" or ".join(words(m) for m in members)}'
         else:
             head = f'by {say(selector)}'
         cases = []
