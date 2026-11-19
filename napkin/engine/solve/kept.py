@@ -15,15 +15,27 @@ at a lower bound and at most zero at an upper bound; the dual y of a row is at l
 row rests on its lower side and at most zero on its upper side.
 
 A kept instance can fail where a fresh one holding the same program does not. HiGHS scales a program
-when it first solves it and extends those factors as columns and rows join, and it keeps its simplex
-data from run to run. At 30,000 places (`scratch/rewrite/b1/solve/bench.py`, need x1.45), the 678th
-program of the run, a fair-sharing program at the tightest primal tolerance, reached an optimal basis
-of the scaled program; on the program itself a bound then missed by 1.3e-7, the cleanup met a basis
-change that HiGHS had made taboo, and HiGHS stopped with the status kUnknown. A fresh instance with
-the same program, scaled afresh, found that basis optimal with no iteration, and the dual simplex and
-a cold solve gave the same optimum to 1e-14. So a run whose status says nothing of the program (not
-in STATED) is made again on a fresh instance with the same program, options and basis, then on one
-with no basis (`Kept.run`). The program is the same, so the answer is the same; only the work grows.
+when it first solves it and extends those factors as columns and rows join, and it keeps its
+factorization of the basis from run to run, updating it at each iteration (up to 5,000 updates by
+default). Two failures at 30,000 places (`scratch/rewrite/b1/solve/bench.py`) came from that state:
+
+- need x1.45: the 678th program of the run, a fair-sharing program at the tightest primal tolerance,
+  reached an optimal basis of the scaled program; on the program itself a bound then missed by
+  1.3e-7, the cleanup met a basis change that HiGHS had made taboo, and HiGHS stopped with the status
+  kUnknown. A fresh instance with the same program, scaled afresh, found that basis optimal with no
+  iteration, and the dual simplex and a cold solve gave the same optimum to 1e-14.
+- need x1.7: over runs of warm fair-sharing programs the values drifted from the rows that they
+  answer, up to 1.1e-4 on a balance row (3.4e-5 of the size of its terms) at the 145th, which HiGHS,
+  checking its own updated activities, reported as optimal; its t* was 3.4e-7 above that of the same
+  program solved cold on a fresh instance, the claims it held cut the face, and the 147th program
+  was infeasible. Fair sharing now refactorizes every 100 updates (`fair.UPDATES`): the largest
+  drift over those programs was then 5.1e-8 of the size, and t* that of the fresh instance.
+
+So a run whose status says nothing of the program (not in STATED), or whose answer misses a row or
+a bound of the program by more than MISS times the primal tolerance of the run, relative to the size
+of its terms (a check of A x on the instance's own matrix, `Kept.A`), is made again on a fresh
+instance with the same program, options and basis, then on one with no basis (`Kept.run`). The
+program is the same, so the answer is the same; only the work grows.
 
 `quadratic` solves the convex QP of a distance step on an instance of its own, the exact fallback of
 the distance method.
@@ -48,6 +60,9 @@ ERROR = highs.HighsStatus.kError
 # The statuses that say something of the program. Any other (kUnknown, an error of HiGHS) says nothing
 # of it, and the run is made again on a fresh instance (`Kept.run`).
 STATED = (OPTIMAL, EMPTY, Status.kInfeasible, Status.kUnbounded, Status.kUnboundedOrInfeasible)
+# An optimum whose values miss the program by more than this many times the primal tolerance of its
+# run, relative to the size of the terms, is no answer either (`Kept.run`).
+MISS = 10.0
 DUAL_SIMPLEX = 1  # HiGHS's simplex_strategy for the dual simplex
 PRIMAL_SIMPLEX = 4  # and for the primal simplex
 # The tightest tolerances that HiGHS takes, for a second run whose duals must be exact (`Kept.tight`).
@@ -56,11 +71,13 @@ TIGHT = 1e-10
 
 class Run:
     """What one run of HiGHS gives: its status, the values and duals of the columns and the rows, the
-    objective, and the simplex iterations that it took."""
+    objective, and the simplex iterations that it took; `Kept.run` adds whether it answers the
+    program and by how much its values miss it."""
 
     def __init__(self, status, x, d, row_value, y, objective, iterations):
         self.status, self.x, self.d, self.row_value, self.y = status, x, d, row_value, y
         self.objective, self.iterations = objective, iterations
+        self.answered, self.missed = None, None
 
 
 def _options():
@@ -103,6 +120,7 @@ class Kept:
 
     def __init__(self, A, row_lower, row_upper, lower, upper):
         self.m, self.n = A.shape
+        self.A = sp.csr_array(A)  # the matrix that the instance holds, for the check of each answer
         self.s = highs._Highs()
         self.s.passOptions(_options())
         if self.s.passModel(_model(A, row_lower, row_upper, lower, upper, np.zeros(self.n))) == ERROR:
@@ -168,6 +186,7 @@ class Kept:
         ):
             raise ValueError('HiGHS refused the new columns')
         self.lower, self.upper = np.r_[self.lower, lower], np.r_[self.upper, upper]
+        self.A = sp.csr_array(sp.hstack([self.A, columns]))
         first, self.n = self.n, self.n + k
         return np.arange(first, self.n)
 
@@ -191,6 +210,7 @@ class Kept:
         ):
             raise ValueError('HiGHS refused the new rows')
         self.row_lower, self.row_upper = np.r_[self.row_lower, lower], np.r_[self.row_upper, upper]
+        self.A = sp.csr_array(sp.vstack([self.A, rows]))
         first, self.m = self.m, self.m + k
         return np.arange(first, self.m)
 
@@ -204,6 +224,7 @@ class Kept:
         cols, rows = list(basis.col_status), list(basis.row_status)
         self.s.deleteCols(len(index), _i32(index))
         self.lower, self.upper = np.delete(self.lower, index), np.delete(self.upper, index)
+        self.A = sp.csr_array(self.A[:, np.setdiff1d(np.arange(self.n), index)])
         self.n -= len(index)
         if basis.valid:
             gone = set(index.tolist())
@@ -229,6 +250,7 @@ class Kept:
         held = {i: [int(j) for j in self.s.getRowEntries(i)[1]] for i in tight}
         self.s.deleteRows(len(index), _i32(index))
         self.row_lower, self.row_upper = np.delete(self.row_lower, index), np.delete(self.row_upper, index)
+        self.A = sp.csr_array(self.A[np.setdiff1d(np.arange(self.m), index)])
         self.m -= len(index)
         if basis.valid:
             gone = set(index.tolist())
@@ -275,19 +297,40 @@ class Kept:
 
     # -- solve -------------------------------------------------------------------------------------
     def run(self):
-        """One run of HiGHS from the present basis. A run whose status says nothing of the program is
-        made again on a fresh instance with the basis that HiGHS holds, and then, if that one says
-        nothing either, on a fresh instance with no basis, by the dual simplex (see the module text).
-        Gives the last run."""
-        run = self._once()
-        if run.status not in STATED:
+        """One run of HiGHS from the present basis. A run that is no answer (`answers`) is made again on
+        a fresh instance with the basis that HiGHS holds, and then, if that one is no answer either,
+        on a fresh instance with no basis, by the dual simplex (see the module text). Gives the last
+        run, which `answers` may still refuse."""
+        run = self._checked(self._once())
+        if not run.answered:
             self._renew(keep_basis=True)
-            run = self._once()
-        if run.status not in STATED:
+            run = self._checked(self._once())
+        if not run.answered:
             self._renew(keep_basis=False)
             with self.option('simplex_strategy', DUAL_SIMPLEX):
-                run = self._once()
+                run = self._checked(self._once())
         return run
+
+    def _checked(self, run):
+        """`run` with `answered`: its status says something of the program, and an optimum holds the
+        rows and bounds to MISS times the primal tolerance of the run (`missed`)."""
+        run.answered = run.status in STATED
+        if run.status == OPTIMAL:
+            run.missed = self._missed(run.x)
+            run.answered = run.missed <= MISS * self.s.getOptionValue('primal_feasibility_tolerance')[1]
+        return run
+
+    def _missed(self, x):
+        """The most by which the values x miss a row or a bound of the program, relative to the size
+        of the row's terms or of the value. The rows are A x on the matrix that the instance holds,
+        never the activities that HiGHS updates."""
+        if not len(x):
+            return 0.0
+        value = self.A @ x
+        size = 1.0 + abs(self.A) @ np.abs(x)
+        rows = np.maximum(self.row_lower - value, value - self.row_upper) / size
+        columns = np.maximum(self.lower - x, x - self.upper) / (1.0 + np.abs(x))
+        return float(max(rows.max(initial=0.0), columns.max(initial=0.0)))
 
     def _renew(self, keep_basis):
         """A fresh HiGHS instance in place of this one, with its program and options, and with its

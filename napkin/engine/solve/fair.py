@@ -21,6 +21,12 @@ method could not converge. At 30,000 places with need x1.45, one of 1,287 progra
 ended on the kept instance with HiGHS's status kUnknown, which says nothing of the program; a fresh
 instance holding the same program answered it, as `kept.Kept.run` does, with the same t*.
 
+A program of a tier takes few iterations, and HiGHS keeps updating one factorization of the basis
+over many of them (5,000 updates by default). At 30,000 places with need x1.7 the values drifted
+from the rows by up to 3.4e-5 of their size, t* came out 3.4e-7 high, and the claims held there cut
+the face (`kept`). So the programs of a tier refactorize every UPDATES updates: the drift was then at
+most 5.1e-8, at no measured cost. `kept.Kept.run` checks each answer against its program as well.
+
 After the first program of a tier only bounds change, and the last answer stays feasible, so the
 later programs run the primal simplex from the last basis (A3: 5 to 40 iterations each at 3,000
 places). The duals decide which claims are held, so a program whose duals have the wrong sign beyond
@@ -46,6 +52,7 @@ from .scaled import row_max
 TAU = 1e-9  # a dual above this holds its claim
 FIX = 1e-7  # a held claim keeps its level to this (the feasibility tolerance of HiGHS)
 FULL = 1e-9  # t* within this of one serves every pending claim in full
+UPDATES = 100  # the updates of a factorization of the basis before HiGHS factorizes it again
 
 
 def share(kept, face, w, budget, work):
@@ -81,7 +88,11 @@ def _tier(kept, face, F, tier, budget, work):
     kept.start_at_upper(t)
     reached = []  # t* of each program
     try:
-        with ExitStack() as primal, kept.option('primal_feasibility_tolerance', TIGHT):
+        with (
+            ExitStack() as primal,
+            kept.option('primal_feasibility_tolerance', TIGHT),
+            kept.option('simplex_update_limit', UPDATES),
+        ):
             while pending.any():
                 if work.fair_programs >= budget.fair_programs:
                     raise _exceeded(step, reached, levels, pending, budget)

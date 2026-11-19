@@ -59,14 +59,23 @@ class Face:
 def solve(kept, step, first=False):
     """One run of the kept instance, or the named failure of its status. `first` marks the first
     program of a solve, whose infeasibility is that of the hard constraints; a later program runs
-    on a face that an earlier one found feasible, so its infeasibility is numerical. A status that
-    says nothing of the program is the last of three runs: the kept instance, then two fresh ones
-    (`kept.Kept.run`)."""
+    on a face that an earlier one found feasible, so its infeasibility is numerical. A run that is no
+    answer (a status that says nothing of the program, or an optimum whose values miss it) is the last
+    of three: the kept instance, then two fresh ones (`kept.Kept.run`)."""
     run = kept.run()
-    if run.status == OPTIMAL:
+    if run.status == OPTIMAL and run.answered:
         return run
     status = run.status
     reached = {'status': str(status).split('.')[-1]}
+    if status == OPTIMAL:
+        reached.update(missed=run.missed, rows=kept.m, columns=kept.n)
+        raise SolveFailure(
+            NUMERICAL,
+            step,
+            f'the optimum of HiGHS misses the program by {run.missed:.1e} of the size of its terms on a '
+            f'program of {kept.m} rows and {kept.n} columns, and so did two fresh instances of it',
+            reached,
+        )
     if status == Status.kUnboundedOrInfeasible:
         # the presolve of HiGHS can tell only that one of the two holds; a run with no cost decides
         status = Status.kUnbounded if not first or _feasible(kept) else Status.kInfeasible
@@ -98,7 +107,7 @@ def exact(kept, run, work, step):
     if _wrong_sign(kept, run) > TAU:
         work.tight += 1
         run = kept.tight()
-        if run.status != OPTIMAL:
+        if run.status != OPTIMAL or not run.answered:
             reached = {'status': str(run.status).split('.')[-1]}
             raise SolveFailure(
                 NUMERICAL, step, 'a run with tight tolerances ended without an answer', reached

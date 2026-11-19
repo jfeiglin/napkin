@@ -3,7 +3,8 @@
 A solve that cannot give the answer of the selection order raises `SolveFailure` with a name, the
 step that stopped and what it reached, and never gives another answer in its place (G0, D0). A
 budget is forced small here where a budget is meant. A run of HiGHS whose status says nothing of
-the program is run again on fresh instances first (`kept.Kept.run`); such a status is forced here.
+the program, or whose optimum misses it, is run again on fresh instances first (`kept.Kept.run`);
+such a status and such an optimum are forced here.
 """
 
 import itertools
@@ -195,6 +196,37 @@ def test_a_status_that_fresh_instances_meet_too_stops_by_name_with_the_size(monk
     # the solver holds the last fresh instance, and it answers the next solve
     monkeypatch.undo()
     bottlenecks_answered(solver.solve(cases.bottlenecks(objective=False)))
+
+
+def drifted(monkeypatch, failing):
+    """Make the runs of HiGHS numbered `failing` give values that miss their program, the first value
+    one unit high, as the values of a kept instance drifted from its rows at 30,000 places (`kept`)."""
+    once, count = Kept._once, itertools.count(1)
+
+    def run(self):
+        found = once(self)
+        if next(count) in failing:
+            found.x = found.x.copy()
+            found.x[0] += 1.0
+        return found
+
+    monkeypatch.setattr(Kept, '_once', run)
+
+
+def test_an_optimum_whose_values_miss_the_program_is_run_again(monkeypatch):
+    drifted(monkeypatch, {2})
+    answer = Solver().solve(cases.bottlenecks(objective=False))
+    bottlenecks_answered(answer)
+    assert answer.work.renewals == 1
+
+
+def test_an_optimum_that_misses_on_fresh_instances_too_stops_by_name(monkeypatch):
+    drifted(monkeypatch, {2, 3, 4})
+    stopped = failure(cases.bottlenecks(objective=False))
+    assert (stopped.name, stopped.step) == (NUMERICAL, 'fair sharing, tier 0')
+    # at t* = 1/3, a = b = 2 W; a read as 3 W misses a + b <= 4 W by 1 W of 1 + 3 + 2, its size
+    assert stopped.reached == {'status': 'kOptimal', 'missed': pytest.approx(1 / 6), 'rows': 5, 'columns': 4}
+    assert 'misses the program by 1.7e-01 of the size of its terms on a program of 5 rows' in str(stopped)
 
 
 def test_unknown_failure_names_are_refused():
