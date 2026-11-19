@@ -103,6 +103,21 @@ These override the text of this plan below, wherever the two differ. The owner's
 8. **Inputs (D2).** An override follows the declared type; a distribution-valued input exists.
 9. **Worktrees.** The tracks of B1 work in the main checkout, each in new directories that no other
    track touches, because the harness makes an agent's worktree from `main`, not from this branch.
+10. **Priorities (owner, 2026-11-19).** Defensibility first, then speed, then precision. A result
+   must be reproducible and explainable before it is fast, and fast before it is exact to the last
+   bit. Choices between methods, tolerances and budgets are weighed in that order.
+11. **Reproducibility (owner, 2026-11-19).** The same run (the same code, configuration, seed and
+   thread settings on one machine) is deterministic. Anything else (a sample alone or in a batch,
+   another solver, another platform) agrees within the stated tolerances, not bit for bit. A
+   threshold that sits at a tolerance boundary may fire differently across those settings; the docs
+   say so where they state the tolerances (stage F). This replaces the bitwise requirements of A3
+   ("sample k alone and in a batch"), of the solve library (`briefs/b1-solve.md`,
+   `b1/solve/STATE.md`, `tests/engine/solve/`) and of R-A4b-05: an endpoint's exact sum stays as a
+   way to be deterministic, not as a promise of bits equal to a problem formed fresh. Tests compare
+   across settings within the tolerances and test the same run for identity. Stage C applies it to
+   the tests that it ports which compare a sample alone with one in a batch, or one process with
+   several (`test_spread.py`, `test_monte_carlo_study.py`); a test of the same run, or of a pure
+   refactor, keeps its bits.
 
 ### If the session is cut off
 
@@ -277,7 +292,7 @@ which the rule and its alternative give different results, and a recommendation.
   by one program for each member. The squared-distance step with `<=` and `>=` rows and a corrected
   stop rule. Unknowns that join and leave: does SciPy's HiGHS binding add and delete columns? The
   same answer under another spelling of the units. The same answer for sample k alone and in a
-  batch.
+  batch (within the stated tolerances, not bit for bit: change 11 under "Changes after G0").
 - Exit: chosen algorithms and tolerances, and a measured table at full scale. The expected answers
   reproduce: (2, 2) and (3, 3); 2, then 1.5 each, then 2; (2, 2, 3) and (4, 0, 5); the worked
   network with levels (8/3, -4/3, -4/3) and (3, -3, 0). A go or a no-go for fair sharing at scale.
