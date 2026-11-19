@@ -38,7 +38,7 @@ from .report import report
 from .sampling import SamplingSettings, sampled
 from .study import run_all
 from .timeline import paused, read
-from .timeline.record import key_of
+from .timeline.record import key_of, unit_of
 
 
 @dataclass(frozen=True)
@@ -122,17 +122,27 @@ def monte_carlo(
 ):
     """The Monte Carlo study of a run (see the module): `paths` and `times` are the caller's, `model` the
     declared model whose labels the report shows (None for a program built by hand), and `jobs`,
-    `progress` and `cancel` are those of `study.run_all`. A time outside [0, horizon] is a ValueError."""
+    `progress` and `cancel` are those of `study.run_all`. A path that the program does not have is a
+    KeyError, and a time outside [0, horizon] or a number of jobs that is no whole number from 1 a
+    ValueError, before any run starts."""
     settings = settings or SamplingSettings()
     paths, times = tuple(paths), tuple(float(t) for t in times)
+    horizon = float(configuration.request.horizon)
     if not paths or not times:
         raise ValueError('a study reads one path or more at one time or more')
+    for t in times:
+        if not 0 <= t <= horizon:
+            raise ValueError(f'a study reads times from 0 h to the horizon, {horizon:g} h, not {t:g} h')
+    keys = tuple(dict.fromkeys(key_of(program, path) for path in paths))
+    for found in keys:
+        unit_of(program, found)
     central_run = replace(configuration, mode=MEDIAN, seed=None)
-    central = report(run_all(program, [central_run])[0], program, central_run, paths, times, model=model)
+    central = report(
+        run_all(program, [central_run], jobs=jobs)[0], program, central_run, paths, times, model=model
+    )
     study = MonteCarlo(settings, paths, times, central)
     if central.stopped is not None:
         return replace(study, refused=f'the central run stops: {central.stopped}')
-    keys = tuple(dict.fromkeys(key_of(program, path) for path in paths))
     request = Request(configuration.request.horizon, everything=False, keys=keys)
     work = partial(_sampled, paths, times)
     samples = tuple(

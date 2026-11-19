@@ -325,3 +325,31 @@ def test_a_model_that_is_not_there_is_a_usage_error(tmp_path, capsys):
     (tmp_path / 'notes.txt').write_text('no model', encoding='utf-8')
     assert napkin(capsys, 'run', tmp_path / 'notes.txt').code == 2
     assert napkin(capsys, 'run', tmp_path).code == 2
+
+
+WELLS = """\
+scenario "Wells"
+    horizon 2 h
+
+Well:
+    input depth: m = 0 m
+    water: L = 10 L in [0 L,]
+    flow draw: this.water -> SINK
+        request = 1 L/h
+
+wells: Well from "wells.csv"
+"""
+
+
+def test_the_rows_of_a_table_are_listed_by_their_ids(tmp_path, capsys):
+    """Each row of the table is a member, named by its id; a well drains 1 L/h from 10 L, so 8 L at
+    2 h, and keeps the depth of its row."""
+    model = package(tmp_path / 'wells', WELLS, {**UNITS, 'm': {'dimensions': {'length': 1}, 'scale': 1}})
+    (model / 'wells.csv').write_text('id,depth: m\nnorth,10\nsouth,30\n', encoding='utf-8')
+    found = napkin(capsys, 'run', model)
+    assert found.code == 0, found.err
+    rows = {line.split()[0]: line.split()[1:] for line in found.out.splitlines()[2:]}
+    assert rows['wells.north.depth'] == ['m', '10', '10']
+    assert rows['wells.south.depth'] == ['m', '30', '30']
+    assert rows['wells.north.water'] == rows['wells.south.water'] == ['L', '10', '8']
+    assert rows['wells.south.draw.actual_rate'] == ['L/h', '1', '1']

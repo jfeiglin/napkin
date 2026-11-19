@@ -19,7 +19,7 @@ import pytest
 
 from napkin.engine.sampling import SamplingSettings, sample_seed
 from napkin.engine.study import Cancelled
-from napkin.engine.timeline import run
+from napkin.engine.timeline import read, run
 from napkin.engine.uncertainty import monte_carlo
 from napkin.model.compile import compile_text
 from napkin.program.config import MEDIAN, SAMPLED
@@ -290,11 +290,15 @@ def test_the_drivers_of_a_value_are_the_rank_correlations_of_the_draws_with_it()
     assert second[2] == pytest.approx(spearman_without_ties(noise, water), abs=1e-12)
 
 
-def test_each_sample_is_the_run_of_its_seed_in_sampled_mode():
+def test_a_sample_alone_is_the_sample_of_the_study():
+    """Each sample is the study's configuration in sampled mode with the sample's seed: run alone, with
+    every value recorded, that configuration draws what the sample drew and holds its values."""
     model = compiled()
-    found = study(model, samples=3)
+    found = study(model, samples=3, times=(2, 4))
     for sample in found.samples:
-        record = run(model.program, replace(model.configuration, mode=SAMPLED, seed=sample.seed))
-        assert drawn(sample) == record.entries('draw')[0].detail('value')
+        alone = run(model.program, replace(model.configuration, mode=SAMPLED, seed=sample.seed))
+        assert drawn(sample) == alone.entries('draw')[0].detail('value')
+        values = read(alone, model.program, ['tank.water'], [2, 4])[0].values
+        assert values == pytest.approx(sample.values[0], rel=1e-12)
     with pytest.raises(ValueError, match='one path or more'):
         study(model, paths=())

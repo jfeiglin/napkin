@@ -28,6 +28,8 @@ REFINE = 2  # steps of iterative refinement of each solve
 CHECKED = 1e-10  # a refined solve whose residual is above this, relative to the right side, is
 # made again by SuperLU on the same system (`_Factor.solve`); `--checked` turns it on
 SUPERLU = []  # the systems that went to SuperLU
+REGULAR = None  # `--regular D`: factorize K with its (2, 2) diagonal at most -D, refine against K
+MOST = 10  # the refinement steps of a regularized factorization, while the residual halves
 
 
 class _Factor:
@@ -40,18 +42,35 @@ class _Factor:
         key = (K.shape, K.nnz, id(K.indices))
         self.K = K
         solver = _Factor.cache.get(key)
+        factored = K
+        if REGULAR is not None:
+            # the (2, 2) block's diagonal is the negative one: -delta, held at most -REGULAR
+            factored = K.copy()
+            columns = np.repeat(np.arange(K.shape[1]), np.diff(K.indptr))
+            diagonal = np.flatnonzero(K.indices == columns)
+            values = factored.data[diagonal]
+            factored.data[diagonal] = np.where(values < 0, np.minimum(values, -REGULAR), values)
         if solver is None:
-            solver = qdldl.Solver(sp.csc_matrix(K))
+            solver = qdldl.Solver(sp.csc_matrix(factored))
             _Factor.cache = {key: solver}  # one pattern at a time: the stage that runs
         else:
-            solver.update(sp.csc_matrix(K))
+            solver.update(sp.csc_matrix(factored))
         self.solver = solver
 
     checked = False
 
     def solve(self, rhs):
         x = self.solver.solve(rhs)
-        for _ in range(REFINE):
+        if REGULAR is not None:
+            last = np.inf
+            for _ in range(MOST):
+                r = rhs - self.K @ x
+                size = float(np.abs(r).max(initial=0.0))
+                if not size < 0.5 * last:
+                    break
+                last = size
+                x = x + self.solver.solve(r)
+        for _ in range(REFINE if REGULAR is None else 0):
             x = x + self.solver.solve(rhs - self.K @ x)
         if _Factor.checked:
             bad = not np.all(np.isfinite(x))
@@ -97,7 +116,8 @@ def run(tag, repeat, checked=False):
     found = lab.measures(state, answers[0], reference)
     infos = dict(newton=work.newton, methods=work.methods, factorizations=work.factorizations, qp=work.qp,
                  superlu=len(SUPERLU))
-    record = dict(tag=tag, method='library-ldl-checked' if checked else 'library-ldl', seconds=min(times), all=times, repeat=repeat, bitwise=same,
+    name = 'library-ldl' + ('-checked' if checked else '') + (f'-regular{REGULAR:g}' if REGULAR else '')
+    record = dict(tag=tag, method=name, seconds=min(times), all=times, repeat=repeat, bitwise=same,
                   infos=infos, measures=found, load=lab.load(), version=lab.library_version())  # fmt: skip
     with open(f'{lab.DATA}/distance.jsonl', 'a') as f:
         f.write(json.dumps(record, default=str) + '\n')
@@ -113,4 +133,8 @@ if __name__ == '__main__':
         repeat = int(args[i + 1])
         del args[i : i + 2]
     checked = '--checked' in args
+    if '--regular' in args:
+        i = args.index('--regular')
+        REGULAR = float(args[i + 1])
+        del args[i : i + 2]
     run([a for a in args if not a.startswith('--')][0], repeat, checked)

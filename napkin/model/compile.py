@@ -25,7 +25,7 @@ process loads and runs without the parser (`napkin.program.artifact`).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -62,7 +62,7 @@ class Compiled:
     reports: tuple[Problem, ...] = ()
     model_hash: str = ''
     base: Configuration | None = None
-    table: SideTable = SideTable()
+    table: SideTable = field(default_factory=SideTable)
 
     def artifact(self):
         """The program with its side table, as a file keeps it (`napkin.program.artifact`)."""

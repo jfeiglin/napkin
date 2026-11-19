@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import hashlib
 
-# The version of the language, which the hash of a model covers, is the program's
-# (`napkin.program.artifact`): a model's identity changes with the language, never with the version
-# of the package.
 from ..program.artifact import LANGUAGE_VERSION
 from ..program.canonical import configuration_bytes, program_bytes, value_bytes
+
+# `LANGUAGE_VERSION`, which the hash of a model covers, is the program's (`napkin.program.artifact`):
+# a model's identity changes with the language, never with the version of the package.
+
 # The record collections of a folder's evidence (`library.py`).
 COLLECTIONS = ('sources', 'claims', 'assumptions')
 

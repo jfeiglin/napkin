@@ -1,9 +1,9 @@
-"""The public Python API (`napkin/__init__.py`): the spec's names and `uncertainty_report` (D-44), each
-the object of the module that defines it, loaded on first use (D-24).
+"""The public Python API (`napkin/__init__.py`): compile, run, read, report, study, the members of a
+template and the dynamics, each the object of the module that defines it, loaded on first use (D-24).
 
 `import napkin` loads no other module of the package, nor numpy, scipy or jsonschema: a property of a
 fresh interpreter, not a timing. The file names each export's module as text and imports none, so the
-run store's digest of the engine (`store.closure`) reads the same files as before the API.
+run store's digest of the engine (`store.closure`) reads the engine's files and no more.
 """
 
 from __future__ import annotations
@@ -22,20 +22,16 @@ from napkin import store
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# The files of the run store's closure at 742d3f2b, before the public API, relative to the package,
-# and `model/structure.py`: the engine reads the typed parts of a run from it (A3);
-# and the typed core that the expression evaluator reads (`core/`, A4); and `engine/allocation.py`,
-# which holds the allocation that `engine/continuous/fields.py` held, and
-# `engine/continuous/segment.py`, which holds the step between two moments that `engine/runtime.py`
-# held (B2.4); and the timeline engine with what it reads (`engine/timeline/`, `engine/solvers.py`,
-# `core/arrays.py`, `core/derivatives.py`), which `simulate` runs (B2.7); and `engine/errors.py`,
-# which holds the error of a run that `engine/scheduler.py` held with the rule engine before the
-# timeline engine took its place (CP-B2). The engine names no module of the compiler.
+# The files of the run store's closure, relative to the package: the files that the engine imports
+# from its timeline (`engine/timeline/`), the expressions and the distributions, with the packages
+# that hold them: the program that it runs and its record (`program/`), the solve library of the
+# declared solvers and of fair sharing (`engine/solve/`), the continuous engine and the typed core
+# that the evaluator reads (`core/`). The engine names no module of the compiler, of the report or of
+# the studies. A new module of the engine changes this list.
 CLOSURE = (
     '__init__.py',
     'core/__init__.py',
     'core/arrays.py',
-    'core/derivatives.py',
     'core/errors.py',
     'core/evaluation.py',
     'core/expr.py',
@@ -55,48 +51,61 @@ CLOSURE = (
     'engine/continuous/segment.py',
     'engine/continuous/system.py',
     'engine/errors.py',
-    'engine/runtime.py',
-    'engine/sampling.py',
+    'engine/solve/__init__.py',
+    'engine/solve/distance.py',
+    'engine/solve/failures.py',
+    'engine/solve/fair.py',
+    'engine/solve/kept.py',
+    'engine/solve/problem.py',
+    'engine/solve/ranked.py',
+    'engine/solve/scaled.py',
+    'engine/solve/solver.py',
     'engine/solvers.py',
     'engine/timeline/__init__.py',
-    'engine/timeline/checks.py',
-    'engine/timeline/choices.py',
+    'engine/timeline/chance.py',
+    'engine/timeline/collections.py',
     'engine/timeline/component.py',
-    'engine/timeline/lists.py',
+    'engine/timeline/declared.py',
+    'engine/timeline/family.py',
+    'engine/timeline/lines.py',
+    'engine/timeline/moment.py',
+    'engine/timeline/network.py',
+    'engine/timeline/occurrences.py',
     'engine/timeline/plan.py',
-    'engine/timeline/readers.py',
-    'engine/timeline/rules.py',
+    'engine/timeline/pools.py',
+    'engine/timeline/reads.py',
+    'engine/timeline/record.py',
     'engine/timeline/run.py',
-    'engine/timeline/segments.py',
-    'engine/timeline/sharing.py',
-    'engine/timeline/state.py',
-    'engine/timeline/steps.py',
-    'engine/timeline/trace.py',
+    'engine/timeline/selection.py',
+    'engine/timeline/sparse.py',
     'engine/timeline/trees.py',
+    'engine/timeline/triggers.py',
+    'engine/timeline/ways.py',
     'expressions.py',
-    'model/__init__.py',
-    'model/analysis/__init__.py',
-    'model/analysis/structure.py',
-    'model/ir.py',
-    'model/structure.py',
-    'model/types.py',
-    'model/uncertain.py',
+    'program/__init__.py',
+    'program/config.py',
+    'program/parts.py',
+    'program/record.py',
+    'program/refs.py',
 )
 
-# The public API: the spec's list (Phase 4) and `uncertainty_report` (D-44), each with the module that
-# defines it. `dynamics` is the package itself.
-SPEC = {
+# The public API, each with the module that defines it. `spread` and `dynamics` are modules.
+API = {
     'load_scenario': 'napkin.model.compile',
     'load_package': 'napkin.package',
-    'evaluate_study': 'napkin.engine.study',
-    'sample_result': 'napkin.engine.report',
-    'evaluate_uncertainty': 'napkin.engine.uncertainty',
-    'Session': 'napkin.session',
-    'actors': 'napkin.model.views',
+    'run': 'napkin.engine.timeline',
+    'read': 'napkin.engine.timeline.record',
+    'report': 'napkin.engine.report',
+    'Lag': 'napkin.engine.report',
+    'study': 'napkin.engine.study',
+    'monte_carlo': 'napkin.engine.uncertainty',
+    'spread': 'napkin.spread',
     'instances': 'napkin.model.views',
     'dynamics': 'napkin.dynamics',
 }
-ADDED = {'uncertainty_report': 'napkin.engine.uncertainty'}
+# The names of the old API that are gone: the old report, the old studies, and the player's session
+# and actors, which breakpoints and checkpoints replace (slice S7).
+GONE = ('sample_result', 'evaluate_study', 'evaluate_uncertainty', 'uncertainty_report', 'Session', 'actors')
 
 # The modules whose loading `import napkin` must not cause, by their top-level name.
 HEAVY = ('numpy', 'scipy', 'jsonschema')
@@ -159,17 +168,20 @@ def test_a_name_that_is_no_export_is_no_attribute_and_a_submodule_still_imports(
     ]
 
 
-def test_the_exports_are_the_spec_s_list_and_uncertainty_report():
-    assert napkin._EXPORTS == {**SPEC, **ADDED}
-    assert sorted(napkin.__all__) == sorted({**SPEC, **ADDED})
+def test_the_exports_are_the_api_and_the_old_names_are_gone():
+    assert napkin._EXPORTS == API
+    assert sorted(napkin.__all__) == sorted(API)
     assert set(napkin.__all__) <= set(dir(napkin))
+    for name in GONE:
+        with pytest.raises(AttributeError):
+            getattr(napkin, name)
 
 
-@pytest.mark.parametrize('name', list({**SPEC, **ADDED}))
+@pytest.mark.parametrize('name', list(API))
 def test_each_export_is_the_object_of_its_module(name):
-    module = importlib.import_module({**SPEC, **ADDED}[name])
+    module = importlib.import_module(API[name])
     value = getattr(napkin, name)
-    if name == 'dynamics':
+    if name in ('dynamics', 'spread'):
         assert value is module
     else:
         assert value is getattr(module, name) and value.__module__ == module.__name__
@@ -178,6 +190,6 @@ def test_each_export_is_the_object_of_its_module(name):
 
 
 def test_the_version_and_the_schema_version_are_plain_attributes():
-    """The hashed engine imports both by name (`engine/study.py`, `engine/report.py`)."""
+    """The studies import the schema version by name (`engine/study.py`)."""
     assert {'__version__', 'SCHEMA_VERSION'} <= set(vars(napkin))
     assert napkin.SCHEMA_VERSION == '0.0.1' and isinstance(napkin.__version__, str)

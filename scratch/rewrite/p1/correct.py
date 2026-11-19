@@ -119,9 +119,11 @@ def run(method, tol, fix, deep):
         eps_start = float(parts[2]) if len(parts) > 2 else distance.EPS_START
         distance.select = hybrid.replacement(ipm, eps_start)
         skip = FALLBACK
-    elif method == 'ldl':
+    elif method in ('ldl', 'ldl-regular'):
         import ldl
 
+        if method == 'ldl-regular':
+            ldl.REGULAR = 1e-10
         ldl.use()
     elif method.startswith('polish'):
         import polish

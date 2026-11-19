@@ -233,8 +233,10 @@ class _File:
         """The words of a section's line after its name, and the bytes of the section."""
         written = self.line(name).split(b' ')
         if written[0] != name.encode() or len(written) != 1 + words or not written[1].isdigit():
-            raise ArtifactError('damaged', f'the {name} line is not "{name} <size>": {_shown(b" ".join(written))}')
-        size, end = int(written[1]), self.at + int(written[1])
+            raise ArtifactError(
+                'damaged', f'the {name} line is not "{name} <size>": {_shown(b" ".join(written))}'
+            )
+        end = self.at + int(written[1])
         if end > len(self.data):
             raise ArtifactError('damaged', f'the file ends inside its {name}')
         found, self.at = self.data[self.at : end], end
@@ -253,7 +255,8 @@ def loads(data):
     first = data[: data.find(b'\n')] if b'\n' in data else data
     if not first.startswith(FORMAT + b' '):
         raise ArtifactError(
-            'not_a_program', f'this is no napkin program: one starts with "napkin program", this with {_shown(first)}'
+            'not_a_program',
+            f'this is no napkin program: one starts with "napkin program", this with {_shown(first)}',
         )
     version = file.line('format')[len(FORMAT) + 1 :]
     if version != str(FORMAT_VERSION).encode():
@@ -278,7 +281,10 @@ def loads(data):
     _, table_data = file.section('table', 1)
     if file.at != len(data):
         raise ArtifactError('damaged', 'bytes follow the side table')
-    program, table = _value(program_data, parts.Program, 'program'), _value(table_data, SideTable, 'side table')
+    program, table = (
+        _value(program_data, parts.Program, 'program'),
+        _value(table_data, SideTable, 'side table'),
+    )
     return Artifact(program, table)
 
 

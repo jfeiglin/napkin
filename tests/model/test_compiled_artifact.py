@@ -156,7 +156,12 @@ def test_a_fresh_process_loads_the_program_and_runs_it_to_the_same_record(tmp_pa
     compiled.artifact().save(tmp_path / 'tank.napkin')
     (tmp_path / 'configuration').write_bytes(value_bytes(configuration))
     subprocess.run(
-        [sys.executable, '-c', FRESH, *(str(tmp_path / name) for name in ('tank.napkin', 'configuration', 'out'))],
+        [
+            sys.executable,
+            '-c',
+            FRESH,
+            *(str(tmp_path / name) for name in ('tank.napkin', 'configuration', 'out')),
+        ],
         cwd=ROOT,
         check=True,
         timeout=120,

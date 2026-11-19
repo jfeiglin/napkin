@@ -12,7 +12,11 @@ build them in Python. It imports nothing of napkin but `napkin.core`.
 - `record`: the record of a run: histories of pieces, the trace, the manifest.
 - `check`: the resolver of paths and the invariants that an engine relies on, each with a code.
 - `build`: the builders that make programs, with `Builder.finish`, which checks them.
-- `canonical`: the canonical bytes of a program and of a configuration, for the key of a stored run.
+- `canonical`: the canonical bytes of a program and of a configuration, for the key of a stored run,
+  and `decode`, which reads them back.
+- `artifact`: the compiled program as a file, with its side table (where the source writes each part,
+  its label and its evidence) and the versions of its format and of the language, which a loader
+  checks by name.
 - `reach`: which events can start and which values each named state can take under a configuration,
   each with its reason: proof metadata (D16), by which nothing prunes a run.
 - `proofs`: that a value never falls over a run (which a reporting lag needs, D10) and what a value

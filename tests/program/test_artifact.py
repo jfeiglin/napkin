@@ -42,7 +42,11 @@ TABLE = SideTable(
             2,
             5,
             'Beans in the hopper',
-            (Evidence('weighed', 'source', 'Weighed by hand', (('assumption', 'A-SCALE'),), (('C-1', 'mass'),)),),
+            (
+                Evidence(
+                    'weighed', 'source', 'Weighed by hand', (('assumption', 'A-SCALE'),), (('C-1', 'mass'),)
+                ),
+            ),
         ),
         Location('grinder.refill.step[0]', 'stage', '', 'grinder.scn', 5, 9),
     )
@@ -154,7 +158,20 @@ def test_decode_reads_each_kind_of_value_back():
     from napkin.program.record import Key
 
     node = nodes.binary('add', nodes.ref('a'), nodes.const(-0.0))
-    values = (None, True, False, -12, 0.1, -0.0, Fraction(-3, 7), 'é\n', (), (1, ('x',)), node, Key('', ('t',)))
+    values = (
+        None,
+        True,
+        False,
+        -12,
+        0.1,
+        -0.0,
+        Fraction(-3, 7),
+        'é\n',
+        (),
+        (1, ('x',)),
+        node,
+        Key('', ('t',)),
+    )
     found = decode(value_bytes(values), RECORDS)
     assert found == values
     assert [type(item) for item in found] == [type(item) for item in values]

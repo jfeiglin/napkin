@@ -21,7 +21,11 @@ Baseline b0b1d32 (stage C report committed, 5,151 live tests).
   the trail in JSON. tests/commands/test_run.py (17), test_run_report.py (21).
 - Fixed outside my files (flag it): napkin/program/proofs.py `_point_parts`, a route leg's point
   keeps `at` fourth (the report crashed on `x.forward.actual_rate`).
-
+- `napkin sample` (sample.py) on C-S's `napkin.spread.spread` -> `MonteCarlo`: --run, --edits,
+  --value, --at, --samples, --seed, --jobs, --exceed, --json (every sample). tests/commands/
+  test_sample.py (16). If C-S changes `spread`/`MonteCarlo`, adjust `main` and `document`.
+- tools/compare.py rewritten small (capture, published runs.json, compare names/values/trace,
+  renames). tests/test_compare.py (15).
 - `napkin draw` (draw.py) on `Things(compiled).runs`; `napkin compile` lists named runs and the
   model hash and checks style.toml (exit 1). tests/commands/test_draw.py (11, the 4 stylesheet
   tests again as one parametrized test). `napkin new` (new.py) and tools/new.py in the new

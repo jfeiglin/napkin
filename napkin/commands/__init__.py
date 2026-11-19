@@ -13,19 +13,15 @@ A command module imports only the standard library and `common` when it is impor
 The commands of `LATER` come back in a later stage of the rewrite: `napkin --help` lists them, and
 each refuses to run with exit 2, naming its stage. `napkin play` becomes a client of the checkpoints
 of slice S7 (breakpoints, checkpoints and edits replace the player's picks: scratch/rewrite/PLAN.md,
-change 15); `napkin sample` comes back with the studies of stage C. Their modules (`play.py`,
-`sample.py`) read the old compiled form, and nothing imports them until then.
+change 15). Its module (`play.py`) reads the old compiled form, and nothing imports it until then.
 """
 
 import importlib
 
 # The command modules, in order.
-NAMES = ('compile', 'run', 'fmt', 'draw', 'new')
+NAMES = ('compile', 'run', 'sample', 'fmt', 'draw', 'new')
 # The commands that a later stage brings back: {name: (its line in `napkin --help`, the stage)}.
-LATER = {
-    'play': ('run one run step by step from its checkpoints', 'S7'),
-    'sample': ('run one run many times with drawn inputs', 'C'),
-}
+LATER = {'play': ('run one run step by step from its checkpoints', 'S7')}
 
 
 def modules():

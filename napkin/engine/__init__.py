@@ -1,7 +1,8 @@
 """Run programs: the timeline engine and its solvers (`run`, `read` of the record of a run, and
-`paused`, the pause that ends the record of a run that waits for a player's pick),
-and, until a later stage replaces them, the studies of runs under edits, Monte Carlo studies of
-uncertain values, and reports of the old compiled form.
+`paused`, the pause that ends the record of a run that waits for a player's pick); the studies of a
+program under several configurations (`configurations`, `run_all`, `edits_for`, and the module
+`study`); Monte Carlo studies (`monte_carlo`, `SamplingSettings`); and, until a later stage replaces
+them, the numerical settings of the old compiled form.
 
 Each name of the package loads its module on first use, as the names of `napkin` do
 (`napkin/__init__.py`). So the import of one module of the engine loads no report, no study and no
@@ -12,19 +13,17 @@ from importlib import import_module as _import_module
 
 # The names of the package: {name: the module of the package that defines it}.
 _EXPORTS = {
+    'Cancelled': 'study',
     'NumericalSettings': 'runtime',
     'SamplingSettings': 'sampling',
     'SimulationError': 'errors',
-    'analyze_bounds': 'study',
+    'configurations': 'study',
     'edits_for': 'study',
-    'evaluate_study': 'study',
-    'evaluate_uncertainty': 'uncertainty',
+    'monte_carlo': 'uncertainty',
     'paused': 'timeline',
     'read': 'timeline',
-    'resolve_edits': 'study',
     'run': 'timeline',
-    'sample_result': 'report',
-    'uncertainty_report': 'uncertainty',
+    'run_all': 'study',
 }
 __all__ = list(_EXPORTS)
 
