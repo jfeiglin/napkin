@@ -7,9 +7,10 @@ kind also have reversible routes between two stores, with a signed request, and 
 served at one fraction; a priority names the legs of a route and the legs of a flow with legs at their
 endpoints. The oracle runs the same program in exact fractions by the selection order, so it is an
 independent second reading of the rules. The rates, the fractions and the levels must agree at the
-start and at moments after it; where the oracle has no answer (`NotCovered`: a ring of empty stores,
-room passed upstream through two full stores, a request at an endpoint that a route meets), the
-engine stops with a failure that names the stores or the endpoint.
+start and at moments after it; where the oracle has no answer (`NotCovered`: a ring of empty stores
+or of full stores, a request at an endpoint that a route meets), the engine stops with a failure
+that names the stores or the endpoint. Room passed through two full stores in series is no longer
+such a case: both answer it (`tests/engine/test_full_stores.py`).
 """
 
 from __future__ import annotations
@@ -143,7 +144,7 @@ def network(seed, routes=False):
 
 
 # What a failure of the engine says where the oracle has no answer of local sharing.
-NO_ANSWER = ('ring of stores', 'two full stores', 'a request at an endpoint that the route')
+NO_ANSWER = ('ring of stores', 'a request at an endpoint that the route')
 
 
 def compare(seed, routes=False):

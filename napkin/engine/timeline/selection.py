@@ -429,6 +429,8 @@ def select(rows, lower, upper, tiers, prefs, target, units=None):
         with np.errstate(invalid='ignore'):
             near = np.isfinite(bound) & (np.abs(found - bound) <= 1e-12 * (units + np.abs(bound)))
         found[near] = bound[near]
+    if not np.isfinite(found).all():
+        raise SimulationError('local sharing: the rates of a part are no finite numbers')
     return _exact(final, lower, upper, found, target)
 
 

@@ -43,6 +43,13 @@ inputs: feed = first.feed / solve_for: feed.actual_rate.
   ring (31 supply, 10 room) among unnamed flows (oracle NotCovered); the message says to name them.
 - Deep sets (once): random solvers 900, solve sweep, occurrences 2,000, local sharing 4,000: pass.
 
+- E3's items (its STATE "For E1"): `MovingDeclared.breaks`/`motion` (step ends of its OdeSolution;
+  `dense.of_step` on the step's interpolant, held stores at their bounds) and `level_at` past the
+  present along `drift`, as Sparse; test: a moving solver's tank 4t - t^2/2 crossing 6 L at 2 and
+  6 h. A request at or below the smallest normal float (`network.TINY`) is no claim and sizes no
+  part (it overflowed the selection: LinAlgError); a non-finite part fails by name. Test:
+  test_vanishing_requests.py (storm 9 e^-t to 1000 h on sparse).
+
 ## Remaining
-- The final command; the last message.
+- Deep sets and the final command once more (final code); the last message.
 - Leftover: `family.wanted` now only saved/restored by saved.py (not mine).

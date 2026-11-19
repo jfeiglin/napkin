@@ -56,6 +56,7 @@ from napkin.program.build import (
     solver,
     start,
     subtract,
+    t,
     this,
     unknown,
     value,
@@ -568,9 +569,9 @@ def test_a_store_that_the_answer_moves_off_its_bound_is_released_at_once():
     assert values(record, program, 'tank.water', (0.5, 1.5)) == pytest.approx((1, 3), abs=1e-12)
     for owner, name in (('full', 'from_a'), ('tank', 'onward'), ('tank', 'water')):
         key = Key(owner, (name, 'actual_rate') if name != 'water' else (name,))
-        for t in times:
-            found = values(record, program, key, (t,))[0]
-            assert found == pytest.approx(float(value_at(oracle, program, key, Fraction(t))), abs=1e-12)
+        for at in times:
+            found = values(record, program, key, (at,))[0]
+            assert found == pytest.approx(float(value_at(oracle, program, key, Fraction(at))), abs=1e-12)
     assert [entry.t for entry in record.entries('solve', 'provider.supply')] == [0]
 
 
@@ -639,3 +640,49 @@ def test_a_ring_of_empty_tanks_among_the_flows_that_a_solver_does_not_name_stops
     message = record.failure.detail('message')
     assert 'a ring of stores at their lower bound passes supply around' in message
     assert 'the solver provider.plan does not name every flow there' in message
+
+
+def turning(horizon=7):
+    """A tank, empty at first, that the provider's solver fills at 4 L/h and that a drain of t L/h^2
+    empties: the drain reads the time, so the problem moves (`MovingDeclared`). It holds 4t - t^2/2 L,
+    up to 8 L at 4 h. `high` fires where it reaches 6 L, once, and `low` where it is at most 6 L,
+    again each time that it has been above."""
+
+    def watch(name, test, reset=None):
+        return (
+            value(f'{name}s', '', 0),
+            event(
+                name,
+                when(test, start(getattr(this, name)), reset=reset),
+                after(q(0, 'h'), add(getattr(this, f'{name}s'), 1)),
+            ),
+        )
+
+    b = Builder(UNITS)
+    tank = b.entity(
+        'tank',
+        value('water', 'L', 0, lower=0),
+        flow('fill', SOURCE, this.water, request=q(4, 'L/h'), capacity=q(4, 'L/h')),
+        flow('drain', this.water, SINK, request=formula(t / q(1, 'h') * q(1, 'L/h'))),
+        *watch('high', this.water >= q(6, 'L'), reset_when(False)),
+        *watch('low', this.water <= q(6, 'L')),
+    )
+    b.entity('provider', solver('supply', given('fill', tank.fill), solve_for(local.fill.actual_rate)))
+    return b.finish(), Configuration(Request(horizon))
+
+
+def test_a_value_that_turns_on_a_moving_solver_is_certified_as_on_the_other_ways():
+    """4t - t^2/2 = 6 at 2 h, rising, and at 6 h, falling: `high` fires at 2 h, and `low` at 0 h (the
+    tank holds 0 L) and at 6 h, read from the form of each step of the integrator (its cubic), with
+    no near-tie. The tank holds 8 L at its peak."""
+    program, configuration = turning()
+    made = Run(Plan.of(program, configuration))
+    record = made.run()
+    assert record.failure is None, record.failure
+    assert {connected.way for connected, _ in made.ways.sets.values()} == {'declared'}
+    assert [entry.t for entry in record.entries('fire', 'tank.high.when[0]')] == pytest.approx([2], abs=1e-6)
+    assert [entry.t for entry in record.entries('fire', 'tank.low.when[0]')] == pytest.approx(
+        [0, 6], abs=1e-6
+    )
+    assert record.near_ties() == ()
+    assert values(record, program, 'tank.water', (4,)) == pytest.approx((8,), rel=1e-6)

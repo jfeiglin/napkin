@@ -91,6 +91,7 @@ from scipy.sparse.linalg import splu
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
+from ..continuous import dense
 from ..errors import SimulationError
 from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
 from .collections import selected
@@ -1212,15 +1213,50 @@ class MovingDeclared(DeclaredWay):
         self.results.update(results)
 
     def level_at(self, name, t):
-        """The value of a store, or of a result, at a time inside the present window."""
+        """The value of a store, or of a result, at a time inside the present window; of a store,
+        before the next segment is made (at a moment), along its present rate (`drift`)."""
         s = self.place.get(name)
         if s is not None:
             if self.trial is not None:
                 return float(self.trial[s])
+            if self.pending is None and t > self.time:
+                return float(self._held(self.y)[s] + (t - self.time) * self.drift()[s])
             return float(self._state(t)[s])
         if self.pending is None or t <= self.pending.start:
             return self.results[name]
         return self._at(t, self._state(t))[1][name]
+
+    def drift(self):
+        """The rate of each store at the present state, a store held on a bound at zero: what a
+        condition read an instant after a moment (`triggers.AFTER`) follows before the next segment
+        is made, as a line follows its rate. It is the answer of an untraced solve there."""
+        return self._derivative(self.time, self.y)
+
+    def breaks(self, start, end):
+        """The times strictly between start and end at which the form of the next segment changes:
+        the ends of the steps of its integrator."""
+        segment = self.pending
+        if segment is None:
+            return []
+        return [float(at) for at in segment.solution.ts.tolist() if start < at < end]
+
+    def motion(self, weights, start, end):
+        """How the sum of the stores of `weights` ({store: weight}) moves from start to end, a piece
+        inside one step of the next segment (`continuous/dense.py`): the cubic of the step of Radau
+        that holds the piece, which the run reads as it is, and a store held on a bound at its bound."""
+        rows = np.array([self.place[name] for name in weights], dtype=np.int64)
+        w = np.array(list(weights.values()), dtype=float)
+        still = (self.low | self.high)[rows]
+        segment = self.pending
+        if segment is None or end <= segment.start:
+            return dense.held(self._held(self.y)[rows], w)
+        solution = segment.solution
+        k = int(np.searchsorted(solution.ts, 0.5 * (start + end), side='right')) - 1
+        output = solution.interpolants[min(max(k, 0), len(solution.interpolants) - 1)]
+        found = dense.held(self._held(self.y)[rows[still]], w[still])
+        if not still.all():
+            found += dense.of_step(output, rows[~still], w[~still], start, end)
+        return found
 
     def rate_at(self, name, t):
         """What the solver gives of a flow at a time inside the present window."""

@@ -22,7 +22,8 @@ capacity], a fraction within [0, 1] and each leg within its own capacity; each e
 and the row of each store that rests on a bound: what leaves a store at its lower bound must also
 arrive, what arrives at a store at its upper bound must also leave), then fair sharing of the claims
 tier by tier, then the preferred routes of a priority endpoint that has a request, then the values
-nearest their targets. A claim is a positive request: of a directed flow on its rate, of a route on
+nearest their targets. A claim is a positive request (above `TINY`, the smallest normal float, which
+alone can be its served fraction's divisor): of a directed flow on its rate, of a route on
 its rate in the direction of its request, of a flow with legs on its fraction (as a request of one,
 when a leg asks anything; when none does, the fraction is zero), and of an endpoint on its total.
 Its tier is (its level, its layer):
@@ -86,6 +87,10 @@ OUT, IN = 0, 1  # the two sides of a store: its outflow and its inflow
 SIDES = ('outflow', 'inflow')
 DIRECTED, ROUTE, LEGS = 0, 1, 2  # the kinds of a flow
 DIRECT, FORWARD, BACKWARD, LEG = 0, 1, 2, 3  # the roles of a connection
+# A request at or below the smallest normal float is no claim of the selection order: no float holds
+# its served fraction (one over it overflows), and only underflow makes one, such as the request of
+# a rate that decays toward zero over a long run (9 e^-t L/h at 708 h). Nor does it size a part.
+TINY = float(np.finfo(float).tiny)
 
 
 @dataclass(frozen=True)
@@ -646,7 +651,7 @@ class Instant:
                     else:
                         rows.at_most(total, asked.end_capacity[side][s])
                 wanted = float(asked.end_request[side][s])
-                if wanted > 0:
+                if wanted > TINY:
                     if parts:
                         route = next(c for c in here if net.roles[c] in (FORWARD, BACKWARD))
                         self._no_request(side, s, int(net.of[route]))
@@ -672,13 +677,13 @@ class Instant:
             if kind == DIRECTED:
                 c = cs[0]
                 high[k], target[k] = asked.capacity[c], request[c]
-                if request[c] > 0:
+                if request[c] > TINY:
                     claim(one, float(request[c]))
             elif kind == ROUTE:
                 forward, backward = cs
                 signed_request = float(request[forward] - request[backward])
                 low[k], high[k], target[k] = -asked.capacity[forward], asked.capacity[forward], signed_request
-                if signed_request != 0:  # its sign names the direction of its one claim
+                if abs(signed_request) > TINY:  # its sign names the direction of its one claim
                     claim(math.copysign(1.0, signed_request) * one, abs(signed_request))
             else:
                 asking = [c for c in cs if request[c] > 0]
@@ -690,11 +695,13 @@ class Instant:
                 if asking:
                     claim(one, 1.0)
         # The programs read each rate in units of the part's size, and a fraction as it is.
-        sizes = [float(x) for x in request[[c for f in part for c in mine[f]]] if x > 0]
+        sizes = [float(x) for x in request[[c for f in part for c in mine[f]]] if x > TINY]
         sizes += [
-            float(x) for x in asked.capacity[[c for f in part for c in mine[f]]] if math.isfinite(x) and x > 0
+            float(x)
+            for x in asked.capacity[[c for f in part for c in mine[f]]]
+            if math.isfinite(x) and x > TINY
         ]
-        sizes += [float(x) for x in asked.end_request[:, stores].ravel() if x > 0]
+        sizes += [float(x) for x in asked.end_request[:, stores].ravel() if x > TINY]
         units[rates] = max(sizes, default=1.0)
         tiers = {}
         for tier, a, wanted in claims:
