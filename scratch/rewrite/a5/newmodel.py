@@ -6,10 +6,11 @@ the same package name: `translate.py` calls it in a process of its own, and `che
 - `compiled(entry)`: the compile of an entry file (`napkin.model.compile.load_scenario`), as the
   problems that refuse it, each with its code, file and line, and the setup's reports, among them
   the warnings of the evidence rule (`no_record`, change 16).
-- `facts(entry, proven)`: what `check.py` compares of a model: each number with its unit as a value
-  in base units and a dimension, each text, the kind and dimension of each declared name, the ends
-  of each flow, the events, and for each path in `proven` (a value that the old compiler proved
-  cumulative) whether `napkin/program/proofs.py` proves that it never falls under each run.
+- `facts(entry, proven, runs, reads)`: what `check.py` compares of a model: each number with its unit
+  as a value in base units and a dimension, each text, the kind and dimension of each declared name,
+  the ends of each flow, the events, for each path in `proven` (a value that the old compiler proved
+  cumulative) whether `napkin/program/proofs.py` proves that it never falls under each run, and the
+  values that `reads` asks for in runs of the engine of now (`outcomes`).
 
     /home/user/napkin/.venv/bin/python newmodel.py --compile ENTRY.scn...    # JSON on stdout
 """
@@ -23,13 +24,17 @@ import sys
 from fractions import Fraction
 from pathlib import Path
 
+from napkin.engine.report import Lag, report
+from napkin.engine.timeline import run as run_program
+from napkin.engine.timeline.record import key_of, unit_of
 from napkin.model import semantic as s
 from napkin.model.compile import load_scenario
 from napkin.model.ir import ModelError
 from napkin.model.language import nodes as n
 from napkin.model.language.problems import LanguageError
+from napkin.program.config import MEDIAN
 from napkin.program.proofs import Proofs
-from napkin.program.record import Key
+from napkin.program.record import Key, Unavailable
 
 
 def compiled(entry):
@@ -120,7 +125,7 @@ class Collector:
                     continue
                 for key in ('title', 'summary', 'scope', 'library'):
                     self.text(getattr(item, key, None))
-                for node in (item.horizon, item.resolution, *(item.timescales or ())):
+                for node in (item.horizon, item.resolution):
                     if isinstance(node, n.Quantity):
                         spelled = ''.join(op + name for op, name in node.unit)
                         found = self.units.of(spelled)
@@ -339,9 +344,76 @@ def proofs(compiled_, paths, runs):
     return out
 
 
-def facts(entry, proven=(), runs=()):
+def outcomes(compiled_, reads):
+    """The values that `reads` asks for, in runs of the engine of now: `reads` is {run: {'paths':
+    [path], 'times': [hours], 'lags': {path: [shortest, longest]}}}, with `''` for the default run.
+
+    Each run is the model's run of that name in the mode `median` (each draw its distribution's
+    median, each categorical draw its likeliest outcome: the old central run), to its horizon
+    (`napkin.run`); its values are read by `napkin.report`, with the lags that the caller selects
+    (D10). Gives {run: {'error': why the run has no record, or None; 'horizon'; 'stopped': why the
+    record ends before the horizon, or None; 'values': {path: {'dims', 'note', 'values'}}}}: each
+    value in base units, a yes/no or a text, or `{'unavailable': reason}` (a time after the record's
+    end, or after the horizon of the run); a path that names no value of the program has `missing`."""
+    out = {}
+    for run, asked in reads.items():
+        found = out[run] = {'error': None, 'horizon': None, 'stopped': None, 'values': {}}
+        try:
+            configuration = compiled_.configuration if not run else compiled_.configure(run)
+        except LanguageError as error:
+            found['error'] = f'the run does not configure: {error.problems[0].message}'
+            continue
+        if configuration.mode != MEDIAN:
+            configuration = dataclasses.replace(configuration, mode=MEDIAN, seed=None)
+        program = compiled_.program
+        try:
+            record = run_program(program, configuration)
+        except Exception as error:  # the engine's refusals: a part that it does not run, a configuration
+            found['error'] = f'the engine does not run it: {type(error).__name__}: {error}'
+            continue
+        horizon = found['horizon'] = float(record.manifest.horizon)
+        units, paths = {}, []
+        for path in asked['paths']:
+            try:
+                spelling, scale = unit_of(program, key_of(program, path))
+            except KeyError:
+                found['values'][path] = {'missing': f'{path} names no value of the program'}
+                continue
+            units[path] = (scale, dims_text(program.unit(spelling).dimension))
+            paths.append(path)
+        times = [t for t in asked['times'] if t <= horizon]
+        lags = {path: Lag(*ends) for path, ends in asked['lags'].items() if path in units}
+        try:
+            read = report(record, program, configuration, paths, times, lags)
+        except (KeyError, LookupError, ValueError) as error:
+            found['error'] = f'the report of the run fails: {type(error).__name__}: {error}'
+            continue
+        found['stopped'] = read.stopped
+        for path, reported in zip(paths, read.values):
+            scale, dimension = units[path]
+            values = [plain(value, scale) for value in reported.values]
+            values += [{'unavailable': f'the run ends at its horizon, {horizon:g} h'}] * (
+                len(asked['times']) - len(times)
+            )
+            found['values'][path] = {'dims': dimension, 'note': reported.note, 'values': values}
+    return out
+
+
+def plain(value, scale):
+    """A value of a report as `check.py` compares it: a number in base units, a yes/no, a text (of a
+    status display, the text of its case), or `{'unavailable': reason}`."""
+    if isinstance(value, Unavailable):
+        return {'unavailable': value.reason}
+    if isinstance(value, (bool, str)):
+        return value
+    if isinstance(value, (int, float)):
+        return float(value) * float(scale)
+    return str(getattr(value, 'text', value))
+
+
+def facts(entry, proven=(), runs=(), reads=None):
     """What `check.py` compares of a model in the language of now (see the module), or the problems
-    that refuse its compile."""
+    that refuse its compile. `reads` asks for the values of runs (`outcomes`)."""
     try:
         found = load_scenario(entry)
     except LanguageError as error:
@@ -370,6 +442,7 @@ def facts(entry, proven=(), runs=()):
         'proofs': proofs(
             found, list(proven), [run.name for run in declared.runs if run.name in runs or not runs]
         ),
+        'outcomes': outcomes(found, reads or {}),
     }
 
 

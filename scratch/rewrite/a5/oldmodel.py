@@ -7,9 +7,11 @@ never with a text pattern over the source. Run each script with the old package 
 
 `symbols(context)` gives a small table of the names of one model, which the census and the check use to
 say what a dotted name reads: a value of a kind, an event, an outcome, a list, a thing. `facts(entry)`
-gives what `check.py` compares of an old model; run alone, this module prints them as JSON:
+gives what `check.py` compares of an old model, with the values of its outputs in the runs of the old
+engine (`runs_of`); run alone, this module prints them as JSON, with the outputs also at the times
+(in hours) that `--at` names:
 
-    PYTHONPATH=/home/user/napkin-base /home/user/napkin/.venv/bin/python oldmodel.py ENTRY.scn
+    PYTHONPATH=/home/user/napkin-base /home/user/napkin/.venv/bin/python oldmodel.py ENTRY.scn [--at H]...
 """
 
 from __future__ import annotations
@@ -413,7 +415,7 @@ def number_key(value, scale, dimension):
     return f'{base:.12g}', json.dumps(dims)
 
 
-def facts(entry):
+def facts(entry, times=()):
     """What `check.py` compares of an old model (an entry file with the files that it reads):
 
     - `numbers`: [value in base units, dimension, count] of each number of every file of the model,
@@ -427,7 +429,9 @@ def facts(entry):
     - `flows`: {path of a flow: its pairs as [source, sink], sorted}, each end the path of a store;
     - `unestimated`: the outputs that have no estimate, which have no declaration now (D4);
     - `proven`: {run: the paths of the outputs that the old compiler proved cumulative in it}, with
-      `''` for a model that has no runs (the old `base` run)."""
+      `''` for a model that has no runs (the old `base` run);
+    - `runs`: the values of the outputs in each run of the old engine, at the start, at `times` and
+      at the horizon (`runs_of`)."""
     from napkin.core.units import UnitSystem
     from napkin.model.library import load_library
     from napkin.model.model import build_model
@@ -508,7 +512,7 @@ def facts(entry):
             else:
                 declarer = symbols.declarer(head)
                 paths.append(f'{declarer}.instances.{member}' if declarer != head else f'{head}.{member}')
-        proven['' if run == 'base' and len(model.runs) == 1 else run] = sorted(set(paths))
+        proven[run_name(model, run)] = sorted(set(paths))
     return {
         'numbers': [[*key, n] for key, n in numbers.items()],
         'texts': dict(texts),
@@ -516,7 +520,100 @@ def facts(entry):
         'flows': flows,
         'unestimated': sorted(unestimated),
         'proven': proven,
+        'runs': runs_of(model, symbols, times),
     }
+
+
+def run_name(model, run):
+    """The name of an old run as the check names it: `''` for the lone `base` run of a model that
+    declares no runs, which is the default run of its translation."""
+    return '' if run == 'base' and len(model.runs) == 1 else run
+
+
+def runs_of(model, symbols, times=()):
+    """The values of the outputs of an old model in the runs of its default study (`evaluate_study`).
+
+    Each run of that study is the old central run: each distribution takes its median and each event
+    its likeliest outcome (`distributions.central`), as in the central study of a Monte Carlo study,
+    whose samples are not run here. For each run: its horizon; the inputs that a sampled study would
+    draw (`draws`) and whether its events go by chance (`chance`); its times (the start, each of
+    `times` that the run reaches, in hours, and the horizon, which is the old report's `final`); and
+    for each output, by its name in the model: the path that declares it (`T.x` for an output of the
+    members of a template, which a rename names), whether it has an estimate, its unit with that
+    unit's scale and dimension, its lag in hours (`[shortest, longest]`, equal for a fixed delay, or
+    `'mixture'`), and its value in its unit and its status at each time, as the old report gives
+    them (`evaluate_outputs`, which applies the lag). Gives {'refused': the messages of a study that
+    the old engine does not admit, or None; 'runs': {run: as above}}, with a run's `refused` for a run
+    that the old report cannot read."""
+    from napkin.core.units import UnitSystem
+    from napkin.engine import evaluate_study
+    from napkin.engine.report import _OfTrajectory, evaluate_outputs
+    from napkin.engine.sampling import uncertain
+    from napkin.engine.uncertainty import chancy, written_values
+    from napkin.model.ir import thaw
+
+    study = evaluate_study(model)
+    if not study.admissible:
+        return {'refused': [item.get('message', str(item)) for item in thaw(study.diagnostics)], 'runs': {}}
+    library = thaw(model.library)
+    registry = UnitSystem(library['units'])
+    written_ = written_values(model, study.effective_edits, list(study.runs))
+    found = {}
+    for run, completed in study.runs.items():
+        resolved, trajectory = completed['resolved'], completed['trajectory']
+        horizon = float(trajectory.horizon)
+        at = sorted({0.0, horizon, *(float(t) for t in times if 0 <= float(t) <= horizon)})
+        entry = {
+            'horizon': horizon,
+            'draws': uncertain(written_[run]),
+            'chance': chancy(resolved),
+            'times': at,
+            'outputs': {},
+        }
+        found[run_name(model, run)] = entry
+        try:
+            rows = evaluate_outputs(completed, library, at, unit_registry=registry)
+        except Exception as error:  # the old report's refusals: a value that is not finite, or below zero
+            entry['refused'] = f'{type(error).__name__}: {error}'
+            continue
+        reader = _OfTrajectory(trajectory, resolved.outcomes, registry)
+        for name, outcome in model.outputs.items():
+            definition = resolved.outcomes[outcome]
+            head, _, member = name.rpartition('.')
+            declarer = symbols.declarer(head) if head else ''
+            try:
+                unit = registry.parse_unit(definition.unit)
+                scale, dimension = float(unit.scale), sorted([str(k), float(v)] for k, v in unit.dims)
+            except Exception:  # a unit that is no unit of the library: compared by its number alone
+                scale, dimension = 1.0, None
+            entry['outputs'][name] = {
+                'declared': f'{declarer}.{member}' if head else name,
+                'estimated': definition.status == 'estimated',
+                'unit': definition.unit,
+                'scale': scale,
+                'dims': None if dimension is None else json.dumps(dimension),
+                'lag': _lag_hours(definition.lag, reader),
+                'values': [row['values'][outcome] for row in rows],
+                'statuses': [row['statuses'][outcome] for row in rows],
+            }
+    return {'refused': None, 'runs': found}
+
+
+def _lag_hours(lag, reader):
+    """The delays of an old reporting lag in hours, `[shortest, longest]`, equal for a fixed delay;
+    `'mixture'` for a mixture of delays; None for no lag. Its delays read inputs only (the old
+    compiler's rule), so they are read at the start."""
+    if lag is None:
+        return None
+    if lag.type == 'mixture':
+        return 'mixture'
+
+    def hours(expression):
+        return float(reader.number(expression, 0.0, lambda name, t: (None, 'unestimated')))
+
+    if lag.type == 'fixed':
+        return [hours(lag.delay)] * 2
+    return [hours(lag.minimum), hours(lag.maximum)]
 
 
 def _unit(spelled, units):
@@ -674,4 +771,5 @@ __all__ = [
 
 if __name__ == '__main__':
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    json.dump(facts(sys.argv[1]), sys.stdout)
+    asked = [float(sys.argv[k + 1]) for k in range(2, len(sys.argv) - 1) if sys.argv[k] == '--at']
+    json.dump(facts(sys.argv[1], asked), sys.stdout)
