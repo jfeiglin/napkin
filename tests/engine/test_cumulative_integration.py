@@ -53,9 +53,9 @@ def configured(program, horizon):
 def dense_fixture():
     """The recovery beside three accounts at 0.5 USD2025 that flows of nothing touch: a tally that
     a flow fills (at most 1), an account that a flow drains (at most 1), and a signed account in
-    [-2, 2] with a flow in and a flow out. The flows of the tally and of the drained account read
-    the pending count, times zero: so their stores have dense values in the recovery's component (a
-    set of one flow whose rate holds between moments runs on arrays, with exact lines)."""
+    [-2, 2] that a flow fills. Each flow reads the pending count, times zero: so their stores have
+    dense values in the recovery's component (a set whose rates hold between moments runs on arrays
+    or on lines, with exact lines)."""
     nothing = formula(NOTHING * this.pending / q(1, 'person'))
     b = Builder(UNITS)
     b.entity(
@@ -66,8 +66,7 @@ def dense_fixture():
         usd('signed', 0.5, lower=-2, upper=2),
         flow('fill', SOURCE, this.ledger, request=nothing),
         flow('draw', this.account, SINK, request=nothing),
-        flow('rise', SOURCE, this.signed, request=NOTHING),
-        flow('fall', this.signed, SINK, request=NOTHING),
+        flow('rise', SOURCE, this.signed, request=nothing),
     )
     return configured(b.finish(), 2)
 

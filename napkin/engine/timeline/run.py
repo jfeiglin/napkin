@@ -48,7 +48,8 @@ from ..errors import SimulationError
 from .collections import index_of, kept, looked_up, node_of, reduced
 from .component import Component, NetFlow, Network
 from .family import Family
-from .plan import LOOKUP, RATE, REDUCE, STARTS, STATE, Outside
+from .lines import Lines
+from .plan import COMPONENT, FAMILY, LINES, LOOKUP, RATE, REDUCE, SPARSE, STARTS, STATE, Outside
 from .record import Recorder, remember
 
 
@@ -116,7 +117,7 @@ class Run:
         self.now = 0.0  # the time that the run has reached, for a failure
         self.env = {'t': 0.0}  # the values at the start, by engine name
         self._kept, self._stepped, self._indexes = {}, {}, {}
-        self.family = None
+        self.family = self.lines = None
 
     # ---- the start --------------------------------------------------------------------------------
 
@@ -209,6 +210,28 @@ class Run:
                     raise SimulationError(f'{read}: a starting value that reads itself')
                 stack.append(read)
         return env[name]
+
+    def classes_of(self, store, side, items, number):
+        """The priority classes of an endpoint as the numbers of its flows (`number`): a flow that an
+        item names is a class, a keyed projection gives a class for each distinct key, lower keys
+        first, and the flows that no item names are the last class."""
+        mine = self.plan.ends[(store, side)].flows
+        classes, named = [], set()
+        for kind, item in items:
+            if kind == 'one':
+                found = [[item]]
+            else:
+                keyed = {}
+                for key, flow in item:
+                    keyed.setdefault(float(self.value_of(key) if isinstance(key, str) else key), []).append(flow)
+                found = [keyed[key] for key in sorted(keyed)]
+            for members in found:
+                members = [flow for flow in members if flow in mine]
+                if members:
+                    classes.append(tuple(number[flow] for flow in members))
+                    named.update(members)
+        rest = tuple(number[flow] for flow in mine if flow not in named)
+        return tuple(classes) + ((rest,) if rest else ())
 
     def kept_of(self, name):
         """The places of the entries that the where tests of a reduction or a keyed read keep."""
@@ -417,12 +440,12 @@ class Run:
         if outside:
             raise SimulationError(f'State bounds violated: {outside}')
         kinds = self.kinds()
-        components = [
-            (self.component(connected, values, sizes, kinds), connected)
-            for connected in plan.sets
-            if not connected.arrays
-        ]
-        self.family = Family(self, [connected for connected in plan.sets if connected.arrays], values)
+        ways = {way: [connected for connected in plan.sets if connected.way == way] for way in (FAMILY, LINES, COMPONENT, SPARSE)}
+        if ways[SPARSE]:
+            raise Outside(f'{ways[SPARSE][0].flows[0]}: a rate that moves in a set of shared stores (S2)')
+        components = [(self.component(connected, values, sizes, kinds), connected) for connected in ways[COMPONENT]]
+        self.family = Family(self, ways[FAMILY], values)
+        self.lines = Lines(self, ways[LINES], values)
         for name in plan.moving:
             self.recorder.tolerance[name] = factor * sizes[name]
         for flow in plan.flows.values():
@@ -442,6 +465,7 @@ class Run:
     def key_times(self, components):
         """The key times inside the run of the keyed reads by the time that the sets read."""
         names = set(self.family.stepped if self.family is not None else ())
+        names |= set(self.lines.stepped if self.lines is not None else ())
         for _, connected in components:
             names |= set(connected.stepped)
         found = set()
@@ -452,13 +476,15 @@ class Run:
     def advance(self, components):
         """The family and the components, window by window, to the horizon (see the module)."""
         horizon, limit = self.plan.horizon, self.plan.configuration.limits.max_rounds
-        family = self.family
+        family, lines = self.family, self.lines
         family.begin(0.0)
+        lines.begin(0.0)
         standing = [(0.0, k) for k in range(len(components))]
         heapq.heapify(standing)
         still = [0] * len(components)  # the segments of no length in a row, of each component
         for end in [*self.key_times(components), horizon]:
             family.advance(end)
+            lines.advance(end)
             while standing and standing[0][0] < end:
                 t, k = heapq.heappop(standing)
                 self.now = t
@@ -483,3 +509,5 @@ class Run:
                     self._set_stepped(component, connected, end)
             if any(end in self.stepped_of(name).times for name in family.stepped):
                 family.refresh(end)
+            if any(end in self.stepped_of(name).times for name in lines.stepped):
+                lines.refresh(end)

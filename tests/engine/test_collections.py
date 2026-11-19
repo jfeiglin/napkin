@@ -398,8 +398,10 @@ def test_what_a_later_slice_brings_is_refused_by_name():
         flow('push', this.store, this.into.level, request=q(1, 'L/h')),
     )
     b.member(pump, 'pump', into=named('basin'))
-    with pytest.raises(Outside, match=r'two templates.*\(S2\)'):
-        run(b.finish(), configured(1))
+    program = b.finish()
+    record = run(program, configured(1))  # a flow between members of two templates runs (S2)
+    assert at(record, program, 'pump.store', 1) == pytest.approx([4])
+    assert at(record, program, 'basin.level', 1) == pytest.approx([1])
     for key in (t + q(1, 'h'), this.water):
         b = Builder(UNITS)
         reading = b.template('Reading', input_('hour', 'h', 0), input_('factor', '', 1))

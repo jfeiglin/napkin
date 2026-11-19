@@ -30,22 +30,28 @@ continuous engine and the record read these names; nothing reads the spelling of
 - **Keyed reads.** `.at(x)` with an x that reads only fixed values is fixed for the run; with x the
   time `t`, it changes only at the keys of its collection, its key times, which go on the timeline
   of the run (`stepped`).
-- **Connected sets.** A flow joins its two ends, and a request or a capacity that reads a store,
-  through formulas, reductions or directly, joins that store to the flow's set: what a rate reads
-  that moves is in its own set. A set of one flow whose rate reads nothing that moves runs on arrays
-  with every other such set (`family.py`); any other set runs as one component of the continuous
-  engine (`component.py`). A stored value that no flow touches does not move in this slice, since no
-  stage writes it. A flow with no store at either end moves nothing, and its actual rate is the
-  formula `min(request, capacity)`.
+- **Endpoints.** A stored number that supplies a flow has `outflow`, one that receives has `inflow`
+  (`End`): a request (zero when left out), a capacity (none when left out), the actual rate (the sum
+  of its flows' actual rates, a formula) and `flows`, the collection of its flows keyed by their
+  creation numbers. A `priority(...)` allocation is kept as its items (`rankings`): a flow, or a
+  projection of a keyed collection of flows, whose keys the run reads at its start.
+- **Connected sets.** A flow joins its two ends, and a request or a capacity, of a flow or of an
+  endpoint at its ends, that reads a store, through formulas, reductions or directly, joins that
+  store to the flow's set: what a rate reads that moves is in its own set. Each set has its way
+  (`Connected.way`): a set of one flow with no endpoint settings whose rates read nothing that moves
+  runs on arrays with every other such set (`family.py`); any other set whose rates read nothing that
+  moves runs on lines (`lines.py`), at any size; a set whose rates move runs as one component of the
+  continuous engine (`component.py`) when each store meets one flow, it has no endpoint settings and
+  at most `LIMIT` stores, and on the sparse integrator otherwise (`sparse.py`). A stored value that no
+  flow touches does not move in this slice, since no stage writes it. A flow with no store at either
+  end moves nothing, and its actual rate is the formula `min(request, capacity)`.
 - **Assertions** over inputs are checked once, at the start of the run.
 
 What a later slice runs is refused by name (`Outside`), with the slice that brings it: events,
 triggers, the starts of the setup and assertions over state (S4); a key of `.at(...)` that moves or
-is a function of the time other than `t`, and a keyed read of a value that moves (S4); the scopes of
-an endpoint (`outflow`, `inflow`), two flows out of one store or into one store, which its endpoint
-shares at a bound, a flow between stores of members of two templates, and a rate that reads an
-actual rate (S2); reversible routes and flows with legs (S3); solvers (S5). Enums and texts are
-refused too: a value of this slice is a number or a yes/no.
+is a function of the time other than `t`, and a keyed read of a value that moves (S4); a request or a capacity that reads an actual rate, which needs the rates of other flows settled
+first (S4); reversible routes and flows with legs (S3); solvers (S5). Enums and texts are refused
+too: a value of this slice is a number or a yes/no.
 """
 
 from __future__ import annotations
@@ -92,6 +98,10 @@ REDUCE = 'reduce'  # a reduction of a collection (`Plan.reductions`), evaluated 
 LOOKUP = 'lookup'  # a keyed read `.at(x)` (`Plan.keyed`)
 STARTS = (INPUT, STATE, CAPTURE, LINK)  # the kinds that the start of a run evaluates once
 FIXED = (INPUT, LINK)  # what an assertion over inputs may read
+SIDES = ('outflow', 'inflow')  # the endpoints of a stored number
+# The ways of a connected set (`Connected.way`).
+FAMILY, LINES, COMPONENT, SPARSE = 'family', 'lines', 'component', 'sparse'
+LIMIT = 150  # the most stores of a component of the continuous engine (R-A4a-04)
 
 
 class Outside(Exception):
@@ -162,16 +172,30 @@ class Flow:
 
 
 @dataclass(frozen=True)
+class End:
+    """An endpoint of a stored number, `store.outflow` or `store.inflow`: the engine names of its
+    request, its capacity (None when it has none) and its actual rate, and its flows in their order
+    of creation."""
+
+    store: str
+    side: str
+    request: str
+    capacity: str | None
+    actual_rate: str
+    flows: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Connected:
     """A connected set of stores and flows, the formulas and reductions that its rates read, each
-    after those that it reads, and the keyed reads by the time that they read. `arrays` says that
-    the set is one flow whose rate reads nothing that moves: it runs with the family (`family.py`)."""
+    after those that it reads, the keyed reads by the time that they read, and its way: `FAMILY`,
+    `LINES`, `COMPONENT` or `SPARSE` (see the module)."""
 
     stores: tuple[str, ...]
     flows: tuple[str, ...]
     formulas: tuple[str, ...]
     stepped: tuple[str, ...] = ()
-    arrays: bool = False
+    way: str = COMPONENT
 
 
 @dataclass(frozen=True)
@@ -255,6 +279,8 @@ class Plan:
         self.pools = pools_of(program)
         self.values, self.draws, self.flows, self.distributions = {}, {}, {}, {}
         self.reductions, self.keyed = {}, {}
+        self.ends, self.rankings = {}, {}  # (store, side) -> End; -> the items of a priority(...)
+        self._flow_parts = {}  # the engine id of each flow -> (its member's id, the flow)
         self.asserts = []  # (origin, the member that it belongs to, its node)
         self.failures = []  # the errors of the setup that the plan finds: the run fails with them
         self._derived = {}  # (owner, read) -> the engine name of a reduction or a keyed read
@@ -278,6 +304,7 @@ class Plan:
         for scope in members:
             for flow in scope[0].flows:
                 self._declare_flow(flow, scope)
+        self._declare_ends(members)
         unused = sorted(f'{member}.{name}'.lstrip('.') for member, name in self._given)
         if unused:
             raise ConfigurationError(f'no input of the program has these names: {", ".join(unused)}')
@@ -370,8 +397,6 @@ class Plan:
             linked = target.members[member.link(value.name)].id
             self._add(Value(name, key, LINK, nodes.const(linked)))
             return
-        if value.outflow is not None or value.inflow is not None:
-            raise Outside(f'{value.origin}: the scopes of an endpoint, outflow and inflow (S2)')
         own = member.value(value.name) if member is not None else None
         init = own if own is not None else value.init
         if isinstance(value.type, p.DistributionType):
@@ -452,14 +477,8 @@ class Plan:
                 f'{flow.origin}: a {"reversible route" if flow.kind == p.REVERSIBLE else "flow with legs"} (S3)'
             )
         name = name_of(Key(member.id, (flow.name,)))
+        self._flow_parts[name] = (member.id, flow)
         ends = [self._end(end, scope, flow.origin) for end in (flow.source, flow.sink)]
-        if None not in ends:
-            templates = {self._template_of(end) for end in ends}
-            if len(templates) > 1:
-                raise Outside(
-                    f'{flow.origin}: a flow between stores of members of two templates, '
-                    f'{" and ".join(sorted(templates))} (S2)'
-                )
         properties = {}
         for which in ('request', 'capacity'):
             setting = getattr(flow, which)
@@ -492,11 +511,6 @@ class Plan:
             self._add(Value(name_of(rate), rate, RATE, None, flow.unit))
             self.flows[name] = made
 
-    def _template_of(self, name):
-        """The template of the member that owns the value of an engine name ('' for the root)."""
-        owner = self.values[name].key.owner
-        return self.program.member(owner)[0].name if owner else ''
-
     def _end(self, end, scope, origin):
         """The engine name of a stored number at an end of a flow, or None for SOURCE and SINK."""
         if isinstance(end, p.Outside):
@@ -506,6 +520,88 @@ class Plan:
         if found is None or found.kind != STATE or found.boolean:
             raise Outside(f'{origin}: an end of a flow that is no stored number of this slice')
         return point[1]
+
+    def _declare_ends(self, members):
+        """The endpoints of each stored number that meets a flow or has settings (see the module)."""
+        incident = {}
+        for flow in self.flows.values():
+            for side, end in zip(SIDES, (flow.source, flow.sink)):
+                if end is not None:
+                    incident.setdefault((end, side), []).append(flow.name)
+        scopes = [(value, None) for value in self.program.root]
+        scopes += [(value, scope) for scope in members for value in scope[0].values]
+        for value, scope in scopes:
+            store = name_of(Key(scope[2].id if scope is not None else '', (value.name,)))
+            for side in SIDES:
+                setting, flows = getattr(value, side), incident.get((store, side), [])
+                if setting is None and not flows:
+                    continue
+                found = self.values.get(store)
+                if found is None or found.kind != STATE or found.boolean:
+                    raise Outside(f'{value.origin}: {side} of a value that is no stored number')
+                self._declare_end(store, value, scope, side, setting or p.Endpoint(), tuple(flows))
+
+    def _declare_end(self, store, value, scope, side, setting, flows):
+        owner = scope[2].id if scope is not None else ''
+        unit = self.flows[flows[0]].unit if flows else ''
+        origin = setting.origin or value.origin
+        names = {}
+        for which in ('request', 'capacity'):
+            expression = getattr(setting, which)
+            if expression is None and which == 'capacity':
+                continue
+            key = Key(owner, (value.name, side, which))
+            kind = FORMULA if isinstance(expression, Formula) else CAPTURE
+            names[which] = name_of(key)
+            self._add(Value(name_of(key), key, kind, None, unit))
+
+            def make(expression=expression, key=key, kind=kind):
+                shape, binding = None, ()
+                if expression is None:
+                    node = nodes.const(0)  # a request left out is zero
+                else:
+                    written = expression.expr if isinstance(expression, Formula) else expression
+                    node, binding = self._bound(written, scope, origin)
+                    shape = written.node if binding is not None else None
+                self.values[name_of(key)] = Value(
+                    name_of(key), key, kind, node, unit, shape=shape, binding=binding or ()
+                )
+
+            self._declared.append(make)
+        rate = Key(owner, (value.name, side, 'actual_rate'))
+        total = None
+        for flow in flows:
+            part = nodes.ref(f'{flow}.actual_rate')
+            total = part if total is None else nodes.binary('add', total, part)
+        self._add(Value(name_of(rate), rate, FORMULA, total if total is not None else nodes.const(0.0), unit))
+        self.ends[(store, side)] = End(store, side, names['request'], names.get('capacity'), name_of(rate), flows)
+        if isinstance(setting.allocation, p.Priority):
+            self._declared.append(lambda: self._ranking(store, side, setting.allocation, scope, origin))
+
+    def _ranking(self, store, side, allocation, scope, origin):
+        """The items of a `priority(...)`: ('one', flow) or ('keyed', ((key, flow), ...)), where a
+        key is the engine name of a value or a creation number."""
+        items = []
+        for path in allocation.items:
+            point = self._resolve(path, scope, origin)
+            if point[0] == 'flow':
+                items.append(('one', f'{point[1]}.{point[2].name}'))
+            elif point[0] == 'many' and all(each[0] == 'flow' for each in point[1].points):
+                entries = point[1]
+                flows = tuple(f'{each[1]}.{each[2].name}' for each in entries.points)
+                items.append(('keyed', tuple(zip(entries.keys, flows))))
+            else:
+                raise Outside(f'{origin}: priority({spelled(path)}), which names no flow (a type error)')
+        mine = set(self.ends[(store, side)].flows)
+        for item in items:
+            named = [item[1]] if item[0] == 'one' else [flow for _, flow in item[1]]
+            for flow in named:
+                if flow not in mine:
+                    self.failures.append(
+                        f'{origin}: priority(...) at {store}.{side} names {flow}, which is not a flow of '
+                        'that endpoint'
+                    )
+        self.rankings[(store, side)] = tuple(items)
 
     # ---- expressions ----------------------------------------------------------------------------
 
@@ -634,7 +730,23 @@ class Plan:
             if any(each[0] == 'many' for each in points):
                 raise Outside(f'{origin}: a collection of collections (a later slice)')
             return ('many', replace(entries, points=points, whole=False))
-        raise Outside(f'{origin}: the step {name} of a value: outflow, inflow and the bounds (S2)')
+        if kind == 'value' and name in SIDES:
+            if (point[1], name) not in self.ends:
+                raise Outside(f'{origin}: {point[1]}.{name}, which no flow meets (a type error)')
+            return ('end', point[1], name)
+        if kind == 'end':
+            end = self.ends[(point[1], point[2])]
+            if name == 'flows':
+                points = tuple(('flow', *self._flow_parts[flow]) for flow in end.flows)
+                keys = tuple(list(self.flows).index(flow) for flow in end.flows)
+                return ('many', Entries(None, points, (None,) * len(points), keys))
+            found = {'request': end.request, 'capacity': end.capacity, 'actual_rate': end.actual_rate}
+            if name not in found:
+                raise Outside(f'{origin}: the {name} of {point[1]}.{point[2]}, which is no value (a type error)')
+            if found[name] is None:
+                raise Outside(f'{origin}: {point[1]}.{point[2]}.capacity, a capacity left out, has no value')
+            return ('value', found[name])
+        raise Outside(f'{origin}: the step {name} of a value, which names nothing of it (a type error)')
 
     def _many(self, path, scope, origin, item):
         point = self._resolve(path, scope, origin, item)
@@ -727,7 +839,7 @@ class Plan:
             return name
         entries = self._many(read.source, scope, origin, item)
         names = entries.names
-        if names is None and (read.op != 'count' or any(point[0] != 'member' for point in entries.points)):
+        if names is None and (read.op != 'count' or any(point[0] not in ('member', 'flow') for point in entries.points)):
             raise Outside(f'{origin}: {spelled(read)} of members or flows (a type error)')
         if names is not None and not entries.points and read.op == 'count':
             names = None
@@ -842,8 +954,25 @@ class Plan:
 
     # ---- the connected sets ---------------------------------------------------------------------
 
+    def settings_of(self, flow):
+        """The engine names of what a flow's rate reads: its request and capacity, and the request and
+        capacity of the endpoints at its two ends."""
+        names = [flow.request] + ([flow.capacity] if flow.capacity is not None else [])
+        for side, store in zip(SIDES, (flow.source, flow.sink)):
+            end = self.ends.get((store, side)) if store is not None else None
+            if end is not None:
+                names += [end.request] + ([end.capacity] if end.capacity is not None else [])
+        return names
+
+    def _settled(self, end):
+        """Whether an endpoint has a capacity or a request that is not left out."""
+        request = self.values[end.request]
+        return end.capacity is not None or not (
+            isinstance(request.node, nodes.Const) and request.node.value == 0
+        )
+
     def _connect(self):
-        """The connected sets of stores and flows (see the module)."""
+        """The connected sets of stores and flows, and the way of each (see the module)."""
         parent = {}
 
         def root(item):
@@ -858,28 +987,19 @@ class Plan:
 
         moving = {end for flow in self.flows.values() for end in (flow.source, flow.sink) if end}
         self.moving = frozenset(moving)
-        for side in ('source', 'sink'):
-            seen, shared = set(), set()
-            for flow in self.flows.values():
-                end = getattr(flow, side)
-                if end is not None:
-                    (shared if end in seen else seen).add(end)
-            if shared:
-                # At a bound the endpoint shares its flows by its own rule.
-                way = 'out of' if side == 'source' else 'into'
-                raise Outside(
-                    f'{sorted(shared)[0]}: two flows {way} one store, which its endpoint shares (S2)'
-                )
         reads = {}
         for flow in self.flows.values():
             root(flow.name)
             for end in (flow.source, flow.sink):
                 if end is not None:
                     join(('store', end), flow.name)
-            found = reads[flow.name] = self.expansion(flow.rate)
+            found = reads[flow.name] = Expanded.union(self.expanded(name) for name in self.settings_of(flow))
             for name in found.leaves:
                 if self._is_rate(name):
-                    raise Outside(f'{flow.name}: a request or a capacity that reads an actual rate (S2)')
+                    raise Outside(
+                        f'{flow.name}: a request or a capacity that reads an actual rate, which needs the '
+                        'rates of other flows settled first (S4)'
+                    )
                 if name in moving:
                     join(('store', name), flow.name)
         sets = {}
@@ -888,17 +1008,34 @@ class Plan:
         for name in self.values:
             if name in moving:
                 sets[root(('store', name))][0].append(name)
+        meets = {}
+        for flow in self.flows.values():
+            for end in (flow.source, flow.sink):
+                if end is not None:
+                    meets[end] = meets.get(end, 0) + 1
         made = []
         for stores, flows in sets.values():
             found = Expanded.union(reads[flow] for flow in flows)
-            arrays = len(flows) == 1 and not found.time and not (found.leaves & moving)
+            moves = found.time or bool(found.leaves & moving)
+            settled = any(
+                self._settled(self.ends[(store, side)])
+                for store in stores
+                for side in SIDES
+                if (store, side) in self.ends
+            )
+            if not moves:
+                way = FAMILY if len(flows) == 1 and not settled else LINES
+            elif not settled and len(stores) <= LIMIT and all(meets[store] == 1 for store in stores):
+                way = COMPONENT
+            else:
+                way = SPARSE
             made.append(
                 Connected(
                     tuple(stores),
                     tuple(flows),
                     tuple(self.ordered(found.formulas)),
                     tuple(sorted(found.stepped)),
-                    arrays,
+                    way,
                 )
             )
         self.sets = tuple(made)
