@@ -246,6 +246,15 @@ These override the text of this plan below, wherever the two differ. The owner's
    extra integration and no new rates), until each piece is certain or shorter than the time
    tolerance. A value that comes within tolerance of the boundary without crossing is a near-tie
    (change 10). What still cannot be certified stops the run by name; nothing polls at fixed times.
+21. **Causes, not cases (owner, 2026-11-19).** A re-audit of `0f78c65`
+   (`scratch/rewrite/audit/reaudit-0f78c65.csv`) found that the fixes after G2 cured the cases the
+   first audit named and left their causes: 7 of the 12 entries that pass have a close variant that
+   fails. The owner asked that each cause be fixed where it lives, not each case. The causes and
+   their owners are in `briefs/audit2.md`: the selection order and every change to an answer after
+   it; time and recursive evaluation; what a record holds and what a report claims from it; units
+   and lifetimes in the front end; the checker's run outcomes. Each fix comes with a test of its
+   rule, a property or a metamorphic test that does not lean on the oracle, beside the audit's
+   rows.
 
 ### If the session is cut off
 
