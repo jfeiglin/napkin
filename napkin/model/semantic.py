@@ -68,7 +68,7 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   (`result_write`).
 - **Occurrences** (`Occ`): `e.occurrences` is a collection keyed by start times, read with `count`,
   `any`, a projection and `.at(t)`; an occurrence reads its parameters, its locals and flows, and
-  `started`, `done`, `active`. `since(e)`, `elapsed(x)` and `delayed(x, d)` are `History` reads.
+  `started`, `done`, `active`. `since(e)` and `elapsed(x)` are `History` reads.
 - **Enums** (`EnumOf`) are their members in written order (E1 of the front end of S4): two
   declarations of `enum[OPEN, CLOSED]` are one type, and the program names it `enum[OPEN,
   CLOSED]`. A bare member takes its enum from its place: a declared type, the other side of a
@@ -471,20 +471,19 @@ class Chosen:
 
 @dataclass(frozen=True)
 class History:
-    """`since(e)` (the time since the latest start of an event), `elapsed(x)` (since the value of `x`
-    last changed at a commit) or `delayed(x, d)` (the committed value of `x` at `d` before now)."""
+    """`since(e)` (the time since the latest start of an event) or `elapsed(x)` (since the value of
+    `x` last changed at a commit)."""
 
     op: str
     source: Read
     type: object
-    delay: object = None
 
 
 def reads_of(expression):
     """The reads of a typed expression, outside the starts of its keyed reads."""
     if isinstance(expression, Read):
         yield expression
-    elif isinstance(expression, Reduced):
+    elif isinstance(expression, (Reduced, History)):
         yield expression.source
     elif isinstance(expression, Apply):
         for arg in expression.args:
@@ -493,10 +492,6 @@ def reads_of(expression):
         yield from reads_of(expression.body)
     elif isinstance(expression, (Drawn, Chosen)) and isinstance(expression.source, Read):
         yield expression.source
-    elif isinstance(expression, History):
-        yield expression.source
-        if expression.delay is not None:
-            yield from reads_of(expression.delay)
 
 
 def draws_of(expression):
@@ -509,8 +504,6 @@ def draws_of(expression):
             yield from draws_of(arg)
     elif isinstance(expression, Retain):
         yield from draws_of(expression.body)
-    elif isinstance(expression, History) and expression.delay is not None:
-        yield from draws_of(expression.delay)
 
 
 def fixed(expression):
@@ -1134,7 +1127,7 @@ ARITY = {
     'lognormal': (2, 4),
 }
 PURE = ('exp', 'expm1', 'ln', 'log1p', 'erf')
-HISTORY = ('since', 'elapsed', 'delayed')
+HISTORY = ('since', 'elapsed')
 OCCURRENCE = {'started': 'h', 'done': BOOL, 'active': BOOL}  # the built-in fields of an occurrence
 # What the run computes, which no statement assigns: the rates of a flow and of an endpoint, the
 # served fraction of a flow with legs, the built-in fields of an occurrence.
@@ -1547,15 +1540,9 @@ class Resolver:
 
     def history(self, node, scope):
         """`since(e)` of an event, a duration that fails before its first start; `elapsed(x)`, the
-        time since a value last changed at a commit; `delayed(x, d)`, the committed value of `x` at
-        `d` before now, of the type of `x`."""
-        wanted = 2 if node.function == 'delayed' else 1
-        if len(node.args) != wanted or node.named:
-            what = (
-                'an event'
-                if node.function == 'since'
-                else 'a value' + (' and a duration' if wanted == 2 else '')
-            )
+        time since a value last changed at a commit."""
+        if len(node.args) != 1 or node.named:
+            what = 'an event' if node.function == 'since' else 'a value'
             self.fail('arguments', f'{node.function} takes {what}, as {node.function}(...)', node)
         if not isinstance(node.args[0], (n.Name, n.Member)):
             self.fail('history', f'{node.function} reads a named part, not an expression', node)
@@ -1569,20 +1556,15 @@ class Resolver:
             isinstance(source.type, (Many, Ent, EventOf, FlowOf, RouteOf, LegsOf, EndOf, Dist, SolverOf))
             or not source.part
         ):
-            self.fail('history', f'{node.function} takes a value, not {source.type}', node)
+            self.fail('history', f'elapsed takes a value, not {source.type}', node)
         if self.value(source.part).kind == UNKNOWN:
             self.fail(
                 'history',
-                f"{node.function} takes a value that commits change, and a solver's result changes when "
-                'its solver settles',
+                "elapsed takes a value that commits change, and a solver's result changes when its "
+                'solver settles',
                 node,
             )
-        if node.function == 'elapsed':
-            return History('elapsed', source, hours)
-        delay = self.expression(node.args[1], scope)
-        if not (isinstance(delay.type, Num) and delay.type.dimension == hours.dimension):
-            self.fail('unit', f'the delay of delayed(...) is a time, not {delay.type}', node)
-        return History('delayed', source, source.type, delay)
+        return History('elapsed', source, hours)
 
     def call(self, node, scope):
         if node.function in HISTORY:

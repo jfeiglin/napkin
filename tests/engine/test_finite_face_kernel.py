@@ -63,14 +63,14 @@ def run_of(*parts, horizon=12):
     return program, run(program, Configuration(Request(horizon)))
 
 
-def supplied_empty_stock(*parts, delayed=False, serve=True):
+def supplied_empty_stock(*parts, late=False, serve=True):
     """An empty stock that the warehouse supplies at 2 people an hour, from the start or from 4 h,
     and that delivers 1 person an hour to the tally when `serve`."""
     return (
         value('stock', 'person', 0, lower=0, scale=10),
         value('served', 'person', 0, lower=0, scale=10),
         value('warehouse', 'person', 20, lower=0, scale=20),
-        value('on', BOOL, not delayed),
+        value('on', BOOL, not late),
         # A request is soft (D15): the supply's capacity keeps it at its request, or closed.
         flow(
             'supply',
@@ -80,16 +80,16 @@ def supplied_empty_stock(*parts, delayed=False, serve=True):
             capacity=formula(ifelse(this.on, rate(2), rate(0))),
         ),
         *((flow('serve', this.stock, this.served, request=rate(1)),) if serve else ()),
-        *((at_time('opening', 4, assign(this.on, True)),) if delayed else ()),
+        *((at_time('opening', 4, assign(this.on, True)),) if late else ()),
         *parts,
     )
 
 
-@pytest.mark.parametrize('delayed', [False, True])
-def test_an_empty_stock_that_receives_more_than_it_delivers_leaves_its_face(delayed):
-    program, record = run_of(*supplied_empty_stock(delayed=delayed))
+@pytest.mark.parametrize('late', [False, True])
+def test_an_empty_stock_that_receives_more_than_it_delivers_leaves_its_face(late):
+    program, record = run_of(*supplied_empty_stock(late=late))
     assert record.failure is None, record.failure
-    offset = 4 if delayed else 0
+    offset = 4 if late else 0
     # While the warehouse supplies: W' = -2, S' = 2 - 1, C' = 1. After the warehouse is empty, at an
     # exposure of 10 h: S' = -1, C' = 1.
     times = (offset, offset + 0.5, offset + 2, offset + 5, 12)

@@ -51,8 +51,7 @@ moves is not. A keyed read whose key or members move changes by steps that the e
 locate: a watched condition that reads one stops the run with a diagnostic. That time is a moment, and so is an event of a way that changes what a
 watched condition reads (a rate that jumps). The prediction holds within the window of the ways that
 it reads and is made again after it. A strict comparison whose difference moves has no first
-instant: the run stops with a diagnostic when such a condition is watched, never polling. So does a
-comparison that reads the past of a moving value (`delayed`), whose contact the run cannot find.
+instant: the run stops with a diagnostic when such a condition is watched, never polling.
 """
 
 from __future__ import annotations
@@ -161,8 +160,7 @@ class Triggers:
             if name == 't' or name in self.plan.dynamic:
                 found = max(found, self.plan.numerics.crossing)
             else:
-                read = self.plan.delays[name][0] if name in self.plan.delays else name
-                found = max(found, tolerance.get(read, 0.0))
+                found = max(found, tolerance.get(name, 0.0))
         return found
 
     def moving_reads(self, *parts):
@@ -180,8 +178,6 @@ class Triggers:
                     found.add(name)
                 elif name in run.ways.result_of and run.ways.sets[run.ways.result_of[name]][0].moves:
                     found.add(name)  # a result of a solver whose problem moves between moments
-                elif name in plan.delays and plan.delay_moves(name):
-                    found.add(name)  # the past of a value that moves
         return found
 
     # ---- the conditions of a round ------------------------------------------------------------------
@@ -373,13 +369,6 @@ class Triggers:
             moving = self.moving_reads(left, right)
             if not moving:
                 continue
-            past = sorted(name for name in moving if name in self.plan.delays)
-            if past:
-                raise SimulationError(
-                    f'{nodes.text(left)} {_SPELLING[op]} {nodes.text(right)} reads {past[0]}, the past of a '
-                    'value that moves between moments, which a condition cannot watch: read it in a stage, '
-                    'or delay a value that holds between moments'
-                )
             until = self._window(moving)
             window = min(window, until)
             if until <= now:

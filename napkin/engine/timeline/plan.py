@@ -28,11 +28,10 @@ continuous engine and the record read these names; nothing reads the spelling of
   that executes them (`''` for the root and the setup). A draw of a path reads the present
   distribution of a distribution-valued value: the configuration's, its default, or what a stage
   assigned it since. An input that the configuration sets skips the draws of its default (D2).
-- **`elapsed` and `delayed`.** `elapsed(x)` is the node `t - x|changed`, where `x|changed` (kind
-  CHANGED) is the time at which the stored value x last changed at a commit, or its start, so it
-  moves as the time does. `delayed(x, d)` (kind DELAYED, `delays`) is the committed value of x at d
-  before the read, from 0. Each reads a stored value: an input, a stored value, a link or a captured
-  setting, of a member, of the root or of an occurrence.
+- **`elapsed`.** `elapsed(x)` is the node `t - x|changed`, where `x|changed` (kind CHANGED) is the
+  time at which the stored value x last changed at a commit, or its start, so it moves as the time
+  does. It reads a stored value: an input, a stored value, a link or a captured setting, of a
+  member, of the root or of an occurrence.
 - **Keyed reads.** `.at(t)` on keys that the inputs fix is stepped (`stepped`): it selects a member
   at each key of its collection, its key times, which go on the timeline of the run, and reads that
   member's value as it is then. Any other keyed read (a key that reads a value, which a stage may
@@ -122,7 +121,6 @@ from ...program.record import Key
 from ...program.refs import (
     By,
     Choice,
-    Delayed,
     Distribution,
     Draw,
     Elapsed,
@@ -159,7 +157,6 @@ REDUCE = 'reduce'  # a reduction of a collection (`Plan.reductions`), evaluated 
 LOOKUP = 'lookup'  # a keyed read `.at(x)` (`Plan.keyed`)
 DYNAMIC = 'dynamic'  # a read of a collection whose members change in a run (`Plan.dynamic`)
 CHANGED = 'changed'  # the time at which a stored value last changed at a commit (`elapsed`)
-DELAYED = 'delayed'  # `delayed(x, d)`: the committed value of x at d before the read (`Plan.delays`)
 DESCRIBED = 'described'  # `.mean` or `.std` of a distribution-valued value (`Plan.described`)
 RESULT = 'result'  # a value that a declared solver determines (`Plan.results`): its answer
 STARTS = (INPUT, STATE, CAPTURE, LINK)  # the kinds that the start of a run evaluates once
@@ -391,8 +388,6 @@ def _uses(item, start):
         return _uses(item.source, start)
     if isinstance(item, Since):
         return _uses(item.event, start)
-    if isinstance(item, Delayed):
-        return _uses(item.value, start) or any(_uses(read, start) for _, read in item.delay.reads)
     return False
 
 
@@ -489,8 +484,6 @@ class Plan:
         self.choices = {}  # engine name -> `Chosen`
         self.changed = {}  # the engine name of a CHANGED value -> the stored value that it follows
         self.changed_of = {}  # a stored value -> the engine name of its CHANGED value
-        self.delays = {}  # the engine name of a DELAYED value -> (the value that it reads, the delay)
-        self.delays_of = {}  # a stored value -> the engine names of the DELAYED values that read it
         self.described = {}  # `d.mean` or `d.std` -> (the distribution-valued value, `mean` or `std`)
         self.described_of = {}  # a distribution-valued value -> the engine names of its `.mean`, `.std`
         self.reductions, self.keyed = {}, {}
@@ -637,16 +630,6 @@ class Plan:
         for check in self.asserts:
             (fixed if self._fixed(self.expansion(check[2])) else self.checks).append(check)
         self.asserts = fixed
-
-    def delay_moves(self, name):
-        """Whether a `delayed` read moves between moments: it reads the past of a value that a flow
-        meets, or its delay is not fixed by the inputs."""
-        stored, delay = self.delays[name]
-        return stored in self.moving or not self.fixed_node(delay)
-
-    def fixed_node(self, node):
-        """Whether a node reads only what the inputs fix."""
-        return self._fixed(self.expansion(node))
 
     def _fixed(self, found):
         """Whether what an expansion reads is fixed by the inputs: inputs, links, and keyed reads
@@ -1442,8 +1425,6 @@ class Plan:
                 # The time since the value last changed at a commit: the time less that of the change.
                 changed = self._changed(read, scope, origin, item)
                 names[name], binding = nodes.binary('sub', nodes.ref('t'), nodes.ref(changed)), None
-            elif isinstance(read, Delayed):
-                names[name], binding = nodes.ref(self._delayed(read, scope, origin, item)), None
             elif isinstance(read, EnumValue):
                 names[name] = nodes.const(read.member)
             elif isinstance(read, Since):
@@ -1855,9 +1836,9 @@ class Plan:
         return name
 
     def _stored(self, read, path, scope, origin, item):
-        """The engine name of the stored value that `elapsed` or `delayed` reads: a value that a run
-        holds (an input, a stored value, a link or a captured setting), of a member, of the root or of
-        an occurrence."""
+        """The engine name of the stored value that `elapsed` reads: a value that a run holds (an
+        input, a stored value, a link or a captured setting), of a member, of the root or of an
+        occurrence."""
         point = self.resolve(path, scope, origin, item)
         found = self.values.get(point[1]) if point[0] == 'value' else None
         if found is None or found.kind not in STARTS:
@@ -1875,22 +1856,6 @@ class Plan:
         if name not in self.values:
             self._add(Value(name, None, CHANGED, None, ''))
             self.changed[name], self.changed_of[stored] = stored, name
-        return name
-
-    def _delayed(self, read, scope, origin, item):
-        """The engine name of `delayed(x, d)` (a value of kind DELAYED), with what it reads."""
-        stored = self._stored(read, read.value, scope, origin, item)
-        delay = self.node(read.delay, scope, origin, item)
-        key, name = self._derived_name(read, scope, item)
-        if key in self._derived:
-            return name
-        self._derived[key] = name
-        if stored is None:
-            return name
-        found = self.values[stored]
-        self._add(Value(name, None, DELAYED, None, found.unit, found.boolean))
-        self.delays[name] = (stored, delay)
-        self.delays_of.setdefault(stored, []).append(name)
         return name
 
     def _described(self, distribution, which, origin):
@@ -1932,9 +1897,6 @@ class Plan:
             return self.dynamic_reads(name)
         if name in self.changed:
             return {self.changed[name]}
-        if name in self.delays:
-            stored, delay = self.delays[name]
-            return {stored} | (set(nodes.names(delay)) - {'t'})
         node = self.values[name].node
         return set() if node is None else set(nodes.names(node)) - {'t'}
 
@@ -2200,12 +2162,6 @@ class Plan:
             }
             for flow in members:
                 own |= {f'{c.name}.actual_rate' for c in self.flows[flow].connections}
-            for leaf in sorted(found.leaves):
-                if leaf in self.delays and self.delay_moves(leaf):
-                    self.fail(
-                        f'{members[0]}: a request or a capacity that reads {leaf}, the past of a value '
-                        'that moves between moments or with a delay that is not fixed (a delay equation)'
-                    )
             rates = {leaf for leaf in found.leaves if self._is_rate(leaf) or leaf in self.results}
             rates |= {
                 leaf

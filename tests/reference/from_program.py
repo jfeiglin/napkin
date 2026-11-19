@@ -208,8 +208,6 @@ class _Translation:
             return fn('since', self.path(read.event))
         if isinstance(read, refs.Elapsed):
             return fn('elapsed', self.path(read.value))
-        if isinstance(read, refs.Delayed):
-            return fn('delayed', self.path(read.value), self.expr(read.delay))
         if isinstance(read, refs.Draw):
             node = E('call', self.source(read.source), 'draw', ())
         elif isinstance(read, refs.Choice):

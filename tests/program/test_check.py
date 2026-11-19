@@ -27,7 +27,6 @@ from napkin.program.build import (
     assign,
     case,
     categorical,
-    delayed,
     draw,
     elapsed,
     endpoint,
@@ -415,8 +414,8 @@ def test_what_the_rules_permit():
     """The forms that the spec gives in place of the refused ones: a flow and a checked move change a
     readonly stock (spec, "How to declare, read and change a value"); an event that must draw from one
     tank takes the tank and uses its field (D13); a retained formula may read a later local (D14); a
-    trigger starts its own event with a captured value; a where filters on an input; `since`,
-    `elapsed` and `delayed` read an event and a value."""
+    trigger starts its own event with a captured value; a where filters on an input; `since` and
+    `elapsed` read an event and a value."""
     b = Builder(UNITS)
     site = b.template('Site', input_('critical', BOOL, False), value('need', '', 1))
     b.member(site, 'north', critical=True)
@@ -449,7 +448,6 @@ def test_what_the_rules_permit():
         value('critical_need', '', formula(fsum(site.instances.where(item.critical).need))),
         value('since_top_up', 'h', formula(since(keeper.top_up))),
         value('still', 'h', formula(elapsed(keeper.water))),
-        value('an_hour_ago', 'L', formula(delayed(keeper.water, q(1, 'h')))),
     )
     b.setup(start(keeper.top_up), start(keeper.pour, keeper))
     assert check(b.finish()) == ()

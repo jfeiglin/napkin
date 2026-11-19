@@ -23,7 +23,7 @@ bounds, and flows across members; reversible routes with one signed rate and the
 with legs at one served fraction; events with their occurrences, stages, triggers, gates, moves and
 the retirement of an occurrence's stores; draws in stages and in events under the modes `median`
 and `sampled`, inputs that are distributions, actors' choices with their controllers, picks and the
-pause of one stage, assertions over state, `elapsed` and `delayed` (`chance.py`); declared solvers
+pause of one stage, assertions over state and `elapsed` (`chance.py`); declared solvers
 (`declared.py`); and the definitions that stages give formulas, requests and capacities. The
 members of each template are rows of a pool (`pools.py`); collections and
 reductions are in `collections.py`. The flows and the stores are one network (`network.py`), whose

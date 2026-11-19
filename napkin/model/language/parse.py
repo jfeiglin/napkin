@@ -49,8 +49,14 @@ RETIRED = {
 FUNCTIONS = frozenset(
     {
         *('min', 'max', 'clip', 'abs', 'exp', 'expm1', 'ln', 'log1p', 'sqrt', 'erf'),
-        *('sum', 'count', 'any', 'all', 'since', 'elapsed', 'delayed', 'priority', 'proportional'),
+        *('sum', 'count', 'any', 'all', 'since', 'elapsed', 'priority', 'proportional'),
     }
+)
+# `delayed(x, D)` left the language (PLAN.md, change 12 after G0): it is refused by name, with the
+# form that models a delayed observation.
+DELAYED = (
+    'the language has no delayed read: a delayed observation is an event that waits (`after D:`) and '
+    'then writes'
 )
 DISTRIBUTIONS = frozenset(
     {'uniform', 'triangular', 'pert', 'loguniform', 'normal', 'lognormal', 'categorical'}
@@ -512,6 +518,8 @@ class Expressions:
                     token,
                     'retired',
                 )
+            if name == 'delayed':
+                self.c.fail(DELAYED, token, 'delayed')
             if name in FUNCTIONS or name in DISTRIBUTIONS:
                 if name == 'categorical':
                     return n.Call(name, (), self.arguments(named=True), **_place(token))

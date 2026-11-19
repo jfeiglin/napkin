@@ -12,7 +12,7 @@ from napkin.model.language.parse import parse
 from napkin.model.language.problems import LanguageError
 from napkin.program import parts as p
 from napkin.program.canonical import program_bytes
-from napkin.program.refs import THIS, Delayed, Elapsed, Local, Lookup, Path, Since
+from napkin.program.refs import THIS, Elapsed, Local, Lookup, Path, Since
 from tests.program.examples import EXAMPLES, UNITS
 
 # The spec's text of each example of S4. The entities stand in the order in which the example
@@ -467,7 +467,6 @@ def test_if_else_and_the_reads_of_history_lower_to_their_parts():
             mean_speed = formula(this.speeds.mean)
             since_fix = formula(since(this.fix))
             quiet = formula(elapsed(this.x))
-            before = formula(delayed(this.x, 2 h))
             fix = event():
                 after 0 h:
                     if this.passes_test:
@@ -483,7 +482,6 @@ def test_if_else_and_the_reads_of_history_lower_to_their_parts():
     assert reads['mean_speed'] == Path(THIS, ('speeds', 'mean'))
     assert reads['since_fix'] == Since(Path(THIS, ('fix',)))
     assert reads['quiet'] == Elapsed(Path(THIS, ('x',)))
-    assert isinstance(reads['before'], Delayed) and reads['before'].value == Path(THIS, ('x',))
 
 
 def test_a_stage_writes_a_writable_local_of_a_live_occurrence():
@@ -706,3 +704,16 @@ def test_a_readonly_value_is_assigned_by_no_statement_and_a_move_still_changes_i
 )
 def test_a_part_of_an_event_that_breaks_a_rule_is_refused_by_its_code(text, code):
     assert refused(text).codes == [code]
+
+
+def test_delayed_is_refused_by_name_with_the_event_that_models_a_delayed_observation():
+    """`delayed(x, D)` left the language (PLAN.md, change 12 after G0): the refusal names its line and
+    column, and says that an event waits and then writes in its place."""
+    found = refused("""
+        tank:
+            water: L = 5
+            before = formula(delayed(this.water, 2 h))
+        """)
+    (problem,) = found.problems
+    assert (problem.code, problem.line, problem.column) == ('delayed', 4, 22)
+    assert problem.message.startswith('the language has no delayed read') and '`after D:`' in problem.message

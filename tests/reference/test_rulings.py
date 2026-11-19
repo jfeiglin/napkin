@@ -1,7 +1,8 @@
 """A test for each ruling that prototype A2 proposed (`scratch/rewrite/a2/FINDINGS.md`), on its own
 example. Gate G0 settled them all, so each test now asserts the settled rule; where G0 overturned
 the proposal (R-A2-06, 07, 13, 14, 20, 22) or changed its numbers (R-A2-04, 23), the test asserts
-the decision of G0 and names it. R-A2-17 has more: each owner of a draw that it names."""
+the decision of G0 and names it. R-A2-17 has more: each owner of a draw that it names. R-A2-09 has
+none: change 12 after G0 (PLAN.md) made it moot."""
 
 import hashlib
 from fractions import Fraction as F
@@ -23,7 +24,6 @@ from tests.reference.model import (
     case,
     categorical,
     count,
-    delayed,
     elapsed,
     event,
     flow,
@@ -159,15 +159,6 @@ def test_08_elapsed():
     )
     m.setup = [start(N.valve.flip)]
     assert run(m, 3).read(elapsed(N.valve.state)) == 3
-
-
-def test_09_delayed_zero():
-    """`delayed(x, 0 h)` in a stage reads the committed value, never the stage's own write."""
-    m = Model()
-    go = event('go', steps=[after(1, [set_(this.x, 5), set_(this.y, delayed(this.x, 0))])])
-    m.entity('box', fields=[value('x', 1), value('y', 0)], events=[go])
-    m.setup = [start(N.box.go)]
-    assert run(m, 2).read(N.box.y) == 1
 
 
 def test_10_finished():

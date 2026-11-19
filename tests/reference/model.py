@@ -237,11 +237,6 @@ def elapsed(state):
     return fn('elapsed', state)
 
 
-def delayed(x, delay):
-    """`delayed(x, D)`: x as the run recorded it D ago."""
-    return fn('delayed', x, delay)
-
-
 def if_(cond, then, other):
     """The conditional expression `then if cond else other`."""
     return E('if', lit(cond), lit(then), lit(other))

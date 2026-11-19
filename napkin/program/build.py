@@ -56,7 +56,6 @@ from .refs import (
     TIME,
     By,
     Choice,
-    Delayed,
     Distribution,
     Draw,
     Elapsed,
@@ -469,11 +468,6 @@ def since(event):
 def elapsed(value):
     """`elapsed(x)`: the time since `x` last changed at a commit."""
     return _read(Elapsed(_path(value)))
-
-
-def delayed(value, delay):
-    """`delayed(x, d)`: the committed value of `x` at `d` before now."""
-    return _read(Delayed(_path(value), expr_of(delay)))
 
 
 def draw(source):
@@ -1288,8 +1282,6 @@ def _placed_read(read, origin, counter):
         return Since(_placed_path(read.event, origin, counter))
     if isinstance(read, Elapsed):
         return Elapsed(_placed_path(read.value, origin, counter))
-    if isinstance(read, Delayed):
-        return Delayed(_placed_path(read.value, origin, counter), _spelled_expr(read.delay, origin, counter))
     return read
 
 

@@ -32,9 +32,8 @@ pieces of each value of a run:
   from the histories of what its members project and of the fields that say when each is a member:
   an occurrence is a member from its start, a flow of an occurrence while it is active.
 - **The time of a change** that `elapsed` reads has a piece at the start of its value and at each
-  commit that changed it; **a `delayed` read** with a fixed delay has the pieces of what it reads,
-  the delay later (before the delay, of a value of a member, the value at the start). Neither has a
-  key in the record: the reader finds them from the history of the value that they read.
+  commit that changed it. It has no key in the record: the reader finds it from the history of the
+  value that it reads.
 - **A formula, and a request or a capacity written as one,** is made after the run from the
   histories of what it reads (a formula of an occurrence from its start, and from its finish the
   frozen value that the run gave it, D7): between two times at which one of them has a piece, it is one piece
@@ -47,11 +46,11 @@ pieces of each value of a run:
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of each
 path. It evaluates a formula, a reduction, a keyed read and a dynamic read at each time that it is
 asked from the recorded values of what it reads (a formula of a finished occurrence reads its frozen
-piece; the time of the last change of a value is its last piece that differs from the one before;
-`delayed(x, d)` is x at t - d), and never reads a formula's fitted pieces: a fit is checked at a few
-points of each piece only, so it could lose a kink between two of them, or a yes/no that changes and
-changes back. It reads a record with the plan of the run that made it, or makes the record's
-occurrences again from the starts of its trace (`Plan.replay`).
+piece; the time of the last change of a value is its last piece that differs from the one before),
+and never reads a formula's fitted pieces: a fit is checked at a few points of each piece only, so it
+could lose a kink between two of them, or a yes/no that changes and changes back. It reads a record
+with the plan of the run that made it, or makes the record's occurrences again from the starts of its
+trace (`Plan.replay`).
 """
 
 from __future__ import annotations
@@ -72,7 +71,7 @@ from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Recor
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
-from .plan import CHANGED, DELAYED, DYNAMIC, FORMULA, LOOKUP, REDUCE, Plan, name_of
+from .plan import CHANGED, DYNAMIC, FORMULA, LOOKUP, REDUCE, Plan, name_of
 from .reads import Reads, lazily
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
@@ -268,7 +267,7 @@ class Recorder:
         for name, value in plan.values.items():
             if needed is not None and name not in needed:
                 continue
-            if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED, DELAYED) or name in plan.defined:
+            if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED) or name in plan.defined:
                 continue
             # The value at the start, then the pieces that the run gave it: a store's lines and
             # curves, a value that a commit wrote, an occurrence's values from its start.
@@ -280,11 +279,6 @@ class Recorder:
                 # The time of the last change at a commit: a constant piece at the start and at each.
                 times = [run.changed_start(stored), *run.changes.get(stored, ())]
                 histories[name] = self._history(None, [(at, at, 0.0) for at in times if at <= end])
-        for name, (stored, delay) in plan.delays.items():
-            if stored in histories:
-                histories[name] = self._history(
-                    None, self._delayed(name, stored, histories[stored], delay, end)
-                )
         calculated = {
             name
             for name, value in plan.values.items()
@@ -359,8 +353,8 @@ class Recorder:
             if kind in (FORMULA, REDUCE, LOOKUP) or name in plan.defined:
                 reads = plan.expanded_ever(name)
                 pending += [*reads.leaves, *reads.formulas, *reads.stepped]
-            elif kind in (CHANGED, DELAYED):
-                pending += sorted(plan.reads(name))  # the value that it follows, and the delay
+            elif kind == CHANGED:
+                pending += sorted(plan.reads(name))  # the value that it follows
             elif kind == DYNAMIC:
                 pending += sorted(plan.dynamic_reads(name))  # what its members project, and when
             owner = plan.occurrence_of(name)
@@ -381,21 +375,6 @@ class Recorder:
                 for t, value, rate in _compact(pieces)
             ),
         )
-
-    def _delayed(self, name, stored, history, delay, end):
-        """The pieces of `delayed(x, d)`: the pieces of x, d later; before d, of a value of a member,
-        x at the start. A delay that is not fixed has no such pieces."""
-        if not self.plan.fixed_node(delay):
-            return [(0.0, Unavailable(f'{name}: a delay that changes in a run'), 0.0)]
-        d = float(self.run.truth(delay))
-        pieces = []
-        if self.plan.occurrence_of(stored) is None:
-            pieces.append((0.0, history.at(0.0), 0.0))
-        for piece in history.pieces:
-            if piece.t + d <= end:
-                rate = piece.curve if piece.curve is not None else piece.rate
-                pieces.append((piece.t + d, piece.value, rate))
-        return pieces
 
     def _lookup(self, name, histories, end):
         """The pieces of a keyed read: of a stepped one, over each of its key intervals, the pieces of
@@ -794,8 +773,6 @@ class _Values:
             found = self._dynamic(name, t)
         elif value.kind == CHANGED:
             found = self._changed(name, t)
-        elif value.kind == DELAYED:
-            found = self._delayed(name, t)
         elif value.kind != FORMULA or (owner is not None and self._finished(owner, t)):
             # A value, or a formula of a finished occurrence, which keeps its value (D7).
             history = self.histories.get(value.key)
@@ -838,17 +815,6 @@ class _Values:
             elif abs(float(piece) - float(before)) > 1e-12 * max(1.0, abs(float(before))):
                 return pieces[k].t
         return pieces[0].t
-
-    def _delayed(self, name, t):
-        """`delayed(x, d)` at time t: x at max(t - d, 0), from its history."""
-        stored, delay = self.plan.delays[name]
-        try:
-            d = lazily(delay, lambda read: self.at(read, t), self.plan.units, t)
-            if isinstance(d, bool) or not d >= 0:
-                raise ExpressionError(f'{name}: the delay must be a duration that is not negative')
-            return self._stored(stored).at(max(float(t) - float(d), 0.0))
-        except FAILURES as problem:
-            return Unavailable(str(problem))
 
     def _finished(self, owner, t):
         """Whether an occurrence has finished at time t."""

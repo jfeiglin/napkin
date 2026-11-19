@@ -1,12 +1,12 @@
 """Values that an event reads when it runs (spec, "Distributions and explicit draws", "Expressions and
-instantaneous transfers"; R-A2-08, R-A2-09).
+instantaneous transfers"; R-A2-08).
 
 A draw written in a trigger's capture, in a stage or in a delay is executed each time that it runs:
-each firing draws again, from its own key. `delayed(x, D)` reads x as the run committed it D earlier
-(from 0), and `delayed(x, 0 h)` in a stage the committed value, never the stage's own write.
-`elapsed(x)` restarts only when a commit changes the value: a stage that writes a state away and
-back leaves it running. The expected values are medians, supports and moments of the distributions,
-and the constant rates of the fixtures, worked by hand.
+each firing draws again, from its own key. An observation that arrives late is an event that
+captures what it observes, waits and then writes it: no expression reads a past value. `elapsed(x)`
+restarts only when a commit changes the value: a stage that writes a state away and back leaves it
+running. The expected values are medians, supports and moments of the distributions, and the
+constant rates of the fixtures, worked by hand.
 """
 
 from __future__ import annotations
@@ -17,13 +17,11 @@ import pytest
 
 from napkin.engine import read, run
 from napkin.program.build import (
-    SINK,
     SOURCE,
     Builder,
     add,
     after,
     assign,
-    delayed,
     draw,
     elapsed,
     event,
@@ -129,23 +127,22 @@ def test_a_drawn_delay_is_captured_when_the_step_is_reached():
     assert (entry.t, entry.owner, entry.detail('value')) == (1, 'clock.late#0', 2.0)
 
 
-@pytest.mark.parametrize(('at', 'expected'), [(10, 5 + 6), (2, 5)])
-def test_a_delayed_value_reads_the_run_as_it_was(at, expected):
-    """The stock fills at 1 person an hour from 5: 4 h before 10 h it held 5 + 6; 4 h before 2 h is
-    before the start, which reads the value at the start."""
-    b = clock(event('look', after(q(at, 'h'), assign(this.seen, delayed(this.filled, q(4, 'h'))))), filled=5)
-    b.setup(start(named('clock').look))
+def test_an_observation_that_arrives_late_is_an_event_that_waits_and_then_writes():
+    """The stock fills at 1 person an hour from 5. A look that starts at 6 h captures its 5 + 6
+    people, waits 4 h and writes them: `seen` is 0 before 10 h and 11 from 10 h."""
+    b = clock(
+        event(
+            'look',
+            value('reading', 'person', this.filled),
+            after(q(4, 'h'), assign(this.seen, local.reading)),
+        ),
+        event('begin', after(q(6, 'h'), start(this.look))),
+        filled=5,
+    )
+    b.setup(start(named('clock').begin))
     program = b.finish()
     record = run(program, Configuration(Request(12)))
-    assert read(record, program, ['clock.seen'], [12])[0].values == (pytest.approx(expected),)
-
-
-def test_a_formula_of_a_delayed_value_is_read_at_each_time():
-    """`formula(delayed(filled, 4 h))` reads 5 until 4 h, then 5 + (t - 4)."""
-    program = clock(value('lagged', 'person', formula(delayed(this.filled, q(4, 'h')))), filled=5).finish()
-    record = run(program, Configuration(Request(12)))
-    (lagged,) = read(record, program, ['clock.lagged'], [0, 3, 4, 7.5, 12])
-    assert lagged.values == pytest.approx((5, 5, 5, 8.5, 13))
+    assert read(record, program, ['clock.seen'], [9.5, 10, 12])[0].values == pytest.approx((0, 11, 11))
 
 
 def stages(body, delay=2):
@@ -165,13 +162,6 @@ def stages(body, delay=2):
     )
     b.setup(start(named('machine').go))
     return b.finish()
-
-
-def test_delayed_zero_in_a_stage_reads_the_committed_value_not_the_stages_own_write():
-    """R-A2-09: x = 1; a stage sets x = 5 and then y = delayed(x, 0 h): y is 1, the committed x."""
-    program = stages(lambda kind: (assign(this.x, 5), assign(this.y, delayed(this.x, q(0, 'h')))))
-    found = read(run(program, Configuration(Request(4))), program, ['machine.x', 'machine.y'], [4])
-    assert [reading.values for reading in found] == [(5,), (1,)]
 
 
 def test_elapsed_restarts_only_when_a_commit_changes_the_value():
@@ -215,51 +205,6 @@ def test_a_trigger_on_elapsed_fires_when_the_state_has_held_long_enough():
     program = b.finish()
     record = run(program, Configuration(Request(8)))
     assert [entry.t for entry in record.entries('fire')] == [pytest.approx(3)]
-
-
-def test_a_trigger_on_a_delayed_value_that_holds_fires_when_its_delay_has_passed():
-    """A counter rises to 1 at 2 h; `when delayed(count, 3 h) >= 1` fires at 5 h, a moment of the run."""
-    b = Builder(UNITS)
-    b.entity(
-        'desk',
-        value('count', '', 0),
-        value('late', '', 0),
-        event('bump', after(q(2, 'h'), add(this.count, 1))),
-        event(
-            'notice',
-            after(q(0, 'h'), add(this.late, 1)),
-            when(delayed(this.count, q(3, 'h')) >= 1, start(this.notice)),
-        ),
-    )
-    b.setup(start(named('desk').bump))
-    program = b.finish()
-    record = run(program, Configuration(Request(8)))
-    assert [entry.t for entry in record.entries('fire')] == [5]
-    assert read(record, program, ['desk.late'], [4.5, 5, 8])[0].values == (0, 1, 1)
-
-
-def test_a_condition_on_the_past_of_a_moving_value_is_a_diagnostic():
-    """The past of a stock that a flow fills moves between moments: a trigger cannot watch it."""
-    program = clock(
-        event(
-            'look',
-            after(q(0, 'h')),
-            when(delayed(this.filled, q(1, 'h')) >= q(3, 'person'), start(this.look)),
-        )
-    ).finish()
-    record = run(program, Configuration(Request(5)))
-    assert 'the past of a value that moves between moments' in record.failure.detail('message')
-
-
-def test_a_rate_that_reads_the_past_of_a_moving_value_is_a_diagnostic():
-    b = Builder(UNITS)
-    b.entity(
-        'tank',
-        value('water', 'person', 10, lower=0),
-        flow('leak', this.water, SINK, request=formula(delayed(this.water, q(1, 'h')) / q(10, 'h'))),
-    )
-    record = run(b.finish(), Configuration(Request(2)))
-    assert 'a delay equation' in record.failure.detail('message')
 
 
 @pytest.mark.parametrize(

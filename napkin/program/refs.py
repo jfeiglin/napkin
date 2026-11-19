@@ -17,8 +17,8 @@ resolved by the type of what precedes it, as the language resolves a dotted name
 collection is a projection, as `routes.limit` is in the language.
 
 The other reads are the named parts that the language spells as calls: a reduction of a collection
-(`Reduce`), a draw (`Draw`, keyed by its site), an actor's choice (`Choice`), `since`, `elapsed` and
-`delayed`, a member of an enum (`EnumValue`) and the time `t` (`TIME`). A number with a unit is the
+(`Reduce`), a draw (`Draw`, keyed by its site), an actor's choice (`Choice`), `since` and
+`elapsed`, a member of an enum (`EnumValue`) and the time `t` (`TIME`). A number with a unit is the
 core's literal call `q(number, unit)`, whose unit is a spelling of the program's table of units.
 """
 
@@ -221,15 +221,7 @@ class Elapsed:
     value: Path
 
 
-@dataclass(frozen=True)
-class Delayed:
-    """`delayed(x, d)`: the committed value of `x` at `d` before now."""
-
-    value: Path
-    delay: Expr
-
-
-Read = Time | Path | EnumValue | Reduce | Draw | Choice | Since | Elapsed | Delayed
+Read = Time | Path | EnumValue | Reduce | Draw | Choice | Since | Elapsed
 
 
 # ---- expressions -----------------------------------------------------------------------------------
@@ -316,6 +308,4 @@ def spelled(item):
         return f'since({spelled(item.event)})'
     if isinstance(item, Elapsed):
         return f'elapsed({spelled(item.value)})'
-    if isinstance(item, Delayed):
-        return f'delayed({spelled(item.value)}, {text(item.delay)})'
     raise TypeError(f'no read: {type(item).__name__}')

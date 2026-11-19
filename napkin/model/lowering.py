@@ -52,7 +52,6 @@ from ..program.refs import (
     TIME,
     By,
     Choice,
-    Delayed,
     Distribution,
     Draw,
     Elapsed,
@@ -484,9 +483,7 @@ def _node(item, reads):
         source = _path(item.source)
         if item.op == 'since':
             return _named(Since(source), reads)
-        if item.op == 'elapsed':
-            return _named(Elapsed(source), reads)
-        return _named(Delayed(source, build.expr_of(handle(item.delay))), reads)
+        return _named(Elapsed(source), reads)
     args = [_node(arg, reads) for arg in item.args]
     if item.op in OPERATIONS:
         return nodes.binary(OPERATIONS[item.op], *args)

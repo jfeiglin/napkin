@@ -166,7 +166,6 @@ grinder:
         after 0.5 h:
             this.beans += amount
     last_refill = formula(since(this.refill))
-    beans_before = formula(delayed(this.beans, 1 h))
 
 clock:
     ticks = 0
@@ -323,7 +322,6 @@ AT = {
     'grinder.beans': (58, 58),
     'grinder.low_on_beans': (False, False),
     'grinder.last_refill': (2, 3.5),
-    'grinder.beans_before': (58, 58),
     # A trigger at 1 h that resets after 1 h: starts at 1, 2 and 3 h.
     'clock.ticks': (2, 3),
     'inspector.passed': (1, 1),

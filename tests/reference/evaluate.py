@@ -786,8 +786,6 @@ class Ev:
             if not isinstance(c, Cell):
                 raise RunFailed(f'elapsed({show(args[0])}) needs a stored state')
             return self._t() - self.run.entered(c, self.tx, self.view)
-        if name == 'delayed':
-            return self.run.read_past(args[0], self.num(args[1]), self)
         if name == 'abs':
             x = self.num(args[0])
             return x if self.sign(x) >= 0 else -x

@@ -65,7 +65,6 @@ from .refs import (
     THIS,
     By,
     Choice,
-    Delayed,
     Distribution,
     Draw,
     Elapsed,
@@ -427,12 +426,10 @@ class Resolver:
             found = self.resolve(read.event, scope, where, retained)
             if found is not None and (found.kind != 'event' or found.many):
                 self.fail('kind', where, f'`{spelled(read.event)}` is no event')
-        elif isinstance(read, (Elapsed, Delayed)):
+        elif isinstance(read, Elapsed):
             found = self.resolve(read.value, scope, where, retained)
             if found is not None and found.kind != 'value':
                 self.fail('kind', where, f'`{spelled(read.value)}` is no value')
-            if isinstance(read, Delayed):
-                self.check_expr(read.delay, scope, where, retained)
         else:
             self.fail('kind', where, f'no read: {type(read).__name__}')
 
@@ -1094,8 +1091,6 @@ def _locals_read(expression):
         ):
             if isinstance(item, Path):
                 path(item)
-        if isinstance(read, Delayed):
-            found.update(_locals_read(read.delay))
     return found
 
 

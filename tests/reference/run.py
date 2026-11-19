@@ -903,18 +903,6 @@ class Run:
             return view.t
         return view.entered.get(cell, Fraction(0))
 
-    def read_past(self, expr, delay, ev):
-        """`delayed(x, D)`: x as the run recorded it D before the time of the state that `ev`
-        reads: the present inside the run, the time of the read for a report after it. With D = 0
-        inside a stage that is the committed value, never a value that the stage itself has
-        written and not yet committed. A time before the start reads the record at 0 h, which does
-        not exist during the first moment; the spec does not say what such a read gives."""
-        if not isinstance(delay, Fraction) or delay < 0:
-            raise RunFailed(f'delayed({show(expr)}, ...): the delay must be a duration that is not negative')
-        if delay == 0:
-            return plain(Ev(self, ev.view, ev.scope).val(expr))
-        return self.read(expr, max(ev.view.t - delay, Fraction(0)), scope=ev.scope)
-
     # --- draws and choices ---------------------------------------------------------------------------
 
     def _site(self, node):
@@ -1036,7 +1024,7 @@ class Run:
 
     # --- what a caller reads -------------------------------------------------------------------------
 
-    def read(self, expr, at=None, owner=None, scope=None, unit=None):
+    def read(self, expr, at=None, owner=None, unit=None):
         """The value of an expression at a time of the run, from the record, in `unit` if one is
         given (the run itself works in canonical units). A read changes nothing."""
         at = self.view.t if at is None else number(at)
@@ -1054,9 +1042,7 @@ class Run:
             for var, p in frame.rates.items():
                 frame.results[var] = p(tau)
             frame.t, frame.levels, frame.rates = at, {}, {}
-        if scope is None:
-            scope = Scope(self.ents[owner]) if owner else Scope()
-        ev = Ev(self, frame, scope)
+        ev = Ev(self, frame, Scope(self.ents[owner]) if owner else Scope())
         v = ev.val(lit(expr))
         size = Fraction(1) if unit is None else scale_of(unit)
         if isinstance(v, Coll):  # a projection: each member's value, read on the same frame
