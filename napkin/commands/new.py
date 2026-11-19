@@ -1,10 +1,11 @@
 """`napkin new`: start a scenario that compiles and runs as written (docs/cli.md).
 
-`napkin new DIR` writes `DIR/model.scn`, the main file of a package. It holds one thing with a stock,
-the people who wait, which a flow moves at a rate into a tally, the people served; one output, the
-people served; and one assumption record, which every value cites. It uses the prelude's units only
-and names no library, so it compiles in any folder. With `--variants east,west`, it also writes
-`variants/NAME/model.scn` for each NAME: a variant that changes the rate, each to a value of its own.
+`napkin new DIR` writes `DIR/model.scn`, the main file of a package. It holds one entity with a
+stock, the people who wait, which a flow moves at a rate into a tally, the people served; a value of
+the top level that follows the people served, for a caller to report (D10); and one assumption
+record, which every value cites. It uses the prelude's units only and names no library, so it
+compiles in any folder. With `--variants east,west`, it also writes `variants/NAME/model.scn` for each
+NAME: a variant that changes the rate, each to a value of its own.
 
 Each file is its own formatted text (`format_text`). The command writes no file when one of them is
 there already. Then it prints what to replace next: the title, the inputs and the record.
@@ -21,8 +22,9 @@ from . import common
 SUMMARY = 'start a scenario that compiles and runs as written'
 
 DESCRIPTION = """\
-Write DIR/model.scn: a model that compiles and runs as written (a stock, a flow, an output, one
-assumption record), plus variants/NAME/model.scn for each variant. Prints what to replace next."""
+Write DIR/model.scn: a model that compiles and runs as written (a stock, a flow, a value that follows
+what it serves, one assumption record), plus variants/NAME/model.scn for each variant. Prints what to
+replace next."""
 
 EXAMPLES = """\
 example:
@@ -51,15 +53,16 @@ scenario "{title}"
 service:
     "The service and the people who wait for it."
     role operator
-    input rate: people/day = {rate} people/day in 0 people/day to {high} people/day  @guess
+    input rate: people/day = {rate} people/day in [0 people/day, {high} people/day] @guess
         "People that the service serves in a day"
-    var waiting: people = 1000 people size 1000 people  @guess
+    waiting: people = 1000 people in [0,] scale 1000 people @guess
         "People who wait"
-    var served: people = 0 people size 1000 people  @guess
+    served: people = 0 people in [0,] scale 1000 people @guess
         "People served"
-    flow serve: waiting -> served at rate  @guess
+    flow serve: this.waiting -> this.served @guess
+        request = formula(this.rate)
 
-output people_served: people = service.served  @guess
+people_served: formula(people) = formula(service.served) in [0,] @guess
     "People served"
 
 record guess: assumption "An example value that napkin new writes. Replace each value that cites this record
@@ -72,7 +75,7 @@ VARIANT_MODEL = """\
 variant "{name}"
 
 change service:
-    rate = {rate} people/day  @guess
+    rate = {rate} people/day @guess
 """
 
 # What the user replaces next, as the main file names them: its inputs and its records.
@@ -155,19 +158,21 @@ def main(args):
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding='utf-8')
-        except OSError as exc:
-            raise common.Failed([common.os_diagnostic(exc, path)]) from None
+        except OSError as error:
+            raise common.Failed([common.problem('file', error.strerror or str(error), path)]) from None
     sys.stdout.write(next_steps(folder, title, variants))
     sys.stdout.flush()
     return 0
 
 
 def next_steps(folder, title, variants):
-    """What `napkin new` prints after it writes the package in `folder`: the files, the command that
-    runs the model, and what to replace next."""
+    """What `napkin new` prints after it writes the package in `folder`: the files, the commands that
+    run the model and its variants, and what to replace next."""
     main_file = folder / paths.ENTRY
     target = shlex.quote(str(folder))
-    run = f'napkin run {target}' + (f' --variant {variants[0]}' if len(variants) > 1 else '')
+    runs = [f'napkin run {target}'] + [
+        f'napkin run {shlex.quote(str(folder / paths.VARIANTS / name))}' for name in variants
+    ]
     wrote = f'Wrote {main_file}'
     if variants:
         kind = 'variants' if len(variants) > 1 else 'variant'
@@ -176,7 +181,7 @@ def next_steps(folder, title, variants):
     return '\n'.join(
         [
             f'{wrote}.',
-            f'It compiles and runs as written: {run}',
+            f'It compiles and runs as written: {"; ".join(runs)}',
             '',
             f'Replace next, in {main_file}:',
             f'  - the title, "{title}", and the lines summary, horizon and scope under it;',

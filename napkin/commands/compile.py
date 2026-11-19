@@ -4,11 +4,17 @@
 The front end reads the main file and the library of the package, declares the model and lowers it
 to a program (`napkin.model.compile.load_scenario`), which the program's checker accepts. A model
 that does not compile prints each problem, `file:line:column: error: message [code]`, and exits 1.
-One that compiles prints a summary of its program: its default run, its entities, its inputs,
-stores, formulas and distributions, its flows with their ends, and the units that it spells.
-`--json` prints the same as one JSON document, with `diagnostics` empty or the problems.
+One that compiles prints a summary of its program: its default run, its named runs, its entities,
+its inputs, stores, formulas and distributions, its flows with their ends, the units that it spells,
+and its hash, which an edit document names (`model_hash`). `--json` prints the same as one JSON
+document, with `diagnostics` empty or the problems.
 
-Exit codes: 0 when the model compiles, 1 for any diagnostic, 2 for a command line that is wrong.
+The command also checks the file that only the picture reads: the stylesheet of the model
+(`napkin.draw.style.of`: the variant's own `style.toml`, else its package's). A stylesheet with a
+problem gives its diagnostics, each with its file and its key, after the summary.
+
+Exit codes: 0 when the model compiles and its stylesheet holds, 1 for any diagnostic, 2 for a
+command line that is wrong.
 """
 
 import sys
@@ -18,8 +24,8 @@ from . import common
 SUMMARY = 'compile a model; print its diagnostics or a summary of its program'
 
 DESCRIPTION = """\
-Compile a model: print each diagnostic with its place, or a summary of the program. Exit 0 ok,
-1 diagnostics."""
+Compile a model: print each diagnostic with its place, or a summary of the program. Checks the
+model's style.toml too. Exit 0 ok, 1 diagnostics."""
 
 EXAMPLES = """\
 example:
@@ -57,15 +63,21 @@ def main(args):
         )
         return 1
     found = summary(model)
+    problems = style_problems(model)
     if args.json:
-        common.write_json({'model': common.shown(entry), **found, 'diagnostics': []}, sys.stdout)
-        return 0
+        common.write_json(
+            {'model': common.shown(entry), **found, 'diagnostics': list(map(common.problem_json, problems))},
+            sys.stdout,
+        )
+        return 1 if problems else 0
     numerics = model.configuration.numerics
     print(f'{common.shown(entry)}: {found["title"]}')
     print(
         f'  run:           {model.configuration.mode}, to {common.number(found["horizon"])} h, '
         f'steps of at most {common.number(numerics.max_step)} h'
     )
+    if found['runs']:
+        print(f'  named runs:    {", ".join(found["runs"])}')
     print(f'  entities:      {", ".join(found["entities"]) or "none"}')
     for _, group in GROUPS:
         if found[group]:
@@ -74,13 +86,31 @@ def main(args):
     if flows:
         print(f'  flows:         {", ".join(flows)}')
     print(f'  units:         {", ".join(found["units"]) or "none"}')
+    print(f'  model hash:    {found["model_hash"]}')
+    sys.stdout.flush()
+    if problems:
+        raise common.Failed(problems)
     return 0
+
+
+def style_problems(model):
+    """The diagnostics of the model's stylesheet (`napkin.draw.style.of`), or [] when it holds or the
+    model has none."""
+    from ..draw import style as styles
+    from .draw import style_problems as problems_of
+
+    try:
+        styles.of(model)
+    except styles.StyleError as error:
+        return problems_of(error)
+    return []
 
 
 def summary(model):
     """The summary of a compiled model's program, as JSON: its title, the horizon of its default run
-    in hours, its entities (each member's id), each value of each group of `GROUPS` with its unit,
-    its flows with their ends and their unit, and the spellings of its table of units."""
+    in hours, the names of its named runs, its hash, its entities (each member's id), each value of
+    each group of `GROUPS` with its unit, its flows with their ends and their unit, and the spellings
+    of its table of units."""
     program = model.program
     found = {group: [] for _, group in GROUPS}
     entities, flows = [], []
@@ -99,6 +129,8 @@ def summary(model):
     return {
         'title': model.declared.scenario.title,
         'horizon': float(model.configuration.request.horizon),
+        'runs': [run.name for run in model.declared.runs],
+        'model_hash': model.model_hash,
         'entities': entities,
         **found,
         'flows': flows,

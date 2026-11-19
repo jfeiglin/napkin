@@ -40,7 +40,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from napkin.engine.report import report
@@ -226,9 +226,10 @@ def entities(declared):
 # ---- what a value rests on ------------------------------------------------------------------------------
 
 
-def part_uses(declared, part):
+def part_uses(declared, part, options=None):
     """The uses of a part of a program as one member runs it (`proofs.Part`, or a part of a report's
-    trail): see the module."""
+    trail): see the module. `options` names the options of a run whose settings count (None: every
+    option, as in any run)."""
     found = declared.part(part.origin)
     if found is None:
         return []
@@ -247,7 +248,7 @@ def part_uses(declared, part):
             places.insert(0, (parent.path, parent.evidence))
     used = [use for path, evidence in places for use in _used(declared, path, evidence)]
     if isinstance(found, s.DeclaredValue):
-        used += _own_line(declared, found, part.owner) + _settings(declared, found, part.owner)
+        used += _own_line(declared, found, part.owner) + _settings(declared, found, part.owner, options)
     return used
 
 
@@ -270,14 +271,16 @@ def _own_line(declared, value, owner):
     return _used(declared, f'{member.path}.{value.name}', given.evidence)
 
 
-def _settings(declared, value, owner):
-    """The uses of the settings of every option that sets an input as one member runs it: a setting
-    of that member, or of every member of its template."""
+def _settings(declared, value, owner, options):
+    """The uses of the settings of the options (every option for None) that set an input as one
+    member runs it: a setting of that member, or of every member of its template."""
     if value.kind != s.INPUT:
         return []
     template = _template_of(value)
     found = []
     for option in declared.options:
+        if options is not None and option.name not in options:
+            continue
         for setting in option.settings:
             if setting.name != value.name:
                 continue
@@ -316,12 +319,13 @@ def reached(found, library):
     )
 
 
-def evidence(found, declared, library):
+def evidence(found, declared, library, options=()):
     """The evidence of each value of a report (`napkin.engine.report.Report`) of a run of a declared
-    model, in the order of the report: see the module."""
+    model that takes `options` (the names of the options of a named run; none for the default run), in
+    the order of the report: see the module."""
     out = []
     for value in found.values:
-        parts = tuple((used, tuple(part_uses(declared, used))) for used in value.trail)
+        parts = tuple((used, tuple(part_uses(declared, used, options))) for used in value.trail)
         exercised = [use for used, each in parts if used.exercised for use in each]
         other = [use for used, each in parts if not used.exercised for use in each]
         held, could = reached(exercised, library), reached(other, library)
@@ -363,13 +367,15 @@ def package_tree(path):
             # The lines of each file are numbered after those of the files before it.
             trees.append(parse('\n' * offset + text))
         except SyntaxProblem as problem:
-            problems.append(problem.problem)
+            name, line = s.Files(tuple(files)).place(problem.problem.line)
+            problems.append(replace(problem.problem, file=name, line=line))
         offset += text.count('\n') + 1
     if problems:
-        raise LanguageError(problems, Path(path).as_posix())
+        raise LanguageError(problems)
     tree, problems = merged(trees)
     if problems:
-        raise LanguageError(problems, Path(path).as_posix())
+        place = s.Files(tuple(files)).place
+        raise LanguageError([replace(item, file=place(item.line)[0], line=place(item.line)[1]) for item in problems])
     return tree, tuple(files), found.package
 
 
@@ -430,7 +436,8 @@ def main(argv=None):
     except (LanguageError, KeyError, LookupError, ValueError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    for each in evidence(found, compiled.declared, library):
+    options = compiled.declared.run(args.run).options if args.run else ()
+    for each in evidence(found, compiled.declared, library, options):
         print('\n'.join(lines_of(each)))
     return 0
 

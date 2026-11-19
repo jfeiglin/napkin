@@ -1,9 +1,9 @@
 """The `napkin` command (docs/cli.md): `napkin COMMAND [ARGS]`.
 
-Each command of this stage of the rewrite is a module of `napkin.commands`, which gives its line in
-the list of commands, its arguments and its `main`. `main` here parses the command line and runs the
-command. A command that a later stage brings back (`commands.LATER`) is listed, and refused whatever
-its arguments. Exit codes: 0 ok, 1 diagnostics (`common.Failed`), 2 usage (argparse, a
+Each command is a module of `napkin.commands`, which gives its line in the list of commands, its
+arguments and its `main`. `main` here parses the command line and runs the command. A command that a
+later stage of the rewrite brings back (`commands.LATER`) is listed, and refused whatever its
+arguments, with the stage that brings it. Exit codes: 0 ok, 1 diagnostics (`common.Failed`), 2 usage (argparse, a
 `common.UsageError`, and a refused command). `napkin --help` and `napkin --version` load no compiler
 and no engine: the command modules import them in their `main`.
 """
@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .commands import LATER, STAGE, common, modules
+from .commands import LATER, common, modules
 
 DESCRIPTION = 'Compile and run simulation models written in .scn files.'
 
@@ -23,11 +23,13 @@ Run `napkin COMMAND --help` for its arguments and an example."""
 
 
 def refused(name):
-    """The handler of a command that a later stage brings back: it says so and gives exit 2."""
+    """The handler of a command that a later stage brings back: it says so, with the stage, and gives
+    exit 2."""
 
     def handler(args):
+        stage = LATER[name][1]
         sys.stderr.write(
-            f'napkin {name} comes back in a later stage of the rewrite of the language (stage {STAGE})\n'
+            f'napkin {name} comes back in a later stage of the rewrite of the language (stage {stage})\n'
         )
         return 2
 
@@ -42,7 +44,7 @@ def parsers():
 
     commands = modules()
     lines = {name: module.SUMMARY for name, module in commands.items()}
-    lines.update({name: f'{line} (a later stage brings it back)' for name, line in LATER.items()})
+    lines.update({name: f'{line} (a later stage brings it back)' for name, (line, _) in LATER.items()})
     width = max(len(name) for name in lines)
     listed = '\n'.join(f'  {name:<{width}}   {line}' for name, line in lines.items())
     top = argparse.ArgumentParser(
