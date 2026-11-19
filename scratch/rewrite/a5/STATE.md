@@ -1,5 +1,8 @@
 # A5 state (checkpoint 1; update at each milestone)
 
+> Stage M uses these scripts as M-prep brought them to the language of now (2026-11-19): see
+> `briefs/m.md` and `b1/m-prep/STATE.md`. What follows is A5's own record, in A5's spelling.
+
 Run everything with `PYTHONPATH=/home/user/napkin-base /home/user/napkin/.venv/bin/python X.py` from this folder.
 
 ## Done, by task of the brief

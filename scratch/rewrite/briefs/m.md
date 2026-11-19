@@ -76,7 +76,7 @@ from a calculation, 1 share of such a state.
 | `water_controls_wipe`, each of 16 variants | 7 to 9: `cycle` 1 (`Utility.tie_asks`), units `facility`, `min`, `yr`, `acre`, `ft` (2 to 4), 4 that depend on them |
 
 The parse succeeds everywhere; these are the problems of the declared model, so more may show once
-these are mended. The units: 33 units of the library and of the packages' `units.json` have a name
+these are mended. The units: 32 units of the library and of the packages' `units.json` have a name
 made of parts that are no unit (`facility-hours`, `USD2024_bn/yr`, `person-years/operation`,
 `gal/min`, `acre-ft`): the language of now composes a unit of its parts, so each part must be a unit.
 Declare the parts (`yr`, `operation`, `facility`...) or rename the unit; `translate.py` lists them
@@ -150,4 +150,4 @@ merges the lists for the owner at G3.
 - A member written by hand has no `title` (69 in the water variants) and an event no `role` (10): the
   translator keeps the titles in notes and the roles as comments.
 - `timescales` names values in two packages; the language of now takes times only.
-- The library's units whose parts are no unit (33), and the template-level cycle above.
+- The library's units whose parts are no unit (32), and the template-level cycle above.

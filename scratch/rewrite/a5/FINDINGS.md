@@ -1,5 +1,8 @@
 # A5: catalogue fit — findings
 
+> M-prep (2026-11-19) brought `translate.py` and `check.py` to the language of now; `briefs/m.md`
+> says how stage M runs them. What follows is A5's record, in the spelling that G0 replaced.
+
 ## 1. Summary
 - The new language covers the catalogue. Each of the 401 census keys (358 used, 43 never used) has a new form or a ruling (`migration-table.md`, checked by `table_check.py`).
 - 96.1% of logical lines translate mechanically (6691 of 6960). The rest are flows with several pairs (172 lines), events with several outcomes (75), `versus` (11) and `since(e.outcome)` (11).
