@@ -1,693 +1,437 @@
-"""Reports read from finished runs: outcomes, lags, health, peaks and the evidence behind them
-(docs/engine.md).
+"""The report of a run: the values that a caller selects, at the times that it selects, read from the
+record of the run (D10), each with its unit, its label, its lag, its evidence trail, and the
+near-ties of the run.
 
-Reporting never changes a run. Every value is read from a trajectory's stored solution, so the
-same run can be sampled at any times without running again.
+`report(record, program, configuration, paths, times, lags=None, model=None)` reads one record. The
+model has no report of its own: any named value can be reported, and the caller chooses which.
 
-A function here takes a resolved run as its typed parts (`model/structure.py`).
+- **A value** is read as `napkin.engine.read` reads it, in its declared unit: a number, a yes/no, a
+  text, or `Unavailable` with the reason (D7). Its label is the first text under its declaration in
+  the declared model (`model`; of the flow for a field of a flow, of the store for an endpoint's).
+- **A status display** (`member.status`) reads, at each time, the case that the record holds as
+  applying (`Shown`): its rating, its text, and its origin, so that two cases with one rating keep
+  their own explanations.
+- **A reporting lag** (`Lag`) is a transformation that the caller selects. A uniform lag from S to L
+  hours gives the mean of the value's history from L hours before to S hours before, and draws
+  nothing; equal ends are a fixed delay. Before time 0 the history holds its value at time 0: the
+  record has no history before the run. The mean is read over the pieces of the value's history,
+  five Gauss-Legendre points in each, which is exact for a store's lines and curves (`DEGREE` 8 of
+  `timeline/record.py`). A lag is valid only when a proof says that the value never falls over the
+  run (`napkin.program.proofs.never_falls`); then its note is the proof's reason, else the note is
+  the diagnostic and the values are the plain read.
+- **The evidence trail** of a value (`Used`) lists the parts that it can read (`proofs.reads`), each
+  with the records that its evidence cites, whether this run exercised it and why: a flow that moved
+  material, an event that started, a trigger that fired, a stage that committed, a solver that
+  solved, and every value read through exercised parts. An event that cannot start under the
+  configuration is never exercised, and says so; "could have and did not" is what the trace says
+  (D16). A part reached only through parts that the run did not exercise is not exercised either.
+- **Near-ties** (change 10): each firing or commit that the engine decided within tolerance of its
+  boundary (`Record.near_ties`), with a message ("this trigger fired within tolerance of its
+  threshold"). The report lists them and computes nothing more precisely.
+- **A run that stopped**: a failure or a pause ends the record. The report reads up to that time,
+  each time after it is `Unavailable` with the reason, and `stopped` says when and why.
 """
 
 from __future__ import annotations
 
-import bisect
-import copy
-import dataclasses
-import itertools
 import math
-from collections import OrderedDict
-from collections.abc import Mapping
+from dataclasses import dataclass
+from itertools import pairwise
 
-from scipy.integrate import quad
+import numpy as np
 
-from .. import SCHEMA_VERSION, __version__
-from ..core import expr as nodes
-from ..expressions import ExpressionError, UnitSystem, evaluate, names_in
-from ..model import structure as typed
-from ..model.analysis.structure import lag_delays
-from ..model.evidence import claim_digest, digest
-from ..model.ir import COUNT, ENTERED, TIME, thaw
-from ..paths import names_of
+from ..program import parts as p
+from ..program.proofs import Part, Proofs
+from ..program.record import Unavailable
+from .timeline import read
+from .timeline.chance import paused
+from .timeline.record import key_of, unit_of
 
-
-class ReportingError(ValueError):
-    """An outcome cannot be reported: a nonfinite value or a violated sign claim."""
+# Gauss-Legendre points and weights on [-1, 1]: five points integrate a polynomial of degree 9 exactly.
+_POINTS, _WEIGHTS = np.polynomial.legendre.leggauss(5)
 
 
-def diagnostic(code, message, **context):
-    return {'code': code, 'severity': 'error', 'message': str(message), **context}
+@dataclass(frozen=True)
+class Lag:
+    """A uniform reporting lag: the value at a time t is the mean of its history from t - `longest`
+    to t - `shortest`, in hours; equal ends are a fixed delay."""
 
+    shortest: float
+    longest: float
 
-class UnknownValue(Exception):
-    pass
-
-
-def _require_complete(trajectory):
-    if trajectory.paused:
-        raise ReportingError('A paused trajectory cannot be reported as a completed run')
-
-
-# ---- outcomes -----------------------------------------------------------------------------------
-
-
-def evaluate_outputs(run, library, times, *, unit_registry=None):
-    """Outcome values and statuses at each time, in each outcome's own unit, of one completed run
-    ({'resolved', 'trajectory'})."""
-    _require_complete(run['trajectory'])
-    return outputs_until(run, library, times, unit_registry=unit_registry)
-
-
-def outputs_until(run, library, times, *, unit_registry=None):
-    """The rows of `evaluate_outputs` of a run that is complete or that paused at a decision: each
-    time lies from zero to the end that the run reached, its horizon or the time of its pause."""
-    rs, trajectory = run['resolved'], run['trajectory']
-    defs, units = rs.outcomes, library['units']
-    registry = unit_registry if unit_registry is not None else UnitSystem(units)
-    return outputs_from(defs, _OfTrajectory(trajectory, defs, registry), units, registry, times)
-
-
-class _OfTrajectory:
-    """What the rows of the outputs read of a trajectory (`outputs_from`): the end that the run
-    reached, the times of its events, and the value of an expression at a time."""
-
-    def __init__(self, trajectory, defs, registry):
-        self.trajectory, self.defs, self.registry = trajectory, defs, registry
-        self.end = trajectory.horizon if trajectory.end_time is None else trajectory.end_time
-        self.environments = {}
-
-    def moments(self):
-        return {entry['t'] for entry in self.trajectory.trace}
-
-    def number(self, expression, t, value, name=None):
-        """The value of an expression at t. Another outcome that it names has its value at that
-        time (`value(name, t)` gives it with its status); `name` is the outcome whose own
-        expression this is, or None for a delay of a lag."""
-        env = self.environments.get(t)
-        if env is None:
-            env = self.environments[t] = _OutcomeEnvironment(self.trajectory.env_at(t), t, self.defs, value)
-        return evaluate(expression, env, self.registry)
-
-
-class _OutcomeEnvironment(dict):
-    """A trajectory environment in which other outcomes resolve to their values at the same time."""
-
-    def __init__(self, env, t, defs, value):
-        super().__init__(env)
-        self.t, self.defs, self.value = t, defs, value
-
-    def __contains__(self, key):
-        return key in self.defs or super().__contains__(key)
-
-    def __getitem__(self, key):
-        if key in self.defs:
-            val, status = self.value(key, self.t)
-            if status != 'estimated':
-                raise UnknownValue(key)
-            return val
-        return super().__getitem__(key)
-
-
-def outputs_from(defs, reader, units, registry, times, names=None):
-    """The rows of the outputs of a run at `times`: for each outcome its value in its own unit and
-    its status, with its lag. `defs` are the outcomes of the run (`Resolved.outcomes`); `names`, the
-    outcomes that the rows hold (default: each), and an outcome that one of them reads is computed
-    for it. `reader`
-    gives what the rows read of the run: `end`, the end that it reached; `moments()`, the times of
-    its events; and `number(expression, t, value, name)`, the value of an expression at a time
-    (`_OfTrajectory`)."""
-    end = reader.end
-
-    def scale_of(unit):
-        # A declared unit has its entry's scale; a composed unit with no entry is made of declared
-        # units (`UnitRegistry.parse_unit`), as the compiler reads it.
-        return units[unit]['scale'] if unit in units else registry[unit].scale
-
-    memo = {}
-    # The pieces of the windows of uniform lags: their cuts for each outcome and delays, and the
-    # integral over each piece, or the status that stops it.
-    cuts, pieces = {}, {}
-
-    def reportable(t):
-        return not isinstance(t, bool) and isinstance(t, (int, float)) and math.isfinite(t) and 0 <= t <= end
-
-    def value(name, t, delayed=True):
-        key = (name, t, delayed)
-        if key in memo:
-            return memo[key]
-        if t < 0:
-            # Before time zero a lagged quantity has not begun: a known zero only where the
-            # outcome is estimated at the start, otherwise that same status.
-            status = value(name, 0.0, False)[1]
-            memo[key] = (0.0, status) if status == 'estimated' else (None, status)
-            return memo[key]
-        o = defs[name]
-        if delayed and o.lag is not None:
-            memo[key] = lagged(name, o.lag, t)
-            return memo[key]
-        status = o.status
-        if status != 'estimated':
-            memo[key] = (None, status)
-            return memo[key]
-        try:
-            val = reader.number(o.expr, t, value, name)
-        except UnknownValue:
-            return None, 'unestimated'
-        if isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val):
-            raise ReportingError(f'Outcome {name} is not finite numeric at {t}')
-        if o.nonnegative and val < -1e-8 * scale_of(o.unit):
-            raise ReportingError(f'Negative nonnegative outcome {name} at {t}: {val}')
-        # A nonnegative outcome that roundoff leaves a little below zero is zero.
-        if o.nonnegative and val < 0:
-            val = 0.0
-        memo[key] = (val, 'estimated')
-        return memo[key]
-
-    def lagged(name, lag, t):
-        """A report kernel over the outcome's history; a jump at exactly t - delay is included."""
-        if lag.type == 'fixed':
-            return value(name, t - reader.number(lag.delay, t, value), False)
-        if lag.type == 'mixture':
-            parts = [
-                (c.weight, value(name, t - reader.number(c.delay, t, value), False))
-                for c in lag.components
-                if c.weight > 0
-            ]
-            statuses = {x[1] for _, x in parts}
-            if statuses == {'estimated'}:
-                return sum(w * x[0] for w, x in parts), 'estimated'
-            return None, 'unestimated' if 'unestimated' in statuses else 'not_applicable'
-        a, b = reader.number(lag.minimum, t, value), reader.number(lag.maximum, t, value)
-        if a == b:
-            return value(name, t - a, False)
-        lo, hi = max(0.0, t - b), max(0.0, t - a)
-        points = window_cuts(name, a, b)
-        inside = points[bisect.bisect_right(points, lo) : bisect.bisect_left(points, hi)]
-        try:
-            if t - b < 0:  # the window's part before time zero has the status at the start
-                integrand(-1.0, name)
-            area = sum(
-                piece(name, x, y) for x, y in itertools.pairwise([lo, *inside, hi] if hi > lo else [lo])
+    def __post_init__(self):
+        if not (
+            all(
+                isinstance(end, (int, float)) and not isinstance(end, bool)
+                for end in (self.shortest, self.longest)
             )
-            return area / (b - a), 'estimated'
-        except UnknownValue as missing:
-            return None, missing.args[0]
+            and 0 <= self.shortest <= self.longest < math.inf
+        ):
+            raise ValueError(f'a lag runs from 0 h or more to a longer finite delay, not {self!r}')
 
-    def integrand(x, name):
-        val, st = value(name, x, False)
-        if st != 'estimated':
-            raise UnknownValue(st)
-        return val
 
-    def window_cuts(name, a, b):
-        """The ends of the windows of every reporting time and the event times, in order. A window
-        is a sum of the pieces between them, and the windows of an outcome share their pieces: its
-        delays read inputs only, so every window has the same ends relative to its time."""
-        key = (name, a, b)
-        if key not in cuts:
-            ends = {max(0.0, float(t) - delay) for t in times if reportable(t) for delay in (a, b)}
-            cuts[key] = sorted(ends | reader.moments())
-        return cuts[key]
+@dataclass(frozen=True)
+class Shown:
+    """A status display at a time: the rating and the text of the case that applies, and its origin."""
 
-    def piece(name, x, y):
-        """The integral of an outcome from x to y, once for every window that holds the piece."""
-        key = (name, x, y)
-        if key not in pieces:
-            try:
-                pieces[key] = quad(integrand, x, y, args=(name,), epsabs=1e-7, epsrel=1e-10, limit=100)[0]
-            except UnknownValue as missing:
-                pieces[key] = UnknownValue(missing.args[0])
-        if isinstance(pieces[key], UnknownValue):
-            raise UnknownValue(pieces[key].args[0])
-        return pieces[key]
+    rating: str
+    text: str | None
+    case: str
 
-    rows = []
+
+@dataclass(frozen=True)
+class Used:
+    """A part of an evidence trail: its kind, its origin, the member that runs it, the records that
+    its evidence cites, whether the run exercised it, and why."""
+
+    kind: str
+    origin: str
+    owner: str
+    records: tuple[str, ...]
+    exercised: bool
+    why: str
+
+
+@dataclass(frozen=True)
+class Reported:
+    """One selected value: its path, its unit, its label, its values at the times of the report, its
+    lag (None for a plain read), its note (why the lag holds, or the diagnostic of a lag that does
+    not, whose values are then the plain read), and its evidence trail."""
+
+    path: str
+    unit: str
+    label: str | None
+    values: tuple
+    lag: Lag | None = None
+    note: str | None = None
+    trail: tuple[Used, ...] = ()
+
+
+@dataclass(frozen=True)
+class NearTie:
+    """A decision of the run within tolerance of its boundary: when, the kind of its entry (`fire` or
+    `commit`), the part that decided, the member or occurrence, the comparison, its difference and
+    its tolerance in canonical units, and the message."""
+
+    t: float
+    kind: str
+    part: str
+    owner: str
+    comparison: str
+    difference: float
+    tolerance: float
+    message: str
+
+
+@dataclass(frozen=True)
+class Report:
+    """The report of one run: its times, its values in the order of the paths, its near-ties, the
+    time to which the record reaches, why it stopped there (None for a run to its horizon), and each
+    record that a trail cites, (name, kind, text)."""
+
+    times: tuple[float, ...]
+    values: tuple[Reported, ...]
+    near_ties: tuple[NearTie, ...]
+    end: float
+    stopped: str | None = None
+    records: tuple[tuple[str, str, str], ...] = ()
+
+
+def report(record, program, configuration, paths, times, lags=None, model=None):
+    """The report of a run (see the module): `paths` and `times` are the caller's, `lags` maps a path
+    to its `Lag`, and `model` is the declared model whose texts and evidence the report shows (None
+    for a program built by hand). A time outside [0, horizon] is a ValueError."""
+    lags = dict(lags or {})
+    times = tuple(float(t) for t in times)
+    horizon = float(record.manifest.horizon)
     for t in times:
-        if not reportable(t):
-            raise ReportingError(f'Reporting time {t} outside [0, {end}]')
-        values, statuses = {}, {}
-        for name in defs if names is None else names:
-            definition = defs[name]
-            v, status = value(name, float(t))
-            values[name] = None if v is None else v / scale_of(definition.unit)
-            statuses[name] = status
-        rows.append({'t': float(t), 'values': values, 'statuses': statuses})
-    return rows
-
-
-def reporting_points(times, horizon):
-    """{point: time} of the reporting points of a run: each time that a request names, by its number
-    of hours (`repr`), in order, then `final`, the end of the run."""
-    points = {repr(t): t for t in sorted({float(t) for t in times or ()})}
-    points['final'] = float(horizon)
-    return points
-
-
-def peak_candidates(run, library, *, unit_registry=None):
-    """Observed maxima over the ends and midpoints of the segments: candidates only, since the
-    expression language does not establish that an outcome has one peak. The times that a report
-    asks for are no candidates, so a peak is the same whatever times a report asks for. A cumulative
-    outcome the compiler proved nondecreasing peaks at the horizon, and only its peak is
-    `certified`."""
-    tr = run['trajectory']
-    rs = run['resolved']
-    times = {0.0, tr.horizon}
-    for seg in tr._segments:
-        times.update([seg.start, seg.end, (seg.start + seg.end) / 2])
-        if seg.end > seg.start:
-            times.add(math.nextafter(seg.end, seg.start))
-    # The rows read the typed parts that are made here, so the run is read once.
-    rows = evaluate_outputs({**run, 'resolved': rs}, library, sorted(times), unit_registry=unit_registry)
-    return peaks_of(rows, rs.outcomes, rs.proven_cumulative_outcomes, tr.horizon)
-
-
-def peaks_of(rows, outcomes, cumulative, horizon):
-    """The peak of each output from its rows at the candidate times (`peak_candidates`): the largest
-    value that is known, with its time; the value at the horizon, certified, for an output of
-    `cumulative` (the outputs that the compiler proved never to fall) that is estimated at each
-    time."""
-    out = {}
-    for name in outcomes:
-        if name in cumulative:
-            final = next(row for row in rows if row['t'] == horizon)
-            if final['values'][name] is not None and all(
-                row['statuses'][name] == 'estimated' for row in rows
-            ):
-                out[name] = {
-                    'value': final['values'][name],
-                    't': horizon,
-                    'certified': True,
-                    'status': 'estimated',
-                    'partial': False,
-                }
-                continue
-        known = [r for r in rows if r['values'][name] is not None]
-        best = max(known, key=lambda r: r['values'][name]) if known else None
-        out[name] = {
-            'value': None if best is None else best['values'][name],
-            't': None if best is None else best['t'],
-            'certified': False,
-            'status': 'unresolved' if best else 'unestimated',
-            'partial': len(known) != len(rows),
-        }
-    return out
-
-
-# ---- entities -----------------------------------------------------------------------
-
-
-def health(rs, env, units):
-    """Each entity's modes, status and status text: those of the first case that holds, or of the
-    default. An entity that shows no status is `inactive` and has no text (null)."""
-    out = {}
-    for eid, entity in rs.entities.items():
-        # The notes of a thing (`metadata`) are plain data, not a typed part.
-        if entity.metadata.get('internal', False):
-            continue
-        status, text = 'inactive', None
-        label = rs.labels.get(entity.health) if entity.health else None
-        if label:
-            case = next((c for c in label.cases if evaluate(c.when, env, units)), label.default)
-            status, text = case.value, case.text
-        out[eid] = {
-            'modes': {mode: env[mode] for mode in entity.modes},
-            'health': status,
-            'label': text,
-        }
-    return out
-
-
-# ---- evidence -----------------------------------------------------------------------------------
-
-
-def _basis(basis):
-    if isinstance(basis, (list, tuple)):
-        return [_basis(item) for item in basis]
-    if not isinstance(basis, Mapping):
-        return None
-    out = {key: basis[key] for key in ('name', 'kind', 'assumption', 'convention') if key in basis}
-    claims = sorted({link['claim'] for link in basis.get('links', []) if 'claim' in link})
-    return out | ({'claims': claims} if claims else {})
-
-
-def evidence_parts(rs):
-    """(every model part with its basis, what each part depends on, what each outcome depends on). An
-    outcome is a part too, so that an outcome that reads other outcomes depends on what their
-    expressions and lags read. A flow depends on what limits what it delivers: its source stock, a
-    destination that has a maximum, its rationing limit and the other flows of a transaction that
-    moves together. A count or time of an event is the rules that add the event, and the time that a
-    named state was entered is that state. An event that only a line names fires when its caller's
-    outcome does: it depends on each rule whose outcome names it.
-
-    What a rule reads and what it can change are the structure's queries (`Structure.reads`,
-    `Structure.writes`). An outcome reads its expression and the delays of its lag; a stock, a tally
-    or a number state reads its start value, its bounds and its rate."""
-    parts, depends = {}, {}
-    writers, emitters, callers = {}, {}, {}
-    for rid, rule in rs.rules.items():
-        for name in rs.writes(rule):
-            writers.setdefault(name, set()).add(rid)
-        for event in rule.events():
-            emitters.setdefault(event, set()).add(rid)
-        for outcome in rule.outcomes:
-            for target in outcome.do.fire:
-                callers.setdefault(target, set()).add(rid)
-
-    def of(names):
-        found = set()
-        for name in names:
-            if name.endswith((COUNT, TIME)):
-                found |= emitters.get(name.rsplit('__', 1)[0], set())
-            elif name.endswith(ENTERED):
-                found.add(name[: -len(ENTERED)])
+        if not 0 <= t <= horizon:
+            raise ValueError(f'a report reads times from 0 h to the horizon, {horizon:g} h, not {t:g} h')
+    unknown = sorted(set(lags) - set(paths))
+    if unknown:
+        raise ValueError(f'a lag of {unknown[0]}, which the report does not select')
+    end, stopped = _end(record, horizon)
+    proofs = Proofs(program, configuration)
+    trail = _Trail(record, program, model, proofs)
+    reported = []
+    for path in paths:
+        key = key_of(program, path)
+        unit, _ = unit_of(program, key)
+        origin = _origin(program, key)
+        label = _text(model, origin)
+        within = [t for t in times if t <= end]
+        lag, note = lags.get(path), None
+        if _is_display(program, key):
+            values = _shown(record, program, model, key, within)
+            if lag is not None:
+                lag, note = (
+                    None,
+                    f'the lag is refused: {path} is a status display, and a lag averages a number',
+                )
+        elif lag is not None:
+            proof = proofs.never_falls(key)
+            if proof.holds:
+                values, note = _lagged(record, program, key, within, lag), proof.reason
             else:
-                found.add(name)
-        return found
-
-    def read(*sources):
-        """The names that some expressions of a part read themselves: a number, and a part that
-        is not there, read nothing."""
-        return set().union(*map(rs.names, sources))
-
-    for collection in ('parameters', 'quantities', 'computed', 'labels', 'flows', 'modes', 'rules'):
-        for name, item in rs.section(collection).items():
-            parts[name] = _basis(item.basis)
-    starts = {}
-    for name, outcome in rs.outcomes.items():
-        delays = () if outcome.lag is None else lag_delays(outcome.lag)
-        starts[name] = of(read(outcome.expr, *delays))
-    for name, outcome in rs.outcomes.items():
-        if name not in parts:
-            parts[name] = _basis(outcome.basis)
-            depends[name] = starts[name]
-    for name, quantity in rs.quantities.items():
-        rate = rs.rates[name].expr if name in rs.rates else None
-        found = of(read(quantity.initial, quantity.minimum, quantity.maximum, rate))
-        found |= writers.get(name, set())
-        found |= {fid for fid, f in rs.flows.items() if name in (f.source, f.target)}
-        depends[name] = found
-    for name, c in rs.computed.items():
-        depends[name] = of(names_in(c.expr))
-    for name, label in rs.labels.items():
-        depends[name] = of(set().union(*(names_in(case.when) for case in label.cases)))
-    together = {f: set(group.flows) - {f} for group in rs.coupling.values() for f in group.flows}
-    for fid, flow in rs.flows.items():
-        found = of(names_in(flow.rate)) | together.get(fid, set())
-        if flow.source:
-            found.add(flow.source)
-        filled = rs.quantities.get(flow.target) if flow.target else None
-        if filled is not None and filled.maximum is not None:
-            found.add(flow.target)
-        if flow.allocation in rs.allocation:
-            found |= of(names_in(rs.allocation[flow.allocation].capacity))
-        depends[fid] = found
-    for mid in rs.modes:
-        depends[mid] = writers.get(mid, set())
-    for rid, rule in rs.rules.items():
-        depends[rid] = of(rs.reads(rule)) | callers.get(rid, set())
-    return parts, depends, starts
-
-
-def _can_hold(node, reach):
-    """False only when a condition cannot hold for any value that its named states can take."""
-    if isinstance(node, nodes.BoolOp):
-        results = [_can_hold(value, reach) for value in node.values]
-        return all(results) if node.op == 'and' else any(results)
-    if isinstance(node, nodes.Const) and isinstance(node.value, bool):
-        return node.value
-    if isinstance(node, nodes.Compare) and len(node.ops) == 1 and node.ops[0] in ('eq', 'ne'):
-        left, right = node.operands
-        if isinstance(left, nodes.Const):
-            left, right = right, left
-        name = left.name if isinstance(left, nodes.Ref) else None
-        if name in reach and isinstance(right, nodes.Const) and isinstance(right.value, str):
-            if node.ops[0] == 'eq':
-                return right.value in reach[name]
-            return bool(reach[name] - {right.value})
-    return True
-
-
-def firing_rules(rs):
-    """The rules that can fire in a run of this structure.
-
-    A named state takes its start value and every value that a rule that can fire gives it. A rule
-    can fire unless a condition that it needs asks a named state for a value that it never takes, or,
-    for a rule that only a line fires, no rule that can fire names it. Every other condition counts
-    as possible, so the set is never too small.
-    """
-    reach = {name: {mode.initial} for name, mode in rs.modes.items()}
-    conditions = {}
-    for rid, rule in rs.rules.items():
-        trigger = rule.trigger
-        text = trigger.gate if trigger.kind in ('timer', 'crossing') else trigger.when
-        conditions[rid] = typed.node(text)
-    firing, named, changed = set(), set(), True
-    while changed:
-        changed = False
-        for rid, rule in rs.rules.items():
-            if rid in firing:
-                continue
-            if rule.named:
-                if rid not in named:
-                    continue
-            elif conditions[rid] is not None and not _can_hold(conditions[rid], reach):
-                continue
-            firing.add(rid)
-            changed = True
-            for step in rule.steps():
-                named.update(step.fire)
-                for name, value in step.set.items():
-                    if name in reach:
-                        fixed = isinstance(value.mode, str)
-                        reach[name] |= {value.mode} if fixed else set(rs.modes[name].values)
-    return firing
-
-
-def _closure(start, parts, depends, skip=frozenset()):
-    """The parts that `start` depends on, never through a part in `skip`."""
-    found, pending = set(), list(start)
-    while pending:
-        part = pending.pop()
-        if part in found or part not in parts or part in skip:
-            continue
-        found.add(part)
-        pending.extend(depends.get(part, ()))
-    return found
-
-
-def left_out_parts(left_out):
-    """The names of the parts that a run's structure leaves out (`model.left_out[starts]`)."""
-    return {name for section in (left_out or {}).values() for name in section}
-
-
-def evidence_trail(rs, trajectory, library, units, left_out=None):
-    """For each outcome, the parts it can depend on and which of them this run exercised: a rule
-    that fired, a flow that moved material, and every value and parameter read. A rule that can
-    never fire in this run's structure is possible, not exercised, and so is every part that the
-    outcome reaches only through such a rule. Each part keeps its basis; the trail pins the library
-    and the digest of every record it cites.
-
-    `rs` can be a run's resolved structure with the sections of its whole structure
-    (`model.whole[starts]`), and `left_out` the parts that the run's structure leaves out
-    (`model.left_out[starts]`): the run exercised nothing through a part that it left out, so every
-    rule left out is idle and the flows that moved material are among the run's own flows. The
-    evidence of a part left out shows as possible, not exercised (docs/python-api.md)."""
-    gone = left_out_parts(left_out)
-    parts, depends, starts = evidence_parts(rs)
-    fired = {entry['rule'] for entry in trajectory.trace}
-    idle = (set(rs.rules) - firing_rules(rs)) | gone
-    # A flow is exercised when it delivered material, not when it was only asked to move.
-    active = set(trajectory.moved) - gone
-    outcomes, used, refs = {}, set(), []
-    for name, outcome in rs.outcomes.items():
-        start = starts[name]
-        found = _closure(start, parts, depends)
-        exercised = {
-            p
-            for p in _closure(start, parts, depends, idle)
-            if (p not in rs.rules or p in fired) and (p not in rs.flows or p in active)
-        }
-        outcomes[name] = {
-            'basis': _basis(outcome.basis),
-            # A lag has no basis of its own: the builder writes none, and the typed lag takes none.
-            'kernel': None,
-            'exercised': sorted(exercised),
-            'possible': sorted(found - exercised),
-        }
-        used |= found
-        for ref in (outcomes[name]['basis'], outcomes[name]['kernel']):
-            if ref:
-                refs.extend(ref if isinstance(ref, list) else [ref])
-    for p in used:
-        if parts[p]:
-            refs.extend(parts[p] if isinstance(parts[p], list) else [parts[p]])
-    claims = {c for ref in refs for c in ref.get('claims', ())}
-    assumptions = {ref['assumption'] for ref in refs if ref.get('assumption')}
-    conventions = {ref['convention'] for ref in refs if ref.get('convention')}
-    records = {item['id']: claim_digest(item) for item in library['claims'] if item['id'] in claims}
-    records |= {item['id']: digest(item) for item in library['assumptions'] if item['id'] in assumptions}
-    records |= {
-        item['id']: digest(item) for item in library.get('conventions', ()) if item['id'] in conventions
-    }
-    return {
-        'library': digest(library),
-        'records': dict(sorted(records.items())),
-        'parts': {p: parts[p] for p in sorted(used)},
-        'outcomes': outcomes,
-    }
-
-
-# ---- report -------------------------------------------------------------------------------------
-
-
-def edits_report_copy(value, active=None, depth=0):
-    """Preserve JSON inputs and represent rejected non-JSON values with null."""
-    if depth >= 64:
-        return None
-    if isinstance(value, Mapping):
-        active = set(active or ())
-        if id(value) in active:
-            return None
-        active.add(id(value))
-        return {str(key): edits_report_copy(child, active, depth + 1) for key, child in value.items()}
-    if isinstance(value, (tuple, list)):
-        active = set(active or ())
-        if id(value) in active:
-            return None
-        active.add(id(value))
-        return [edits_report_copy(child, active, depth + 1) for child in value]
-    if value is None or isinstance(value, (str, bool)):
-        return value
-    if isinstance(value, (int, float)):
-        try:
-            return value if math.isfinite(value) else None
-        except OverflowError:
-            return None
-    return None
-
-
-class _EnvironmentCache:
-    """One reporting call's bounded memo of exact trajectory environments.
-
-    Outcomes and entity health sample the same instants. Keys keep the exact timestamp and
-    impulse side; every caller receives its own dictionary.
-    """
-
-    __slots__ = ('_capacity', '_environments', '_trajectory')
-
-    def __init__(self, trajectory, capacity=1024):
-        self._trajectory = trajectory
-        self._environments = OrderedDict()
-        self._capacity = capacity
-
-    def __getattr__(self, name):
-        return getattr(self._trajectory, name)
-
-    def env_at(self, t, side='right'):
-        key = (float(t), side)
-        if key in self._environments:
-            environment = self._environments.pop(key)
+                lag, note = None, f'the lag is refused: {path} can fall: {proof.reason}'
+                values = read(record, program, [key], within)[0].values
         else:
-            environment = self._trajectory.env_at(t, side=side)
-        self._environments[key] = environment
-        if len(self._environments) > self._capacity:
-            self._environments.popitem(last=False)
-        return dict(environment)
+            values = read(record, program, [key], within)[0].values
+        values = tuple(values) + (Unavailable(stopped),) * (len(times) - len(within))
+        reported.append(Reported(path, unit, label, values, lag, note, trail.of(key)))
+    return Report(times, tuple(reported), _near_ties(record), end, stopped, trail.records())
 
 
-def report_envelope(study, admissible):
-    """The parts of a report that every study has, admitted or not. `scenario` and `variant` name the
-    model by its folders (`paths.names_of`): the package, and the variant or None."""
-    scenario, variant = names_of(study.model.origin)
-    return {
-        'model_hash': study.model_hash,
-        'implementation_hash': study.implementation_hash,
-        'schema_version': SCHEMA_VERSION,
-        'engine_version': __version__,
-        'admissible': admissible,
-        'status': 'accepted' if admissible else 'rejected',
-        'library_hash': study.model.library_hash,
-        'scenario': scenario,
-        'variant': variant,
-        'title': study.model.scenario.title,
-        'effective_edits': edits_report_copy(study.effective_edits),
-        'diagnostics': copy.deepcopy(study.diagnostics),
-        'runs': {},
-    }
+def _end(record, horizon):
+    """The time to which a record reaches, and why it stops before the horizon (None at it)."""
+    if record.failure is not None:
+        message = record.failure.detail('message') or 'the run failed'
+        return float(record.failure.t), f'the run failed at {float(record.failure.t):g} h: {message}'
+    pause = paused(record)
+    if pause is not None:
+        site = pause.detail('site') or pause.part
+        return float(pause.t), (
+            f'the run paused at {float(pause.t):g} h, where {pause.owner} waits for a pick at {site}: '
+            'the report reads it up to its pause'
+        )
+    return horizon, None
 
 
-def run_evidence(model, rs, trajectory, library, units):
-    """The evidence trail of one run: its resolved structure with every part of its whole structure,
-    with the rule that the run exercised nothing through a part that its structure left out."""
-    starts = tuple(rs.starts)
-    # The run with each section of its whole structure in the place of its own.
-    every = model.whole[starts]
-    sections = {
-        item.name: getattr(every, item.name) for item in dataclasses.fields(typed.Structure) if item.init
-    }
-    whole = dataclasses.replace(rs, **sections)
-    return evidence_trail(whole, trajectory, library, units, thaw(model.left_out[starts]))
+def _origin(program, key):
+    """The origin of the declared part of a record key: a value, a flow (of a field of it or of a
+    leg), the store of an endpoint, a solver's unknown or a status display."""
+    owner, steps = key.owner, key.steps
+    if '#' in owner:
+        receiver, event = owner.rsplit('#', 1)[0].rsplit('.', 1)
+        found = program.member(receiver)[0].part(event)
+        part = next((each for each in (*found.params, *found.locals) if each.name == steps[0]), None)
+    elif owner:
+        template = program.member(owner)[0]
+        part = template.part(steps[0])
+        if part is None and steps == ('status',) and template.status is not None:
+            return template.status.origin
+        if hasattr(part, 'unknowns') and len(steps) > 1:
+            part = next((each for each in part.unknowns if each.name == steps[1]), part)
+    else:
+        part = program.root_value(steps[0])
+    return getattr(part, 'origin', '')
 
 
-def sample_result(study, reporting_times=None):
-    """A JSON-ready report of an accepted study. Each run reports its outcomes at `final`, the model
-    horizon, and at each of the `reporting_times` (`reporting_points`); the model names no times."""
-    for run in study.runs.values():
-        _require_complete(run['trajectory'])
-    if reporting_times is not None:
-        reporting_times = list(reporting_times)
-        horizon = study.model.time['horizon']
-        for t in reporting_times:
-            if (
-                isinstance(t, bool)
-                or not isinstance(t, (int, float))
-                or not math.isfinite(t)
-                or not 0 <= t <= horizon
-                or any(not 0 <= t <= run['trajectory'].horizon for run in study.runs.values())
-            ):
-                raise ValueError(f'Invalid reporting time {t!r}')
+def _text(model, origin):
+    """The first text under the declared part of an origin, or None."""
+    part = model.part(origin) if model is not None and origin else None
+    return getattr(part, 'text', None)
+
+
+def _is_display(program, key):
+    if not key.owner or '#' in key.owner or key.steps != ('status',):
+        return False
+    template = program.member(key.owner)[0]
+    return template.status is not None and template.part('status') is None
+
+
+def _shown(record, program, model, key, times):
+    """The case of a member's status display at each time, as `Shown`."""
+    cases = program.member(key.owner)[0].status.cases
+    found = []
+    for value in read(record, program, [key], times)[0].values:
+        if isinstance(value, Unavailable):
+            found.append(value)
+            continue
+        case = cases[int(value[len('case[') : -1])]
+        found.append(Shown(case.rating, _text(model, case.origin), case.origin))
+    return tuple(found)
+
+
+def _lagged(record, program, key, times, lag):
+    """The lagged values of a key at each time (see the module): the mean of its history over each
+    window, read at five points in each piece of the history inside the window, in the declared
+    unit; a window with a value that is unavailable is unavailable with its reason."""
     try:
-        return _sample_result(study, reporting_times)
-    except (ReportingError, ExpressionError, ArithmeticError) as exc:
-        # A numerical reporting failure is never a legitimate unknown outcome
-        # and must not expose a partially accepted comparison.
-        report = report_envelope(study, False)
-        report['status'] = 'reporting_failure'
-        report['diagnostics'].append(diagnostic('reporting_failure', str(exc)))
-        return report
+        cuts = sorted({float(piece.t) for piece in record.history(key).pieces})
+    except KeyError:
+        raise LookupError(f'{key}: the record holds no history of it to average') from None
+    windows, points = [], []
+    for t in times:
+        low, high = t - lag.longest, t - lag.shortest
+        if lag.longest == lag.shortest:
+            windows.append(('at', len(points)))
+            points.append(max(high, 0.0))
+            continue
+        # The part of the window before time 0 holds the value at time 0.
+        before = max(0.0, min(high, 0.0) - low)
+        spans = []
+        if before > 0:
+            spans.append((before, len(points)))
+            points.append(0.0)
+        a, b = max(low, 0.0), max(high, 0.0)
+        ends = [a, *(cut for cut in cuts if a < cut < b), b] if b > a else []
+        for left, right in pairwise(ends):
+            half, middle = 0.5 * (right - left), 0.5 * (right + left)
+            spans.append((half * _WEIGHTS, len(points)))
+            points.extend(float(point) for point in middle + half * _POINTS)
+        windows.append(('mean', spans))
+    values = read(record, program, [key], points)[0].values if points else ()
+    found = []
+    for kind, spans in windows:
+        if kind == 'at':
+            found.append(values[spans])
+            continue
+        total = 0.0
+        for weight, first in spans:
+            weights = np.atleast_1d(weight)
+            taken = values[first : first + len(weights)]
+            missing = next((value for value in taken if isinstance(value, Unavailable)), None)
+            if missing is not None:
+                total = missing
+                break
+            total += float(np.dot(weights, [float(value) for value in taken]))
+        found.append(total if isinstance(total, Unavailable) else total / (lag.longest - lag.shortest))
+    return tuple(found)
 
 
-def _sample_result(study, reporting_times):
-    if not study.admissible:
-        return report_envelope(study, False)
-    model = study.model
-    library = thaw(model.library)
-    unit_registry = UnitSystem(library['units'])
-    reports = report_envelope(study, True)
-    for name, completed in study.runs.items():
-        # The typed parts of the run are made once, for each function that reads the run here.
-        rs = completed['resolved']
-        run = {**completed, 'resolved': rs, 'trajectory': _EnvironmentCache(completed['trajectory'])}
-        trajectory = run['trajectory']
-        points = reporting_points(reporting_times, trajectory.horizon)
-        times = sorted(set(points.values()))
-        rows = evaluate_outputs(run, library, times, unit_registry=unit_registry)
-        by_time = {r['t']: r for r in rows}
-        reports['runs'][name] = {
-            'label': model.runs[name]['name'],
-            'options': list(rs.options),
-            'starts': list(rs.starts),
-            'horizon': trajectory.horizon,
-            # Each output as its part writes it: with the keys of the compiled model, in their
-            # order (`Part.plain`).
-            'outcomes': typed.thawed(rs.outcomes),
-            'effective_inputs': rs.parameter_values,
-            'numerical_settings': trajectory.settings,
-            'samples': rows,
-            'reporting_points': {point: by_time[t] for point, t in points.items()},
-            'trace': trajectory.trace,
-            'health': [{'t': t, 'entities': health(rs, trajectory.env_at(t), unit_registry)} for t in times],
-            'evidence': run_evidence(model, rs, trajectory, library, unit_registry),
-            'numerical_diagnostics': trajectory.diagnostics,
-            'peaks': peak_candidates(run, library, unit_registry=unit_registry),
-        }
-    # thaw rebuilds every mapping and list, so the report shares nothing with the study.
-    return thaw(reports)
+_NEAR = {
+    'fire': 'this trigger fired within tolerance of its threshold',
+    'commit': 'this test of a stage was decided within tolerance of its boundary',
+}
+
+
+def _near_ties(record):
+    """The near-ties of a record (`Record.near_ties`), each with its message."""
+    found = []
+    for entry, (origin, comparison, difference, tolerance) in record.near_ties():
+        message = (
+            f'{origin} at {float(entry.t):g} h: {_NEAR[entry.kind]}: {comparison} '
+            f'(its sides differ by {difference:.3g}, within the tolerance {tolerance:.3g} of what it reads)'
+        )
+        found.append(
+            NearTie(
+                float(entry.t), entry.kind, origin, entry.owner, comparison, difference, tolerance, message
+            )
+        )
+    return tuple(found)
+
+
+class _Trail:
+    """The evidence trails of the values of one record (see the module)."""
+
+    def __init__(self, record, program, model, proofs):
+        self.record, self.program, self.model, self.proofs = record, program, model, proofs
+        self.cited = {}
+        self.entries = {}
+        for entry in record.trace:
+            self.entries.setdefault((entry.kind, entry.part), []).append(entry)
+        # The histories of the actual rates of the flows, by their owner (`tank.receive#` for every
+        # occurrence of an event on a receiver) and their steps.
+        self.rates = {}
+        for history in record.histories:
+            if history.key.steps and history.key.steps[-1] == 'actual_rate':
+                owner = history.key.owner
+                owner = owner.rsplit('#', 1)[0] + '#' if '#' in owner else owner
+                self.rates.setdefault((owner, history.key.steps), []).append(history)
+
+    def of(self, key):
+        """The trail of the value of a key: each part that it can read, ordered by origin and owner. A
+        part is reached through parts whose reads the run evaluated (`evaluated`), and exercised when
+        it is reached and acted itself (`acted`)."""
+        found = self.proofs.reads(key)
+        reached, pending = set(), [found.start]
+        while pending:
+            part = pending.pop()
+            if part in reached:
+                continue
+            reached.add(part)
+            if self.evaluated(part, found):
+                pending.extend(found.edges.get(part, ()))
+        used = []
+        for part in sorted(found.edges, key=lambda each: (each.origin, each.owner, each.kind)):
+            did, why = self.acted(part, found)
+            if part not in reached and part not in found.blocked:
+                did, why = False, 'it is read only through parts that the run did not exercise'
+            used.append(Used(part.kind, part.origin, part.owner, self.cites(part.origin), did, why))
+        return tuple(used)
+
+    def evaluated(self, part, found):
+        """Whether the run read what a part reads: a value's reads; a flow's while it existed (a flow of
+        an event, once the event started on its receiver), and so whether it moved or not; a
+        trigger's condition, read at every round; an event's, a stage's and a solver's when it acted."""
+        if part.kind in ('value', 'status', 'trigger'):
+            return True
+        if part.kind == 'flow':
+            event = self.event_of(part)
+            return event is None or self.acted(event, found)[0]
+        return self.acted(part, found)[0]
+
+    def acted(self, part, found):
+        """Whether a part acted in the run itself, and why: a flow moved material, an event started,
+        a trigger fired, a stage committed, a solver solved; a value is read."""
+        if part.kind in ('value', 'status'):
+            return True, 'read'
+        if part.kind == 'flow':
+            moved = self.moved(part)
+            return moved, 'it moved material' if moved else 'it moved nothing in this run'
+        if part.kind == 'event' and part in found.blocked:
+            return False, f'it cannot start under this configuration: {found.blocked[part]}'
+        if part.kind == 'stage' and part.origin == 'setup':
+            return True, 'the setup ran at 0 h'
+        kind = {'event': 'start', 'trigger': 'fire', 'stage': 'commit', 'solver': 'solve'}[part.kind]
+        entries = [entry for entry in self.entries.get((kind, part.origin), ()) if _runs(entry, part)]
+        verb = {'start': 'started', 'fire': 'fired', 'commit': 'committed', 'solve': 'solved'}[kind]
+        if not entries:
+            return False, f'it did not {kind if kind != "solve" else "solve"} in this run'
+        if len(entries) == 1:
+            return True, f'it {verb} at {float(entries[0].t):g} h'
+        return True, f'it {verb} {len(entries)} times from {float(entries[0].t):g} h'
+
+    def event_of(self, part):
+        """The event of a flow of an event's occurrences, as a part of its receiver, or None."""
+        template = self.program.member(part.owner)[0]
+        name = part.origin[len(template.name) + 1 :].split('.')[0]
+        event = template.part(name)
+        return Part('event', event.origin, part.owner) if isinstance(event, p.Event) else None
+
+    def moved(self, part):
+        """Whether a flow moved material in the run: its actual rate is not zero on some piece."""
+        template = self.program.member(part.owner)[0]
+        steps = part.origin[len(template.name) + 1 :].split('.')
+        owner = part.owner
+        if self.event_of(part) is not None:  # a flow of the event's occurrences
+            owner, steps = f'{owner}.{steps[0]}#', steps[1:]
+        histories = self.rates.get((owner, (*steps, 'actual_rate')), ())
+        return any(
+            not isinstance(piece.value, (bool, str, Unavailable))
+            and (piece.value != 0 or piece.rate != 0 or piece.curve is not None)
+            for history in histories
+            for piece in history.pieces
+        )
+
+    def cites(self, origin):
+        """The records of the evidence of the declared part of an origin: each record that it cites by
+        name, and each written in place as its kind and its text."""
+        part = self.model.part(origin) if self.model is not None else None
+        found = []
+        for item in getattr(part, 'evidence', ()):
+            name = getattr(item, 'name', None)
+            if name is not None:
+                found.append(name)
+                self.cited[name] = None
+            else:
+                found.append(f'{item.kind}: {item.text}')
+        return tuple(found)
+
+    def records(self):
+        """(name, kind, text) of each record of the model that a trail cites, by name."""
+        if self.model is None:
+            return ()
+        known = {item.name: item for item in self.model.records}
+        return tuple(
+            (name, known[name].kind, known[name].text) for name in sorted(self.cited) if name in known
+        )
+
+
+def _runs(entry, part):
+    """Whether an entry of the trace is of the member that runs a part: a firing and a solve name the
+    member, a start and a commit an occurrence of the member's event."""
+    if entry.kind in ('fire', 'solve'):
+        return entry.owner == part.owner
+    return entry.owner.rsplit('#', 1)[0].rsplit('.', 1)[0] == part.owner

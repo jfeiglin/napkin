@@ -113,8 +113,12 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   option's name is its own across the groups, and a run takes known options, at most one of each
   group, no two of which set one input (`choice_problem`). `napkin/model/runs.py` makes a run's
   configuration of them.
-- **What a later stage brings** is kept as a `Deferred` part, with the construct and the stage that
-  brings it; the lowering refuses it by name: status displays (C).
+- **Status displays** (`DeclaredStatus`): the `status` cases of an entity or a template, in written
+  order, are its display at `owner.status`; each case (`owner.status.case[k]`) has its rating, its
+  condition (a yes/no that reads what its member reads, and makes no draw), its text and its evidence.
+  The first case whose condition holds gives both the rating and the text, and the last case, and
+  only it, has no condition: it is the fallback. A display names `status` of its owner, so the owner
+  declares no value of that name.
 """
 
 from __future__ import annotations
@@ -866,7 +870,8 @@ def event_parts(event):
 
 @dataclass(frozen=True)
 class DeclaredEntity:
-    """An entity written once: a template of one member, with its parts in written order."""
+    """An entity written once: a template of one member, with its parts in written order and its
+    status display, or None."""
 
     path: str
     parts: tuple = ()
@@ -875,6 +880,7 @@ class DeclaredEntity:
     role: str | None = None
     evidence: tuple = ()
     line: int = 0
+    status: DeclaredStatus | None = None
 
 
 @dataclass(frozen=True)
@@ -930,13 +936,26 @@ class DeclaredTable:
 
 
 @dataclass(frozen=True)
-class Deferred:
-    """A part that this slice parses and formats but does not lower: what it is and the slice that
-    brings it."""
+class DeclaredStatusCase:
+    """A case of a status display: its rating, its condition (None for the last case, the fallback),
+    its text and its evidence. Its path is `owner.status.case[k]`, the origin that the program gives
+    it."""
 
     path: str
-    construct: str
-    slice: str
+    rating: str
+    test: object = None
+    text: str | None = None
+    evidence: tuple = ()
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class DeclaredStatus:
+    """The status display of an entity or a template: its cases in written order. Its path is
+    `owner.status`."""
+
+    path: str
+    cases: tuple[DeclaredStatusCase, ...]
     line: int = 0
 
 
@@ -998,8 +1017,8 @@ class Scenario:
 class DeclaredModel:
     """A declared model: its scenario line; its entities and templates, its top-level values, its
     members (instances by hand and table rows, in written order) and its top-level assertions; its
-    tables, records and notes; its options, in the order of their groups, and its named runs; the
-    parts that a later slice brings; its units and its tree. `files` names the files of a model read
+    tables, records and notes; its options, in the order of their groups, and its named runs; its
+    units and its tree. `files` names the files of a model read
     from several (`place`)."""
 
     scenario: Scenario | None
@@ -1007,7 +1026,6 @@ class DeclaredModel:
     root: tuple[DeclaredValue, ...]
     records: tuple = ()
     notes: tuple = ()
-    deferred: tuple[Deferred, ...] = ()
     units: Units = None
     tree: n.File = field(default=None, repr=False)
     members: tuple[DeclaredMember, ...] = ()
@@ -1033,8 +1051,8 @@ class DeclaredModel:
 
     def part(self, path):
         """The declared part of a path (an entity, a template, a value, the settings of an
-        endpoint, a flow, a leg, an event or a solver and each part of it, an assertion, a member, a
-        table, a start of the setup or a deferred part), or None."""
+        endpoint, a flow, a leg, an event or a solver and each part of it, a status display and each
+        of its cases, an assertion, a member, a table or a start of the setup), or None."""
         return self._paths.get(path)
 
     @cached_property
@@ -1052,7 +1070,10 @@ class DeclaredModel:
                     found.setdefault(inner.path, inner)
                 for inner in solver_parts(part) if isinstance(part, DeclaredSolver) else ():
                     found.setdefault(inner.path, inner)
-        for part in (*self.members, *self.tables, *self.root, *self.asserts, *self.setup, *self.deferred):
+            if entity.status is not None:
+                for part in (entity.status, *entity.status.cases):
+                    found.setdefault(part.path, part)
+        for part in (*self.members, *self.tables, *self.root, *self.asserts, *self.setup):
             found.setdefault(part.path, part)
         for value in [part for part in found.values() if isinstance(part, DeclaredValue)]:
             for side in (value.outflow, value.inflow):
@@ -1158,7 +1179,7 @@ class Resolver:
     def __init__(self, tree, units, read_table, files=()):
         self.units, self.read_table = units, read_table
         self.files = Files(tuple(files))
-        self.problems, self.deferred = [], []
+        self.problems = []
         self.tree = tree = self.wired(tree)
         # The changes of the model: each line by the path of the value that it sets
         # (`pool.start_water`, `a1.ask`), with the name that its change names; the changes of labels
@@ -3658,8 +3679,7 @@ class Resolver:
     # ---- the model ---------------------------------------------------------------------------------
 
     def part(self, path, owner, node):
-        """A declared part of an entity, a template or the top level, a `Deferred` one, or None after
-        a problem."""
+        """A declared part of an entity, a template or the top level, or None after a problem."""
         try:
             if isinstance(node, n.Declaration):
                 return self.endpoints(self.value(path), owner, node)
@@ -3687,21 +3707,47 @@ class Resolver:
         if isinstance(node, n.Property):
             self.report('property', PROPERTY_IN_ENTITY.format('.'.join(node.path)), node.line)
             return None
-        return Deferred(path, 'a status display', 'C', node.line)
+        raise TypeError(f'{path}: no part of a model: {type(node).__name__}')
+
+    def status(self, owner, cases):
+        """The status display of an entity or a template: its cases in written order (see the
+        module). A case with a problem is reported and left out."""
+        path, found = f'{owner}.status', []
+        for k, node in enumerate(cases):
+            try:
+                test = None
+                if node.test is not None:
+                    test = self.expression(node.test, Scope(owner))
+                    self.want_bool(test, node, 'a status case')
+                    self.no_draws(test, node, 'a status case')
+                if (node.test is None) != (k == len(cases) - 1):
+                    self.fail('status', STATUS_FALLBACK, node)
+                found.append(
+                    DeclaredStatusCase(
+                        f'{path}.case[{k}]', node.rating, test, node.text, self.evidence(node), node.line
+                    )
+                )
+            except Refused as refused:
+                self.report(refused.code, refused.message, refused.line or node.line, refused.column)
+        return DeclaredStatus(path, tuple(found), cases[0].line)
 
     def entity(self, item):
         """An entity written once or a template, with its parts."""
         parts, asserts = [], 0
         for k, member in enumerate(item.members):
+            if isinstance(member, n.Status):
+                continue
             if isinstance(member, n.Assert):
                 name, asserts = f'assert[{asserts}]', asserts + 1
             else:
                 name = getattr(member, 'name', None) or f'{type(member).__name__.lower()}[{k}]'
             found = self.part(f'{item.name}.{name}', item.name, member)
-            if isinstance(found, Deferred):
-                self.deferred.append(found)
-            elif found is not None:
+            if found is not None:
                 parts.append(found)
+        cases = [member for member in item.members if isinstance(member, n.Status)]
+        status = self.status(item.name, cases) if cases else None
+        if status is not None and any(part.path == status.path for part in parts):
+            self.report('status', STATUS_NAME.format(status.path), cases[0].line)
         text, title, role, label = item.text, item.title, item.role, self.labels.get(item.name)
         try:
             evidence = self.evidence(item)
@@ -3715,7 +3761,7 @@ class Resolver:
             self.report(refused.code, refused.message, refused.line, refused.column)
             evidence = ()
         kind = DeclaredTemplate if item.name in self.templates else DeclaredEntity
-        return kind(item.name, tuple(parts), text, title, role, evidence, item.line)
+        return kind(item.name, tuple(parts), text, title, role, evidence, item.line, status)
 
     def model(self):
         for item in self.tree.items:
@@ -3748,9 +3794,7 @@ class Resolver:
             elif isinstance(item, (n.Declaration, n.Assert)):
                 path = item.name if isinstance(item, n.Declaration) else f'assert[{len(asserts)}]'
                 found = self.part(path, '', item)
-                if isinstance(found, Deferred):
-                    self.deferred.append(found)
-                elif isinstance(found, DeclaredAssert):
+                if isinstance(found, DeclaredAssert):
                     asserts.append(found)
                 elif found is not None:
                     root.append(found)
@@ -3774,7 +3818,6 @@ class Resolver:
             tuple(root),
             tuple(self.records.values()),
             tuple(notes),
-            tuple(self.deferred),
             self.units,
             self.tree,
             members=tuple(members),
@@ -4463,6 +4506,11 @@ def _zero(value):
 
 
 # The refusals of the parts of a package that a text alone cannot have, and of a setting by its path.
+STATUS_FALLBACK = (
+    'the last case of a status display, and only it, has no condition: it is the fallback, as '
+    '`status degraded` under `status ok when this.done`'
+)
+STATUS_NAME = '{} names the status display: the entity declares no value of that name'
 USE_ALONE = "use names a module of a package: a model with modules is read from its package's main file"
 VARIANT_ALONE = (
     "a variant is read with its package's main file, from variants/<name>/model.scn of the package"

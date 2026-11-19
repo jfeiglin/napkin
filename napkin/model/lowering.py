@@ -30,8 +30,8 @@ constraints and its objectives; a bare name of it is `refs.Local`, and a caller 
 their paths (`this.staffing.care`). What its constraints and objectives may say is checked on the
 finished program (`solvers.problems`).
 
-A part that a later slice brings is refused by name (`later_slice`), with the slice that brings it.
-A refusal of the program's checker, or of `solvers.problems`, is given at the line of the declared
+A status display is `build.status` of its cases in written order, each `build.rating` of its rating
+and its condition; the last has none. A refusal of the program's checker, or of `solvers.problems`, is given at the line of the declared
 part that it names, and so is each of the setup's reports (`reports`), which refuse nothing.
 """
 
@@ -77,18 +77,9 @@ OPERATIONS = {'add': 'add', 'sub': 'sub', 'mul': 'mul', 'div': 'div', 'pow': 'po
 COMPARISONS = {'<': 'lt', '<=': 'le', '>': 'gt', '>=': 'ge', '==': 'eq', '!=': 'ne'}
 
 
-def refusal(part):
-    """The diagnostic of a part that a later slice brings."""
-    return Problem(
-        'later_slice', f'{part.path}: {part.construct} comes with a later slice ({part.slice})', part.line
-    )
-
-
 def lower(model):
     """The program of a declared model, checked (`Builder.finish`). Raises `LanguageError` with each
-    part that a later slice brings, or with each refusal of the checker."""
-    if model.deferred:
-        raise LanguageError([refusal(part) for part in model.deferred])
+    refusal of the checker."""
     builder = build.Builder(model.units.table)
     enums = _enums(model)
     for name in sorted(enums):
@@ -97,6 +88,8 @@ def lower(model):
     for entity in model.entities:
         templates[entity.path] = entity
         parts = [part_of(part) for part in entity.parts]
+        if entity.status is not None:
+            parts.append(status_of(entity.status))
         if isinstance(entity, s.DeclaredTemplate):
             builder.template(entity.path, *parts)
         else:
@@ -259,6 +252,16 @@ def _endpoint(declared):
 
 def _assertion(declared):
     return build.assertion(handle(declared.test))
+
+
+def status_of(display):
+    """The program's status display: its cases in written order, the last with no condition."""
+    return build.status(
+        *(
+            build.rating(case.rating, None if case.test is None else handle(case.test))
+            for case in display.cases
+        )
+    )
 
 
 def initial(init):

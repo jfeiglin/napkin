@@ -52,6 +52,19 @@ locate: a watched condition that reads one stops the run with a diagnostic. That
 watched condition reads (a rate that jumps). The prediction holds within the window of the ways that
 it reads and is made again after it. A strict comparison whose difference moves has no first
 instant: the run stops with a diagnostic when such a condition is watched, never polling.
+
+**Near-ties** (change 10). A tiny difference can flip a discrete outcome; the engine does not
+compute it more precisely, it marks it. A firing whose condition read a numeric comparison with sides
+that differ by no more than the tolerance of what they read (the largest tolerance of the stores and
+the rates that they read, through formulas, and the crossing tolerance for the time), now and an
+instant later (`AFTER`), was decided within tolerance of its threshold: its trace entry has the
+detail `near`, one (origin, comparison, difference, tolerance) for each such comparison on the path
+of its answer (`moment.near_ties`), the difference and the tolerance in canonical units. Sides that move
+through the boundary, as at a crossing, differ by more an instant later: the firing then follows
+from when they cross, and is no near-tie. A stage's guard, an `if` and the guard of a case are marked
+the same way in the entry of their commit (`moment.py`), with no instant later: a stage reads its
+test once. A gate's release, and a decision that makes no entry (a trigger that does not fire, a
+guard that is false), carry no mark.
 """
 
 from __future__ import annotations
@@ -66,7 +79,7 @@ from ...program.record import Unavailable
 from ..errors import SimulationError
 from .family import Family
 from .lines import Lines
-from .moment import Tx
+from .moment import Tx, near_ties
 from .plan import FORMULA, LOOKUP, RATE, REDUCE
 from .reads import lazily
 
@@ -151,6 +164,43 @@ class Triggers:
         (`reads.py`)."""
         return lazily(node, lambda name: self.run.value(name, t), self.plan.units, t)
 
+    def near(self, node, origin, t):
+        """The near-ties of a condition that holds at time t (see the module): sides within the
+        tolerance of what they read, now and an instant later."""
+
+        def later(left, right):
+            # A side that cannot be read an instant later is not shown to move through: it stays marked.
+            try:
+                a, b = self.side(left, t + AFTER), self.side(right, t + AFTER)
+            except (ExpressionError, ArithmeticError, LookupError):
+                return 0.0
+            return float(a) - float(b)
+
+        return near_ties(
+            node,
+            origin,
+            self.plan,
+            self.run.frozen,
+            lambda side: self.side(side, t),
+            lambda op, difference, left, right: _COMPARE[op](difference, self.band(left, right)),
+            self.tolerance,
+            later,
+        )
+
+    def tolerance(self, *parts):
+        """The tolerance of what the sides of a comparison read: the largest of the tolerances of the
+        stores and the rates that they read, through formulas, and the crossing tolerance for the
+        time; zero for sides that read neither."""
+        found = 0.0
+        tolerance = self.run.recorder.tolerance
+        for part in parts:
+            expanded = self.plan.reads_now(self.plan.expansion(part))
+            if expanded.time:
+                found = max(found, self.plan.numerics.crossing)
+            for name in expanded.leaves:
+                found = max(found, tolerance.get(name, 0.0))
+        return found
+
     def band(self, *parts):
         """The tolerance of what the sides of a comparison read that moves between moments: the
         largest of their stores' and rates' tolerances, and of the crossing tolerance for the time."""
@@ -222,6 +272,7 @@ class Triggers:
         for name, node in trigger.captures:
             run.env[name] = run.truth(node)
         tx = Tx(trigger.member, stage=False)
+        tx.near = self.near(trigger.test, trigger.origin, run.now)
         moment.execute(trigger.body, tx, trigger.scope)
         state.armed, state.firings = False, state.firings + 1
         if trigger.reset is not None and trigger.reset[0] == 'after':

@@ -232,10 +232,26 @@ def store_rows(w):
     )
 
 
-def measures(state, xi, reference=None):
-    """The measures of an answer xi (working units, the instance's order) on the state's problem."""
+def engine_polished(state, xi):
+    """xi after the engine's polish (`timeline/declared.polished`, NEAR 1e-6, then clipped into the
+    bounds, as `DeclaredWay.answer` does), in working units; the first solve's order is the problem's."""
+    from napkin.engine.timeline.declared import polished
+
+    w = state['w']
+    arrays = w.arrays
+    x = arrays.positive_parts(w.author(np.asarray(xi, float)))
+    x = np.clip(polished(arrays, x, state['levels']), arrays.lower, arrays.upper)
+    return x[w.columns] / w.scale
+
+
+def measures(state, xi, reference=None, polish=True):
+    """The measures of an answer xi (working units, the instance's order) on the state's problem;
+    with `polish`, also the strict invariants after the engine's polish (keys 'p ...')."""
     w, face, levels, optima = state['w'], state['face'], state['levels'], state['optima']
     raw = np.asarray(xi, float)
+    if polish:
+        polished_reference = None if reference is None else engine_polished(state, reference)
+        after = measures(state, engine_polished(state, raw), polished_reference, polish=False)
     xi = positive(w, raw)
     out = {}
     out['rows'] = _row_miss(w.A, w.row_lower, w.row_upper, xi)[0]
@@ -285,6 +301,10 @@ def measures(state, xi, reference=None):
         diff = np.abs(xi - ref) / (1.0 + np.abs(ref))
         out['diff flows'] = float(diff[w.kind == FLOW].max(initial=0.0))
         out['diff others'] = float(diff[w.kind == OTHER].max(initial=0.0))
+    if polish:
+        for key in ('rows', 'bounds abs', 'level short', 'equal spread', 'books', 'books abs', 'diff flows'):
+            if key in after:
+                out[f'p {key}'] = after[key]
     return out
 
 

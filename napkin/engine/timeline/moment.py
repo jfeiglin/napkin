@@ -17,7 +17,9 @@ At a time, rounds. One round is:
    arguments are evaluated at the caller left to right when the statement runs, on one event or on
    each member of a collection in the order of its keys; `if`/`else`; and `switch` on an enum value,
    whose case guards are read before the selector: a draw or a choice as the selector picks among
-   the eligible outcomes (`chance.py`). A value that misses a bound by less than its tolerance is
+   the eligible outcomes (`chance.py`). A guard, an `if` and the guard of a case that were decided
+   within tolerance of their boundary are marked in the entry of the commit (`near`, triggers.py).
+   A value that misses a bound by less than its tolerance is
    put on the bound; one that misses it by more fails the run, and so does a move that does not fit.
    A commit publishes the stage's writes, traces its choices and registers the occurrences that it
    queued, in order; a failure discards the stage and stops the run. A player's choice that no pick
@@ -54,6 +56,17 @@ from ...program import parts as p
 from ...program.refs import Distribution, Formula
 from ..errors import SimulationError
 from .plan import FORMULA
+from .reads import lazily
+
+# The comparisons of a stage's test, exact, as functions of the difference of their sides.
+_EXACT = {
+    'le': lambda d: d <= 0,
+    'ge': lambda d: d >= 0,
+    'lt': lambda d: d < 0,
+    'gt': lambda d: d > 0,
+    'eq': lambda d: d == 0,
+    'ne': lambda d: d != 0,
+}
 
 _SETUP = 'setup'  # what a pause in the setup holds
 
@@ -83,11 +96,13 @@ class Tx:
         # A value that the stage gives a definition -> the statement that gives it its last: a
         # formula, or a captured number in place of a request's or a capacity's formula.
         self.defined = {}
+        self.near = ()  # the near-ties of its tests (`near_ties`)
 
     def details(self):
         """The details of the trace entry of the commit: the definitions that it gives, by the
-        statements that give them (`Plan.definitions_of`)."""
-        return {'defines': tuple(self.defined.items())} if self.defined else {}
+        statements that give them (`Plan.definitions_of`), and the near-ties of its tests."""
+        found = {'defines': tuple(self.defined.items())} if self.defined else {}
+        return found | ({'near': tuple(self.near)} if self.near else {})
 
 
 class _Moving:
@@ -212,7 +227,7 @@ class Moment:
         tx = Tx(made.id)
         tx.origin = step.origin
         run.chance.made = []
-        ran = step.guard is None or bool(self.truth(step.guard, made.scope, step.origin, tx))
+        ran = step.guard is None or self.test(step.guard, made.scope, step.origin, tx)
         if ran:
             try:
                 self.execute(step.body, tx, made.scope)
@@ -229,6 +244,43 @@ class Moment:
         """The value of an expression of a scope now, through a stage's own writes."""
         return self.run.truth(self.run.occurrences.node(expression, scope, origin), tx)
 
+    def test(self, expression, scope, origin, tx):
+        """The answer of a test of a stage (a guard, an `if`, the guard of a case), with its near-ties
+        added to the stage's (`near_ties`). They are found from the values that the answer
+        read, so no draw is made again; a boolean formula's comparisons are read through it."""
+        run = self.run
+        node = run.occurrences.node(expression, scope, origin)
+        seen = {}
+
+        def read(name):
+            seen[name] = found = run.value(name, tx=tx)
+            return found
+
+        answer = bool(lazily(node, read, self.plan.units, run.now))
+
+        def side(part):
+            return lazily(
+                part,
+                lambda name: seen[name] if name in seen else run.value(name, tx=tx),
+                self.plan.units,
+                run.now,
+            )
+
+        try:
+            near = near_ties(
+                node,
+                origin,
+                self.plan,
+                run.frozen,
+                side,
+                lambda op, difference, left, right: _EXACT[op](difference),
+                run.triggers.tolerance,
+            )
+        except (ExpressionError, ArithmeticError, LookupError):
+            near = ()  # a side that the answer did not read
+        tx.near = (*tx.near, *near)
+        return answer
+
     def execute(self, statements, tx, scope):
         """Run statements in order (see the module)."""
         for statement in statements:
@@ -240,7 +292,7 @@ class Moment:
             elif isinstance(statement, p.Start):
                 self.queue(statement, tx, scope)
             elif isinstance(statement, p.If):
-                test = bool(self.truth(statement.test, scope, statement.origin, tx))
+                test = self.test(statement.test, scope, statement.origin, tx)
                 self.execute(statement.then if test else statement.orelse, tx, scope)
             elif isinstance(statement, p.Switch):
                 self.execute(self.select(statement, tx, scope), tx, scope)
@@ -400,8 +452,7 @@ class Moment:
         With none eligible, the `else` body runs and nothing is drawn."""
         run, plan = self.run, self.plan
         eligible = [
-            case.guard is None or bool(self.truth(case.guard, scope, case.origin, tx))
-            for case in statement.cases
+            case.guard is None or self.test(case.guard, scope, case.origin, tx) for case in statement.cases
         ]
         tx.origin = statement.origin
         node = run.occurrences.node(statement.selector, scope, statement.origin)
@@ -508,3 +559,71 @@ class Moment:
                 run.tolerate(plan.flows[flow])
         run.settled()
         ways.build(made, values, t)
+
+
+def near_ties(node, origin, plan, frozen, side, holds, tolerance, later=None):
+    """The near-ties of a condition (see the module): (origin, comparison, difference, tolerance) of
+    each numeric comparison on the path of its answer, through boolean formulas, whose sides differ by
+    no more than `tolerance(left, right)`, and with `later`, still do an instant later. `side(node)` is
+    the value of a side and `holds(op, difference, left, right)` the answer of a comparison, as the
+    reader of the condition gives them; `and` and `or` stop at the term that decides, a conditional
+    takes its selected side."""
+    found = []
+
+    def truth(part):
+        if isinstance(part, nodes.Ref):
+            value = plan.values.get(part.name)
+            if value is not None and value.kind == FORMULA and value.boolean and part.name not in frozen:
+                return truth(value.node)
+            return bool(side(part))
+        if isinstance(part, nodes.BoolOp):
+            results = (truth(each) for each in part.values)
+            return all(results) if part.op == 'and' else any(results)
+        if isinstance(part, nodes.Unary) and part.op == 'not':
+            return not truth(part.operand)
+        if isinstance(part, nodes.IfElse):
+            return truth(part.body if truth(part.test) else part.orelse)
+        if isinstance(part, nodes.Compare):
+            return walk(part, keep=False)
+        return bool(side(part))
+
+    def walk(part, keep=True):
+        if isinstance(part, nodes.Ref):
+            value = plan.values.get(part.name)
+            if value is not None and value.kind == FORMULA and value.boolean and part.name not in frozen:
+                walk(value.node, keep)
+            return None
+        if isinstance(part, nodes.BoolOp):
+            for each in part.values:
+                walk(each, keep)
+                if truth(each) == (part.op == 'or'):
+                    break
+            return None
+        if isinstance(part, nodes.Unary) and part.op == 'not':
+            return walk(part.operand, keep)
+        if isinstance(part, nodes.IfElse):
+            walk(part.test, keep)
+            return walk(part.body if truth(part.test) else part.orelse, keep)
+        if not isinstance(part, nodes.Compare):
+            return None
+        for left, op, right in zip(part.operands, part.ops, part.operands[1:], strict=False):
+            a, b = side(left), side(right)
+            if isinstance(a, bool | str) or isinstance(b, bool | str):
+                if not ((a == b) if op == 'eq' else (a != b)):
+                    return False
+                continue
+            difference = float(a) - float(b)
+            band = tolerance(left, right)
+            if (
+                keep
+                and band > 0
+                and abs(difference) <= band
+                and (later is None or abs(later(left, right)) <= band)
+            ):
+                found.append((origin, nodes.text(part), difference, band))
+            if not holds(op, difference, left, right):
+                return False
+        return True
+
+    walk(node)
+    return tuple(dict.fromkeys(found))

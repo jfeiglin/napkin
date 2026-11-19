@@ -107,6 +107,11 @@ def method(state, label):
 if __name__ == '__main__':
     args = sys.argv[1:]
     run_method = '--method' in args
+    candidate = None
+    if '--candidate' in args:
+        i = args.index('--candidate')
+        candidate = args[i + 1]
+        del args[i : i + 2]
     tags = [a for a in args if not a.startswith('--')]
     for tag in tags:
         state = lab.read(tag)
@@ -117,3 +122,11 @@ if __name__ == '__main__':
             factor(joined, f'store rows merged ({count} pairs)')
             if run_method:
                 method(joined, 'store rows merged')
+            if candidate:
+                import qp
+
+                qp._clarabel_iterations()
+                clock = time.perf_counter()
+                xi, infos = qp.candidate(candidate, joined)
+                print(f'  store rows merged: {candidate} {time.perf_counter() - clock:.2f} s, '
+                      f'{[(i["status"], i["iterations"]) for i in infos]}; {lab.fmt(lab.measures(joined, xi))}', flush=True)

@@ -161,22 +161,27 @@ def test_the_scenario_line_gives_its_times_in_hours():
     assert (model.scenario.horizon, model.scenario.resolution) == (48, Fraction(1, 2))
 
 
-def test_a_construct_of_a_later_slice_is_kept_by_name():
+def test_a_status_display_keeps_its_cases_in_written_order_with_their_texts():
     model = declared(
         """
-        tank:
-            water: L = 8
-            refill = event():
-                after 1 h:
-                    this.water += 1 L
         Place:
             a: L = 1
+            status degraded when this.a < 1 L
+                "Low."
+            b: L = 2
             status ok
                 "Fine."
-        since_refill = formula(since(tank.refill))
         """
     )
-    assert [(part.path, part.slice) for part in model.deferred] == [('Place.status[1]', 'C')]
+    (place,) = model.entities
+    assert [part.path for part in place.parts] == ['Place.a', 'Place.b']
+    assert place.status.path == 'Place.status'
+    cases = [(case.path, case.rating, case.test is None, case.text) for case in place.status.cases]
+    assert cases == [
+        ('Place.status.case[0]', 'degraded', False, 'Low.'),
+        ('Place.status.case[1]', 'ok', True, 'Fine.'),
+    ]
+    assert model.part('Place.status.case[1]').text == 'Fine.'
 
 
 # ---- refusals -------------------------------------------------------------------------------------

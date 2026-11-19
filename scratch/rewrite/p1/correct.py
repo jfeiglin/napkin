@@ -119,6 +119,18 @@ def run(method, tol, fix, deep):
         eps_start = float(parts[2]) if len(parts) > 2 else distance.EPS_START
         distance.select = hybrid.replacement(ipm, eps_start)
         skip = FALLBACK
+    elif method == 'ldl':
+        import ldl
+
+        ldl.use()
+    elif method.startswith('polish'):
+        import polish
+        import qp
+
+        qp._clarabel_iterations()
+        ipm = method.split(':')[1] if ':' in method else 'clarabel'
+        distance.select = polish.replacement(ipm)
+        skip = FALLBACK
     elif method.startswith('loose:'):
         # loose:TOL[:FIX[:DISTANCE TOL]]: the library with its fair programs at the primal tolerance
         # TOL, its held floors' slack FIX (default 10 x TOL) and its distance rows to DISTANCE TOL
@@ -150,7 +162,7 @@ def run(method, tol, fix, deep):
                 ok = True
             except AssertionError:
                 ok = False
-            except (SolveFailure, ValueError, ZeroDivisionError) as error:
+            except Exception as error:  # a stop by name, or a solver that raised
                 ok = False
                 stopped[name] = stopped.get(name, 0) + 1
                 failures.append((name, kwargs, type(error).__name__, str(error)[:200]))

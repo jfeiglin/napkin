@@ -24,7 +24,9 @@ with legs at one served fraction; events with their occurrences, stages, trigger
 the retirement of an occurrence's stores; draws in stages and in events under the modes `median`
 and `sampled`, inputs that are distributions, actors' choices with their controllers, picks and the
 pause of one stage, assertions over state and `elapsed` (`chance.py`); declared solvers
-(`declared.py`); and the definitions that stages give formulas, requests and capacities. The
+(`declared.py`); the definitions that stages give formulas, requests and capacities; and status
+displays, whose record is the case that applies (`plan.py`). A firing or a test of a stage decided
+within tolerance of its boundary is marked in its trace entry as a near-tie (`triggers.py`). The
 members of each template are rows of a pool (`pools.py`); collections and
 reductions are in `collections.py`. The flows and the stores are one network (`network.py`), whose
 local sharing at an instant is a closed form or the selection order (`selection.py`). A connected

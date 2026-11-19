@@ -44,7 +44,9 @@ The codes:
   family or the wrong parameters.
 - `collection`, `duplicate_literal`, `where_live`: one thing where a collection is needed or the
   reverse; a member twice in a literal; a `where` that tests a member's live state.
-- `status_fallback`: a status display whose last case is not its one unconditional case.
+- `status_fallback`: a status display whose last case is not its one unconditional case; and
+  `duplicate_name` for a template with a display and a part named `status`, which the record of a
+  member's display takes (`member.status`).
 - `arguments`: a start with another number of arguments than its event has parameters.
 """
 
@@ -1052,6 +1054,10 @@ class _Checker(Resolver):
                 )
 
     def status(self, status, scope):
+        if scope.template.part('status') is not None:
+            self.fail(
+                'duplicate_name', status.origin, 'a template with a status display has no part named status'
+            )
         for index, case in enumerate(status.cases):
             if case.rating not in p.RATINGS:
                 self.fail('kind', case.origin, f'a rating is one of {", ".join(p.RATINGS)}')

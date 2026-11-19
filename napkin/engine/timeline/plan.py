@@ -23,6 +23,10 @@ continuous engine and the record read these names; nothing reads the spelling of
   order of what it reads. A formula, a reduction, a keyed read, and a request or a capacity written
   as a formula, is evaluated at each read. A request left out is zero; a capacity left out sets no
   limit and has no value.
+- **Status displays.** A member's status display is the formula `member.status` (key `('status',)`),
+  whose value is the text `case[k]` of the case that applies: the first whose condition holds, else
+  the last. The run reads it nowhere; the record follows it, and a report reads the rating and the
+  text of its case.
 - **Draws and choices** (`Drawn`, `Chosen`, `chance.py`) are named by their owner and their site
   (`machine.check#0|machine.check.step[0].do[0].draw[0]`): the member, the occurrence or the trigger
   that executes them (`''` for the root and the setup). A draw of a path reads the present
@@ -546,6 +550,8 @@ class Plan:
         for scope in members:
             for value in scope[0].values:
                 self._declare(value, scope)
+            if scope[0].status is not None:
+                self._declare_status(scope[0].status, scope)
         for scope in members:
             for flow in scope[0].flows:
                 self._declare_flow(flow, scope)
@@ -583,8 +589,7 @@ class Plan:
     def _refuse_parts(self):
         """The assignment of a collection in a stage, which the language does not have: a
         collection's members are links to them, fixed for the run. The controllers and the picks of
-        the configuration must name members and the sites of choices. A status display is text for a
-        report, which reads its cases over the record: the run computes nothing of it."""
+        the configuration must name members and the sites of choices."""
         program = self.program
         for origin, statement in _program_statements(program):
             if isinstance(statement, p.Assign) and isinstance(statement.value, Path):
@@ -766,6 +771,25 @@ class Plan:
             )
 
         self._add(Value(name, key, kind, None, unit, boolean))
+        self._declared.append(make)
+
+    def _declare_status(self, status, scope):
+        """The status display of one member: a formula whose value is the text `case[k]` of the first
+        case whose condition holds, the last case's when none does, so the record follows the case that
+        applies at each time, as it follows any formula, and a report reads its rating and its text."""
+        key = Key(scope[2].id, ('status',))
+        name = name_of(key)
+
+        def make():
+            node = nodes.const(f'case[{len(status.cases) - 1}]')
+            for k in range(len(status.cases) - 2, -1, -1):
+                case = status.cases[k]
+                node = nodes.if_else(
+                    self.node(case.test, scope, case.origin), nodes.const(f'case[{k}]'), node
+                )
+            self.values[name] = Value(name, key, FORMULA, node)
+
+        self._add(Value(name, key, FORMULA, None))
         self._declared.append(make)
 
     def _declare_distribution(self, value, scope, name, init):

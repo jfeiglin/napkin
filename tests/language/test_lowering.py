@@ -1,7 +1,8 @@
 """The lowering (`napkin/model/lowering.py`) and the entry point (`napkin/model/compile.py`): the text of
 each example of `tests/program/examples.py` that this slice lowers gives a program with the canonical
-bytes of the example's; inputs that draw their default lower as the examples build them; a construct of
-a later slice is refused by name; and the migrated piano tuners load, lower and pass `finish()`."""
+bytes of the example's; inputs that draw their default lower as the examples build them; a status
+display lowers as the builder writes one; and the migrated piano tuners load, lower and pass
+`finish()`."""
 
 import textwrap
 from fractions import Fraction
@@ -13,6 +14,7 @@ from napkin.model.compile import compile_text, library_units, load_scenario
 from napkin.model.language.format import format_text
 from napkin.model.language.problems import LanguageError
 from napkin.model.lowering import _located
+from napkin.program import build
 from napkin.program import parts as p
 from napkin.program.build import (
     SOURCE,
@@ -304,23 +306,37 @@ def test_a_distribution_valued_value_keeps_its_type():
     assert (found.kind, found.type) == (p.DISTRIBUTION, dist_of('L/h'))
 
 
-@pytest.mark.parametrize(
-    ('text', 'construct', 'slice_'),
-    [
-        ('c:\n    status ok\n        "Fine."\n', 'a status display', 'C'),
-        ('x = 1\ny = formula(x.mean)\n', None, None),
-    ],
-)
-def test_a_construct_of_a_later_stage_is_refused_by_name(text, construct, slice_):
+def test_a_status_display_lowers_as_the_builder_writes_it():
+    """Spec, "Model text, status cases and evidence": the crew's three cases, in written order, the
+    last with no condition."""
+    text = """
+        crew:
+            work_state: enum[WAITING, WORKING, DONE] = WAITING
+            status ok when this.work_state == DONE
+                "Repairs are complete."
+            status degraded when this.work_state == WORKING
+                "Crews are carrying out repairs."
+            status degraded
+                "Crews are waiting for access."
+        """
+    b = Builder(UNITS)
+    states = b.enum('enum[WAITING, WORKING, DONE]', 'WAITING', 'WORKING', 'DONE')
+    b.entity(
+        'crew',
+        value('work_state', states, states.WAITING),
+        build.status(
+            build.rating('ok', this.work_state == states.DONE),
+            build.rating('degraded', this.work_state == states.WORKING),
+            build.rating('degraded'),
+        ),
+    )
+    assert same(compiled(text).program, b.finish())
+
+
+def test_the_mean_of_what_is_no_distribution_names_nothing():
     with pytest.raises(LanguageError) as caught:
-        compiled(text)
-    if construct is None:
-        assert caught.value.codes == ['unknown_name']
-        return
-    assert caught.value.codes == ['later_slice'], caught.value
-    message = caught.value.problems[0].message
-    assert construct in message and f'({slice_})' in message
-    assert caught.value.problems[0].line >= 1
+        compiled('x = 1\ny = formula(x.mean)\n')
+    assert caught.value.codes == ['unknown_name']
 
 
 @pytest.mark.parametrize(

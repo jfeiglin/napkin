@@ -20,6 +20,8 @@ pieces of each value of a run:
 - **The family** (`family.py`) gives exact lines: a piece of each store and of each actual rate at
   each change of its line, and a piece of a request or a capacity that is a formula at each change
   of its value.
+- **A status display** of a member (`member.status`) is a formula whose value is the text `case[k]`
+  of the case that applies (`plan.py`), made as a formula of a text is.
 - **A keyed read by the time on fixed keys** has, over each of its key intervals, the pieces of the
   value of the member that it selects there; below its first key it holds `Unavailable`. Any other
   keyed read is made from the histories of what can change of what it reads (its key, and what its
@@ -686,6 +688,8 @@ def unit_of(program, key):
     elif key.owner:
         template = program.member(key.owner)[0]
         part = template.part(key.steps[0])
+        if part is None and key.steps == ('status',) and template.status is not None:
+            return '', 1.0  # a status display: the text of the case that applies
     else:
         part = program.root_value(key.steps[0])
     if part is None:

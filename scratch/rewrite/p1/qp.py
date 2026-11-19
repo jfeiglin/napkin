@@ -40,6 +40,7 @@ METHODS = {
     'piqp': ('piqp', dict(backend='sparse')),
     'piqp-tight': ('piqp', dict(backend='sparse', eps_abs=1e-10, eps_rel=1e-11)),
     'piqp-loose': ('piqp', dict(backend='sparse', eps_abs=1e-6, eps_rel=1e-7)),
+    'piqp-long': ('piqp', dict(backend='sparse', max_iter=1000)),
     'osqp': ('osqp', dict(eps_abs=1e-6, eps_rel=1e-6, max_iter=200_000, polishing=True, time_limit=840)),
     'osqp-tight': ('osqp', dict(eps_abs=1e-9, eps_rel=1e-9, max_iter=400_000, polishing=True, time_limit=840)),
 }
@@ -104,6 +105,12 @@ def candidate_stage(name, A, row_lower, row_upper, lower, upper, target, weight,
     clock = time.perf_counter()
     form = reduced(A, row_lower, row_upper, lower, upper, target, weight)
     formed = time.perf_counter() - clock
+    if not len(form['free']):  # every column fixed: nothing to solve (OSQP refuses n = 0)
+        info = dict(found=True, status='empty', iterations=0, formed=formed, solve=0.0, build=0.0, free=0, rows=(0, 0))
+        if duals:
+            form['y'] = np.zeros(len(form['rows']))
+            return form['x'].copy(), info, form
+        return form['x'].copy(), info
     problem = qpsolvers.Problem(
         sp.csc_matrix(form['P']),
         form['q'],

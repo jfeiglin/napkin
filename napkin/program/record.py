@@ -22,6 +22,11 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   reads), and the member or occurrence that executes it. Its part is the origin of the event for a
   start and a finish, of the step for a commit, of the trigger for a firing, of the statement for
   a move and a pause, of the solver for a solve, and the site for a draw and a choice.
+- **A near-tie** (change 10) is the detail `near` of a firing or a commit that was decided within
+  tolerance of its boundary: one (origin, comparison, difference, tolerance) for each comparison of
+  a trigger, a guard, an `if` or the guard of a case whose sides differed by no more than the
+  tolerance of what they read, in canonical units (`Record.near_ties`). The engine detects it and
+  computes nothing more precisely.
 """
 
 from __future__ import annotations
@@ -172,3 +177,8 @@ class Record:
             for entry in self.trace
             if (kind is None or entry.kind == kind) and (part is None or entry.part == part)
         )
+
+    def near_ties(self):
+        """Each near-tie of the run, in the order of the trace: (its entry, (origin, comparison,
+        difference, tolerance))."""
+        return tuple((entry, tie) for entry in self.trace for tie in entry.detail('near') or ())

@@ -415,7 +415,7 @@ def run(tag, variant, tol, fix, repeat, after_distance):
             if variant == 'library':
                 from napkin.engine.solve import fair
 
-                fair.TIGHT, fair.FIX = tol, fix
+                fair.TIGHT, fair.FIX, fair.UPDATES = tol, fix, UPDATES
                 problem = lab.scenario_problem(*_scenario(tag)) if tag.startswith('bench') else lab.engine_problem(int(tag.split('-')[1]))
                 done = lab.prefix(problem)
                 levels, face, work = done['levels'], done['face'], done['work']
@@ -436,7 +436,7 @@ def run(tag, variant, tol, fix, repeat, after_distance):
         all(r[0] is not None and np.array_equal(r[0], levels) for r in results[1:]) if repeat > 1 else None
     )
     record = dict(
-        tag=tag, variant=variant, tol=tol, fix=fix, seconds=min(times), all=times, repeat=repeat,
+        tag=tag, variant=variant, tol=tol, fix=fix, updates=UPDATES, seconds=min(times), all=times, repeat=repeat,
         bitwise=same, failure=failure, programs=work.fair_programs, levels=work.levels,
         iterations=work.iterations, tight=work.tight, renewals=work.renewals, report=report,
         load=lab.load(), version=lab.library_version(),
@@ -450,13 +450,13 @@ def run(tag, variant, tol, fix, repeat, after_distance):
         record['near tie count'] = int(len(flips))
         if after_distance:
             sub = dict(state, face=face, levels=levels)
-            if after_distance == 'clarabel':
-                import qp
+            import qp
 
+            if after_distance in qp.METHODS:
                 qp._clarabel_iterations()
                 clock = time.perf_counter()
-                xi, infos = qp.candidate('clarabel', sub)
-                record['distance'] = dict(method='clarabel', seconds=time.perf_counter() - clock, infos=infos)
+                xi, infos = qp.candidate(after_distance, sub)
+                record['distance'] = dict(method=after_distance, seconds=time.perf_counter() - clock, infos=infos)
             else:
                 xi, dwork, dseconds = lab.library_distance(sub)
                 record['distance'] = dict(method='library', seconds=dseconds, newton=dwork.newton)
@@ -489,6 +489,7 @@ if __name__ == '__main__':
             return value
         return default
 
+    UPDATES = option('--updates', UPDATES, int)
     tol = option('--tol', 1e-10, float)
     fix = option('--fix', 1e-7, float)
     repeat = option('--repeat', 1, int)
