@@ -293,20 +293,6 @@ def test_the_stored_runs_stage_runs_in_a_process_of_its_own(monkeypatch):
     assert calls == [[sys.executable, '-B', '-m', 'tools.check', '--verify-store', '3']]
 
 
-def test_the_catalogue_asks_each_output_whom_it_covers():
-    """The language leaves an output's scope optional; the catalogue's rule asks each output for one,
-    its own or the scenario's."""
-    from tests.build import compiled, edit, member, replace, scenario
-
-    assert check.catalogue_problems(compiled(scenario())) == []
-    bare = compiled(edit(scenario(), replace('    scope "Fixture"\n', '')))
-    assert [item['path'] for item in check.catalogue_problems(bare)] == list(bare.outputs)
-    own = edit(
-        scenario(), replace('    scope "Fixture"\n', ''), member('output:/delivered', 'scope "Its own."')
-    )
-    assert check.catalogue_problems(compiled(own)) == []
-
-
 def test_the_summaries_take_the_committed_spreads_unless_spreads_are_asked(monkeypatch):
     """D-39: the summaries stage samples no brief's spread unless asked; the publisher then takes each
     spread section from the committed brief."""

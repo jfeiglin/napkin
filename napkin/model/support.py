@@ -53,7 +53,9 @@ def _value(value, thing):
 
 
 def _warning(path, what, line, file=''):
-    return Problem(CODE, f'{path}: {what} rests on no record: cite one (@name) or write one under it', line, 0, file)
+    return Problem(
+        CODE, f'{path}: {what} rests on no record: cite one (@name) or write one under it', line, 0, file
+    )
 
 
 def unsupported(model):

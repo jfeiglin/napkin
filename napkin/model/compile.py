@@ -42,6 +42,7 @@ from .language.problems import LanguageError, Problem, SyntaxProblem
 from .language.tables import in_folder, in_memory
 from .lowering import lower, reports, side_table
 from .semantic import DeclaredModel, Files, declare
+from .support import unsupported
 
 HORIZON = 'the scenario line gives the horizon of the default run: horizon 30 days'
 LIBRARY = 'a variant reads the library of its package: the main file names it'
@@ -51,8 +52,9 @@ LIBRARY = 'a variant reads the library of its package: the main file names it'
 class Compiled:
     """A model as the front end gives it: its declared model, its program, the configuration of one
     of its runs (None for a text with no horizon), the setup's reports (`lowering.reports`), each a
-    `Problem` at its place that refuses nothing (equal keys in a keyed view that `.at(...)` reads, and a
-    lookup below its first key at a known lower bound), and its hash (`identity.model_hash`). `base` is
+    `Problem` at its place that refuses nothing (equal keys in a keyed view that `.at(...)` reads, a
+    lookup below its first key at a known lower bound, and each part that rests on no record,
+    `support.unsupported`), and its hash (`identity.model_hash`). `base` is
     the configuration of its default run, from which `configure` makes another run's. `table` is the
     program's side table, which no hash covers."""
 
@@ -110,7 +112,8 @@ def _compiled(tree, units, reader, files, file, run, edits):
     except LanguageError as error:
         raise LanguageError(placed(error.problems), file) from None
     base = default_run(declared)
-    found = tuple(replace(item, file=item.file or file) for item in placed(reports(declared, program)))
+    setup = (*reports(declared, program), *unsupported(declared))
+    found = tuple(replace(item, file=item.file or file) for item in placed(setup))
     table = side_table(declared, program, file)
     compiled = Compiled(declared, program, base, found, model_hash(declared, program, base), base, table)
     if run is not None or edits is not None:

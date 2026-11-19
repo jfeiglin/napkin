@@ -459,8 +459,11 @@ READ_AT = """
 
 
 def reported(text, **files):
+    """The setup's reports of a text, without the warnings of the evidence rule (its values cite no
+    record: `tests/language/test_evidence_rule.py`)."""
     found = compile_text(textwrap.dedent(text), UNITS, tables=files)
-    return [(item.code, item.file, item.line) for item in found.reports], found.reports
+    shown = tuple(item for item in found.reports if item.code != 'no_record')
+    return [(item.code, item.file, item.line) for item in shown], shown
 
 
 def test_equal_keys_under_at_are_reported_at_the_row_that_wins():
