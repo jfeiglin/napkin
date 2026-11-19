@@ -1,8 +1,9 @@
 """The analysis of a run's dynamics: its field, equilibria, branches, basins and sensitivity
 (docs/python-api.md, "Dynamics").
 
-The analysis reads the engine's own field of a compiled run, so the equations that it analyses are the
-equations that the engine runs. It gives data, never a figure, and changes no model or result.
+The analysis reads the engine's own field of a program's run under a configuration (the instances of
+the ways of its connected sets that move), so the equations that it analyses are the equations that
+the engine runs. It gives data, never a figure, and changes no program or record.
 """
 
 from .basins import Threshold, input_threshold, state_threshold, threshold
@@ -19,8 +20,8 @@ from .equilibria import (
     equilibrium_at,
     newton,
 )
-from .field import OutsideDomain, VectorField, vector_field
-from .sensitivity import Factor, MorrisResult, SobolResult, factors_from_model, model_function, morris, sobol
+from .field import OutsideDomain, VectorField, configured, started, value_at, vector_field
+from .sensitivity import Factor, MorrisResult, SobolResult, input_factors, morris, run_function, sobol
 
 __all__ = [
     'NONHYPERBOLIC',
@@ -41,17 +42,20 @@ __all__ = [
     'Threshold',
     'VectorField',
     'classify',
+    'configured',
     'continue_equilibrium',
     'equilibria',
     'equilibrium_at',
-    'factors_from_model',
     'fold_curve',
+    'input_factors',
     'input_threshold',
-    'model_function',
     'morris',
     'newton',
+    'run_function',
     'sobol',
+    'started',
     'state_threshold',
     'threshold',
+    'value_at',
     'vector_field',
 ]

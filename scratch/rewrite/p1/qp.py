@@ -82,11 +82,16 @@ def reduced(A, row_lower, row_upper, lower, upper, target, weight):
         ub=upper[free],
         free=free,
         x=x,
+        rows=np.flatnonzero(keep),
+        equal=equal,
+        up=up,
+        down=down,
     )
 
 
-def candidate_stage(name, A, row_lower, row_upper, lower, upper, target, weight):
-    """One stage by the candidate `name`; gives (x, info)."""
+def candidate_stage(name, A, row_lower, row_upper, lower, upper, target, weight, duals=False):
+    """One stage by the candidate `name`; gives (x, info), and with `duals` also the dual of each
+    kept row in the library's sign (W(x - c) + B'y = 0 on the free columns) and the form."""
     import qpsolvers
 
     solver, options = METHODS[name]
@@ -115,7 +120,17 @@ def candidate_stage(name, A, row_lower, row_upper, lower, upper, target, weight)
         status, iterations = str(info.status).split('.')[-1], int(info.iter)
     else:
         status, iterations = str(info.status), int(info.iter)
-    return x, dict(
+    if duals:
+        y = np.zeros(len(form['rows']))
+        if form['A'] is not None and solution.y is not None:
+            y[form['equal']] = solution.y
+        if form['G'] is not None and solution.z is not None:
+            z = np.asarray(solution.z)
+            k = int(form['up'].sum())
+            y[form['up']] += z[:k]
+            y[form['down']] -= z[k:]
+        form['y'] = y
+    info = dict(
         found=bool(solution.found),
         status=status,
         iterations=iterations,
@@ -125,6 +140,7 @@ def candidate_stage(name, A, row_lower, row_upper, lower, upper, target, weight)
         free=len(form['free']),
         rows=(0 if form['A'] is None else form['A'].shape[0], 0 if form['G'] is None else form['G'].shape[0]),
     )
+    return (x, info, form) if duals else (x, info)
 
 
 def candidate(name, state):

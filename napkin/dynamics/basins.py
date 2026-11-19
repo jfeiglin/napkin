@@ -3,18 +3,17 @@
 Where a run has two stable equilibria, the set of start states and inputs from which it reaches each
 one is its basin. `threshold` finds, by bisection, the value of one number at which the class of a run's
 end changes: the smallest surge that tips a run into the other basin, or the start value on the
-boundary between the basins. Each evaluation is a run of the engine, with every check of a study, so a
-threshold rests on the dynamics as they run, not on the linear part at an equilibrium.
+boundary between the basins. Each evaluation is a run of the engine (`napkin.engine.run`), with every
+check of its start, so a threshold rests on the dynamics as they run, not on the linear part at an
+equilibrium. A run that fails stops the search with its failure: no class is guessed for it.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..core import expr as nodes
-from ..engine.runtime import simulate
-from ..engine.study import edits_for, evaluate_study
-from ..model.ir import thaw
+from ..engine.timeline import run
+from .field import configured, started
 
 
 @dataclass(frozen=True)
@@ -53,35 +52,30 @@ def threshold(evaluate, classify, low, high, *, tol, max_iterations=200):
     return Threshold(low, high, below, above, count)
 
 
-def input_threshold(model, run, name, low, high, classify, *, tol, values=None, numerical_settings=None):
-    """The value of the input `name` (in its own unit) where the class of the run's end changes.
-    `classify` reads the completed run `{'resolved', 'trajectory'}` of a study."""
+def _record(program, configuration, what):
+    """The record of a run that reaches its horizon; a run that fails raises its failure."""
+    record = run(program, configuration)
+    if record.failure is not None:
+        raise ValueError(f'The run with {what} fails: {record.failure.detail("message")}')
+    return record
+
+
+def input_threshold(program, configuration, name, low, high, classify, *, tol):
+    """The value of the input `name` (in its declared unit) where the class of the run's end changes.
+    `classify` reads the record of the run (`napkin.engine.read` gives its values)."""
 
     def evaluate(value):
-        edits = edits_for(model, {'runs': {run: {**dict(values or {}), name: value}}})
-        study = evaluate_study(model, edits, numerical_settings, runs=[run])
-        if not study.admissible:
-            raise ValueError(f'The study rejects {name} = {value}: {study.diagnostics[:1]}')
-        return study.runs[run]
+        return _record(program, configured(program, configuration, {name: value}), f'{name} = {value}')
 
     return threshold(evaluate, classify, low, high, tol=tol)
 
 
-def state_threshold(model, run, quantity, low, high, classify, *, tol, values=None, numerical_settings=None):
-    """The start value of `quantity` (in its own unit) where the class of the run's end changes.
-    `classify` reads the trajectory. The start value replaces the quantity's start expression, and the
-    engine checks the bounds at t = 0."""
-    rs = model.resolve(run, values)
-    library = thaw(model.library)
-    quantities = rs.quantities
-    if quantity not in quantities:
-        raise KeyError(f'{quantity} is not a quantity of the run')
-
-    unit = quantities[quantity].unit
+def state_threshold(program, configuration, path, low, high, classify, *, tol):
+    """The start value of the stored value `path` (in its declared unit) where the class of the run's
+    end changes. `classify` reads the record of the run. The start value replaces the store's
+    initializer (`started`), and the engine checks its bounds at the start."""
 
     def evaluate(value):
-        initial = nodes.call('q', [nodes.written(float(value)), nodes.const(unit)])
-        start = quantities[quantity].changed(initial=initial)
-        return simulate(rs.with_part('quantities', quantity, start), library, numerical_settings)
+        return _record(started(program, {path: value}), configuration, f'{path} starting at {value}')
 
     return threshold(evaluate, classify, low, high, tol=tol)

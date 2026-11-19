@@ -154,10 +154,16 @@ def prefix(problem, share=None, budget=None):
     )
 
 
+BUDGET_PROGRAMS = 5000  # the fair-sharing budget of the exports, as `bench.py --fair-programs 5000`
+
+
 def export(problem, tag):
-    """`prefix` with the library's fair sharing, pickled as DATA/tag.pkl (without the instance)."""
+    """`prefix` with the library's fair sharing, pickled as DATA/tag.pkl (without the instance). The
+    fair-sharing budget is BUDGET_PROGRAMS (the default 1,000 stops need x1.45 and x1.7 at 30,000)."""
+    from napkin.engine.solve import Budget
+
     clock = time.perf_counter()
-    state = prefix(problem)
+    state = prefix(problem, budget=Budget(fair_programs=BUDGET_PROGRAMS))
     state.pop('solver')
     state['version'] = library_version()
     state['load'] = load()

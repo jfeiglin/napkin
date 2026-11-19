@@ -1,11 +1,13 @@
 """Branches of equilibria as an input or the time changes (docs/python-api.md, "Dynamics").
 
 `continue_equilibrium` follows one branch of equilibria of a run as one parameter moves through a span:
-an input of the model, which each new value resolves again, or the time `t` at which the field is read,
-with the discrete values frozen. The time costs no resolution, so it is the cheap way to follow
-equilibria along drivers that the model writes as formulas of `t`.
+an input of the program, which gives each value a field of its own (a run that starts again with the
+configuration that sets it), or the time `t` at which the field is read, with every value that holds
+between moments at its start. The time costs no new start, so it is the cheap way to follow
+equilibria along drivers that the program writes as formulas of `t`. A value that the run refuses at
+its start (an input outside its range, an assertion over inputs that fails) is `Inadmissible`.
 
-The branch is followed by pseudo-arclength continuation, in units of each quantity's size and of the
+The branch is followed by pseudo-arclength continuation, in units of each store's size and of the
 span, so that it passes through a fold, where it turns back in the parameter. A fold is where the
 parameter part of the branch's tangent changes sign: on one side of it two equilibria exist, on the
 other side none. A Hopf point is where a pair of complex eigenvalues crosses zero: there an equilibrium
@@ -33,24 +35,28 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..model.ir import ModelError, thaw
+from ..core.errors import ExpressionError
+from ..engine.errors import SimulationError
+from ..program.config import ConfigurationError
 from .equilibria import NEUTRAL, classify, newton, solve
-from .field import OutsideDomain, VectorField
+from .field import OutsideDomain, vector_field
 
 TIME = 't'
 # A unit tangent whose parameter part is at most this is at a corner of the branch, when the tangent
 # before it had more.
 CORNER = 1e-9
+# What the start of a run raises for a value of the parameter that the program refuses.
+REJECTED = (ConfigurationError, SimulationError, ExpressionError)
 
 
 class Inadmissible(ValueError):
-    """The model rejects a value of the parameter."""
+    """The program refuses a value of the parameter: its run fails at its start."""
 
 
 @dataclass(frozen=True)
 class Point:
     parameter: float
-    state: np.ndarray  # active values, execution units
+    state: np.ndarray  # active values, canonical units
     eigenvalues: np.ndarray  # per hour, the neutral modes included
     stability: str  # on the directions other than the neutral ones
     neutral: int = 0  # the number of neutral modes: directions along which the equilibrium continues
@@ -75,13 +81,13 @@ class Branch:
 
 
 class Family:
-    """The fields of one run as its parameter takes values: an input (resolved again for each value,
-    in its own unit) or the time `t` (hours)."""
+    """The fields of one program as its parameter takes values: an input, in its declared unit, which
+    gives each value a field of its own (`vector_field`), or the time `t` (hours), at which one field
+    is read. `values` gives other inputs their values."""
 
-    def __init__(self, model, run, parameter, *, values=None, state=None, store=None, t=0.0, cache=128):
-        self.model, self.run, self.parameter = model, run, parameter
-        self.values, self.state, self.store, self.t = dict(values or {}), state, store, float(t)
-        self.library = thaw(model.library)
+    def __init__(self, program, configuration, parameter, *, values=None, t=0.0, cache=128):
+        self.program, self.configuration, self.parameter = program, configuration, parameter
+        self.values, self.t = dict(values or {}), float(t)
         self.cache = cache
         self._fields = OrderedDict()
         self.fixed = self.build(None) if parameter == TIME else None
@@ -91,10 +97,9 @@ class Family:
         if value is not None:
             values[self.parameter] = value
         try:
-            rs = self.model.resolve(self.run, values)
-        except ModelError as exc:
+            return vector_field(self.program, self.configuration, values)
+        except REJECTED as exc:
             raise Inadmissible(str(exc)) from exc
-        return VectorField(rs, self.library, state=self.state, store=self.store)
 
     def field(self, p):
         if self.fixed is not None:
@@ -117,7 +122,7 @@ class Family:
 
 
 class _Scaled:
-    """The field of a family in units of each quantity's size (z) and of the span (q)."""
+    """The field of a family in units of each store's size (z) and of the span (q)."""
 
     def __init__(self, family, start, span):
         self.family = family
@@ -165,7 +170,7 @@ class _Scaled:
     def eigenvalues(self, jz, neutral=None):
         """(all, transverse): the eigenvalues of the field's derivative per hour, and those on the
         directions other than the rows of `neutral` (directions of u; their parts in z count). z only
-        rescales the quantities, so the eigenvalues of dG/dz are the horizon times those of the field."""
+        rescales the stores, so the eigenvalues of dG/dz are the horizon times those of the field."""
         if not jz.size:
             return np.array([]), np.array([])
         values = np.linalg.eigvals(jz) / self.horizon
@@ -308,16 +313,23 @@ def _step_over(scaled, u, v, neutral, ds, longest, tol):
     return None
 
 
+def _refused(scaled, u):
+    """Whether the program refuses the value of the parameter at the point u."""
+    try:
+        scaled.family.field(scaled.p(u[-1]))
+    except Inadmissible:
+        return True
+    return False
+
+
 def continue_equilibrium(
-    model,
-    run,
+    program,
+    configuration,
     parameter,
     span,
     *,
     start=None,
     values=None,
-    state=None,
-    store=None,
     t=0.0,
     step=0.01,
     max_step=0.05,
@@ -325,15 +337,16 @@ def continue_equilibrium(
     max_points=2000,
     tol=1e-9,
 ):
-    """The branch of equilibria of `run` through the active state `start` (execution units; by
-    default the run's start), from the equilibrium that the search (`newton`) reaches there, as
-    `parameter`, an input or 't', moves from span[0] to span[1]. Steps are in units of the span and of
-    each quantity's size. The branch stops when the parameter leaves the span ('span'), when a quantity
-    that was not on a bound reaches one ('bound'), when the model rejects a value ('inadmissible'), when
-    the step falls below `min_step` ('step'), after `max_points` points ('points') or at a corner that it
-    cannot step over ('kink'). A quantity on a bound at the start of the branch, such as a stock that is
+    """The branch of equilibria of a program's run through the active state `start` (canonical units;
+    by default the run's start), from the equilibrium that the search (`newton`) reaches there, as
+    `parameter`, an input or 't', moves from span[0] to span[1]; `values` gives other inputs their
+    values. Steps are in units of the span and of each store's size. The branch stops when the
+    parameter leaves the span ('span'), when a store that was not on a bound reaches one ('bound'),
+    when the program refuses the value beyond the last point ('inadmissible'), when the step falls
+    below `min_step` elsewhere ('step'), after `max_points` points ('points') or at a corner that it
+    cannot step over ('kink'). A store on a bound at the start of the branch, such as a stock that is
     empty by construction, does not stop it while it stays there."""
-    family = Family(model, run, parameter, values=values, state=state, store=store, t=t)
+    family = Family(program, configuration, parameter, values=values, t=t)
     scaled = _Scaled(family, span[0], span)
     base = scaled.reference
     x0 = base.start if start is None else np.asarray(start, dtype=float)
@@ -350,7 +363,7 @@ def continue_equilibrium(
     branch.points.append(
         Point(scaled.p(u[-1]), u[:-1] * scaled.scale, eigenvalues, classify(transverse), len(neutral))
     )
-    # The quantities on a bound at the start: the branch stops only when another one reaches a bound.
+    # The stores on a bound at the start: the branch stops only when another one reaches a bound.
     pinned = set(base.at_bound(x0))
 
     def ended(u, x):
@@ -373,7 +386,7 @@ def continue_equilibrium(
         if not ok:
             ds /= 2
             if ds < min_step:
-                branch.stop = 'step'
+                branch.stop = 'inadmissible' if _refused(scaled, u + 2 * ds * v) else 'step'
                 break
             continue
         v_new, neutral_new = _tangent(augmented_new, v)
@@ -422,14 +435,21 @@ def continue_equilibrium(
     return branch
 
 
-def fold_curve(model, run, parameter, span, second, grid, *, values=None, **options):
+def fold_curve(program, configuration, parameter, span, second, grid, *, values=None, **options):
     """[(value of `second`, [the parameter at each fold of the branch])] for each value of the input
-    `second` on `grid`: the edges of the region where the run has several equilibria."""
+    `second` on `grid`: the edges of the region where the run has several equilibria. A value of
+    `second` with no branch (no equilibrium at the start of the span, or a value that the program
+    refuses) gives None."""
     rows = []
     for value in grid:
         try:
             branch = continue_equilibrium(
-                model, run, parameter, span, values={**dict(values or {}), second: value}, **options
+                program,
+                configuration,
+                parameter,
+                span,
+                values={**dict(values or {}), second: value},
+                **options,
             )
         except (ValueError, Inadmissible):
             rows.append((float(value), None))

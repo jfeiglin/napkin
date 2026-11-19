@@ -109,6 +109,16 @@ def run(method, tol, fix, deep):
         import fairs
 
         fair.share = fairs.library_share(method[5:], tol, fix)
+    elif method.startswith('hybrid'):
+        import hybrid
+        import qp
+
+        qp._clarabel_iterations()
+        parts = method.split(':')  # hybrid[:ipm[:eps]]
+        ipm = parts[1] if len(parts) > 1 else 'clarabel'
+        eps_start = float(parts[2]) if len(parts) > 2 else distance.EPS_START
+        distance.select = hybrid.replacement(ipm, eps_start)
+        skip = FALLBACK
     elif method.startswith('loose:'):
         loose = float(method[6:])
         fair.TIGHT, fair.FIX = loose, 10 * loose

@@ -146,7 +146,16 @@ class Things:
             if not isinstance(entity, s.DeclaredTemplate):
                 title = entity.title or in_words(entity.path)
                 found.append(
-                    Card(entity.path, title, entity.role, entity.path, (entity.path,), entity.line, entity.text, ENTITY)
+                    Card(
+                        entity.path,
+                        title,
+                        entity.role,
+                        entity.path,
+                        (entity.path,),
+                        entity.line,
+                        entity.text,
+                        ENTITY,
+                    )
                 )
         for member in declared.members:
             if member.table is None:
@@ -167,7 +176,14 @@ class Things:
             role = self.entities[table.template].role
             found.append(
                 Card(
-                    table.path, in_words(table.path), role, table.template, table.members, table.line, table.text, TABLE
+                    table.path,
+                    in_words(table.path),
+                    role,
+                    table.template,
+                    table.members,
+                    table.line,
+                    table.text,
+                    TABLE,
                 )
             )
         return sorted(found, key=lambda card: card.line)
@@ -175,8 +191,6 @@ class Things:
     def members_of(self, template):
         """The ids of the members of a template (an entity written once is its own), in creation
         order."""
-        if template in self.entities and not isinstance(self.entities[template], s.DeclaredTemplate):
-            return (template,)
         return self._members.get(template, ())
 
     @cached_property
@@ -338,10 +352,12 @@ class Things:
                 return None
             part = self.part(template, step)
             if isinstance(part, s.DeclaredValue) and part.kind == s.LINK:
-                current = tuple(dict.fromkeys(self.links.get(m, {}).get(step) for m in current) - {None})
+                targets = (self.links.get(m, {}).get(step) for m in current)
+                current = tuple(dict.fromkeys(m for m in targets if m is not None))
                 continue
             if isinstance(part, s.DeclaredValue) and part.kind == s.COLLECTION:
-                current = tuple(dict.fromkeys(m for owner in current for m in self.member_set(part.init, (owner,))))
+                found = (m for owner in current for m in self.member_set(part.init, (owner,)))
+                current = tuple(dict.fromkeys(found))
                 continue
             rest = tuple(steps[k + 1 :])
             if isinstance(part, s.DeclaredValue):

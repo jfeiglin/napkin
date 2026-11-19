@@ -15,6 +15,10 @@ Each input draws its numbers from a stream of its own, named by the input and se
 (`engine.sampling.stream`), so adding an input never changes the draws of the others. The ranges are
 uniform: a range that a reader can explore is not a measured interval, and the indices say how the
 result depends on the assumed ranges, not how likely each result is.
+
+`run_function` makes such an `f` of a program: the value of one path at one time of its run, with the
+input values that a configuration sets (D10: the caller selects the path and the time). Each
+evaluation is a run of the engine; `input_factors` gives each input the range that the program admits.
 """
 
 from __future__ import annotations
@@ -23,10 +27,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..engine.report import evaluate_outputs
 from ..engine.sampling import stream
-from ..engine.study import edits_for, evaluate_study
-from ..model.ir import thaw
+from ..engine.timeline import Plan, Run, read, run
+from ..program import parts as p
+from ..program.record import Unavailable
+from .field import configured, value_at
 
 
 @dataclass(frozen=True)
@@ -45,15 +50,22 @@ class Factor:
         return self.low + (self.high - self.low) * u
 
 
-def factors_from_model(model, names):
-    """The factors of the named inputs, each over the range that the model gives it."""
+def input_factors(program, configuration, names):
+    """The factors of the named number inputs (paths), each over the range that the program admits
+    for it (its lower and its upper bound, as the start of a run reads them), in its declared unit."""
+    plan = Plan.of(program, configuration)
+    starting = Run(plan)
+    starting.start()
     out = []
     for name in names:
-        found = model.inputs.get(name)
-        if found is None or found.get('range') is None:
-            raise ValueError(f'{name} is not a number input with a range')
-        low, high = found['range']
-        out.append(Factor(name, float(low), float(high)))
+        _, _, part = value_at(program, name)
+        if part.kind != p.INPUT or not isinstance(part.type, p.Number):
+            raise ValueError(f'{name} is no number input of the program')
+        if part.lower is None or part.upper is None:
+            raise ValueError(f'{name} has no range: an input needs a lower and an upper bound to be a factor')
+        low, high = starting.bounds[name]
+        scale = plan.units.scale(part.type.unit) if part.type.unit else 1.0
+        out.append(Factor(name, low / scale, high / scale))
     return out
 
 
@@ -187,22 +199,20 @@ def sobol(f, factors, *, samples, seed=0, bootstrap=1000, confidence=0.95):
     )
 
 
-def model_function(model, run, output, *, time=None, values=None, numerical_settings=None):
-    """f({input: value}): the value of `output` of `run` at `time` (hours; the horizon by default),
-    with the given input values in their own units. A study that rejects the values raises, so no
-    sample is ever left out silently."""
-    library = thaw(model.library)
+def run_function(program, configuration, path, *, time=None):
+    """f({input: value}): the value of `path` in its declared unit at `time` (hours; the horizon by
+    default) in the run of the program with the given input values (in their declared units). A run
+    that fails, and a value that is no number, raise, so no sample is ever left out silently."""
 
     def f(inputs):
-        edits = edits_for(model, {'runs': {run: {**dict(values or {}), **inputs}}})
-        study = evaluate_study(model, edits, numerical_settings, runs=[run])
-        if not study.admissible:
-            raise ValueError(f'The study rejects the values {inputs}: {study.diagnostics[:1]}')
-        completed = study.runs[run]
-        at = completed['trajectory'].horizon if time is None else float(time)
-        row = evaluate_outputs(completed, library, [at])[0]
-        if row['statuses'].get(output) != 'estimated':
-            raise ValueError(f'{output} is not estimated: {row["statuses"].get(output)}')
-        return float(row['values'][output])
+        given = configured(program, configuration, inputs)
+        record = run(program, given)
+        if record.failure is not None:
+            raise ValueError(f'The run with the values {inputs} fails: {record.failure.detail("message")}')
+        at = float(given.request.horizon if time is None else time)
+        (value,) = read(record, program, [path], [at])[0].values
+        if isinstance(value, Unavailable) or isinstance(value, bool | str):
+            raise ValueError(f'{path} is no number at {at:g} h: {value}')
+        return float(value)
 
     return f

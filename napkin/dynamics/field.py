@@ -59,8 +59,9 @@ class OutsideDomain(ValueError):
     """The field cannot be evaluated at a state: a rate is negative, not finite or fails."""
 
 
-def _part(program, path):
-    """(member id, name, part) of the value at a path of a member or of the root, or KeyError."""
+def value_at(program, path):
+    """(member id, name, part) of the value at a path of a member or of the root (`tank.water`,
+    `effort`), or KeyError."""
     key = key_of(program, path)
     if len(key.steps) != 1:
         raise KeyError(f'{path} is no value of a member or of the root')
@@ -85,7 +86,7 @@ def configured(program, configuration, values):
     engine checks each against the input's type and range when a run starts (D2)."""
     given = {(item.member, item.name): item for item in configuration.inputs}
     for path, value in values.items():
-        member, name, part = _part(program, path)
+        member, name, part = value_at(program, path)
         if part.kind != p.INPUT:
             raise KeyError(f'{path} is no input: a configuration sets only inputs')
         if isinstance(part.type, p.Number):
@@ -101,7 +102,7 @@ def started(program, values):
     a member or of the root: its start value}, a number in the value's declared unit, a yes/no, the
     name of an enum member or a text. The engine checks the bounds of each when a run starts."""
     for path, value in values.items():
-        member, name, part = _part(program, path)
+        member, name, part = value_at(program, path)
         if part.kind != p.STATE:
             raise KeyError(f'{path} is no stored value: an input is set by a configuration (`configured`)')
         if isinstance(part.type, p.Number):

@@ -10,8 +10,8 @@ keys:
 | Key | What it gives | Without it |
 | --- | --- | --- |
 | `[layout]` with `direction = "left-to-right"` | The direction of the picture: the one direction of this version (`DIRECTIONS`) | `left-to-right` |
-| `[layout]` with `hide = [n, …]` | The templates and things that the picture does not draw: a template hides each of its instances, and an instance hides only itself | Nothing hidden |
-| `[place]` with `n = {column = c, row = r}` | The column of a thing, from 1, and its row, from 1 (`row` is optional). A template places each of its instances on the rows that follow its row | The layout places it |
+| `[layout]` with `hide = [n, …]` | The templates and things that the picture does not draw: a template hides each of its members, and a member hides only itself | Nothing hidden |
+| `[place]` with `n = {column = c, row = r}` | The column of a thing, from 1, and its row, from 1 (`row` is optional). A template places each of its members on the rows that follow its row | The layout places it |
 | `[group]` with `"Label" = [n, …]` | A frame with its label around these things and no other thing; a thing is in one group at most | No frame |
 | `[icon]` with `icon = [n, …]` | The icon of each thing and template that a line names (`ICONS`) | The icon of its role (`ROLE_ICONS`), else no icon |
 | `[state.n]` with `var = "inside"` | Where the state machine of the named state `n.var` goes: `inside` its thing, `beside` it, or `hidden` (`STATE_PLACES`) | `inside` |
@@ -27,12 +27,12 @@ keys:
 | `[subscript]` with `n = "s"` | The subscript of the card of the thing `n` (`symbols.parse_tag`, D-54) | Made from the thing's name |
 | `[equations]` with `things = [n, …]` (D-53) | The things and templates whose equations the panel under the map shows (`panels.py`) | No panel |
 | `[equations]` with `depth`, `width`, `lines` | The hops of formulas from the rates (0 to 5), the width of the panel in px (320 to 2400) and the most rows of one line (1 to 8) (`EQUATION_RANGES`) | 1, 720, 3 |
-| `[equations]` with `tags`, `symbols`, `checks`, `instances` | Whether each shown stock row carries its symbol, whether the Symbols table shows, whether the `assert` lines show, and whether the instances of a template with the same equations share a block (`together`) or each has its own (`each`, `INSTANCES`) | true, true, false, `together` |
+| `[equations]` with `tags`, `symbols`, `checks`, `instances` | Whether each shown stock row carries its symbol, whether the Symbols table shows, whether the `assert` lines show, and whether the members of a template with the same equations share a block (`together`) or each has its own (`each`, `INSTANCES`) | true, true, false, `together` |
 | `[references]` with `show`, `kinds` (D-55) | Whether the marks and the References list show (it needs `[equations] things`), and the kinds of entry that the list holds (`REFERENCE_KINDS`; `assumption` always) | false, every kind |
 
-A name is a thing (an entity line: a thing made without a template, an instance, or a set of copies)
-or a template, which stands for each of its instances. A thing's own setting wins over its
-template's, and for an icon, the template's wins over the role's.
+A name is a thing (a card of the picture: an entity written once, a member written by hand, or a
+table, whose rows share one card) or a template, which stands for each of its members. A thing's own
+setting wins over its template's, and for an icon, the template's wins over the role's.
 
 The built-in `tomllib` reads the file. A key that the file does not know is an error, so that a
 misspelt key shows. Each name is one that the model declares, and each icon is one of `ICONS`. The
@@ -51,7 +51,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import paths
-from ..model.views import instances
 from .defaults import ARROW_KINDS, ARROW_LOOKS, DEFAULT_DEPTH, DEFAULT_PANEL_LINES, DEFAULT_PANEL_WIDTH
 
 STYLE_FILE = 'style.toml'
@@ -629,22 +628,30 @@ def _read_symbols(found, origin, problems):
     return {'symbols': tuple(tables), 'subscripts': tuple(subscripts)}
 
 
-def _templates(lines, model):
-    """The templates of a model: each that an entity line makes, and each that a module declares,
-    which can have no instance in a scenario but is still a name."""
-    templates = {entity.template for entity in lines.values() if entity.template is not None}
-    return templates | set(getattr(model.scenario, 'templates', ()))
+def things_of(model):
+    """The things of a model (`things.Things`): a `Things` as it is, else those of a compiled model."""
+    from .things import Things
+
+    return model if isinstance(model, Things) else Things(model)
 
 
-def _on_map(origin, key, name, lines, model, templates, shown, out):
-    """The entity lines that a name stands for when the picture draws one of them, else [] with the
-    problem: a name that is no template or thing, a template without an instance, or a name that
-    `layout.hide` hides."""
-    entries = expand(name, lines, model)
-    if name not in templates and name not in lines:
+def templates_of(found):
+    """The names of the templates of a model (`Things`): each, also one without a member, which is
+    still a name."""
+    from ..model.semantic import DeclaredTemplate
+
+    return {path for path, entity in found.entities.items() if isinstance(entity, DeclaredTemplate)}
+
+
+def _on_map(origin, key, name, found, templates, shown, out):
+    """The cards that a name stands for when the picture draws one of them, else [] with the problem:
+    a name that is no template or thing, a template without a member, or a name that `layout.hide`
+    hides."""
+    entries = expand(name, found)
+    if name not in templates and name not in found.cards:
         out.append(problem(origin, key, f'{name} is not a template or a thing'))
     elif not entries:
-        out.append(problem(origin, key, f'{name} is not on the map: it has no instance'))
+        out.append(problem(origin, key, f'{name} is not on the map: it has no member'))
     elif not shown & set(entries):
         out.append(problem(origin, key, f'{name} is not on the map: layout.hide hides it'))
     else:
@@ -653,8 +660,8 @@ def _on_map(origin, key, name, lines, model, templates, shown, out):
 
 
 def check(style, model):
-    """The problems of a picture against its model:
-    - `hide` names templates and things (an instance too);
+    """The problems of a picture against its model (a `Compiled`, or its `Things`):
+    - `hide` names templates and things (a member too);
     - `[icon]`, `[place]`, `[group]` and `[state]` name templates and things that the picture draws;
     - two things are never in one cell of `[place]`, and a thing is in one group at most;
     - no thing has a row between the rows of two things of a group that it is not in, in their column
@@ -667,25 +674,25 @@ def check(style, model):
     - `[symbol]` and `[subscript]` hold with the model (`_check_symbols`);
     - `[triggers]` names templates and things that the picture draws, each with an event;
     - `[equations] things` names templates and things that the picture draws."""
+    found = things_of(model)
     out = []
-    lines = entity_lines(model)
-    templates = _templates(lines, model)
+    templates = templates_of(found)
     for name in style.hide:
-        if name not in templates and name not in lines:
+        if name not in templates and name not in found.cards:
             out.append(problem(style.origin, 'layout.hide', f'{name} is not a template or a thing'))
-    shown = set(drawn(style, model))
+    shown = set(drawn(style, found))
     for icon, names in style.icons:
         for name in names:
-            _on_map(style.origin, f'icon.{icon}', name, lines, model, templates, shown, out)
+            _on_map(style.origin, f'icon.{icon}', name, found, templates, shown, out)
     for name, _, _ in style.places:
-        _on_map(style.origin, f'place.{name}', name, lines, model, templates, shown, out)
+        _on_map(style.origin, f'place.{name}', name, found, templates, shown, out)
     # Two things in one cell: the later name in the file has the problem.
     taken = {}
-    places = place_of(style, model)
+    places = place_of(style, found)
     for name, _, _ in style.places:
-        for entry in expand(name, lines, model):
+        for entry in expand(name, found):
             cell = places.get(entry)
-            if cell is None or cell[1] is None or _placer(style, lines, entry) != name:
+            if cell is None or cell[1] is None or _placer(style, found, entry) != name:
                 continue
             other = taken.setdefault(cell, entry)
             if other != entry:
@@ -693,11 +700,11 @@ def check(style, model):
                 out.append(problem(style.origin, f'place.{name}', message))
     # A thing between two things of a group in their column, or a thing of a group above a thing of an
     # earlier group in their column: one problem for each such thing.
-    groups = groups_of(style, model)
+    groups = groups_of(style, found)
     for name, _, _ in style.places:
-        for entry in expand(name, lines, model):
+        for entry in expand(name, found):
             cell = places.get(entry)
-            if cell is None or cell[1] is None or _placer(style, lines, entry) != name:
+            if cell is None or cell[1] is None or _placer(style, found, entry) != name:
                 continue
             between, above = _between(entry, cell, groups, places), _above(entry, cell, groups, places)
             if between is not None:
@@ -718,7 +725,7 @@ def check(style, model):
     member = {}
     for label, names in style.groups:
         for name in names:
-            for entry in _on_map(style.origin, f'group.{label}', name, lines, model, templates, shown, out):
+            for entry in _on_map(style.origin, f'group.{label}', name, found, templates, shown, out):
                 other = member.setdefault(entry, label)
                 if other != label:
                     message = f'puts {entry} in this group, but group.{other} has it'
@@ -726,36 +733,36 @@ def check(style, model):
                         problem(style.origin, f'group.{label}', f'{message}: a thing is in one group at most')
                     )
     for name, own in style.states:
-        entries = _on_map(style.origin, f'state.{name}', name, lines, model, templates, shown, out)
+        entries = _on_map(style.origin, f'state.{name}', name, found, templates, shown, out)
         for var, _ in own:
-            lacking = [entry for entry in entries if var not in named_states(lines[entry])]
+            lacking = [entry for entry in entries if var not in named_states(found, entry)]
             if lacking:
                 message = f'{var} is not a named state of {lacking[0]}'
                 out.append(problem(style.origin, f'state.{name}.{var}', message))
     for name, listed in style.stock_order:
         key = f'stocks.{name}'
-        entries = _on_map(style.origin, key, name, lines, model, templates, shown, out)
-        for member in listed:
-            lacking = [entry for entry in entries if member not in stock_names(lines[entry])]
+        entries = _on_map(style.origin, key, name, found, templates, shown, out)
+        for stock in listed:
+            lacking = [entry for entry in entries if stock not in stock_names(found, entry)]
             if lacking:
                 owner = name if name in templates else lacking[0]
-                message = f'names {member}, which is not a stock or a tally of {owner}'
+                message = f'names {stock}, which is not a stock or a tally of {owner}'
                 out.append(problem(style.origin, key, message))
     for level, names in style.triggers:
         for name in names:
-            entries = _on_map(style.origin, f'triggers.{level}', name, lines, model, templates, shown, out)
+            entries = _on_map(style.origin, f'triggers.{level}', name, found, templates, shown, out)
             entries = [entry for entry in entries if entry in shown]
-            lacking = [entry for entry in entries if not lines[entry].events]
+            lacking = [entry for entry in entries if not found.events(entry)]
             if lacking:
                 which = name if len(lacking) == len(entries) else lacking[0]
                 out.append(problem(style.origin, f'triggers.{level}', f'{which} has no event'))
     for name in style.equations:
-        _on_map(style.origin, 'equations.things', name, lines, model, templates, shown, out)
-    out += _check_symbols(style, model, lines, templates, shown)
+        _on_map(style.origin, 'equations.things', name, found, templates, shown, out)
+    out += _check_symbols(style, found, templates, shown)
     return out
 
 
-def _check_symbols(style, model, lines, templates, shown):
+def _check_symbols(style, found, templates, shown):
     """The problems of `[symbol]` and `[subscript]` against the model (D-54):
     - each name is a template or a thing that the picture draws, and each member of `[symbol.<name>]`
       is a value, a flow or an event of it that has a symbol (`symbols.lacking`);
@@ -767,28 +774,28 @@ def _check_symbols(style, model, lines, templates, shown):
     out = []
     for name, own in style.symbols:
         key = f'symbol.{name}'
-        entries = _on_map(style.origin, key, name, lines, model, templates, shown, out)
+        entries = _on_map(style.origin, key, name, found, templates, shown, out)
         for member, written in own:
             if name in templates and made.parse(written).sub:
-                message = "a template's symbol has no subscript; each instance adds its own"
+                message = "a template's symbol has no subscript; each member adds its own"
                 out.append(problem(style.origin, f'{key}.{member}', message))
-            reasons = (made.lacking(lines[entry], member, name) for entry in entries)
-            reason = next((found for found in reasons if found is not None), None)
+            reasons = (made.lacking(found, entry, member, name) for entry in entries)
+            reason = next((item for item in reasons if item is not None), None)
             if reason is not None:
                 out.append(problem(style.origin, f'{key}.{member}', reason))
     given = {}
     for name, written in style.subscripts:
         key = f'subscript.{name}'
         if name in templates:
-            message = f'{name} is a template; give each instance its own subscript'
+            message = f'{name} is a template; give each member its own subscript'
             out.append(problem(style.origin, key, message))
-        elif _on_map(style.origin, key, name, lines, model, templates, shown, out):
+        elif _on_map(style.origin, key, name, found, templates, shown, out):
             if written in given:
                 out.append(problem(style.origin, key, f'{written} is also the subscript of {given[written]}'))
             given.setdefault(written, name)
     out += [
         problem(style.origin, key, message)
-        for key, message in made.clashes(model, style, drawn(style, model))
+        for key, message in made.clashes(found, style, drawn(style, found))
     ]
     return out
 
@@ -835,97 +842,83 @@ def _above(entry, cell, groups, places):
 
 
 def of(model, path=None):
-    """The picture of a model, read and checked: the stylesheet at `path` when it is given, else the
-    model's own `style.toml` (`beside`: a variant's own, else its package's), or an empty picture when
-    there is none. A file with a problem, or a `path` that is no file, raises `StyleError`."""
+    """The picture of a model (a `Compiled`), read and checked: the stylesheet at `path` when it is
+    given, else the model's own `style.toml` (`beside`: a variant's own, else its package's), or an
+    empty picture when there is none. A file with a problem, or a `path` that is no file, raises
+    `StyleError`."""
     return checked(model, STYLE_FILE, read, check, Style(), path)
 
 
-def entity_lines(model):
-    """{entity line: its first entity}, in the order of the model file: an entity, an instance, or a
-    set of copies, whose copies share the line (`Entity.entry`)."""
-    out = {}
-    for entity in model.scenario.entities:
-        out.setdefault(entity.entry, entity)
-    return out
-
-
-def expand(name, lines, model):
-    """The entity lines that a name of the stylesheet stands for: the entity line itself, or the line of
-    each instance of a template (`napkin.instances`), in the order of the file."""
-    if name in lines:
+def expand(name, found):
+    """The cards that a name of the stylesheet stands for: the card itself, or the card of each
+    member of a template, in the order of the cards."""
+    if name in found.cards:
         return [name]
-    line_of = {entity.name: entity.entry for entity in model.scenario.entities}
-    return list(dict.fromkeys(line_of[found['name']] for found in instances(model, name)))
+    return [card.id for card in found.cards.values() if card.kind != 'entity' and card.template == name]
 
 
-def hidden_lines(style, model):
-    """The entity lines that `hide` hides: each that it names, and each instance of a template that it
-    names."""
+def hidden_lines(style, found):
+    """The cards that `hide` hides: each that it names, and each card of a member of a template that
+    it names."""
     names = set(style.hide)
-    return {
-        entry for entry, entity in entity_lines(model).items() if entry in names or entity.template in names
-    }
+    return {card.id for card in found.cards.values() if card.id in names or card.shown_template in names}
 
 
-def drawn(style, model):
-    """The entity lines that the map draws, in the order of the file: each that `hide` does not
-    hide."""
-    hide = hidden_lines(style, model)
-    return [entry for entry in entity_lines(model) if entry not in hide]
+def drawn(style, found):
+    """The cards that the map draws, in their order: each that `hide` does not hide."""
+    hide = hidden_lines(style, found)
+    return [card for card in found.cards if card not in hide]
 
 
-def icon_of(style, model):
-    """{entity line: its icon}: the icon that `[icon]` gives its own line, else its template's, else
-    its role's (`ROLE_ICONS`), else None: a thing without a role, or with a role that names a thing,
-    has no icon."""
+def icon_of(style, found):
+    """{card: its icon}: the icon that `[icon]` gives the card, else its template's, else its role's
+    (`ROLE_ICONS`), else None: a thing without a role, or with a role that names a thing, has no
+    icon."""
     given = {name: icon for icon, names in style.icons for name in names}
     return {
-        entry: given.get(entry) or given.get(entity.template) or ROLE_ICONS.get(entity.role)
-        for entry, entity in entity_lines(model).items()
+        card.id: given.get(card.id) or given.get(card.shown_template) or ROLE_ICONS.get(card.role)
+        for card in found.cards.values()
     }
 
 
 def states_of(value):
-    """The states of a value whose type is a list of names (a named state, or a named input), in the
-    order of its type; None for any other value, and for no value."""
+    """The states of a value whose type is an enum (a named state, or an enum input), in the order of
+    its type; None for any other value, and for no value."""
+    from ..model.semantic import EnumOf
+
     found = getattr(value, 'type', None)
-    if isinstance(found, (list, tuple)) and found and all(isinstance(name, str) for name in found):
-        return tuple(found)
-    return None
+    return tuple(found.members) if isinstance(found, EnumOf) else None
 
 
-def named_states(entity):
-    """The names of the named states of an entity, in the order of its values: each `var` whose type
-    is a list of names."""
-    return [value.name for value in entity.values if value.kind == 'state' and states_of(value) is not None]
+def named_states(found, card):
+    """The names of the named states of a card (`Things.machines`), in written order."""
+    return [value.name for value in found.machines(card)]
 
 
-def stock_names(entity):
-    """The names of the stocks and tallies of an entity (`STOCK_KINDS`), in the order of its values."""
-    return [value.name for value in entity.values if value.kind in STOCK_KINDS]
+def stock_names(found, card):
+    """The names of the stocks and tallies of a card (`Things.stocks`), in written order."""
+    return [value.name for value in found.stocks(card)]
 
 
-def _placer(style, lines, entry):
-    """The name of `[place]` whose place an entity line takes: its own, else its template's, or None."""
+def _placer(style, found, entry):
+    """The name of `[place]` whose place a card takes: its own, else its template's, or None."""
     own = {name for name, _, _ in style.places}
     if entry in own:
         return entry
-    template = lines[entry].template
+    template = found.cards[entry].shown_template
     return template if template in own else None
 
 
-def place_of(style, model):
-    """{entity line: (column, row or None)} of each line that the picture draws and that `[place]`
-    places: its own place, else its template's. A template with a row places its instances on that row
-    and the rows that follow it, in the order of the file; each instance with a place of its own takes
-    that place instead."""
-    lines = entity_lines(model)
+def place_of(style, found):
+    """{card: (column, row or None)} of each card that the picture draws and that `[place]` places:
+    its own place, else its template's. A template with a row places its members on that row and the
+    rows that follow it, in the order of the cards; each member with a place of its own takes that
+    place instead."""
     given = {name: (column, row) for name, column, row in style.places}
-    hidden = hidden_lines(style, model)
+    hidden = hidden_lines(style, found)
     out, rows = {}, {}
-    for entry in lines:
-        name = _placer(style, lines, entry)
+    for entry in found.cards:
+        name = _placer(style, found, entry)
         if name is None or entry in hidden:
             continue
         column, row = given[name]
@@ -936,17 +929,21 @@ def place_of(style, model):
     return out
 
 
-def trigger_levels(style, model):
-    """{entity line: its level of `[triggers]`} of each line that `[triggers]` names, itself or by its
-    template (D-56): the line's own level wins over its template's, also when the two are in other
-    lists."""
-    given = {name: level for level, names in style.triggers for name in names}
+def _own_or_template(given, found):
+    """{card: the value that `given` names for it: its own, else its template's}."""
     out = {}
-    for entry, entity in entity_lines(model).items():
-        level = given.get(entry) or given.get(entity.template)
-        if level is not None:
-            out[entry] = level
+    for card in found.cards.values():
+        value = given.get(card.id, given.get(card.shown_template))
+        if value is not None:
+            out[card.id] = value
     return out
+
+
+def trigger_levels(style, found):
+    """{card: its level of `[triggers]`} of each card that `[triggers]` names, itself or by its
+    template (D-56): the card's own level wins over its template's, also when the two are in other
+    lists."""
+    return _own_or_template({name: level for level, names in style.triggers for name in names}, found)
 
 
 def equation_settings(style):
@@ -974,45 +971,45 @@ def equation_settings(style):
     return out
 
 
-def groups_of(style, model):
-    """[(label, [entity line, …])]: each group of `[group]` in the order of the file, with the lines
-    that it names and that the picture draws, in the order of the file. A template stands for each of
-    its instances."""
-    lines = entity_lines(model)
-    shown = set(drawn(style, model))
+def groups_of(style, found):
+    """[(label, [card, …])]: each group of `[group]` in the order of the file, with the cards that it
+    names and that the picture draws, in the order of the cards. A template stands for each of its
+    members."""
+    shown = set(drawn(style, found))
     out = []
     for label, names in style.groups:
-        named = {entry for name in names for entry in expand(name, lines, model)}
-        out.append((label, [entry for entry in lines if entry in named and entry in shown]))
+        named = {entry for name in names for entry in expand(name, found)}
+        out.append((label, [entry for entry in found.cards if entry in named and entry in shown]))
     return out
 
 
-def state_places(style, model):
-    """{entity line: {var: place}} of each line that `[state]` names, itself or by its template: the
-    place of each of its state machines. The line's own place for a var wins over its template's."""
+def state_places(style, found):
+    """{card: {var: place}} of each card that `[state]` names, itself or by its template: the place of
+    each of its state machines. The card's own place for a var wins over its template's."""
     given = {name: dict(own) for name, own in style.states}
     out = {}
-    for entry, entity in entity_lines(model).items():
-        found = {**given.get(entity.template, {}), **given.get(entry, {})}
-        if found:
-            out[entry] = found
+    for card in found.cards.values():
+        places = {**given.get(card.shown_template, {}), **given.get(card.id, {})}
+        if places:
+            out[card.id] = places
     return out
 
 
-def stock_orders(style, model):
-    """{entity line: (stock, …)} of each line that `[stocks]` names, itself or by its template (D-52):
-    the stocks and tallies that its card shows, in their order. The line's own list wins whole over its
+def stock_orders(style, found):
+    """{card: (stock, …)} of each card that `[stocks]` names, itself or by its template (D-52): the
+    stocks and tallies that its card shows, in their order. The card's own list wins whole over its
     template's."""
-    given = dict(style.stock_order)
-    out = {}
-    for entry, entity in entity_lines(model).items():
-        found = given.get(entry, given.get(entity.template))
-        if found is not None:
-            out[entry] = found
-    return out
+    return _own_or_template(dict(style.stock_order), found)
 
 
 # ---- the files of a model -------------------------------------------------------------------------
+
+
+def origin_of(model):
+    """The entry file of a compiled model (the last file that its declared model reads), or None for
+    a model of one text."""
+    files = model.declared.files
+    return Path(files[-1][0]) if files else None
 
 
 def folders(origin):
@@ -1032,15 +1029,12 @@ def lookup(origin, name):
 
 
 def beside(model, name):
-    """The path of the file `name` of the model (`lookup`): a variant's own, else its package's; the path
-    beside the model's file when neither folder holds it; None for a model that has no file."""
-    origin = getattr(model, 'origin', None)
-    if not origin:
+    """The path of the file `name` of a compiled model (`lookup`): a variant's own, else its package's;
+    the path beside the model's file when neither folder holds it; None for a model of one text."""
+    origin = origin_of(model)
+    if origin is None or not origin.is_file():
         return None
-    path = Path(origin)
-    if not path.is_file():
-        return None
-    return lookup(path, name) or path.with_name(name)
+    return lookup(origin, name) or origin.with_name(name)
 
 
 # The files read and checked, by their path, their revision and the model's: a Style or a Brief, or the
@@ -1049,10 +1043,10 @@ CHECKED = OrderedDict()
 
 
 def checked(model, name, reader, checker, empty, path=None):
-    """The file `name` of the model (`beside`), or the file at `path` when it is given, read and checked
-    (`reader`, `checker`); `empty` when the model has no such file. A file with a problem, or a `path`
-    that is no file, raises `StyleError`. Each revision of a file is read once for each model: the key
-    names the file that was read."""
+    """The file `name` of a compiled model (`beside`), or the file at `path` when it is given, read and
+    checked (`reader`, `checker`); `empty` when the model has no such file. A file with a problem, or a
+    `path` that is no file, raises `StyleError`. Each revision of a file is read once for each model:
+    the key names the file that was read and the model's hash."""
     if path is not None:
         path = Path(path)
         if not path.is_file():
@@ -1062,7 +1056,7 @@ def checked(model, name, reader, checker, empty, path=None):
         if path is None or not path.is_file():
             return empty
     status = path.stat()
-    key = (str(path), status.st_mtime_ns, status.st_size, model.model_hash, model.implementation_hash)
+    key = (str(path), status.st_mtime_ns, status.st_size, model.model_hash)
     if key not in CHECKED:
         try:
             found = reader(path.read_text(encoding='utf-8'), str(path))
@@ -1104,7 +1098,6 @@ __all__ = [
     'check',
     'checked',
     'drawn',
-    'entity_lines',
     'equation_settings',
     'expand',
     'folders',
@@ -1115,6 +1108,7 @@ __all__ = [
     'named_states',
     'names_of',
     'of',
+    'origin_of',
     'place_of',
     'problem',
     'read',
@@ -1123,6 +1117,8 @@ __all__ = [
     'stock_names',
     'stock_orders',
     'table',
+    'templates_of',
+    'things_of',
     'trigger_levels',
     'unknown',
 ]

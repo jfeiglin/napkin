@@ -3,7 +3,7 @@
 cd /home/user/napkin
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONPATH=/home/user/napkin NAPKIN_STORE=off
 PY=/home/user/venvs/p1/bin/python
-for s in normal shortage damaged global; do
+for s in ${SCENARIOS:-normal shortage damaged global}; do
   echo "start $s $(date +%T) load $(cut -d' ' -f1 /proc/loadavg)"
   timeout 900 $PY scratch/rewrite/p1/lab.py export 1.0 $s 2>&1 | grep -v "^Running HiGHS\|^Includes third"
   echo "exit $s ${PIPESTATUS[0]} $(date +%T)"
