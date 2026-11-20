@@ -1051,7 +1051,7 @@ class Run:
                 self.occurrences.carried(self.now, at)
                 self.now = at
                 stores, rates, jumped = instance.step(levels) if levels else instance.step()
-                self.recorder.check_budget(at)
+                self.recorder.check_budget(at, internal=True)
                 changed = set(stores) | set(rates)
                 readers = self.ways.touched_outside(changed if jumped else rates, instance)
                 if not jumped:

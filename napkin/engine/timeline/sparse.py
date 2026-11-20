@@ -1113,8 +1113,9 @@ class Sparse(Way):
     def _record(self, solution, start, end):
         """The pieces of the kept stores and actual rates from start to end."""
         recorder = self.recorder
-        if end <= start:
+        if end <= start or end == self.recorded_through:
             return
+        self.recorded_through = end
         if self.kept_stores:
             tolerance = np.maximum(self.atol[self.kept_stores], 1e-300)
             states = lambda times: np.array([solution(at)[self.kept_stores] for at in times])  # noqa: E731
@@ -1132,6 +1133,11 @@ class Sparse(Way):
             for k, pieces in zip(self.kept_flows, fitted(delivered, start, end, tolerance)):
                 recorder.add_pieces(self.recorded[k], pieces)
             self.evaluations = evaluations
+
+    def incoming_history(self, t):
+        """Give the recorder this pending step up to the moment, leaving its state in place."""
+        if self.pending is not None:
+            self._record(self.pending[2], self.pending[0], t)
 
     def _crossing(self, solution, start, end, k, level):
         """Locate the physical level on this step's dense state."""

@@ -187,6 +187,13 @@ def at_stop(run):
     projected = copy(run)
     projected.recorder = recorder = copy(run.recorder)
     recorder.run = projected
+    recorder._private = set()
+    recorder._histories = dict(recorder._histories)
+    recorder._dirty = set(recorder._dirty)
+    recorder._moving = set(recorder._moving)
+    recorder._raw_positions = dict(recorder._raw_positions)
+    if recorder._schema is not None:
+        recorder._counted = dict(recorder._counted)
     recorder.pieces = {name: list(pieces) for name, pieces in run.recorder.pieces.items()}
     recorder.trace = list(recorder.trace)
     projected.moved = set(run.moved)
@@ -278,6 +285,7 @@ def save(run, recorder, arrival):
                 ('tolerance', _pairs(recorder.tolerance)),
                 ('formulas', tuple(sorted(recorder.formulas))),
                 ('round', recorder.round),
+                ('fit_ends', tuple(recorder.fits.ends)),
                 ('wanted', None if recorder._wanted is None else tuple(sorted(recorder._wanted))),
                 (
                     'transfers',
@@ -678,6 +686,7 @@ def _recorder(recorder, found):
     recorder.tolerance = dict(found['tolerance'])
     recorder.formulas = set(found['formulas'])
     recorder.round = found['round']
+    recorder.fits.ends = list(found.get('fit_ends', (0.0,)))
     recorder._wanted = None if found['wanted'] is None else set(found['wanted'])
     recorder.transfers = {name: (start, list(moved)) for name, start, moved in found['transfers']}
 

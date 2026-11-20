@@ -615,9 +615,22 @@ class ComponentWay(Way):
 
     def _commit(self, segment):
         component = self.component
-        self.run.recorder.segment(component, segment, component.system.state_ids, self.rates)
+        self._record(segment)
         component.proceed(segment)
         self._drift = None
+
+    def _record(self, segment):
+        if segment.start == segment.end or segment.end != self.recorded_through:
+            self.run.recorder.segment(self.component, segment, self.stores, self.rates)
+            self.recorded_through = segment.end
+
+    def incoming_history(self, t):
+        """Record the prepared dense span through the moment before any stage changes its inputs."""
+        segment = self.pending
+        if segment is not None and segment.start < t and t != self.recorded_through:
+            if t != segment.end:
+                segment = replace(segment, end=t, numerical=_cut(segment.numerical, t))
+            self._record(segment)
 
     def switched_at(self, t):
         state = self.component.state

@@ -5,6 +5,7 @@ class Way:
     """An engine supplies its answers on its installed trajectory and the contacts it located."""
 
     sample_on_read = False
+    recorded_through = None  # end of the last dense span already given to the recorder
 
     def contacts_at(self, t, through):
         for event in self.timing_events(through):

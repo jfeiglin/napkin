@@ -1505,11 +1505,18 @@ class MovingDeclared(DeclaredWay):
                 for name, pieces in zip(names, fitted(answers, segment.start, end, tolerance)):
                     yield name, pieces
 
-    def _commit(self, end):
-        """Apply the incoming prefix, then bring the stores to the moment."""
+    def incoming_history(self, end):
+        """Record the incoming answer while the trial solves still see their original inputs."""
+        if self.pending is None or end <= self.pending.start or end == self.recorded_through:
+            return
         pieces = self.prefix[1] if self.prefix is not None and self.prefix[0] == end else self._pieces(end)
         for name, fitted_pieces in pieces:
             self.recorder.add_pieces(name, fitted_pieces)
+        self.recorded_through = end
+
+    def _commit(self, end):
+        """Apply the incoming prefix, then bring the stores to the moment."""
+        self.incoming_history(end)
         self.y = self._state(end)
         self.time = end
         self.pending = self.prefix = None

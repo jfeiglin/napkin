@@ -48,7 +48,7 @@ pieces of each value of a run:
   value that it reads.
 - **An occurrence that a failed commit started** holds no value in the record: the record holds the
   occurrences that its trace starts, and the commit that failed is not in it (`moment.py`).
-- **A formula, and a request or a capacity written as one,** is made after the run from the
+- **A formula, and a request or a capacity written as one,** is fitted on each completed interval from the
   histories of what it reads (a formula of an occurrence from its start, and from its finish the
   frozen value that the run gave it, D7): between two times at which one of them has a piece, it is one piece
   where each of them holds its value, else it is fitted as a curve is, and a yes/no takes a piece at
@@ -87,10 +87,12 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_left, bisect_right
+from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import pairwise
+from operator import attrgetter
 
 import numpy as np
 from numpy.polynomial import chebyshev
@@ -112,19 +114,19 @@ from .plan import (
     CHANGED,
     DYNAMIC,
     FORMULA,
-    INPUT,
     LOOKUP,
     RATE,
     REDUCE,
     SIDES,
     Plan,
-    _program_statements,
     name_of,
 )
 from .reads import Reads
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
 FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError)
+
+_piece_time = attrgetter('t')
 
 DEGREE = 8
 # The points of a fit on [-1, 1], and the points between them at which a fit is checked, with the
@@ -225,6 +227,30 @@ def _compact(pieces):
     return kept
 
 
+class Fits:
+    """The committed curve pieces of a run. A moment closes the incoming interval for every
+    observer, including a run without a breakpoint. No later fit reopens it. At the current
+    endpoint the next interval is still open: the stages there can give it a new value."""
+
+    def __init__(self):
+        self.ends = [0.0]
+        self.closed = {}
+
+    def advance(self, end):
+        if end > self.ends[-1]:
+            self.ends.append(end)
+
+    def intervals(self, start, end):
+        """Known boundaries strictly inside an interval that needs a curve."""
+        return self.ends[bisect_right(self.ends, start) : bisect_left(self.ends, end)]
+
+    def pieces(self, name, start, end, fit):
+        key = (name, start, end)
+        if key not in self.closed:
+            self.closed[key] = fit()
+        return self.closed[key]
+
+
 class HistoryFull(Exception):
     """The committed prefix that used up the requested history budget."""
 
@@ -246,15 +272,22 @@ class Recorder:
         self._wanted = None  # what a record of some keys needs so far (`wanted`), once asked
         # A store that edits changed -> (its start, [(time, amount from outside)]) (`external`).
         self.transfers = {}
-        self._budget_state = None  # rebuilt from the raw pieces on first use, including on resume
-        self._budget_shape = None
-        self._clock_histories = {}  # fits whose full span is already known from the clock and fixed inputs
-        self._writes = None
-        self._probe_end = None
+        self.fits = Fits()
+        self._schema = None
+        self._dirty = set()
+        self._from = math.inf
+        self._private = None
+        self._moving = set()
+        self._histories = {}
+        self._raw_positions = {}
+        self._total = 0
+        self._as_of = None
 
     def entry(self, t, kind, part, owner='', **details):
         """One entry of the trace, in the round where the run is (`round`: 0 is the setup)."""
         self.trace.append(Entry(t, self.round, kind, part, owner, tuple(details.items())))
+        if kind == 'start':
+            self._schema = None
 
     def failure(self, t, message):
         """The entry of the failure that stopped a run at time t."""
@@ -267,6 +300,8 @@ class Recorder:
         savepoint keeps with the transfers (`moment._Savepoint`); the ledger reads 0 from then to its
         first edit without a piece of its own."""
         self.transfers.setdefault(store, (start, []))[1].append((t, amount))
+        self._dirty.add(store)
+        self._from = min(self._from, t)
 
     def segment(self, component, segment, stores, flows):
         """The pieces of the stores and the flows of a component over one of its segments."""
@@ -315,182 +350,45 @@ class Recorder:
             ):
                 self._add(name, pieces)
 
-    def _note_pieces(self, name, pieces):
-        times, moving = self._budget_state
-        for at, _, rate in pieces:
-            times.add(at)
-            if rate != 0:
-                moving.add(name)
-        self._raw_count += len(pieces)
-        self._longest = max(self._longest, len(self.pieces[name]))
-
-    def check_budget(self, end, *, before=False):
-        """Stop as soon as the committed history exceeds its allowance. A conservative piece
-        count avoids fitting a second copy of a record that is certain to fit."""
-        if before and not self._clock_histories:
-            return
-        request = self.plan.configuration.request
-        if not request.everything:
-            # Only requested histories count, including a requested store's edit ledger. If
-            # they are all raw, their uncompacted lengths already bound the whole request.
-            count = 0
-            for key in request.keys:
-                name = name_of(key.store or key)
-                transfers = self.transfers.get(name)
-                if transfers is not None:
-                    count += len(transfers[1])
-                if key.store is not None:
-                    continue
-                value = self.plan.values.get(name)
-                if value is None:
-                    continue
-                if (
-                    value.kind in (CHANGED, FORMULA, REDUCE, LOOKUP, DYNAMIC)
-                    or (value.kind == RATE and value.node is not None)
-                    or name in self.plan.defined
-                ):
-                    break
-                count += int(name in self.constants) + len(self.pieces.get(name, ()))
-            else:
-                if count <= request.pieces:
-                    return
-        if self._budget_state is None:
-            self._budget_state = (set(), set())
-            self._raw_count = self._longest = 0
-            for name, pieces in self.pieces.items():
-                self._note_pieces(name, pieces)
-        times, moving = self._budget_state
-        plan = self.plan
-        # Each raw write can also appear in a changed-at history or an edit ledger.
-        # An alias can inherit several raw pieces at one time. Bound those copies too.
-        anchors = 2 + max(self._longest, len(times)) + len(self.trace)
-        raw = 3 * self._raw_count + len(plan.values)
-        budget = plan.configuration.request.pieces
-        if raw + anchors * len(plan.values) <= budget:
-            signature = (len(plan.values), len(plan.defined), len(moving))
-            if self._budget_shape is None or self._budget_shape[0] != signature:
-                self._budget_shape = signature, self._per_interval(moving)
-            if raw + anchors * self._budget_shape[1] <= budget:
-                return
-        self._check_prefix(end, before)
-
-    def _check_prefix(self, end, before, projected=False):
-        """Only a closed fitting interval determines its subdivisions. An intermediate
-        budget check never gives a fit a new right endpoint. A fit over immutable clock
-        inputs uses the requested horizon even when a stage happens before it."""
-        probe = copy(self)
-        probe._probe_end = end
-        probe._open_from = math.inf
-        # A budget cut inherits the next traced round. A bare horizon has no such entry.
-        round_ = int(not self.run.bare) if before else self.round
-        prefix = probe.record(end, pause=Entry(end, round_, 'pause', '', ''))
-        if prefix.failure is None:
-            return
-        failure = prefix.failure.t
-        if failure >= probe._open_from and (before or end != self.plan.horizon):
-            return  # future input anchors can still change the fitted pieces before this time
-        if before:
-            if failure >= end:
-                return  # assignments at this time still belong to its record
-            if not projected and self.run.arriving and self.run.ways.instances:
-                # The stage has not cut the incoming segments. Include their pending pieces
-                # exactly as a breakpoint before this stage would, without executing the stage.
-                from .saved import at_stop
-
-                arrival, _ = at_stop(self.run)
-                if arrival is not self:
-                    arrival._check_prefix(end, before, projected=True)
-                    return
-        raise HistoryFull(prefix)
-
-    def _fixed_clock(self, name):
-        """Whether the model fixes this timed formula throughout the requested horizon.
-        Inputs are held. An occurrence ends, and a stage can give a formula a new
-        definition. A matching written field conservatively rules out prediction."""
-        plan = self.plan
-        if name in plan.defined or plan.occurrence_of(name) is not None:
-            return False
-        value = plan.values[name]
-        if value.kind != FORMULA or value.key is None or len(value.key.steps) != 1:
-            return False
-        expanded = plan.expanded(name)
-        if not expanded.time or any(
-            part not in plan.values or plan.values[part].kind != INPUT for part in expanded.leaves
+    def check_budget(self, end, *, before=False, internal=False):
+        """Read the pieces that the history producers have committed through this boundary."""
+        ways = self.run.ways
+        # Another independent solver may still be inside its own dense step. Only the
+        # complete incoming histories can decide a formula that reads both trajectories.
+        if (
+            internal
+            and (len(ways.sampled) + len(ways.moving_solvers) > 1)
+            and any(
+                ways.sets[key][1].recorded_through != end
+                for registry in (ways.sampled, ways.moving_solvers)
+                for key in registry
+            )
         ):
-            return False
-        if self._writes is None:
-            self._writes = {
-                statement.target.steps[-1]
-                if statement.target.steps
-                else getattr(statement.target.start, 'name', None)
-                for _, statement in _program_statements(plan.program)
-                if isinstance(statement, p.Assign)
-            }
-        return all(
-            (key := plan.values[part].key) is not None
-            and len(key.steps) == 1
-            and key.steps[0] not in self._writes
-            and plan.occurrence_of(part) is None
-            for part in expanded.formulas | expanded.leaves
-        )
-
-    def _per_interval(self, moving):
-        """Upper bound on pieces produced between successive raw anchors or trace times.
-        Held expressions add one. A moving expression can subdivide its inputs at most once
-        per check point for availability and MOST times per available stretch for its fit."""
-        plan = self.plan
-        budget = plan.configuration.request.pieces
-        if plan.defined or any(plan._chosen(keyed) is None for keyed in plan.keyed.values()):
-            # Run-selected keys and definitions can introduce independent anchors. A key
-            # fixed at plan time follows the one selected member through the usual reads.
-            return budget + 1
-        derived = {
-            name
-            for name, value in plan.values.items()
-            if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC)
-            or (value.kind == RATE and value.node is not None)
-        }
-        size, changes = len(plan.values), {}
-        for name in plan.ordered(derived):
-            value = plan.values[name]
-            reads = plan.reads(name)
-            if name in self.formulas:
-                continue  # the family supplied its pieces directly
-            timed = value.node is not None and 't' in nodes.names(value.node)
-            if not timed and not any(each in moving or each in changes for each in reads):
-                continue
-            if (
-                value.kind == FORMULA
-                and isinstance(value.node, nodes.Ref)
-                and plan.occurrence_of(name) is None
-            ):
-                count = changes.get(value.node.name, 1)
-            else:
-                fits = len(_CHECKS) + 1
-                if not value.boolean:
-                    fits *= MOST + 1
-                count = fits * (1 + sum(changes.get(each, 0) for each in reads))
-            changes[name] = count
-            size += count
-            if size > budget:
-                return size
-        return size
+            return
+        if before and self.run.arriving and self.run.saved_arrival is None:
+            for registry in (ways.sampled, ways.moving_solvers):
+                for key in registry:
+                    ways.sets[key][1].incoming_history(end)
+        self.fits.advance(end)
+        self._advance(end)
+        if self._total <= self.plan.configuration.request.pieces:
+            return
+        round_ = int(not self.run.bare) if before else self.round
+        prefix = self.record(end, pause=Entry(end, round_, 'pause', '', ''), ongoing=end != self.plan.horizon)
+        if prefix.failure is not None and (not before or prefix.failure.t < end):
+            raise HistoryFull(prefix)
 
     def _add(self, name, pieces):
-        self.pieces.setdefault(name, []).extend(pieces)
-        if self._budget_state is not None:
-            self._note_pieces(name, pieces)
+        if pieces:
+            self.pieces.setdefault(name, []).extend(pieces)
+            self._dirty.add(name)
+            self._from = min(self._from, pieces[0][0])
 
     def add(self, name, t, value, rate):
         """One piece of a value, which a run gives as it goes."""
         self.pieces.setdefault(name, []).append((t, value, rate))
-        if self._budget_state is not None:
-            times, moving = self._budget_state
-            times.add(t)
-            if rate != 0:
-                moving.add(name)
-            self._raw_count += 1
-            self._longest = max(self._longest, len(self.pieces[name]))
+        self._dirty.add(name)
+        self._from = min(self._from, t)
 
     def add_pieces(self, name, pieces):
         """Pieces of a value, which a run gives as it goes."""
@@ -524,150 +422,210 @@ class Recorder:
         self._wanted |= found
         return found
 
-    # ---- after the run ----------------------------------------------------------------------------
+    # ---- the committed histories -----------------------------------------------------------------
 
-    def record(self, end, failure=None, pause=None):
-        """The record of the run, to the time `end` at which it stopped (the horizon, or the time of
-        its failure or of its stop at a breakpoint, whose entry ends the trace)."""
-        plan, run = self.plan, self.run
+    def _prepare_histories(self, signature):
+        """Order the histories that this request retains and index their direct readers."""
+        plan = self.plan
         request = plan.configuration.request
-        last = failure if failure is not None else pause
-        trace = tuple(self.trace) + ((last,) if last is not None else ())
-        needed = None if request.everything else _needed_by(plan.program, request.keys, trace, plan)[1]
-        # The occurrences that the trace starts (None: no occurrence's): a start that a failed commit
-        # discarded is in the plan, and its values are in no record (`moment._Savepoint`).
+        wanted = (
+            None if request.everything else needed(plan, [name_of(k) for k in request.keys], plan.defined)
+        )
         started = {entry.owner for entry in self.trace if entry.kind == 'start'} | {None}
-        # Some published rates have a definition between their recorded anchors. Its inputs
-        # need histories before the recorder can fit that part of the rate.
+        names = [
+            n for n in plan.values if (wanted is None or n in wanted) and plan.occurrence_of(n) in started
+        ]
         calculated = {
-            name
-            for name, value in plan.values.items()
-            if (
-                value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC)
-                or (value.kind == RATE and value.node is not None)
-                or name in plan.defined
-            )
-            and (needed is None or name in needed)
-            and plan.occurrence_of(name) in started
+            n
+            for n in names
+            if plan.values[n].kind in (CHANGED, FORMULA, REDUCE, LOOKUP, DYNAMIC)
+            or (plan.values[n].kind == RATE and plan.values[n].node is not None)
+            or n in plan.defined
         }
-        histories = {}
-        for name, value in plan.values.items():
-            if needed is not None and name not in needed:
-                continue
-            if plan.occurrence_of(name) not in started:
-                continue
-            if value.kind == CHANGED or name in calculated:
-                continue
-            # The value at the start, then the pieces that the run gave it: a store's lines and
-            # curves, a value that a commit wrote, an occurrence's values from its start.
-            pieces = [(0.0, self.constants[name], 0.0)] if name in self.constants else []
-            pieces += [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
-            histories[name] = self._history(value.key, pieces)
-        for name, stored in plan.changed.items():
-            if stored in histories:
-                # The time of the last change at a commit: a constant piece at the start and at each.
-                times = [run.changed_start(stored), *run.changes.get(stored, ())]
-                histories[name] = self._history(None, [(at, at, 0.0) for at in times if at <= end])
-        for name in plan.ordered(calculated, ever=True):
+        order = [n for n in names if n not in calculated] + plan.ordered(calculated, ever=True)
+        self._order = {name: k for k, name in enumerate(order)}
+        self._derived = calculated
+        self._readers = defaultdict(list)
+        self._clock = set()
+        for name in calculated:
             value = plan.values[name]
+            reads = plan.reads_ever(name)
             owner = plan.occurrence_of(name)
-            start = 0.0
             if owner is not None:
-                # A formula of an occurrence exists from its start, and keeps after its finish the
-                # value that it had then (D7).
-                start = histories[f'{owner}.started'].pieces[0].t
-            if name in plan.defined:
-                histories[name] = self._history(value.key, self._defined(name, histories, end))
-                continue
-            if value.kind == RATE:
-                # Re-shares supply the point at each switch, key and write. Between those
-                # points the amount follows its request and capacity as they move.
-                anchors = {
-                    at: (amount, slope)
-                    for at, amount, slope in self.pieces.get(name, ())
-                    if start <= at <= end
-                }
-                pieces = [] if anchors else self.formula(name, histories, end, start=start)
-                for at, following in pairwise([*anchors, None]):
-                    amount, slope = anchors[at]
-                    if slope is not None:
-                        pieces.append((at, amount, slope))
-                        continue
-                    until = end if following is None else following
-                    fitted_input = self.formula(
-                        name, histories, until, start=at, anchors={at: (amount, None)}
-                    )
-                    pieces.extend(piece for piece in fitted_input if following is None or piece[0] < until)
-            elif name in self.formulas:
-                pieces = [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
-            elif value.kind == REDUCE:
-                pieces = self._reduction(name, histories, end)
-            elif value.kind == LOOKUP:
-                pieces = self._lookup(name, histories, end)
-            elif value.kind == DYNAMIC:
-                pieces = self._dynamic(name, histories, end)
-            elif (
-                isinstance(value.node, nodes.Ref) and value.node.name in histories and name not in run.frozen
+                reads |= {f'{owner}.active', f'{owner}.started'} - {name}
+            for key in reads:
+                self._readers[key].append(name)
+            if (
+                (value.node is not None and 't' in nodes.names(value.node))
+                or name in plan.defined
+                or value.kind == DYNAMIC
+                or (name in plan.keyed and plan._chosen(plan.keyed[name]) is None)
             ):
-                # A formula that names another value has its history.
-                found = histories[value.node.name].pieces
-                histories[name] = History(
-                    value.key, tuple(piece for piece in found if piece.t >= start) or found
-                )
-                continue
+                self._clock.add(name)
+        self._histories.clear()
+        self._raw_positions.clear()
+        self._moving.clear()
+        self._names = Manifest(request.horizon, request.everything, request.keys).names
+        self._counted = {
+            name: 0 for name in names if (key := plan.values[name].key) is not None and self._names(key)
+        }
+        self._total = 0
+        self._as_of = None
+        self._dirty.update(names)
+        self._dirty.update(self.transfers)
+        self._schema = signature
+
+    def _advance(self, end):
+        """Update only histories whose inputs changed or whose current interval moves."""
+        plan = self.plan
+        signature = (len(plan.values), plan.version)
+        if signature != self._schema:
+            self._prepare_histories(signature)
+        dirty, self._dirty = self._dirty, set()
+        since = min(self._as_of or 0.0, self._from)
+        self._from = math.inf
+        changed = dirty.intersection(self._order)
+        if self._as_of != end:
+            changed.update(self._clock)
+            changed.update(self._moving)
+        pending = list(changed)
+        while pending:
+            for reader in self._readers.get(pending.pop(), ()):
+                if reader not in changed:
+                    changed.add(reader)
+                    pending.append(reader)
+        for name in sorted(changed, key=self._order.__getitem__):
+            value = plan.values[name]
+            if name in self._derived:
+                history = self._derived_history(name, value, end, since)
             else:
-                fit_end = end
-                if self._probe_end is not None:
-                    if name in self._clock_histories:
-                        histories[name] = self._clock_histories[name]
-                        continue
-                    if self._fixed_clock(name):
-                        fit_end = plan.horizon
-                pieces = self.formula(name, histories, fit_end, start=start)
-                if fit_end != end:
-                    histories[name] = self._clock_histories[name] = self._history(value.key, pieces)
-                    continue
-            if name in run.frozen or (owner is not None and value.kind == RATE):
-                # A checkpoint can follow the finish in the same round, before the set is
-                # retired. Its occurrence's rate history already ends at zero there.
-                active = histories[f'{owner}.active'].pieces
-                finish = next((piece.t for piece in active if piece.value is False), None)
-                if finish is not None:
-                    final = run.frozen.get(name, 0.0)
-                    pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, final, 0.0)]
-            histories[name] = self._history(value.key, pieces)
-        # What a kept formula, reduction or dynamic read reads is kept too, so that `read` can
-        # evaluate it (`_needed`).
-        keys = set(request.keys)
-        if needed is not None:
-            keys |= {plan.values[name].key for name in needed if plan.values[name].key is not None}
-        # The ledger of every store that an edit changed by the end, whatever the request names: the
-        # books of the store, which a record that holds the store, or the ledger, reads. Its first
-        # piece is at the first edit, so a record that ends before it holds none (see the module).
-        for name, (_, moved) in self.transfers.items():
+                history = self._raw_history(name, value, end)
+                if history.pieces and (history.pieces[-1].curve is not None or history.pieces[-1].rate != 0):
+                    self._moving.add(name)
+                else:
+                    self._moving.discard(name)
+            self._put(name, history)
+        for name in dirty.intersection(self.transfers):
             key = plan.values[name].key
-            if key is None or plan.occurrence_of(name) not in started:
-                continue
+            ledger = Key(key.owner, (*key.steps, 'external'))
+            ledger_name = f'{name}.external'
+            if self._names(ledger):
+                self._counted.setdefault(ledger_name, 0)
             total, pieces = 0.0, []
-            for at, amount in moved:
+            for at, amount in self.transfers[name][1]:
                 if at <= end:
                     total += amount
                     pieces.append((at, total, 0.0))
-            if not pieces:
-                continue
-            ledger = Key(key.owner, (*key.steps, 'external'))
-            histories[f'{name}.external'] = self._history(ledger, pieces)
-            keys.add(ledger)
+            self._put(ledger_name, self._history(ledger, pieces))
+        self._as_of = end
+
+    def _put(self, name, history):
+        if name in self._counted:
+            self._total += len(history.pieces) - self._counted[name]
+            self._counted[name] = len(history.pieces)
+        self._histories[name] = history
+
+    def _raw_history(self, name, value, end):
+        """Append just the raw pieces since the previous boundary. A checkpoint projection
+        owns a different raw sequence; it builds its own history without changing the run's."""
+        raw = self.pieces.get(name, ())
+        prior, i = self._raw_positions.get(name, (None, 0))
+        if prior is raw and i <= len(raw):
+            kept = self._histories[name].pieces
+            if i == len(raw):
+                return self._histories[name]
+        else:
+            i = 0
+            kept = [Piece(0.0, self.constants[name])] if name in self.constants else []
+        j = len(raw)
+        if j and raw[-1][0] > end:
+            j = bisect_right(raw, end, lo=i, key=lambda piece: piece[0])
+        new = raw[i:j]
+        self._extend(kept, new)
+        self._raw_positions[name] = raw, j
+        return History(value.key, kept)
+
+    @staticmethod
+    def _extend(kept, new):
+        if kept and new:
+            last = kept.pop()
+            new.insert(0, (last.t, last.value, last.curve if last.curve is not None else last.rate))
+        kept.extend(recorded_piece(*piece) for piece in _compact(new))
+
+    def _derived_history(self, name, value, end, since):
+        plan, run, histories = self.plan, self.run, self._histories
+        owner = plan.occurrence_of(name)
+        start = 0.0 if owner is None else histories[f'{owner}.started'].pieces[0].t
+        if value.kind == CHANGED:
+            stored = plan.changed[name]
+            times = [run.changed_start(stored), *run.changes.get(stored, ())]
+            return self._history(None, [(t, t, 0.0) for t in times if t <= end])
+        if name in plan.defined:
+            return self._history(value.key, self._defined(name, histories, end))
+        if value.kind == RATE:
+            # Re-shares supply the point at each switch, key and write. Between those
+            # points the amount follows its request and capacity as they move.
+            anchors = {
+                at: (amount, slope) for at, amount, slope in self.pieces.get(name, ()) if start <= at <= end
+            }
+            pieces = [] if anchors else self.formula(name, histories, end, start=start)
+            for at, following in pairwise([*anchors, None]):
+                amount, slope = anchors[at]
+                if slope is not None:
+                    pieces.append((at, amount, slope))
+                    continue
+                until = end if following is None else following
+                fitted_input = self.formula(name, histories, until, start=at, anchors={at: (amount, None)})
+                pieces.extend(piece for piece in fitted_input if following is None or piece[0] < until)
+        elif name in self.formulas:
+            pieces = [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
+        elif value.kind == REDUCE:
+            pieces = self._reduction(name, histories, end)
+        elif value.kind == LOOKUP:
+            pieces = self._lookup(name, histories, end)
+        elif value.kind == DYNAMIC:
+            pieces = self._dynamic(name, histories, end)
+        elif isinstance(value.node, nodes.Ref) and value.node.name in histories and name not in run.frozen:
+            # A formula that names another value has its history.
+            found = histories[value.node.name].pieces
+            return History(
+                value.key, found if start == 0 else tuple(p for p in found if p.t >= start) or found
+            )
+        elif owner is None and name not in run.frozen:
+            # The prefix before the changed input is already committed. Refresh only the
+            # open interval; a pause and its continuation use the same incoming polynomial.
+            pieces = self.formula(name, histories, end, start=max(since, start))
+            prior = self._histories.get(name)
+            kept = [] if prior is None else prior.pieces
+            if self._private is not None and name not in self._private:
+                kept = list(kept)
+                self._private.add(name)
+            del kept[bisect_left(kept, since, key=_piece_time) :]
+            self._extend(kept, pieces)
+            return History(value.key, kept)
+        else:
+            pieces = self.formula(name, histories, end, start=start)
+        if name in run.frozen or (owner is not None and value.kind == RATE):
+            # A checkpoint can follow the finish in the same round, before the set is
+            # retired. Its occurrence's rate history already ends at zero there.
+            active = histories[f'{owner}.active'].pieces
+            finish = next((piece.t for piece in active if piece.value is False), None)
+            if finish is not None:
+                final = run.frozen.get(name, 0.0)
+                pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, final, 0.0)]
+        return self._history(value.key, pieces)
+
+    def record(self, end, failure=None, pause=None, *, ongoing=False):
+        """The run's committed histories and trace up to the stop or horizon."""
+        self._advance(end)
+        plan, request = self.plan, self.plan.configuration.request
+        last = failure if failure is not None else pause
+        trace = (*self.trace, last) if last is not None else tuple(self.trace)
         held = [
-            history
-            for history in histories.values()
-            if history.key is not None and history.pieces and (request.everything or history.key in keys)
+            History(h.key, tuple(h.pieces))
+            for h in self._histories.values()
+            if h.key is not None and h.pieces
         ]
-        if self._probe_end is not None and self._clock_histories:
-            held = [
-                History(h.key, tuple(p for p in h.pieces if p.t <= end)) if h.pieces[-1].t > end else h
-                for h in held
-            ]
         manifest = Manifest(
             request.horizon,
             request.everything,
@@ -676,7 +634,7 @@ class Recorder:
             tuple(sorted(plan.comparison_scales.items())),
         )
         made = Record(manifest, tuple(held), trace, failure)
-        if self._probe_end is None or end == plan.horizon:
+        if not ongoing:
             made = _finished(made)
         # At a provisional end the recorded outgoing slopes still count. At a true end
         # they become held points, as do the retained pieces when the budget ends a run.
@@ -829,13 +787,13 @@ class Recorder:
                 return evaluate(node, env, plan.units)
 
         boolean = value.boolean if boolean is None else boolean
-        times = sorted(
-            {
-                float(start),
-                *(anchors or ()),
-                *(piece.t for read in reads for piece in histories[read].pieces if start <= piece.t <= end),
-            }
-        )
+        times = {float(start), *(anchors or ())}
+        for read in reads:
+            pieces = histories[read].pieces
+            left = bisect_left(pieces, start, key=_piece_time)
+            right = bisect_right(pieces, end, lo=left, key=_piece_time)
+            times.update(piece.t for piece in pieces[left:right])
+        times = sorted(times)
         bounds = [*times, max(end, times[-1])]
         readers = {read: _reader(histories[read]) for read in reads}
         holders = {read: _holder(histories[read]) for read in reads}
@@ -876,18 +834,21 @@ class Recorder:
         pieces = []
         for (a, b), first in zip(pairwise(bounds), firsts):
             held = b <= a or (not timed and all(holders[read](a) for read in reads))
-            if not held and self._probe_end == b and a == times[-1] and name not in self._clock_histories:
-                self._open_from = min(self._open_from, a)
             if held:
-                # What the formula reads holds its value from a to b: so does the formula.
                 pieces.append((a, cast(first), 0.0))
-            elif discrete:
-                # Where it cannot be evaluated is one more value of the yes/no or the text.
-                pieces += _switches(lambda time: cast(tried(time)), a, b, cast(first), crossing)
-            else:
-                size = scale if isinstance(first, Unavailable) else max(scale, abs(float(first)))
-                tolerance = np.array([plan.numerics.atol_factor * size])
-                pieces += _numbers(at, tried, a, b, first, tolerance, crossing)
+                continue
+            for c, d in pairwise([a, *self.fits.intervals(a, b), b]):
+
+                def fit():
+                    begin = first if c == a else tried(c)
+                    if discrete:
+                        return _switches(lambda time: cast(tried(time)), c, d, cast(begin), crossing)
+                    size = scale if isinstance(begin, Unavailable) else max(scale, abs(float(begin)))
+                    return _numbers(
+                        at, tried, c, d, begin, np.array([plan.numerics.atol_factor * size]), crossing
+                    )
+
+                pieces.extend(self.fits.pieces(name, c, d, fit))
         return pieces
 
     def _defined(self, name, histories, end):
@@ -1083,10 +1044,9 @@ def _numbers(at, tried, a, b, first, tolerance, crossing):
 
 def _reader(history):
     """`History.at` of a history, by bisection over the times of its pieces."""
-    times = [piece.t for piece in history.pieces]
 
     def at(time):
-        k = bisect_right(times, time) - 1
+        k = bisect_right(history.pieces, time, key=_piece_time) - 1
         if k < 0:
             raise LookupError(f'{history.key} has no value at {time} h')
         return history.pieces[k].at(time)
@@ -1096,10 +1056,9 @@ def _reader(history):
 
 def _holder(history):
     """Whether the piece of a history at a time holds its value: no rate and no curve."""
-    times = [piece.t for piece in history.pieces]
 
     def holds(time):
-        k = bisect_right(times, time) - 1
+        k = bisect_right(history.pieces, time, key=_piece_time) - 1
         return k >= 0 and history.pieces[k].curve is None and history.pieces[k].rate == 0
 
     return holds

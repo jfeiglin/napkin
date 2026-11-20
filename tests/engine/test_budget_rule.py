@@ -22,6 +22,7 @@ import pytest
 
 from napkin import store
 from napkin.engine.timeline import Plan, Run, read
+from napkin.engine.timeline.record import requested
 from napkin.program.build import (
     SINK,
     SOURCE,
@@ -186,6 +187,7 @@ def test_fresh_stored_and_resumed_runs_of_a_request_have_one_outcome_and_one_set
         request = Request(horizon, everything=not keys, keys=keys, pieces=rng.randint(1, count + 2))
         configuration = Configuration(request)
         alone, stops = fresh(program, configuration, breakpoints, edits)
+        assert outcome(alone) == outcome(whole.within(request.pieces)), (seed, request, breakpoints, edits)
         # A run whose record would exceed its budget stops then: no checkpoint is past its budget.
         for checkpoint in stops:
             assert checkpoint.record.failure is None, (seed, request, checkpoint.stop)
@@ -309,10 +311,9 @@ def test_history_budget_stops_work_at_the_first_excess_piece(monkeypatch):
 
 
 @pytest.mark.parametrize('first_stage', [None, 1, 10])
-def test_a_clock_formula_exhausts_its_budget_on_its_original_fit_before_the_next_stage(first_stage):
-    """The clock alone fixes its fits over [0, 10]. The degree-eight fit of exp(t)
-    needs a split on [0, 1.25] and passes on [0, 0.625]. Its second piece is due
-    at 0.625 h. An unrelated stage cannot shorten the fit or run past that point."""
+def test_a_clock_formula_exhausts_its_budget_on_the_first_completed_span(first_stage):
+    """The first completed span is [0,1] with hourly stages, otherwise [0,10].
+    The former needs one piece. The latter splits [0,1.25] into halves."""
     from napkin.program.build import call, t
 
     b = Builder(UNITS)
@@ -340,17 +341,16 @@ def test_a_clock_formula_exhausts_its_budget_on_its_original_fit_before_the_next
     request = Request(10, everything=False, keys=(key,), pieces=1)
     made = Run(Plan.of(b.finish(), Configuration(request)))
     record = made.run()
-    assert record.failure is not None and record.failure.t == 0.625
-    # The next recorded event starts a new moment in round 1. A bare horizon has none.
+    cutoff = 1 if first_stage == 1 else 0.625
+    assert record.failure is not None and record.failure.t == cutoff
     assert record.failure.round == (1 if ticks else 0)
-    assert record.history(key).pieces[0].curve.length == 0.625
-    assert made.env['plant.ticks'] == 0
+    assert record.history(key).pieces[0].curve.length == cutoff
+    assert made.env['plant.ticks'] == (1 if first_stage == 1 else 0)
 
 
-def test_an_unclosed_fit_waits_for_its_inputs_next_write():
-    """At 5 h the value adds 1 to exp(t). The first actual fitting interval
-    is [0,5]; its first two pieces start at 0 and 0.625. Ticks at 1 and 2 h
-    do not supply endpoints. The write at 5 h closes the fit."""
+def test_a_completed_fit_stops_before_the_next_write_to_its_input():
+    """The first two completed spans begin at 0 and 1 h. Ticks advance the
+    recorder even though the offset will not change until 5 h."""
     from napkin.program.build import call, t
 
     b = Builder(UNITS)
@@ -372,16 +372,15 @@ def test_an_unclosed_fit_waits_for_its_inputs_next_write():
     request = Request(10, everything=False, keys=(key,), pieces=1)
     made = Run(Plan.of(b.finish(), Configuration(request)))
     record = made.run()
-    assert record.failure is not None and record.failure.t == 0.625
-    assert record.history(key).pieces[0].curve.length == 0.625
-    assert (made.env['plant.offset'], made.env['plant.ticks']) == (1, 2)
+    assert record.failure is not None and record.failure.t == 1
+    assert record.history(key).pieces[0].curve.length == 1
+    assert (made.env['plant.offset'], made.env['plant.ticks']) == (0, 1)
 
 
-@pytest.mark.parametrize(('offset_time', 'first_excess'), [(2, 1), (5, 0.625)])
-def test_a_raw_counter_and_an_open_fit_stop_when_the_inputs_fix_the_first_excess(offset_time, first_excess):
-    """Two pieces are present at 0 h. The counter adds one at 1 h. The curve
-    exp(t) + offset fits [0,2] in two halves or starts [0,5] with a 0.625 h
-    piece. Which is the third piece becomes certain when the offset changes."""
+@pytest.mark.parametrize('offset_time', [2, 5])
+def test_a_raw_counter_and_a_curve_stop_before_the_next_input_write(offset_time):
+    """The counter and the curve each start a piece at 0 h. The counter adds
+    one at 1 h, independently of how long it takes for the offset to change."""
     from napkin.program.build import call, t
 
     b = Builder(UNITS)
@@ -402,9 +401,9 @@ def test_a_raw_counter_and_an_open_fit_stop_when_the_inputs_fix_the_first_excess
     request = Request(10, everything=False, keys=(curve, Key('plant', ('count',))), pieces=2)
     made = Run(Plan.of(b.finish(), Configuration(request)))
     record = made.run()
-    assert record.failure.t == first_excess
-    assert record.history(curve).pieces[0].curve.length == first_excess
-    assert (made.env['plant.offset'], made.env['plant.count']) == (1, 1)
+    assert record.failure.t == 1
+    assert record.history(curve).pieces[0].curve.length == 1
+    assert (made.env['plant.offset'], made.env['plant.count']) == (0, 1)
 
 
 def test_a_selected_tanks_starting_line_exhausts_the_budget_before_the_tick():
@@ -414,3 +413,124 @@ def test_a_selected_tanks_starting_line_exhausts_the_budget_before_the_tick():
     record = made.run()
     assert record.failure.t == 0
     assert made.env['tank.ticks'] == 0
+
+
+@pytest.mark.parametrize('ticks', [32, 128])
+def test_repeated_budget_checks_append_only_the_changed_selected_pieces(ticks, monkeypatch):
+    """Double the counter at each hour. Unselected peers and past counter values need no visit."""
+    from napkin.engine.timeline import record as recording
+
+    b = Builder(UNITS)
+    b.entity(
+        'plant',
+        value('count', '', 0),
+        value('double', '', formula(this.count + this.count)),
+        *(value(f'spare{k}', '', formula(this.count + k)) for k in range(60)),
+        event('tick', *(after(q(1, 'h'), add(this.count, 1)) for _ in range(ticks))),
+    )
+    b.setup(start(named('plant').tick))
+    key = Key('plant', ('double',))
+    request = Request(ticks, everything=False, keys=(key,), pieces=ticks + 1)
+    visits, materialized = [], []
+    compact, record = recording._compact, recording.Recorder.record
+
+    def count_pieces(pieces):
+        visits.append(len(pieces))
+        return compact(pieces)
+
+    def count_records(self, end, *args, **kwargs):
+        materialized.append(end)
+        return record(self, end, *args, **kwargs)
+
+    monkeypatch.setattr(recording, '_compact', count_pieces)
+    monkeypatch.setattr(recording.Recorder, 'record', count_records)
+    found = Run(Plan.of(b.finish(), Configuration(request))).run()
+    assert found.history(key).at(ticks) == 2 * ticks
+    assert len(found.history(key).pieces) == ticks + 1
+    assert sum(visits) <= 10 * (ticks + 1)
+    assert materialized == [ticks]
+
+
+def fitting_plant(curve, *, drain='still', delay=1, write_delay=1):
+    from napkin.program.build import call, t
+
+    b = Builder(UNITS)
+    clock = t / q(1, 'h')
+    observed = (
+        call('exp', clock) + this.offset + this.water / q(1, 'L')
+        if curve == 'exponential'
+        else 10**10 * clock + 0.03 * call('exp', -100 * clock)
+    )
+    b.entity(
+        'plant',
+        value('water', 'L', 3, lower=0),
+        value('offset', '', 0),
+        value('count', '', 0),
+        value('curve', '', formula(observed)),
+        flow(
+            'drain',
+            this.water,
+            SINK,
+            request=formula(this.water / q(4, 'h'))
+            if drain == 'curve'
+            else q(0.25 if drain == 'line' else 0, 'L/h'),
+        ),
+        event(
+            'tick',
+            after(q(delay, 'h'), add(this.count, 1)),
+            after(q(write_delay, 'h'), add(this.offset, 1)),
+            after(q(2, 'h'), add(this.count, 1)),
+        ),
+    )
+    b.setup(start(named('plant').tick))
+    return b.finish()
+
+
+@pytest.mark.parametrize('formula_kind', ['exponential', 'fast decay'])
+def test_a_breakpoint_preserves_the_completed_fits_and_the_budget_cutoff(formula_kind):
+    program = fitting_plant(formula_kind, write_delay=4)
+    key = Key('plant', ('curve',))
+    stops = (Breakpoint('plant.tick.step[0]'),)
+    request = Request(10, everything=False, keys=(key,))
+    whole, checkpoints = fresh(program, Configuration(request), stops, {})
+    (checkpoint,) = checkpoints
+    early = tuple(p for p in checkpoint.record.history(key).pieces if p.t < 1)
+    assert early == tuple(p for p in whole.history(key).pieces if p.t < 1)
+    for budget in (1, 2, 3):
+        bounded = Configuration(Request(10, everything=False, keys=(key,), pieces=budget))
+        expected = whole.within(budget)
+        straight, _ = fresh(program, bounded, (), {})
+        observed, stops_seen = fresh(program, bounded, stops, {})
+        assert outcome(observed) == outcome(straight) == outcome(expected)
+        assert all(cp.stop.t <= expected.end for cp in stops_seen)
+
+
+@pytest.mark.parametrize(
+    'seed', [*range(8), *[pytest.param(k, marks=pytest.mark.deep) for k in range(8, 40)]]
+)
+def test_budget_cutoffs_follow_the_complete_records_committed_piece_starts(seed):
+    rng = random.Random(seed)
+    program = fitting_plant(
+        rng.choice(['exponential', 'fast decay']),
+        drain=rng.choice(['still', 'line', 'curve']),
+        delay=rng.choice([0.5, 1, 2]),
+    )
+    stops = (Breakpoint('plant.tick.step[0]'), Breakpoint('plant.tick.step[1].do[0]'))
+    edits = {rng.choice([1, 2]): [(Key('plant', ('offset',)), rng.choice([0.5, 2]))]}
+    for keys in ((), (Key('plant', ('curve',)),), (Key('plant', ('count',)), Key('plant', ('water',)))):
+        horizon = 5
+        whole, _ = fresh(
+            program, Configuration(Request(horizon, everything=not keys, keys=keys)), stops, edits
+        )
+        times = sorted(float(p.t) for h in whole.histories if whole.manifest.names(h.key) for p in h.pieces)
+        # The sorted list deliberately retains different pieces that start at the same instant.
+        for budget in (rng.randint(1, len(times)), max(1, len(times) - 1), len(times)):
+            config = Configuration(Request(horizon, everything=not keys, keys=keys, pieces=budget))
+            record, held_stops = fresh(program, config, stops, edits)
+            restored = resumed(program, config, stops, edits)
+            assert record == restored
+            expected = requested(whole.within(budget), program)
+            assert record == expected, differences(record, expected)
+            assert record.end == (times[budget] if budget < len(times) else horizon)
+            assert (record.failure is not None) == (budget < len(times))
+            assert all(cp.stop.t <= record.end for cp in held_stops)
