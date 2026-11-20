@@ -173,11 +173,13 @@ def test_sparse_template_rows_keep_their_own_branches_and_trial_values():
 
 
 @pytest.mark.parametrize('way', ['ComponentWay', 'Sparse'])
-@pytest.mark.parametrize('gap', [-2, -1, 0, 1, 2])
-@pytest.mark.parametrize('guard', ['clock', 'level'])
+@pytest.mark.parametrize(
+    ('guard', 'gap'),
+    [('clock', gap) for gap in (-2, -1, 0, 1, 2)] + [('level', gap) for gap in (-2, -0.5, 0, 0.5, 2)],
+)
 def test_a_located_switch_belongs_to_the_scheduled_moment_only_inside_its_time_band(way, gap, guard):
-    """The clock switches the fill from 1 to 3 L/h. The times and tolerance are binary fractions,
-    so a root exactly one tolerance from the stage is an unambiguous inclusive boundary."""
+    """An authored binary clock time tests the closed edge exactly. A located store crossing
+    tests both sides with room for roundoff in the numerical trajectory."""
     crossing = 2**-16
     located = 1 + crossing * gap
     condition = t < q(located, 'h') if guard == 'clock' else this.water < q(located, 'L')
