@@ -597,15 +597,34 @@ def value(node, environment, registry):
 ARITHMETIC = (ValueError, OverflowError, ZeroDivisionError, TypeError, KeyError)
 
 
+def failure(exc):
+    """A failure of Python's arithmetic in the language's words (spec: "Execution errors fail the run
+    with the expression"): a division by zero, a number outside the domain of its function (`ln` of
+    zero, `sqrt` of a negative number), a number too large to hold, values of kinds that an
+    operation does not take, a name with no value."""
+    if isinstance(exc, ZeroDivisionError):
+        return 'a division by zero'
+    if isinstance(exc, OverflowError):
+        return 'a number too large to hold'
+    if isinstance(exc, KeyError):
+        return f'{exc.args[0] if exc.args else "a name"} has no value'
+    if isinstance(exc, TypeError):
+        return 'values of kinds that its operation does not take'
+    if isinstance(exc, ValueError) and 'math domain' in str(exc):
+        return 'a number outside the domain of its function'
+    return str(exc)
+
+
 def checked_value(node, environment, registry):
     """The value of a node in an environment; each failure is an ExpressionError that names the
-    expression."""
+    expression as the model writes it (`expr.notation`) and the failure in the language's words
+    (`failure`)."""
     try:
         return function(node)(environment, registry)
     except ExpressionError:
         raise
     except ARITHMETIC as exc:
-        raise ExpressionError(f'{expr.text(node)!r}: {exc}') from exc
+        raise ExpressionError(f'`{expr.notation(node)}`: {failure(exc)}') from exc
 
 
 def program_text(

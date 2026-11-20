@@ -29,7 +29,9 @@ a consumer that reads the comparisons of a condition.
 text that is outside the language (an operator or a form that the language does not have) is a
 `Foreign` node, which keeps Python's own tree of that part: such a text fails when its value is asked,
 as it does today, and not when it is read. `text` writes a node as `ast.unparse` writes its tree, for
-each node that has no `Foreign` part. `names` gives the names that a node reads.
+each node that has no `Foreign` part: the identity of a computation that a text gives. `notation`
+writes it as the model writes it, for a message: `2 L`, not the program's call `q(2, 'L')`. `names`
+gives the names that a node reads.
 
 The contract of each operation (its arity, its rule for units, where it is defined) is not here: it is
 in `ops`, and what a consumer does with an operation is with that consumer.
@@ -663,3 +665,85 @@ def text(node):
     written = _written(node, TEST)
     object.__setattr__(node, '_text', written)
     return written
+
+
+def _quantity(node):
+    """Whether a node is a quantity, `q(number, unit)`."""
+    return (
+        isinstance(node, Call)
+        and node.function == 'q'
+        and len(node.args) == 2
+        and all(isinstance(arg, Const) for arg in node.args)
+        and isinstance(node.args[1].value, str)
+        and not isinstance(node.args[0].value, bool | str)
+    )
+
+
+def _factor(node, level):
+    """A part of a product, a quotient, a power or a sign: a quantity in brackets, since a unit runs on
+    through `*` and `/` while the next factor is a bare name (`2 h * crews` is the unit `h*crews`)."""
+    written = _notation(node, level)
+    return f'({written})' if _quantity(node) else written
+
+
+def _notation(node, level):
+    if isinstance(node, Ref):
+        return node.name
+    if isinstance(node, Const):
+        value = node.value
+        if isinstance(value, bool):
+            return 'true' if value else 'false'
+        if isinstance(value, str):
+            # A member of an enum is written by its name (it starts with a capital); a text in quotes.
+            if value.isidentifier() and value[0].isupper():
+                return value
+            return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+        written = _float_text(value) if type(value) is float else repr(value)
+        # A negative number is a sign and its number: it binds as a sign does.
+        return f'({written})' if written.startswith('-') and level > FACTOR else written
+    if _quantity(node):
+        number = node.args[0].value
+        return f'{_float_text(number) if type(number) is float else repr(number)} {node.args[1].value}'
+    if isinstance(node, Unary):
+        own = LEVELS[node.op]
+        gap = ' ' if node.op == 'not' else ''
+        written = SYMBOLS[node.op] + gap + _factor(node.operand, own)
+        return f'({written})' if level > own else written
+    if isinstance(node, Binary):
+        own = LEVELS[node.op]
+        # A power binds to the right; any other operation to the left.
+        left, right = (own + 1, own) if node.op == 'pow' else (own, own + 1)
+        part = _factor if node.op in ('mul', 'div', 'pow') else _notation
+        written = f'{part(node.left, left)} {SYMBOLS[node.op]} {part(node.right, right)}'
+        return f'({written})' if level > own else written
+    if isinstance(node, Compare):
+        written = _notation(node.operands[0], CMP + 1)
+        for op, operand in zip(node.ops, node.operands[1:]):
+            written += f' {SYMBOLS[op]} {_notation(operand, CMP + 1)}'
+        return f'({written})' if level > CMP else written
+    if isinstance(node, BoolOp):
+        own = OR if node.op == 'or' else AND
+        written = f' {node.op} '.join(_notation(value, own + 1) for value in node.values)
+        return f'({written})' if level > own else written
+    if isinstance(node, IfElse):
+        written = f'{_notation(node.body, TEST + 1)} if {_notation(node.test, TEST + 1)} else '
+        written += _notation(node.orelse, TEST)
+        return f'({written})' if level > TEST else written
+    if isinstance(node, Call) and node.function == 'within' and len(node.args) == 3:
+        value, low, high = node.args
+        written = f'{_notation(value, CMP + 1)} in [{_notation(low, TEST)}, {_notation(high, TEST)}]'
+        return f'({written})' if level > CMP else written
+    if isinstance(node, Call):
+        return f'{node.function}({", ".join(_notation(arg, TEST) for arg in node.args)})'
+    return _written(node, level)  # a part outside the language, or a kind that another module defines
+
+
+def notation(node):
+    """An expression as the model writes it, for a message that quotes it (spec: a quantity is a
+    number and its unit, `2 L`; "waits at `until this.cleared`"): `text`'s form of each operation,
+    with a quantity `q(2, 'L')` as `2 L` (in brackets as a factor, a power or the operand of a sign),
+    a yes/no as `true` or `false`, `within(x, lo, hi)` as `x in [lo, hi]`, a member of an enum by its
+    name and any other text in double quotes. The model's parser reads it back as the same expression
+    (`napkin/model/language/parse.py`). It is no identity of a node (`text` is), and a message is
+    rare, so it is not kept."""
+    return _notation(node, TEST)

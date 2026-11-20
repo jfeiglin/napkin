@@ -469,6 +469,38 @@ def test_a_solver_reads_its_unknowns_by_name():
     assert check(b.finish()) == ()
 
 
+def test_a_solver_that_names_one_value_twice_is_its_one_writer():
+    """Spec, "Solver and execution contract": one writer determines each result. A solver that names
+    a stored number twice in `solve_for`, once by its path and once through an input that names it, is
+    still its one writer: the check refused it as "two writers: plan.s, plan.s", and the run as a
+    value that no solver can determine. The run holds the solver's answer, 3 L; a stage that writes
+    the value too is a second writer."""
+    from napkin.engine.timeline import read, run
+    from napkin.program.build import constraint
+    from napkin.program.config import Configuration, Request
+
+    b = Builder(UNITS)
+    b.entity(
+        'plan',
+        value('level', 'L', 5, lower=0),
+        solver(
+            's',
+            given('lvl', this.level),
+            solve_for(this.level),
+            solve_for(local.lvl),
+            constraint(this.level == q(3, 'L')),
+        ),
+    )
+    program = b.finish()
+    assert check(program) == ()
+    (level,) = read(run(program, Configuration(Request(1))), program, ['plan.level'], [0, 1])
+    assert level.values == pytest.approx((3, 3), abs=1e-9)
+    two = Builder(UNITS)
+    solved_and_assigned(two)
+    with pytest.raises(ProgramError, match=r'plan\.level has two writers: plan\.s, plan\.push'):
+        two.finish()
+
+
 def test_a_message_names_the_part():
     found = refusals(lambda b: tank(b, flow('drain', this.waterr, SINK, request=q(1, 'L/h'))))
     assert any('this.waterr' in each.message for each in found)

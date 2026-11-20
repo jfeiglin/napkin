@@ -65,7 +65,7 @@ def test_a_firing_within_tolerance_of_its_threshold_is_marked():
     (entry,) = record.entries('fire')
     ((origin, comparison, difference, tolerance),) = entry.detail('near')
     assert (entry.t, origin) == (1, 'tank.alarm.when[0]')
-    assert comparison == "tank.level >= q(0.3, 'L')"
+    assert comparison == 'tank.level >= 0.3 L'
     assert difference == OVER and tolerance == pytest.approx(TOLERANCE)
     assert record.near_ties() == ((entry, entry.detail('near')[0]),)
 
@@ -79,7 +79,7 @@ def test_a_firing_by_more_than_the_tolerance_is_not():
 def test_a_comparison_inside_a_boolean_formula_is_read_through_it():
     record = tank(value('ready', BOOL, formula(this.level >= q(0.3, 'L'))), alarm(this.ready))
     (entry,) = record.entries('fire')
-    assert [tie[1] for tie in entry.detail('near')] == ["tank.level >= q(0.3, 'L')"]
+    assert [tie[1] for tie in entry.detail('near')] == ['tank.level >= 0.3 L']
 
 
 def test_a_crossing_and_a_clock_move_through_their_thresholds():
@@ -152,4 +152,4 @@ def test_or_stops_at_the_term_that_decides():
     (entry,) = tank(alarm(clock | level)).entries('fire')
     assert entry.t == 1 and entry.detail('near') is None
     (entry,) = tank(alarm(level | clock)).entries('fire')
-    assert entry.t == 1 and [tie[1] for tie in entry.detail('near')] == ["tank.level >= q(0.3, 'L')"]
+    assert entry.t == 1 and [tie[1] for tie in entry.detail('near')] == ['tank.level >= 0.3 L']

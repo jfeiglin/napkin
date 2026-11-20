@@ -67,7 +67,7 @@ def test_a_guard_false_within_tolerance_marks_the_stage_that_ran_nothing():
     (entry,) = record.entries('skip')
     ((origin, comparison, difference, tolerance),) = entry.detail('near')
     assert (entry.t, entry.part, entry.owner) == (2, 'tank.check.step[0]', 'tank.check#0')
-    assert (origin, comparison) == ('tank.check.step[0]', "tank.level <= q(0.3, 'L')")
+    assert (origin, comparison) == ('tank.check.step[0]', 'tank.level <= 0.3 L')
     assert difference == OVER and tolerance == pytest.approx(TOLERANCE)
     assert record.entries('commit', 'tank.check.step[0]') == ()
     assert read(record, program, ['tank.flag'], [3])[0].values == (0,)
@@ -111,7 +111,7 @@ def test_a_trigger_within_tolerance_that_did_not_fire_is_marked_once_until_it_fi
     ]
     for entry in misses:
         ((origin, comparison, difference, tolerance),) = entry.detail('near')
-        assert (origin, comparison) == ('tank.alarm.when[0]', "tank.level >= q(0.8, 'L')")
+        assert (origin, comparison) == ('tank.alarm.when[0]', 'tank.level >= 0.8 L')
         assert difference == UNDER and tolerance == pytest.approx(TOLERANCE)
     assert [entry.t for entry in record.entries('fire')] == [2.5]
     found = messages(record, program, configuration)
@@ -147,7 +147,7 @@ def test_a_gate_released_within_tolerance_is_marked_in_its_occurrence():
     (entry,) = record.entries('release')
     ((origin, comparison, difference, tolerance),) = entry.detail('near')
     assert (entry.t, entry.part, entry.owner) == (1, 'tank.wait.step[0]', 'tank.wait#0')
-    assert (origin, comparison) == ('tank.wait.step[0]', "tank.level >= q(0.3, 'L')")
+    assert (origin, comparison) == ('tank.wait.step[0]', 'tank.level >= 0.3 L')
     assert difference == OVER and tolerance == pytest.approx(TOLERANCE)
     assert [entry.t for entry in record.entries('commit', 'tank.wait.step[1]')] == [1]
     (message,) = messages(record, program, configuration)

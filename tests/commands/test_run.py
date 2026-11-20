@@ -85,6 +85,24 @@ def test_a_command_offers_only_the_values_that_its_record_can_read():
     ]
 
 
+def test_the_times_of_the_help_of_at_are_times_of_the_starter(tmp_path, capsys):
+    """The example of `--at` in the help of `napkin run` runs on the package that `napkin new`
+    writes, whose units are the prelude's: it gave `160min`, and the prelude has no minute."""
+    import argparse
+    import re
+
+    from napkin.commands import run
+
+    parser = argparse.ArgumentParser()
+    run.configure(parser)
+    (action,) = [action for action in parser._actions if '--at' in action.option_strings]
+    (example,) = re.findall(r'--at (\S+)', action.help)
+    folder = tmp_path / 'demo'
+    assert napkin(capsys, 'new', folder).code == 0
+    found = napkin(capsys, 'run', folder, '--at', example)
+    assert found.code == 0, found.err
+
+
 # A trigger that fires first at 0.1 days and again 4.8 h later, at 7.2 h, as the run's horizon.
 CLOCK = """\
 scenario "Clock"
@@ -251,25 +269,22 @@ requested = formula(sum(tank.water.outflow.flows.request))
 def test_napkin_run_lists_no_occurrence_and_reads_one_by_its_id(tmp_path, capsys):
     """Spec, "Occurrences and their history": two deliveries of 2 L/h, each for an hour, from 1 h and
     3 h. The default listing holds the named values only (the history table of the spec: 0, 1, 0, 1
-    current flows); `--value` reads the second start, `tank.deliver#1`, which is `unavailable`
-    before it starts and keeps its request after it finishes."""
+    current flows), and no field of the tank's outflow, which the file does not set; `--value` reads
+    it (the spec's table: 0, 2, 0, 2 L/h) and the second start, `tank.deliver#1`, which is
+    `unavailable` before it starts and keeps its request after it finishes."""
     model = package(tmp_path / 'deliveries', DELIVERIES, UNITS)
     found = napkin(capsys, 'run', model, '--at', '0h,1h,2h,3h,4h')
     assert found.code == 0, found.err
     rows = {line.split()[0]: line.split()[1:] for line in found.out.splitlines()[2:]}
     # The named values in the order of the file, then the others that the record holds, in the order
     # of their keys (the record's order, whatever made it: `engine/timeline/record.requested`).
-    assert list(rows) == [
-        'tank.water',
-        'started',
-        'current',
-        'requested',
-        'tank.water.outflow.actual_rate',
-        'tank.water.outflow.request',
-    ]
+    assert list(rows) == ['tank.water', 'started', 'current', 'requested']
     assert rows['tank.water'] == ['L', '100', '100', '98', '98', '96']
     assert rows['current'] == ['0', '1', '0', '1', '0']
     assert rows['requested'] == ['L/h', '0', '2', '0', '2', '0']
+    rate = napkin(capsys, 'run', model, '--value', 'tank.water.outflow.actual_rate', '--at', '0h,1h,2h,3h,4h')
+    assert rate.code == 0, rate.err
+    assert rate.out.splitlines()[2].split()[1:] == ['L/h', '0', '2', '0', '2', '0']
     second = napkin(
         capsys, 'run', model, '--json', '--value', 'tank.deliver#1.pipe.request', '--at', '2h,3h,5h'
     )

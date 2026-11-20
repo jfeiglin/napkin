@@ -176,7 +176,7 @@ def hours(model, item, flag):
 
 
 def times_of(model, items, horizon):
-    """[(text, hours)] of the `--at` items (each a list such as `2h,160min`), each time once, in time
+    """[(text, hours)] of the `--at` items (each a list such as `12h,2days`), each time once, in time
     order: a number and a unit of time of the model (`hours`), from 0 to `horizon` (h). With no item,
     the start and the horizon. A time that is not one is a UsageError."""
     if not items:

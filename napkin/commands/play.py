@@ -168,13 +168,18 @@ def advanced(session, entry):
 
 
 def known(program, path):
-    """Check that a path of `--value` names a value of the program, else a UsageError with the
-    closest names of its members' and its root's values."""
-    from ..engine.timeline.record import key_of, unit_of
+    """Check that a path of `--value` names a value of the program as the reader checks it
+    (`napkin.engine.timeline.record.named`), else a UsageError with why: what the reader says where
+    it says more than that the program has no such value, else the closest names of its members' and
+    its root's values."""
+    from ..engine.timeline.record import key_of, named
 
     try:
-        unit_of(program, key_of(program, path))
-    except (KeyError, IndexError):
+        named(program, key_of(program, path))
+    except KeyError as error:
+        reason = str(error.args[0]).removeprefix(f'{path}: ')
+        if not reason.startswith('no value of'):
+            raise common.UsageError(f'--value {path}: {reason}') from None
         names = [
             f'{member.id}.{value.name}'
             for template in program.templates
@@ -340,16 +345,16 @@ def edited(session, path, written):
 
 
 def ended(model, args, session, configuration, paths, entry):
-    """Print the values at the start and at the horizon (`napkin run`'s table): those of `paths` that
-    the record holds (an occurrence that never started has none), or every named value; then each
-    edit that the run took. A run that failed raises Failed after its table."""
+    """Print the values at the start and at the horizon (`napkin run`'s table): those of `paths`, each
+    as the record reads it (`unavailable` with the reason where it has none, as of an occurrence that
+    never started), or every named value; then each edit that the run took. A run that failed raises
+    Failed after its table."""
     from ..engine.timeline.record import key_of, unit_of
 
     record = session.record
     horizon = float(configuration.request.horizon)
     times = common.times_of(model, [], horizon)
-    held = running.held(record)
-    chosen = [path for path in paths if path in held] if paths else running.named(model, record)
+    chosen = paths if paths else running.named(model, record)
     options = running.options_of(model, args.run)
     found = running.reported(model, record, configuration, chosen, times, {}, options)
     times = [(text, t) for text, t in times if t <= found.end]

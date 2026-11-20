@@ -48,8 +48,8 @@ from typing import Any
 
 from .engine.timeline import Plan, Run, read
 from .engine.timeline.checkpoints import engine_version, program_digest
-from .engine.timeline.plan import BUILTINS, name_of
-from .engine.timeline.record import key_of, unit_of
+from .engine.timeline.plan import name_of
+from .engine.timeline.record import declaration, key_of, unit_of
 from .program import parts as p
 from .program.artifact import Location, SideTable
 from .program.checkpoint import Breakpoint, Checkpoint, CheckpointError, Edit, Stop, dumps, loads
@@ -366,20 +366,13 @@ def _same(stop, expected, crossing):
 
 
 def _declared(program, key):
-    """(the part of the program that declares the value at a key, or None for a built-in field of an
-    occurrence, a status display or a key of no value, which the reader refuses; whether it is a
-    parameter or a built-in field of an occurrence, which its start gives)."""
-    head = key.steps[0] if key.steps else ''
-    if '#' in key.owner:
-        receiver, _, name = key.owner.rsplit('#', 1)[0].rpartition('.')
-        event = program.member(receiver)[0].part(name) if receiver else None
-        if not isinstance(event, p.Event) or head in BUILTINS:
-            return None, True
-        part = next((each for each in (*event.params, *event.locals) if each.name == head), None)
-        return part, part in event.params
-    if key.owner:
-        return program.member(key.owner)[0].part(head), False
-    return program.root_value(head), False
+    """(the part of the program that declares the value at a key, `declaration`: a value, a solver's
+    own unknown, the store of an endpoint or a ledger, a flow or a leg, None for a built-in field of an
+    occurrence or a status display; whether it is a parameter or a built-in field of an occurrence,
+    which its start gives). A key that names no value is a KeyError."""
+    found = declaration(program, key)
+    part = found.part if found.what != 'status' else None
+    return part, found.what in ('parameter', 'builtin')
 
 
 def play(program, configuration, log):

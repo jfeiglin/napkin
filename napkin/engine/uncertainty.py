@@ -38,7 +38,7 @@ from .report import report
 from .sampling import SamplingSettings, sampled
 from .study import run_all
 from .timeline import paused, read
-from .timeline.record import key_of, unit_of
+from .timeline.record import key_of, named
 
 
 @dataclass(frozen=True)
@@ -135,7 +135,7 @@ def monte_carlo(
             raise ValueError(f'a study reads times from 0 h to the horizon, {horizon:g} h, not {t:g} h')
     keys = tuple(dict.fromkeys(key_of(program, path) for path in paths))
     for found in keys:
-        unit_of(program, found)
+        named(program, found)
     central_run = replace(configuration, mode=MEDIAN, seed=None)
     central = report(
         run_all(program, [central_run], jobs=jobs)[0], program, central_run, paths, times, model=model

@@ -139,7 +139,7 @@ def main(args):
     code."""
     from ..model.language.problems import LanguageError
     from ..spread import spread
-    from .run import chosen, held, named, recorded
+    from .run import Offered, chosen, named, recorded
 
     entry = common.entry_of(args.model)
     model = common.compiled(entry)
@@ -154,8 +154,9 @@ def main(args):
     # The central run gives the paths that the run names: what its record holds.
     record = recorded(model.program, configuration, entry)
     listed = not args.value
-    paths = chosen(named(model, record), held(record), args.value)
-    exceed = exceedances(args.exceed, held(record))
+    known = Offered(record, model.program)
+    paths = chosen(named(model, record), known, args.value)
+    exceed = exceedances(args.exceed, known)
     paths += [path for path, _ in exceed if path not in paths]
     jobs = min(args.jobs if args.jobs is not None else os.cpu_count() or 1, args.samples)
     common.stored()
@@ -188,17 +189,16 @@ def main(args):
 
 def exceedances(items, known):
     """[(path, value)] of the `--exceed PATH=VALUE` items, in the order given: VALUE is a number in
-    the path's declared unit. A path that names no value of `known`, and a VALUE that is no number, are
-    a UsageError."""
+    the path's declared unit. A path that `known` (`run.Offered`) refuses, and a VALUE that is no
+    number, are a UsageError."""
     found = []
     for item in items:
         path, separator, text = (piece.strip() for piece in item.partition('='))
         if not separator or not path or not text:
             raise common.UsageError(f'--exceed takes PATH=VALUE, such as tank.water=5, not {item!r}')
-        if path not in known:
-            raise common.UsageError(
-                f'--exceed {path}: no named value of the model' + common.close(path, known)
-            )
+        reason = known.refused(path)
+        if reason is not None:
+            raise common.UsageError(f'--exceed {path}: {reason}')
         try:
             value = float(text)
         except ValueError:
@@ -273,7 +273,7 @@ def document(model, entry, args, configuration, when, found, rows, exceed, drawn
         'draws': [
             {
                 'seed': sample.seed,
-                'values': {path: sample.values[place[path]][0] for path in values},
+                'values': {path: shown_value(sample.values[place[path]][0]) for path in values},
                 'draws': [
                     {'site': site, 'owner': owner, 'value': value} for site, owner, value in sample.draws
                 ],
@@ -282,6 +282,12 @@ def document(model, entry, args, configuration, when, found, rows, exceed, drawn
         ],
         'warnings': [common.problem_json(item) for item in model.reports],
     }
+
+
+def shown_value(value):
+    """A value of one sample as the JSON document holds it: as the record reads it, and a value that
+    is unavailable as `{"unavailable": reason}`, as `napkin run` writes one."""
+    return {'unavailable': value.reason} if hasattr(value, 'reason') else value
 
 
 def lines(model, args, when, doc, drawn):

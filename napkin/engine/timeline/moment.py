@@ -961,7 +961,7 @@ def near_ties(node, origin, plan, frozen, side, holds, tolerance, later=None):
             difference = float(a) - float(b)
             band = tolerance(left, right)
             tie = (
-                [(origin, nodes.text(part), difference, band)]
+                [(origin, nodes.notation(part), difference, band)]
                 if band > 0 and abs(difference) <= band and (later is None or abs(later(left, right)) <= band)
                 else []
             )

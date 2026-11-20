@@ -6,8 +6,12 @@ to a program (`napkin.model.compile.load_scenario`), which the program's checker
 that does not compile prints each problem, `file:line:column: error: message [code]`, and exits 1.
 One that compiles prints a summary of its program: its default run, its named runs, its entities,
 its inputs, stores, formulas and distributions, its flows with their ends, the units that it spells,
-and its hash, which an edit document names (`model_hash`). `--json` prints the same as one JSON
-document, with `diagnostics` empty or the problems.
+and its hash, which an edit document names (`model_hash`). A flow is written as the model writes it,
+by its kind (spec, "Flows and algebraic solvers"): a directed flow `source -> sink`, a reversible
+route `a <-> b`, and each leg of a flow with legs by its own path (`site.restore.labor: site.work ->
+site.done`), the path that a caller reads its rate by. `--json` prints the same as one JSON document,
+with each flow's `kind` (`directed`, `reversible` or `legs`, whose ends are its legs'), and
+`diagnostics` empty or the problems.
 
 Each report of the setup is a warning on the error stream, `file:line: warning: message [code]`, and
 so is each part of the model that rests on no record (`no_record`, `napkin.model.support`): this
@@ -96,7 +100,11 @@ def main(args):
     for _, group in GROUPS:
         if found[group]:
             print(f'  {group + ":":<14} {", ".join(item["path"] for item in found[group])}')
-    flows = [f'{item["path"]}: {item["source"]} -> {item["sink"]}' for item in found['flows']]
+    flows = [
+        f'{each["path"]}: {each["source"]} {"<->" if item["kind"] == "reversible" else "->"} {each["sink"]}'
+        for item in found['flows']
+        for each in item.get('legs', [item])
+    ]
     if flows:
         print(f'  flows:         {", ".join(flows)}')
     print(f'  units:         {", ".join(found["units"]) or "none"}')
@@ -123,8 +131,8 @@ def style_problems(model):
 def summary(model):
     """The summary of a compiled model's program, as JSON: its title, the horizon of its default run
     in hours, the names of its named runs, its hash, its entities (each member's id), each value of
-    each group of `GROUPS` with its unit, its flows with their ends and their unit, and the spellings
-    of its table of units."""
+    each group of `GROUPS` with its unit, its flows (`flow_json`), and the spellings of its table of
+    units."""
     program = model.program
     found = {group: [] for _, group in GROUPS}
     entities, flows = [], []
@@ -133,11 +141,7 @@ def summary(model):
         entities.append(owner)
         for value in template.values:
             found[dict(GROUPS)[value.kind]].append(value_json(f'{owner}.{value.name}', value))
-        for flow in template.flows:
-            ends = [end_text(end, owner) for end in (flow.source, flow.sink)]
-            flows.append(
-                {'path': f'{owner}.{flow.name}', 'source': ends[0], 'sink': ends[1], 'unit': flow.unit}
-            )
+        flows += [flow_json(flow, owner) for flow in template.flows]
     for value in program.root:
         found[dict(GROUPS)[value.kind]].append(value_json(value.name, value))
     return {
@@ -150,6 +154,25 @@ def summary(model):
         'flows': flows,
         'units': [unit.name for unit in program.units],
     }
+
+
+def flow_json(flow, owner):
+    """A flow of the summary: its path, its kind (`directed`, `reversible` or `legs`), and its ends
+    with the unit of its rates; of a flow with legs, which has no ends of its own, each leg (a
+    directed flow) with its own path, ends and unit."""
+    from ..program import parts as p
+
+    path = f'{owner}.{flow.name}'
+    if flow.kind == p.LEGS:
+        legs = [{'path': f'{path}.{leg.name}', **_ends(leg, owner)} for leg in flow.legs]
+        return {'path': path, 'kind': flow.kind, 'legs': legs}
+    return {'path': path, 'kind': flow.kind, **_ends(flow, owner)}
+
+
+def _ends(flow, owner):
+    """The ends and the unit of a directed flow, a route or a leg."""
+    ends = [end_text(end, owner) for end in (flow.source, flow.sink)]
+    return {'source': ends[0], 'sink': ends[1], 'unit': flow.unit}
 
 
 def value_json(path, value):

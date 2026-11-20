@@ -68,7 +68,7 @@ def test_an_error_of_a_stage_stops_the_run_with_its_expression_occurrence_and_ti
     record = run(model.program, model.configuration)
     assert record.failure is not None and record.failure.t == 3
     message = record.failure.detail('message')
-    assert "'1 / (gate.jams - gate.jams)'" in message and 'division by zero' in message
+    assert '`1 / (gate.jams - gate.jams)`: a division by zero' in message
     assert 'gate.split' in message and 't = 3 h' in message
 
 

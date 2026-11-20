@@ -884,7 +884,7 @@ class Proofs:
                 return self.rises(self.points(read, at))
         if parts is None:
             raise _Fall(
-                f'{nodes.text(node)} can fall: the proof covers sums, differences, min, max, and products '
+                f'{nodes.notation(node)} can fall: the proof covers sums, differences, min, max, and products '
                 'and quotients by fixed numbers of what never falls'
             )
         return '; '.join(dict.fromkeys(self.parts_rise(part, reads, at) for part in parts))
@@ -1048,7 +1048,7 @@ class Proofs:
             for arg in node.args:
                 form = _added(form, self.linear(arg, reads, at))
             return form
-        raise _Nonlinear(nodes.text(node))
+        raise _Nonlinear(nodes.notation(node))
 
     def read_form(self, read, at):
         """The linear form of one read of an expression."""

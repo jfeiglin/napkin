@@ -4,12 +4,14 @@ times (docs/cli.md).
 The run is the model's default run, a median run to the horizon of its scenario line, or the named
 run of `--run NAME`, under the edit document of `--edits FILE` (`Compiled.configure`, which checks
 the document whole). `napkin.engine.run` gives its record, and the report reads it
-(`napkin.engine.report.report`, D10): the value of each path of `--value`, or of every named value
-of the model in the order of the file (a status display with its entity's values; a flow's actual
-rate, request and capacity under its line, a route's then those of its legs `forward` and
-`backward`, a flow with legs' `served_fraction` then each leg's), at each time of `--at`, or at the
-start and at the horizon, each in its declared unit, with its label; a row whose path names a member
-with a title gives the title in brackets (`dc.demand (DC Water)`). The values of an occurrence
+(`napkin.engine.report.report`, D10): the value of each path of `--value` (any value that the run
+holds: an endpoint's fields and a distribution's `.mean` and `.std` too; a capacity that the model
+leaves out is `unavailable`, with the reason), or of every named value of the model in the order of
+the file (a status display with its entity's values; a flow's actual rate, request and capacity
+under its line, a route's then those of its legs `forward` and `backward`, a flow with legs'
+`served_fraction` then each leg's; the fields of an endpoint where its store sets that endpoint), at
+each time of `--at`, or at the start and at the horizon, each in its declared unit, with its label; a
+row whose path names a member with a title gives the title in brackets (`dc.demand (DC Water)`). The values of an occurrence
 (`tank.deliver#0.pipe.request`, the first start of `tank.deliver`) are not in that list, as a run can
 start many: `--value` names them, and before its start such a value is `unavailable`.
 
@@ -86,7 +88,7 @@ def configure(parser):
         action='append',
         default=[],
         metavar='TIMES',
-        help='the times, each a number and a unit of time of the model: --at 2h,160min (default: the '
+        help='the times, each a number and a unit of time of the model: --at 12h,2days (default: the '
         'start and the horizon)',
     )
     parser.add_argument(
@@ -127,7 +129,7 @@ def main(args):
         return 1
     horizon = float(configuration.request.horizon)
     times = common.times_of(model, args.at, horizon)
-    known = held(record)
+    known = Offered(record, model.program)
     lags = lags_of(model, args.lag, known)
     paths = chosen(named(model, record), known, args.value)
     paths += [path for path in lags if path not in paths]
@@ -185,11 +187,44 @@ def held(record):
     return [name_of(history.key) for history in record.histories if record.manifest.names(history.key)]
 
 
+class Offered:
+    """What `--value`, `--lag` and `--exceed` may name of a record (`refused`): the paths that it
+    holds (`held`, in its order), and the properties that its program leaves out."""
+
+    def __init__(self, record, program):
+        self.record, self.program, self.held = record, program, held(record)
+        self._reader = None
+
+    def refused(self, path):
+        """Why a path names no value that the record reads, or None for one that it does: a path that
+        the record holds, or a property that the program leaves out (a capacity), whose read gives the
+        reason (`napkin.engine.timeline.record.absent`). Of any other path, what the reader says of it
+        (`Reader.checked`) where that says more than that the program has no such value; else that it
+        names no value, with the closest paths that the record holds."""
+        if path in self.held:
+            return None
+        from ..engine.timeline.record import Reader, absent, declaration, key_of
+
+        if self._reader is None:
+            self._reader = Reader(self.record, self.program)
+        try:
+            key = key_of(self.program, path)
+            self._reader.checked(key)
+            if absent(key, declaration(self.program, key)) is not None:
+                return None
+        except KeyError as error:
+            reason = str(error.args[0]).removeprefix(f'{path}: ')
+            if not reason.startswith('no value of'):
+                return reason
+        return 'no named value of the model' + common.close(path, self.held)
+
+
 def named(model, record):
     """The path of every named value of a model that its record holds, in the order of the file: each
     value of an entity and of the top level, an entity's status display, and each recorded field of a
-    flow under its line; then the other values that it holds (of the members of a table), but not
-    those of an occurrence."""
+    flow under its line; then the other values that it holds (of the members of a table, the unknowns
+    of a solver, the fields of an endpoint that the file sets: `listed`), but not those of an
+    occurrence."""
     from ..model.semantic import DeclaredFlow, DeclaredLegs, DeclaredRoute
 
     declared = model.declared
@@ -214,21 +249,36 @@ def named(model, record):
             written.append(part.path)
     kept = held(record)
     found = [path for path in written if path in kept]
-    return found + [path for path in kept if path not in found and '#' not in path]
+    return found + [
+        path for path in kept if path not in found and '#' not in path and listed(model.program, path)
+    ]
+
+
+def listed(program, path):
+    """Whether the listing of every named value shows a value of the record that the file does not
+    name in its order: a value of a member of a table and an unknown of a solver, yes; the fields of an
+    endpoint only where its store sets that endpoint (`outflow.capacity = ...`), and the `.mean` and
+    `.std` of a distribution not. A run holds every endpoint of a store that a flow meets and every
+    description, and `--value` names them."""
+    from ..engine.timeline.record import declaration, key_of
+
+    key = key_of(program, path)
+    found = declaration(program, key)
+    if found.what == 'endpoint':
+        return getattr(found.part, key.steps[1]) is not None
+    return found.what != 'description'
 
 
 def chosen(paths, known, items):
     """The paths of the `--value` items (each a list with commas), each once, in the order given; all
-    of `paths` with no item. A path that names no value of `known` is a UsageError, with the closest
-    paths."""
+    of `paths` with no item. A path that `known` (`Offered`) refuses is a UsageError, with why."""
     if not items:
         return list(paths)
     found = []
     for path in (piece.strip() for text in items for piece in text.split(',')):
-        if path not in known:
-            raise common.UsageError(
-                f'--value {path}: no named value of the model' + common.close(path, known)
-            )
+        reason = known.refused(path)
+        if reason is not None:
+            raise common.UsageError(f'--value {path}: {reason}')
         if path not in found:
             found.append(path)
     return found
@@ -237,7 +287,7 @@ def chosen(paths, known, items):
 def lags_of(model, items, known):
     """{path: `Lag`} of the `--lag PATH=FROM..TO` items, in the order given: a window from the shorter
     delay to the longer (`2h..6h`), or one delay (`3h`), each a number and a unit of time. A path
-    that names no value of `known`, a path given twice and a window that is not one are a
+    that `known` (`Offered`) refuses, a path given twice and a window that is not one are a
     UsageError."""
     from ..engine.report import Lag
 
@@ -246,8 +296,9 @@ def lags_of(model, items, known):
         path, separator, window = (piece.strip() for piece in item.partition('='))
         if not separator or not path or not window:
             raise common.UsageError(f'--lag takes PATH=FROM..TO, such as tank.water=2h..6h, not {item!r}')
-        if path not in known:
-            raise common.UsageError(f'--lag {path}: no named value of the model' + common.close(path, known))
+        reason = known.refused(path)
+        if reason is not None:
+            raise common.UsageError(f'--lag {path}: {reason}')
         if path in found:
             raise common.UsageError(f'--lag gives {path} twice')
         ends = [common.hours(model, end.strip(), '--lag')[1] for end in window.split('..')]

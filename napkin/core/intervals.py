@@ -468,7 +468,7 @@ def _div(prover, node, context, seen):
         if _key(node.right) in context.get(NONZERO, set()):
             return WHOLE
         raise ExpressionError(
-            f'Cannot prove nonzero denominator in {expr.text(node)!r}; declare bounds or guard the branch'
+            f'Cannot prove nonzero denominator in `{expr.notation(node)}`; declare bounds or guard the branch'
         )
     return _products(left, (1 / right[1], 1 / right[0]))
 

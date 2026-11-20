@@ -319,7 +319,7 @@ def test_a_formula_has_the_interval_of_its_definition_and_a_circle_ends():
     assert prove(read('loop')) == (-math.inf, math.inf)
     # The failure of a formula is the failure of each expression that reads it, each time.
     for _ in range(2):
-        with pytest.raises(ExpressionError, match="Cannot prove nonzero denominator in '1 / y'"):
+        with pytest.raises(ExpressionError, match='Cannot prove nonzero denominator in `1 / y`'):
             prove(read('bad + 1'))
     # A branch narrows what a formula reads: the formula is proved again under those facts.
     assert prove(read('bad if y >= 0.5 else 0')) == (0.0, 2.0)

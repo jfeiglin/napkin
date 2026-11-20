@@ -591,6 +591,10 @@ class Plan:
         if unused:
             raise ConfigurationError(f'no input of the program has these names: {", ".join(unused)}')
         self._copied()
+        for name, found in list(self.distributions.items()):
+            # The `.mean` and `.std` of a distribution of a member or of the root, which a caller may read.
+            for which in ('mean', 'std') if found.family != 'categorical' else ():
+                self._described(name, which, '')
         for make in self._declared:
             make()
         self._planned = True  # what is declared from now on is made at once (`end_of`)
@@ -1061,12 +1065,15 @@ class Plan:
         return point[1]
 
     def _declare_ends(self, members):
-        """The endpoints that the program sets, and those that a stage, a trigger or the setup names
-        (`_named_ends`), configured or not: each is in the network from the start, so that a stage may
-        set its allocation or its request and the sets of its store read it (spec: a stored quantity
-        gains an `outflow` scope when it supplies a flow). An endpoint that a formula reads is declared
-        when its path is read (`end_of`), as the plan is made; one that a path names only through an
-        occurrence, when the occurrence starts."""
+        """The endpoints that the program sets, those that a stage, a trigger or the setup names
+        (`_named_ends`), configured or not, and every endpoint of a stored number that a flow of a
+        member, or of an event of a member (`_reached`), meets on that side: each is in the network
+        from the start, so that a stage may set its allocation or its request and the sets of its
+        store read it, and a caller may read it whatever else reads it (spec: a stored quantity gains
+        an `outflow` scope when it supplies a flow; "Any named value can be reported"; "Flows created
+        during a run"). An endpoint that a formula reads is declared when its path is read
+        (`end_of`), as the plan is made; one that a path names only through an occurrence, when the
+        occurrence starts."""
         self._incident, self._stores = {}, {}
         self._set_ends = set()  # (store, side): an endpoint whose request or capacity a statement sets
         self._open_capacities(self.program.setup, [None], local=False)
@@ -1084,13 +1091,24 @@ class Plan:
         if self.dynamic_ends:
             self.end_flows = {pair: list(flows) for pair, flows in self._incident.items()}
             self.end_history = {pair: list(flows) for pair, flows in self._incident.items()}
+        met = set(self._incident) | {
+            (point[1], side)
+            for scope in members
+            for event in scope[0].events
+            for flow in event.locals
+            if isinstance(flow, p.Flow)
+            for leg in flow.legs or (flow,)
+            for end, side in _sides(leg)
+            for point in self._reached(end, scope, event, flow.origin)
+            if point[0] == 'value'
+        }
         scopes = [(value, None) for value in self.program.root]
         scopes += [(value, scope) for scope in members for value in scope[0].values]
         for value, scope in scopes:
             store = name_of(Key(scope[2].id if scope is not None else '', (value.name,)))
             self._stores[store] = (value, scope)
             for side in SIDES:
-                if getattr(value, side) is not None:
+                if getattr(value, side) is not None or (store, side) in met:
                     self.end_of(store, side, value.origin)
         self._name_ends(self.program.setup, [None], local=False)
         for template in self.program.templates:
@@ -1168,6 +1186,22 @@ class Plan:
         key = Key(own.owner, (*own.steps[:-1], 'capacity'))
         self._add(Value(name_of(key), key, CAPTURE, nodes.const(math.inf), self.values[end.request].unit))
         self.ends[(store, side)] = replace(end, capacity=name_of(key))
+
+    def _reached(self, end, scope, event, origin):
+        """The points that an end of a flow of an event can name, from the member `scope`: of a path
+        from the member or the root, its point; of a path from an entity parameter of the event, the
+        point from each member of the template that the parameter's type allows. Any other end names
+        a store of an occurrence, which the occurrence makes (`occurrence`)."""
+        if not isinstance(end, Path):
+            return []  # SOURCE or SINK
+        if isinstance(end.start, (This, Named, Root)):
+            return [self.resolve(end, scope, origin)]
+        entities = {each.name: each.type for each in event.params if isinstance(each.type, p.EntityType)}
+        found = entities.get(end.start.name) if isinstance(end.start, Local) else None
+        if found is None:
+            return []
+        members = self.program.template(found.template).members
+        return [self.resolve(Path(Named(member.id), end.steps), scope, origin) for member in members]
 
     def end_of(self, store, side, origin):
         """The endpoint `side` of a stored number, declared on its first use. One declared once the
@@ -1409,6 +1443,8 @@ class Plan:
                     taken = self.results.get(each[1]) or self.solved_flows.get(each[1].rsplit('.', 1)[0])
                     if found is not None and taken is not None and taken != sid:
                         self.fail(f'{solver.origin}: {each[1]} has two writers: {taken} and {sid}')
+                    elif taken == sid:
+                        continue  # named again, by an input: the solver is its one writer
                     elif found is not None and found.kind == RATE:
                         flow = each[1].rsplit('.', 1)[0]
                         self.solved_flows[flow] = sid
@@ -1528,26 +1564,35 @@ class Plan:
                 for connection in self.flows[name].connections:
                     self.connections[connection.name] = connection
         for part in event.locals:
+            # The endpoints of a store of the occurrence: each that it sets, and each that its own flows
+            # meet, a value from its start whatever reads it; those that a statement names follow
+            # (`_name_ends`).
             store = name_of(Key(occ, (part.name,)))
             found = self.values.get(store) if isinstance(part, p.Value) else None
             if found is not None and found.kind == STATE and not found.boolean:
                 self._stores[store] = (part, scope)  # a stored number of the occurrence: it has endpoints
-            # The endpoint settings of a store of the occurrence, which its own flows meet.
-            if isinstance(part, p.Value) and (part.outflow is not None or part.inflow is not None):
+            met = {
+                side: tuple(
+                    connection.name
+                    for name in flows
+                    if name in self.flows
+                    for connection in self.flows[name].connections
+                    if store == (connection.source if side == 'outflow' else connection.sink)
+                )
+                for side in SIDES
+            }
+            if isinstance(part, p.Value) and (
+                part.outflow is not None or part.inflow is not None or any(met.values())
+            ):
                 if found is None or found.kind != STATE or found.boolean:
                     raise Outside(
                         f'{part.origin}: an endpoint of a value that is no stored number (a type error)'
                     )
                 for side in SIDES:
-                    if getattr(part, side) is not None:
-                        incident = tuple(
-                            connection.name
-                            for name in flows
-                            if name in self.flows
-                            for connection in self.flows[name].connections
-                            if store == (connection.source if side == 'outflow' else connection.sink)
+                    if getattr(part, side) is not None or met[side]:
+                        self._declare_end(
+                            store, part, scope, side, getattr(part, side) or p.Endpoint(), met[side]
                         )
-                        self._declare_end(store, part, scope, side, getattr(part, side), incident)
         self._name_ends(event, [scope], local=True)
         self._copied()
         makers, self._declared = self._declared[first:], self._declared[:first]
@@ -1572,7 +1617,11 @@ class Plan:
                         if setting is not None:
                             (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
                 if value is None:
-                    continue  # a distribution
+                    # A distribution, then its `.mean` and `.std`, which a caller may read, from the start.
+                    found = self.distributions[name]
+                    for which in ('mean', 'std') if found.family != 'categorical' else ():
+                        initial.append(self._described(name, which, part.origin))
+                    continue
                 if value.kind == STATE and isinstance(part.type, p.Number):
                     stores.append(name)
                     self._stores[name] = (part, scope)
@@ -2057,7 +2106,7 @@ class Plan:
                     isinstance(part, nodes.Ref) for part in node.operands
                 ):
                     raise Outside(
-                        f'{origin}: {nodes.text(node)}: an end of a flow compares with == or != to a '
+                        f'{origin}: {nodes.notation(node)}: an end of a flow compares with == or != to a '
                         'stored number (a type error)'
                     )
                 atoms.append((node.ops[0], *(side(part) for part in node.operands)))
@@ -2416,12 +2465,6 @@ class Plan:
             return request.kind == capacity.kind and request.node == capacity.node
         return float(held(capacity.name)) <= float(held(request.name))
 
-    def formula_reads(self, node):
-        """The names other than formulas and reductions that a node reads, through them (the keyed
-        reads by the time among them), and the formulas and reductions on the way."""
-        found = self.expansion(node)
-        return set(found.leaves | found.stepped), set(found.formulas)
-
     # ---- the connected sets ---------------------------------------------------------------------
 
     def settings_of(self, flow):
@@ -2727,6 +2770,15 @@ class Plan:
 
 
 _VISITING = Expanded(frozenset({'<visiting>'}))
+
+
+def _sides(flow):
+    """(end, side) of each end of a directed flow, a leg or a route at which it meets a store: a route
+    takes from and gives to both of its ends."""
+    found = [(flow.source, 'outflow'), (flow.sink, 'inflow')]
+    if flow.kind == p.REVERSIBLE:
+        found += [(flow.source, 'inflow'), (flow.sink, 'outflow')]
+    return found
 
 
 def _type_of(value_type):

@@ -70,7 +70,13 @@ stop ends there by its budget, before any checkpoint (`checkpoints.Breaks`).
 
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of each
 path, from what the record holds and from nothing else (`Record.unavailable`): any other value is
-`Unavailable` with the reason, never a default. Its `Reader` evaluates a formula, a reduction, a keyed
+`Unavailable` with the reason, never a default. A path names a value when the program declares one
+there (`declaration`, the one lookup of the part that declares a key: an unknown of a solver lives
+on the solver, in its own unit) and a run of it holds it (`Reader.checked`): every endpoint of a store
+that a flow meets (`Plan._declare_ends`), and the `.mean` and the `.std` of every distribution of a
+member or of the root, is a value of every run, whatever reads it (spec, "Any named value can be
+reported"); a capacity that the program leaves out is `Unavailable`, as the flow has no ceiling of its
+own (`absent`); any other path is a KeyError that says why. Its `Reader` evaluates a formula, a reduction, a keyed
 read and a dynamic read at each time that it is asked from the recorded values of what it reads (a
 formula of a finished occurrence reads its frozen piece; the time of the last change of a value is
 its last piece that differs from the one before), depth first with no recursion, and keeps what each
@@ -84,7 +90,7 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_right
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import pairwise
 
@@ -94,6 +100,7 @@ from numpy.polynomial import chebyshev
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import evaluate
+from ...program import parts as p
 from ...program.config import Configuration, Request
 from ...program.parts import DistributionType, OccurrenceType
 from ...program.proofs import always
@@ -101,7 +108,7 @@ from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Recor
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
-from .plan import CHANGED, DYNAMIC, FORMULA, LOOKUP, REDUCE, Plan, name_of
+from .plan import BUILTINS, CHANGED, DYNAMIC, FORMULA, LOOKUP, REDUCE, SIDES, Plan, name_of
 from .reads import Reads
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
@@ -119,6 +126,10 @@ SHORTEST = 1e-9
 RELATIVE = 1e-12
 # The most cuts of one fit: after them, each piece holds what its fit gives.
 MOST = 4096
+# The fields of a flow, a route and an endpoint, and of a leg of a route, which is the positive part of
+# the route's rate and request in its direction (spec, "What each scope can see").
+FIELDS = ('actual_rate', 'request', 'capacity')
+LEGS, LEG_FIELDS = ('forward', 'backward'), ('actual_rate', 'request')
 
 
 def _times(start, end, points):
@@ -196,7 +207,7 @@ class Recorder:
         self.formulas = set()  # the formulas whose pieces the run gives (the family's settings)
         self.run = None  # the run, which knows the entries that each collection keeps
         self.round = 0  # the round of the moment where the run is
-        self._wanted = None  # the engine names whose histories a record of some keys needs
+        self._wanted = None  # what a record of some keys needs so far (`wanted`), once asked
         # A store that edits changed -> (its start, [(time, amount from outside)]) (`external`).
         self.transfers = {}
 
@@ -274,27 +285,27 @@ class Recorder:
         """Pieces of a value, which a run gives as it goes."""
         self._add(name, pieces)
 
-    def defined(self, name):
-        """A commit gave a value a new definition: a record of some keys that needs the value keeps
-        what the new definition reads from now on. Gives the names that it keeps now and did not."""
-        if self._wanted is None or name not in self._wanted:
-            return set()
-        found = self._needed_names([name]) - self._wanted
-        self._wanted |= found
-        return found
-
     def wanted(self, name):
-        """Whether the record keeps the history of an engine name (or what a kept formula reads)."""
+        """Whether the record keeps the history of an engine name, which a way of running asks so
+        that it gives no pieces that no record keeps: of a record of every value, each; of one of some
+        keys, what they need under the definitions that the run gave so far (`needed`, the one rule
+        of what a record holds, which `record` applies again at the end, from the trace)."""
         request = self.plan.configuration.request
         if request.everything:
             return True
         if self._wanted is None:
-            self._wanted = self._needed(request.keys)
-            for key in request.keys:
-                value = self.plan.values.get(name_of(key))
-                if value is not None and value.kind == FORMULA:
-                    self._wanted |= self.plan.formula_reads(value.node)[0]
+            self._wanted = needed(self.plan, [name_of(key) for key in request.keys], self.plan.defined)
         return name in self._wanted
+
+    def defined(self, name):
+        """A commit gave a value a new definition: a record of some keys that needs the value keeps
+        what the new definition reads from now on (`needed`). Gives the names that it keeps now and
+        did not, which the run marks as changed, so that a way of running asks `wanted` again."""
+        if self._wanted is None or name not in self._wanted:
+            return set()
+        found = needed(self.plan, [name], self.plan.defined) - self._wanted
+        self._wanted |= found
+        return found
 
     # ---- after the run ----------------------------------------------------------------------------
 
@@ -644,7 +655,10 @@ def needed(plan, names, definitions):
     time of a change follows, and the fields that say when each occurrence among them is. Each name
     adds what it reads directly (`Plan.reads` of its declared value, and the node of each
     definition), which the walk follows in turn, so a chain is walked once, and not once for each of
-    its links."""
+    its links. A keyed read adds all that the reader reads of it (`Keyed.reads`: the tests of its
+    entries, their keys, its key and the value of each entry that it can select), what the inputs fix
+    included: `Plan.reads` gives only what can change of it, which is what a run follows, and a
+    record holds a value that the inputs fix only where something needs it."""
     found = set()
     pending = list(names)
     while pending:
@@ -654,7 +668,9 @@ def needed(plan, names, definitions):
         found.add(name)
         kind = plan.values[name].kind
         if kind in (FORMULA, REDUCE, LOOKUP) or name in definitions:
-            if kind in (FORMULA, REDUCE, LOOKUP):
+            if kind == LOOKUP:
+                pending.extend(plan.keyed[name].reads())
+            elif kind in (FORMULA, REDUCE):
                 pending.extend(plan.reads(name))
             for _, value in definitions.get(name, ()):
                 if value.kind == FORMULA:
@@ -890,48 +906,182 @@ def unit_of(program, key):
     return unit, float(scale)
 
 
-def declared(program, key):
-    """The spelling of the declared unit of the value at a key and its exact scale (a Fraction): of a
-    value, its type's unit; of a flow's actual rate, request or capacity, the flow's unit, and of a
-    leg's, the leg's; of an endpoint's, its store's unit per hour (time is in hours, at scale 1); `''`
-    for a plain number or a yes/no, such as a `served_fraction`. A key that names no value is a
-    KeyError, and so is a reference to an occurrence (`parts.OccurrenceType`): it names an
-    occurrence, whose values the record holds under its own path, and no record holds the reference."""
+@dataclass(frozen=True)
+class Declaration:
+    """What declares the value at a key (`declaration`): the part of the program (a value of a member,
+    of the root or of an occurrence, an unknown of a solver, a flow or a leg of one, a status
+    display; None for a built-in field of an occurrence), what of it the key reads (`what`: `value`,
+    `parameter`, `builtin`, `status`, `unknown`, `endpoint`, `ledger`, `distribution`, `description`,
+    `flow`, `leg` or `fraction`), and the spelling of the value's unit with its exact scale (a
+    Fraction)."""
+
+    part: object
+    what: str
+    unit: str = ''
+    scale: Fraction = Fraction(1)
+
+
+def _number(program, part, what, unit):
+    """The declaration of a number in a unit of the program's table."""
+    return Declaration(part, what, unit, Fraction(1) if unit == '' else Fraction(program.unit(unit).scale))
+
+
+def declaration(program, key):
+    """What declares the value at a key (`Declaration`), from the key's owner (an occurrence, a member
+    or the root), the part that its first step names and the steps after it (spec, "What each scope
+    can see"): a value; a built-in field of an occurrence; a status display; an unknown of a solver,
+    which lives on the solver; a field of an endpoint of a stored number (`outflow` or `inflow`), or
+    its ledger `external`; a distribution, and the `.mean` or `.std` of one of numbers; a field of a
+    flow, of a route or of one of their legs; the `served_fraction` of a flow with legs. A key that
+    names no value is a KeyError that says why: a part that its owner does not have, a step that the
+    part does not have, an event, a solver or a collection named whole, the store at an end of a flow
+    (its own path names it), a reference to an occurrence (the record holds that occurrence's values
+    under its own path)."""
+    steps = key.steps
+    receiver = key.owner.rsplit('#', 1)[0].rpartition('.')[0] if '#' in key.owner else key.owner
+    try:
+        template = program.member(receiver)[0] if receiver else None
+    except KeyError:
+        template = None
+    if not steps or (key.owner and template is None):
+        raise KeyError(f'{key}: no value of the program')
+    head, rest = steps[0], steps[1:]
     if '#' in key.owner:
-        receiver, event = key.owner.rsplit('#', 1)[0].rsplit('.', 1)
-        found = program.member(receiver)[0].part(event)
-        if key.steps[0] in ('started', 'done', 'active'):
-            return '', Fraction(1)  # the time of the start is in hours; the others are yes/no values
-        part = next((each for each in (*found.params, *found.locals) if each.name == key.steps[0]), None)
+        found = template.part(key.owner.rsplit('#', 1)[0].rpartition('.')[2])
+        if not isinstance(found, p.Event):
+            raise KeyError(f'{key}: no value of the program: {key.owner} is no occurrence of an event')
+        if head in BUILTINS and not rest:
+            return Declaration(None, 'builtin')  # the time of the start is in hours; the others are yes/no
+        part = next((each for each in (*found.params, *found.locals) if each.name == head), None)
+        if part is not None and part in found.params and not rest:
+            return _number(program, part, 'parameter', getattr(part.type, 'unit', ''))
     elif key.owner:
-        template = program.member(key.owner)[0]
-        part = template.part(key.steps[0])
-        if part is None and key.steps == ('status',) and template.status is not None:
-            return '', Fraction(1)  # a status display: the text of the case that applies
+        part = template.part(head)
+        if part is None and steps == ('status',) and template.status is not None:
+            return Declaration(template.status, 'status')  # the text of the case that applies
     else:
-        part = program.root_value(key.steps[0])
+        part = program.root_value(head)
     if part is None:
         raise KeyError(f'{key}: no value of the program')
-    value_type = getattr(part, 'type', None)
+    if isinstance(part, p.Flow):
+        return _flow_field(program, key, part, rest)
+    if isinstance(part, p.Solver):
+        unknown = next((each for each in part.unknowns if (each.name,) == rest), None)
+        if unknown is None:
+            names = ', '.join(each.name for each in part.unknowns) or 'none'
+            raise KeyError(f'{key}: no value of the program: the solver has the unknowns {names}')
+        return _number(program, unknown, 'unknown', getattr(unknown.type, 'unit', ''))
+    if isinstance(part, p.Event):
+        raise KeyError(f'{key}: an event, whose occurrences have their own paths ({key}#0, {key}#1, ...)')
+    value_type, path = part.type, '.'.join((key.owner, head) if key.owner else (head,))
     if isinstance(value_type, OccurrenceType):
         raise KeyError(
             f'{key}: a reference to an occurrence of {value_type.template}.{value_type.event} is no value that '
             'a record holds: read the occurrence that it names by its own path'
         )
-    if getattr(part, 'legs', ()) and len(key.steps) >= 3:
-        # A field of a leg is in the leg's unit; the parent's `served_fraction` is a plain number.
-        part = next((leg for leg in part.legs if leg.name == key.steps[1]), part)
-        value_type = getattr(part, 'type', None)
-    if hasattr(part, 'unit'):  # a flow has a unit
-        unit = part.unit
-    elif isinstance(value_type, DistributionType):  # `.mean` and `.std` are in its numbers' unit
+    if isinstance(value_type, p.CollectionType):
+        raise KeyError(f'{key}: {path} is a collection: read a reduction of it, or one of its members')
+    unit = getattr(value_type, 'unit', '')
+    if isinstance(value_type, DistributionType):
+        # A distribution itself is a value of a run's state (a view shows it); its numbers are its
+        # `.mean` and `.std`, in the unit of what it draws.
         unit = getattr(value_type.of, 'unit', '')
-    else:
-        unit = getattr(value_type, 'unit', '')
-    scale = Fraction(1) if unit == '' else Fraction(program.unit(unit).scale)
-    if len(key.steps) >= 3 and key.steps[1] in ('outflow', 'inflow'):
-        return (f'{unit}/h' if unit else '1/h'), scale
-    return unit, scale
+        if not rest:
+            return _number(program, part, 'distribution', unit)
+        if isinstance(value_type.of, p.Number) and rest in (('mean',), ('std',)):
+            return _number(program, part, 'description', unit)
+        raise KeyError(f'{key}: no value of the program: {path} is a distribution')
+    if not rest:
+        return _number(program, part, 'value', unit)
+    if isinstance(value_type, p.Number) and part.kind == p.STATE:
+        if rest == ('external',):
+            return _number(program, part, 'ledger', unit)
+        if len(rest) == 2 and rest[0] in SIDES and rest[1] in FIELDS:
+            # Time is in hours, at scale 1: a rate of the store's unit per hour has the store's scale.
+            found = _number(program, part, 'endpoint', unit)
+            return replace(found, unit=f'{unit}/h' if unit else '1/h')
+    raise KeyError(f'{key}: no value of the program')
+
+
+def _flow_field(program, key, flow, rest):
+    """The declaration of a field of a flow (`declaration`): the actual rate, the request and the
+    capacity of a directed flow or a route, in its unit; the actual rate and the request of a leg of
+    a route (its positive part in that direction); the `served_fraction` of a flow with legs, a plain
+    number, and each field of one of its legs, in the leg's unit."""
+    if flow.kind == p.LEGS:
+        if rest == ('served_fraction',):
+            return Declaration(flow, 'fraction')
+        leg = next((each for each in flow.legs if len(rest) == 2 and each.name == rest[0]), None)
+        if leg is not None and rest[1] in FIELDS:
+            return _number(program, leg, 'leg', leg.unit)
+    elif len(rest) == 1 and rest[0] in FIELDS:
+        return _number(program, flow, 'flow', flow.unit)
+    elif flow.kind == p.REVERSIBLE and len(rest) == 2 and rest[0] in LEGS and rest[1] in LEG_FIELDS:
+        return _number(program, flow, 'leg', flow.unit)
+    if rest and rest[-1] in ('source', 'sink'):
+        raise KeyError(f'{key}: the store at an end of a flow, which its own path names')
+    raise KeyError(f'{key}: no value of the program')
+
+
+def declared(program, key):
+    """The spelling of the declared unit of the value at a key and its exact scale (a Fraction): of a
+    value, its type's unit, and of a solver's unknown its own (`clinic.staffing.care: h`); of a flow's
+    actual rate, request or capacity, the flow's unit, and of a leg's, the leg's; of an endpoint's, its
+    store's unit per hour (time is in hours, at scale 1); of a distribution's `.mean` and `.std`, the
+    unit of its numbers; `''` for a plain number or a yes/no, such as a `served_fraction`. A key that
+    names no value is a KeyError (`declaration`)."""
+    found = declaration(program, key)
+    return found.unit, found.scale
+
+
+def absent(key, found):
+    """Why the program gives no number to a key that names one of its properties (`Declaration`), or
+    None: a capacity that a flow, a leg or an endpoint leaves out (spec, "Capacity, request and
+    bounds": "A flow that declares no capacity has no ceiling of its own"). No stage can give it one,
+    since a path to a capacity left out is refused, so it holds for the whole run."""
+    if key.steps[-1] != 'capacity':
+        return None
+    if found.what in ('flow', 'leg') and found.part.capacity is None:
+        owner = '.'.join((key.owner, *key.steps[:-1]) if key.owner else key.steps[:-1])
+        return f'{owner} declares no capacity: a flow that declares none has no ceiling of its own'
+    if found.what == 'endpoint':
+        setting = getattr(found.part, key.steps[-2])
+        if setting is None or setting.capacity is None:
+            owner = '.'.join((key.owner, *key.steps[:-1]) if key.owner else key.steps[:-1])
+            return f'{owner} declares no capacity: an endpoint that declares none has no ceiling of its own'
+    return None
+
+
+def named(program, key, plan=None):
+    """The declared unit and the scale of the value at a key (`declared`), once the key is checked as
+    a reader checks it (`Reader.checked`) against a plan of the program (`plan`, else the reader's):
+    it names a value that a run of the program holds, or a property that the program leaves out,
+    whose read gives the reason (`absent`). Any other key is a KeyError that says why. A key of an
+    occurrence is checked against its event, since only a run makes its occurrences."""
+    found = declaration(program, key)
+    if '#' not in key.owner:
+        _checked(_plan_of(program) if plan is None else plan, key, found)
+    return found.unit, found.scale
+
+
+def _checked(plan, key, found):
+    """KeyError, which says why, for a key that a declaration names and that a plan holds no value
+    of: an endpoint of a store that no flow meets on that side (spec: a stored quantity "gains an
+    `outflow` scope when it supplies a flow and an `inflow` scope when it receives one"), or a value
+    that the plan does not make. A ledger names a store, which the reader checks."""
+    if found.what == 'ledger':
+        return
+    if found.what == 'distribution':
+        if isinstance(found.part.type.of, p.Number):
+            raise KeyError(f'{key}: a distribution, whose numbers a record holds as {key}.mean and {key}.std')
+        raise KeyError(f'{key}: a distribution of the members of an enum, which no record holds')
+    if found.what == 'endpoint':
+        store, side = name_of(Key(key.owner, key.steps[:1])), key.steps[1]
+        if (store, side) not in plan.ends:
+            raise KeyError(f'{key}: no flow meets {store} on its {side} side, so it has no {side}')
+        return
+    if name_of(key) not in plan.values and absent(key, found) is None:
+        raise KeyError(f'{key}: no value of a run of the program')
 
 
 def in_unit(value, scale):
@@ -1005,6 +1155,7 @@ class Reader:
         self.kept = {}
         self._stores = None
         self._always = {}  # the id of a node -> what every evaluation of it reads (`proofs.always`)
+        self._checked = {}  # a key that names a value -> its `Declaration` (`checked`)
 
     # ---- what a caller asks -------------------------------------------------------------------------
 
@@ -1014,21 +1165,37 @@ class Reader:
         found = []
         for path in paths:
             key = key_of(self.program, path)
-            unit, scale = declared(self.program, key)
+            unit, scale = self.checked(key)
             values = tuple(in_unit(self.value(key, t), scale) for t in times)
             found.append(Reading(name_of(path) if isinstance(path, Key) else path, key, unit, values))
         return found
 
+    def checked(self, key):
+        """The declared unit and the scale of a record key that names a value of the record's program
+        (`declaration`): one that a run of it holds, a property that the program leaves out (`absent`),
+        or a value of an occurrence that the trace never starts, which `value` gives as not started;
+        any other key is a KeyError that says why (`named`). The reader's plan holds the record's
+        occurrences. Each key is checked once."""
+        found = self._checked.get(key)
+        if found is None:
+            found = declaration(self.program, key)
+            if key.store is not None and name_of(key.store) not in self.stores():
+                raise KeyError(
+                    f'{key}: {key.store} is no store, and only a store has a ledger of what came from outside'
+                )
+            if '#' not in key.owner or key.owner in self.starts:
+                _checked(self.plan, key, found)
+            self._checked[key] = found
+        return found.unit, found.scale
+
     def value(self, key, t):
         """The value of a record key at a time in canonical units, from what the record holds, else
         `Unavailable` with the reason: a time or a value that the record does not hold
-        (`Record.unavailable`), an occurrence that has not started then (from the trace), a value
-        that cannot be read. A ledger that names no store is a KeyError: it is no value."""
+        (`Record.unavailable`), an occurrence that has not started then (from the trace), a property
+        that the program leaves out (`absent`), a value that cannot be read. A key that names no value
+        is a KeyError (`checked`)."""
         t = float(t)
-        if key.store is not None and name_of(key.store) not in self.stores():
-            raise KeyError(
-                f'{key}: {key.store} is no store, and only a store has a ledger of what came from outside'
-            )
+        self.checked(key)
         reason = self.refusal(key, t)
         if reason is not None:
             return Unavailable(reason)
@@ -1043,10 +1210,13 @@ class Reader:
     def refusal(self, key, t):
         """Why the reader gives no value of a record key at a time before it reads one: a time or a
         value that the record does not hold (`Record.unavailable`), an occurrence that has not
-        started then; None when `value` reads it, from its history or by an evaluation (`at`)."""
+        started then, a property that the program leaves out (`absent`); None when `value` reads it,
+        from its history or by an evaluation (`at`)."""
         reason = self.record.unavailable(key, t)
         if reason is None and '#' in key.owner and not self.started(key.owner, t):
             reason = f'{key.owner} has not started at {float(t):g} h'
+        if reason is None and key.store is None and name_of(key) not in self.plan.values:
+            reason = absent(key, self._checked.get(key) or declaration(self.program, key))
         return reason
 
     def ledger(self, key, t):

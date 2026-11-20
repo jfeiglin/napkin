@@ -833,7 +833,7 @@ def chattering(system, field, solution, diagnostics, failed=None):
         moving = (s.expanded_names(a) | s.expanded_names(b)) & s.evolving
         slack = max((float(s.atol[s.index[name]]) for name in moving if name in s.index), default=0.0)
         if abs(left - right) <= s.cfg.rtol * (abs(left) + abs(right)) + slack:
-            near.append(f'{nodes.text(a)} against {nodes.text(b)}')
+            near.append(f'{nodes.notation(a)} against {nodes.notation(b)}')
             read |= (s.expanded_names(a) | s.expanded_names(b)) & dynamic
     where = '; '.join(near) if near else 'a condition of the rates'
     steps = (

@@ -1131,7 +1131,10 @@ class _Checker(Resolver):
                 "a flow's actual_rate, or a served_fraction",
             )
             return
-        self.solved.setdefault(key, []).append(solver.origin)
+        # One solver that names a value twice (by its path and through an input) is its one writer.
+        writers = self.solved.setdefault(key, [])
+        if solver.origin not in writers:
+            writers.append(solver.origin)
 
     def writers(self):
         """One writer for each value: a solver's result has no other solver, stage or flow."""

@@ -67,7 +67,7 @@ from ...program import parts as p
 from ...program.record import Unavailable
 from ..errors import SimulationError
 from .moment import in_unit, quantity, span
-from .plan import FORMULA, RATE, RESULT, SIDES
+from .plan import DESCRIBED, FORMULA, RATE, RESULT, SIDES
 from .reads import lazily
 
 
@@ -180,6 +180,9 @@ class Occurrences:
             run.env[name] = plan.distributions[name]  # a distribution of the occurrence, to draw from
             return
         value = plan.values[name]
+        if value.kind == DESCRIBED:  # the `.mean` or the `.std` of a distribution of the occurrence
+            run.recorder.add(name, run.now, run.chance.described(name), 0.0)
+            return
         number = run.truth(value.node)
         if not value.boolean and isinstance(number, int | float) and not isinstance(number, bool):
             number = float(number)
@@ -226,9 +229,9 @@ class Occurrences:
         """The step at which an occurrence waits, for a message."""
         step = live.plan.event.steps[live.step]
         if isinstance(step, p.Until):
-            return f'`until {nodes.text(step.test.node)}` (step {live.step + 1})'
+            return f'`until {nodes.notation(step.test.node)}` (step {live.step + 1})'
         due = f', due at {live.due:g} h' if live.due is not None else ''
-        return f'`after {nodes.text(step.delay.node)}` (step {live.step + 1}{due})'
+        return f'`after {nodes.notation(step.delay.node)}` (step {live.step + 1}{due})'
 
     # ---- steps ------------------------------------------------------------------------------------
 
@@ -270,7 +273,7 @@ class Occurrences:
         ):
             shown = in_unit(self.plan.units, float(delay) if isinstance(delay, Fraction) else delay, 'h')
             raise SimulationError(
-                f'the delay {nodes.text(step.delay.node)} of {live.id} must be a duration that is not '
+                f'the delay {nodes.notation(step.delay.node)} of {live.id} must be a duration that is not '
                 f'negative, and is {shown} at t = {run.now:g} h'
             )
         live.due = run.clock.later(run.now, delay)

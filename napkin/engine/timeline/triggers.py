@@ -236,7 +236,7 @@ class Triggers:
                 if isinstance(a, bool | str) or isinstance(b, bool | str):
                     found = (a == b) if op == 'eq' else (a != b) if op == 'ne' else None
                     if found is None:
-                        raise ExpressionError(f'{nodes.text(node)}: only == and != compare these values')
+                        raise ExpressionError(f'{nodes.notation(node)}: only == and != compare these values')
                 else:
                     difference = float(a) - float(b)
                     if close is not None and abs(difference) <= self.widest():
@@ -558,7 +558,7 @@ class Triggers:
         stepping = self._moving_lookups(node)
         if stepping:
             raise SimulationError(
-                f'the first contact of {nodes.text(node)} cannot be certified: it reads {stepping[0]}, a '
+                f'the first contact of {nodes.notation(node)} cannot be certified: it reads {stepping[0]}, a '
                 'keyed read whose key or members move between moments, which changes by steps that the '
                 'engine does not locate; compare what it is keyed by with the keys, or use an inspection '
                 'schedule'
@@ -586,7 +586,7 @@ class Triggers:
             if strict and (op in _CLOSED) != positive:
                 raise SimulationError(
                     f'a strict threshold on a value that changes continuously: '
-                    f'{nodes.text(left)} {_SPELLING[op]} {nodes.text(right)} has no first instant; use an '
+                    f'{nodes.notation(left)} {_SPELLING[op]} {nodes.notation(right)} has no first instant; use an '
                     'inclusive threshold'
                 )
             if linear:
@@ -607,7 +607,7 @@ class Triggers:
         """The first time in (now, until] at which a comparison of values on curves can change its
         answer, read within its band, or None: step by step, each piece of a step skipped, decided by
         its ends, or halved (see the module). `start` is its difference now."""
-        spelled = f'{nodes.text(left)} {_SPELLING[op]} {nodes.text(right)}'
+        spelled = f'{nodes.notation(left)} {_SPELLING[op]} {nodes.notation(right)}'
         band, crossing = self.band(left, right), self.plan.numerics.crossing
         read = {now: start}
 

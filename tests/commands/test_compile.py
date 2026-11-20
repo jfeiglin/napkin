@@ -46,7 +46,7 @@ def test_compile_summarizes_the_program_of_the_tank(tmp_path, capsys):
     assert (doc['model_hash'], doc['runs']) == (load_scenario(model / 'model.scn').model_hash, [])
     assert doc['stores'] == [{'path': 'tank.water', 'unit': 'L'}]
     assert doc['flows'] == [
-        {'path': 'clinic.delivery', 'source': 'tank.water', 'sink': 'SINK', 'unit': 'L/h'}
+        {'path': 'clinic.delivery', 'kind': 'directed', 'source': 'tank.water', 'sink': 'SINK', 'unit': 'L/h'}
     ]
     assert (doc['horizon'], doc['inputs'], doc['diagnostics']) == (4, [], [])
 
@@ -89,6 +89,89 @@ def test_compile_summarizes_every_kind_of_value_a_links_and_a_collections_includ
         {'path': 'west.next', 'unit': '', 'template': 'Tank'},
     ]
     assert doc['collections'] == [{'path': 'tanks', 'unit': '', 'template': 'Tank'}]
+
+
+FLOWS = """\
+scenario "Flows"
+    horizon 2 h
+
+west:
+    water: L = 10 L in [0 L,]
+east:
+    water: L = 0 L in [0 L,]
+site:
+    work: L = 100 L in [0 L,]
+    done: L = 0 L in [0 L,]
+    parts: L = 10 L in [0 L,]
+    used: L = 0 L in [0 L,]
+    flow link: west.water <-> east.water
+        request = 1 L/h
+    flow restore:
+        flow labor: this.work -> this.done
+            request = 4 L/h
+        flow spend: this.parts -> this.used
+            request = 8 L/h
+    flow drain: west.water -> SINK
+        request = 1 L/h
+"""
+
+
+def test_compile_summarizes_each_kind_of_flow_with_its_ends(tmp_path, capsys):
+    """Spec, "Flows and algebraic solvers": a directed flow has a source and a sink, a reversible
+    route joins two stores with one signed rate, and a flow with several legs has the ends of each
+    leg. The summary writes each kind as the model does, `->` or `<->`, and each leg of a flow with
+    legs by its own path (`site.restore.labor`), the path a caller reads its rate by; the JSON gives
+    each flow its kind. A flow with legs raised an AttributeError (it has no ends of its own), and a
+    route was written as a directed flow."""
+    model = package(tmp_path / 'flows', FLOWS, UNITS)
+    found = napkin(capsys, 'compile', model)
+    assert found.code == 0, found.err
+    assert (
+        '  flows:         '
+        + ', '.join(
+            [
+                'site.link: west.water <-> east.water',
+                'site.restore.labor: site.work -> site.done',
+                'site.restore.spend: site.parts -> site.used',
+                'site.drain: west.water -> SINK',
+            ]
+        )
+        in found.out.splitlines()
+    )
+    doc = napkin(capsys, 'compile', model, '--json').doc
+    assert doc['flows'] == [
+        {
+            'path': 'site.link',
+            'kind': 'reversible',
+            'source': 'west.water',
+            'sink': 'east.water',
+            'unit': 'L/h',
+        },
+        {
+            'path': 'site.restore',
+            'kind': 'legs',
+            'legs': [
+                {'path': 'site.restore.labor', 'source': 'site.work', 'sink': 'site.done', 'unit': 'L/h'},
+                {'path': 'site.restore.spend', 'source': 'site.parts', 'sink': 'site.used', 'unit': 'L/h'},
+            ],
+        },
+        {'path': 'site.drain', 'kind': 'directed', 'source': 'west.water', 'sink': 'SINK', 'unit': 'L/h'},
+    ]
+
+
+def test_compile_summarizes_the_package_of_every_construct(tmp_path, capsys):
+    """The acceptance package that holds every construct of the language (`tests/acceptance`) compiles
+    with its summary, as `napkin run` runs it: its flow with legs crashed the summary."""
+    from tests.acceptance.test_every_construct import MAIN, PARTS, PLACES
+    from tests.acceptance.test_every_construct import UNITS as EVERY
+
+    model = package(tmp_path / 'every', MAIN, EVERY)
+    (model / 'parts.scn').write_text(PARTS, encoding='utf-8')
+    (model / 'places.csv').write_text(PLACES, encoding='utf-8')
+    for argv in ((), ('--json',)):
+        found = napkin(capsys, 'compile', model, *argv)
+        assert found.code == 0, found.err
+    assert any(flow['kind'] == 'legs' for flow in found.doc['flows'])
 
 
 def test_a_status_display_compiles(tmp_path, capsys):

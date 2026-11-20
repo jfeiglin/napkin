@@ -69,7 +69,7 @@ from ..program import parts as p
 from ..program.proofs import Change, Part, Proofs, kind_of
 from ..program.record import Key, Unavailable
 from .timeline.plan import FORMULA, name_of
-from .timeline.record import Reader, declared, in_unit, key_of
+from .timeline.record import Reader, declaration, declared, in_unit, key_of
 
 # Gauss-Legendre points and weights on [-1, 1]: five points integrate a polynomial of degree 9 exactly.
 _POINTS, _WEIGHTS = np.polynomial.legendre.leggauss(5)
@@ -188,7 +188,7 @@ def report(record, program, configuration, paths, times, lags=None, model=None, 
     reported = []
     for path in paths:
         key = key_of(program, path)
-        unit, scale = declared(program, key)
+        unit, scale = reader.checked(key)
         label = _text(model, _origin(program, key))
         lag, note = lags.get(path), None
         if lag is not None:
@@ -276,23 +276,11 @@ def _end(record, horizon):
 
 
 def _origin(program, key):
-    """The origin of the declared part of a record key: a value, a flow (of a field of it or of a
-    leg), the store of an endpoint, a solver's unknown or a status display."""
-    owner, steps = key.owner, key.steps
-    if '#' in owner:
-        receiver, event = owner.rsplit('#', 1)[0].rsplit('.', 1)
-        found = program.member(receiver)[0].part(event)
-        part = next((each for each in (*found.params, *found.locals) if each.name == steps[0]), None)
-    elif owner:
-        template = program.member(owner)[0]
-        part = template.part(steps[0])
-        if part is None and steps == ('status',) and template.status is not None:
-            return template.status.origin
-        if hasattr(part, 'unknowns') and len(steps) > 1:
-            part = next((each for each in part.unknowns if each.name == steps[1]), part)
-    else:
-        part = program.root_value(steps[0])
-    return getattr(part, 'origin', '')
+    """The origin of the declared part of a record key (`timeline.record.declaration`, the one lookup
+    of it): a value, a flow (of a field of it or of a route's leg), a leg of a flow with legs, the
+    store of an endpoint or a ledger, a solver's unknown or a status display; `''` for a built-in
+    field of an occurrence."""
+    return getattr(declaration(program, key).part, 'origin', '')
 
 
 def _text(model, origin):
