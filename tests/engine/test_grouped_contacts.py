@@ -162,3 +162,34 @@ def test_the_closed_ends_of_the_timing_window_report_an_exact_line_contact(direc
     made = Run(Plan.of(fill(gap), config))
     assert made.clock.within(edge, 1)
     assert not made.clock.within(math.nextafter(edge, direction * math.inf), 1)
+
+
+def test_a_family_fill_meets_its_upper_bound_in_the_horizon_moments_time_band():
+    """At 1 L/h the line reaches its 1.000000005 L bound half a tolerance after 1 h."""
+    config = Configuration(Request(1))
+    tolerance = config.numerics.crossing
+    upper = 1 + tolerance / 2
+    program = fill(tolerance / 2, 'family')
+    work = Run(Plan.of(program, config))
+    record = work.run()
+    assert record.failure is None
+    assert work.ways.sets[work.ways.set_of['tank.water']][0].way == 'family'
+    paths = [
+        'tank.water',
+        'reader.level',
+        'reader.incoming',
+        'reader.shared',
+        'tank.fill.actual_rate',
+        'gauge.water',
+    ]
+    assert [r.values[0] for r in read(record, program, paths, [1])] == [upper, upper, 1, 0, 0, 3]
+    (entry,) = record.entries('contact')
+    assert (entry.t, entry.round, entry.part, entry.owner, entry.detail('located')) == (
+        1,
+        1,
+        'tank.water',
+        'tank',
+        upper,
+    )
+    (near,) = entry.detail('near')
+    assert near == ('tank.water', 'upper bound of tank.water and the moment at 1 h', upper - 1, tolerance)

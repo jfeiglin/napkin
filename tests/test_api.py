@@ -70,6 +70,7 @@ CLOSURE = (
     'engine/timeline/checkpoints.py',
     'engine/timeline/collections.py',
     'engine/timeline/component.py',
+    'engine/timeline/contacts.py',
     'engine/timeline/declared.py',
     'engine/timeline/family.py',
     'engine/timeline/lines.py',

@@ -110,6 +110,7 @@ from ..continuous.walk import walked
 from ..errors import SimulationError
 from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
 from .collections import selected
+from .contacts import put_bounds, put_lines
 from .family import Columns, due_through
 from .lines import asked_of
 from .network import (
@@ -1007,7 +1008,7 @@ class DeclaredWay:
                 reach = t + (value - self.lower[s]) / -slope
             elif slope > 0 and math.isfinite(self.upper[s]):
                 reach = t + (self.upper[s] - value) / slope
-            if reach <= self.plan.horizon + self.run.clock.crossing:
+            if reach <= self.run.clock.apart(self.plan.horizon):
                 heapq.heappush(self.due, (reach, s, int(self.version[s])))
         return changed
 
@@ -1070,23 +1071,12 @@ class DeclaredWay:
         """The flow values, carried leg rates and results of the current sharing."""
         return self._published(self.value, self.results, self.former.requests)
 
-    def _put(self, reach, through=None):
-        """Each store whose line reaches its bound at `reach` is put on it; gives their indices."""
-        found = []
-        while self.peek() <= (reach if through is None else through):
-            _, s, _ = heapq.heappop(self.due)
-            bound = self.lower[s] if self.slope[s] < 0 else self.upper[s]
-            self.y[s], self.since[s], self.slope[s] = bound, reach, 0.0
-            self.version[s] += 1
-            found.append(s)
-        return found
-
     def step(self):
         """The next lines that reach their bounds: the stores are put on them, and the problem is
         solved again. Gives the stores whose lines and the rates and results whose values change."""
         reach = self.peek()
         self.run.now = reach
-        met = self._put(reach)
+        met = [self.place[name] for name in put_lines(self, reach, reach)]
         changed = self._solve(reach)
         return self._lines(reach, forced=met), changed, True
 
@@ -1094,7 +1084,8 @@ class DeclaredWay:
         """The next lines reach their bounds at the time of a moment: the stores are put on them, and
         the moment's settling solves the set again (`ways.py`). Gives the stores, as what changed and
         as what met its bound."""
-        stores = [self.stores[s] for s in self._put(self.peek() if t is None else t, through)]
+        at = self.peek() if t is None else t
+        stores = put_lines(self, at, at if through is None else through)
         return stores, stores
 
     def cut(self, t):
@@ -1546,19 +1537,13 @@ class MovingDeclared(DeclaredWay):
         return list(self.stores), sorted(set(changed) | set(self.recorded)), bool(segment.event)
 
     def _put_contacts(self, events, through):
-        met = []
-        for at, name, kind in events:
-            if at > through or name == self.declared.id:
-                continue
-            s = self.place[name]
+        due = [event for event in events if event[0] <= through]
+        for _, name, kind in due:
             if kind == 'release':
-                self.low[s] = self.high[s] = False
-            else:
-                low = kind == 'lower bound'
-                self.y[s] = self.lower[s] if low else self.upper[s]
-                (self.low if low else self.high)[s] = True
-                met.append(name)
-        return met
+                self.low[self.place[name]] = self.high[self.place[name]] = False
+            elif kind in ('lower bound', 'upper bound'):
+                (self.low if kind == 'lower bound' else self.high)[self.place[name]] = True
+        return put_bounds(self, self.y, due)
 
     def timing_events(self, through):
         """The physical switches and bounds in the pending segment."""

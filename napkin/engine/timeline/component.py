@@ -66,6 +66,7 @@ from ..continuous.system import Run as State
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import node_of
+from .contacts import put_bounds
 
 
 @dataclass(frozen=True)
@@ -643,18 +644,9 @@ class ComponentWay:
         """Commit the smooth field to the canonical instant, putting each due store on its bound."""
         segment = self.pending
         at = segment.end if t is None else t
-        events = list(self.timing_events(segment.end if through is None else through))
-        met = []
+        events = self.timing_events(segment.end if through is None else through)
         last = segment.last.copy() if at == segment.end else np.array(segment.solution(at), dtype=float)
-        for _, name, kind in events:
-            if kind in ('lower bound', 'upper bound'):
-                i = self.place[name]
-                last[i] = (
-                    self.component.system.lower[i]
-                    if kind == 'lower bound'
-                    else self.component.system.upper[i]
-                )
-                met.append(name)
+        met = put_bounds(self, last, events)
         # At a near contact the moment's exact time takes the states reached by its switching
         # field. An independently due stage may replace any of these states before the re-share.
         self.component.put_switches(last, at, segment.numerical, segment.end if through is None else through)

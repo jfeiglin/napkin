@@ -55,6 +55,7 @@ from ...core.errors import ExpressionError
 from ..continuous import dense, integrate
 from ..errors import SimulationError
 from .collections import combined, dynamic_value, looked_up, selected
+from .contacts import put_bounds
 from .lines import asked_of
 from .network import ROUNDOFF, SIDES, Asked, Instant, network_of
 from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE, Pending, _renamed
@@ -1253,8 +1254,10 @@ class Sparse:
             self.run.now, self.brief, self.brief_from = now, brief, brief_from
 
     def timing_events(self, through):
-        if self.pending is None:
-            return
+        if self.pending is not None:
+            yield from self._events(through)
+
+    def _events(self, through):
         for at, owner, kind in self.contacts:
             if at <= through:
                 if kind in ('lower bound', 'upper bound'):
@@ -1268,29 +1271,22 @@ class Sparse:
                     yield at, owner, 'switch'
 
     def _on_contacts(self, through, y):
+        met = put_bounds(self, y, self._events(through))
         for at, owner, kind in self.contacts:
-            if at > through:
-                continue
-            if kind == 'lower bound':
-                y[owner] = self.lower[owner]
-            elif kind == 'upper bound':
-                y[owner] = self.upper[owner]
-            elif kind == 'switch':
+            if at <= through and kind == 'switch':
                 for here, other in (owner, owner[::-1]):
                     if isinstance(here, nodes.Ref) and here.name in self.place and not self.moves(other):
                         y[self.place[here.name]] = self._side(at, y)(other)
+        return met
 
     def snap(self, t=None, through=None):
         """Commit the incoming piece at the moment's time and put its due stores on their bounds."""
         start, end, solution, y, ended = self.pending
         at = end if t is None else t
         through = end if through is None else through
-        met = [
-            name for _, name, kind in self.timing_events(through) if kind in ('lower bound', 'upper bound')
-        ]
         if at != end:
             y = np.array(solution(at), dtype=float)
-        self._on_contacts(through, y)
+        met = self._on_contacts(through, y)
         self.pending = start, at, solution, y, ended
         stores, rates, _ = self.step()
         self.contacted = tuple(

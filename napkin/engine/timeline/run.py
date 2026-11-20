@@ -70,6 +70,7 @@ from ..errors import SimulationError
 from .chance import Chance
 from .checkpoints import Breaks, Stopped
 from .collections import dynamic_value, index_of, kept, looked_up, reduced
+from .contacts import bound_values
 from .moment import Clock, Defined, Moment, quantity, span
 from .occurrences import Occurrences
 from .plan import (
@@ -1002,11 +1003,7 @@ class Run:
                 )
             )
             self.ways.opening(moment)
-            self.bound_at = {
-                name: self.bounds[name][int(kind == 'upper bound')]
-                for _, name, kind in self.contacts
-                if kind in ('lower bound', 'upper bound')
-            }
+            self.bound_at = bound_values(self.bounds, self.contacts)
             self.arriving = True
             self.bare = (
                 moment == self.plan.horizon

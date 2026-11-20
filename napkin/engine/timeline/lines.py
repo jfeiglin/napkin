@@ -41,6 +41,7 @@ import math
 import numpy as np
 
 from ..errors import SimulationError
+from .contacts import put_lines
 from .family import Columns, due_through
 from .network import BACKWARD, FORWARD, IN, OUT, ROUNDOFF, SIDES, Asked, Instant, network_of
 
@@ -232,8 +233,7 @@ class Lines:
                 reach = t + (value - self.lower[s]) / -slope
             elif slope > 0 and math.isfinite(self.upper[s]):
                 reach = t + (self.upper[s] - value) / slope
-            horizon = self.plan.horizon
-            if reach <= horizon + self.plan.numerics.crossing:
+            if reach <= self.run.clock.apart(self.plan.horizon):
                 heapq.heappush(self.due, (reach, s, int(self.version[s])))
 
     # ---- moments ----------------------------------------------------------------------------------
@@ -369,10 +369,9 @@ class Lines:
     def step(self):
         """The next line that reaches its bound: the store is put on its bound, and the parts of its
         flows are solved again. Gives the stores whose lines and the rates whose values change."""
-        reach, s, _ = heapq.heappop(self.due)
-        # The store is put on its bound exactly, and holds there until its part is solved.
-        bound = self.lower[s] if self.slope[s] < 0 else self.upper[s]
-        self.y[s], self.since[s], self.slope[s] = bound, reach, 0.0
+        reach = self.peek()
+        (store,) = put_lines(self, invalidate=False)
+        s = self.place[store]
         self.run.now = reach
         before = self.value.copy()
         versions = self.version.copy()
@@ -388,15 +387,7 @@ class Lines:
 
     def snap(self, t=None, through=None):
         """Put each due store on its bound at the time of the moment."""
-        met = []
-        while self.due:
-            reach, s, _ = heapq.heappop(self.due)
-            bound = self.lower[s] if self.slope[s] < 0 else self.upper[s]
-            self.y[s], self.since[s], self.slope[s] = bound, reach if t is None else t, 0.0
-            self.version[s] += 1
-            met.append(self.stores[s])
-            if through is None or self.peek() > through:
-                break
+        met = put_lines(self, t, through)
         return met, met
 
     def cut(self, t):

@@ -41,6 +41,7 @@ from ...core.errors import ExpressionError
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import combined, looked_up
+from .contacts import put_bounds
 from .plan import FORMULA, LOOKUP, REDUCE, Pending
 from .reads import Reads, lazily
 
@@ -317,7 +318,7 @@ class Family:
                         reach, bounded = at, (int(end),)
                     elif at == reach:
                         bounded += (int(end),)
-            if reach <= self.plan.horizon:
+            if reach <= self.run.clock.apart(self.plan.horizon):
                 heapq.heappush(self.due, (reach, k, int(self.version[k]), bounded))
 
     def begin(self, t=None):
@@ -371,19 +372,19 @@ class Family:
         for end in (self.source[k], self.sink[k]):
             if end >= 0:
                 self.y[end], self.since[end] = self._value(end, reach), reach
-        for end in bounded:
-            # The store is put on its bound, so the flow is held there from now on.
-            self.y[end] = self.lower[end] if end == self.source[k] else self.upper[end]
+        put_bounds(self, self.y, self._bounds(reach, k, bounded))
         self._start(k, reach)
         stores = [self.stores[end] for end in (self.source[k], self.sink[k]) if end >= 0]
         return stores, [f'{self.flows[k]}.actual_rate'], True
 
+    def _bounds(self, reach, k, bounded):
+        for end in bounded:
+            yield reach, self.stores[end], 'lower bound' if end == self.source[k] else 'upper bound'
+
     def timing_events(self, through):
         for reach, k, version, bounded in due_through(self.due, through):
             if version == self.version[k]:
-                for end in bounded:
-                    kind = 'lower bound' if end == self.source[k] else 'upper bound'
-                    yield reach, self.stores[end], kind
+                yield from self._bounds(reach, k, bounded)
 
     def snap(self, t=None, through=None):
         """Put the rows whose contact is due on their bounds at the moment's time."""
@@ -396,9 +397,7 @@ class Family:
                     self.y[end], self.since[end] = self._value(end, at), at
                     self.slope[end] = 0.0
                     changed.append(self.stores[end])
-            for end in bounded:
-                self.y[end] = self.lower[end] if end == self.source[k] else self.upper[end]
-                met.append(self.stores[end])
+            met.extend(put_bounds(self, self.y, self._bounds(reach, k, bounded)))
             self.version[k] += 1
             if through is None or self.peek() > through:
                 break
