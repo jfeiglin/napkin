@@ -917,7 +917,9 @@ class Run:
         due (`moment.Clock`)."""
         horizon = self.plan.horizon
         while not self.clock.due(horizon, self.now):
-            self.moment.at(*self.next_moment())
+            moment = self.next_moment()
+            self.recorder.check_budget(moment[0], before=True)
+            self.moment.at(*moment)
         self.ways.finish(horizon, not self.bare)
 
     def discrete(self):

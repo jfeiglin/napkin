@@ -306,3 +306,96 @@ def test_history_budget_stops_work_at_the_first_excess_piece(monkeypatch):
     record = made.run()
     assert record.failure.t == 1
     assert visited == [1]
+
+
+@pytest.mark.parametrize('first_stage', [1, 10])
+def test_a_clock_formula_exhausts_its_budget_on_its_original_fit_before_the_next_stage(first_stage):
+    """The clock alone fixes its fits over [0, 10]. The degree-eight fit of exp(t)
+    needs a split on [0, 1.25] and passes on [0, 0.625]. Its second piece is due
+    at 0.625 h. An unrelated stage cannot shorten the fit or run past that point."""
+    from napkin.program.build import call, t
+
+    b = Builder(UNITS)
+    b.entity(
+        'plant',
+        value('curve', '', formula(call('exp', t / q(1, 'h')))),
+        value('ticks', '', 0),
+        event('tick', *(after(q(first_stage, 'h'), add(this.ticks, 1)) for _ in range(10 // first_stage))),
+    )
+    b.setup(start(named('plant').tick))
+    key = Key('plant', ('curve',))
+    request = Request(10, everything=False, keys=(key,), pieces=1)
+    made = Run(Plan.of(b.finish(), Configuration(request)))
+    record = made.run()
+    assert record.failure is not None and record.failure.t == 0.625
+    assert record.history(key).pieces[0].curve.length == 0.625
+    assert made.env['plant.ticks'] == 0
+
+
+def test_an_unclosed_fit_waits_for_its_inputs_next_write():
+    """At 5 h the value adds 1 to exp(t). The first actual fitting interval
+    is [0,5]; its first two pieces start at 0 and 0.625. Ticks at 1 and 2 h
+    do not supply endpoints. The write at 5 h closes the fit."""
+    from napkin.program.build import call, t
+
+    b = Builder(UNITS)
+    b.entity(
+        'plant',
+        value('offset', '', 0),
+        value('ticks', '', 0),
+        value('curve', '', formula(call('exp', t / q(1, 'h')) + this.offset)),
+        event(
+            'tick',
+            after(q(1, 'h'), add(this.ticks, 1)),
+            after(q(1, 'h'), add(this.ticks, 1)),
+            after(q(3, 'h'), add(this.offset, 1)),
+            after(q(1, 'h'), add(this.ticks, 1)),
+        ),
+    )
+    b.setup(start(named('plant').tick))
+    key = Key('plant', ('curve',))
+    request = Request(10, everything=False, keys=(key,), pieces=1)
+    made = Run(Plan.of(b.finish(), Configuration(request)))
+    record = made.run()
+    assert record.failure is not None and record.failure.t == 0.625
+    assert record.history(key).pieces[0].curve.length == 0.625
+    assert (made.env['plant.offset'], made.env['plant.ticks']) == (1, 2)
+
+
+@pytest.mark.parametrize(('offset_time', 'first_excess'), [(2, 1), (5, 0.625)])
+def test_a_raw_counter_and_an_open_fit_stop_when_the_inputs_fix_the_first_excess(offset_time, first_excess):
+    """Two pieces are present at 0 h. The counter adds one at 1 h. The curve
+    exp(t) + offset fits [0,2] in two halves or starts [0,5] with a 0.625 h
+    piece. Which is the third piece becomes certain when the offset changes."""
+    from napkin.program.build import call, t
+
+    b = Builder(UNITS)
+    b.entity(
+        'plant',
+        value('offset', '', 0),
+        value('count', '', 0),
+        value('curve', '', formula(call('exp', t / q(1, 'h')) + this.offset)),
+        event(
+            'tick',
+            after(q(1, 'h'), add(this.count, 1)),
+            after(q(offset_time - 1, 'h'), add(this.offset, 1)),
+            after(q(1, 'h'), add(this.count, 1)),
+        ),
+    )
+    b.setup(start(named('plant').tick))
+    curve = Key('plant', ('curve',))
+    request = Request(10, everything=False, keys=(curve, Key('plant', ('count',))), pieces=2)
+    made = Run(Plan.of(b.finish(), Configuration(request)))
+    record = made.run()
+    assert record.failure.t == first_excess
+    assert record.history(curve).pieces[0].curve.length == first_excess
+    assert (made.env['plant.offset'], made.env['plant.count']) == (1, 1)
+
+
+def test_a_selected_tanks_starting_line_exhausts_the_budget_before_the_tick():
+    """The 10 L starting piece and the -2 L/h line both begin at 0 h."""
+    request = Request(4, everything=False, keys=(WATER,), pieces=1)
+    made = Run(Plan.of(tank(), Configuration(request)))
+    record = made.run()
+    assert record.failure.t == 0
+    assert made.env['tank.ticks'] == 0

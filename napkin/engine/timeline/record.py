@@ -87,6 +87,7 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_left, bisect_right
+from copy import copy
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import pairwise
@@ -105,7 +106,20 @@ from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Recor
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
-from .plan import BUILTINS, CHANGED, DYNAMIC, FORMULA, LOOKUP, RATE, REDUCE, SIDES, Plan, name_of
+from .plan import (
+    BUILTINS,
+    CHANGED,
+    DYNAMIC,
+    FORMULA,
+    INPUT,
+    LOOKUP,
+    RATE,
+    REDUCE,
+    SIDES,
+    Plan,
+    _program_statements,
+    name_of,
+)
 from .reads import Reads
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
@@ -226,6 +240,9 @@ class Recorder:
         self.transfers = {}
         self._budget_state = None  # rebuilt from the raw pieces on first use, including on resume
         self._budget_shape = None
+        self._clock_histories = {}  # fits whose full span is already known from the clock and fixed inputs
+        self._writes = None
+        self._probe_end = None
 
     def entry(self, t, kind, part, owner='', **details):
         """One entry of the trace, in the round where the run is (`round`: 0 is the setup)."""
@@ -299,9 +316,11 @@ class Recorder:
         self._raw_count += len(pieces)
         self._longest = max(self._longest, len(self.pieces[name]))
 
-    def check_budget(self, end):
+    def check_budget(self, end, *, before=False):
         """Stop as soon as the committed history exceeds its allowance. A conservative piece
         count avoids fitting a second copy of a record that is certain to fit."""
+        if before and not self._clock_histories:
+            return
         request = self.plan.configuration.request
         if not request.everything:
             # Only requested histories count, including a requested store's edit ledger. If
@@ -345,10 +364,65 @@ class Recorder:
                 self._budget_shape = signature, self._per_interval(moving)
             if raw + anchors * self._budget_shape[1] <= budget:
                 return
-        # Use the same value selection, compaction, fits and cutoff as a checkpoint at this time.
-        prefix = self.record(end, pause=Entry(end, self.round, 'pause', '', ''))
-        if prefix.failure is not None:
-            raise HistoryFull(prefix)
+        self._check_prefix(end, before)
+
+    def _check_prefix(self, end, before):
+        """Only a closed fitting interval determines its subdivisions. An intermediate
+        budget check never gives a fit a new right endpoint. A fit over immutable clock
+        inputs uses the requested horizon even when a stage happens before it."""
+        probe = copy(self)
+        probe._probe_end = end
+        probe._open_from = math.inf
+        prefix = probe.record(end, pause=Entry(end, self.round, 'pause', '', ''))
+        if prefix.failure is None:
+            return
+        failure = prefix.failure.t
+        if failure >= probe._open_from and (before or end != self.plan.horizon):
+            return  # future input anchors can still change the fitted pieces before this time
+        if before:
+            if failure >= end:
+                return  # assignments at this time still belong to its record
+            if self.run.arriving and self.run.ways.instances:
+                # The stage has not cut the incoming segments. Include their pending pieces
+                # exactly as a breakpoint before this stage would, without executing the stage.
+                from .saved import at_stop
+
+                projected, _ = at_stop(self.run)
+                if projected is not self:
+                    projected._check_prefix(end, False)
+                    return
+        raise HistoryFull(prefix)
+
+    def _fixed_clock(self, name):
+        """Whether the model fixes this timed formula throughout the requested horizon.
+        Inputs are held. An occurrence ends, and a stage can give a formula a new
+        definition. A matching written field conservatively rules out prediction."""
+        plan = self.plan
+        if name in plan.defined or plan.occurrence_of(name) is not None:
+            return False
+        value = plan.values[name]
+        if value.kind != FORMULA or value.key is None or len(value.key.steps) != 1:
+            return False
+        expanded = plan.expanded(name)
+        if not expanded.time or any(
+            part not in plan.values or plan.values[part].kind != INPUT for part in expanded.leaves
+        ):
+            return False
+        if self._writes is None:
+            self._writes = {
+                statement.target.steps[-1]
+                if statement.target.steps
+                else getattr(statement.target.start, 'name', None)
+                for _, statement in _program_statements(plan.program)
+                if isinstance(statement, p.Assign)
+            }
+        return all(
+            (key := plan.values[part].key) is not None
+            and len(key.steps) == 1
+            and key.steps[0] not in self._writes
+            and plan.occurrence_of(part) is None
+            for part in expanded.formulas | expanded.leaves
+        )
 
     def _per_interval(self, moving):
         """Upper bound on pieces produced between successive raw anchors or trace times.
@@ -531,7 +605,17 @@ class Recorder:
                 )
                 continue
             else:
-                pieces = self.formula(name, histories, end, start=start)
+                fit_end = end
+                if self._probe_end is not None:
+                    if name in self._clock_histories:
+                        histories[name] = self._clock_histories[name]
+                        continue
+                    if self._fixed_clock(name):
+                        fit_end = plan.horizon
+                pieces = self.formula(name, histories, fit_end, start=start)
+                if fit_end != end:
+                    histories[name] = self._clock_histories[name] = self._history(value.key, pieces)
+                    continue
             if name in run.frozen or (owner is not None and value.kind == RATE):
                 # A checkpoint can follow the finish in the same round, before the set is
                 # retired. Its occurrence's rate history already ends at zero there.
@@ -568,6 +652,11 @@ class Recorder:
             for history in histories.values()
             if history.key is not None and history.pieces and (request.everything or history.key in keys)
         ]
+        if self._probe_end is not None and self._clock_histories:
+            held = [
+                History(h.key, tuple(p for p in h.pieces if p.t <= end)) if h.pieces[-1].t > end else h
+                for h in held
+            ]
         manifest = Manifest(request.horizon, request.everything, request.keys)
         made = _finished(Record(manifest, tuple(held), trace, failure))
         # The values that the record holds stay within the request's budget of pieces (R-A4a-07); a
@@ -776,9 +865,13 @@ class Recorder:
                 # What the formula reads holds its value from a to b: so does the formula.
                 pieces.append((a, cast(first), 0.0))
             elif discrete:
+                if self._probe_end == b and a == times[-1] and name not in self._clock_histories:
+                    self._open_from = min(self._open_from, a)
                 # Where it cannot be evaluated is one more value of the yes/no or the text.
                 pieces += _switches(lambda time: cast(tried(time)), a, b, cast(first), crossing)
             else:
+                if self._probe_end == b and a == times[-1] and name not in self._clock_histories:
+                    self._open_from = min(self._open_from, a)
                 pieces += _numbers(at, tried, a, b, first, tolerance, crossing)
         return pieces
 
