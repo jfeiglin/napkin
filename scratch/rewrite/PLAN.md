@@ -306,6 +306,16 @@ These override the text of this plan below, wherever the two differ. The owner's
    it holds for local sharing's rates too, as the reference interpreter already has it. Before, the
    engine gave the stage the earlier rate without a word.
 
+26. **What a moment changes by itself (main session, 2026-11-20, from change 25).** The owner
+   answered change 25 with "its store just hit a bound" among its examples. The same answer holds
+   for every change that the next settling takes up and that no stage made: a keyed read by the
+   time at its key time, and a branch on the time or on a stored value whose condition changes at
+   the moment's time. A rate that depends on one of them is stale in that moment's stages, and a
+   read stops the run by name. It holds for every reader, a firing's capture or start argument
+   read after an earlier firing changed what the rate depends on as well as a stage. The other
+   answer, to settle a moment's own changes before its stages, would also change the answer that
+   the owner gave for a store at its bound.
+
 ### If the session is cut off
 
 Everything that matters is in the repository, pushed. The working memory of an agent is not: it
