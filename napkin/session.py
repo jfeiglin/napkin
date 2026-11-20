@@ -351,7 +351,9 @@ class Session:
         location = self.where(part.origin) if part is not None else None
         # A value of an occurrence that has not started, or that finished, takes no edit.
         live = active.get(key.owner, False) if '#' in key.owner else True
-        editable = part is not None and part.kind == p.STATE and not fixed and len(key.steps) == 1 and live
+        editable = (
+            isinstance(part, p.Value) and part.kind == p.STATE and not fixed and len(key.steps) == 1 and live
+        )
         choices = None
         if isinstance(getattr(part, 'type', None), p.EnumType):
             choices = tuple(self.program.enum(part.type.enum).members)
@@ -367,8 +369,8 @@ def _same(stop, expected, crossing):
 
 def _declared(program, key):
     """(the part of the program that declares the value at a key, `declaration`: a value, a solver's
-    own unknown, the store of an endpoint or a ledger, a flow or a leg, None for a built-in field of an
-    occurrence or a status display; whether it is a parameter or a built-in field of an occurrence,
+    own unknown, the store of an endpoint or a ledger, a flow or a leg, the event of a built-in
+    occurrence field, or None for a status display; whether it is a parameter or a built-in field of an occurrence,
     which its start gives). A key that names no value is a KeyError."""
     found = declaration(program, key)
     part = found.part if found.what != 'status' else None

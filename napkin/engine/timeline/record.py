@@ -440,8 +440,9 @@ class Recorder:
         per check point for availability and MOST times per available stretch for its fit."""
         plan = self.plan
         budget = plan.configuration.request.pieces
-        if plan.keyed or plan.defined:
-            # A new keyed interval or definition can introduce an independent set of anchors.
+        if plan.defined or any(plan._chosen(keyed) is None for keyed in plan.keyed.values()):
+            # Run-selected keys and definitions can introduce independent anchors. A key
+            # fixed at plan time follows the one selected member through the usual reads.
             return budget + 1
         derived = {
             name
@@ -1150,7 +1151,7 @@ def unit_of(program, key):
 class Declaration:
     """What declares the value at a key (`declaration`): the part of the program (a value of a member,
     of the root or of an occurrence, an unknown of a solver, a flow or a leg of one, a status
-    display; None for a built-in field of an occurrence), what of it the key reads (`what`: `value`,
+    display, or the event declaring a built-in occurrence field), what of it the key reads (`what`: `value`,
     `parameter`, `builtin`, `status`, `unknown`, `endpoint`, `ledger`, `distribution`, `description`,
     `flow`, `leg` or `fraction`), and the spelling of the value's unit with its exact scale (a
     Fraction)."""

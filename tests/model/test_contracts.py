@@ -252,13 +252,17 @@ def test_refined_alias_memo_keeps_effective_bounds_nonzero_facts_and_failures_se
     assert prove(nodes.read('twice if x <= -1 else 0')) == (-4.0, 0.0)
     assert prove(nodes.read('twice')) == (-4.0, 4.0)
     assert prove(nodes.read('ratio if x != 0 else 0')) == (-math.inf, math.inf)
-    assert prove(nodes.read('root if x >= 0 else 0')) == (0.0, math.sqrt(2.0))
-    assert prove(nodes.read('log if x >= 1 else 0')) == (0.0, math.log(2.0))
+    # The inclusive guards also admit x just below their thresholds (change 29).
+    with pytest.raises(ExpressionError, match='sqrt argument is nonnegative'):
+        prove(nodes.read('root if x >= 0 else 0'))
+    assert prove(nodes.read('root if x > 0 else 0')) == (0.0, math.sqrt(2.0))
+    lower = 1.0 - 1e-9
+    assert prove(nodes.read('log if x >= 1 else 0')) == (math.log(lower), math.log(2.0))
     for source in ('ratio', 'ratio if y != 0 else 0', 'root', 'log'):
         with pytest.raises(ExpressionError):
             prove(nodes.read(source))
     # A cached root-domain failure cannot poison a later safe branch either.
-    assert prove(nodes.read('ratio if x >= 1 else 0')) == (0.0, 1.0)
+    assert prove(nodes.read('ratio if x >= 1 else 0')) == (0.0, 1.0 / lower)
 
 
 def test_refined_alias_memo_keeps_expression_guards_and_impossible_branches():
@@ -267,7 +271,8 @@ def test_refined_alias_memo_keeps_expression_guards_and_impossible_branches():
         UnitSystem(LIBRARY_UNITS),
         formulas({'ratio': '1 / (x - y)', 'twice': 'x + x'}),
     )
-    assert prove(nodes.read('ratio if x - y >= 1 else 0')) == (0.0, 1.0)
+    # x-y as small as 1-1e-9 satisfies >= 1, so its reciprocal can exceed 1.
+    assert prove(nodes.read('ratio if x - y >= 1 else 0')) == (0.0, 1.0 / (1.0 - 1e-9))
     assert prove(nodes.read('ratio if x - y != 0 else 0')) == (-math.inf, math.inf)
     with pytest.raises(ExpressionError, match='nonzero denominator'):
         prove(nodes.read('ratio if x + y >= 1 else 0'))
