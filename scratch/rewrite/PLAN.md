@@ -287,6 +287,16 @@ These override the text of this plan below, wherever the two differ. The owner's
    a connected flow at zero rate writes nothing, and the run goes on. (c) `napkin new` writes two
    files, `model.scn` and `style.toml`, whose `[role]` gives the starter's picture its icon.
 
+25. **A stale rate is an error, for every flow (owner, 2026-11-20).** In a moment, stages commit
+   first and the flows are shared again after. A stage that reads a flow's rate (`actual_rate`, a
+   leg's rate, a `served_fraction`) after something in the same round changed what that rate
+   depends on (a store at its bound, a request, a capacity or an allocation that an earlier stage
+   set, a flow that joined or left), and before the network settles again, stops the run by name:
+   the stage, the flow and why, with the advice to read it in a later stage or after a wait. The spec
+   made this an error for a declared solver's result ("a stale answer is a wrong one", spec.md:544);
+   it holds for local sharing's rates too, as the reference interpreter already has it. Before, the
+   engine gave the stage the earlier rate without a word.
+
 ### If the session is cut off
 
 Everything that matters is in the repository, pushed. The working memory of an agent is not: it
