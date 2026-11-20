@@ -108,7 +108,8 @@ Each session starts by reading this file and `spec.md`, and ends by updating thi
   - [x] S, pictures (change 23): `napkin draw` takes roles from `style.toml`'s `[role]`, each of 13 test pictures as before; `napkin new` writes the stylesheet (change 24 c); the translator moves the catalogue's 59 roles to `style.toml` and `roles.toml`
   - [x] N, pictures: a membership is drawn `x \in [lo, hi]`, in the equations and on the cards
   - [x] The main session: `napkin compile` summarized four of the six kinds of value and raised a KeyError on a link (every kind has its group now); every property test draws the same examples on every run (a seed from the test and no database of earlier examples: 7 of the 36 had no seed, and the database replayed examples of other code); `tests/acceptance/test_rules_across_paths.py`, written apart from the agents: long chains on every path at a recursion limit of 300, a trail independent of its report on 200 random models, one outcome cold and warm with a later edit, no checkpoint past a budget, each failing on `8b3a01a` and passing now
-  - [ ] T: change 25 (a stale rate is an error for every flow); the oracle checks a membership in a solver's constraint
+  - [x] T: change 25 (`e529a1f`): a rate that the settling decides, read in a stage after something it depends on changed since the flows last settled, stops the run by name, for every flow, through every set whose rates its settings read, also with a stop and an edit resumed in place and from the saved state; 235 of 413 random cases against the oracle failed before. The main session: a range test in a solver's constraint stays a membership (`8282d72`), so ends that a stage reverses stop the run by name
+  - [ ] C and L (`briefs/audit3b.md`, change 26): what a moment changes by itself (a key time, a branch that changes there) and every reader (a firing after a firing); a switch that a stage's time meets fails the run with a wrong message on `8b3a01a` as well; four places where local sharing and the oracle disagree or the engine fails
   - [ ] The merge: the central suite, every deep set, `a5/run_all.sh`, the reproductions; then a review by a fresh agent that reads only the spec, the code and the two audits, and tries to break the result
 - [ ] M catalogue migration
 - [ ] Gate G3
@@ -809,6 +810,9 @@ is deleted.
 
 - Delete what is dead: old modules, old tests, `scratch/`, the superseded scoping page
   (`docs/scoping/networks-and-found-values.md`) and its row in `known-issues.md`.
+- Among the old modules: `napkin/model/types.py` and `napkin/model/uncertain.py`, whose last user is
+  the old publisher (`tools/publish/runs.py`, ported in M), and `napkin/expressions.py` with
+  `napkin/core/intervals.py`, which only the old runtime and the evidence tools reach.
 - Rewrite the docs, one subagent for each file: `language.md`, `compiler.md`, `engine.md`,
   `modeling-guide.md`, `python-api.md`, `cli.md`, `draw.md`, `extending.md`. Record the rulings and
   the new measurements in `design.md`. Update `known-issues.md` and `CHANGELOG.md`.

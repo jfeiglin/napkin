@@ -7,8 +7,8 @@ everything you need is in the repository, and this file says where. Read it all 
 ## Where things stand
 
 - The rewrite replaces napkin's language, compiler and engine in place. Stages S0 to S7 and C are
-  done, gate G2 passed on branch `claude/blissful-heisenberg-5me2hn`, and the fixes of two audits
-  after it (changes 19 to 22, below) are in: every central test passes with no catalogue
+  done, gate G2 passed on branch `claude/blissful-heisenberg-5me2hn`, and the fixes of three audits
+  after it (changes 19 to 26, below) are in: every central test passes with no catalogue
   (7,263 passed, 2 skipped for TeX and Ghostscript), every deep test passes (14,984), and ruff is
   clean on `napkin/`, `tests/` and `tools/`.
 - What is left is the catalogue: the five model packages under `scenarios/` and `examples/` (all
@@ -127,6 +127,37 @@ fixed in one mechanism, with a test of its rule (`briefs/audit2.md`; the state f
    List that in its `changed.md`, with change 22 as the cause. A lag of a yes/no or a text is
    refused by name, and a history budget that a run would exceed stops it by name.
 6. **The checker compares how each run ended** before its values (below, "No change is silent").
+
+## What the readiness rounds changed (`PLAN.md`, changes 23 to 26)
+
+A readiness audit of `8b3a01a` found eight rules fixed on one path and still broken on another. Each
+is now fixed once, at its mechanism, with a test over every path that reads it (`briefs/audit3.md`,
+`briefs/audit3b.md`; the state files `scratch/rewrite/b1/audit3-*/STATE.md`). The owner answered
+four questions on the way. What you will meet in the catalogue:
+
+1. **No part of a model has a role** (change 23): `role` is refused anywhere, by name. Who plays a
+   part is the wrapper's, in `roles.toml`, which the publisher and the water UI read; the pictures
+   take it from the `[role]` table of `style.toml` (`operator = ["pump", "Utility"]`). The
+   translator writes both from each old role.
+2. **A finished occurrence is frozen** (change 24 b): an assignment to its field, a `move` of a
+   nonzero amount or a flow carrying a nonzero rate into or out of its store stops the run by name;
+   a connected flow at zero rate writes nothing.
+3. **A stale rate is an error, for every flow** (changes 25 and 26). In a moment the stages commit
+   first and the flows are shared again after. A stage that reads a rate (an `actual_rate`, a leg's,
+   a `served_fraction`, an inflow or outflow, a solver's result) after something it depends on
+   changed in that moment stops the run by name: a write of an earlier stage or of the same stage,
+   an edit at a stop, an allocation, a flow that joined or left, a store that met its bound there,
+   a keyed read by the time at its key time, a branch on the time or on a store that changes there.
+   So does a firing that reads one after an earlier firing changed it. The old engine gave the old
+   rate. Where an old rule read a rate at the moment of such a change, read it in a later stage or
+   after `after 0 h`, and list each in the package's `changed.md` with change 25 as the cause.
+4. **A range test is checked wherever it is evaluated**, a solver's constraint included:
+   `x in [lo, hi]` whose ends a stage reversed stops the run by the name of a reversed interval.
+5. **Long chains of values compile, run and report** with no recursion in Python, through every
+   path; **a value's trail** is the same whatever else its report holds; **a history budget** stops
+   a run by name when its record would exceed it, before any later stop, and the run store serves a
+   shorter request only where its cut is what a fresh run gives (change 24 a).
+6. **`napkin new` writes two files** (change 24 c), `model.scn` and `style.toml`.
 
 ## The work, in order
 
