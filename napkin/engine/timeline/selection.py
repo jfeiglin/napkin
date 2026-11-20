@@ -405,7 +405,7 @@ def size_of(rows, upper, tiers, prefs, target):
     return found if found > 0.0 else 1.0
 
 
-def select(rows, lower, upper, tiers, prefs, target, units=None):
+def select(rows, lower, upper, tiers, prefs, target, units=None, own_scales=1.0):
     """The unknowns of one coupled part: `rows` (`Rows`, in the units of the rates), the bounds of
     each unknown (-inf and inf for none), the tiers of claims in order (each a list of (a,
     request)), the preferred routes in order (each (a, amount)) and the target of each unknown
@@ -466,17 +466,17 @@ def select(rows, lower, upper, tiers, prefs, target, units=None):
         snapped[near] = bound[near]
     claims = [claim for tier in tiers for claim in tier] + list(prefs)
     candidates = (_exact(final, lower, upper, snapped, target), snapped)
-    return _kept(final, lower, upper, target, claims, found, candidates)
+    return _kept(final, lower, upper, target, claims, found, candidates, own_scales)
 
 
-def _kept(rows, lower, upper, target, claims, answer, candidates):
+def _kept(rows, lower, upper, target, claims, answer, candidates, own_scales=1.0):
     """The first of `candidates` (changes of `answer` after the selection order) that is no worse
     than the answer on any rank, the last included: it holds every row and bound of the part as the
     answer does (`_holds`, the end check of rank 4), serves each claim and each preferred route's
     share (`claims`, as (a, request)) no less than the answer serves it, to `FEASIBLE`, and is no
     farther from the targets (`solve.solver.farther`, the rule of every change of a published answer):
-    a correction fits FEASIBLE of the coordinate's own value or target, and a flow selected at
-    zero stays zero. Else the answer. A change
+    a correction fits FEASIBLE of the coordinate's own unit, value or target, and a flow selected
+    at zero stays zero. Else the answer. A change
     that would take a small delivery for the roundoff of a large part, break a row, or move a
     delivery onto a flow that does not ask for it, is dropped."""
     plain = _plain(rows, lower, upper)
@@ -485,7 +485,7 @@ def _kept(rows, lower, upper, target, claims, answer, candidates):
         return np.array([min(1.0, max(0.0, float(np.asarray(a, dtype=float) @ x) / r)) for a, r in claims])
 
     floor = served(answer) - FEASIBLE * (1.0 + np.abs(served(answer)))
-    precision = FEASIBLE * np.maximum(np.abs(answer), np.abs(target))
+    precision = FEASIBLE * np.maximum(own_scales, np.maximum(np.abs(answer), np.abs(target)))
     for candidate in candidates:
         if (
             rate_rounding(candidate, answer, precision)

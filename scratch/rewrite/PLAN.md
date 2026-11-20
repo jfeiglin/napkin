@@ -339,6 +339,24 @@ These override the text of this plan below, wherever the two differ. The owner's
    a shorter horizon or a smaller selection. The program, inputs, seed, numerical settings,
    processor, engine and edit log still contribute to the run's identity.
 
+29. **Comparisons and crossings (owner, 2026-11-20).** In every evaluator and in the reference
+    interpreter, two numeric operands within `max(rtol, atol_factor) × max(scale, |a|, |b|)`
+    compare equal. A quantity supplies its declared scale, or the size of one declared unit. A literal
+    threshold uses the compared quantity's scale on either side. An alias keeps its quantity's
+    scale and an unnamed expression uses its result unit. For two independently declared
+    quantities, take the larger floor to cover both uncertainties. An interval is reversed only
+    when its lower end exceeds its upper end by more than their band. Inverted hard bounds within
+    the band admit one point, their midpoint. Authored evidence stays exact.
+    At a located trigger or switch crossing, place a single store exactly on its threshold,
+    including an alias or invertible single-store formula. For several stores refine the root on
+    their incoming trajectory until the comparison's residual is within its own band, or fail by
+    name. The flows alone determine those inventories. The crossing tolerance in hours groups
+    contacts with a moment (change 27), and a decision within tolerance is reported (change 10).
+    In change 24 b, a nonzero authored move always writes. For computed rates, check the cumulative
+    amount in each direction since retirement against the store's own conservation allowance. A
+    solver-certified idle route publishes zero. No guard takes its tolerance from the size inferred
+    for integration from bounds and connected stores.
+
 ### If the session is cut off
 
 Everything that matters is in the repository, pushed. The working memory of an agent is not: it

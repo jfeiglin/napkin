@@ -200,7 +200,7 @@ def active_roots(before, after, direction):
     return np.nonzero((up & (direction > 0)) | (down & (direction < 0)) | (either & (direction == 0)))[0]
 
 
-def crossing_time(gap, start, end, *, side=None, accepted=None, exact=None, speed=None):
+def crossing_time(gap, start, end, *, side=None, accepted=None, exact=None, speed=None, within=None):
     """Locate a contact on an incoming trajectory. A switch armed on `side` must leave that
     open side in (start, end]. The caller can also supply a bracket already certified by the
     step, or an analytically known time. At either endpoint the accepted samples take precedence
@@ -233,22 +233,62 @@ def crossing_time(gap, start, end, *, side=None, accepted=None, exact=None, spee
         return value
 
     at = brentq(difference, start, end, xtol=ROOT_TOLERANCE, rtol=ROOT_TOLERANCE)
+    if at == start and math.nextafter(start, end) >= end:
+        return end
     if at == start:
         # The absolute timestamp can round a positive interval to zero. Locate the short interval
         # relative to its start; it occupies at least the following representable time.
         length = brentq(
-            lambda h: difference(start + h), 0, end - start, xtol=np.finfo(float).tiny, rtol=ROOT_TOLERANCE
+            lambda h: difference(start + h),
+            0,
+            end - start,
+            xtol=math.ulp(start) if start else np.finfo(float).tiny,
+            rtol=ROOT_TOLERANCE,
         )
-        return max(math.nextafter(start, end), start + length)
+        at = max(math.nextafter(start, end), start + length)
+    if within is not None and not within(at, gap(at)):
+        # A narrow operand band can require a much tighter root than the time tolerance.
+        # Refine on the same dense trajectory down to adjacent representable instants.
+        low, high = start, end
+        while low < high:
+            mid = low + 0.5 * (high - low)
+            if mid in (low, high):
+                return min((low, high), key=lambda t: abs(gap(t)))
+            residual = gap(mid)
+            if within(mid, residual):
+                return mid
+            if (residual > 0) == (first > 0):
+                low = mid
+            else:
+                high = mid
     return at
 
 
 def locate(roots, k, solution, start, end, before, after):
     """Locate a component's already bracketed root using its accepted endpoint states."""
-    fixed = roots.roots[k].fixed_time if isinstance(roots, Roots) else None
+    target = roots.roots[k] if isinstance(roots, Roots) else None
+    within = None
+    if target is not None and target.kind == 'surface':
+        pair, units = target.data, roots.system.units
+
+        def operands(at):
+            env = roots.environment(at, solution(at))
+            return (float(evaluate(node, env, units)) for node in pair)
+
+        within = contact_band(pair, operands, units)
     return crossing_time(
-        lambda at: roots.value(k, at, solution(at)), start, end, accepted=(before, after), exact=fixed
+        lambda at: roots.value(k, at, solution(at)),
+        start,
+        end,
+        accepted=(before, after),
+        exact=target.fixed_time if target is not None else None,
+        within=within,
     )
+
+
+def contact_band(pair, operands, units):
+    """Test the residual of a located switch in the units of its two operands."""
+    return lambda t, gap: abs(gap) <= units.comparisons.band(*pair, *operands(t))
 
 
 # The rate of change of the dense solution of one Radau step at a time of the step.
@@ -655,7 +695,7 @@ def branch_sides(surfaces, side):
     return signs
 
 
-def departing_branches(surfaces, t, y, side_at, rates, contacted=()):
+def departing_branches(surfaces, t, y, side_at, rates, contacted=(), comparisons=None):
     """Select the sides a segment leaves on, including comparisons between two moving expressions.
     At a contact their equal values alone cannot pick a side. Compare their values along the
     outgoing velocity; arithmetic outside the condition continues to read the actual state."""
@@ -664,6 +704,11 @@ def departing_branches(surfaces, t, y, side_at, rates, contacted=()):
     side = side_at(t, y)
     signs = branch_sides(surfaces, side)
     ties = set(contacted) | {pair for pair, sign in signs.items() if sign == 0}
+    if comparisons is not None:
+        for a, b in signs.keys() - ties:
+            left, right = side(a), side(b)
+            if abs(left - right) <= comparisons.band(a, b, left, right):
+                signs[a, b] = 0
     if ties:
         # The comparison can involve large nearly equal terms. A probe that moves the state
         # by more than last-bit noise measures the relative motion of both actual operands.
@@ -698,7 +743,7 @@ def branch_expression(source, signs):
             return parts[0] if len(parts) == 1 else nodes.boolean('and', parts)
         if isinstance(node, nodes.Call):
             args = node.args
-            if node.function == 'abs' and (args[0], ZERO) in signs:
+            if node.function == 'abs' and signs.get((args[0], ZERO)):
                 value = changed[args[0]]
                 return nodes.unary('neg', value) if signs[(args[0], ZERO)] < 0 else value
             if node.function in ('min', 'max') and len(args) >= 2:
@@ -707,7 +752,7 @@ def branch_expression(source, signs):
                 for k, left in enumerate(args):
                     for j in range(k + 1, len(args)):
                         sign = signs.get((left, args[j]))
-                        if sign is not None:
+                        if sign:
                             beaten.add(k if sign * way > 0 else j)
                 kept = [changed[arg] for k, arg in enumerate(args) if k not in beaten]
                 if len(kept) == 1:
@@ -716,7 +761,7 @@ def branch_expression(source, signs):
                     return nodes.call(node.function, kept)
             if node.function == 'clip' and len(args) == 3:
                 x, low, high = args
-                lower_sign, upper_sign = signs.get((x, low)), signs.get((x, high))
+                lower_sign, upper_sign = signs.get((x, low)) or None, signs.get((x, high)) or None
                 if lower_sign is not None or upper_sign is not None:
                     value = changed[x]
                     if lower_sign is None:
@@ -862,6 +907,7 @@ def starting_sides(system, run, field):
         held=lambda i: (i, 'min') in run.active_bounds or (i, 'max') in run.active_bounds,
         reversal=reversal,
         contacted=run.contacted,
+        choose=field.choose,
     )
     probe = run.y.copy()
     for i, low, high, beyond in run.switches:
@@ -873,7 +919,24 @@ def starting_sides(system, run, field):
         env = field.environment(t, y)
         return lambda node: float(evaluate(node, env, s.units))
 
-    field.choose(departing_branches(switching_surfaces(s), at, probe, side_at, field.rates, run.contacted))
+    contacts = list(run.contacted)
+    contacts.extend(
+        pair
+        for pair, sign in branch_sides(switching_surfaces(s), side_at(run.time, run.y)).items()
+        if sign == 0
+    )
+    if run.clock is not None:
+        contacts.extend(
+            pair
+            for pair in switching_surfaces(s)
+            if fixed_clock(pair, side_at(run.time, run.y), lambda node: bool(s.expanded_names(node) & moving))
+            == math.nextafter(at, -math.inf)
+        )
+    field.choose(
+        departing_branches(
+            switching_surfaces(s), at, probe, side_at, field.rates, contacts, s.units.comparisons
+        )
+    )
 
 
 def fixed_clock(pair, side, moving):
@@ -921,6 +984,7 @@ def far_sides(
     held=None,
     reversal=None,
     contacted=(),
+    choose=None,
 ):
     """Choose the departure side of a fixed store or clock threshold at the segment's start.
     A store is at the threshold if it equals the limit or this run just located its contact.
@@ -971,7 +1035,16 @@ def far_sides(
                 continue  # it does not move, or it is on the far side already
             probe = np.array(y, dtype=float)
             probe[i] = beyond
-            if rates(at, probe)[i] * way < 0:
+            # Leave the arithmetic coordinates alone. A nextafter probe alone is still equal
+            # under change 29 and would read the arriving branch on both sides.
+            if choose is not None:
+                choose({(a, b): way if here_node == a else -way})
+            try:
+                outgoing = rates(at, probe)[i]
+            finally:
+                if choose is not None:
+                    choose({})
+            if outgoing * way < 0:
                 if reversal is not None:
                     reversal(here_node.name)
                 continue
@@ -1171,7 +1244,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
             check=s.max_step,
             moment=s.cfg.crossing,
             rtol=s.cfg.rtol,
-            atol=s.atol,
+            atol=getattr(s, 'integration_atol', s.atol),
             jac_sparsity=field.jacobian_pattern(),
             max_step=s.solver_step,
         )

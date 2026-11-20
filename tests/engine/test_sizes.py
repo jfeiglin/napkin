@@ -79,11 +79,11 @@ def draining(scale):
     return b.finish()
 
 
-def test_a_large_stock_that_the_solver_drains_takes_its_own_size():
-    """Sized by its start value, the stock follows its closed form to zero. With a scale of one
-    person (the size of a value with none before the engine sized values) its roundoff at zero
-    exceeds its tolerance, and the run stops."""
-    program = draining(None)
+@pytest.mark.parametrize('scale', [None, 1])
+def test_a_large_stock_that_the_solver_drains_takes_its_own_size(scale):
+    """The stock follows its integral to zero. At depletion a root bracketed by adjacent
+    representable times is placed exactly on its bound even with a scale of one person."""
+    program = draining(scale)
     record = run(program, Configuration(Request(HORIZON)))
     assert record.failure is None
     times = (10.0, 30.0, 50.0, HORIZON)
@@ -92,5 +92,4 @@ def test_a_large_stock_that_the_solver_drains_takes_its_own_size():
         left = max(0.0, START - 2 * RATE * (t - math.log1p(t)))
         assert left_ == pytest.approx(left, rel=1e-9, abs=1e-9 * START)
         assert moved == pytest.approx(START - left, rel=1e-9)
-    stopped = run(draining(1), Configuration(Request(HORIZON)))
-    assert 'Material state-bound violation' in stopped.failure.detail('message')
+    assert stock.values[-1] == 0

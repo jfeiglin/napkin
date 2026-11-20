@@ -10,10 +10,10 @@
    keeps are found from fixed values, once (`kept_of`), and so is the sorted index of the keys of
    each keyed read (`stepped_of`). Then each assertion over inputs is checked once; one that does not
    hold fails the run at the start, as an error of the setup that the plan found does.
-2. **The sizes.** A store's size sets its absolute tolerance (`atol_factor` times it, D8): its
+2. **The sizes.** A store's size helps set its integrator tolerance (D8): its
    `scale` when it declares one, else the largest of one of its unit, its start value, its finite
-   bounds and the largest start value of the stores that flows connect it to. A store must start
-   within its bounds. A store of an occurrence takes its size when the occurrence starts.
+   bounds and the largest start value of the stores that flows connect it to. Physical guards and
+   fitted histories use the quantity's own scale. A store must start within its bounds. A store of an occurrence takes its size when the occurrence starts.
 3. **Moments** (`moment.py`): the setup is round zero at time 0, after whose commit every connected
    set starts and the flows first settle; then, at each moment, rounds of stages, the settling of the
    sets that the round touched (`ways.py`), and the conditions (`triggers.py`). Occurrences are in `occurrences.py`.
@@ -388,23 +388,48 @@ class Run:
             return float(lazily(node, self.value_of, plan.units, 0.0))
 
         self.bounds, self.scales = {}, {}
-        for name, value in plan.values.items():
-            if value.kind == DESCRIBED:
-                self.value_of(name)  # recorded from its value at the start
-            if value.kind not in STARTS:
-                continue
-            found = self.value_of(name)
-            lower, upper = number(value.lower), number(value.upper)
-            outside = (lower is not None and found < lower) or (upper is not None and found > upper)
-            if value.given and not value.boolean and outside:
-                low = -math.inf if lower is None else lower
-                high = math.inf if upper is None else upper
-                raise ConfigurationError(
-                    f'{name} = {quantity(plan, name, found)} is outside its admitted range '
-                    f'{span(plan, name, low, high)}'
-                )
-            self.bounds[name] = (-math.inf if lower is None else lower, math.inf if upper is None else upper)
-            self.scales[name] = number(value.scale)
+        resolving = set()
+
+        def scale_of(name, node):
+            if name not in self.scales:
+                if name in resolving:
+                    raise SimulationError(f'{name}: a comparison scale that reads itself')
+                resolving.add(name)
+                try:
+                    self.scales[name] = abs(number(node))
+                    plan.comparison_scales[name] = self.scales[name]
+                finally:
+                    resolving.remove(name)
+            return self.scales[name]
+
+        comparisons = plan.units.comparisons
+        declared = comparisons.named
+        comparisons.floors.clear()
+        comparisons.named = lambda name: plan.comparison_quantity(
+            name, plan.comparison_scales, resolve=scale_of
+        )
+        try:
+            for name, value in plan.values.items():
+                if value.kind == DESCRIBED:
+                    self.value_of(name)  # recorded from its value at the start
+                if value.kind not in STARTS:
+                    if value.scale is not None:
+                        scale_of(name, value.scale)
+                    continue
+                found = self.value_of(name)
+                lower, upper = number(value.lower), number(value.upper)
+                self.scales[name] = None if value.scale is None else scale_of(name, value.scale)
+                low, high, initial = self.initial_range(name, lower, upper, found)
+                self.bounds[name] = low, high
+                if initial != found:
+                    self.env[name] = initial
+                if value.given and not value.boolean and not self.admitted(name, low, high, initial):
+                    raise ConfigurationError(
+                        f'{name} = {quantity(plan, name, initial)} is outside its admitted range '
+                        f'{span(plan, name, low, high)}'
+                    )
+        finally:
+            comparisons.named = declared
         return {name: found for name, found in self.env.items() if name != 't'}
 
     def check(self):
@@ -418,6 +443,41 @@ class Run:
                 raise SimulationError(
                     f'{origin}: the assertion does not hold{f" for {member}" if member else ""}'
                 )
+
+    def own_scale(self, name):
+        """The numerical scale of this quantity in its own dimension."""
+        scale = self.scales.get(name)
+        if scale is not None:
+            return abs(scale)
+        unit = self.plan.values[name].unit
+        return self.plan.units.scale(unit) if unit else 1.0
+
+    def amount_tolerance(self, name, *amounts):
+        """Conservation slack for this inventory, independent of connected stores and bounds."""
+        return self.plan.numerics.atol_factor * max(self.own_scale(name), max(map(abs, amounts), default=0.0))
+
+    def comparison_band(self, name, a, b):
+        return self.plan.units.comparisons.factor * max(self.own_scale(name), abs(a), abs(b))
+
+    def admitted(self, name, low, high, value):
+        """An input or parameter is inside its declared range up to the comparison band."""
+        if low <= value <= high:
+            return True
+        end = low if value < low else high
+        return abs(value - end) <= self.comparison_band(name, value, end)
+
+    def initial_range(self, name, lower, upper, value):
+        """Form a hard range: two slightly inverted authored ends describe a single point."""
+        low = -math.inf if lower is None else lower
+        high = math.inf if upper is None else upper
+        if low > high:
+            band = self.comparison_band(name, low, high)
+            if low - high > band:
+                raise SimulationError(f'{name}: the range [{low}, {high}] is reversed')
+            low = high = high + 0.5 * (low - high)
+            if abs(value - low) <= band:
+                value = low
+        return low, high, value
 
     def sizes_of(self, values):
         """The size of each stored number (see the module): of a store that a flow meets, and of one
@@ -795,21 +855,20 @@ class Run:
         self.recorder.constants = values
         self.check()
         self.sizes = self.sizes_of(values)
-        factor = plan.numerics.atol_factor
         outside = [
             name
             for name, value in plan.values.items()
             if value.kind == STATE
             and not value.boolean
             and isinstance(values.get(name), float | int)
-            and not self.bounds[name][0] - factor * self.sizes.get(name, 0.0)
+            and not self.bounds[name][0] - self.amount_tolerance(name, values[name])
             <= values[name]
-            <= self.bounds[name][1] + factor * self.sizes.get(name, 0.0)
+            <= self.bounds[name][1] + self.amount_tolerance(name, values[name])
         ]
         if outside:
             raise SimulationError(f'State bounds violated: {outside}')
-        for name, size in self.sizes.items():
-            self.recorder.tolerance[name] = factor * size
+        for name in self.sizes:
+            self.recorder.tolerance[name] = self.amount_tolerance(name)
         for flow in plan.flows.values():
             self.tolerate(flow)
         self.started = plan.started = True
@@ -842,16 +901,10 @@ class Run:
         return names | set(connected.results)
 
     def tolerate(self, flow):
-        """The tolerance of what the network gives of a flow, which the record keeps: a rate's error
-        over an hour moves what a store's tolerance allows; a served fraction is a number from zero
-        to one."""
-        factor = self.plan.numerics.atol_factor
-        if flow.kind == LEGS:
-            self.recorder.tolerance[f'{flow.name}.served_fraction'] = factor
-            return
-        sizes = [self.sizes[end] for end in (flow.source, flow.sink) if end is not None]
-        if sizes:
-            self.recorder.tolerance[f'{flow.name}.actual_rate'] = factor * max(sizes)
+        """The error allowance of the delivered value that the record fits, in its own units."""
+        property = 'served_fraction' if flow.kind == LEGS else 'actual_rate'
+        name = f'{flow.name}.{property}'
+        self.recorder.tolerance[name] = self.plan.numerics.atol_factor * self.own_scale(name)
 
     def run(self):
         """The record of the run: to the horizon, or to the failure that stopped it; or the checkpoint
@@ -973,13 +1026,25 @@ class Run:
             )
             if not independent:
                 moment = at  # a switch in an output rate cuts its suppliers' incoming segments here
+            levels = {}
+            if at < moment and independent and not self.clock.within(at, moment):
+                # An internal switch settles its own stores. A correction to a supplier
+                # requires all of its readers to re-share at this event.
+
+                for located, pair in instance.crossed_operands(at, at):
+                    self.triggers.anchor(levels, *pair, at, located)
+                if any(
+                    name not in instance.stores and self.value(name, at) != level
+                    for name, level in levels.items()
+                ):
+                    moment, independent = at, False
             if at < moment and (
                 not self.clock.within(at, moment) or not any(instance.timing_events(self.clock.apart(moment)))
             ):
                 # A flow at a store of a finished occurrence carries no rate up to the event.
                 self.occurrences.carried(self.now, at)
                 self.now = at
-                stores, rates, jumped = instance.step()
+                stores, rates, jumped = instance.step(levels) if levels else instance.step()
                 self.recorder.check_budget(at)
                 changed = set(stores) | set(rates)
                 readers = self.ways.touched_outside(changed if jumped else rates, instance)
@@ -1014,6 +1079,13 @@ class Run:
             )
             self.ways.opening(moment)
             self.bound_at = bound_values(self.bounds, self.contacts)
+            levels = self.triggers.levels_at(moment, dict(self.bound_at))
+            if self.contacts or not independent:
+                for way in self.ways.instances:
+                    for located, pair in way.crossed_operands(moment, threshold):
+                        self.triggers.anchor(levels, *pair, moment, located)
+            self.bound_at.update(levels)
+            self.moved.update(levels)
             self.arriving = True
             self.bare = (
                 moment == self.plan.horizon

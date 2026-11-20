@@ -112,7 +112,18 @@ def _folded(sym, a, b):
     x, y = _number(a), _number(b)
     if x is None or y is None or (sym == '/' and y == 0):
         return E('op', sym, a, b)
-    return E('const', x + y if sym == '+' else x - y if sym == '-' else x * y if sym == '*' else x / y)
+    unit = (
+        a._unit_size * b._unit_size
+        if sym == '*'
+        else a._unit_size / b._unit_size
+        if sym == '/'
+        else a._unit_size
+    )
+    return E(
+        'const',
+        x + y if sym == '+' else x - y if sym == '-' else x * y if sym == '*' else x / y,
+        unit_size=unit,
+    )
 
 
 def _joined(sym, values):
@@ -162,7 +173,7 @@ class _Translation:
             if n.op == 'pos':
                 return x
             if n.op == 'neg' and _number(x) is not None:
-                return E('const', -_number(x))
+                return E('const', -_number(x), unit_size=x._unit_size)
             return E('neg' if n.op == 'neg' else 'not', x)
         if isinstance(n, nodes.Binary):
             if n.op not in SYMBOLS:
@@ -187,7 +198,9 @@ class _Translation:
         """A call of a function of the language. `q(n, unit)` is n in canonical units."""
         if n.function == 'q':
             number, unit = n.args
-            return _folded('*', self.node(number, expression), E('const', self.scale(unit.value)))
+            size = self.scale(unit.value)
+            amount = _folded('*', self.node(number, expression), E('const', size))
+            return E(amount._k, *amount._a, unit_size=size)
         values = [self.node(x, expression) for x in n.args]
         if n.function in ('min', 'max', 'abs', 'clip'):
             return fn(n.function, *values)
@@ -310,6 +323,7 @@ class _Translation:
                     self.end(each.sink),
                     self.expr(each.request),
                     self.expr(each.capacity),
+                    self.scale(each.unit),
                 )
                 for each in flow.legs
             )
@@ -321,6 +335,7 @@ class _Translation:
             self.expr(flow.capacity),
             self.expr(flow.request),
             reversible=flow.kind == p.REVERSIBLE,
+            unit_size=self.scale(flow.unit),
         )
 
     def statements(self, statements):
@@ -381,7 +396,14 @@ class _Translation:
     def solver(self, solver):
         """A solver: its new unknowns first, then the existing fields that it determines."""
         unknowns = [
-            Unknown(u.name, self.expr(u.lower), self.expr(u.upper), self.expr(u.init), self.expr(u.scale))
+            Unknown(
+                u.name,
+                self.expr(u.lower),
+                self.expr(u.upper),
+                self.expr(u.init),
+                self.expr(u.scale),
+                self.scale(u.type.unit),
+            )
             for u in solver.unknowns
         ]
         return Solver(
@@ -455,6 +477,9 @@ def config_of(program, configuration):
         max_occurrences=c.limits.max_occurrences,
         max_active=c.limits.max_active,
         max_rounds=c.limits.max_rounds,
+        crossing=_exact(c.numerics.crossing),
+        rtol=_exact(c.numerics.rtol),
+        atol_factor=_exact(c.numerics.atol_factor),
     )
 
 

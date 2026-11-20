@@ -21,7 +21,7 @@ from fractions import Fraction
 from types import SimpleNamespace
 
 from .errors import Diagnostic, NotCovered, RunFailed
-from .model import E, show
+from .model import E, Unknown, scale_of, show
 from .order import Lin, Rel, relation
 from .poly import Poly, plain, poly
 
@@ -274,8 +274,11 @@ class Ev:
     ):
         self.run, self.view, self.scope, self.mode, self.tx = run, view, scope or Scope(), mode, tx
         self.unknowns = unknowns
+        self.operands = {}
         self.shared = shared or SimpleNamespace(
             stops=[],
+            contacts=[],
+            contact_reads=None,
             strict=False,
             positive=True,
             busy=[],
@@ -299,7 +302,10 @@ class Ev:
 
     def val(self, e):
         """The value of an expression."""
-        return self.deref(self.ref(e))
+        target = self.ref(e)
+        if e._k in ('name', 'attr'):
+            self.operands[id(e)] = target
+        return self.deref(target)
 
     def num(self, e):
         """The value of an expression that must be a number."""
@@ -360,6 +366,8 @@ class Ev:
             finally:
                 self.shared.busy.pop()
                 self.shared.in_formula -= 1
+        if self.shared.contact_reads is not None and c in self.run.stores:
+            self.shared.contact_reads.add(c)
         if self.mode == 'germ' and c in self.view.levels:
             return plain(self.view.levels[c])
         return v
@@ -419,6 +427,8 @@ class Ev:
         return self.scope.this
 
     def _t(self):
+        if self.shared.contact_reads is not None:
+            self.shared.contact_reads.add('t')
         return Poly([self.view.t, 1]) if self.mode == 'germ' else self.view.t
 
     def _name(self, n):
@@ -566,7 +576,7 @@ class Ev:
             return x if self.sign(x) > 0 else Fraction(0)
         return max(x, Fraction(0))
 
-    def sign(self, d):
+    def sign(self, d, operands=None):
         """The sign of a difference. For a moving value: the sign just after the moment, and the
         first time at which it can change is noted as a stop."""
         d = plain(d)
@@ -575,6 +585,8 @@ class Ev:
         root = d.first_root()
         if root is not None:
             self.shared.stops.append(root)
+            if operands is not None:
+                self.shared.contacts.append((root, self.scope, operands))
         return d.sign_after()
 
     # --- operators -------------------------------------------------------------------------------
@@ -605,6 +617,73 @@ class Ev:
             raise NotCovered('a coefficient of a solve that moves between two moments')
         return x, y
 
+    def operand(self, expression):
+        """Own scale and unit size of a compared value, independently of the engine."""
+        kind, args = expression._k, expression._a
+        if kind == 'const':
+            return expression._unit_size, expression._unit_size, False
+        if kind in ('attr', 'name'):
+            ref = self.operands[id(expression)] if id(expression) in self.operands else self.ref(expression)
+            target = ref.var[1] if isinstance(ref, Res) else ref.owner if isinstance(ref, Cell) else None
+            if isinstance(target, End):
+                unit = self.run.fields[target.cell].unit
+                size = self.run.model.units.get(unit) or (scale_of(unit) if unit else Fraction(1))
+                return size, size, True
+            if isinstance(target, (FlowRT, LegRT)):
+                decl = target.decl or target.flow.decl
+                size = Fraction(1) if isinstance(ref, Res) and ref.var[0] == 'frac' else decl.unit_size
+                return size, size, True
+            if isinstance(target, Sol):
+                solver = next(s for s in target.ent.template.solvers if s.name == target.name)
+                local = next(u for u in solver.solve_for if isinstance(u, Unknown) and u.name == ref.var[2])
+                if local.scale is not None:
+                    owner = self.fork(Scope(target.ent))
+                    scope = Scope(target.ent, extra={n: owner.ref(e) for n, e in solver.inputs.items()})
+                    return abs(owner.fork(scope).num(local.scale)), local.unit_size, True
+                return local.unit_size, local.unit_size, True
+            field = self.run.fields.get(ref) if isinstance(ref, Cell) else None
+            unit = self.run.model.units.get(field.unit) if field is not None else None
+            unit = unit or (scale_of(field.unit) if field is not None and field.unit else Fraction(1))
+            if field is not None:
+                owner = self.fork(self.run.scope_of(ref.owner))
+                if field.scale is not None:
+                    captured = self.run.own_scales.get(ref)
+                    return abs(owner.num(field.scale)) if captured is None else captured, unit, True
+                formula = self.raw(ref)
+                if isinstance(formula, FormulaV) and formula.expr._k in ('attr', 'name'):
+                    return self.fork(formula.scope).operand(formula.expr)[0], unit, True
+            return unit, unit, True
+        if kind == 'op':
+            sym, a, b = args
+            _, left, read_left = self.operand(a)
+            _, right, read_right = self.operand(b)
+            size = (
+                left * right if sym == '*' else left / right if sym == '/' else left if read_left else right
+            )
+            return size, size, read_left or read_right
+        if kind == 'neg':
+            _, unit, named = self.operand(args[0])
+            return unit, unit, named
+        if kind == 'if':
+            scale = self.operand(args[1])[1]
+            return scale, scale, True
+        if kind == 'fn' and args[0] in ('min', 'max', 'sum', 'abs', 'clip') and args[1]:
+            _, size, named = self.operand(args[1][0])
+            return size, size, named
+        return Fraction(1), Fraction(1), True
+
+    def band(self, a, b, x, y):
+        left, _, named_left = self.operand(a)
+        right, _, named_right = self.operand(b)
+        floor = (
+            left
+            if named_left and not named_right
+            else right
+            if named_right and not named_left
+            else max(left, right)
+        )
+        return max(self.run.config.rtol, self.run.config.atol_factor) * max(floor, abs(x), abs(y))
+
     def compare(self, sym, x, y, texts):
         """A comparison: a relation of a solve, a yes or no, or the sign just after a moment."""
         if isinstance(x, Lin) or isinstance(y, Lin):
@@ -625,7 +704,12 @@ class Ev:
                     f'a strict threshold on a value that changes continuously: {show(texts[0])} {sym} '
                     f'{show(texts[1])} has no first instant; use an inclusive threshold'
                 )
-        s = self.sign(d)
+        if isinstance(d, Poly):
+            s = self.sign(d, texts)  # locate the physical root and use its outgoing sign
+        else:
+            a = x(0) if isinstance(x, Poly) else x
+            b = y(0) if isinstance(y, Poly) else y
+            s = 0 if abs(d) <= self.band(*texts, a, b) else self.sign(d)
         return {'==': s == 0, '!=': s != 0, '<=': s <= 0, '>=': s >= 0, '<': s < 0, '>': s > 0}[sym]
 
     def logic(self, sym, a, b):
@@ -679,8 +763,10 @@ class Ev:
         if isinstance(low, (Fraction, Poly, int)) and isinstance(high, (Fraction, Poly, int)):
             moving = isinstance(low, Poly) or isinstance(high, Poly)
             gap = plain(poly(low) - poly(high)) if moving else low - high
-            if self.sign(gap) > 0:
+            if self.compare('>', low, high, (lo, hi)):
                 raise RunFailed(f'{REVERSED}: {show(E("within", x, lo, hi))} reads [{low}, {high}]')
+            if isinstance(v, Lin) and isinstance(gap, (int, Fraction)) and gap > 0:
+                return relation(v, '==', (low + high) / 2)
         return self.between(v, low, high, x, lo, hi)
 
     def between(self, v, low, high, x, lo, hi):
@@ -800,30 +886,39 @@ class Ev:
             return self._t() - self.run.entered(c, self.tx, self.view)
         if name == 'abs':
             x = self.num(args[0])
-            return x if self.sign(x) >= 0 else -x
+            return x if self.sign(x, (args[0], E('const', Fraction(0)))) >= 0 else -x
         if name == 'clip':
             x, lo, hi = (self.num(a) for a in args)
-            return lo if self.sign(x - lo) < 0 else hi if self.sign(x - hi) > 0 else x
+            return (
+                lo
+                if self.sign(x - lo, args[:2]) < 0
+                else hi
+                if self.sign(x - hi, (args[0], args[2])) > 0
+                else x
+            )
         raise RunFailed(f'the function {name} is not known')
-
-    def values(self, arg):
-        """The values of a collection, or a scalar alone."""
-        v = self.val(arg)
-        return [self.deref(x) for _, _, x in v.items] if isinstance(v, Coll) else [v]
 
     def extreme(self, name, args):
         """`min` or `max` over scalars and the members of collections."""
-        vs = [v for a in args for v in self.values(a)]
+        vs = []
+        for a in args:
+            v = self.val(a)
+            if isinstance(v, Coll):
+                vs.extend((None, self.deref(x)) for _, _, x in v.items)
+            else:
+                vs.append((a, v))
         if not vs:  # an empty collection and no scalar beside it: there is no value to give (D4)
             raise RunFailed(f'{name}({", ".join(show(a) for a in args)}) reads an empty collection')
-        best = vs[0]
-        for v in vs[1:]:
+        owner, best = vs[0]
+        for a, v in vs[1:]:
             if isinstance(best, Lin) or isinstance(v, Lin):
                 if name == 'min':
                     raise Diagnostic('unsupported in a solver: min of an unknown (not convex)')
                 best = collapse(best + (lin_of(v) - best).positive())
-            elif (self.sign(plain(poly(v) - poly(best))) > 0) == (name == 'max'):
-                best = v
+            else:
+                operands = (a, owner) if a is not None and owner is not None else None
+                if (self.sign(plain(poly(v) - poly(best)), operands) > 0) == (name == 'max'):
+                    owner, best = a, v
         return best
 
     def reduce(self, name, arg):

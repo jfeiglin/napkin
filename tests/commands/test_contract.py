@@ -143,7 +143,7 @@ def test_an_input_in_a_unit_of_the_library_that_the_program_does_not_spell():
 
 def low_at(crossing):
     """The time at which the record of `water <= 5.5 L` changes to true: water = 8 - 3t reaches
-    5.5 L at 5/6 h, and the engine locates the change to within `crossing` after it."""
+    the comparison band just before 5/6 h; the record locates its entry within `crossing`."""
     program = tank(value('low', BOOL, formula(this.water <= q(Fraction(11, 2), 'L'))))
     record = run(program, Configuration(Request(2), numerics=Numerics(crossing=crossing)))
     pieces = record.history(Key('tank', ('low',))).pieces
@@ -154,7 +154,8 @@ def low_at(crossing):
 def test_the_engine_locates_a_change_to_the_crossing_tolerance_of_the_configuration():
     """The fit of a yes/no checks it at Chebyshev points of [0, 2] h, 0.826 h and 1.174 h about
     5/6 h, and halves that bracket while it is wider than the tolerance: once for 0.25 h, at 1 h."""
-    assert 5 / 6 <= low_at(1e-8) <= 5 / 6 + 1e-8
+    band_entry = (8 - 5.5 / (1 - Numerics().rtol)) / 3  # water - 5.5 = rtol × water
+    assert band_entry <= low_at(1e-8) <= band_entry + 1e-8
     assert low_at(0.25) == pytest.approx(1, abs=1e-12)
 
 

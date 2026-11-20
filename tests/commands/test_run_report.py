@@ -311,12 +311,12 @@ def test_a_near_tie_of_the_run_is_listed_under_the_table(tmp_path, capsys):
     assert tie['difference'] == (0.1 + 0.2) - 0.3
 
 
-@pytest.mark.parametrize('checks, omitted', [('zdcba', '1 more source'), ('zedcba', '2 more sources')])
+@pytest.mark.parametrize('checks, omitted', [('zedcba', '1 more source'), ('zfedcba', '2 more sources')])
 def test_the_text_counts_five_near_tie_sources_and_the_json_keeps_every_entry(
     tmp_path, capsys, checks, omitted
 ):
     """At 1 h every guard holds at the boundary. At 2 h guard a falls just below it, then at
-    3 h guard z holds at it again. Each guard accounts for one source, and a's skip for one more."""
+    3 h guard z holds at it again. The inclusive guard a still holds at 2 h within the level's band."""
     model_text = (
         'scenario "Checks"\n    horizon 3 h\n\ntank:\n    level: L = 1 L in [0 L, 2 L]\n    total: L = 0 L\n'
     )
@@ -344,18 +344,18 @@ tank.checks.start()
     lines = found.out.splitlines()
     start = lines.index(f'Near-ties ({len(checks) + 2} total, from 1 h to 3 h)')
     assert [row.split() for row in lines[start + 2 : -1]] == [
+        ['tank.a.step[0]', 'commit', '2', '1', 'h', '2', 'h'],
         ['tank.z.step[0]', 'commit', '2', '1', 'h', '3', 'h'],
-        ['tank.a.step[0]', 'commit', '1', '1', 'h', '1', 'h'],
-        ['tank.a.step[0]', 'skip', '1', '2', 'h', '2', 'h'],
         ['tank.b.step[0]', 'commit', '1', '1', 'h', '1', 'h'],
         ['tank.c.step[0]', 'commit', '1', '1', 'h', '1', 'h'],
+        ['tank.d.step[0]', 'commit', '1', '1', 'h', '1', 'h'],
     ]
     assert lines[-1] == f'and {omitted}. See near_ties in napkin run --json for every entry.'
     ties = napkin(capsys, 'run', model, '--json', '--value', 'tank.total').doc['near_ties']
     assert [tie['t'] for tie in ties] == [1] * len(checks) + [2, 3]
     assert {(tie['owner'], tie['kind']) for tie in ties} == {
         *((f'tank.{name}#0', 'commit') for name in checks),
-        ('tank.a#1', 'skip'),
+        ('tank.a#1', 'commit'),
         ('tank.z#1', 'commit'),
     }
 

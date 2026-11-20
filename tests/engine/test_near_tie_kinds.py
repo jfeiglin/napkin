@@ -3,7 +3,7 @@ guard (`skip`), a trigger that came within tolerance of its threshold and did no
 gate's release (`release`) and a split of who is served at a settling (`settle`), each with the detail
 `near` and its message in the report. The cases are worked by hand in floats: 0.1 + 0.2 exceeds 0.3,
 and 0.7 + 0.1 falls short of 0.8, by one unit in the last place, far inside a store's tolerance of
-1e-10 of its size (1 L here); 0.30001 and 0.79 miss them by far more.
+1e-9 of its size (1 L here); 0.30001 and 0.79 miss them by far more.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from napkin.program.build import (
 from napkin.program.config import Configuration, Request
 from tests.program.examples import UNITS
 
-TOLERANCE = 1e-10  # the tolerance of a store of size 1 L: `atol_factor` 1e-10 times it
+TOLERANCE = 1e-9  # change 29: rtol times 1 L
 OVER = (0.1 + 0.2) - 0.3  # one unit in the last place of 0.3
 UNDER = (0.7 + 0.1) - 0.8  # one unit in the last place of 0.8, below it
 
@@ -59,20 +59,17 @@ def messages(record, program, configuration):
     return [tie.message for tie in report(record, program, configuration, ['tank.level'], [0]).near_ties]
 
 
-def test_a_guard_false_within_tolerance_marks_the_stage_that_ran_nothing():
-    """At 2 h the level is 0.1 + 0.2, and the guard `level <= 0.3 L` is false by one unit in the last
-    place: the stage runs nothing (the flag stays 0) and has an entry `skip`."""
-    check = event('check', after(q(2, 'h'), assign(this.flag, q(1, 'L')), when=this.level <= q(0.3, 'L')))
-    record, program, configuration = tank(check, setup=['check'])
-    (entry,) = record.entries('skip')
-    ((origin, comparison, difference, tolerance),) = entry.detail('near')
-    assert (entry.t, entry.part, entry.owner) == (2, 'tank.check.step[0]', 'tank.check#0')
-    assert (origin, comparison) == ('tank.check.step[0]', 'tank.level <= 0.3 L')
+@pytest.mark.parametrize('strict', [False, True])
+def test_a_guard_reads_an_in_band_level_as_equal_and_marks_the_decision(strict):
+    """An inclusive stage at 2 h commits; a strict stage skips. Both read the same rounded level."""
+    condition = this.level < q(0.3, 'L') if strict else this.level <= q(0.3, 'L')
+    check = event('check', after(q(2, 'h'), assign(this.flag, q(1, 'L')), when=condition))
+    record, program, _ = tank(check, setup=['check'])
+    (entry,) = record.entries('skip' if strict else 'commit', 'tank.check.step[0]')
+    ((origin, _, difference, tolerance),) = entry.detail('near')
+    assert (entry.t, origin, entry.owner) == (2, 'tank.check.step[0]', 'tank.check#0')
     assert difference == OVER and tolerance == pytest.approx(TOLERANCE)
-    assert record.entries('commit', 'tank.check.step[0]') == ()
-    assert read(record, program, ['tank.flag'], [3])[0].values == (0,)
-    (message,) = messages(record, program, configuration)
-    assert 'this guard was false within tolerance of its boundary, and the stage ran nothing' in message
+    assert read(record, program, ['tank.flag'], [3])[0].values == (0 if strict else 1,)
 
 
 def test_a_guard_false_by_more_than_the_tolerance_has_no_entry():
@@ -86,12 +83,9 @@ def alarm(test, *more):
     return event('alarm', when(test, start(this.alarm)), after(q(0, 'h'))), *more
 
 
-def test_a_trigger_within_tolerance_that_did_not_fire_is_marked_once_until_it_fires():
-    """The level is 0.7 + 0.1 at 1 h, short of 0.8 by one unit in the last place: the armed trigger
-    `level >= 0.8 L` does not fire, and has an entry `miss`. At the moment of 2 h it reads the same
-    near-tie, which is not written again. At 2.5 h the level is 0.9 - 0.1 + 0.1 above 0.8 and it fires;
-    at 2.75 h it is back below by one unit in the last place, the trigger rearms, and the miss after
-    its firing is marked again."""
+@pytest.mark.parametrize('strict', [False, True])
+def test_a_discrete_trigger_uses_the_same_band_on_firing_and_rearming(strict):
+    """At 1 h and 2.75 h the level is equal to 0.8 within the band. At 2.5 h it exceeds 0.8."""
     steps = event(
         'steps',
         after(q(1, 'h')),
@@ -100,10 +94,18 @@ def test_a_trigger_within_tolerance_that_did_not_fire_is_marked_once_until_it_fi
         after(q(0.25, 'h'), add(this.level, q(-0.1, 'L'))),
     )
     record, program, configuration = tank(
-        *alarm(this.level >= q(0.8, 'L')), steps, first=0.7, second=0.1, setup=['steps']
+        *alarm(this.level > q(0.8, 'L') if strict else this.level >= q(0.8, 'L')),
+        steps,
+        first=0.7,
+        second=0.1,
+        setup=['steps'],
     )
     level = (0.7 + 0.1) + 0.1 - 0.1  # at 2.75 h
     assert level - 0.8 == UNDER
+    if not strict:
+        assert [entry.t for entry in record.entries('fire')] == [1]
+        assert not record.entries('miss')
+        return
     misses = record.entries('miss')
     assert [(entry.t, entry.part, entry.owner) for entry in misses] == [
         (1, 'tank.alarm.when[0]', 'tank'),
@@ -111,7 +113,7 @@ def test_a_trigger_within_tolerance_that_did_not_fire_is_marked_once_until_it_fi
     ]
     for entry in misses:
         ((origin, comparison, difference, tolerance),) = entry.detail('near')
-        assert (origin, comparison) == ('tank.alarm.when[0]', 'tank.level >= 0.8 L')
+        assert (origin, comparison) == ('tank.alarm.when[0]', 'tank.level > 0.8 L')
         assert difference == UNDER and tolerance == pytest.approx(TOLERANCE)
     assert [entry.t for entry in record.entries('fire')] == [2.5]
     found = messages(record, program, configuration)
@@ -127,16 +129,13 @@ def test_a_trigger_that_misses_by_more_than_the_tolerance_has_no_entry():
 
 
 def test_only_the_terms_that_decide_an_answer_are_marked():
-    """At 1 h the level is 0.1 + 0.2, within tolerance of 0.3. `level >= 0.3 L and flag >= 5 L` is
-    false by its second term, 5 L short: had the first turned, nothing would change, so it is no
-    near-tie. `level == 0.3 L or level >= 0.25 L` holds by its second term, 0.05 L clear, so the near
-    first term decides nothing either: the alarm fires with no near-tie."""
+    """A failing second conjunct decides alone. In the disjunction, the near equality decides first."""
     level = this.level >= q(0.3, 'L')
     record, *_ = tank(*alarm(level & (this.flag >= q(5, 'L'))))
     assert record.entries('miss') == () and record.entries('fire') == ()
     record, *_ = tank(*alarm((this.level == q(0.3, 'L')) | (this.level >= q(0.25, 'L'))))
     (entry,) = record.entries('fire')
-    assert entry.t == 1 and entry.detail('near') is None and record.near_ties() == ()
+    assert entry.t == 1 and [tie[1] for tie in entry.detail('near')] == ['tank.level == 0.3 L']
 
 
 def test_a_gate_released_within_tolerance_is_marked_in_its_occurrence():

@@ -460,11 +460,16 @@ class Former:
         if name not in references or self._own_unknown(name):
             references[name] = number(value.node, 'its reference')
         scale = number(value.scale, 'its scale')
-        if scale is None:
-            width = (high - low) if low is not None and high is not None else math.inf
-            scale = width if math.isfinite(width) and width > 0 else 1.0
         lower = -math.inf if low is None else low
         upper = math.inf if high is None else high
+        if lower > upper:
+            own = abs(scale) if scale is not None else plan.comparison_quantity(name, {})[0]
+            band = plan.units.comparisons.factor * max(own, abs(lower), abs(upper))
+            if lower - upper <= band:
+                lower = upper = upper + (lower - upper) / 2
+        if scale is None:
+            width = upper - lower
+            scale = width if math.isfinite(width) and width > 0 else 1.0
         return self.problem_.unknown(('value', name), lower, upper, OTHER, references[name], abs(scale))
 
     def _own_unknown(self, name):
@@ -621,7 +626,7 @@ class Former:
             values = []
             for part in node.operands:
                 values.append((yield self._value(part, label)))
-            return self._chain(node.ops, values, label)
+            return self._chain(node, values, label)
         if isinstance(node, nodes.BoolOp):
             found = []
             for part in node.values:
@@ -660,11 +665,11 @@ class Former:
             raise self._refused(f'the function {node.function} of an unknown')
         raise self._refused(f'an expression of kind {type(node).__name__}')
 
-    def _chain(self, ops_, values, label):
+    def _chain(self, node, values, label):
         """The relations of a chain of comparisons of `values`, each pair once (`_compare`)."""
         found = []
-        for op, a, b in zip(ops_, values, values[1:]):
-            found += _compare(op, a, b, label, self)
+        for op, left, right, a, b in zip(node.ops, node.operands, node.operands[1:], values, values[1:]):
+            found += _compare(op, a, b, left, right, label, self)
         return found
 
     def _membership(self, node, label):
@@ -678,8 +683,10 @@ class Former:
             values.append((yield self._value(part, label)))
         x, low, high = values
         if not isinstance(low, Affine | list) and not isinstance(high, Affine | list) and low > high:
-            raise ExpressionError(f'{ops.REVERSED}: [{low!r}, {high!r}]')
-        return self._chain(chain.ops, [low, x, high], label)
+            if self.plan.units.comparisons.ordered('gt', node.args[1], node.args[2], low, high):
+                raise ExpressionError(f'{ops.REVERSED}: [{low!r}, {high!r}]')
+            low = high = high + (low - high) / 2
+        return self._chain(chain, [low, x, high], label)
 
     def _refused(self, what):
         return Unsupported(f'unsupported in the solver {self.declared.id}: {what}')
@@ -703,9 +710,7 @@ class Former:
             return Affine({self.cols[name]: 1.0})
         value = self.plan.values[name]
         if value.kind == FORMULA or (self.region and name in self.region.defined):
-            # An enforced equality is the equality here; its readers compare it within the solver's
-            # tolerance (`plan.Plan._tolerate_enforced`).
-            found = yield self._value(self.plan.enforced.get(name, value.node), ())
+            found = yield self._value(value.node, ())
             if isinstance(found, list):
                 return [(affine, op, (name, *label)) for affine, op, label in found]
             return found
@@ -771,12 +776,16 @@ class Former:
         raise self._refused(f'{spelled}: {op} of an unknown')
 
 
-def _compare(op, a, b, label, former):
+def _compare(op, a, b, left, right, label, former):
     """The relations of `a op b`, or the yes/no of two numbers."""
     if not isinstance(a, Affine) and not isinstance(b, Affine):
         if isinstance(a, list) or isinstance(b, list):
             raise former._refused('a comparison of a relation')
-        return [] if _plain(op, a, b) else [(Affine({}, 1.0), '<=', label)]
+        return (
+            []
+            if former.plan.units.comparisons.ordered(op, left, right, a, b)
+            else [(Affine({}, 1.0), '<=', label)]
+        )
     if op in ('lt', 'gt', 'ne'):
         spelling = {'lt': '<', 'gt': '>', 'ne': '!='}[op]
         raise former._refused(f'the relation {spelling} (use <=, >= or ==)')
@@ -785,17 +794,6 @@ def _compare(op, a, b, label, former):
     if op == 'ge':
         return [(_affine(b).plus(a, -1.0), '<=', label)]
     return [(_affine(a).plus(b, -1.0), '==', label)]
-
-
-def _plain(op, a, b):
-    return {
-        'le': a <= b,
-        'ge': a >= b,
-        'lt': a < b,
-        'gt': a > b,
-        'eq': a == b,
-        'ne': a != b,
-    }[op]
 
 
 def _relations(found, origin):
@@ -837,7 +835,7 @@ class DeclaredWay(Way):
         tolerance = run.recorder.tolerance
         factor = plan.numerics.atol_factor
         for name in connected.results:
-            tolerance.setdefault(name, factor)
+            tolerance.setdefault(name, factor * run.own_scale(name))
 
     # ---- solving ------------------------------------------------------------------------------------
 
@@ -971,10 +969,11 @@ class DeclaredWay(Way):
         margin = NEAR * (inflow + outflow)
         return stores & (off > margin if inward else off < -margin)
 
-    def _through(self, flows):
+    def _through(self, flows, requests=None):
         """(what flows into each store, what flows out of it) from the values of the flows."""
         net = self.net
-        rate = net.carried(flows, _Asked(self.former.requests)) if len(self.flows) else np.zeros(0)
+        requests = self.former.requests if requests is None else requests
+        rate = net.carried(flows, _Asked(requests)) if len(self.flows) else np.zeros(0)
         inflow = np.array([rate[net.ends[IN].of(s)].sum() for s in range(len(self.stores))])
         outflow = np.array([rate[net.ends[OUT].of(s)].sum() for s in range(len(self.stores))])
         return inflow, outflow
@@ -993,7 +992,7 @@ class DeclaredWay(Way):
             low, high = value <= self.lower[s], value >= self.upper[s]
             if (low and slope < 0) or (high and slope > 0):
                 # A store at its bound: an answer within the solver's tolerance holds it there.
-                if abs(slope) > SLACK * (1.0 + inflow + outflow):
+                if abs(slope) > SLACK * (inflow + outflow):
                     raise SimulationError(
                         f'{store}: the solver {self.declared.id} moves it past its bound at {t:g} h'
                     )
@@ -1147,8 +1146,9 @@ class MovingDeclared(DeclaredWay):
         self.trial = None
         self._cache = {}
         numerics = self.plan.numerics
-        sizes = [run.recorder.tolerance.get(name, numerics.atol_factor) for name in self.stores]
-        self.atol = np.maximum(np.array(sizes, dtype=float), 1e-12)
+        # Radau already scales its relative term with the current inventory. The absolute
+        # floor belongs to the unit and must be the same when this instance is restored.
+        self.atol = np.array([run.amount_tolerance(name) for name in self.stores])
         self.rtol = numerics.rtol
         sources = self.declared.nodes(self.plan)
         settings = [name for flow in self.flows for name in self.plan.settings_of(self.plan.flows[flow])]
@@ -1215,6 +1215,10 @@ class MovingDeclared(DeclaredWay):
             signs = integrate.branch_sides(region.surfaces, operand)
             reached = {kind for _, name, kind in contacts if name == self.declared.id}
             ties = [pair for pair, sign in signs.items() if sign == 0 or self.switches[pair] in reached]
+            for a, b in signs.keys() - set(ties):
+                left, right = operand(a), operand(b)
+                if abs(left - right) <= self.plan.units.comparisons.band(a, b, left, right):
+                    signs[a, b] = 0
             if ties:
                 flows, _ = self.answer(t, self.low, self.high)
                 speeds = self._net(flows)
@@ -1330,20 +1334,17 @@ class MovingDeclared(DeclaredWay):
                 flows, results = self.answer(t, self.low, self.high)
             finally:
                 self.trial = None
-            rate = self._net(flows)
+            inflow, outflow = self._through(flows)
+            rate = inflow - outflow
+            slack = NEAR * (inflow + outflow)
             if released is not None:
                 # A store released here that the answer free moves back past its bound: no answer
                 # holds just after t.
-                back = released & (
-                    (was_low & (rate < -SLACK * (1.0 + np.abs(rate))))
-                    | (~was_low & (rate > SLACK * (1.0 + np.abs(rate))))
-                )
+                back = released & ((was_low & (rate < -slack)) | (~was_low & (rate > slack)))
                 if back.any():
                     s = int(np.flatnonzero(back)[0])
                     raise SimulationError(self._no_answer(s, bool(was_low[s])))
-            leaving = (self.low & (rate > SLACK * (1.0 + np.abs(rate)))) | (
-                self.high & (rate < -SLACK * (1.0 + np.abs(rate)))
-            )
+            leaving = (self.low & (rate > slack)) | (self.high & (rate < -slack))
             if not leaving.any():
                 break
             released, was_low = leaving, self.low.copy()
@@ -1423,8 +1424,9 @@ class MovingDeclared(DeclaredWay):
                 kind = 'release'
 
                 def gap(t, s=s):
-                    rate = self._at(t, solution(t))[2][s]
-                    return (rate if self.low[s] else -rate) - SLACK * self.atol[s]
+                    flows, _, rates, requests = self._at(t, solution(t))
+                    inflow, outflow = self._through(flows, requests)
+                    return (rates[s] if self.low[s] else -rates[s]) - NEAR * (inflow[s] + outflow[s])
 
                 if gap(end) <= 0:
                     continue
@@ -1449,14 +1451,19 @@ class MovingDeclared(DeclaredWay):
     def _crossings(self, solution, start, end):
         """Locations of the armed physical switches bracketed by one smooth interval."""
         for pair, sign in self.region.signs.items():
-            if not sign:
-                continue
 
             def gap(at):
                 a, b = self._operands(pair, at, solution(at))
                 return a - b
 
-            at = integrate.crossing_time(gap, start, end, side=sign)
+            departure = sign
+            if not departure:
+                first = gap(start)
+                departure = int(first > 0) - int(first < 0)
+            within = integrate.contact_band(
+                pair, lambda t: self._operands(pair, t, solution(t)), self.plan.units
+            )
+            at = integrate.crossing_time(gap, start, end, side=departure, within=within)
             if at is not None:
                 yield at, self.declared.id, self.switches[pair]
 
@@ -1470,12 +1477,11 @@ class MovingDeclared(DeclaredWay):
         """Fit the incoming stores, flow rates and solver results using their segment's inputs."""
         segment = self.pending
         if end > segment.start:
-            tolerance = np.array([self.recorder.tolerance.get(name, 1e-9) for name in self.stores])
 
             def states(times):
                 return np.array([self._state(at) for at in np.asarray(times).tolist()])
 
-            for name, pieces in zip(self.stores, fitted(states, segment.start, end, tolerance)):
+            for name, pieces in zip(self.stores, fitted(states, segment.start, end, self.atol)):
                 yield name, pieces
             names = [*self.recorded, *self.connected.results]
 
@@ -1489,7 +1495,9 @@ class MovingDeclared(DeclaredWay):
             first = answers([segment.start])[0]
             tolerance = np.array(
                 [
-                    max(self.recorder.tolerance.get(name, 0.0), ANSWER * (1.0 + abs(v)))
+                    max(
+                        self.recorder.tolerance.get(name, 0.0), ANSWER * max(self.run.own_scale(name), abs(v))
+                    )
                     for name, v in zip(names, first)
                 ]
             )
@@ -1523,12 +1531,15 @@ class MovingDeclared(DeclaredWay):
             self.pending = self._next(until)
         return self.pending.end
 
-    def step(self):
+    def step(self, levels=()):
         """Commit the next segment; at an event a store meets or leaves its bound, and the problem
         is solved there. Gives the stores and the rates and results that change, and whether an
         event ended the segment (a plain segment, which ends before a failure, has none)."""
         segment = self.pending
         self._commit(segment.end)
+        for name in levels:
+            if name in self.place:
+                self.y[self.place[name]] = levels[name]
         self.run.now = segment.end
         if segment.plain:
             return list(self.stores), sorted(set(self.recorded) | set(self.connected.results)), False
@@ -1536,6 +1547,14 @@ class MovingDeclared(DeclaredWay):
             self._put_contacts(segment.event, segment.end)
         changed = self._settle(segment.end, segment.event or ())
         return list(self.stores), sorted(set(changed) | set(self.recorded)), bool(segment.event)
+
+    def crossed_operands(self, t, through):
+        reached = {
+            kind: at
+            for at, name, kind in self.timing_events(through)
+            if name == self.declared.id and self.run.clock.within(at, t)
+        }
+        return ((reached[kind], pair) for pair, kind in self.switches.items() if kind in reached)
 
     def _put_contacts(self, events, through):
         due = [event for event in events if event[0] <= through]
@@ -1583,6 +1602,11 @@ class MovingDeclared(DeclaredWay):
         flows, results, _, self.former.requests = answer
         self.value[:] = flows
         self.results.update(results)
+
+    def incoming_level(self, name, t):
+        if self.pending is not None and self.pending.start < t:
+            return float(self._held(self.pending.solution(t))[self.place[name]])
+        return self.level_at(name, t)
 
     def level_at(self, name, t):
         """The value of a store, or of a result, at a time inside the present window; of a store,

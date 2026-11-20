@@ -32,21 +32,12 @@ formulas, the settings of its flows included, keeps the value that it has then, 
 has none (D7). Its flows leave the network at the settling of the round, and read zero from then on.
 `done` becomes true and `active` false: the occurrence is a stable record.
 
-**A finished occurrence is frozen** (spec, "State owned by an invocation": "a write to it is an
-error"), and the error is an actual write to it (PLAN, change 24 b): an assignment to its field,
-which always writes; a `move` of an amount into or out of its store; a flow that carries a rate into
-or out of its store. A move of nothing moves nothing, and a connected flow at zero rate writes
-nothing ("A flow whose rate falls to zero stays connected for its owner's lifetime"): the run goes
-on. One check says so wherever a write or a transfer of a run lands (`writable`): the target of an
-assignment and each end of a `move` (`moment.py`), whatever spells it (a reference saved at the
-entry, a copy of one, `.occurrences.at(t)`, another member's through a link), and each flow present
-at a store of a finished occurrence (`carried`): at every settling, where a commit, a start or a
-finish changes its rate, and between moments through the window of its instance, where an event of
-the way changes it or a rate that moves leaves zero. An amount or a rate is nothing within the
-tolerance of the store (a rate: what moves the store by its tolerance in an hour), the resolution
-at which a run tells two values of it apart (D8). The run fails at that moment, naming the value,
-the finished occurrence and the writer: a statement by its origin, a flow by its name, its rate and
-the time. An edit at a stop is refused by the same rule (`frozen`, `checkpoints.py`).
+**A finished occurrence is frozen** (PLAN, change 24 b, amended at change 29). An assignment
+and an authored move of any nonzero amount fail by name (`writable`). For each physical store of
+a finished occurrence, `carried` counts the inventory through each side after retirement. The sum
+over all its present connections and all elapsed segments has one conservation allowance in that
+store's unit. A settled rate over no time transfers nothing. A flow joining or leaving cannot reset
+the sum. The first excess ends the run with the responsible connection, direction and occurrence.
 
 The limits of a runaway run (D6) are checked before each start: `max_occurrences` starts of one
 event, and `max_active` occurrences of one event alive at once, whose message names the oldest
@@ -60,6 +51,9 @@ import math
 from dataclasses import dataclass, field
 from fractions import Fraction
 from itertools import pairwise
+
+from scipy.integrate import quad
+from scipy.optimize import brentq
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
@@ -115,6 +109,7 @@ class Occurrences:
         # The stores of finished occurrences that a present connection may meet (`carried`), found
         # when first asked from the occurrences that the run holds (`watched`).
         self._watched = None
+        self.transferred = {}  # (retired store, direction) -> amounts booked since retirement
 
     def node(self, expression, scope, origin):
         """The node of an expression of a scope over engine names, made once."""
@@ -181,15 +176,19 @@ class Occurrences:
         number = run.truth(value.node)
         if not value.boolean and isinstance(number, int | float) and not isinstance(number, bool):
             number = float(number)
+        if value.scale is not None:
+            run.scales[name] = float(run.truth(value.scale))
+            plan.comparison_scales[name] = abs(run.scales[name])
+            plan.units.comparisons.floors.clear()
         bounds = [None, None]
         for k, bound in enumerate((value.lower, value.upper)):
             if bound is not None:
                 bounds[k] = float(run.truth(bound))
         if bounds != [None, None] or name in made.stores:
-            low = -math.inf if bounds[0] is None else bounds[0]
-            high = math.inf if bounds[1] is None else bounds[1]
-            run.bounds[name] = (low, high)
-            if not low <= number <= high:
+            low, high, number = run.initial_range(name, *bounds, number)
+            run.bounds[name] = low, high
+            parameter = value.key.steps[0] in (each.name for each in made.event.params)
+            if not low <= number <= high and not (parameter and run.admitted(name, low, high, number)):
                 raise SimulationError(
                     f'{name} = {quantity(plan, name, number)} is outside its range '
                     f'{span(plan, name, low, high)} at t = {run.now:g} h'
@@ -198,7 +197,7 @@ class Occurrences:
             unit = plan.units.scale(value.unit) if value.unit else 1.0
             size = max([unit, abs(number)] + [abs(b) for b in bounds if b is not None and math.isfinite(b)])
             run.sizes[name] = size
-            run.recorder.tolerance[name] = plan.numerics.atol_factor * size
+            run.recorder.tolerance[name] = run.amount_tolerance(name)
         run.env[name] = number
         run.recorder.add(name, run.now, number, 0.0)
 
@@ -365,13 +364,13 @@ class Occurrences:
 
     def writable(self, name, writer, amount=None):
         """The one check of a write or a transfer that lands on an engine name (see the module): an
-        assignment (`amount` None) always writes; a move of `amount`, or a flow at the rate `amount`,
-        writes where it is more than the tolerance of the store. A write to a value of a finished
-        occurrence fails the run, naming the value, its occurrence and the writer."""
+        assignment (`amount` None) always writes, and an authored move writes for any nonzero amount.
+        A write to a value of a finished occurrence fails the run, naming the value, its occurrence
+        and the writer."""
         owner = self.frozen(name)
         if owner is None:
             return
-        if amount is not None and abs(amount) <= self.run.recorder.tolerance.get(name, 0.0):
+        if amount == 0:
             return
         raise SimulationError(f'{writer}: {name} belongs to the finished occurrence {owner}, which is frozen')
 
@@ -385,74 +384,82 @@ class Occurrences:
             }
         return self._watched
 
-    def carried(self, start, end=None):
-        """No flow present at a store of a finished occurrence carries a rate (see the module): each
-        is read at `start`, and, where its rate moves between moments, through the present window of
-        its instance to `end`, at the steps of its form and between them. A rate beyond the
-        tolerance of the store fails the run (`writable`) at the first time at which one is, found
-        to within the crossing tolerance; the ways stand there."""
-        watched = self.watched()
-        if not watched:
+    def carried(self, start, end):
+        """Book each direction's inventory since retirement over the accepted segment. An amount
+        allowance belongs to the store and covers all segments and all its connections."""
+        if end <= start or not self.watched():
             return
-        run, plan = self.run, self.plan
-        first = None  # (time, store, side, connection, rate)
-        for store in sorted(watched):
-            present = [(side, c) for side in SIDES for c in plan.incident(store, side)]
+        run = self.run
+        first = None
+        updates = {}
+        for store in sorted(self.watched()):
+            present = False
+            allowance = run.amount_tolerance(store)
+            for side in SIDES:
+                connections = self.plan.incident(store, side)
+                if not connections:
+                    continue
+                present = True
+                key = store, side
+                # Keep the running sum exact over the measured segment contributions, so tiny
+                # transfers cannot disappear when joined to a much larger accumulated amount.
+                previous = self.transferred.get(key, Fraction(0))
+                rates, breaks = [], {start, end}
+                moving = False
+                for connection in connections:
+                    name = f'{connection}.actual_rate'
+                    parent = _flow_of(self.plan, connection)
+                    way = run.ways.instance_of(parent)
+                    if way is None:
+                        continue
+                    rates.append(name)
+                    if run.ways.moving(run.ways.set_of[parent]):
+                        moving = True
+                        breaks.update(getattr(way, 'breaks', lambda a, b: ())(start, end))
+                if not rates:
+                    continue
+
+                def rate(t):
+                    return math.fsum(abs(run.value(name, t)) for name in rates)
+
+                def volume(a, b):
+                    if not moving:
+                        return rate(a) * (b - a)
+                    answer = quad(rate, a, b, epsabs=allowance * 1e-6, epsrel=1e-10, full_output=True)
+                    if len(answer) > 3:
+                        raise SimulationError(
+                            f'{store}: cannot certify the frozen {side} amount: {answer[3]}'
+                        )
+                    return answer[0]
+
+                for a, b in pairwise(sorted(breaks)):
+                    moved = Fraction(volume(a, b))
+                    if previous + moved > allowance:
+                        remaining = float(Fraction(allowance) - previous)
+                        at = (
+                            brentq(lambda t: volume(a, t) - remaining, a, b, xtol=1e-14)
+                            if moving
+                            else a + (b - a) * remaining / float(moved)
+                        )
+                        largest = max(rates, key=lambda name: abs(run.value(name, at)))
+                        if first is None or at < first[0]:
+                            first = (at, store, side, largest, run.value(largest, at))
+                        break
+                    previous += moved
+                updates[key] = previous
             if not present:
-                watched.discard(store)  # a flow that joins it again watches it again (`register`)
-                continue
-            within = run.recorder.tolerance.get(store, 0.0)
-            for side, connection in present:
-                found = self._beyond(connection, start, end, within)
-                if found is not None and (first is None or found[0] < first[0]):
-                    first = (*found, store, side, connection)
+                self.watched().discard(store)
         if first is None:
+            self.transferred.update(updates)
             return
-        at, rate, store, side, connection = first
+        at, store, side, name, amount = first
         run.ways.cut(at)
         run.now = at
-        unit = next(
-            c.unit for c in plan.flows[_flow_of(plan, connection)].connections if c.name == connection
-        )
-        shown = in_unit(plan.units, rate, unit)
+        connection = name.rsplit('.', 1)[0]
+        unit = self.plan.values[name].unit
+        shown = in_unit(self.plan.units, amount, unit)
         way = 'out of' if side == 'outflow' else 'into'
-        self.writable(store, f'the flow {connection} carries {shown} {way} {store} at t = {at:g} h', rate)
-
-    def _beyond(self, connection, start, end, within):
-        """(the first time in [start, end] at which a connection's rate is more than `within`, the
-        rate there), or None: at `start` alone where its rate holds between moments."""
-        run = self.run
-        name = f'{connection}.actual_rate'
-        flow = _flow_of(self.plan, connection)
-        key = run.ways.set_of.get(flow)
-
-        def rate(at):
-            return float(run.value(name, at))
-
-        times = [start]
-        if end is not None and end > start and key is not None and run.ways.moving(key):
-            breaks = getattr(run.ways.sets[key][1], 'breaks', lambda a, b: [])(start, end)
-            times = [start]
-            for a, b in pairwise([start, *breaks, end]):
-                times += [0.5 * (a + b), b]
-        before = None
-        for at in times:
-            found = rate(at)
-            if abs(found) <= within:
-                before = at
-                continue
-            if before is None:
-                return at, found
-            # Between the last time within its tolerance and this one: the first time beyond it.
-            crossing, after = self.plan.numerics.crossing, at
-            while after - before > crossing:
-                middle = 0.5 * (before + after)
-                if abs(rate(middle)) > within:
-                    after = middle
-                else:
-                    before = middle
-            return after, rate(after)
-        return None
+        self.writable(store, f'the flow {connection} carries {shown} {way} {store} at t = {at:g} h')
 
     def waiting(self):
         """The occurrences that wait at a gate, in the order in which they were made."""
@@ -468,7 +475,7 @@ class Occurrences:
             if store not in live.met:
                 continue
             left = float(run.value(store))
-            if abs(left) > run.recorder.tolerance.get(store, 0.0):
+            if abs(left) > run.amount_tolerance(store, left):
                 raise SimulationError(
                     f'{made.id} cannot finish at t = {t:g} h: its store {store} still holds '
                     f'{quantity(plan, store, left)}. Wait for it to drain, move the rest to a named stock, '
@@ -502,7 +509,11 @@ class Occurrences:
             run.recorder.add(name, t, value, 0.0)
             run.changed.add(name)
         run.changed.add(('occurrences', made.member, made.event.name))
-        details = {'reads': tuple((name, tuple(reads)) for name, reads in observations.items())} if observations else {}
+        details = (
+            {'reads': tuple((name, tuple(reads)) for name, reads in observations.items())}
+            if observations
+            else {}
+        )
         run.recorder.entry(t, 'finish', made.event.origin, made.id, **details)
         if run.moment.phase == 'conditions':
             run.moment.again = True

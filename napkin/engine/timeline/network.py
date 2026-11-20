@@ -502,8 +502,10 @@ class Network:
         roles=None,
         kinds=None,
         connections=None,
+        own_scales=None,
     ):
         self.flows, self.stores = tuple(flows), tuple(stores)
+        self.own_scales = np.ones(len(flows)) if own_scales is None else np.asarray(own_scales, dtype=float)
         count = len(self.stores)
         self.source = np.asarray(source, dtype=np.int64).reshape(-1)
         self.sink = np.asarray(sink, dtype=np.int64).reshape(-1)
@@ -613,11 +615,21 @@ def network_of(run, sets, stores):
             'kinds': [KINDS[plan.flows[flow].kind] for flow in flows],
             'connections': [connection.name for connection in connections],
         }
-    network = Network(flows, stores, source, sink, classes, flow_sets, store_sets, **extra)
     recorded = [
         f'{flow}.served_fraction' if plan.flows[flow].kind == plans.LEGS else f'{flow}.actual_rate'
         for flow in flows
     ]
+    network = Network(
+        flows,
+        stores,
+        source,
+        sink,
+        classes,
+        flow_sets,
+        store_sets,
+        own_scales=[run.own_scale(name) for name in recorded],
+        **extra,
+    )
     return network, connections, recorded
 
 
@@ -1043,7 +1055,16 @@ class Instant:
         for place, (_, a, wanted) in zip(places, claims):
             tiers.setdefault(place, []).append((a, wanted))
         try:
-            return select(rows, low, high, [tiers[key] for key in sorted(tiers)], prefs, target, units)
+            return select(
+                rows,
+                low,
+                high,
+                [tiers[key] for key in sorted(tiers)],
+                prefs,
+                target,
+                units,
+                net.own_scales[list(part)],
+            )
         except SimulationError as problem:
             raise SimulationError(
                 f'{problem}; the part: the stores {", ".join(self._name(s) for s in stores)} and the '

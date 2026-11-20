@@ -299,6 +299,7 @@ def save(run, recorder, arrival):
             'occurrences',
             (
                 ('made', occurrences.made),
+                ('transferred', _pairs(occurrences.transferred)),
                 (
                     'live',
                     tuple(
@@ -650,6 +651,9 @@ def _run(run, found):
     run.env = {'t': run.now, **dict(found['env'])}
     run.bounds = {name: tuple(bounds) for name, bounds in found['bounds']}
     run.scales, run.sizes = dict(found['scales']), dict(found['sizes'])
+    run.plan.comparison_scales.update(
+        (name, abs(value)) for name, value in run.scales.items() if value is not None
+    )
     run.frozen = dict(found['frozen'])
     run.changes = {name: list(times) for name, times in found['changes']}
     run.written = dict(found['written'])
@@ -679,6 +683,7 @@ def _recorder(recorder, found):
 def _occurrences(run, found, made):
     occurrences = run.occurrences
     occurrences.made = found['made']
+    occurrences.transferred = dict(found.get('transferred', ()))
     occurrences.live = {}
     for name, number, started, step, due, version, waiting, active, met in found['live']:
         occurrences.live[name] = Live(

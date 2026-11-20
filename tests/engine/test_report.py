@@ -329,12 +329,12 @@ TOP_UP = """
 
 def test_the_report_lists_each_near_tie_of_the_run():
     """In floats 0.1 + 0.2 exceeds 0.3 by one unit in the last place, far inside the level's tolerance,
-    1e-10 of its size of 1 L: the alarm fired within tolerance of its threshold. The tally crosses 2 L
+    1e-9 times its declared unit of 1 L: the alarm fired within tolerance of its threshold. The tally crosses 2 L
     at 2 h, moving through it, which is no near-tie."""
     found = reported(compiled(TOP_UP), ['tank.level'], [3])
     (tie,) = found.near_ties
     assert (tie.t, tie.kind, tie.part, tie.owner) == (1, 'fire', 'tank.alarm.when[0]', 'tank')
-    assert tie.difference == (0.1 + 0.2) - 0.3 and tie.tolerance == pytest.approx(1e-10)
+    assert tie.difference == (0.1 + 0.2) - 0.3 and tie.tolerance == pytest.approx(1e-9)
     assert 'this trigger fired within tolerance of its threshold' in tie.message
 
 

@@ -14,16 +14,9 @@ the run by name at the moment that it happens; the same write while the occurren
   the write, naming the value, the finished occurrence and the statement, and holds nothing of the
   stage that wrote (its write before that one included); before the finish the write is made, and
   its effect is the closed form worked here.
-- **Flows.** A flow of another occurrence that carries a nonzero rate into or out of one of its
-  stores writes it: the run fails at the moment that the rate is nonzero, naming the flow, the store
-  and the finished occurrence. A flow present at the finish with its rate fails then; one that joins
-  after with a rate fails as it joins. A connected flow at zero rate writes nothing ("A flow whose
-  rate falls to zero stays connected for its owner's lifetime"): out of the empty store, with no
-  request or closed, the run goes on. A flow whose rate becomes nonzero after the finish fails at
-  that moment: a stage that sets its request, the time that switches it, the store that feeds it
-  filling, and a rate that rises from zero with the water that it reads. A store that another
-  occurrence's flow met is retired as the occurrence's own stores are ("Each occurrence-owned
-  physical store must have zero residual inventory at normal completion").
+- **Flows.** After a store retires, accumulate the inventory in and out separately. A computed flow
+  writes the store when the amount carried exceeds its own conservation allowance. Cases start at
+  the finish or later, carry a constant rate or a rising one, or remain at exactly zero.
 - **Stops.** Stopped before the write and resumed, in place and in a fresh process, the run fails at
   the same time with the same message, a write by a statement as one by a flow; an edit at the stop
   that enables the write gives that failure; an edit of the finished occurrence's value is refused
@@ -37,6 +30,7 @@ at the same time naming the same value, or go on.
 
 from __future__ import annotations
 
+import math
 import os
 import random
 import re
@@ -241,7 +235,8 @@ CASES = {
     ),
     'joins later with a rate': (INTO, 'request = 1 L/h', {'STARTS': 'crew.later.start()'}),
 }
-# The time at which each case fails, or None where the run goes on.
+# The time each flow begins carrying material. A unit-rate flow crosses the 1e-10 L allowance
+# 1e-10 h later. The rising flow integrates (t-3)/10 L/h, hence (t-3)^2/20 L.
 FAILS = {
     'into, at the finish': 2,
     'out of, at the finish': 2,
@@ -254,6 +249,12 @@ FAILS = {
 # The case whose rate rises from zero, and the cases that the oracle does not cover (a request that
 # reads a store while the store moves).
 RISING = UNCOVERED = {'it rises with the water'}
+
+
+def failure_time(case):
+    if case not in FAILS:
+        return None
+    return FAILS[case] + (math.sqrt(20e-10) if case in RISING else 1e-10)
 
 
 def flow_model(case, **changes):
@@ -287,7 +288,7 @@ def test_a_flow_that_carries_a_rate_at_a_store_of_a_finished_occurrence_fails_th
 ):
     found = flow_model(case)
     record = run(found.program, found.configuration)
-    when = FAILS.get(case)
+    when = failure_time(case)
     if when is None:
         assert record.failure is None, message(record)
         # Nothing moved: the water and the batch hold what they held.
@@ -297,7 +298,7 @@ def test_a_flow_that_carries_a_rate_at_a_store_of_a_finished_occurrence_fails_th
         assert oracle(found) is None
         return
     assert record.failure is not None, case
-    # A rate that rises from zero is nonzero beyond its tolerance within the crossing tolerance.
+    # Each integrated amount reaches the allowance within the crossing tolerance.
     assert record.failure.t == pytest.approx(when, abs=1e-8)
     text = message(record)
     assert re.search(carries(case), text) and FROZEN.format('crew.repair#0') in text
@@ -306,16 +307,20 @@ def test_a_flow_that_carries_a_rate_at_a_store_of_a_finished_occurrence_fails_th
             oracle(found)
         return
     (t, said) = oracle(found)
-    assert t == when and 'crew.repair#0.batch' in said and FROZEN.format('crew.repair#0') in said
+    assert (
+        float(t) == pytest.approx(when, abs=1e-12, rel=0)
+        and 'crew.repair#0.batch' in said
+        and FROZEN.format('crew.repair#0') in said
+    )
 
 
-def test_a_flow_that_joins_a_finished_occurrences_store_with_a_rate_fails_at_the_settling_of_its_start():
+def test_a_flow_that_joins_a_finished_occurrences_store_fails_when_it_has_carried_the_allowance():
     """The watch starts at 3 h from the later event's stage, after the repair finished at 2 h, and
     saves it: its pipe fills the frozen batch from the settling of that round. The stage that
-    started it committed (a start writes nothing to the batch): the run fails at 3 h."""
+    started it committed (a start writes nothing to the batch): the run fails when the flow has carried 1e-10 L."""
     found = flow_model('joins later with a rate')
     record = run(found.program, found.configuration)
-    assert record.failure.t == 3
+    assert record.failure.t == failure_time('joins later with a rate')
     assert [entry.t for entry in record.entries('start') if entry.owner.startswith('crew.watch')] == [3]
 
 
@@ -425,7 +430,9 @@ def in_a_fresh_process(program, checkpoint, folder):
 def test_a_run_stopped_before_the_write_fails_by_name_when_it_resumes_three_ways(write, tmp_path):
     found = guarded('true', write)
     straight = run(found.program, found.configuration)
-    assert straight.failure.t == 3 and GUARDED_WRITES[write][1] in message(straight)
+    assert straight.failure.t == (3 + 1e-10 if write == 'flow' else 3) and GUARDED_WRITES[write][
+        1
+    ] in message(straight)
     made = Run(Plan.of(found.program, found.configuration), (STAGE,))
     stopped = made.run()
     assert isinstance(stopped, Checkpoint) and stopped.stop.t == 3
@@ -447,7 +454,9 @@ def test_an_edit_at_a_stop_that_enables_the_write_gives_the_failure_three_ways(w
     edited = made.edit(Key('crew', ('go',)), True)
     fresh = in_a_fresh_process(found.program, edited, tmp_path)
     resumed = made.resume()
-    assert resumed.failure.t == 3 and GUARDED_WRITES[write][1] in message(resumed)
+    assert resumed.failure.t == (3 + 1e-10 if write == 'flow' else 3) and GUARDED_WRITES[write][1] in message(
+        resumed
+    )
     assert fresh == resumed
 
 
@@ -458,7 +467,9 @@ def test_a_flow_opened_between_moments_fails_at_its_time_after_a_resume_three_wa
     run held of the finished store's flows is what a restored run finds."""
     found = flow_model(case)
     straight = run(found.program, found.configuration)
-    assert straight.failure.t == pytest.approx(3, abs=1e-8) and re.search(carries(case), message(straight))
+    assert straight.failure.t == pytest.approx(failure_time(case), abs=1e-8, rel=0) and re.search(
+        carries(case), message(straight)
+    )
     made = Run(Plan.of(found.program, found.configuration), (Breakpoint('crew.tick.step[0]'),))
     stopped = made.run()
     assert isinstance(stopped, Checkpoint) and stopped.stop.t == 2.5
@@ -475,7 +486,7 @@ def test_a_shorter_request_finishes_before_the_write_that_fails(write, tmp_path)
         failed = store.run(found.program, found.configuration)
         first = store.run(found.program, shorter)
         again = store.run(found.program, shorter)
-    assert failed.failure.t == 3
+    assert failed.failure.t == (3 + 1e-10 if write == 'flow' else 3)
     assert first == again == run(found.program, shorter)
     assert first.failure is None and first.end == 2.5
 

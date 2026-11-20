@@ -432,6 +432,30 @@ def test_the_rate_after_a_moment_is_that_of_the_state_just_after_it(test, expect
     assert engine == pytest.approx(expected, rel=1e-9) and exact == expected
 
 
+def test_withdrawn_junction_request_publishes_zero_while_other_flows_share():
+    """Seed 1094. At 1 h the only pipe supplying a zero-volume junction withdraws its request.
+    The tank's 1 L/h outflow capacity is divided among requests of 1, 2, 1 and 1/2 L/h.
+    Each gets 2/9 of its request. The junction gets zero and its outlets carry zero."""
+    program, _, _ = network(1094)
+    configuration = Configuration(Request(HORIZON))
+    record = run(program, configuration)
+    oracle, failure, uncovered = oracle_of(program, configuration, ())
+    assert record.failure is None and failure is None and uncovered is None
+    at = Fraction(3, 2)
+    for key, expected in (
+        (Key('f1', ('pipe', 'actual_rate')), 0),
+        (Key('s2', ('water',)), 0),
+        (Key('f2', ('pipe', 'actual_rate')), 0),
+        (Key('r0', ('link', 'actual_rate')), 0),
+        (Key('f0', ('pipe', 'actual_rate')), Fraction(4, 9)),
+        (Key('f3', ('pipe', 'actual_rate')), Fraction(2, 9)),
+        (Key('g0', ('restore', 'a', 'actual_rate')), Fraction(1, 9)),
+    ):
+        actual = read(record, program, [key], [float(at)])[0].values[0]
+        assert actual == pytest.approx(float(expected), rel=1e-12, abs=0)
+        assert value_at(oracle, program, key, at) == expected
+
+
 def test_a_junction_between_a_route_and_legs_into_a_full_store_passes_what_it_takes_in():
     """`j` at [0, 0] meets one route, to the full store `f`: what flows in is what flows out, so the
     route carries exactly zero. The legs draw from the empty store `e`, which nothing feeds: their

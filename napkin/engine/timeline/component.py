@@ -368,7 +368,7 @@ class Component:
             return Segment(start, start, None, first, state.y.copy(), reached=reached)
         solution, numerical = found.solution, found.numerical
         last = np.array(solution(found.end) if numerical is None else numerical.y[:, -1], dtype=float)
-        correct_boundary_roundoff(s, diagnostics, found.end, last, found.targets)
+        correct_boundary_roundoff(s, diagnostics, found.end, last, found.targets, solution)
         if numerical is not None:
             if found.end <= start:
                 raise SimulationError('Integration made no progress at a boundary')
@@ -410,6 +410,8 @@ class Component:
         state.right_faces.clear()
         state.zero_faces.clear()
         starting_sides(s, state, field)
+        if field.branches and np.any((state.y <= s.lower) | (state.y >= s.upper)):
+            refresh_bounds(s, state, field)  # decide release on the outgoing field
 
     def deciding(self):
         """{a switching surface: the flows whose rates read it, through formulas}."""
@@ -527,15 +529,15 @@ class ComponentWay(Way):
             (),
             (),
         )
-        sizes = run.sizes
-        atol = [numerics.atol_factor * sizes[name] for name in stores]
+        atol = [numerics.atol_factor * run.own_scale(name) for name in stores]
         slack = [
-            a + (numerics.rtol * sizes[name] if kinds[name] == 'cumulative' else 0.0)
+            a + (numerics.rtol * run.own_scale(name) if kinds[name] == 'cumulative' else 0.0)
             for a, name in zip(atol, stores)
         ]
         system = network.of(
             numerics, plan.units, plan.horizon, run.cap, solver_step(numerics), atol, slack, known
         )
+        system.integration_atol = np.array([numerics.atol_factor * run.sizes[name] for name in stores])
         context = Context(
             stores,
             {name: known[name] for name in parameters},
@@ -598,9 +600,12 @@ class ComponentWay(Way):
             self.bounded = True  # a segment finds the bounds of its start (`Component.next`)
         return self.pending.end
 
-    def step(self):
+    def step(self, levels=()):
         """Commit the next segment: the stores and the rates of the component change there."""
         segment, self.pending = self.pending, None
+        for name in levels:
+            if name in self.place:
+                segment.last[self.place[name]] = levels[name]
         self._commit(segment)
         self.still = self.still + 1 if segment.end <= segment.start else 0
         limit = self.run.plan.configuration.limits.max_rounds
@@ -640,6 +645,14 @@ class ComponentWay(Way):
             elif root.kind == 'surface':
                 for flow in component.deciding().get(root.data, ()):
                     yield at, flow, 'switch'
+
+    def crossed_operands(self, t, through):
+        if self.pending is not None and self.pending.numerical is not None:
+            yield from (
+                (at, root.data)
+                for at, root in self.pending.numerical.contacts
+                if root.kind == 'surface' and at <= through and self.run.clock.within(at, t)
+            )
 
     def snap(self, t=None, through=None):
         """Commit the smooth field to the canonical instant, putting each due store on its bound."""
@@ -730,6 +743,11 @@ class ComponentWay(Way):
     def _state(segment, t):
         """The state of a segment at a time inside it."""
         return segment.last if segment.end <= segment.start else segment.solution(t)
+
+    def incoming_level(self, store, t):
+        if self.pending is not None and self.pending.start < t and self.pending.solution is not None:
+            return float(self.pending.solution(t)[self.place[store]])
+        return self.level_at(store, t)
 
     def level_at(self, store, t):
         """The value of a store at time t: at the present time, inside the next segment, or, before

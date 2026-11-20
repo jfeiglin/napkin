@@ -101,7 +101,7 @@ def check_conditions(system, env, at):
             )
 
 
-def correct_boundary_roundoff(system, diagnostics, at, state, exact_targets=None):
+def correct_boundary_roundoff(system, diagnostics, at, state, exact_targets=None, solution=None):
     """Settle tiny root-location roundoff on bounds, each with an explicit balancing leg, and
     record it."""
     s = system
@@ -117,7 +117,13 @@ def correct_boundary_roundoff(system, diagnostics, at, state, exact_targets=None
             continue
         limit = s.ledger_slack[i] if target == lower[i] else atol[i]
         if abs(delta) > limit:
-            raise SimulationError(f'Material state-bound violation for {name}')
+            # A proved crossing can fall between two adjacent floating-point timestamps.
+            # The same incoming curve must bracket both the bound and this reported level.
+            if solution is None or i not in (exact_targets or {}):
+                raise SimulationError(f'Material state-bound violation for {name}')
+            low, high = sorted(float(solution(np.nextafter(at, side))[i]) for side in (-np.inf, np.inf))
+            if not (low <= state[i] <= high and low <= target <= high):
+                raise SimulationError(f'Material state-bound violation for {name}')
         partners = []
         has_external_leg = False
         for flow in s.flows.values():

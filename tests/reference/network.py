@@ -640,8 +640,20 @@ def assemble(run, comp, ev, follow=None):
                 var = ('local', sol, entry.name)
                 lo = fixed(se.val(entry.lo), f'the range of {entry.name}') if entry.lo is not None else None
                 hi = fixed(se.val(entry.hi), f'the range of {entry.name}') if entry.hi is not None else None
-                rows += [relation(Lin.var(var), '>=', lo)] if lo is not None else []
-                rows += [relation(Lin.var(var), '<=', hi)] if hi is not None else []
+                if lo is not None and hi is not None and lo > hi:
+                    floor = (
+                        abs(fixed(se.val(entry.scale), 'a scale'))
+                        if entry.scale is not None
+                        else entry.unit_size
+                    )
+                    band = max(run.config.atol_factor, run.config.rtol) * max(floor, abs(lo), abs(hi))
+                    if lo - hi <= band:
+                        lo = hi = (lo + hi) / 2
+                if lo is not None and hi == lo:
+                    rows.append(relation(Lin.var(var), '==', lo))
+                else:
+                    rows += [relation(Lin.var(var), '>=', lo)] if lo is not None else []
+                    rows += [relation(Lin.var(var), '<=', hi)] if hi is not None else []
                 init = entry.init
                 target = (
                     fixed(se.val(init), f'the initializer of {entry.name}')
@@ -652,8 +664,11 @@ def assemble(run, comp, ev, follow=None):
         for var in claimed:
             if var[0] == 'cell':
                 lo, hi = view.bounds.get(var[1], (None, None))
-                rows += [relation(Lin.var(var), '>=', lo)] if lo is not None else []
-                rows += [relation(Lin.var(var), '<=', hi)] if hi is not None else []
+                if lo is not None and hi == lo:
+                    rows.append(relation(Lin.var(var), '==', lo))
+                else:
+                    rows += [relation(Lin.var(var), '>=', lo)] if lo is not None else []
+                    rows += [relation(Lin.var(var), '<=', hi)] if hi is not None else []
                 declared = run.fields.get(var[1])
                 other_targets[var] = (view.cells[var[1]], scale(declared.scale if declared else None, lo, hi))
         for c in decl.constraints:
@@ -916,11 +931,12 @@ def motion(run):
     # A request can follow a store that another flow moves. Each pass carries an exact polynomial
     # one flow further. When the polynomials agree, their integrals give the stated store levels.
     for depth in range(len(view.live) + 1):
-        stops, again = [], {}
+        stops, contacts, again = [], [], {}
         for comp in run.components:
             ev = Ev(run, view, None, mode='germ', unknowns=set(comp.vars))
             assemble(run, comp, ev, again)
             stops += ev.shared.stops
+            contacts.extend(ev.shared.contacts)
         changed = next(
             (
                 f
@@ -950,4 +966,5 @@ def motion(run):
             if root is not None:
                 stops.append(root)
     run.moving = moving
+    run.switch_contacts = contacts
     return stops

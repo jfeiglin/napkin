@@ -88,7 +88,7 @@ def test_a_store_that_only_approaches_its_value_triggers_within_its_tolerance():
     # so it fires by then, not at some later moment.
     horizon = 300
     record = run(*tank(alarm(this.water <= q(0, 'person')), horizon=horizon))
-    tolerance = Numerics().atol_factor * START
+    tolerance = Numerics().rtol * START
     (at,) = fired(record)
     assert decay_time(tolerance) * (1 - 1e-6) <= at <= decay_time(tolerance / 2) * (1 + 1e-6)
     assert at < horizon

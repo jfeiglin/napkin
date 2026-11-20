@@ -38,9 +38,10 @@ def number(x):
 class E:
     """One node of an expression: a kind and its arguments. Operators build larger nodes."""
 
-    __slots__ = ('_a', '_k')
+    __slots__ = ('_a', '_k', '_unit_size')
 
-    def __init__(self, kind, *args):
+    def __init__(self, kind, *args, unit_size=1):
+        object.__setattr__(self, '_unit_size', unit_size)
         object.__setattr__(self, '_k', kind)
         object.__setattr__(self, '_a', args)
 
@@ -172,7 +173,7 @@ def scale_of(unit):
 
 def q(value, unit):
     """A written quantity, such as `q(4, 'kW')`, as a constant in canonical units."""
-    return E('const', number(value) * scale_of(unit))
+    return E('const', number(value) * scale_of(unit), unit_size=scale_of(unit))
 
 
 # --- names that an expression starts from -----------------------------------------------------------
@@ -361,6 +362,7 @@ class Leg:
     sink: E
     request: object = None
     capacity: object = None
+    unit_size: Fraction = Fraction(1)
 
 
 @dataclass
@@ -374,6 +376,7 @@ class Flow:
     request: object = None
     reversible: bool = False
     legs: tuple = ()
+    unit_size: Fraction = Fraction(1)
 
 
 def flow(name, source, sink, capacity=None, request=None):
@@ -579,6 +582,7 @@ class Unknown:
     hi: object = None
     init: object = None  # a written initializer is the preferred value; without one it is zero
     scale: object = None
+    unit_size: Fraction = Fraction(1)
 
 
 def unknown(name, lo=None, hi=None, init=None, scale=None):
@@ -688,3 +692,6 @@ class Config:
     max_active: int = 100_000  # occurrences of one bound event alive at once
     max_rounds: int = 1_000  # rounds at one time
     breakpoints: list = field(default_factory=list)  # (origin, occurrence or None)
+    rtol: Fraction = Fraction(1, 10**9)
+    atol_factor: Fraction = Fraction(1, 10**10)
+    crossing: Fraction = Fraction(1, 10**8)

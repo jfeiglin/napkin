@@ -54,7 +54,7 @@ export NAPKIN_BASE="$(cd ../napkin-base && pwd)"
 ## Read, in this order
 
 1. `scratch/rewrite/PLAN.md`: the progress list at the top (the last entries say what G2 left
-   open), then "Changes after G0", items 1 to 28. These override the rest of the plan and the spec.
+   open), then "Changes after G0", items 1 to 29. These override the rest of the plan and the spec.
    The ones you will feel most: 10 (the owner's priorities: defensibility, then speed, then
    precision), 11 (reproducibility), 12 (no `delayed`), 13 (the publisher is ported in M), 15
    (breakpoints and checkpoints replace player machinery: `choose`, `sees`, controllers are gone),
@@ -132,7 +132,7 @@ fixed in one mechanism, with a test of its rule (`briefs/audit2.md`; the state f
    refused by name, and a history budget that a run would exceed stops it by name.
 6. **The checker compares how each run ended** before its values (below, "No change is silent").
 
-## What the readiness rounds changed (`PLAN.md`, changes 23 to 28)
+## What the readiness rounds changed (`PLAN.md`, changes 23 to 29)
 
 A readiness audit of `8b3a01a` found eight rules fixed on one path and still broken on another. Each
 is now fixed once, at its mechanism, with a test over every path that reads it (`briefs/audit3.md`,
@@ -144,8 +144,9 @@ four questions on the way. What you will meet in the catalogue:
    take it from the `[role]` table of `style.toml` (`operator = ["pump", "Utility"]`). The
    translator writes both from each old role.
 2. **A finished occurrence is frozen** (change 24 b): an assignment to its field, a `move` of a
-   nonzero amount or a flow carrying a nonzero rate into or out of its store stops the run by name;
-   a connected flow at zero rate writes nothing.
+   nonzero amount, or a cumulative computed transfer beyond the store's conservation allowance
+   stops the run by name. Computed amounts accumulate separately in each direction since retirement
+   (change 29).
 3. **Read the last re-share’s rates and results** (change 27, replacing 25 and 26). Stages in one
    round see the same shared rates, including leg and endpoint rates and declared solver results.
    At a new time a moving rate reads its incoming value there. Ordinary writes take effect in

@@ -206,6 +206,9 @@ class Manifest:
     everything: bool = True
     keys: tuple[Key, ...] = ()
 
+    comparison_factor: float = 1e-9
+    comparison_scales: tuple[tuple[str, float], ...] = ()
+
     def names(self, key):
         """Whether a record with this manifest holds the value of a key: every value, or a key of its
         request; the ledger of a store with the store (its books)."""

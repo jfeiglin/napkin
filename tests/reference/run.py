@@ -10,9 +10,8 @@ At a time, rounds (`Run._moment`). One round is:
    A commit publishes the stage's writes and registers the occurrences that it queued; an
    occurrence that has no step left finishes, and its record freezes (decision D7). A write to a
    finished occurrence fails the run (PLAN, change 24 b): an assignment to its field, a move of an
-   amount into or out of its store, and a flow that carries a rate into or out of its store, read
-   with the rates of each moment (`_frozen_flows`); a move of nothing and a connected flow at zero
-   rate write nothing.
+   authored nonzero amount into or out of its store, or a computed flow whose cumulative amount
+   in either direction exceeds the store’s allowance (`_frozen_transfer`).
 2. *Settle.* Each affected solver shares its results once (`network.settle`). Until then stages
    read the previous settlement's rates and results at this time, also through a formula. A flow
    that joined reads zero. A flow that left keeps its rate until the settlement.
@@ -76,7 +75,7 @@ from .evaluate import (
     label,
 )
 from .model import Assign, Branch, Config, E, Flow, Move, Start, Switch, Until, lit, number, scale_of, show
-from .poly import Irrational, plain
+from .poly import Irrational, Poly, plain
 
 _MISSING = object()
 BUILTIN = ('started', 'done', 'active')
@@ -154,12 +153,14 @@ class Run:
         self.ents, self.tables = {}, set()
         self.flow_at = {}  # (owner, name) -> FlowRT, for every flow ever made
         self.fields = {}  # Cell -> its declaration
+        self.transferred, self.own_scales = {}, {}
         self.stores = set()  # cells that hold stock: an end of a flow or of a move
         self.triggers, self.scheduled, self.awaiting = [], [], []
         self.ledger, self.trace, self.frames, self.draws = [], [], [], []
         self.cache = {}
         self.components, self.component_of, self.solved_cells, self.settling = [], {}, set(), None
         self.moving, self.stops = [], []
+        self.contacts, self.contact_levels = [], {}
         self.flow_numbers, self.occ_numbers = itertools.count(1), itertools.count(1)
         self.sites = _sites(model)
         self.error = self.paused = None
@@ -225,22 +226,39 @@ class Run:
             v = ev.val(lit(given))
         else:
             v = UNSET if f.init is None else ev.val(f.init)
-        self._range(cell, f, ev, v)
-        return v
+        return self._range(cell, f, ev, v, admission=f.kind == 'input')
 
-    def _range(self, cell, f, ev, v):
+    def _range(self, cell, f, ev, v, *, admission=False):
         lo = None if f.lo is None else ev.num(f.lo)
         hi = None if f.hi is None else ev.num(f.hi)
+        scale = ev.num(f.scale) if f.scale is not None else self.model.units.get(f.unit)
+        self.own_scales[cell] = (
+            abs(scale) if scale is not None else scale_of(f.unit) if f.unit else Fraction(1)
+        )
         if lo is None and hi is None:
-            return
+            return v
         if lo is not None and hi is not None and lo > hi:
-            raise Diagnostic(f'{label(cell)}: the range [{lo}, {hi}] is reversed')
+            band = max(self.config.rtol, self.config.atol_factor) * max(
+                self.own_scales[cell], abs(lo), abs(hi)
+            )
+            if lo - hi > band:
+                raise Diagnostic(f'{label(cell)}: the range [{lo}, {hi}] is reversed')
+            lo = hi = (hi + lo) / 2
+            if abs(v - lo) <= band:
+                v = lo
         self.view.bounds[cell] = (lo, hi)
-        self._in_range(cell, v)
+        self._in_range(cell, v, admission=admission)
+        return v
 
-    def _in_range(self, cell, v):
+    def _in_range(self, cell, v, *, admission=False):
+        if not isinstance(v, Fraction):
+            return
         lo, hi = self.view.bounds.get(cell, (None, None))
-        if isinstance(v, Fraction) and ((lo is not None and v < lo) or (hi is not None and v > hi)):
+        if (lo is None or lo <= v) and (hi is None or v <= hi):
+            return
+        edge = lo if lo is not None and v < lo else hi
+        factor = max(self.config.rtol, self.config.atol_factor) if admission else self.config.atol_factor
+        if abs(v - edge) > factor * max(self.own_scales[cell], abs(v), abs(edge)):
             raise RunFailed(f'{label(cell)} = {v} is outside its range [{lo}, {hi}] at t = {self.view.t} h')
 
     def force(self, cell):
@@ -470,14 +488,15 @@ class Run:
         t = self.view.t
         if horizon is not None and t >= horizon:
             return None
-        times = [t + s for s in self.stops if s > 0] + [o.due for o in self.scheduled]
-        times += [
+        known = [o.due for o in self.scheduled]
+        known += [
             tr.rearm_at
             for tr in self.triggers
             if not tr.armed and tr.rearm_at is not None and tr.rearm_at > t
         ]
         if horizon is not None:
-            times.append(horizon)
+            known.append(horizon)
+        times = [t + s for s in self.stops if s > 0] + known
         if not times:
             return None
         first = min(times, key=float)
@@ -485,20 +504,86 @@ class Run:
             raise NotCovered(
                 f'the next moment after t = {t} h is a contact at an irrational time (about {float(first):.6g} h)'
             )
+        self.contact_levels = {}
+        if known:
+            moment = min(known)
+            if moment - first <= self.config.crossing and self._grouped(moment):
+                return moment
         return first
+
+    def _grouped(self, moment):
+        """A physical comparison and a scheduled instant in one window share the scheduled time.
+        A single store takes its exact rational level at the root. A sum keeps the incoming
+        trajectory and must satisfy the comparison band there."""
+        view, delta = self.view, moment - self.view.t
+        grouped = False
+        for root, scope, pair, condition in self.contacts:
+            if isinstance(root, Irrational) or root == delta or abs(root - delta) > self.config.crossing:
+                continue
+            at_root = view.copy()
+            at_root.t += root
+            at_root.cells.update((c, p(root)) for c, p in view.levels.items())
+            at_root.results.update((v, p(root)) for v, p in view.rates.items())
+            if condition is not None and not Ev(self, at_root, scope).truth(condition):
+                continue
+            ev = Ev(self, at_root, scope)
+            cells = ev.shared.contact_reads = set()
+            ev.num(pair[0])
+            ev.num(pair[1])
+            if not cells or 't' in cells:
+                continue
+            grouped = True
+            if len(cells) == 1:
+                (cell,) = cells
+                level = at_root.cells[cell]
+                existing = self.contact_levels.get(cell)
+                if cell in view.levels:
+                    for bound in view.bounds.get(cell, (None, None)):
+                        if bound is None:
+                            continue
+                        hit = (view.levels[cell] - bound).first_root()
+                        if hit is not None and abs(float(hit) - delta) <= self.config.crossing:
+                            existing = bound
+                if existing is not None:
+                    band = max(self.config.rtol, self.config.atol_factor) * max(
+                        self.own_scales[cell], abs(existing), abs(level)
+                    )
+                    if abs(existing - level) > band:
+                        raise RunFailed(f'incompatible crossing levels of {label(cell)} at {moment} h')
+                    level = existing
+                self.contact_levels[cell] = level
+                continue
+            at_root.t = moment
+            at_root.cells.update((c, p(delta)) for c, p in view.levels.items())
+            at_root.results.update((v, p(delta)) for v, p in view.rates.items())
+            a, b = ev.num(pair[0]), ev.num(pair[1])
+            band = ev.band(*pair, a, b)
+            if abs(a - b) > band:
+                names = ', '.join(sorted(label(c) for c in cells))
+                raise RunFailed(
+                    f'the crossing of {names} at {moment} h cannot be certified: '
+                    f'residual {a - b} exceeds the comparison band {band}'
+                )
+        return grouped
 
     def _advance(self, nxt):
         """Move every store exactly to the time `nxt`, and account for what each flow carried."""
         view = self.view
         tau = nxt - view.t
+        failure = self._frozen_transfer(tau)
+        if failure is not None:
+            tau, message = failure
+            nxt = view.t + tau
         for src, dst, p, name in self.moving:
             self.ledger.append(('flow', view.t, nxt, name, src, dst, p.integral()(tau)))
         for cell, p in view.levels.items():
-            view.cells[cell] = p(tau)
+            view.cells[cell] = self.contact_levels.get(cell, p(tau)) if failure is None else p(tau)
             self._in_range(cell, view.cells[cell])
         for var, p in view.rates.items():
             view.results[var] = p(tau)
         view.t, view.levels, view.rates = nxt, {}, {}
+        if failure is not None:
+            raise RunFailed(message)
 
     def _moment(self, setup=False):
         t = self.view.t
@@ -543,25 +628,66 @@ class Run:
                 break
         self.phase = 'between'
         self.stops = self._stops()
-        self._frozen_flows()
         self.frames.append(self.view.copy())
 
-    def _frozen_flows(self):
-        """A flow that carries a rate into or out of a store of a finished occurrence writes it
-        (PLAN, change 24 b): with the rates of this moment (`network.motion`), one that carries a
-        rate now, or whose rate rises from zero after the moment while the run goes on, fails the
-        run here. A flow at zero rate carries nothing."""
-        view, horizon = self.view, self.config.horizon
-        for src, dst, p, name in self.moving:
-            for cell, way in ((dst, 'into'), (src, 'out of')):
-                holder = _holder(cell.owner) if cell is not None else None
-                if not isinstance(holder, Occ) or view.cells[Cell(holder, 'active')]:
-                    continue
-                if p(0) != 0 or horizon is None or view.t < horizon:
-                    raise RunFailed(
-                        f'the flow {name} carries a rate {way} {label(cell)} from t = {view.t} h: '
-                        f'{label(cell)} belongs to the finished occurrence {holder.label}, which is frozen'
-                    )
+    def _frozen_transfer(self, tau):
+        """Count the material into and out of a retired store separately. The flow polynomials
+        are exact between events. A reversible route splits the window where its rate changes sign."""
+        groups = {}
+        for src, dst, rate, name in self.moving:
+            for cell, sign in ((dst, 1), (src, -1)):
+                owner = _holder(cell.owner) if cell is not None else None
+                if isinstance(owner, Occ) and not self.view.cells[Cell(owner, 'active')]:
+                    groups.setdefault(cell, []).append((rate * sign, name))
+        first = None
+        for cell, flows in groups.items():
+            cuts = {Fraction(0), tau}
+            for rate, name in flows:
+                past = Fraction(0)
+                while not rate.constant:
+                    root = rate(Poly([past, 1])).first_root()
+                    if root is None or float(root) >= float(tau - past):
+                        break
+                    if isinstance(root, Irrational):
+                        raise NotCovered(f'{name}: a frozen transfer changes direction at an irrational time')
+                    past += root
+                    cuts.add(past)
+            allowance = self.config.atol_factor * self.own_scales[cell]
+            for lo, hi in itertools.pairwise(sorted(cuts)):
+                for sign, side in ((1, 'into'), (-1, 'out of')):
+                    carrying = [(p * sign, name) for p, name in flows if p((lo + hi) / 2) * sign > 0]
+                    if not carrying:
+                        continue
+                    volume = sum((p.integral() for p, _ in carrying), Poly([0]))
+                    key = cell, side
+                    previous = self.transferred.get(key, Fraction(0))
+                    amount = volume(hi) - volume(lo)
+                    self.transferred[key] = previous + amount
+                    if self.transferred[key] <= allowance:
+                        continue
+                    if previous > allowance:
+                        continue  # an earlier piece of this window already located the failure
+                    remaining = allowance - previous
+                    if len(volume.c) == 2:
+                        at = lo + remaining / volume.c[1]
+                    else:
+                        low, high = lo, hi
+                        while high - low > Fraction(1, 10**13):
+                            at = (low + high) / 2
+                            if volume(at) - volume(lo) > remaining:
+                                high = at
+                            else:
+                                low = at
+                        at = high
+                    if first is None or at < first[0]:
+                        _, name = max(carrying, key=lambda item: item[0](at))
+                        first = (
+                            at,
+                            f'the flow {name} carries a rate {side} {label(cell)} at t = '
+                            f'{self.view.t + at} h: {label(cell)} belongs to the finished '
+                            f'occurrence {_holder(cell.owner).label}, which is frozen',
+                        )
+        return first
 
     def _settle_and_check(self):
         self.phase = 'settle'
@@ -815,7 +941,10 @@ class Run:
         scope = Scope(ent, occ)
         for name, v in zip(event.params, args):  # each argument within its parameter's range
             if name in event.ranges:
-                self._range(Cell(occ, name), event.ranges[name], Ev(self, view, scope), v)
+                cell = Cell(occ, name)
+                view.cells[cell] = self._range(
+                    cell, event.ranges[name], Ev(self, view, scope), v, admission=True
+                )
         decls = event.locals
         for i, d in enumerate(decls):
             later = _forward(d, decls[i + 1 :])
@@ -834,7 +963,7 @@ class Run:
             else:
                 ev = Ev(self, view, scope, may_draw=True)
                 view.cells[cell] = UNSET if d.init is None else ev.val(d.init)
-                self._range(cell, d, ev, view.cells[cell])
+                view.cells[cell] = self._range(cell, d, ev, view.cells[cell])
             view.entered[cell] = t
             self._endpoints(cell, d, scope)  # an occurrence's own store has endpoints as a member's has
         occs.append(occ)
@@ -911,7 +1040,7 @@ class Run:
         view, t = self.view, self.view.t
         for cell in sorted((c for c in self.stores if c.owner is occ), key=lambda c: c.name):
             left = view.cells[cell]
-            if left != 0:
+            if abs(left) > self.config.atol_factor * max(self.own_scales[cell], abs(left)):
                 raise RunFailed(
                     f'{occ.label} cannot finish at t = {t} h: its store {label(cell)} still holds {self._quantity(cell, left)}. '
                     'Wait for it to drain, move the rest to a named stock, or send it to SINK.'
@@ -1013,21 +1142,24 @@ class Run:
         """The times after this moment at which something can happen without a scheduled stage."""
         view = self.view
         stops = network.motion(self)
+        self.contacts = [(*found, None) for found in self.switch_contacts]
 
-        def watch(expr, scope, strict):
+        def watch(expr, scope, strict, armed=False):
             ev = Ev(self, view, scope, mode='germ')
             ev.shared.strict = strict
             v = ev.val(expr)
             stops.extend(ev.shared.stops)
+            if armed:
+                self.contacts.extend((*found, expr) for found in ev.shared.contacts)
             return v
 
         for trig in self.triggers:
             scope = Scope(trig.ent, None, trig.caps)
-            watch(trig.decl.when, scope, True)
+            watch(trig.decl.when, scope, True, trig.armed)
             if not trig.armed and trig.decl.reset is not None and trig.decl.reset[0] == 'when':
                 watch(trig.decl.reset[1], scope, True)
         for occ in self._gates():
-            watch(occ.event.steps[occ.step].condition, self.scope_of(occ), True)
+            watch(occ.event.steps[occ.step].condition, self.scope_of(occ), True, True)
         for a in self.model.asserts:  # an assertion on state is also checked just after each moment
             if watch(a.condition, Scope(self.ents[a.owner]) if a.owner else Scope(), False) is False:
                 raise RunFailed(f'assert {a.text or show(a.condition)} fails just after t = {view.t} h')

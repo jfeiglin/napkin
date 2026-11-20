@@ -345,7 +345,9 @@ class Vector:
                 return float(t)
             return self._gathered(self._plan(columns[read]), evaluation, ask=True)
 
-        values = arrays.values(shape, Reads(frozenset(columns), column), self.plan.units, len(members))
+        values = arrays.values(
+            shape, Reads(frozenset(columns), column), self.plan.units, len(members), columns
+        )
         return np.broadcast_to(np.asarray(values, dtype=float), (len(members),)).tolist()
 
 
@@ -558,7 +560,6 @@ class Sparse(Way):
 
     def __init__(self, run, sets, values, t, key, levels=None, given=None):
         plan = self.plan = run.plan
-        sizes = run.sizes
         sets = list(sets)
         levels = [0] * len(sets) if levels is None else list(levels)
         self.sets, self.set_levels = sets, levels  # which a checkpoint names (`saved.py`)
@@ -639,7 +640,9 @@ class Sparse(Way):
         self.y = np.array([float(values[name]) for name in stores])
         self.lower = np.array([run.bounds[name][0] for name in stores])
         self.upper = np.array([run.bounds[name][1] for name in stores])
-        self.atol = np.array([plan.numerics.atol_factor * sizes[name] for name in stores])
+        # Radau already scales its relative term with the current inventory. The absolute
+        # floor belongs to the unit and must be the same when this instance is restored.
+        self.atol = np.array([run.amount_tolerance(name) for name in stores])
         self.t = float(t)
         net = self.net
         self.incidence = sp.csr_array(
@@ -944,10 +947,23 @@ class Sparse(Way):
             held=lambda i: self.lower_flags[i] or self.upper_flags[i],
             reversal=reversal,
             contacted=self.contacted,
+            choose=self.vector.choose,
         )
         at, trial = self._held(self.t, self.y)
+        contacts = list(self.contacted)
+        contacts.extend(
+            pair
+            for pair, sign in integrate.branch_sides(self.surfaces, self._side(self.t, self.y)).items()
+            if sign == 0
+        )
+        if self.clock is not None:
+            contacts.extend(
+                pair
+                for pair in self.surfaces
+                if integrate.fixed_clock(pair, side, self.moves) == math.nextafter(at, -math.inf)
+            )
         self.signs = integrate.departing_branches(
-            self.surfaces, at, trial, self._side, self.field, self.contacted
+            self.surfaces, at, trial, self._side, self.field, contacts, self.plan.units.comparisons
         )
         self.vector.choose(self.signs)
         self.side_nodes = {
@@ -975,7 +991,23 @@ class Sparse(Way):
                     return side(a) - side(b)
 
                 fixed = integrate.fixed_clock(pair, before, self.moves)
-                at = integrate.crossing_time(gap, start, end, side=sign, accepted=(first, last), exact=fixed)
+                departure = sign or int(first > 0) - int(first < 0)
+                if not departure:
+                    continue
+
+                def operands(t):
+                    side = self._side(t, solution(t))
+                    return side(a), side(b)
+
+                at = integrate.crossing_time(
+                    gap,
+                    start,
+                    end,
+                    side=departure,
+                    accepted=(first, last),
+                    exact=fixed,
+                    within=integrate.contact_band(pair, operands, self.plan.units),
+                )
                 if at is not None:
                     yield at, pair, 'switch'
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
@@ -1007,6 +1039,8 @@ class Sparse(Way):
         )
         self._flags()
         self._sides()
+        if self.signs and np.any((self.y <= self.lower) | (self.y >= self.upper)):
+            self._flags()  # compute bound release with the actual outgoing branches installed
         if self.outputs is not None:
             rows = self.region.selected_rows(self.run, self.signs, self._side(self.t, self.y))
             for name, row in rows.items():
@@ -1071,7 +1105,7 @@ class Sparse(Way):
         self.lower_flags, self.upper_flags = at_lower, at_upper
         for _ in range(len(y) + 1):
             change = self.field(self.t, y)
-            leaving = (self.lower_flags & (change > self.atol)) | (self.upper_flags & (change < -self.atol))
+            leaving = (self.lower_flags & (change > 0)) | (self.upper_flags & (change < 0))
             if not leaving.any():
                 break
             self.lower_flags &= ~leaving
@@ -1242,11 +1276,14 @@ class Sparse(Way):
         self.pending = (start, end, solution, np.array(y, dtype=float), ended)
         return end
 
-    def step(self):
+    def step(self, levels=()):
         """Commit the next step: the stores and the rates of the set move through it."""
         start, end, solution, y, ended = self.pending
         self.pending, self._drift = None, None
         self._record(solution, start, end)
+        for name in levels:
+            if name in self.place:
+                y[self.place[name]] = levels[name]
         self.t, self.y = end, y
         self.contacted = tuple(pair for at, pair, kind in self.contacts if at == end and kind == 'switch')
         self.contact_clocks = tuple(at for at in self.contact_clocks if at >= end)
@@ -1289,6 +1326,14 @@ class Sparse(Way):
                         yield at, flow, kind
                 elif kind == 'key':
                     yield at, owner, 'switch'
+
+    def crossed_operands(self, t, through):
+        if self.pending is not None:
+            yield from (
+                (at, pair)
+                for at, pair, kind in self.contacts
+                if kind == 'switch' and at <= through and self.run.clock.within(at, t)
+            )
 
     def _on_contacts(self, through, y):
         met = put_bounds(self, y, self._events(through))
@@ -1348,6 +1393,11 @@ class Sparse(Way):
         self._record(solution, start, t)
         self.t, self.y = float(t), np.array(solution(t), dtype=float)
         self.contacted = ()
+
+    def incoming_level(self, store, t):
+        if self.pending is not None and self.pending[0] < t:
+            return float(self.pending[2](t)[self.place[store]])
+        return self.level_at(store, t)
 
     def level_at(self, store, t):
         """The value of a store at time t: at the present time, inside the next step, or, before that

@@ -63,7 +63,7 @@ from tests.engine.test_checkpoints import Case, in_a_fresh_process, in_one_proce
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 RISE, FALL = math.log(1.5), math.log(3)  # h: where 9 (u - u^2) = 2 L, at u = 2/3 and u = 1/3
-TOLERANCE = 1e-10 * 10  # the parabola's water: `atol_factor` times its scale, 10 L
+TOLERANCE = 1e-9 * 12  # change 29: rtol times the level at the 12 L threshold
 
 
 def watch(name, test, reset=None):

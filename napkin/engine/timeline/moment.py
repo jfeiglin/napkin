@@ -99,6 +99,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 from ...core import expr as nodes
+from ...core.comparisons import against
 from ...core.errors import ExpressionError
 from ...core.units import rational
 from ...expressions import UnitSystem
@@ -108,16 +109,6 @@ from ..continuous.walk import walked
 from ..errors import SimulationError
 from .plan import BACKWARD, FORMULA, FORWARD
 from .reads import lazily
-
-# The comparisons of a stage's test, exact, as functions of the difference of their sides.
-_EXACT = {
-    'le': lambda d: d <= 0,
-    'ge': lambda d: d >= 0,
-    'lt': lambda d: d < 0,
-    'gt': lambda d: d > 0,
-    'eq': lambda d: d == 0,
-    'ne': lambda d: d != 0,
-}
 
 _SETUP = 'setup'  # what a stop in the setup holds
 
@@ -169,6 +160,7 @@ class Clock:
                 for unit in plan.program.units
             }
         )
+        self.units.comparisons = plan.units.comparisons
 
     @staticmethod
     def exact(x):
@@ -360,7 +352,6 @@ class Moment:
         self.commit(tx)
         self.settle()
         self.splits(None)  # every set has just started
-        run.occurrences.carried(run.now)
         run.recorder.check_budget(0.0)
         run.occurrences.delays()
         self.phase = 'conditions'
@@ -431,8 +422,6 @@ class Moment:
                 self.stage(live)
             self.held = None
             self.splits(self.settle())
-            # A flow at a store of a finished occurrence that the round gave a rate writes it.
-            run.occurrences.carried(t)
             run.recorder.check_budget(t)
             run.occurrences.delays()
             self.phase = 'conditions'
@@ -517,8 +506,7 @@ class Moment:
                 self.plan,
                 run.frozen,
                 side,
-                lambda op, difference, left, right: _EXACT[op](difference),
-                run.triggers.tolerance,
+                run.triggers.comparison_band,
             )
         except (ExpressionError, ArithmeticError, LookupError):
             near = ()  # a side that the answer did not read
@@ -587,7 +575,7 @@ class Moment:
         if not math.isfinite(value):
             raise SimulationError(f'{origin}: {name} would take the value {value!r}')
         lower, upper = bounds
-        slack = self.run.recorder.tolerance.get(name, 0.0)
+        slack = self.run.amount_tolerance(name, value)
         if lower - slack <= value < lower:
             return float(lower)
         if upper < value <= upper + slack:
@@ -654,35 +642,44 @@ class Moment:
                 f'{origin}: a move takes a finite amount from 0, not {quantity(plan, source, amount)}'
             )
         amount = float(amount)
-        if source == destination:
-            run.occurrences.writable(source, origin, amount)
+        for end in (source, destination):
+            run.occurrences.writable(end, origin, amount)
+        if source == destination or amount == 0:
             tx.moves.append((source, destination, amount, origin))
             return
-        had = float(run.value(source, tx=tx))
+        supply = float(run.value(source, tx=tx))
+        receiving = float(run.value(destination, tx=tx))
         lower = run.bounds.get(source, (-math.inf, math.inf))[0]
-        left = had - amount
-        atol = run.recorder.tolerance.get(source, 0.0)
-        if math.isfinite(lower) and left != lower and abs(left - lower) <= atol:
-            amount += left - lower
-            if amount >= 0:
-                left = float(lower)
-            else:
-                amount, left = 0.0, had
-        for end in (source, destination):
-            run.occurrences.writable(end, origin, amount)  # what the move moves, at each end
-        after = {source: left, destination: float(run.value(destination, tx=tx)) + amount}
-        for name, value in after.items():
+        upper = run.bounds.get(destination, (-math.inf, math.inf))[1]
+        available, room = supply - lower, upper - receiving
+        applied = amount
+        for name, initial, edge, space, sign in (
+            (source, supply, lower, available, -1),
+            (destination, receiving, upper, room, 1),
+        ):
             low, high = run.bounds.get(name, (-math.inf, math.inf))
-            slack = run.recorder.tolerance.get(name, 0.0)
-            if not low - slack <= value <= high + slack:
+            after = initial + sign * amount
+            # Subtraction may lose digits in positive room between nearly equal inventories.
+            # At the bound itself there is exactly no room, even for an amount smaller than an ulp.
+            short = space < amount and (
+                space <= 0 or amount - space > max(math.ulp(initial), math.ulp(edge), math.ulp(amount))
+            )
+            if short or (sign > 0 and after < low) or (sign < 0 and after > high):
                 raise SimulationError(
                     f'{origin}: the move of {quantity(plan, source, amount)} from {source} to {destination} '
-                    f'fails: {name} would hold {quantity(plan, name, value)}, outside its range '
+                    f'fails: {name} would hold {quantity(plan, name, after)}, outside its range '
                     f'{span(plan, name, low, high)}; nothing is moved'
                 )
-            after[name] = min(max(value, low), high)
-        tx.writes.update(after)
-        tx.moves.append((source, destination, amount, origin))
+            if sign * (after - edge) > 0:
+                applied = min(applied, space)
+
+        # The source's near-zero remainder can join the transfer only if the destination fits it.
+        left = available - applied
+        if math.isfinite(available) and 0 < left <= run.amount_tolerance(source, left) and available <= room:
+            applied = available
+        tx.writes[source] = lower if applied == available else supply - applied
+        tx.writes[destination] = upper if applied == room else receiving + applied
+        tx.moves.append((source, destination, applied, origin))
 
     def queue(self, statement, tx, scope):
         """`.start(...)`: the arguments are evaluated at the caller, left to right, once; on a
@@ -872,33 +869,37 @@ def split_ties(run, store, side):
     while it is at its lower bound, for its outflow, and what flows out of it while it is at its upper
     bound, for its inflow (within the store's tolerance). A connection claims its request in its
     direction within its capacity. An endpoint that nothing limits shares no split."""
-    plan, tolerance = run.plan, run.recorder.tolerance
+    plan = run.plan
     end = plan.ends[(store, side)]
     classes = run.classes_of(store, side, plan.rankings[(store, side)], {c: c for c in end.flows})
     if len(classes) < 2:
         return ()
-    limits, read = [], [*end.flows]
+    limits = []
     if end.capacity is not None:
-        limits.append((float(run.value(end.capacity)), f'the capacity of {store}.{side}'))
+        limits.append((float(run.value(end.capacity)), end.capacity, f'the capacity of {store}.{side}'))
     lower, upper = run.bounds[store]
-    level, slack = float(run.value(store)), tolerance.get(store, 0.0)
-    if (side == 'outflow' and level - lower <= slack) or (side == 'inflow' and upper - level <= slack):
-        other = plan.incident(store, 'inflow' if side == 'outflow' else 'outflow')
-        read += other
-        total = sum(float(run.value(f'{c}.actual_rate')) for c in other)
-        limits.append((total, f'what flows {"into" if side == "outflow" else "out of"} {store}'))
+    bound = lower if side == 'outflow' else upper
+    level = float(run.value(store))
+    if math.isfinite(bound) and abs(level - bound) <= run.amount_tolerance(store, level, bound):
+        other = 'inflow' if side == 'outflow' else 'outflow'
+        total = sum(float(run.value(f'{c}.actual_rate')) for c in plan.incident(store, other))
+        limits.append(
+            (
+                total,
+                f'{store}.{other}.actual_rate',
+                f'what flows {"into" if side == "outflow" else "out of"} {store}',
+            )
+        )
     if not limits:
         return ()
-    limit, what = min(limits, key=lambda each: each[0])
-    ends = {store} | {
-        each for c in read for each in (plan.connections[c].source, plan.connections[c].sink) if each
-    }
-    band = max(tolerance.get(each, 0.0) for each in ends)
+    limit, operand, what = min(limits, key=lambda each: each[0])
+    rate = nodes.ref(f'{store}.{side}.actual_rate')
     claims = [sum(_claim(run, plan.connections[c]) for c in members) for members in classes]
     found, ahead = [], 0.0
     for k in range(len(classes) - 1):
         ahead += claims[k]
         difference = limit - ahead
+        band = plan.units.comparisons.band(nodes.ref(operand), rate, limit, ahead)
         if claims[k + 1] > band and abs(difference) <= band:
             served = [c for members in classes[: k + 1] for c in members]
             comparison = (
@@ -926,11 +927,11 @@ def _listed(names):
     return shown if len(names) <= 3 else f'{shown} and {len(names) - 3} more'
 
 
-def near_ties(node, origin, plan, frozen, side, holds, tolerance, later=None):
+def near_ties(node, origin, plan, frozen, side, tolerance, later=None):
     """The near-ties of a condition (see the module): (origin, comparison, difference, tolerance) of
     each numeric comparison that decides its answer, through boolean formulas, whose sides differ by
-    no more than `tolerance(left, right)`, and with `later`, still do an instant later. `side(node)` is
-    the value of a side and `holds(op, difference, left, right)` the answer of a comparison, as the
+    no more than the band of their two values, and with `later`, still do an instant later. `side(node)`
+    is the value of a side, as the
     reader of the condition gives them. The terms read are those of the answer's path: `and` and `or`
     stop at the term that decides, a conditional takes its selected side. Of those, the ones that
     decide are kept: every term of a true `and` or of a false `or`, since each one turned the other
@@ -980,13 +981,28 @@ def near_ties(node, origin, plan, frozen, side, holds, tolerance, later=None):
                     return False, []
                 continue
             difference = float(a) - float(b)
-            band = tolerance(left, right)
+            band = tolerance(left, right, a, b)
+            exact_count = (
+                any(
+                    isinstance(part, nodes.Ref)
+                    and (
+                        (part.name in plan.reductions and plan.reductions[part.name].op == 'count')
+                        or (part.name in plan.dynamic and plan.dynamic[part.name].op == 'count')
+                    )
+                    for part in (left, right)
+                )
+                and a == b
+                and float(a).is_integer()
+            )
             tie = (
                 [(origin, nodes.notation(part), difference, band)]
-                if band > 0 and abs(difference) <= band and (later is None or abs(later(left, right)) <= band)
+                if not exact_count
+                and band > 0
+                and abs(difference) <= band
+                and (later is None or abs(later(left, right)) <= band)
                 else []
             )
-            if not holds(op, difference, left, right):
+            if not against(op, difference, band):
                 return False, tie
             ties += tie
         return True, ties

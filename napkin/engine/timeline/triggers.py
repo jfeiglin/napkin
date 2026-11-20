@@ -29,10 +29,8 @@ watched as a condition is, so a contact with its boundary is a moment, just afte
 strict comparison is watched too, since the first instant at which an assertion fails exists for
 either form.
 
-**Reading a condition.** A comparison whose sides read what moves between moments (a store of a set,
-an actual rate, the time) holds within the tolerance of what it reads (spec: a crossing counts as
-reached within the numerical tolerance of the quantity that it reads): `x <= c` holds while
-`x - c` is at most that tolerance. A comparison of what holds between moments is exact. A boolean
+**Reading a condition.** Numeric operands within the band of their own scales compare equal
+(PLAN, change 29). This applies to stored and moving values alike. A boolean
 formula is read through its expression, so its comparisons are read the same way, and so is a
 membership `x in [lo, hi]` (the program's `within`): it is evaluated, so that a reversed interval
 fails the run by name where it is read, then read as its chain `lo <= x <= hi`. `and` and `or`
@@ -56,8 +54,11 @@ hold between moments is exact.
 **Values that turn** (PLAN, change 20). Where a read moves on a curve, the comparison is certified
 step by step (`_contact`). Its difference d, the left side less the right, is a sum of what moves
 with weights that hold between moments (`_weights`, which reads the still parts now), and its
-answer, read within its band b, can change only where d crosses -b (for `>=`, `<`, `==`, `!=`) or b
-(for `<=`, `>`, `==`, `!=`). The window is cut at the ends of the steps of the sets that it reads
+physical crossing is where d reaches zero. A trigger or gate that fires there puts its
+single store on the threshold, including through an invertible formula. For several stores the
+incoming trajectory must satisfy the comparison's band at the canonical moment. A near approach
+without a physical crossing can still change the comparison at the edge of its band. The window
+is cut at the ends of the steps of the sets that it reads
 (`breaks`), and each piece is read from the form of their solutions (`motion`,
 `continuous/dense.py`: the cubic of a step of Radau's dense output, the closed form of compartments,
 or a line). The form gives the rate of d at the start of the piece, how far that rate can move over
@@ -92,8 +93,7 @@ diagnostic when such a condition is watched, never polling.
 
 **Near-ties** (change 10). A tiny difference can flip a discrete outcome; the engine does not
 compute it more precisely, it marks it. A condition whose answer was decided by a numeric comparison
-with sides that differ by no more than the tolerance of what they read (the largest tolerance of the
-stores and the rates that they read, through formulas, and the crossing tolerance for the time), now
+with sides that differ by no more than their comparison band, now
 and an instant later (`AFTER`), was decided within tolerance of its threshold: its trace entry has the
 detail `near`, one (origin, comparison, difference, tolerance) for each such comparison that decides
 its answer (`moment.near_ties`), the difference and the tolerance in canonical units. Sides that move
@@ -125,6 +125,7 @@ from fractions import Fraction
 from itertools import pairwise
 
 from ...core import expr as nodes
+from ...core.comparisons import against
 from ...core.errors import ExpressionError
 from ...program.record import Unavailable
 from ..continuous import dense
@@ -140,14 +141,6 @@ from .reads import lazily
 
 # The comparisons of `napkin/core/expr`, as functions of the difference of their sides and of the
 # tolerance of what they read.
-_COMPARE = {
-    'le': lambda d, band: d <= band,
-    'ge': lambda d, band: d >= -band,
-    'lt': lambda d, band: d < -band,
-    'gt': lambda d, band: d > band,
-    'eq': lambda d, band: abs(d) <= band,
-    'ne': lambda d, band: abs(d) > band,
-}
 _CLOSED = {'le', 'ge', 'eq'}
 # The edges of the band at which the answer of each comparison can change: `low` where the difference
 # crosses -band (the answer of `d >= -band`), `high` where it crosses band (of `d <= band`).
@@ -183,13 +176,13 @@ class Triggers:
         self.run, self.plan = run, run.plan
         self.states = [State(trigger) for trigger in run.plan.triggers]
         self.contacts = []  # (time, watched key, version)
+        self.witnesses = {}  # watched key -> (raw physical time, condition, comparison operands)
         self.windows = []  # (time, watched key, version): the end of the window of a prediction
         self.version = {}  # watched key -> the version of its prediction
         self.readers = {}  # engine name -> the watched keys that read it
         # (origin, member) of a trigger -> the near-ties of its last `miss` since it last fired, made
         # from the trace when first needed, so that a restored run has it as the trace gives it.
         self.missed = None
-        self._widest = (-1, 0.0)  # (the count of the record's tolerances, the largest of them)
 
     # ---- reading --------------------------------------------------------------------------------
 
@@ -240,23 +233,14 @@ class Triggers:
                         raise ExpressionError(f'{nodes.notation(node)}: only == and != compare these values')
                 else:
                     difference = float(a) - float(b)
-                    if close is not None and abs(difference) <= self.widest():
+                    tolerance = self.comparison_band(left, right, a, b) if band or close is not None else 0.0
+                    if close is not None and abs(difference) <= tolerance:
                         close.append(node)
-                    tolerance = self.band(left, right) if band else 0.0
-                    found = _COMPARE[op](difference, tolerance)
+                    found = against(op, difference, tolerance if band else 0.0)
                 if not found:
                     return False
             return True
         return self.side(node, t)
-
-    def widest(self):
-        """The largest tolerance of what a comparison can read: of the values that the record keeps,
-        and the crossing tolerance for the time."""
-        tolerance = self.run.recorder.tolerance
-        if self._widest[0] != len(tolerance):
-            found = max(tolerance.values(), default=0.0)
-            self._widest = (len(tolerance), max(found, self.plan.numerics.crossing))
-        return self._widest[1]
 
     def side(self, node, t):
         """The value of a side of a comparison at time t, which reads only what its evaluation takes
@@ -281,36 +265,17 @@ class Triggers:
             self.plan,
             self.run.frozen,
             lambda side: self.side(side, t),
-            lambda op, difference, left, right: _COMPARE[op](difference, self.band(left, right)),
-            self.tolerance,
+            self.comparison_band,
             later,
         )
 
-    def tolerance(self, *parts):
-        """The tolerance of what the sides of a comparison read: the largest of the tolerances of the
-        stores and the rates that they read, through formulas, and the crossing tolerance for the
-        time; zero for sides that read neither."""
-        found = 0.0
-        tolerance = self.run.recorder.tolerance
-        for part in parts:
-            expanded = self.plan.reads_now(self.plan.field_inputs(self.plan.expansion(part)))
-            if expanded.time:
-                found = max(found, self.plan.numerics.crossing)
-            for name in expanded.leaves:
-                found = max(found, tolerance.get(name, 0.0))
-        return found
+    def comparison_band(self, left, right, a, b):
+        """Change 29: scale the band in the unit of the compared values."""
+        return self.plan.units.comparisons.band(left, right, a, b)
 
-    def band(self, *parts):
-        """The tolerance of what the sides of a comparison read that moves between moments: the
-        largest of their stores' and rates' tolerances, and of the crossing tolerance for the time."""
-        found = 0.0
-        tolerance = self.run.recorder.tolerance
-        for name in self.moving_reads(*parts):
-            if name == 't' or name in self.plan.dynamic:
-                found = max(found, self.plan.numerics.crossing)
-            else:
-                found = max(found, tolerance.get(name, 0.0))
-        return found
+    def band(self, left, right, t=None):
+        at = self.run.now if t is None else t
+        return self.comparison_band(left, right, self.side(left, at), self.side(right, at))
 
     def moving_reads(self, *parts, through_rates=True):
         """The engine names that the nodes read, through formulas, that move between moments: the
@@ -347,7 +312,7 @@ class Triggers:
                 if reset is None:
                     if not self.holds(trigger.test):
                         state.armed = True
-                    elif not self.holds(trigger.test, t + AFTER, band=False):
+                    elif not self.holds(trigger.test, t + AFTER):
                         state.armed, state.blocked_at = True, t
                 elif reset[0] == 'when':
                     state.armed = self.holds(reset[1])
@@ -435,7 +400,7 @@ class Triggers:
         t = self.run.now
         for origin, member, node in self.plan.checks:
             if after:
-                holds, when = self.holds(node, t + AFTER, band=False), f'just after t = {t:g} h'
+                holds, when = self.holds(node, t + AFTER), f'just after t = {t:g} h'
             else:
                 holds, when = self.holds(node), f'at t = {t:g} h'
             if not holds:
@@ -475,6 +440,7 @@ class Triggers:
     def predict_all(self):
         """The next contact of every watched condition, from now."""
         self.contacts, self.windows, self.version, self.readers = [], [], {}, {}
+        self.witnesses.clear()
         for key, node in self.watched():
             self._watch(key, node)
 
@@ -504,7 +470,11 @@ class Triggers:
         reads = self.plan.reads_now(self.plan.expansion(node))
         for name in set(reads.leaves) | set(reads.formulas):
             self.readers.setdefault(name, set()).add(key)
-        at, until = self._next(node, strict=key[0] != 'assert')
+        at, until, witnesses = self._next(node, strict=key[0] != 'assert')
+        if witnesses:
+            self.witnesses[key] = at, node, witnesses
+        else:
+            self.witnesses.pop(key, None)
         if math.isfinite(at):
             heapq.heappush(self.contacts, (at, key, version))
         elif math.isfinite(until):
@@ -557,6 +527,7 @@ class Triggers:
         first instant at which it does not, which either form has."""
         run = self.run
         now, earliest, window = run.now, math.inf, math.inf
+        witnesses = []
         atoms = self._atoms(node)
         moving_atoms = []
         for atom in atoms:
@@ -608,13 +579,90 @@ class Triggers:
                 root = self._exact_root(left, right, moving, now)
                 if root is None:
                     root = now + start / (start - end) * (until - now)
-                if abs(start) > self.band(left, right) and now < root <= until:
-                    earliest = min(earliest, root)
+                if abs(start) <= self.band(left, right) or not now < root <= until:
+                    continue
+                physical = True
+            else:
+                root = self._contact(left, op, right, moving, now, until, float(start), physical=True)
+                physical = root is not None
+                if root is None:
+                    # A turning or asymptotic value can enter the comparison band without ever
+                    # reaching the threshold. It may fire there, but it has no level to snap.
+                    root = self._contact(left, op, right, moving, now, until, float(start))
+            if root is not None and root <= earliest:
+                if root < earliest:
+                    witnesses.clear()
+                earliest = root
+                if physical:
+                    witnesses.append((left, right))
+        return earliest, window, tuple(witnesses)
+
+    def levels_at(self, t, levels):
+        """Physical crossings on the incoming state that can actually fire a watched condition.
+        An arm of a false conjunction, a mere near approach and a rearming pass move no stock."""
+        if self.next_contact() > self.run.clock.apart(t):
+            return levels
+        for key, (at, test, pairs) in self.witnesses.items():
+            if key[0] not in ('when', 'gate') or not self.run.clock.within(at, t):
                 continue
-            root = self._contact(left, op, right, moving, now, until, float(start))
-            if root is not None:
-                earliest = min(earliest, root)
-        return earliest, window
+            if key[0] == 'when' and not self.states[key[1]].armed:
+                continue
+            if not self.holds(test, at):
+                continue
+            for left, right in pairs:
+                self.anchor(levels, left, right, t, at)
+        return levels
+
+    def anchor(self, levels, left, right, t, located):
+        """The single-store level implied by a contact, or verification of a multi-store contact.
+        Affine aliases give the same correction as the underlying store. For several stores the
+        only admissible state is the one their flows reached on the incoming trajectory."""
+        moving = self.moving_reads(left, right)
+        if not moving or not moving <= self.run.plan.moving:
+            return
+        tx = Tx('')
+        tx.writes = {name: self.run.ways.instance_of(name).incoming_level(name, t) for name in moving}
+
+        def side(node):
+            return lazily(node, lambda name: self.run.value(name, t, tx), self.plan.units, t)
+
+        a, b = side(left), side(right)
+        if len(moving) == 1:
+            (name,) = moving
+            if _affine(left, moving, self.plan) and _affine(right, moving, self.plan):
+                slope = self._weights(left, moving, t).get(name, 0.0) - self._weights(right, moving, t).get(
+                    name, 0.0
+                )
+                if not slope:
+                    return
+                value = tx.writes[name] - (a - b) / slope
+            else:
+                # Invert on the branch containing the physical root, even if the canonical
+                # clock lies on its other side. Only the one underlying inventory varies.
+                at_root = self.run.ways.instance_of(name).incoming_level(name, located)
+
+                def residual(level):
+                    tx.writes[name] = level
+                    return side(left) - side(right)
+
+                value = _inverse_level(at_root, self.run.bounds[name], residual)
+            if name in levels:
+                old = levels[name]
+                store = nodes.ref(name)
+                if abs(old - value) > self.comparison_band(store, store, old, value):
+                    raise SimulationError(
+                        f'incompatible crossing levels of {name} at {t:g} h: {old:g} and {value:g}'
+                    )
+                value = old
+            levels[name] = value
+            tx.writes[name] = value
+            a, b = side(left), side(right)
+        band = self.comparison_band(left, right, a, b)
+        if abs(a - b) > band:
+            raise SimulationError(
+                f'the crossing of {nodes.notation(left)} and {nodes.notation(right)} at {t:g} h '
+                f'cannot be certified: residual {a - b:g} exceeds the comparison band {band:g}'
+            )
 
     def switching_time(self, left, right, moving, outgoing, affine):
         """The physical crossing of a rate's operands over the current store segments.
@@ -636,7 +684,9 @@ class Triggers:
             ways = {self._giver(name) for name in moving if name != 't'}
             breaks = sorted({at for way in ways if hasattr(way, 'breaks') for at in way.breaks(now, until)})
             for s, e in pairwise((now, *breaks, until)):
-                at = crossing_time(gap, s, e, side=outgoing)
+                at = crossing_time(
+                    gap, s, e, side=outgoing, within=lambda t, d: abs(d) <= self.band(left, right, t)
+                )
                 if at is not None:
                     return at
             return None
@@ -651,13 +701,21 @@ class Triggers:
         op = 'ge' if outgoing < 0 else 'le'
         return self._contact(left, op, right, moving, now, until, start, switching=True)
 
-    def _contact(self, left, op, right, moving, now, until, start, switching=False):
+    def _contact(self, left, op, right, moving, now, until, start, switching=False, physical=False):
         """The first time in (now, until] at which a comparison of values on curves can change its
         answer, read within its band, or None: step by step, each piece of a step skipped, decided by
         its ends, or halved (see the module). `start` is its difference now."""
         spelled = f'{nodes.notation(left)} {_SPELLING[op]} {nodes.notation(right)}'
-        band, crossing = 0.0 if switching else self.band(left, right), self.plan.numerics.crossing
+        crossing = self.plan.numerics.crossing
         read = {now: start}
+        widths = {}
+
+        def width(t):
+            if switching or physical:
+                return 0.0
+            if t not in widths:
+                widths[t] = self.band(left, right, t)
+            return widths[t]
 
         def difference(t):
             # The difference as the run reads it at time t, on the dense output of its sets.
@@ -667,14 +725,25 @@ class Triggers:
             return found
 
         edges = _EDGES[op]
-        before = {edge: False if switching else _side(edge, start, band) for edge in edges}
+        before = {edge: False if switching else _side(edge, start, width(now)) for edge in edges}
         motion, breaks = self._forms(left, right, moving, now, until, spelled)
         halvings, offset = [0], None
 
         def root(edge, s, e, speed=None):
+            if physical:
+                return crossing_time(
+                    difference, s, e, within=lambda at, gap: abs(gap) <= self.band(left, right, at)
+                )
             if switching:
-                return crossing_time(difference, s, e, side=-1 if op == 'ge' else 1, speed=speed)
-            return self._bisect(difference, edge, band, before[edge], s, e)
+                return crossing_time(
+                    difference,
+                    s,
+                    e,
+                    side=-1 if op == 'ge' else 1,
+                    speed=speed,
+                    within=lambda at, gap: abs(gap) <= self.band(left, right, at),
+                )
+            return self._bisect(difference, edge, width, before[edge], s, e)
 
         def first(s, e):
             """The first change in (s, e], a piece inside one form of each read, where the answer has
@@ -683,17 +752,19 @@ class Triggers:
             # The difference at s is the form's sum and the parts that hold, which the read now gives:
             # within twice the margin of what the run reads, and the roundoff of each.
             at = piece.value + offset
+            band = width(s)
             roundoff = _ROUNDOFF * (piece.size + abs(at) + abs(offset) + band)
             reach = piece.change * (1 + _ROUNDOFF) + 2 * piece.margin + roundoff
+            reach += abs(width(e) - band)
             near = [edge for edge in edges if abs(at - _EDGE[edge] * band) <= reach]
             if not near:
                 return None  # every edge is farther than the difference can move here
             if piece.spread == 0 or abs(piece.rate) > piece.spread or e - s <= crossing:
                 # Its rate keeps its sign (or the piece is within the crossing tolerance): its ends decide.
-                changed = [edge for edge in near if _side(edge, difference(e), band) != before[edge]]
+                changed = [edge for edge in near if _side(edge, difference(e), width(e)) != before[edge]]
                 if not changed:
                     return None
-                if not switching and e - s <= crossing:
+                if not switching and not physical and e - s <= crossing:
                     return e
                 speed = abs(piece.rate) + piece.spread if abs(piece.rate) > piece.spread else None
                 return min(root(edge, s, e, speed) for edge in changed)
@@ -712,7 +783,7 @@ class Triggers:
         found = None
         if motion is None:
             # One store that only rises or only falls, whose way gives no form: the ends decide.
-            changed = [edge for edge in edges if _side(edge, difference(until), band) != before[edge]]
+            changed = [edge for edge in edges if _side(edge, difference(until), width(until)) != before[edge]]
             found = min(
                 (root(edge, now, until) for edge in changed),
                 default=None,
@@ -727,7 +798,7 @@ class Triggers:
                     break
         # A change just after now is read at the first instant that the engine tells apart from now:
         # what is due before it is due at now (`moment.Clock`).
-        if switching:
+        if switching or physical:
             return found if found is not None and found > now else None
         return None if found is None else min(max(found, self.run.clock.apart(now)), until)
 
@@ -838,14 +909,16 @@ class Triggers:
         else:
             yield self._weights_of(node.right, moving, t, scale * float(self.side(node.left, t)), found)
 
-    def _bisect(self, difference, edge, band, before, low, high):
+    def _bisect(self, difference, edge, width, before, low, high):
         """The first time in (low, high] at which a difference that moves one way leaves the side
         `before` of an edge, to within the crossing tolerance: bisection, which keeps the change
         between its ends (the side at `low` is `before`, at `high` the other)."""
         crossing = self.plan.numerics.crossing
         while high - low > crossing:
             middle = 0.5 * (low + high)
-            if _side(edge, difference(middle), band) == before:
+            if middle in (low, high):
+                break
+            if _side(edge, difference(middle), width(middle)) == before:
                 low = middle
             else:
                 high = middle
@@ -943,6 +1016,36 @@ def _side(edge, difference, band):
     """The side of an edge of the band on which a difference lies: whether `difference >= -band` for
     the low edge, and whether `difference <= band` for the high one (`_COMPARE`)."""
     return difference >= -band if edge == 'low' else difference <= band
+
+
+def _inverse_level(center, bounds, residual):
+    """The representable level nearest a located, locally invertible, single-store root."""
+    first = residual(center)
+    if first == 0:
+        return center
+    distance = math.ulp(center)
+    low = high = center
+    for _ in range(54):  # from one ulp through the scale of the contact
+        low, high = max(bounds[0], center - distance), min(bounds[1], center + distance)
+        a, b = residual(low), residual(high)
+        if a == 0:
+            return low
+        if b == 0:
+            return high
+        if (a > 0) != (b > 0):
+            while True:
+                mid = low + 0.5 * (high - low)
+                if mid in (low, high):
+                    return low if abs(a) <= abs(b) else high
+                gap = residual(mid)
+                if gap == 0:
+                    return mid
+                if (a > 0) == (gap > 0):
+                    low, a = mid, gap
+                else:
+                    high, b = mid, gap
+        distance *= 2
+    return center  # a tangent; the caller still verifies its residual at the located level
 
 
 def _affine(node, moving, plan):

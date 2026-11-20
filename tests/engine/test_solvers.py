@@ -465,7 +465,7 @@ def test_a_formula_that_reads_an_enforced_equality_holds_within_the_solvers_tole
     """R-A3-02: the worked network's `rate_follows_levels` (a route's signed rate equals its pull times
     the difference of the levels), which the solver enforces, holds at every time; the solver leaves
     the idle route at 4e-26 W against 0 W, which an exact comparison reads as false from 2 h. The
-    solver reads the equality; its readers compare to 1e-7 relative, one canonical unit at least."""
+    Change 29 gives the same equality to the solver and to all of its readers."""
     from dataclasses import replace
 
     from tests.program.examples import EXAMPLES
@@ -477,8 +477,7 @@ def test_a_formula_that_reads_an_enforced_equality_holds_within_the_solvers_tole
     for reading in read(record, example.program, names, [0, 1, 2, 2.5, 3, 4]):
         assert reading.values == (True,) * 6
     plan = Plan.of(example.program, configuration)
-    assert set(plan.enforced) == set(names)
-    assert all(plan.enforced[name].ops == ('eq',) for name in names)
+    assert all(plan.values[name].node.ops == ('eq',) for name in names)
 
 
 def test_a_solver_of_the_feed_alone_leaves_the_junctions_their_local_sharing():

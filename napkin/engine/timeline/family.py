@@ -181,7 +181,7 @@ class Columns:
             env = Reads(frozenset(columns), column)
             while True:
                 try:
-                    computed = arrays.values(first.shape, env, plan.units, len(members))
+                    computed = arrays.values(first.shape, env, plan.units, len(members), columns)
                 except Pending as pending:
                     yield from self._found(pending.names, t, known, waiting)
                     continue

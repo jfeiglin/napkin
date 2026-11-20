@@ -1,7 +1,7 @@
 """Near-ties (change 10; `triggers.py`, `moment.near_ties`): a firing or a test of a stage that was
 decided within tolerance of its boundary is marked as the detail `near` of its trace entry, and the
 engine computes nothing more precisely. The cases are worked by hand: in floats, 0.1 + 0.2 exceeds 0.3
-by one unit in the last place, far inside a store's tolerance of 1e-10 of its size (1 L here), while
+by one unit in the last place, far inside a store's tolerance of 1e-9 of its size (1 L here), while
 0.30001 exceeds it by far more.
 """
 
@@ -35,7 +35,7 @@ from napkin.program.build import (
 from napkin.program.config import Configuration, Request
 from tests.program.examples import UNITS
 
-TOLERANCE = 1e-10  # the tolerance of a store of size 1 L: `atol_factor` 1e-10 times it
+TOLERANCE = 1e-9  # change 29: rtol times 1 L
 OVER = (0.1 + 0.2) - 0.3  # one unit in the last place of 0.3
 
 

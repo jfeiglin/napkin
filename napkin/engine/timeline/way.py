@@ -11,6 +11,14 @@ class Way:
             if self.run.clock.within(event[0], t):
                 yield event
 
+    def crossed_operands(self, t, through):
+        """Operands of physical switches located in the moment's closed time window."""
+        return ()
+
+    def incoming_level(self, name, t):
+        """The incoming trajectory, including its continuation to a coalesced moment."""
+        return self.level_at(name, t)
+
     def arrive(self, t, through):
         """Close the incoming segment after the stages and give the names the re-share needs."""
         if self.peek() <= t or any(self.contacts_at(t, through)):

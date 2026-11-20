@@ -366,6 +366,29 @@ def select(variables, rows, objectives=(), tiers=(), prefs=(), groups=()):
     for r in rows:
         if r.lin.known and not r.holds({}):
             raise Infeasible(f'a hard condition fails with no unknown in it: {r}')
+    # Single-coordinate equalities fix these values exactly. Substitute them before
+    # floating objective/fair ranks can round away a midpoint with a large denominator.
+    fixed = {}
+    for row in rows:
+        if row.op == '==' and len(row.lin.c) == 1:
+            ((v, coefficient),) = row.lin.c.items()
+            fixed[v] = -row.lin.k / coefficient
+    if fixed:
+
+        def substitute(value):
+            value = lin(value)
+            return Lin(
+                {v: c for v, c in value.c.items() if v not in fixed},
+                value.k + sum(c * fixed[v] for v, c in value.c.items() if v in fixed),
+                [substitute(part) for part in value.parts],
+            )
+
+        free = [v for v in variables if v not in fixed]
+        constraints = [Rel(substitute(row.lin), row.op) for row in rows]
+        goals = [(term, text) for value, text in objectives if not (term := substitute(value)).known]
+        claims = [[(term, r) for value, r in tier if not (term := substitute(value)).known] for tier in tiers]
+        preferred = [(term, r) for value, r in prefs if not (term := substitute(value)).known]
+        return fixed | select(free, constraints, goals, claims, preferred, groups)
     if not variables:
         return {}
     if _lp(variables, rows, Lin())[0] == 'infeasible':

@@ -96,6 +96,7 @@ import numpy as np
 from numpy.polynomial import chebyshev
 
 from ...core import expr as nodes
+from ...core.comparisons import Comparisons
 from ...core.errors import ExpressionError
 from ...expressions import evaluate
 from ...program import parts as p
@@ -177,7 +178,14 @@ def fitted(values, start, end, tolerance):
                 continue
         else:
             first = values(np.array([a]))[0]
+        constant = np.all(nodes == first, axis=0)
+        if b - a > SHORTEST and cuts < MOST:
+            constant &= np.all(checks == first, axis=0)
         for k, at in enumerate(found):
+            if constant[k]:
+                # Least squares can give an identically held threshold a nonzero fitted slope.
+                at.append((a, float(first[k]), 0.0))
+                continue
             series = coefficients[:, k] if coefficients.ndim > 1 else coefficients
             curved = series[2:]
             if np.all(np.abs(curved) <= allowed[k] / 16):
@@ -366,7 +374,7 @@ class Recorder:
                 return
         self._check_prefix(end, before)
 
-    def _check_prefix(self, end, before):
+    def _check_prefix(self, end, before, projected=False):
         """Only a closed fitting interval determines its subdivisions. An intermediate
         budget check never gives a fit a new right endpoint. A fit over immutable clock
         inputs uses the requested horizon even when a stage happens before it."""
@@ -382,14 +390,14 @@ class Recorder:
         if before:
             if failure >= end:
                 return  # assignments at this time still belong to its record
-            if self.run.arriving and self.run.ways.instances:
+            if not projected and self.run.arriving and self.run.ways.instances:
                 # The stage has not cut the incoming segments. Include their pending pieces
                 # exactly as a breakpoint before this stage would, without executing the stage.
                 from .saved import at_stop
 
-                projected, _ = at_stop(self.run)
-                if projected is not self:
-                    projected._check_prefix(end, False)
+                arrival, _ = at_stop(self.run)
+                if arrival is not self:
+                    arrival._check_prefix(end, before, projected=True)
                     return
         raise HistoryFull(prefix)
 
@@ -657,8 +665,18 @@ class Recorder:
                 History(h.key, tuple(p for p in h.pieces if p.t <= end)) if h.pieces[-1].t > end else h
                 for h in held
             ]
-        manifest = Manifest(request.horizon, request.everything, request.keys)
-        made = _finished(Record(manifest, tuple(held), trace, failure))
+        manifest = Manifest(
+            request.horizon,
+            request.everything,
+            request.keys,
+            plan.units.comparisons.factor,
+            tuple(sorted(plan.comparison_scales.items())),
+        )
+        made = Record(manifest, tuple(held), trace, failure)
+        if self._probe_end is None or end == plan.horizon:
+            made = _finished(made)
+        # At a provisional end the recorded outgoing slopes still count. At a true end
+        # they become held points, as do the retained pieces when the budget ends a run.
         # The values that the record holds stay within the request's budget of pieces (R-A4a-07); a
         # record that its budget ends keeps its histories up to that end (`requested`).
         bounded = made.within(request.pieces)
@@ -850,28 +868,22 @@ class Recorder:
                 return found
             return bool(found) if boolean else float(found)
 
-        # The size of the formula, as a store's: the largest magnitude that it takes at a time at
-        # which what it reads has a piece.
-        size = 1.0
-        if not discrete:
-            for found in firsts:
-                if not isinstance(found, Unavailable):
-                    size = max(size, abs(float(found)))
-        tolerance = np.array([plan.numerics.atol_factor * size])
+        scale = self.run.own_scale(name) if not discrete else 1.0
         crossing = plan.numerics.crossing
         pieces = []
         for (a, b), first in zip(pairwise(bounds), firsts):
-            if b <= a or (not timed and all(holders[read](a) for read in reads)):
+            held = b <= a or (not timed and all(holders[read](a) for read in reads))
+            if not held and self._probe_end == b and a == times[-1] and name not in self._clock_histories:
+                self._open_from = min(self._open_from, a)
+            if held:
                 # What the formula reads holds its value from a to b: so does the formula.
                 pieces.append((a, cast(first), 0.0))
             elif discrete:
-                if self._probe_end == b and a == times[-1] and name not in self._clock_histories:
-                    self._open_from = min(self._open_from, a)
                 # Where it cannot be evaluated is one more value of the yes/no or the text.
                 pieces += _switches(lambda time: cast(tried(time)), a, b, cast(first), crossing)
             else:
-                if self._probe_end == b and a == times[-1] and name not in self._clock_histories:
-                    self._open_from = min(self._open_from, a)
+                size = scale if isinstance(first, Unavailable) else max(scale, abs(float(first)))
+                tolerance = np.array([plan.numerics.atol_factor * size])
                 pieces += _numbers(at, tried, a, b, first, tolerance, crossing)
         return pieces
 
@@ -1370,6 +1382,15 @@ class Reader:
     def __init__(self, record, program):
         self.record, self.program = record, program
         self.plan = _plan_of(program, record)
+        self.units = copy(self.plan.units)
+        scales = dict(record.manifest.comparison_scales)
+        self.comparison_time = None
+        self.units.comparisons = Comparisons(
+            self.units,
+            record.manifest.comparison_factor,
+            lambda name: self.plan.comparison_quantity(name, scales, self._comparison_value),
+        )
+
         # The definitions that the commits of the run gave values, from its trace: a value is read
         # with the definition that it had at the time of the read.
         self.definitions = self.plan.definitions_of(record.trace)
@@ -1513,6 +1534,9 @@ class Reader:
         the time of a change from what it reads, in canonical units; a LookupError for a value that
         has none then. Depth first, with no recursion (see the class)."""
         t = float(t)
+        if self.definitions and self.comparison_time != t:
+            self.units.comparisons.floors.clear()
+        self.comparison_time = t
         stack, waiting = [name], set()
         while stack:
             top = stack[-1]
@@ -1548,6 +1572,11 @@ class Reader:
         if isinstance(found, LookupError):
             raise found
         return found
+
+    def _comparison_value(self, name):
+        if name not in self.plan.values:
+            return None
+        return self._definition(name, self.comparison_time)
 
     def _definition(self, name, t):
         """The plan's value of an engine name with the definition that it had at time t."""
@@ -1585,7 +1614,7 @@ class Reader:
                 sure = self._always[id(value.node)] = always(value.node)
             self._ready(sure, t)
             try:
-                found = evaluate(value.node, Reads(nodes.names(value.node), read, t), self.plan.units)
+                found = evaluate(value.node, Reads(nodes.names(value.node), read, t), self.units)
                 found = bool(found) if value.boolean else found if isinstance(found, str) else float(found)
             except FAILURES as problem:
                 found = Unavailable(str(problem))
@@ -1647,17 +1676,17 @@ class Reader:
         try:
             if name not in self.kept:
                 self._ready([each for test in derived.tests if test is not None for each in always(test)], t)
-                self.kept[name] = kept(derived.tests, read, plan.units)
+                self.kept[name] = kept(derived.tests, read, self.units)
             entries = self.kept[name]
             if name in plan.reductions:
                 reduction = plan.reductions[name]
                 self._ready([reduction.names[k] for k in entries] if reduction.names else (), t)
-                return reduced(reduction, read, plan.units, entries)
+                return reduced(reduction, read, self.units, entries)
             keyed = plan.keyed[name]
             keys = [keyed.keys[k] for k in entries if isinstance(keyed.keys[k], str)]
             self._ready([*keys, *sorted(always(keyed.key))], t)
-            index = index_of(keyed, read, plan.units, entries)
-            return looked_up(keyed, read, plan.units, t, index)
+            index = index_of(keyed, read, self.units, entries)
+            return looked_up(keyed, read, self.units, t, index)
         except FAILURES as problem:
             return Unavailable(str(problem))
 

@@ -499,6 +499,9 @@ class Plan:
         self.units = UnitSystem(
             {unit.name: {'dimensions': dict(unit.dimension), 'scale': unit.scale} for unit in program.units}
         )
+        self.comparison_scales = {}
+        self.units.comparisons.factor = max(self.numerics.rtol, self.numerics.atol_factor)
+        self.units.comparisons.named = lambda name: self.comparison_quantity(name, self.comparison_scales)
         self.pools = pools_of(program)
         self.values, self.draws, self.flows, self.distributions = {}, {}, {}, {}
         self.changed = {}  # the engine name of a CHANGED value -> the stored value that it follows
@@ -607,10 +610,31 @@ class Plan:
             for event in scope[0].events
             for index in range(len(event.triggers))
         ]
-        self._tolerate_enforced()
         self._refuse_kept_in_solvers()
         self._connect()
         self._classify_asserts()
+
+    def comparison_quantity(self, name, scales, lookup=None, resolve=None):
+        """The declared unit size and numeric scale of a named operand, following an alias."""
+        lookup = self.values.get if lookup is None else lookup
+        value = lookup(name)
+        unit = self.units.scale(value.unit) if value is not None and value.unit else 1.0
+        seen = set()
+        while value is not None and name not in seen:
+            seen.add(name)
+            if name in scales:
+                return unit, scales[name]
+            if value.scale is not None:
+                if resolve is not None:
+                    return unit, resolve(name, value.scale)
+                if not nodes.names(value.scale):
+                    return unit, abs(float(evaluate(value.scale, {}, self.units)))
+            if value.kind != FORMULA or not isinstance(value.node, nodes.Ref) or value.scale is not None:
+                break
+            name = value.node.name
+            value = lookup(name)
+        other = self.units.scale(value.unit) if value is not None and value.unit else unit
+        return unit, other
 
     def _refuse_kept_in_solvers(self):
         """A solver's problem reads a where over the flows of an endpoint whose members change in a
@@ -626,34 +650,6 @@ class Plan:
                             f'{declared.origin}: {found.spelled} in a solver: this engine reads a where over '
                             'the flows of an endpoint whose members change in a run outside solvers'
                         )
-
-    def _tolerate_enforced(self):
-        """R-A3-02: a formula that is an equality that a declared solver enforces (a relation of its
-        constraints reads it) compares to 1e-7 relative where it is read, since the solver holds it to
-        its tolerance: its readers (the record, a condition, a stage) read |a - b| <= 1e-7 max(1, |a|,
-        |b|), in canonical units, which one canonical unit, the solver's reference scale, bounds from
-        below; the solver reads the equality (`enforced`)."""
-        self.enforced = {}  # a formula -> its equality, which the solver reads
-        for declared in self.solvers.values():
-            for _, node in declared.constraints:
-                for name in sorted(self.expansion(node).formulas):
-                    value = self.values.get(name)
-                    found = value.node if value is not None and value.kind == FORMULA else None
-                    if name in self.enforced or not isinstance(found, nodes.Compare) or found.ops != ('eq',):
-                        continue
-                    self.enforced[name] = found
-                    a, b = found.operands
-                    size = nodes.call(
-                        'max', [nodes.const(1.0), nodes.call('abs', [a]), nodes.call('abs', [b])]
-                    )
-                    tolerant = nodes.compare(
-                        ['le'],
-                        [
-                            nodes.call('abs', [nodes.binary('sub', a, b)]),
-                            nodes.binary('mul', nodes.const(1e-7), size),
-                        ],
-                    )
-                    self.values[name] = replace(value, node=tolerant, shape=None, binding=())
 
     @classmethod
     def of(cls, program, configuration):
@@ -1321,6 +1317,7 @@ class Plan:
         self.values[name] = made
         found.append((t, made))
         self._expanded.clear()
+        self.units.comparisons.floors.clear()
         self._fixed_lookups.clear()
         self._members.clear()  # what the members of a keyed read read is found again too
         self.version += 1
