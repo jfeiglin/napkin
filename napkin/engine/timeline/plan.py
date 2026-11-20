@@ -1443,8 +1443,12 @@ class Plan:
                         self.fail(f'{solver.origin}: {each[1]} has two writers: {taken} and {sid}')
                     elif taken == sid:
                         continue  # named again, by an input: the solver is its one writer
-                    elif found is not None and found.kind == RATE and found.node is None:
+                    elif found is not None and found.kind == RATE:
                         flow = each[1].rsplit('.', 1)[0]
+                        # RATE is the independent coordinate of a flow. Its optional expression is
+                        # the local sharing of a boundary pipe; the solver now supplies its rate.
+                        if found.node is not None:
+                            self.values[each[1]] = replace(found, node=None)
                         self.solved_flows[flow] = sid
                         flows.append(flow)
                     elif found is not None and found.kind == STATE and not found.boolean:
