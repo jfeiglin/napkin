@@ -1,0 +1,544 @@
+"""Stages read the rates of the last sharing at their time (PLAN, change 27).
+
+Each small model copies one rate in the changing stage, a later stage of the round, after zero
+hours and one hour later. The answers come from the requests and limits below. A second pipe
+makes an edit at a stop visible in the next round. The interpreter and both ways of resuming the
+engine must give each answer. Cases with a firing pass the rate as an argument as well.
+"""
+
+import random
+from fractions import Fraction as F
+
+import pytest
+
+from napkin.engine import read, run
+from napkin.engine.timeline import Plan, Run, resume
+from napkin.program.build import (
+    SINK,
+    SOURCE,
+    Builder,
+    after,
+    assign,
+    endpoint,
+    event,
+    flow,
+    fmin,
+    formula,
+    ifelse,
+    input_,
+    legs,
+    local,
+    move,
+    named,
+    param,
+    priority,
+    q,
+    reset_when,
+    start,
+    t,
+    this,
+    value,
+    when,
+)
+from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
+from napkin.program.config import Configuration, Request
+from napkin.program.record import Key
+from tests.engine.test_solvers import UNITS, staffing
+from tests.reference.from_program import run_of, value_at
+
+STOP = 'ops.change.step[0]'
+SETTING = Key('tap', ('setting',))
+KINDS = (
+    'request',
+    'capacity',
+    'allocation',
+    'store',
+    'move',
+    'join',
+    'leave',
+    'fire',
+    'key',
+    'switch',
+    'time',
+    'moving store',
+    'legs',
+)
+
+
+def rate(number):
+    return q(number, 'L/h')
+
+
+def key(path):
+    owner, *steps = path.split('.')
+    return Key(owner, tuple(steps))
+
+
+def check(program, horizon, expected, stop=None, origin=STOP):
+    """Check every named observation against its hand-worked answer on both runtimes."""
+    configuration = Configuration(Request(horizon))
+    stops = [(origin, None, [stop])] if stop else []
+    oracle, failure = run_of(program, configuration, stops)
+    if stop:
+        made = Run(Plan.of(program, configuration), (Breakpoint(origin),))
+        paused = made.run()
+        assert isinstance(paused, Checkpoint), paused
+        edited = made.edit(*stop)
+        records = (made.resume(), resume(program, loads(dumps(edited))))
+    else:
+        records = (run(program, configuration),)
+    assert [failure, *(rec.failure for rec in records)] == [None] * (len(records) + 1)
+    for path, at, answer in expected:
+        target = key(path)
+        assert value_at(oracle, program, target, F(at)) == answer, (path, at)
+        for rec in records:
+            (found,) = read(rec, program, [target], [at])[0].values
+            assert found == pytest.approx(float(answer), abs=1e-8), (path, at)
+
+
+def model(kind, seed):
+    """One store of water and two claims on its outflow, with one change at 2 h."""
+    rng = random.Random(seed)
+    a, b = rng.randint(2, 5), rng.randint(1, 3)
+    tank, ops, tap = named('tank'), named('ops'), named('tap')
+    builder = Builder(UNITS)
+    builder.entity(
+        'tap',
+        value('setting', 'L/h', b),
+        flow('pipe', SOURCE, SINK, request=formula(this.setting), unit='L/h'),
+    )
+    unit, picked = 'L/h', tank.main.actual_rate
+    capacity, request = a + b, rate(a)
+    claims = [flow('garden', this.water, SINK, request=rate(b))]
+    changes, parts, setup = [], [], []
+    peer_reads, next_reads, extra_answers = [], [], []
+    before, shared = a, a
+    if kind == 'request':
+        changes.append(assign(tank.garden.request, rate(2 * b)))
+        shared = F(a * (a + b), a + 2 * b)
+    elif kind in ('capacity', 'allocation'):
+        capacity = a
+        before = F(a * a, a + b)
+        if kind == 'capacity':
+            changes.append(assign(tank.water.outflow.capacity, rate(a + b)))
+        else:
+            changes.append(assign(tank.water.outflow.allocation, priority(tank.main)))
+    elif kind in ('store', 'move'):
+        builder.entity('stock', value('level', 'L', a, lower=0), value('bucket', 'L', 0, lower=0))
+        stock = named('stock')
+        request = formula(stock.level * q(1, '1/h'))
+        changes.append(
+            assign(stock.level, q(0, 'L')) if kind == 'store' else move(q(a, 'L'), stock.level, stock.bucket)
+        )
+        shared = 0
+    elif kind in ('join', 'leave', 'fire'):
+        # The occurrence makes a second claim of b on the outlet's a units.
+        capacity, claims = a, []
+        triggers = []
+        if kind == 'fire':
+            triggers = [when(t >= q(2, 'h'), start(this.deliver), reset=reset_when(False))]
+            parts.extend(
+                (
+                    event(
+                        'note',
+                        param('got', 'L/h'),
+                        after(q(0, 'h'), assign(ops.noted, local.got)),
+                        when(t >= q(2, 'h'), start(this.note, picked), reset=reset_when(False)),
+                    ),
+                    value('noted', 'L/h', -1),
+                )
+            )
+        parts.insert(
+            0,
+            event(
+                'deliver',
+                flow('pipe', tank.water, SINK, request=rate(b)),
+                flow('tap', SOURCE, SINK, request=rate(b), unit='L/h'),
+                after(q(2, 'h')),
+                *triggers,
+            ),
+        )
+        together = F(a * a, a + b)
+        if kind == 'leave':
+            setup.append(start(ops.deliver))
+            before = together
+        else:
+            shared = together
+            if kind == 'join':
+                changes.append(start(ops.deliver))
+        if kind != 'fire':
+            delivery = ops.deliver.occurrences.at(t)
+            parts.extend(
+                value(name, 'L/h', -1) for name in ('member', 'member_next', 'outside', 'outside_next')
+            )
+            peer_reads.extend(
+                (assign(ops.member, delivery.pipe.actual_rate), assign(ops.outside, delivery.tap.actual_rate))
+            )
+            next_reads.extend(
+                (
+                    assign(ops.member_next, delivery.pipe.actual_rate),
+                    assign(ops.outside_next, delivery.tap.actual_rate),
+                )
+            )
+            member_share = F(a * b, a + b)
+            extra_answers.extend(
+                (
+                    ('ops.member', 2, member_share if kind == 'leave' else 0),
+                    ('ops.member_next', 2, 0 if kind == 'leave' else member_share),
+                    ('ops.outside', 2, b if kind == 'leave' else 0),
+                    ('ops.outside_next', 2, 0 if kind == 'leave' else b),
+                )
+            )
+    elif kind == 'time':
+        # This pipe is unrestricted so its rate at 2 h is exactly twice its slope.
+        builder.entity(
+            'clock',
+            value('volume', 'L', 0, lower=0),
+            flow('feed', SOURCE, this.volume, request=formula(t * q(a, 'L/h/h'))),
+        )
+        picked = named('clock').feed.actual_rate
+        changes.append(assign(named('clock').feed.request, rate(b)))
+        before, shared = 2 * a, b
+    elif kind == 'moving store':
+        # The gauge's water increases by 1 L each hour, including the hour after the write.
+        gauge = named('gauge')
+        builder.entity(
+            'gauge',
+            value('water', 'L', a, lower=0),
+            flow('fill', SOURCE, this.water, request=rate(1)),
+            flow('meter', SOURCE, SINK, unit='L/h', request=formula(this.water * q(1, '1/h'))),
+        )
+        picked = gauge.meter.actual_rate
+        changes.append(assign(gauge.water, q(b, 'L')))
+        before, shared = a + 2, b
+    elif kind in ('key', 'switch'):
+        if kind == 'key':
+            rows = builder.template('Reading', input_('hour', 'h', 0), input_('factor', '', 1))
+            builder.table('readings', rows, ({'hour': 0, 'factor': a}, {'hour': 2, 'factor': 1}))
+            request = formula(rows.instances.by('hour').at(t).factor * rate(1))
+        else:
+            request = formula(ifelse(t < q(2, 'h'), rate(a), rate(1)))
+        shared = 1
+    else:
+        # Doubling the first leg's request halves the fraction served at the limited outlet.
+        claims = [
+            legs(
+                'pair',
+                flow('one', this.water, SINK, request=rate(a)),
+                flow('two', SOURCE, this.received, request=rate(b)),
+            )
+        ]
+        capacity, request = a, rate(0)
+        changes.extend(
+            (assign(tank.pair.one.request, rate(2 * a)), assign(ops.leg, tank.pair.one.actual_rate))
+        )
+        parts.extend(
+            (
+                value('leg', 'L/h', -1),
+                value('incoming', 'L/h', formula(tank.received.inflow.actual_rate)),
+                value('endpoint', 'L/h', -1),
+                value('endpoint_next', 'L/h', -1),
+            )
+        )
+        peer_reads.append(assign(ops.endpoint, ops.incoming))
+        next_reads.append(assign(ops.endpoint_next, ops.incoming))
+        extra_answers.extend((('ops.leg', 2, a), ('ops.endpoint', 2, b), ('ops.endpoint_next', 2, F(b, 2))))
+        if seed % 2:
+            unit, picked, before, shared = '', tank.pair.served_fraction, 1, F(1, 2)
+        else:
+            picked, before, shared = tank.pair.two.actual_rate, b, F(b, 2)
+    builder.entity(
+        'tank',
+        value('water', 'L', 100, lower=0, outflow=endpoint(capacity=rate(capacity))),
+        value('received', 'L', 0, lower=0),
+        flow('main', this.water, SINK, request=request),
+        *claims,
+    )
+    builder.entity(
+        'ops',
+        value('same', unit, -1),
+        value('peer', unit, -1),
+        value('next', unit, -1),
+        value('later', unit, -1),
+        value('mixed', 'L/h', formula(tap.pipe.actual_rate + tap.setting)),
+        value('copy', 'L/h', -1),
+        value('tap_after', 'L/h', -1),
+        *parts,
+        event('change', after(q(2, 'h'), *changes, assign(this.same, picked), assign(this.copy, this.mixed))),
+        event(
+            'look',
+            after(q(2, 'h'), assign(this.peer, picked), *peer_reads),
+            after(
+                q(0, 'h'),
+                assign(this.next, picked),
+                assign(this.tap_after, tap.pipe.actual_rate),
+                *next_reads,
+            ),
+            after(q(1, 'h'), assign(this.later, picked)),
+        ),
+    )
+    builder.setup(*setup, start(ops.change), start(ops.look))
+    expected = [
+        *extra_answers,
+        ('ops.same', 2, before),
+        ('ops.peer', 2, before),
+        ('ops.next', 2, before if kind == 'fire' else shared),
+        ('ops.later', 3, shared + 1 if kind == 'moving store' else shared),
+    ]
+    if kind == 'fire':
+        expected.append(('ops.noted', 2, before))
+    return builder.finish(), expected, b
+
+
+def compare(kind, seed):
+    program, observations, initial = model(kind, seed)
+    for edit in (None, (SETTING, initial + 1)):
+        setting = initial if edit is None else edit[1]
+        expected = [*observations, ('ops.copy', 2, initial + setting), ('ops.tap_after', 2, setting)]
+        check(program, 3, expected, edit)
+
+
+@pytest.mark.parametrize('kind', KINDS)
+@pytest.mark.parametrize('seed', [0, 1])
+def test_stages_and_firings_read_the_rates_of_their_round(kind, seed):
+    compare(kind, seed)
+
+
+@pytest.mark.deep
+@pytest.mark.parametrize('seed', range(2, 46))
+def test_more_rounds_with_writes_and_changes_of_their_own(seed):
+    compare(KINDS[seed % len(KINDS)], seed)
+
+
+def test_clinic_and_garden_share_again_after_the_stages():
+    builder = Builder(UNITS)
+    builder.entity(
+        'tank',
+        value('water', 'L', 100, lower=0, outflow=endpoint(capacity=rate(6))),
+        flow('clinic', this.water, SINK, request=rate(4)),
+        flow('garden', this.water, SINK, request=rate(2)),
+        value('same', 'L/h', -1),
+        value('next', 'L/h', -1),
+        event(
+            'raise_garden',
+            after(
+                q(2, 'h'), assign(this.garden.request, rate(6)), assign(this.same, this.clinic.actual_rate)
+            ),
+            after(q(0, 'h'), assign(this.next, this.clinic.actual_rate)),
+        ),
+    )
+    builder.setup(start(named('tank').raise_garden))
+    check(
+        builder.finish(),
+        3,
+        [
+            ('tank.same', 2, 4),
+            ('tank.next', 2, F(12, 5)),
+            ('tank.clinic.actual_rate', 1, 4),
+            ('tank.clinic.actual_rate', 2, F(12, 5)),
+            ('tank.clinic.actual_rate', 3, F(12, 5)),
+        ],
+    )
+
+
+def test_the_next_staffing_delay_uses_56_hours():
+    builder = Builder(UNITS)
+    builder.entity(
+        'office',
+        value('staff_hours', 'h', 100),
+        value('outreach_minimum', 'h', formula(F(3, 10) * this.staff_hours)),
+        staffing(),
+        value('same', 'h', -1),
+        value('done', 'h', -1),
+        event(
+            'cut',
+            after(q(1, 'h'), assign(this.staff_hours, q(80, 'h')), assign(this.same, this.staffing.care)),
+            after(this.staffing.care, assign(this.done, t)),
+        ),
+    )
+    builder.setup(start(named('office').cut))
+    check(
+        builder.finish(),
+        58,
+        [
+            ('office.same', 1, 70),
+            ('office.staffing.care', 1, 56),
+            ('office.done', 56, -1),
+            ('office.done', 57, 57),
+        ],
+    )
+
+
+def test_an_endpoint_rate_in_setup_still_stops_by_name():
+    """The initial sharing is after setup. Even an outlet with a pipe has no shared rate yet."""
+    builder = Builder(UNITS)
+    builder.entity(
+        'tank',
+        value('water', 'L', 8, lower=0),
+        flow('pipe', this.water, SINK, request=rate(3)),
+        value('seen', 'L/h', -1),
+    )
+    tank = named('tank')
+    builder.setup(assign(tank.seen, tank.water.outflow.actual_rate))
+    program = builder.finish()
+    configuration = Configuration(Request(1))
+    oracle, failed = run_of(program, configuration)
+    record = run(program, configuration)
+    # The old calculation names the pipe that supplies this endpoint's rate.
+    names = ('tank.water.outflow.actual_rate', 'tank.pipe.actual_rate')
+    assert failed is not None and any(name in str(failed) for name in names)
+    assert oracle is None or oracle.view.t == 0
+    assert record.failure is not None and record.failure.t == 0
+    assert any(name in record.failure.detail('message') for name in names)
+
+
+@pytest.mark.parametrize(
+    'kind', ['time <', 'time <=', 'store <', 'store <=', 'two stores <', 'two stores <=', 'key']
+)
+def test_an_outside_pipe_reads_the_incoming_side_of_a_switch_or_key(kind):
+    """An outside pipe delivers 4 L/h before the switch at 2 h and 1 L/h from it on."""
+    builder = Builder(UNITS)
+    if kind == 'key':
+        rows = builder.template('Reading', input_('hour', 'h', 0), input_('factor', '', 1))
+        builder.table('readings', rows, ({'hour': 0, 'factor': 4}, {'hour': 2, 'factor': 1}))
+        request = formula(rows.instances.by('hour').at(t).factor * rate(1))
+    else:
+        if kind.startswith('two stores'):
+            # 98 + 2t and 100 + t reach 102 L together at 2 h. The first then overtakes the second.
+            for name, initial, fill in [('fast', 98, 2), ('slow', 100, 1)]:
+                builder.entity(
+                    name,
+                    value('level', 'L', initial, lower=0),
+                    value('setting', 'L/h', fill),
+                    flow('fill', SOURCE, this.level, request=formula(this.setting)),
+                )
+            reading, threshold = named('fast').level, named('slow').level
+        elif kind.startswith('store'):
+            builder.entity(
+                'gauge', value('level', 'L', 100, lower=0), flow('fill', SOURCE, this.level, request=rate(1))
+            )
+            reading, threshold = named('gauge').level, q(102, 'L')
+        else:
+            reading, threshold = t, q(2, 'h')
+        before = reading <= threshold if kind.endswith('<=') else reading < threshold
+        request = formula(ifelse(before, rate(4), rate(1)))
+    builder.entity(
+        'tap',
+        flow('pipe', SOURCE, SINK, request=request, unit='L/h'),
+        value('before', 'L/h', -1),
+        value('afterward', 'L/h', -1),
+        event(
+            'copy',
+            after(q(2, 'h'), assign(this.before, this.pipe.actual_rate)),
+            after(q(0, 'h'), assign(this.afterward, this.pipe.actual_rate)),
+        ),
+    )
+    builder.setup(start(named('tap').copy))
+    program = builder.finish()
+    expected = [
+        ('tap.before', 2, 4),
+        ('tap.afterward', 2, 1),
+        ('tap.pipe.actual_rate', 1, 4),
+        ('tap.pipe.actual_rate', 2, 1),
+        ('tap.pipe.actual_rate', 3, 1),
+    ]
+    check(program, 3, expected)
+    if kind.startswith('two stores'):
+        # Halving the slow fill at the stop leaves the crossing in place and gives 102½ L at 3 h.
+        check(
+            program,
+            3,
+            [*expected, ('slow.level', 3, F(205, 2))],
+            (key('slow.setting'), 0.5),
+            origin='tap.copy.step[0]',
+        )
+
+
+@pytest.mark.parametrize('source', ['clock', 'table'])
+@pytest.mark.parametrize(('at', 'following'), [(F(2), 0), (F(2) - F(1, 100000), 3)])
+def test_the_rate_shared_when_a_switched_fill_meets_its_bound(at, following, source):
+    """2 + 5 × 1 + 3 × 1 = 10 L at 2 h. Just before that time the 3 L/h still fits."""
+    builder = Builder(UNITS)
+    builder.entity('tank', value('water', 'L', 2, lower=0, upper=10))
+    water = named('tank').water
+    if source == 'clock':
+        request = formula(fmin(rate(3), ifelse(t >= q(1, 'h'), rate(1), rate(3))))
+    else:
+        rows = builder.template('Reading', input_('hour', 'h', 0), input_('factor', '', 1))
+        builder.table('readings', rows, ({'hour': 0, 'factor': 3}, {'hour': 1, 'factor': 1}))
+        request = formula(rows.instances.by('hour').at(t).factor * rate(1))
+    builder.entity('pipe', flow('fill', SOURCE, water, request=request))
+    builder.entity('pump', flow('fill', SOURCE, water, request=rate(2)))
+    builder.entity(
+        'ops',
+        value('before', 'L/h', -1),
+        value('afterward', 'L/h', -1),
+        event(
+            'look',
+            after(q(at, 'h'), assign(this.before, water.inflow.actual_rate)),
+            after(q(0, 'h'), assign(this.afterward, water.inflow.actual_rate)),
+        ),
+    )
+    builder.setup(start(named('ops').look))
+    check(
+        builder.finish(),
+        3,
+        [
+            ('ops.before', at, 3),
+            ('ops.afterward', at, following),
+            ('tank.water.inflow.actual_rate', at, following),
+        ],
+    )
+
+
+def test_a_new_request_formula_changes_the_rate_after_this_round():
+    """At 2 h the first pipe is carrying 1 + 2 L/h. Its new request is 1 L/h."""
+    builder = Builder(UNITS)
+    builder.entity(
+        'tank',
+        value('water', 'L', 100, lower=0),
+        flow('first', this.water, SINK, request=formula(rate(1) + t * q(1, 'L/h/h'))),
+        flow('second', this.water, SINK, request=rate(3)),
+        value('before', 'L/h', -1),
+        value('afterward', 'L/h', -1),
+        event('cut', after(q(2, 'h')), after(q(0, 'h'), assign(this.first.request, formula(rate(1))))),
+        event(
+            'copy',
+            after(q(2, 'h')),
+            after(q(0, 'h'), assign(this.before, this.first.actual_rate)),
+            after(q(0, 'h'), assign(this.afterward, this.first.actual_rate)),
+        ),
+    )
+    tank = named('tank')
+    builder.setup(start(tank.cut), start(tank.copy))
+    program = builder.finish()
+    expected = [('tank.before', 2, 3), ('tank.afterward', 2, 1)]
+    check(program, 3, expected)
+    check(program, 3, expected, (Key('tank', ('water',)), 60), origin='tank.copy.step[1]')
+
+
+@pytest.mark.parametrize('filling', [False, True], ids=['empty', 'full'])
+@pytest.mark.parametrize(('first', 'amount', 'contact'), [(2, 2, 1), (3, 8, 3)])
+@pytest.mark.parametrize('early', [False, True])
+def test_a_firing_reads_the_sharing_at_a_tanks_bound(first, amount, contact, early, filling):
+    """Moving 2 L takes 1 h at 2 L/h. Moving 8 L takes 3 h at 3 L/h for 2 h and 2 L/h after."""
+    builder = Builder(UNITS)
+    at = F(contact) - (F(1, 100000) if early else 0)
+    source, sink = (SOURCE, this.water) if filling else (this.water, SINK)
+    builder.entity(
+        'tank',
+        value('water', 'L', 10 - amount if filling else amount, lower=0, upper=10),
+        flow('pipe', source, sink, request=formula(ifelse(t < q(2, 'h'), rate(first), rate(2)))),
+    )
+    pipe = named('tank').pipe
+    builder.entity(
+        'ops',
+        value('noted', 'L/h', -1),
+        event(
+            'note',
+            param('got', 'L/h'),
+            when(t >= q(at, 'h'), start(this.note, pipe.actual_rate), reset=reset_when(False)),
+            after(q(0, 'h'), assign(this.noted, local.got)),
+        ),
+    )
+    check(builder.finish(), 4, [('ops.noted', at, 2 if early else 0)])

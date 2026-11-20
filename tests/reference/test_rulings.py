@@ -443,9 +443,8 @@ def test_21_retirement():
         run(m, 2)
 
 
-def test_22_stale_result():
-    """Overturned by D5: a stage that reads the staffing result after another stage of the same round
-    changed its inputs fails; it does not get the last settled 70 h with a warning."""
+def test_22_round_start_result():
+    """Change 27: the reading stage sees 70 h from the last settlement. The round settles to 56 h."""
     m = Model()
     m.entity(
         'clinic',
@@ -461,8 +460,9 @@ def test_22_stale_result():
         solvers=[staffing()],
     )
     m.setup = [start(N.clinic.cut), start(N.clinic.look)]
-    with pytest.raises(RunFailed, match='read before its solve settles'):
-        run(m, 2)
+    r = run(m, 2)
+    assert r.read(N.clinic.seen, 1) == 70
+    assert r.read(N.clinic.staffing.care, 1) == 56
 
 
 def mixed(unit):

@@ -551,8 +551,9 @@ class Plan:
         self.results = {}  # a value of kind RESULT -> the id of the solver that determines it
         self.solved_flows = {}  # a flow whose rate a declared solver determines -> its id
         # The actual rate of a directed flow from SOURCE to SINK -> its `Flow`: a formula of its
-        # settings, which the settling decides as it decides every rate (`ways.Ways.fresh`).
+        # settings, which the settling decides as it decides every rate.
         self.outside = {}
+        self.shared = set()  # calculated leg, endpoint and outside rates, read as whole answers
         self._settings_index = ({}, {})
         # With flows of events, every endpoint's collection of flows changes in a run.
         self.dynamic_ends = any(
@@ -988,6 +989,7 @@ class Plan:
                 made = Connection(name_of(Key(owner, steps)), *ends, request, capacity, leg.unit, LEG)
                 rate = Key(owner, (*steps, 'actual_rate'))
                 node = nodes.binary('mul', nodes.ref(fraction), nodes.ref(request))
+                self.shared.add(name_of(rate))
                 self._add(Value(name_of(rate), rate, FORMULA, node, leg.unit))
                 self._parts[made.name] = (LEG, made)
                 self._numbers[made.name] = len(self._numbers) + 1
@@ -1009,6 +1011,8 @@ class Plan:
                     part = nodes.ref(signed) if leg.role == FORWARD else nodes.unary('neg', nodes.ref(signed))
                     key = Key(owner, (flow.name, leg.role, which))
                     node = nodes.call('max', [part, nodes.const(0.0)])
+                    if which == 'actual_rate':
+                        self.shared.add(name_of(key))
                     self._add(Value(name_of(key), key, FORMULA, node, flow.unit))
                 self._parts[leg.name] = (leg.role, leg)
                 self._numbers[leg.name] = len(self._numbers) + 1
@@ -1020,6 +1024,7 @@ class Plan:
         if made.source is None and made.sink is None:
             # Nothing to move: the actual rate is what the flow asks.
             self._add(Value(name_of(rate), rate, FORMULA, made.rate, flow.unit))
+            self.shared.add(name_of(rate))
             self.outside[name_of(rate)] = made
         else:
             self._add(Value(name_of(rate), rate, RATE, None, flow.unit))
@@ -1255,6 +1260,7 @@ class Plan:
 
             self._declared.append(make)
         rate = Key(owner, (value.name, side, 'actual_rate'))
+        self.shared.add(name_of(rate))
         if self.dynamic_ends:
             # The flows present at the endpoint change in a run: its actual rate is their sum then.
             spelling = f'{store}.{side}.actual_rate'

@@ -321,6 +321,18 @@ These override the text of this plan below, wherever the two differ. The owner's
    answer, to settle a moment's own changes before its stages, would also change the answer that
    the owner gave for a store at its bound.
 
+27. **Rates and results read as the round began (owner, 2026-11-20).** This replaces the read
+   errors of changes 25 and 26 and of G0 D5. Every reader sees the last re-share’s rates and solver
+   results, including through formulas. Only the first round at a new time reads the incoming rate
+   at that time. Writes, moves, allocations, edits, starts, finishes, bounds, switches and keyed
+   steps reach the rates at the re-share after the stages. A flow that joined reads zero until
+   then. A flow that left keeps its share until then. Ordinary writes stay sequential. Firings
+   read the re-share before them. A stage after `after 0 h:` reads the preceding round’s new share
+   at the same time. In the clinic and garden example the stage gets 4 L/h, the next round gets
+   2.4 L/h, and the record gives 2.4 L/h from 2 h. Setup still has no rate or result to give.
+   A result-dependent delay uses the new share and a delay reached during conditions waits for
+   the next re-share (spec, “Reading a result” and “Time, waiting and completion”).
+
 ### If the session is cut off
 
 Everything that matters is in the repository, pushed. The working memory of an agent is not: it

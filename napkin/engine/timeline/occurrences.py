@@ -139,6 +139,7 @@ class Occurrences:
         t = run.now
         found = self.of_event.setdefault((member, event), [])
         self._limits(member, event, found)
+        run.shared.remember_members(('occurrences', member, event))
         made = plan.occurrence(member, event, len(found), args, t)
         plan.log.append(('occurrence', member, event, len(found), tuple(args), t))
         self.made += 1
@@ -159,9 +160,8 @@ class Occurrences:
             run.flow_joins(flow)
         for rate in made.formulas:
             if rate in plan.outside:
-                # A flow from SOURCE to SINK joins with its occurrence too: its rate settles after the
-                # stages of the round (`ways.Ways.fresh`).
-                run.changed.add(('joined', rate))
+                # Its first rate will be published after these stages or firings.
+                run.shared.writes[rate] = 0.0
         run.recorder.entry(t, 'start', made.event.origin, made.id, args=tuple(args))
         run.changed.add(('occurrences', member, event))
         if run.moment.phase == 'conditions':
@@ -285,10 +285,12 @@ class Occurrences:
         key = (node, plan.version)  # a definition that a commit gives changes what a node reads
         found = self._delays.get(key)
         if found is None:
-            leaves = plan.reads_now(plan.expansion(node)).leaves
-            found = self._delays[key] = frozenset(
+            expanded = plan.reads_now(plan.expansion(node))
+            leaves = expanded.leaves
+            found = frozenset(
                 leaf for leaf in leaves if leaf in plan.values and plan.values[leaf].kind in (RATE, RESULT)
-            )
+            ) | (plan.shared & (leaves | expanded.formulas))
+            self._delays[key] = found
         return found
 
     def _captured(self, node, computed):
@@ -323,7 +325,12 @@ class Occurrences:
                         raise found
                     return found
                 value = plan.values.get(name)
-                if value is not None and value.kind == FORMULA and name not in run.frozen:
+                if (
+                    value is not None
+                    and value.kind == FORMULA
+                    and name not in run.frozen
+                    and name not in plan.shared
+                ):
                     return lazily(value.node, read, plan.units, run.now)
                 return run.value(name)
 
@@ -484,6 +491,7 @@ class Occurrences:
                 frozen = Unavailable(
                     f'{name} was not available when {made.id} finished at t = {t:g} h: {problem}'
                 )
+            run.shared.unfrozen.add(name)
             run.frozen[name] = frozen
             run.recorder.add(name, t, frozen, 0.0)
         for flow in made.flows:
@@ -495,6 +503,7 @@ class Occurrences:
             store for store in made.stores if any(plan.incident(store, side) for side in SIDES)
         )
         for name, value in ((f'{made.id}.done', True), (f'{made.id}.active', False)):
+            run.shared.remember(name)
             run.env[name] = value
             run.recorder.add(name, t, value, 0.0)
             run.changed.add(name)

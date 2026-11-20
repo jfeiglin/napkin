@@ -44,7 +44,7 @@ ring and rank in no class.
 the moment, and the times at which a rate input or a store bound asks for a new settlement.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from fractions import Fraction
 
 from .errors import Diagnostic, NotCovered, RunFailed
@@ -62,7 +62,6 @@ class Component:
     flows: list
     sols: list
     key: frozenset = None
-    deps: set = field(default_factory=set)
     busy: bool = False
     done: bool = False
     released: frozenset = frozenset()  # (store, 'lo' or 'hi'): a bound that its solve does not hold
@@ -84,10 +83,10 @@ def stores_of(flow):
     return {cell for c in connections(flow) for cell in (c.src, c.dst) if cell is not None}
 
 
-def incident(view, end):
+def incident(flows, end):
     """The connections of `store.outflow` or `store.inflow` that are present, in creation order."""
     found = []
-    for f in view.live:
+    for f in flows:
         for c in connections(f):
             if (c.src if end.side == 'outflow' else c.dst) == end.cell:
                 found.append((c, f))
@@ -98,7 +97,7 @@ def incident(view, end):
 
 
 def _targets(x, entry):
-    if isinstance(x, Res):
+    if isinstance(x, Res) and not isinstance(x.var[1], (End, LegRT)):
         return [x.var]
     if isinstance(x, Cell):
         return [('cell', x)]
@@ -107,11 +106,9 @@ def _targets(x, entry):
     raise Diagnostic(f'solve_for {show(entry)}: not a rate, a served fraction or a stored field')
 
 
-def structure(run):
-    """The components of this instant. Flows that share a store are one calculation, and so are
-    the unknowns of one declared solver."""
+def declarations(run):
+    """Each solver, its scope and the results it determines at this instant."""
     view = run.view
-    sols, owner = [], {}
     for ent in run.ents.values():
         for decl in ent.template.solvers:
             sol = Sol(ent, decl.name)
@@ -124,11 +121,19 @@ def structure(run):
                     claimed.append(('local', sol, entry.name))
                 else:
                     claimed += _targets(Ev(run, view, scope).ref(entry), entry)
-            for v in claimed:
-                if v in owner:
-                    raise Diagnostic(f'{label(v)} has two writers: {label(owner[v])} and {label(sol)}')
-                owner[v] = sol
-            sols.append((sol, decl, scope, claimed))
+            yield sol, decl, scope, claimed
+
+
+def structure(run):
+    """The components of this instant. Flows that share a store are one calculation, and so are
+    the unknowns of one declared solver."""
+    view = run.view
+    sols, owner = list(declarations(run)), {}
+    for sol, _, _, claimed in sols:
+        for v in claimed:
+            if v in owner:
+                raise Diagnostic(f'{label(v)} has two writers: {label(owner[v])} and {label(sol)}')
+            owner[v] = sol
     parent = {}
 
     def find(v):
@@ -183,12 +188,16 @@ def settle(run):
     run.components = comps
     run.component_of = {v: c for c in comps for v in c.vars}
     run.solved_cells = {v[1] for c in comps for v in c.vars if v[0] == 'cell'}
+    previous, run.view.results = run.view.results, {}
     run.settling = True
     try:
         for comp in comps:
             if not comp.done:
                 solve(run, comp)
         _moving(run, comps)
+    except (RunFailed, NotCovered):
+        run.view.results = previous
+        raise
     finally:
         run.settling = None
 
@@ -207,7 +216,7 @@ def _moving(run, comps):
             changed = [
                 comp
                 for comp in comps
-                if (view.levels or view.rates) and _after(run, comp)[0]['signature'] != comp.signature
+                if (view.levels or view.rates) and _after(run, comp)['signature'] != comp.signature
             ]
             for comp in changed:
                 comp.done = False
@@ -255,7 +264,7 @@ def solve(run, comp):
     answer and its releases: it serves again where the problem is that one, as assembled or with the
     bounds released that the cached answer moves off. The solve is noted once."""
     comp.busy = True
-    problem, ev = _after(run, comp)
+    problem = _after(run, comp)
     answer = _cached(run, comp, problem)
     if answer is None:
         answer = _select(run, comp, problem)
@@ -265,7 +274,7 @@ def solve(run, comp):
                 break
             before = comp.released
             comp.released = before | leaving
-            trial, _ = _after(run, comp)
+            trial = _after(run, comp)
             found = _select(run, comp, trial)
             back = _moved(trial, found, leaving, inward=False)
             if back:
@@ -287,23 +296,19 @@ def solve(run, comp):
         run._note('solve', who, origin=comp.sols[0][1].origin if comp.sols else '')
     else:
         comp.signature = run.cache[comp.key][0]  # served again: the problem that it settled on
-    comp.deps = set(ev.shared.reads) | problem['stores']
-    for var in ev.shared.results:  # a result of another calculation brings that calculation's inputs
-        other = run.component_of.get(var)
-        if other is not None and other is not comp:
-            comp.deps |= other.deps
-    for var, value in answer.items():
-        run.view.results[var] = value
+    run.view.results.update(answer)
+    for leg, request in problem['leg_request'].items():
+        run.view.results['rate', leg] = answer['frac', leg.flow] * request
     comp.busy, comp.done = False, True
 
 
 def _after(run, comp):
-    """The problem of a component as it holds just after the instant, and its evaluator: each setting
+    """The problem of a component as it holds just after the instant: each setting
     read in the time since the moment (mode 'germ'), at its value as that time starts, so that a
     comparison answers for the instants just after the moment. A request that moves gives its value
     at the moment (`motion` follows it)."""
     ev = Ev(run, run.view, None, mode='germ', unknowns=set(comp.vars))
-    return assemble(run, comp, ev, {}), ev
+    return assemble(run, comp, ev, {})
 
 
 def _cached(run, comp, problem):
@@ -318,7 +323,7 @@ def _cached(run, comp, problem):
     leaving = _moved(problem, cached[1], _one_bound(run.view, problem, comp), inward=True)
     if leaving:
         comp.released = frozenset(leaving)
-        if _after(run, comp)[0]['signature'] == cached[0]:
+        if _after(run, comp)['signature'] == cached[0]:
             return cached[1]
         comp.released = frozenset()
     return None
@@ -671,6 +676,7 @@ def assemble(run, comp, ev, follow=None):
         tiers.setdefault(place, []).append((amount, r))
     tiers = [tiers[k] for k in sorted(tiers)]
     signature = (
+        tuple(sorted((leg.label, request) for leg, request in leg_request.items())),
         tuple(sorted((r.op, _canon(r.lin)) for r in rows)),
         tuple(_canon(o) for o, _ in objectives),
         tuple(tuple(sorted((_canon(a), r) for a, r in tier)) for tier in tiers),
@@ -684,7 +690,7 @@ def assemble(run, comp, ev, follow=None):
         'prefs': prefs,
         'groups': [flow_targets, other_targets],
         'signature': signature,
-        'stores': set(at_store),
+        'leg_request': leg_request,
         'nets': nets,
     }
 
@@ -851,15 +857,16 @@ def _rises(view, f, request):
 # --- between two moments -----------------------------------------------------------------------------
 
 
-def _carried(run):
-    """The motion after this moment of the published rates: (the level of each store that moves, as a
-    polynomial in the time since the moment; the rate of each flow that follows a moving request;
-    each moving flow as (source, sink, its rate, its label); and the moving requests that the first
-    look finds, with every store held still)."""
+def _carried(run, follow=None):
+    """The motion after this moment of the published rates. Give the level of each moving store,
+    the rate of each flow that follows a moving request, the transfers for the ledger, and those
+    requests. The first look reads requests with stores held still. Later looks use the supplied
+    polynomials."""
     view = run.view
-    follow = {}
-    for comp in run.components:  # first look: which requests move, with every store held still
-        assemble(run, comp, Ev(run, view, None, mode='germ', unknowns=set(comp.vars)), follow)
+    if follow is None:
+        follow = {}
+        for comp in run.components:
+            assemble(run, comp, Ev(run, view, None, mode='germ', unknowns=set(comp.vars)), follow)
     net, moving, rates = {}, [], {}
 
     def carry(src, dst, p, name):
@@ -869,17 +876,10 @@ def _carried(run):
                 if cell is not None:
                     net[cell] = net.get(cell, Poly([0])) + q
 
-    here = Ev(run, view, None)
     for f in view.live:
         if f.kind == 'legs':
-            fraction = view.results.get(('frac', f), Fraction(0))
             for one in f.legs.values():
-                carry(
-                    one.src,
-                    one.dst,
-                    Poly([fraction * here.fork(f.scope).cell(Cell(one, 'request'))]),
-                    one.label,
-                )
+                carry(one.src, one.dst, Poly([view.results['rate', one]]), one.label)
             continue
         rate = view.results.get(('rate', f), Fraction(0))
         p = follow.get(f)
@@ -913,17 +913,29 @@ def motion(run):
     view = run.view
     view.levels, view.rates = {}, {}
     view.levels, view.rates, moving, follow = _carried(run)
-    stops = []
-    for comp in run.components:  # second look, with the stores moving: nothing else may move
-        again = {}
-        ev = Ev(run, view, None, mode='germ', unknowns=set(comp.vars))
-        assemble(run, comp, ev, again)
-        stops += ev.shared.stops
-        for f in comp.flows:
-            if (again.get(f) is None) != (follow.get(f) is None) or (
-                f in again and again[f].c != follow[f].c
-            ):
-                raise NotCovered(f'{f.label}: a request that reads a store while that store moves')
+    # A request can follow a store that another flow moves. Each pass carries an exact polynomial
+    # one flow further. When the polynomials agree, their integrals give the stated store levels.
+    for depth in range(len(view.live) + 1):
+        stops, again = [], {}
+        for comp in run.components:
+            ev = Ev(run, view, None, mode='germ', unknowns=set(comp.vars))
+            assemble(run, comp, ev, again)
+            stops += ev.shared.stops
+        changed = next(
+            (
+                f
+                for f in view.live
+                if (f in again) != (f in follow) or (f in again and again[f].c != follow[f].c)
+            ),
+            None,
+        )
+        if changed is None:
+            break
+        if depth == len(view.live):
+            raise NotCovered(
+                f'{changed.label}: a request that reads a store while that store moves in a feedback loop'
+            )
+        view.levels, view.rates, moving, follow = _carried(run, again)
     for cell, p in view.levels.items():
         lo, hi = view.bounds.get(cell, (None, None))
         for bound, outward in ((lo, -1), (hi, 1)):

@@ -1,9 +1,9 @@
 """Declared solvers on the engine (spec: "Solver and execution contract"; G0, D5).
 
-Rounds: two writes in one round cause one solve, and a trigger that reacts to the result causes a
-second round with a second solve at the same time. Reading a result whose inputs changed in the
-round before the solve settles fails, naming the result, also through a formula and in a later stage
-of the round; reading it once it has settled does not. A solve that cannot answer stops the run
+Two writes in one round cause one solve, and a trigger that reacts to the result causes a second
+round with a second solve at the same time. All stages in a round read the last solve's results,
+directly or through formulas. The next round reads the results published after those stages
+(PLAN, change 27). A solve that cannot answer stops the run
 there, naming the solver and the step, before a trigger reads a partial answer. Flows of occurrences
 that join and leave a solver's store join and leave its problem, on the solver that the run keeps,
 and a store held at both bounds is one equality of it. A problem whose requests follow its tanks is
@@ -146,29 +146,27 @@ def test_a_write_that_leaves_the_inputs_as_they_were_solves_nothing():
 
 
 @pytest.mark.parametrize(
-    'stage',
-    [
-        (assign(this.staff_hours, q(80, 'h')), assign(this.note, this.staffing.care)),
-        (assign(this.staff_hours, q(80, 'h')), assign(this.note, this.twice_care)),
-    ],
+    ('expression', 'expected'),
+    [(this.staffing.care, 70), (this.twice_care, 140)],
     ids=['direct', 'through a formula'],
 )
-def test_a_result_read_before_its_solve_settles_fails_and_names_it(stage):
-    _, record = office(event('cut', after(q(1, 'h'), *stage)), setup=('cut',))
-    message = record.failure.detail('message')
-    assert record.failure.t == 1
-    assert 'office.staffing.care is read before its solve settles' in message
-    assert 'office.staff_hours' in message
+def test_a_stage_reads_the_last_solve_after_it_changes_an_input(expression, expected):
+    program, record = office(
+        event('cut', after(q(1, 'h'), assign(this.staff_hours, q(80, 'h')), assign(this.note, expression))),
+        setup=('cut',),
+    )
+    assert record.failure is None
+    assert values(record, program, 'office.note', (1,)) == pytest.approx((expected,))
 
 
-def test_a_later_stage_of_the_round_reads_no_stale_result_either():
-    _, record = office(
+def test_a_later_stage_of_the_round_reads_the_last_solve():
+    program, record = office(
         event('cut', after(q(1, 'h'), assign(this.staff_hours, q(80, 'h')))),
         event('copy', after(q(1, 'h'), assign(this.note, this.staffing.care))),
         setup=('cut', 'copy'),
     )
-    assert record.failure.t == 1
-    assert 'office.staffing.care is read before its solve settles' in record.failure.detail('message')
+    assert record.failure is None
+    assert values(record, program, 'office.note', (1,)) == pytest.approx((70,))
 
 
 def test_a_result_reads_as_settled_in_a_round_that_changes_none_of_its_inputs():

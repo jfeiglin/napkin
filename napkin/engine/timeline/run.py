@@ -34,22 +34,15 @@
    that moment too, and a set built there records its state with the rates that it settled; where
    the horizon is all (`bare`), the segments that end there hold their values in their pieces.
 
-The present (`value`): the value of an engine name now, or at a time inside the present window of
-the ways (`t`): a store of a set from its instance, one written by this moment's commits from what
-was written, an actual rate or a served fraction from the instance of its flow (zero for a flow that
-is in no set, or that left since the flows last settled), a formula from what it reads (a formula
-of a finished occurrence keeps its frozen value), a reduction, a keyed read and a dynamic read of a
-collection from their members (each such
-derived value computed after the derived values that it reads, on the stack of `walk.walked`, with
-no recursion: `_derived`), the time
-of the last change of a stored value at a commit (`changed_at`), and any other value from what the
-run holds between moments (`env`). A stage reads its own writes first. While the stages of a round
-run, and in its conditions, a rate or a result that the settling decides (a flow from SOURCE to
-SINK's too) is read only where nothing that it depends on changed since the flows last settled, and
-never in the setup: a stale one stops the run by name, whoever reads it (`ways.Ways.fresh`; PLAN,
-changes 25 and 26). A draw is executed when an
-expression of a stage, an entry, a delay or a firing reads it (`truth`), which reads each name as its
-evaluation asks for it.
+A stage reads its own direct writes first (`value`). A store follows its set between commits.
+Formulas, reductions, keyed reads and dynamic reads use the values and members they read
+(`_derived`, on the stack of `walk.walked`). A finished occurrence keeps its frozen formulas.
+`changed_at` gives the time of a stored value's last change. Other stored values come from `env`.
+A draw executes when an expression of a stage, an entry, a delay or a firing reads it (`truth`).
+
+Every stage and firing reads the rates and results of the last sharing at its time (PLAN, change
+27). This includes a flow from SOURCE to SINK. A flow that joins reads zero until the next sharing.
+A flow that leaves keeps its last shared rate until then. Setup precedes the first sharing.
 
 A run that fails stops there: its record holds the failure, as the last entry of its trace, and the
 histories to the time at which it stopped, without the stage that failed. A run that a breakpoint
@@ -94,17 +87,15 @@ from .plan import (
     STATE,
     Pending,
 )
-from .reads import lazily
-from .record import Recorder, remember
+from .reads import lazily, on_side
+from .record import Recorder, recorded_piece, remember
 from .saved import restore
 from .triggers import Triggers
 from .ways import Ways
 
 _MISSING = object()
 
-# The phases of a moment in which a read of a rate or a result can come between a change and the
-# next settling: the stages of a round, and its conditions, once a firing has changed what a rate
-# depends on (PLAN, change 26). Before the first firing nothing changed since the settling.
+# Reads in these phases use the preceding sharing. The settling itself reads the committed inputs.
 UNSETTLED = ('stages', 'conditions')
 
 
@@ -172,12 +163,8 @@ class Run:
         self.clock = Clock(plan)  # when something is due (`moment.Clock`)
         self._keyed = None  # {key time: the keyed reads by the time that change there}
         self._sources = (0, {})  # (how many dynamic reads the plan names, them by their collection)
-        # What changed since the flows last settled (`unsettled`): the names that a commit wrote or
-        # gave a definition, the collections whose members changed ('occurrences' and 'flows'), the
-        # stores that met a bound at this moment ('bound'), the switches of rates that the ways'
-        # states reached at this moment ('switch'), the allocations that changed ('allocation') and
-        # the rates of the flows from SOURCE to SINK that joined ('joined'); and what the ways
-        # changed at this moment, which the settling reads alone.
+        # Written names and changed collections, and the stores and flows due for rebuilding.
+        self.shared = Shared(self)
         self.changed, self.moved = set(), set()
         self.joined, self.left = [], []  # the flows that join and that leave at this moment
         # The sets that wait for the settling of the setup: those of declared solvers, and those that
@@ -204,7 +191,7 @@ class Run:
         if name in plan.draws:
             return []
         value = plan.values[name]
-        if value.kind == RATE:
+        if value.kind == RATE or name in plan.shared:
             raise SimulationError(
                 f'{name} is read before its flows first settle: a starting value reads it, and the '
                 'rates settle after the setup; read it through a formula, or capture it in a stage'
@@ -465,40 +452,66 @@ class Run:
     def value(self, name, t=None, tx=None):
         """The value of an engine name now, or at a time t inside the present window of the ways (see
         the module); a stage's own writes (`tx`) first."""
-        if tx is not None and name in tx.writes:
-            found = tx.writes[name]
-            if isinstance(found, Defined):  # a calculation that the stage gave the value
-                at = self.now if t is None else float(t)
-                return walked(self._derived(name, at, tx, {}, set()))
-            return found
-        if name == 't':
-            return self.now if t is None else float(t)
         t = self.now if t is None else float(t)
-        if name in self.written:
-            return self.written[name]
         plan = self.plan
         found = plan.values.get(name)
         kind = found.kind if found is not None else None
+        shared_read = self.moment.phase in UNSETTLED and (kind in (RATE, RESULT) or name in plan.shared)
+        outside_solve = self.moment.phase == 'settle' and name in plan.outside
+        if t == self.now and (shared_read or outside_solve):
+            if self.moment.phase == 'stages' and self.moment.round == 0:
+                first = (
+                    'its first solve'
+                    if kind == RESULT or name.rsplit('.', 1)[0] in plan.solved_flows
+                    else 'the flows first settle'
+                )
+                raise SimulationError(f'{name} is read before {first}: the setup reads it')
+            tx = self.shared
+        if tx is self.shared and t != self.now and name in self.ways.set_of and kind == STATE:
+            # The store still follows the installed way when a published calculation probes its side.
+            return self.ways.store_side(name, self.now, t)
+        if tx is not None and name in tx.writes:
+            value = tx.writes[name]
+            if isinstance(value, Unavailable):
+                raise ExpressionError(value.reason)
+            if isinstance(value, Defined):  # a calculation that the stage gave the value
+                return walked(self._derived(name, t, tx, {}, set()))
+            return value
+        if name == 't':
+            return t
+        if name in self.written:
+            return self.written[name]
+        if tx is self.shared:
+            found = self.shared.definition(name, found)
+            kind = found.kind if found is not None else None
         if kind is None and name in plan.draws:
             return self.chance.draw(name, tx=tx)  # executed: a node of a stage reads it once
+        if (
+            tx is self.shared
+            and self.shared.arrival is not None
+            and (kind in (RATE, RESULT) or name in plan.shared)
+        ):
+            incoming = self.ways.incoming(name)
+            if incoming is not None:
+                return incoming
         if kind == RATE:
-            if self.moment.phase in UNSETTLED:
-                self.ways.fresh(name, tx)
             return self.ways.rate(name, t)
         if kind == RESULT:
-            if self.moment.phase in UNSETTLED or name not in self.ways.result_of:
-                self.ways.fresh(name, tx)
+            if name not in self.ways.result_of:
+                raise SimulationError(f'{name} is read before its first solve')
             return self.ways.result(name, t)
         if kind == CHANGED:
             return self.changed_at(name, tx)
         if kind == DESCRIBED:
             return self.chance.described(name, tx)
-        if kind == FORMULA:
+        if kind == FORMULA and not (tx is self.shared and name in tx.unfrozen):
             frozen = self.frozen.get(name)
             if frozen is not None:
                 if isinstance(frozen, Unavailable):
                     raise ExpressionError(frozen.reason)
                 return frozen
+        if tx is self.shared and t == self.now and name in plan.outside and self.shared.probe is None:
+            return self.shared.outside(name, t)
         if kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC):
             return walked(self._derived(name, t, tx, {}, set()))
         if name in self.ways.set_of:
@@ -513,9 +526,27 @@ class Run:
         reduction, a keyed or a dynamic read, or a calculation that a stage gave it."""
         if tx is not None and name in tx.writes:
             return isinstance(tx.writes[name], Defined)
+        if tx is not self.shared and self.moment.phase in UNSETTLED and name in self.plan.shared:
+            return False  # a calculated rate is a single read of the shared state
+        if (
+            tx is self.shared
+            and tx.arrival is not None
+            and name in self.plan.shared
+            and name.rsplit('.', 1)[0] in self.plan.connections
+        ):
+            return False
+        if name in self.plan.outside and (
+            (tx is self.shared and self.shared.probe is None)
+            or (tx is None and self.moment.phase == 'settle')
+        ):
+            return False
         found = self.plan.values.get(name)
+        if tx is self.shared:
+            found = tx.definition(name, found)
         kind = found.kind if found is not None else None
-        return kind in (REDUCE, LOOKUP, DYNAMIC) or (kind == FORMULA and name not in self.frozen)
+        return kind in (REDUCE, LOOKUP, DYNAMIC) or (
+            kind == FORMULA and (name not in self.frozen or (tx is self.shared and name in tx.unfrozen))
+        )
 
     def _derived(self, name, t, tx, known, waiting):
         """The value of a derived value (`_is_derived`) at time t, as a computation of `walk.walked`
@@ -566,11 +597,22 @@ class Run:
         plan = self.plan
         if tx is not None and name in tx.writes:
             return lazily(tx.writes[name].node, read, plan.units, t)
-        kind = plan.values[name].kind
+        value = plan.values[name]
+        if tx is self.shared:
+            value = tx.definition(name, value)
+        kind = value.kind
         if kind == FORMULA:
-            if name in plan.outside and self.moment.phase in UNSETTLED:
-                self.ways.fresh(name, tx)  # the rate of a flow from SOURCE to SINK settles too
-            node = plan.values[name].node
+            node = value.node
+            if tx is self.shared and tx.probe is not None and t == self.now:
+                return on_side(
+                    node,
+                    read,
+                    plan.units,
+                    t,
+                    tx.probe,
+                    self.clock.crossing,
+                    lambda other, at: self.value(other, at, tx),
+                )
             return read(node.name) if isinstance(node, nodes.Ref) else lazily(node, read, plan.units, t)
         if kind == REDUCE:
             reduction, entries = plan.reductions[name], self.kept_of(name)
@@ -579,10 +621,11 @@ class Run:
             return reduced(reduction, read, plan.units, entries)
         if kind == LOOKUP:
             if plan.stepped(name):
-                return read(self.stepped_of(name).name_at(t))
+                at = tx.probe if tx is self.shared and tx.probe is not None else t
+                return read(self.stepped_of(name).name_at(at))
             return looked_up(plan.keyed[name], read, plan.units, t, self.index_for(name))
         dynamic = plan.dynamic[name]
-        members = plan.members(dynamic.source)
+        members = tx.members(dynamic.source) if tx is self.shared else plan.members(dynamic.source)
         if dynamic.keep is None and dynamic.steps and dynamic.op not in ('at', 'latest'):
             self._ask((plan.project(point, dynamic.steps) for point in members), tx, known)
         return dynamic_value(dynamic, members, lambda point: plan.project(point, dynamic.steps), read, t)
@@ -626,6 +669,11 @@ class Run:
         capacity's formula, changes what the value is from now on (`define`)."""
         plan = self.plan
         found = plan.values.get(name)  # none for a distribution-valued value
+        self.shared.remember(name)
+        if name in plan.changed_of:
+            self.shared.remember(plan.changed_of[name])
+        for described in plan.described_of.get(name, ()):
+            self.shared.remember(described)
         if isinstance(value, Defined) or (found is not None and found.kind == FORMULA):
             self.define(name, value.node if isinstance(value, Defined) else None)
             if isinstance(value, Defined):
@@ -660,6 +708,7 @@ class Run:
         in place of a formula (`Plan.define`). What reads the value is touched, so the sets that read
         it are built again and read it so; a record of some keys keeps what the new one reads."""
         plan = self.plan
+        self.shared.definitions.setdefault(name, max(0, len(plan.defined.get(name, ())) - 1))
         plan.define(name, node, self.now, plan.start_of(name))
         # The source of the node, an expression of a statement that a stage read, for `saved.py`.
         source = None if node is None else self.occurrences.sources[id(node)]
@@ -695,6 +744,7 @@ class Run:
             for side, store in zip(('outflow', 'inflow'), (connection.source, connection.sink)):
                 if store is None:
                     continue
+                self.shared.remember_members(('flows', store, side))
                 present = plan.end_flows.setdefault((store, side), [])
                 if joins:
                     present.append(connection.name)
@@ -707,19 +757,14 @@ class Run:
                 self.changed.add(('flows', store, side))
 
     def flow_left(self, flow):
-        """A flow that left reads zero from now on: its actual rate, or its served fraction."""
+        """Record zero for the departing flow's rate or fraction from this time on."""
         found = self.plan.flows[flow]
         name = f'{flow}.served_fraction' if found.kind == LEGS else f'{flow}.actual_rate'
         self.recorder.add(name, self.now, 0.0, 0.0)
 
-    def unsettled(self, tx=None):
-        """What changed since the flows last settled, as a stale read names it (`Ways.stale`): the
-        engine names that a commit (of a stage, of the setup, of a firing or an edit) and the stage
-        `tx` wrote or gave a definition, with the dynamic reads of the collections whose members
-        changed and the keyed reads by the time at their key time; and the marks, ('bound', store)
-        of a store that met its bound at this moment, ('switch', flow, switch) of a switch of the
-        rate of a flow that the state of its set reached at this moment, and ('allocation', store,
-        side) of an endpoint whose allocation changed."""
+    def changed_names(self):
+        """The names that the settling must rebuild: the written and moving stores, rates and
+        settings, and the reads of any collection whose membership or fields changed."""
         names = {item for item in self.changed if isinstance(item, str)} | set(self.written)
         sources = {item for item in self.changed if isinstance(item, tuple)}
         if sources:
@@ -730,21 +775,11 @@ class Run:
                     index.setdefault(found.source, []).append(name)
                 self._sources = (len(dynamic), index)
             names.update(name for source in sources for name in self._sources[1].get(source, ()))
-        marks = {item for item in sources if item[0] in ('bound', 'switch', 'allocation')}
-        if tx is not None:
-            names |= set(tx.writes)
-            marks |= {('allocation', store, side) for store, side, *_ in tx.allocations}
-        return names, marks
-
-    def changed_names(self):
-        """The engine names whose sets the settling builds again: what changed since the flows last
-        settled (`unsettled`), the stores that its marks name, and what the ways changed at this
-        moment."""
-        names, marks = self.unsettled()
-        return names | {mark[1] for mark in marks} | self.moved
+        return names | self.moved
 
     def settled(self):
         """The changes of a round are settled."""
+        self.shared.clear()
         self.written.clear()
         self.joined.clear()
         self.left.clear()
@@ -948,6 +983,9 @@ class Run:
                 continue
             self.occurrences.carried(self.now, moment)
             self.now = moment
+            due = self.occurrences.next_due()
+            if due is not None and self.clock.due(due, moment):
+                self.shared.arrival = moment  # the first round has stages that can read incoming rates
             # An event of an instance at the time of the moment, or one at which the moment is due
             # (`moment.Clock`: a store that the ways bring to its bound a roundoff before a stage
             # due there), puts its store on its bound at its own time, and the moment's settling,
@@ -958,7 +996,7 @@ class Run:
                 changed |= set(names)
                 met |= set(reached)
                 at, instance = self.ways.peek()
-            self.ways.cut(moment)
+            met.update(self.ways.cut(moment))
             self.bare = moment == self.plan.horizon and not self._besides(before, moment, contact)
             return moment, changed, met, self.ways.switched(moment)
 
@@ -968,6 +1006,96 @@ class Run:
         found = [self.occurrences.next_due(), self.triggers.next_timer(), contact]
         found += [at for at in self.key_times() if at > before]
         return any(at is not None and self.clock.due(at, t) for at in found)
+
+
+class Shared:
+    """The inputs as the flows last shared, for a rate that is itself a calculation. Ordinary
+    reads continue to see the committed values. Keep only what this round changed, until its
+    settling. The first round of a moment also keeps the incoming rates of its moving sets."""
+
+    def __init__(self, run):
+        self.run = run
+        self.writes = {}
+        self.definitions = {}
+        self.collections = {}
+        self.unfrozen = set()
+        self.arrival = None
+        self.probe = None
+        self.ends = {}  # instance key -> end of its incoming segment
+        self.steps = {}  # a sparse instance's step, for a stage that reads an unrecorded rate
+
+    def clear(self):
+        """The new sharing uses all the changes of the round."""
+        self.writes.clear()
+        self.definitions.clear()
+        self.collections.clear()
+        self.unfrozen.clear()
+        self.ends.clear()
+        self.steps.clear()
+        self.arrival = None
+
+    def outside(self, name, t):
+        """A flow from SOURCE to SINK with a switch or a table step: its amount at t, using the
+        side from which the moment arrives, or the side from which the new sharing starts."""
+        self.probe = math.nextafter(t, -math.inf if self.arrival is not None else math.inf)
+        try:
+            return walked(self.run._derived(name, t, self, {}, set()))
+        finally:
+            self.probe = None
+
+    def at_arrival(self, end):
+        """Whether the endpoint of this incoming segment meets the stages of the first round."""
+        return self.arrival is not None and self.run.clock.due(self.arrival, end)
+
+    def incoming(self, name, piece, end):
+        """Keep the limit of the incoming piece, whose fit samples its interior. A second tiny
+        segment at the same moment cannot replace the answer of the segment that arrived there."""
+        return self.writes.setdefault(name, float(recorded_piece(*piece).at(end)))
+
+    def remember(self, name):
+        """Keep a changed input's previous value. A formula keeps its definition instead."""
+        run = self.run
+        if (
+            name in self.writes
+            or name in self.definitions
+            or (run.moment.round == 0 and run.moment.phase == 'stages')
+        ):
+            return
+        value = run.plan.values.get(name)
+        if value is not None and value.kind == FORMULA:
+            return
+        if name in run.ways.set_of:
+            self.writes[name] = run.ways.value(name, run.now)
+        elif name in run.env:
+            self.writes[name] = run.env[name]
+        elif value is not None and value.kind in (CHANGED, DESCRIBED):
+            self.writes[name] = run.value(name)
+
+    def definition(self, name, current):
+        """The definition from the last sharing, or the current one if no commit replaced it."""
+        if name in self.definitions:
+            return self.run.plan.defined[name][self.definitions[name]][1]
+        return current
+
+    def remember_members(self, source):
+        """Keep the prior members of a changed endpoint, or the prior length of an event's collection."""
+        plan = self.run.plan
+        if source in self.collections or (self.run.moment.phase == 'stages' and self.run.moment.round == 0):
+            return
+        if source[0] == 'occurrences':
+            self.collections[source] = len(plan.occurrences[source[1:]])
+        else:
+            self.collections[source] = tuple(plan.end_flows.get(source[1:], ()))
+
+    def members(self, source):
+        """The members of a collection at the last sharing, in order."""
+        plan = self.run.plan
+        if source not in self.collections:
+            return plan.members(source)
+        old = self.collections[source]
+        if source[0] == 'occurrences':
+            return [('occurrence', name) for name in plan.occurrences[source[1:]][:old]]
+        return [('flow', name) for name in old]
 
 
 class _Failed:

@@ -12,8 +12,8 @@ One evaluator serves four readers:
 
 There is no absent value (decision D4). A field declared without a value fails when it is read; a
 setting of a flow or an endpoint that the model left out reads as its default (a request of zero,
-proportional sharing) or fails (a capacity, which then sets no limit). A computed result read in a
-stage after its inputs changed in the round fails too (decision D5): `Run.check_stale`.
+proportional sharing) or fails (a capacity, which then sets no limit). Stages and firings read the
+rates and results last shared, at the moment's time. Setup has no shared value to read.
 """
 
 from dataclasses import dataclass, field
@@ -74,7 +74,7 @@ class End:
 
 @dataclass(frozen=True)
 class Res:
-    """A computed result: ('rate', flow), ('frac', flow), ('cell', cell) or ('local', solver, name)."""
+    """A flow, leg or endpoint rate, a served fraction, a solved field or a solver's own result."""
 
     var: tuple
 
@@ -220,7 +220,7 @@ class View:
     def __init__(self):
         self.t = Fraction(0)
         self.cells = {}  # Cell -> value
-        self.results = {}  # var -> value of the last settlement
+        self.results = None  # var -> value of the last settlement. None before the first one.
         self.occs = {}  # (Ent, event name) -> list of Occ
         self.live = []  # the flows that are connected now, in creation order
         self.entered = {}  # Cell -> the time at which it took its value
@@ -231,7 +231,8 @@ class View:
     def copy(self):
         """A copy that later changes of this view leave as it is: a frame of the record."""
         v = View()
-        v.t, v.cells, v.results = self.t, dict(self.cells), dict(self.results)
+        v.t, v.cells = self.t, dict(self.cells)
+        v.results = None if self.results is None else dict(self.results)
         v.occs = {k: list(o) for k, o in self.occs.items()}
         v.live, v.entered, v.bounds = list(self.live), dict(self.entered), dict(self.bounds)
         v.levels, v.rates = dict(self.levels), dict(self.rates)
@@ -275,8 +276,6 @@ class Ev:
         self.unknowns = unknowns
         self.shared = shared or SimpleNamespace(
             stops=[],
-            reads=set(),
-            results=set(),
             strict=False,
             positive=True,
             busy=[],
@@ -341,7 +340,6 @@ class Ev:
         if c in self.run.solved_cells:
             return self.result(('cell', c))
         v = self.raw(c)
-        self.shared.reads.add(c)
         if v is None:  # a setting of a flow or an endpoint that the model left out
             if c.name == 'request':
                 return Fraction(0)
@@ -369,7 +367,6 @@ class Ev:
     def setting(self, c):
         """A setting of a flow or an endpoint as the network reads it: None when it was left out.
         Either way it is an input of the calculation that reads it."""
-        self.shared.reads.add(c)
         if c not in self.view.cells and not (self.tx is not None and c in self.tx.writes):
             return None
         return None if self.raw(c) is None else self.cell(c)
@@ -380,18 +377,33 @@ class Ev:
             return Lin.var(var)
         if self.shared.defer:
             raise NeedsSettle()
-        if var[0] in ('rate', 'frac') and var[1] not in self.view.live:
-            return Fraction(0)  # a flow of a finished occurrence
-        if self.view is self.run.view and self.run.phase in ('stages', 'conditions'):
-            self.run.check_stale(var, self.tx)
-        if self.run.settling:
+        if self.view.results is None:
+            raise RunFailed(f'{label(var)} is read before its first solve')
+        owner = var[1]
+        if isinstance(owner, End):
+            flows = (
+                self.view.live
+                if self.unknowns is not None
+                else (key[1] for key in self.view.results if isinstance(key[1], FlowRT))
+            )
+            return sum((self.result(('rate', c)) for c, _ in self.run.incident(flows, owner)), Fraction(0))
+        if isinstance(owner, LegRT):
+            if owner.decl is None:
+                rate = self.result(('rate', owner.flow))
+                return self.pos(rate if owner.name == 'forward' else -rate)
+            fraction = ('frac', owner.flow)
+            if self.unknowns is not None and fraction in self.unknowns:
+                return Lin.var(fraction) * self.cell(Cell(owner, 'request'))
+            if self.run.settling:
+                self.run.pull(fraction)
+        elif self.run.settling:
             self.run.pull(var)
-        if self.unknowns is not None:
-            self.shared.results.add(var)  # a result of another calculation: its inputs are ours too
         if self.mode == 'germ' and var in self.view.rates:
             return plain(self.view.rates[var])
         if var in self.view.results:
             return self.view.results[var]
+        if var[0] in ('rate', 'frac'):
+            return Fraction(0)  # the last settlement included no such flow
         if var[0] == 'cell':
             return self.view.cells[var[1]]
         raise RunFailed(f'{label(var)} is read before its first solve')
@@ -516,7 +528,7 @@ class Ev:
                 return end if end is not None else (SOURCE if name == 'source' else SINK)
         elif isinstance(obj, LegRT):
             if name == 'actual_rate':
-                return self.leg_rate(obj)
+                return Res(('rate', obj))
             if name == 'request':
                 if obj.decl is not None:
                     return Cell(obj, 'request')
@@ -528,9 +540,9 @@ class Ev:
                 return obj.src if name == 'source' else obj.dst
         elif isinstance(obj, End):
             if name == 'flows':
-                return Coll((x.number, x, x) for x, _ in run.incident(view, obj))
+                return Coll((x.number, x, x) for x, _ in run.incident(view.live, obj))
             if name == 'actual_rate':
-                return sum((self.leg_rate(x) for x, _ in run.incident(view, obj)), Fraction(0))
+                return Res(('rate', obj))
             if name in ('capacity', 'request', 'allocation'):
                 c = Cell(obj, name)
                 if c not in view.cells and not (self.tx is not None and c in self.tx.writes):
@@ -545,17 +557,6 @@ class Ev:
         elif isinstance(obj, tuple) and obj[0] == 'table' and f'{obj[1]}.{name}' in run.ents:
             return run.ents[f'{obj[1]}.{name}']
         raise RunFailed(f'{label(obj)} has no {name}')
-
-    def leg_rate(self, x):
-        """The nonnegative rate of one connection: a directed flow, or one leg."""
-        if isinstance(x, FlowRT):
-            return self.result(('rate', x))
-        if x.decl is None:
-            rate = self.result(('rate', x.flow))
-            return self.pos(rate if x.name == 'forward' else -rate)
-        if x.flow not in self.view.live:
-            return Fraction(0)
-        return self.result(('frac', x.flow)) * self.cell(Cell(x, 'request'))
 
     def pos(self, x):
         """max(x, 0) in the mode of this evaluator."""

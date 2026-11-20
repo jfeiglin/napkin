@@ -26,11 +26,9 @@ At a time, rounds. One round is:
    a stage whose guard was false so commits nothing, and has an entry `skip` for its near-ties.
    A value that misses a bound by less than its tolerance is
    put on the bound; one that misses it by more fails the run, and so does a move that does not fit.
-   A rate or a result that the settling decides reads as it last settled: one that what it depends
-   on changed since (a write, an allocation, a store that met its bound at this moment, a switch of
-   its rates or a keyed read by the time that the clock changes at this moment, a flow that joined
-   or left) stops the run by name, as one read in the setup does (`ways.Ways.fresh`; PLAN, changes
-   25 and 26: in a moment the stages commit first and the flows are shared again after).
+   A rate or a result reads the last sharing at this time. Changes of the round, including a
+   store meeting its bound, a switch and a keyed step, reach the rates at the settling. The setup
+   cannot read them because no sharing has taken place (PLAN, change 27).
    A commit publishes the stage's writes, traces its edits and its moves and registers the
    occurrences that it queued, in order; a failure discards the stage and stops the run, also a
    failure in the commit itself (a start that a limit, its arguments or its entry refuse): the
@@ -58,8 +56,8 @@ At a time, rounds. One round is:
 3. **Conditions** (`triggers.py`): triggers, resets and gates are read on the settled state, and
    each assertion over state must hold there; then the firings start their events, and the released
    gates go on: the consequences of a further round, which settles them (spec: "New consequences
-   due at the same timestamp start a further round"). A firing reads after the firings before it:
-   a rate that one of them made stale stops the run, as in a stage. Once the rounds of the time are
+   due at the same timestamp start a further round"). Each firing reads the rates of this settling,
+   including after an earlier firing started another occurrence. Once the rounds of the time are
    done, each assertion must hold just after it as well.
 
 Another round follows at the same time while a stage is due there or a condition acted. The setup is
@@ -374,16 +372,13 @@ class Moment:
             self.rounds(self.run.now, held)
 
     def at(self, t, changed, met, switched):
-        """The moment at time t; `changed` holds what the ways changed there, which the settling
-        builds again, `met` the stores that met a bound there and `switched` the switches of rates
-        that their states reached there (a flow whose rate reads it, the switch), whose rates are
-        stale until it (`ways.Ways.fresh`), as those of the keyed reads by the time at their key time
-        are (PLAN, change 26)."""
+        """Run the moment at t. Rebuild what changed in the ways, including the stores that met
+        a bound, the flows whose rates switched and the keyed reads that step there."""
         run = self.run
         run.now = t
-        run.moved |= changed
-        run.changed |= {('bound', store) for store in met}
-        run.changed |= {('switch', name, switch) for name, switch in switched}
+        run.moved.update(changed)
+        run.moved.update(met)
+        run.moved.update(switched)
         run.changed.update(run.keyed_changes(t))
         self._round(0)
         self.rounds(t)
@@ -746,7 +741,7 @@ class Moment:
             # The endpoint shares its flows by its new rule once its set settles again.
             self.plan.allocate(store, side, allocation, scope, origin)
             self.plan.log.append(('allocate', store, side, origin, self.plan.owner_of(scope)))
-            run.changed.add(('allocation', store, side))
+            run.changed.add(store)
         for name, value in tx.writes.items():
             run.write(name, value)
         for member, event, args in tx.starts:

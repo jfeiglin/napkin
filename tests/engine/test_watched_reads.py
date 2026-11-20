@@ -109,3 +109,25 @@ def test_an_assertion_fails_where_it_first_stops_holding_or_names_what_it_cannot
     message = record.failure.detail('message')
     if CERTIFY not in message:
         assert record.failure.t == pytest.approx(20 / 7, abs=1e-7), (stricter, record.failure.t, message)
+
+
+def test_a_stage_reads_the_moving_staffing_result_at_its_own_time():
+    """At 2 h the incoming care is 70% of 80 h. The cut to 40 h gives 28 h in the next round."""
+    compiled, record = outcome(
+        HEAD
+        + """    copy: h = -1 h
+    next_copy: h = -1 h
+    cut = event():
+        after 2 h:
+            this.staff_hours = 40 h
+            this.copy = this.staffing.care
+        after 0 h:
+            this.next_copy = this.staffing.care
+
+clinic.cut.start()
+"""
+    )
+    assert record.failure is None, record.failure
+    copies = read(record, compiled.program, ['clinic.copy', 'clinic.next_copy'], [2])
+    assert [series.values[0] for series in copies] == pytest.approx([56, 28], abs=1e-8)
+    assert [entry.round for entry in record.entries('solve', 'clinic.staffing') if entry.t == 2] == [1]

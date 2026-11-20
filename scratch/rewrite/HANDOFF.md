@@ -128,7 +128,7 @@ fixed in one mechanism, with a test of its rule (`briefs/audit2.md`; the state f
    refused by name, and a history budget that a run would exceed stops it by name.
 6. **The checker compares how each run ended** before its values (below, "No change is silent").
 
-## What the readiness rounds changed (`PLAN.md`, changes 23 to 26)
+## What the readiness rounds changed (`PLAN.md`, changes 23 to 27)
 
 A readiness audit of `8b3a01a` found eight rules fixed on one path and still broken on another. Each
 is now fixed once, at its mechanism, with a test over every path that reads it (`briefs/audit3.md`,
@@ -142,15 +142,14 @@ four questions on the way. What you will meet in the catalogue:
 2. **A finished occurrence is frozen** (change 24 b): an assignment to its field, a `move` of a
    nonzero amount or a flow carrying a nonzero rate into or out of its store stops the run by name;
    a connected flow at zero rate writes nothing.
-3. **A stale rate is an error, for every flow** (changes 25 and 26). In a moment the stages commit
-   first and the flows are shared again after. A stage that reads a rate (an `actual_rate`, a leg's,
-   a `served_fraction`, an inflow or outflow, a solver's result) after something it depends on
-   changed in that moment stops the run by name: a write of an earlier stage or of the same stage,
-   an edit at a stop, an allocation, a flow that joined or left, a store that met its bound there,
-   a keyed read by the time at its key time, a branch on the time or on a store that changes there.
-   So does a firing that reads one after an earlier firing changed it. The old engine gave the old
-   rate. Where an old rule read a rate at the moment of such a change, read it in a later stage or
-   after `after 0 h`, and list each in the package's `changed.md` with change 25 as the cause.
+3. **Read the last re-share’s rates and results** (change 27, replacing 25 and 26). Stages in one
+   round see the same shared rates, including leg and endpoint rates and declared solver results.
+   At a new time a moving rate reads its incoming value there. Ordinary writes take effect in
+   order. After the stages, the flows share again and triggers and assertions read the new state.
+   A firing’s start does not change the rates for the firings after it. If a stage needs the share
+   after its own changes, read it after `after 0 h:`. The clock stays at the same time. In the
+   clinic and garden example the writing stage reads 4 L/h, the next round reads 2.4 L/h and the
+   record shows 2.4 L/h from 2 h. A rate or result read during setup still stops the run by name.
 4. **A range test is checked wherever it is evaluated**, a solver's constraint included:
    `x in [lo, hi]` whose ends a stage reversed stops the run by the name of a reversed interval.
 5. **Long chains of values compile, run and report** with no recursion in Python, through every

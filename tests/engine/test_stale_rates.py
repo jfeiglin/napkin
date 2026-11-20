@@ -1,24 +1,9 @@
-"""A stale rate is an error, for every flow (PLAN, change 25; spec, "Rounds" and "Reading a result").
+"""A round reads the rates of the last re-share (PLAN, change 27).
 
-In a moment, the stages commit first and the flows are shared again after. A stage that reads a rate
-that the settling decides (a flow's `actual_rate`, a leg's, a `served_fraction`, an endpoint's
-inflow or outflow), directly or through a formula, after something changed what that rate depends
-on since the network last settled (a store that met its bound, a request, a capacity, an allocation
-or a store that a stage, the setup or an edit set, a flow that joined or left), stops the run by
-name: the flow, the stage and what changed it, with the advice to read it in a later stage or after
-a wait. A read in a later round of the same time, or at a later time, gives the settled rate; a flow
-that has left reads zero. The rule is the same for local sharing and for a declared solver.
-
-The rule test: small random networks (stocked, empty, full and `[0, 0]` stores; directed flows,
-from SOURCE to SINK too, routes and flows with legs; endpoints with capacities and priorities) and
-an operator whose stages change a request, a capacity, an allocation or a store, move water, start
-an occurrence whose pipe joins a store or finish one whose pipe leaves, and read a rate: in the same
-stage, in a later stage of the round, in the next round and at a later time, directly or through a
-formula; the setup reads one now and then. The oracle (`tests/reference/`) runs the same program in
-exact fractions: both runs fail at the same time, a stale read where the oracle's is one, or both
-pass with the same values. The same runs also stop before the reading stage and edit a store there,
-resumed in place and from the saved state, as a fresh process resumes it. The named cases state the
-rule's words and its numbers, worked by hand.
+Small seeded networks change requests, capacities, allocations, levels and flow membership.
+Stages read a rate directly or in a formula, before and after re-sharing. An edit before the
+reading stage is resumed in place and from a checkpoint. The exact interpreter checks the
+values along both paths. The named examples below use hand-worked amounts and rates.
 """
 
 from __future__ import annotations
@@ -72,7 +57,7 @@ STORES = {  # start, lower, upper
     'small': (2, 0, 8),
 }
 LOOK = 'ops.look.step[0]'  # the reading stage, where the runs with an edit stop
-STALE = 'is read before'  # the words of every stale read, of the engine and of the oracle
+BEFORE_SETUP = 'is read before'  # a result has no value until the setup commits
 # Where local sharing has no answer, the oracle has none (`NotCovered`) and the engine stops, naming
 # the stores; both find it where the flows first settle, after the setup's commit, from the state that
 # the setup leaves (`run.Run.prepare`).
@@ -299,7 +284,9 @@ def compare(seed, edit=False):
         if failed is not None:
             assert message is not None, (seed, str(failed))
             assert record.failure.t == pytest.approx(float(oracle.view.t)), (seed, str(failed), message)
-            assert (STALE in message) == (STALE in str(failed)), (seed, str(failed), message)
+            assert (BEFORE_SETUP in message) == (BEFORE_SETUP in str(failed)), (seed, str(failed), message)
+            if BEFORE_SETUP in message:
+                assert oracle.view.t == 0, (seed, message)
             horizon = oracle.view.t - Fraction(1, 10**9)  # what happens at the failure is not compared
         else:
             assert message is None, (seed, message)
@@ -313,7 +300,7 @@ def compare(seed, edit=False):
 
 
 @pytest.mark.parametrize('seed', range(200))
-def test_a_stale_rate_fails_and_a_settled_one_reads_as_the_oracle_has_it(seed):
+def test_rates_through_the_round_agree_with_the_oracle(seed):
     compare(seed)
 
 
@@ -324,7 +311,7 @@ def test_an_edit_at_a_stop_before_the_read_is_a_change_of_the_round_in_place_and
 
 @pytest.mark.deep
 @pytest.mark.parametrize('seed', range(200, 2200))
-def test_more_stale_and_settled_rates_read_as_the_oracle_has_them(seed):
+def test_more_rates_through_the_round_agree_with_the_oracle(seed):
     compare(seed)
     compare(seed, edit=True)
 
@@ -365,24 +352,18 @@ def failure(record):
 PIPE = named('tank').pipe
 
 
-def test_a_rate_read_after_a_change_of_its_request_names_the_flow_the_stage_and_the_change():
-    _, record = tank(after(q(1, 'h'), assign(PIPE.request, q(2, 'L/h')), assign(this.seen, PIPE.actual_rate)))
-    at, message = failure(record)
-    assert at == 1
-    for words in (
-        'tank.pipe.actual_rate is read before',
-        'tank.pipe.request',
-        'stage 1 of ops.look#0',
-        'later stage',
-        'wait',
-    ):
-        assert words in message, message
+def test_a_rate_after_a_change_of_its_request_reads_as_the_round_began():
+    program, record = tank(
+        after(q(1, 'h'), assign(PIPE.request, q(2, 'L/h')), assign(this.seen, PIPE.actual_rate))
+    )
+    assert record.failure is None
+    assert seen(program, record, 1) == 3
 
 
-def test_through_a_formula_the_read_fails_as_well():
-    _, record = tank(after(q(1, 'h'), assign(PIPE.request, q(2, 'L/h')), assign(this.seen, this.twice)))
-    at, message = failure(record)
-    assert at == 1 and 'tank.pipe.actual_rate is read before' in message
+def test_a_formula_reads_the_same_published_rate():
+    program, record = tank(after(q(1, 'h'), assign(PIPE.request, q(2, 'L/h')), assign(this.seen, this.twice)))
+    assert record.failure is None
+    assert seen(program, record, 1) == 6
 
 
 def test_the_next_round_and_a_later_time_read_the_settled_rate():
@@ -401,9 +382,8 @@ def test_the_next_round_and_a_later_time_read_the_settled_rate():
     assert failure(record)[0] is None and seen(program, record, 1) == 3
 
 
-def test_a_later_stage_of_the_round_reads_no_stale_rate_either():
-    """`cut`, started first, closes the pipe at 1 h; `look`, started after it, reads its rate at 1 h,
-    and fails; started before it, `look` reads the 3 L/h that settled at 0 h."""
+def test_a_later_stage_of_the_round_reads_the_same_rate():
+    """At 1 h the pipe still reads 3 L/h in either order of the closing and reading stages."""
     cut = event('cut', after(q(1, 'h'), assign(PIPE.request, q(0, 'L/h'))))
     reading = after(q(1, 'h'), assign(this.seen, PIPE.actual_rate))
     program, record = tank(reading, setup=(start(named('ops').cut),), extra=(cut,))
@@ -414,21 +394,18 @@ def test_a_later_stage_of_the_round_reads_no_stale_rate_either():
     )
     b.entity('ops', value('seen', 'L/h', -1), cut, event('look', reading))
     b.setup(start(named('ops').cut), start(named('ops').look))
-    at, message = failure(run(b.finish(), Configuration(Request(2))))
-    assert at == 1 and 'tank.pipe.actual_rate is read before' in message and 'tank.pipe.request' in message
+    program = b.finish()
+    record = run(program, Configuration(Request(2)))
+    assert record.failure is None
+    assert seen(program, record, 1) == 3
 
 
-def test_a_store_that_meets_its_bound_at_the_moment_makes_its_rates_stale():
-    """8 L at 2 L/h empties at 4 h: a read at 4 h fails, naming the tank; the next round reads 0 L/h."""
-    _, record = tank(after(q(4, 'h'), assign(this.seen, PIPE.actual_rate)), request=2)
-    at, message = failure(record)
-    assert (
-        at == 4
-        and 'tank.pipe.actual_rate is read before' in message
-        and 'tank.water met its bound' in message
-    )
+def test_a_store_that_meets_its_bound_shares_again_after_the_stages():
+    """8 L at 2 L/h empties at 4 h. The first stage reads 2 L/h and the next round reads 0."""
+    program, record = tank(after(q(4, 'h'), assign(this.seen, PIPE.actual_rate)), request=2)
+    assert record.failure is None and seen(program, record, 4) == 2
     program, record = tank(after(q(4, 'h')), after(q(0, 'h'), assign(this.seen, PIPE.actual_rate)), request=2)
-    assert failure(record)[0] is None and seen(program, record, 4) == 0
+    assert record.failure is None and seen(program, record, 4) == 0
 
 
 def test_a_rate_read_in_the_setup_is_read_before_the_flows_first_settle():
@@ -468,19 +445,20 @@ def deliveries(*look, fired=None):
     return b
 
 
-def test_a_flow_that_leaves_reads_zero_and_the_rates_it_shared_with_are_stale():
-    """Until 1 h, main and the pipe take 1 L/h each; the pipe leaves at 1 h: it reads 0 L/h in a later
-    stage of that round, main's 1 L/h is stale there, and main reads 2 L/h in the next round."""
+def test_a_flow_that_leaves_and_its_neighbor_keep_their_round_rates():
+    """At 1 h both pipes read their 1 L/h share. After re-sharing, main takes all 2 L/h."""
     occurrence = this.deliver.occurrences.at(t).pipe.actual_rate
     b = deliveries(after(q(1, 'h'), assign(this.seen, occurrence)))
     b.setup(start(named('ops').deliver), start(named('ops').look))
     program = b.finish()
     record = run(program, Configuration(Request(2)))
-    assert failure(record)[0] is None and seen(program, record, 1) == 0
+    assert failure(record)[0] is None and seen(program, record, 1) == 1
     b = deliveries(after(q(1, 'h'), assign(this.seen, named('tank').main.actual_rate)))
     b.setup(start(named('ops').deliver), start(named('ops').look))
-    at, message = failure(run(b.finish(), Configuration(Request(2))))
-    assert at == 1 and 'tank.main.actual_rate is read before' in message and 'ops.deliver#0.pipe' in message
+    program = b.finish()
+    record = run(program, Configuration(Request(2)))
+    assert record.failure is None
+    assert seen(program, record, 1) == 1
     b = deliveries(after(q(1, 'h')), after(q(0, 'h'), assign(this.seen, named('tank').main.actual_rate)))
     b.setup(start(named('ops').deliver), start(named('ops').look))
     program = b.finish()
@@ -488,29 +466,32 @@ def test_a_flow_that_leaves_reads_zero_and_the_rates_it_shared_with_are_stale():
     assert failure(record)[0] is None and seen(program, record, 1) == 2
 
 
-def test_a_flow_that_joins_is_read_before_its_first_settling():
+def test_a_flow_that_joins_reads_zero_until_its_first_share():
     occurrence = this.deliver.occurrences.at(t).pipe.actual_rate
     b = deliveries(after(q(1, 'h'), assign(this.seen, occurrence)))
     b.setup(start(named('ops').go), start(named('ops').look))
-    at, message = failure(run(b.finish(), Configuration(Request(2))))
-    assert at == 1 and 'ops.deliver#0.pipe.actual_rate is read before' in message and 'joined' in message
-
-
-def test_an_allocation_set_in_the_round_makes_the_rates_of_its_endpoint_stale():
-    """`look` ranks main first at the tank's outflow at 1 h: main's rate, read in that stage, fails;
-    read in the next round, it is the 2 L/h that main takes alone."""
-    allocation = assign(named('tank').water.outflow.allocation, priority(named('tank').main))
-    b = deliveries(
-        after(q(1, 'h'), allocation), after(q(0, 'h'), assign(this.seen, named('tank').main.actual_rate))
-    )
-    b.setup(start(named('ops').look))
     program = b.finish()
     record = run(program, Configuration(Request(2)))
-    assert failure(record)[0] is None and seen(program, record, 1) == 2
-    b = deliveries(after(q(1, 'h'), allocation, assign(this.seen, named('tank').main.actual_rate)))
-    b.setup(start(named('ops').look))
-    at, message = failure(run(b.finish(), Configuration(Request(2))))
-    assert at == 1 and 'since they last settled, the allocation of tank.water.outflow changed' in message
+    assert record.failure is None
+    assert seen(program, record, 1) == 0
+
+
+def test_an_allocation_set_in_the_round_takes_effect_at_the_next_share():
+    """With both pipes running, main gets 1 L/h in the writing stage and 2 L/h after it."""
+    allocation = assign(named('tank').water.outflow.allocation, priority(named('tank').main))
+    b = deliveries(
+        after(q(0.5, 'h'), allocation), after(q(0, 'h'), assign(this.seen, named('tank').main.actual_rate))
+    )
+    b.setup(start(named('ops').deliver), start(named('ops').look))
+    program = b.finish()
+    record = run(program, Configuration(Request(2)))
+    assert failure(record)[0] is None and seen(program, record, 0.5) == 2
+    b = deliveries(after(q(0.5, 'h'), allocation, assign(this.seen, named('tank').main.actual_rate)))
+    b.setup(start(named('ops').deliver), start(named('ops').look))
+    program = b.finish()
+    record = run(program, Configuration(Request(2)))
+    assert record.failure is None
+    assert seen(program, record, 0.5) == 1
 
 
 def test_a_flow_from_source_to_sink_is_shared_again_after_the_stages_too():
@@ -529,13 +510,14 @@ def test_a_flow_from_source_to_sink_is_shared_again_after_the_stages_too():
         ),
     )
     b.setup(start(named('ops').look))
-    at, message = failure(run(b.finish(), Configuration(Request(2))))
-    assert at == 1 and 'tap.pipe.actual_rate is read before' in message and 'tap.pipe.request' in message
+    program = b.finish()
+    record = run(program, Configuration(Request(2)))
+    assert record.failure is None
+    assert seen(program, record, 1) == 3
 
 
-def test_a_rate_that_follows_the_time_reads_as_it_is_where_nothing_changed():
-    """A request of `t * 1 L/h/h` from a tank of 50 L: at 2 h a stage reads 2 L/h, which no change made
-    stale; the same read after the stage closes the pipe's capacity fails."""
+def test_a_rate_that_follows_the_time_reads_at_the_current_time():
+    """A request of t L/h at 2 h reads 2 L/h on either side of a capacity write in the stage."""
     b = Builder(UNITS)
     b.entity(
         'tank',
@@ -563,13 +545,14 @@ def test_a_rate_that_follows_the_time_reads_as_it_is_where_nothing_changed():
         ),
     )
     b.setup(start(named('ops').look))
-    at, message = failure(run(b.finish(), Configuration(Request(3))))
-    assert at == 2 and 'tank.pipe.actual_rate is read before' in message and 'tank.pipe.capacity' in message
+    program = b.finish()
+    record = run(program, Configuration(Request(3)))
+    assert record.failure is None
+    assert seen(program, record, 2) == pytest.approx(2, abs=1e-9)
 
 
-def test_a_rate_that_reads_another_set_s_rate_is_stale_with_it():
-    """A meter fills at the rate of the tank's pipe: once the pipe's request changes, the meter's
-    rate is stale too until the flows settle."""
+def test_a_rate_that_reads_another_sets_rate_keeps_its_share():
+    """The meter follows the tank. Both shared 3 L/h before the operator cut the request."""
     b = Builder(UNITS)
     b.entity(
         'tank', value('water', 'L', 8, lower=0, upper=20), flow('pipe', this.water, SINK, request=q(3, 'L/h'))
@@ -592,48 +575,44 @@ def test_a_rate_that_reads_another_set_s_rate_is_stale_with_it():
         ),
     )
     b.setup(start(named('ops').look))
-    at, message = failure(run(b.finish(), Configuration(Request(2))))
-    assert at == 1 and 'meter.feed.actual_rate is read before' in message and 'tank.pipe.request' in message
+    program = b.finish()
+    record = run(program, Configuration(Request(2)))
+    assert record.failure is None
+    assert seen(program, record, 1) == 3
 
 
-def test_an_edit_at_a_stop_makes_the_rate_stale_in_place_and_in_a_fresh_process(tmp_path):
-    """Stopped before the reading stage at 1 h, the tank edited to 5 L: the read fails at 1 h, resumed
-    in place and in a fresh process; resumed untouched, it reads 3 L/h."""
+def test_an_edit_at_a_stop_keeps_the_round_rate_in_place_and_in_a_fresh_process(tmp_path):
+    """The operator reads 3 L/h after an edit, in place and from the saved stop."""
     program, _ = tank(after(q(1, 'h'), assign(this.seen, PIPE.actual_rate)))
     configuration = Configuration(Request(6))
     made = Run(Plan.of(program, configuration), (Breakpoint(LOOK),))
     stopped = made.run()
     assert isinstance(stopped, Checkpoint) and stopped.stop.t == 1
-    edited = made.edit(Key('tank', ('water',)), 5)
+    edited = made.edit(Key('tank', ('water',)), 0)
     for record in (made.resume(), *in_a_fresh_process(program, [edited], tmp_path)):
-        at, message = failure(record)
-        assert at == 1 and 'tank.pipe.actual_rate is read before' in message and 'tank.water' in message
+        assert record.failure is None and seen(program, record, 1) == 3
     made = Run(Plan.of(program, configuration), (Breakpoint(LOOK),))
     made.run()
     record = made.resume()
     assert failure(record)[0] is None and seen(program, record, 1) == 3
 
 
-def test_a_flow_that_a_firing_starts_makes_the_next_round_s_rates_stale_until_they_settle():
-    """A trigger at 1 h starts `deliver`, whose pipe joins the tank in the conditions of the first
-    round; the second round's stage reads main's rate before the flows settle again, and fails: main
-    and the pipe share the outflow's 2 L/h once they do, 1 L/h each."""
+def test_a_flow_started_by_a_firing_shares_after_the_next_rounds_stages():
+    """A firing starts a second pipe. Main reads 2 L/h until the next share, then 1 L/h."""
     b = deliveries(after(q(1, 'h')), after(q(0, 'h'), assign(this.seen, named('tank').main.actual_rate)))
     fired = when(t >= q(1, 'h'), start(this.deliver), reset=reset_when(False))
     b.setup(start(named('ops').look))
     program = b.finish()
-    at, message = failure(run(program, Configuration(Request(2))))
-    assert at is None  # no firing: nothing joined, and the second round reads the settled 2 L/h
+    record = run(program, Configuration(Request(2)))
+    assert record.failure is None and seen(program, record, 1) == 2
     b = deliveries(
         after(q(1, 'h')), after(q(0, 'h'), assign(this.seen, named('tank').main.actual_rate)), fired=fired
     )
     b.setup(start(named('ops').look))
-    at, message = failure(run(b.finish(), Configuration(Request(2))))
-    assert (
-        at == 1
-        and 'tank.main.actual_rate is read before' in message
-        and 'ops.deliver#0.pipe joined' in message
-    )
+    program = b.finish()
+    record = run(program, Configuration(Request(2)))
+    assert record.failure is None
+    assert seen(program, record, 1) == 2
     b = deliveries(
         after(q(1, 'h')),
         after(q(0, 'h')),

@@ -48,6 +48,7 @@ from dataclasses import fields, is_dataclass
 
 import numpy as np
 import scipy.sparse as sp
+from scipy.integrate._ivp.radau import RadauDenseOutput
 from scipy.optimize._highspy import _core as highs
 
 from ...core.errors import ExpressionError
@@ -206,6 +207,17 @@ def save(run):
                 ('frozen', _pairs(run.frozen)),
                 ('changes', tuple((name, tuple(times)) for name, times in run.changes.items())),
                 ('written', _pairs(run.written)),
+                (
+                    'shared',
+                    (
+                        _pairs(run.shared.writes),
+                        _pairs(run.shared.definitions),
+                        _pairs(run.shared.collections),
+                        tuple(sorted(run.shared.unfrozen)),
+                        run.shared.arrival,
+                        _pairs(run.shared.ends),
+                    ),
+                ),
                 ('changed', tuple(sorted(run.changed, key=repr))),  # a set, in one order
                 ('moved', tuple(sorted(run.moved))),
                 ('joined', tuple(run.joined)),
@@ -311,6 +323,26 @@ def _ways(ways):
         ('references', _pairs(ways.references)),
         ('last', tuple((solver, digest, _array(x)) for solver, (digest, x) in ways.last.items())),
         ('kept', tuple((solver, _solver(found)) for solver, found in ways.kept.items())),
+    )
+
+
+def _incoming(instance):
+    """The cubic and the modes of a sparse step whose unrecorded rates a stopped stage may read."""
+    step = instance.run.shared.steps.get(instance.key)
+    if step is None:
+        return None
+    start, cubic, low, high, sides, clock, selection = step
+    return (
+        start,
+        cubic.t_old,
+        cubic.t,
+        _array(cubic.y_old),
+        tuple(_array(row) for row in cubic.Q),
+        _array(low),
+        _array(high),
+        sides,
+        clock,
+        _pairs(selection),
     )
 
 
@@ -478,6 +510,7 @@ def _instance(instance):
                 ('brief_from', instance.brief_from),
                 ('evaluations', instance.evaluations),
                 ('constants', _pairs(instance.vector.constants)),
+                ('incoming', _incoming(instance)),
                 ('switches', tuple((store, tuple(flows)) for store, flows in instance.switches.items())),
             ),
         )
@@ -582,6 +615,10 @@ def _run(run, found):
     run.frozen = dict(found['frozen'])
     run.changes = {name: list(times) for name, times in found['changes']}
     run.written = dict(found['written'])
+    writes, definitions, collections, unfrozen, run.shared.arrival, ends = found['shared']
+    run.shared.ends = dict(ends)
+    run.shared.writes, run.shared.definitions = dict(writes), dict(definitions)
+    run.shared.collections, run.shared.unfrozen = dict(collections), set(unfrozen)
     run.changed, run.moved = set(found['changed']), set(found['moved'])
     run.joined, run.left = list(found['joined']), list(found['left'])
     run.waiting = [_connected(data) for data in found['waiting']]
@@ -754,6 +791,18 @@ def _made(run, kind, keys, data):
             given,
         )
         instance.t, instance.y = data['t'], y
+        if data['incoming'] is not None:
+            start, old, end, initial, terms, low, high, sides, clock, rows = data['incoming']
+            cubic = RadauDenseOutput(old, end, np.asarray(initial), np.asarray(terms))
+            run.shared.steps[instance.key] = (
+                start,
+                cubic,
+                np.asarray(low),
+                np.asarray(high),
+                sides,
+                clock,
+                dict(rows),
+            )
         instance.brief, instance.brief_from, instance.evaluations = (
             data['brief'],
             data['brief_from'],

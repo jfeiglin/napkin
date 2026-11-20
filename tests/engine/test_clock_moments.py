@@ -1,28 +1,13 @@
-"""What a moment changes by itself, every reader of a rate, and a switch at the time of a moment
-(PLAN, changes 25 and 26; spec, "Rounds" and "Reading a result").
+"""The first round at a new time reads the incoming rates at key times, switches and bounds.
 
-In a moment the stages commit first and the flows are shared again after. A rate that the settling
-decides (a flow's `actual_rate`, an endpoint's inflow or outflow) whose dependence changed by the clock
-at the moment's time is stale until the settling, as one whose store met its bound there is: a keyed
-read by the time at its key time, and a branch on the time or on a store whose condition changes at
-that time. A read of it stops the run by name, whoever reads it: a stage, a firing's capture, the
-argument of a start or a delay that a firing reaches after an earlier firing of the same conditions
-started a flow that joins one of its stores. An assertion over state reads the settled state of a
-round, before the firings start the consequences of the next one. And a run is the same whether a
-crossing falls on a moment or not: a segment that starts a roundoff short of a switch that its state
-crosses starts on the far side of it, and the rates that the settling gives at a moment are those that
-hold from the moment on.
+The flows share again after the stages. Later rounds at that time read the preceding round's share.
+Firings and assertions read that sharing. Occurrences a firing starts join the next sharing, and a
+delay that depends on them waits for it (PLAN, change 27). On leaving a switch, integration follows
+the far side from the start of its segment.
 
-The rule test: small random networks of stores (empty, stocked, full), flows whose requests branch on
-the time or on a store, or follow a keyed read by the time, with thresholds, rates and stage times
-chosen so that crossings, key times and stages fall on one another as often as near one another;
-stages that read a rate in the same round and in the next one; firings at the same time that start a
-flow at a store and capture, pass or wait on a rate there. The oracle (`tests/reference/`) runs the
-same program in exact fractions: both runs fail at the same time, a stale read where the oracle's is
-one, or both pass with the same values, to the accuracy of the integrator that moves them. The same
-runs also stop before the reading stage and edit a store there, resumed in place and from the saved
-state. The named cases state the rule's words and its numbers, worked by hand, the assertion's among
-them.
+Small random networks put stages, changes of branch, key times and firings at the same times. The
+engine and interpreter compare their readings and the water in their stores, straight through
+and after an edit and a resume. The named cases give the rates and levels worked by hand.
 """
 
 from __future__ import annotations
@@ -76,7 +61,6 @@ STORES = {  # start, lower, upper
     'small': (2, 0, 10),
 }
 LOOK = 'ops.look.step[0]'  # the reading stage, where the runs with an edit stop
-STALE = 'is read before'  # the words of every stale read, of the engine and of the oracle
 # A component refuses a store that rests on a bound between flows whose rates move where local
 # sharing could raise a flow above its request (`component.Held`): the engine has no answer there.
 NO_ANSWER = ('rests on a bound between a flow in and a flow out',)
@@ -235,7 +219,8 @@ def compare(seed, edit=False):
         oracle, failed = run_of(program, configuration, [(LOOK, None, [change])] if edit else [])
     except NotCovered:
         return
-    for record in engine_records(program, configuration, change if edit else None):
+    paths = ('edited in place', 'edited from a checkpoint') if edit else ('straight through',)
+    for path, record in zip(paths, engine_records(program, configuration, change if edit else None)):
         message = None if record.failure is None else record.failure.detail('message')
         if message is not None and any(reason in message for reason in NO_ANSWER):
             continue
@@ -245,7 +230,6 @@ def compare(seed, edit=False):
         if failed is not None:
             assert message is not None, (seed, str(failed))
             assert record.failure.t == pytest.approx(float(oracle.view.t)), (seed, str(failed), message)
-            assert (STALE in message) == (STALE in str(failed)), (seed, str(failed), message)
             horizon = oracle.view.t - Fraction(1, 10**9)  # what happens at the failure is not compared
         else:
             assert message is None, (seed, message)
@@ -256,7 +240,12 @@ def compare(seed, edit=False):
             for time, number in zip(times, found):
                 expected = float(value_at(oracle, program, key, time))
                 # The sets whose rates move run on Radau: the values agree to its accuracy.
-                assert number == pytest.approx(expected, rel=1e-7, abs=1e-7), (seed, str(key), float(time))
+                assert number == pytest.approx(expected, rel=1e-7, abs=1e-7), (
+                    seed,
+                    path,
+                    str(key),
+                    float(time),
+                )
 
 
 @pytest.mark.parametrize('seed', range(200))
@@ -309,16 +298,11 @@ def values(program, record, path, times):
 
 
 @pytest.mark.parametrize('op', ['lt', 'le'])
-def test_a_branch_on_the_time_at_a_stage_s_time_makes_the_rate_stale_there(op):
-    """1 L/h until 2 h, then 3 L/h, written `t < 2 h` or `t <= 2 h`: a stage at 2 h that reads the
-    rate fails, naming the flow, the switch and the advice; the next round of 2 h reads the 3 L/h that
-    holds from 2 h on, and a stage at 1 h reads 1 L/h. The water is 2 L at 2 h and 5 L at 3 h."""
+def test_a_branch_on_the_time_at_a_stage_s_time_changes_the_next_rounds_rate(op):
+    """Both comparisons read 1 L/h in the stage at the switch and 3 L/h after the sharing."""
     request = formula(ifelse(compared(op, t, q(2, 'h')), rate(1), rate(3)))
-    _, record = plant(request, after(q(2, 'h'), assign(named('ops').seen, FILL)))
-    at, message = failure(record)
-    assert at == 2
-    for words in ('plant.fill.actual_rate is read before', "t against q(2, 'h')", 'later stage', 'wait'):
-        assert words in message, message
+    program, record = plant(request, after(q(2, 'h'), assign(named('ops').seen, FILL)))
+    assert failure(record)[0] is None and values(program, record, 'ops.seen', [2]) == [pytest.approx(1)]
     program, record = plant(request, after(q(2, 'h')), after(q(0, 'h'), assign(named('ops').seen, FILL)))
     assert failure(record)[0] is None
     assert values(program, record, 'ops.seen', [2]) == [pytest.approx(3)]
@@ -327,22 +311,13 @@ def test_a_branch_on_the_time_at_a_stage_s_time_makes_the_rate_stale_there(op):
     assert failure(record)[0] is None and values(program, record, 'ops.seen', [1]) == [pytest.approx(1)]
 
 
-def test_a_keyed_read_at_its_key_time_makes_the_rate_stale_there():
-    """The factor is 1 from 0 h, 2 from 1 h, 1 from 2 h and 3 from 3 h: a fill of factor x 1 L/h read
-    at 3 h fails; the next round reads 3 L/h; read at 2.5 h it is 1 L/h."""
-    b = Builder(UNITS)
-    readings = b.template('Reading', input_('hour', 'h', 0), input_('factor', '', 1))
-    b.table('readings', readings, FACTORS)
-    request = formula(readings.instances.by('hour').at(t).factor * rate(1))
-    b.entity('plant', value('water', 'L', 0, lower=0), flow('fill', SOURCE, this.water, request=request))
-    b.entity('ops', value('seen', 'L/h', -1), event('look', after(q(3, 'h'), assign(this.seen, FILL))))
-    b.setup(start(named('ops').look))
-    at, message = failure(run(b.finish(), Configuration(Request(4))))
-    assert at == 3 and 'plant.fill.actual_rate is read before' in message and 'factor changed' in message
-    for delay, then, expected in ((q(3, 'h'), q(0, 'h'), 3), (q(2.5, 'h'), None, 1)):
+def test_a_keyed_read_at_its_key_time_changes_the_next_rounds_rate():
+    """At 3 h the factor steps from 1 to 3. The stage reads 1 L/h and the next round reads 3."""
+    for delay, then, expected in ((q(3, 'h'), None, 1), (q(3, 'h'), q(0, 'h'), 3), (q(2.5, 'h'), None, 1)):
         b = Builder(UNITS)
         readings = b.template('Reading', input_('hour', 'h', 0), input_('factor', '', 1))
         b.table('readings', readings, FACTORS)
+        request = formula(readings.instances.by('hour').at(t).factor * rate(1))
         b.entity('plant', value('water', 'L', 0, lower=0), flow('fill', SOURCE, this.water, request=request))
         stages = (
             [after(delay, assign(this.seen, FILL))]
@@ -359,15 +334,10 @@ def test_a_keyed_read_at_its_key_time_makes_the_rate_stale_there():
 
 @pytest.mark.parametrize('test', ['lt', 'le'])
 def test_a_branch_on_a_store_whose_crossing_falls_on_a_stage_s_time(test):
-    """1 L/h until the plant holds 2 L, at 2 h, then 3 L/h: a stage at 2 h that reads the rate fails,
-    naming the switch; one that reads nothing lets the run go on as one with no stage there: 5 L at
-    3 h and 8 L at 4 h; the next round of 2 h reads 3 L/h. On HEAD the stage that reads nothing failed
-    with "the rates switch back and forth" (the store a roundoff short of its switch there)."""
+    """Below 2 L the rate is 1 L/h. The stage at that level reads 1, the next round reads 3."""
     request = formula(ifelse(compared(test, plant_water, q(2, 'L')), rate(1), rate(3)))
-    _, record = plant(request, after(q(2, 'h'), assign(named('ops').seen, FILL)))
-    at, message = failure(record)
-    assert at == 2 and 'plant.fill.actual_rate is read before' in message
-    assert "plant.water against q(2, 'L')" in message
+    program, record = plant(request, after(q(2, 'h'), assign(named('ops').seen, FILL)))
+    assert failure(record)[0] is None and values(program, record, 'ops.seen', [2]) == [pytest.approx(1)]
     for stages in ([after(q(2, 'h'), assign(named('ops').again, rate(7)))], [after(q(0.5, 'h'))], []):
         program, record = plant(request, *stages)
         assert failure(record)[0] is None, failure(record)
@@ -377,14 +347,11 @@ def test_a_branch_on_a_store_whose_crossing_falls_on_a_stage_s_time(test):
     assert failure(record)[0] is None and values(program, record, 'ops.seen', [2]) == [pytest.approx(3)]
 
 
-def test_a_switch_that_holds_its_store_is_stale_where_it_is_reached_and_not_after():
-    """0 L/h from 2 L on, else 1 L/h: the plant fills to 2 L at 2 h and stays there. A read at 2 h
-    fails; at 3 h the switch has held since 2 h, and the read gives 0 L/h; the next round of 2 h reads
-    0 L/h."""
+def test_a_switch_that_holds_its_store_changes_its_rate_after_the_stages():
+    """The plant fills at 1 L/h to 2 L. The stage there reads 1 L/h, then the plant stops filling."""
     request = formula(ifelse(plant_water >= q(2, 'L'), rate(0), rate(1)))
-    _, record = plant(request, after(q(2, 'h'), assign(named('ops').seen, FILL)))
-    at, message = failure(record)
-    assert at == 2 and 'plant.fill.actual_rate is read before' in message
+    program, record = plant(request, after(q(2, 'h'), assign(named('ops').seen, FILL)))
+    assert failure(record)[0] is None and values(program, record, 'ops.seen', [2]) == [pytest.approx(1)]
     for stages, at in (
         ([after(q(3, 'h'), assign(named('ops').seen, FILL))], 3),
         ([after(q(2, 'h')), after(q(0, 'h'), assign(named('ops').seen, FILL))], 2),
@@ -440,10 +407,8 @@ def note(trigger, *steps):
 
 
 @pytest.mark.parametrize('how', ['capture', 'argument'])
-def test_a_firing_that_reads_a_rate_after_an_earlier_firing_started_a_flow_there_fails(how):
-    """At 1 h `deliver` fires first and its pipe joins the tank; `note` fires after it and reads main's
-    rate, in a capture or in its start's argument, before the flows settle again: the run fails at
-    1 h, naming main and the pipe that joined. On HEAD both read 2 L/h, where main gets 1 L/h."""
+def test_a_firing_reads_the_shared_rate_after_an_earlier_firing_started_a_flow(how):
+    """Main gets 2 L/h before the fired occurrence joins. Both captures and start arguments read 2."""
     if how == 'capture':
         trigger = when(
             t >= q(1, 'h'),
@@ -456,14 +421,10 @@ def test_a_firing_that_reads_a_rate_after_an_earlier_firing_started_a_flow_there
     b = deliveries(note(trigger, after(q(0, 'h'), assign(named('ops').noted, local.copy))))
     program = b.finish()
     record = run(program, Configuration(Request(3)))
-    at, message = failure(record)
-    assert (
-        at == 1
-        and 'tank.main.actual_rate is read before' in message
-        and 'ops.deliver#0.pipe joined' in message
-    )
+    assert failure(record)[0] is None
+    assert values(program, record, 'ops.noted', [1]) == [pytest.approx(2)]
     oracle, failed = run_of(program, Configuration(Request(3)))
-    assert failed is not None and STALE in str(failed) and oracle.view.t == 1
+    assert failed is None and value_at(oracle, program, Key('ops', ('noted',)), Fraction(1)) == 2
 
 
 def test_a_delay_that_a_firing_reaches_waits_for_the_settling():
@@ -485,8 +446,7 @@ def test_an_assertion_reads_the_settled_state_of_its_round(limit, fails):
     """The outflow carries at most `limit` L/h, and an assertion holds it to 2 L/h. At 1 h `deliver`'s
     pipe joins: the assertion reads the state that the round settled before the firing acts, and the
     next round's: with a limit of 2 L/h main and the pipe share 2 L/h and it holds; with 3 L/h they
-    take 3 L/h and it fails at 1 h, as an assertion, not a stale read (on HEAD the oracle read the
-    pipe's rate before its first settling, and the engine read 0 for it)."""
+    take 3 L/h and it fails at 1 h, as an assertion on the re-shared outflow."""
     b = deliveries(capacity=limit)
     b.entity('watch', assertion(named('tank').water.outflow.actual_rate <= rate(2)))
     program = b.finish()
@@ -496,13 +456,12 @@ def test_an_assertion_reads_the_settled_state_of_its_round(limit, fails):
     if not fails:
         assert at is None and failed is None
         return
-    assert at == 1 and 'the assertion does not hold' in message and STALE not in message
-    assert failed is not None and STALE not in str(failed) and oracle.view.t == 1
+    assert at == 1 and 'the assertion does not hold' in message
+    assert failed is not None and 'assert' in str(failed) and oracle.view.t == 1
 
 
-def test_a_stop_at_a_switch_keeps_the_stale_rate_in_place_and_in_a_fresh_process(tmp_path):
-    """Stopped before the reading stage at 2 h, where the plant reaches its switch, the run resumed
-    untouched fails at 2 h as straight through does, in place and in a fresh process."""
+def test_a_stop_at_a_switch_keeps_the_incoming_rate_in_place_and_in_a_fresh_process(tmp_path):
+    """On either resume, the stage at the plant's 2 L switch reads the incoming 1 L/h."""
     request = formula(ifelse(plant_water < q(2, 'L'), rate(1), rate(3)))
     program, _ = plant(request, after(q(2, 'h'), assign(named('ops').seen, FILL)))
     configuration = Configuration(Request(4))
@@ -510,5 +469,5 @@ def test_a_stop_at_a_switch_keeps_the_stale_rate_in_place_and_in_a_fresh_process
     stopped = made.run()
     assert isinstance(stopped, Checkpoint) and stopped.stop.t == 2
     for record in (made.resume(), *in_a_fresh_process(program, [stopped], tmp_path)):
-        at, message = failure(record)
-        assert at == 2 and 'plant.fill.actual_rate is read before' in message
+        assert failure(record)[0] is None
+        assert values(program, record, 'ops.seen', [2]) == [pytest.approx(1)]

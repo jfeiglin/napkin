@@ -98,7 +98,7 @@ NO_ANSWER = (
     'a request at an endpoint that the route',
     'switch back and forth at its bound',
 )
-STALE = 'is read before'
+BEFORE_SETUP = 'is read before'
 
 
 def rate(number):
@@ -323,7 +323,9 @@ def compare(seed, edit=False):
         elif failed is not None:
             assert message is not None, (seed, str(failed))
             assert record.failure.t == pytest.approx(float(oracle.view.t)), (seed, str(failed), message)
-            assert (STALE in message) == (STALE in str(failed)), (seed, str(failed), message)
+            assert (BEFORE_SETUP in message) == (BEFORE_SETUP in str(failed)), (seed, str(failed), message)
+            if BEFORE_SETUP in message:
+                assert oracle.view.t == 0, (seed, message)
             horizon = oracle.view.t
         else:
             assert message is None, (seed, message)

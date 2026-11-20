@@ -1109,6 +1109,7 @@ class MovingDeclared(DeclaredWay):
         self.time = self.t0
         self.low, self.high = self.y <= self.lower, self.y >= self.upper
         self.pending = None
+        self.snapped = False  # wait at the moment until the other ways have arrived
         self.failed = None  # the time of the last evaluation that failed (`_at`)
         self.trial = None
         self._cache = {}
@@ -1324,6 +1325,8 @@ class MovingDeclared(DeclaredWay):
             if names:
                 for name, pieces in zip(names, fitted(answers, segment.start, end, tolerance)):
                     self.recorder.add_pieces(name, pieces)
+            if self.run.shared.at_arrival(end):
+                self.run.shared.ends.setdefault(self.key, end)
         self.y = self._state(end)
         self.time = end
         self.pending = None
@@ -1336,6 +1339,8 @@ class MovingDeclared(DeclaredWay):
 
     def peek(self):
         """The end of the next segment, which is made now if it is not yet (`_next`)."""
+        if self.snapped:
+            return math.inf
         if self.pending is None:
             until = min(self.run.limit, self.plan.horizon)
             if self.time >= until:
@@ -1364,18 +1369,23 @@ class MovingDeclared(DeclaredWay):
         return list(self.stores), sorted(set(changed) | set(self.recorded)), True
 
     def snap(self):
-        """The next segment ends at the time of a moment: committed as any other. Gives what changed,
-        and the store whose event ended it where the store met its bound there."""
-        s = self.pending.event
+        """Bring the stores to the moment. The stages read the incoming answer and their round
+        settles the new problem once, including any bound reached here."""
+        segment = self.pending
+        self._commit(segment.end)
+        s = segment.event
         met = [] if s is None or self.low[s] or self.high[s] else [self.stores[s]]
-        stores, rates, _ = self.step()
-        return stores + rates, met
+        if met:
+            self.y[s] = min((self.lower[s], self.upper[s]), key=lambda bound: abs(bound - self.y[s]))
+        self.snapped = True
+        return [*self.stores, *self.flows, *self.recorded, *self.connected.results], met
 
     def cut(self, t):
         """The run stands at time t inside the next segment: the segment up to t is committed, and
         the answer there is the present. A segment that starts at t is made again after the moment,
         and the answers of trial states are forgotten, so that none crosses a moment (`saved.py`)."""
         segment = self.pending
+        self.snapped = False
         self._cache.clear()
         if segment is not None and t <= segment.start:
             self.pending = None

@@ -89,7 +89,8 @@ makes the record's occurrences again from the starts of its trace (`Plan.replay`
 from __future__ import annotations
 
 import math
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
+from copy import copy
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import pairwise
@@ -109,7 +110,7 @@ from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
 from .plan import BUILTINS, CHANGED, DYNAMIC, FORMULA, LOOKUP, REDUCE, SIDES, Plan, name_of
-from .reads import Reads
+from .reads import Reads, on_side, side_level
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
 FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError)
@@ -133,7 +134,9 @@ LEGS, LEG_FIELDS = ('forward', 'backward'), ('actual_rate', 'request')
 
 
 def _times(start, end, points):
-    return start + (points + 1.0) * 0.5 * (end - start)
+    """The fit samples the segment before its endpoint. On a short span even an interior
+    Chebyshev node can round to the endpoint, where the next branch may already apply."""
+    return np.minimum(start + (points + 1.0) * 0.5 * (end - start), math.nextafter(end, start))
 
 
 def fitted(values, start, end, tolerance):
@@ -176,6 +179,11 @@ def fitted(values, start, end, tolerance):
             else:
                 at.append((a, float(first[k]), Curve(b - a, tuple(float(c) for c in series))))
     return [sorted(pieces, key=lambda piece: piece[0]) for pieces in found]
+
+
+def recorded_piece(t, value, rate):
+    """A recorder piece as the public record holds it: on a line or on a curve."""
+    return Piece(t, value, curve=rate) if isinstance(rate, Curve) else Piece(t, value, rate)
 
 
 def _compact(pieces):
@@ -284,6 +292,12 @@ class Recorder:
     def add_pieces(self, name, pieces):
         """Pieces of a value, which a run gives as it goes."""
         self._add(name, pieces)
+
+    def incoming_piece(self, name, end):
+        """The last recorded piece strictly before an incoming segment ends, or None."""
+        pieces = self.pieces.get(name, ())
+        place = bisect_left(pieces, end, key=lambda piece: piece[0]) - 1
+        return pieces[place] if place >= 0 else None
 
     def wanted(self, name):
         """Whether the record keeps the history of an engine name, which a way of running asks so
@@ -420,13 +434,7 @@ class Recorder:
         a curved piece."""
         if len(pieces) == 1 and not isinstance(pieces[0][2], Curve):
             return History(key, (Piece(*pieces[0]),))
-        return History(
-            key,
-            tuple(
-                Piece(t, value, curve=rate) if isinstance(rate, Curve) else Piece(t, value, rate)
-                for t, value, rate in _compact(pieces)
-            ),
-        )
+        return History(key, tuple(recorded_piece(*piece) for piece in _compact(pieces)))
 
     def _lookup(self, name, histories, end):
         """The pieces of a keyed read: of a stepped one, over each of its key intervals, the pieces of
@@ -791,7 +799,7 @@ def _switches(at, a, b, first, crossing):
     one value whatever its reason: a stretch where the value cannot be evaluated keeps the reason
     that it has where it starts."""
     pieces, value = [(a, first, 0.0)], first
-    points = _times(a, b, np.concatenate([[-1.0], _CHECKS[1:-1], [1.0]]))
+    points = np.concatenate([[a], _times(a, b, _CHECKS[1:-1]), [b]])
     for before, after in pairwise(points):
         if _same(at(after), value):
             continue
@@ -1153,6 +1161,9 @@ class Reader:
         self.found = {}  # (engine name, time) -> its value, or the LookupError of a value that has none
         self.read = {}  # (engine name, time) -> the engine names that its evaluation read, in order
         self.kept = {}
+        self.sharing = self.point = None  # a separate formula cache for the outgoing sides of rates
+        self.wider = None  # a second guard reader only when the adjacent operands tie
+        self.guard = None  # the distance along the outgoing piece for an outside flow's switch
         self._stores = None
         self._always = {}  # the id of a node -> what every evaluation of it reads (`proofs.always`)
         self._checked = {}  # a key that names a value -> its `Declaration` (`checked`)
@@ -1332,7 +1343,20 @@ class Reader:
         elif value.kind != FORMULA or (owner is not None and read(f'{owner}.active') is False):
             # A value, or a formula of a finished occurrence, which keeps its value (D7): read from
             # its history, it is no evaluation (`reads` gives none).
-            return self._stored(value).at(t)
+            history = self._stored(value)
+            if self.guard and name in self.stores():
+                place = bisect_right(history.pieces, t, key=lambda piece: piece.t) - 1
+                if place >= 0:
+                    return side_level(history.pieces[place].at, t, self.guard(t), self.plan.numerics.crossing)
+            return history.at(t)
+        elif self.point is None and not self.guard and name in self.plan.outside:
+            if self.sharing is None:
+                self.sharing = copy(self)
+                self.sharing.found = {}
+                self.sharing.point = copy(self)
+                self.sharing.point.guard = lambda at: math.nextafter(at, math.inf)
+                self.sharing.point.found = {}
+            return self.sharing.at(name, t)
         else:
             # What the formula reads is read where its evaluation asks for it (`reads.py`): a read
             # that has no value then makes the formula unavailable, with its reason. What every
@@ -1342,7 +1366,25 @@ class Reader:
                 sure = self._always[id(value.node)] = always(value.node)
             self._ready(sure, t)
             try:
-                found = evaluate(value.node, Reads(nodes.names(value.node), read, t), self.plan.units)
+                if self.point is None:
+                    at = self.guard(t) if self.guard else t
+                    found = evaluate(value.node, Reads(nodes.names(value.node), read, at), self.plan.units)
+                else:
+                    probe = math.nextafter(t, math.inf)
+
+                    crossing = self.plan.numerics.crossing
+
+                    def read_probe(other, at):
+                        asked.append(other)
+                        if at == probe:
+                            return self.point.at(other, t)
+                        if self.wider is None:
+                            self.wider = copy(self.point)
+                            self.wider.guard = lambda now: max(now + crossing, math.nextafter(now, math.inf))
+                            self.wider.found = {}
+                        return self.wider.at(other, t)
+
+                    found = on_side(value.node, read, self.plan.units, t, probe, crossing, read_probe)
                 found = bool(found) if value.boolean else found if isinstance(found, str) else float(found)
             except FAILURES as problem:
                 found = Unavailable(str(problem))

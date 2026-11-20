@@ -39,34 +39,17 @@ and state, and a moment that builds one of them again builds them all. A set of 
 whose problem moves runs alone: a set that would follow it, or that it would follow, stops the run
 by name.
 
-**A rate read before it settles** (D5; PLAN, changes 25 and 26): in a moment the stages commit
+**A rate read in a round** (D5; PLAN, change 27): in a moment the stages commit
 first and the flows are shared again after, so while the stages of a round run, and its conditions
 once a firing has changed something, every rate and result that the settling decides (of local
 sharing as of a declared solver, a flow from SOURCE to SINK too) is the one of the last settling.
-One that something it depends on changed since then fails, naming it, what changed and the advice
-(`fresh`), whoever reads it: a stage, the setup, an edit's stage, a firing's capture, the argument
-of its start or the entry of what it starts after an earlier firing of the same conditions. A rate
-depends on its part of its set (`part`: the flows that local sharing decides it with, those that
-share a store with it, on through theirs; a declared solver's set whole): a value that their
-settings or their problem read and that a commit, the stage itself or an edit set, a store of the
-part that was set or met its bound at this moment, a switch of their rates that the state reached
-at this moment (a branch on the time or on a store whose condition changes then: each way that
-moves says which, `switched`), a keyed read by the time at its key time, the allocation of an
-endpoint of the part, a flow that joined or left one of its stores, and so on through the parts
-whose rates or results its settings read (`stale`). So does one read in the setup, before the flows
-first settle, and the rate of a flow that joined since they last settled. A flow that left since
-reads zero, as a finished flow does. A store meets its bound at a moment where an event of its
-instance brings it there at the moment's time (each way's `snap` names it); the other names that
-the ways change there (`Run.moved`: every store and rate of a moving set whose segment ends at the
-moment) are what the settling builds again, and no change of what a rate depends on. What a check
-holds against is known statically (`Plan.settings_reads` of the part's flows), so a write to a
-value that a branch of a setting reads, which the present state does not take, counts too.
+The installed way keeps that answer while stages commit. A flow that joins has no installed way
+yet and reads zero. A flow that leaves keeps its way until the settling retires it.
 """
 
 from __future__ import annotations
 
 import math
-from collections import deque
 
 from ..continuous.walk import walked
 from ..errors import SimulationError
@@ -74,26 +57,10 @@ from .component import ComponentWay
 from .declared import DeclaredWay, MovingDeclared
 from .family import Family
 from .lines import Lines
-from .plan import COMPONENT, DECLARED, FAMILY, LINES, RATE, RESULT, ROUTE, SPARSE, Expanded
+from .plan import COMPONENT, DECLARED, FAMILY, LINES, ROUTE, SPARSE
+from .reads import side_level
+from .record import recorded_piece
 from .sparse import Sparse
-
-# The advice of a stale read (PLAN, change 25).
-ADVICE = (
-    'In a moment the stages commit first and the flows are shared again after: read it in a later '
-    'stage or after a wait.'
-)
-
-
-def _listed(items):
-    """What changed, for a message: the first three, and how many more."""
-    shown = ', '.join(items[:3])
-    return shown if len(items) <= 3 else f'{shown} and {len(items) - 3} more'
-
-
-def _flow_of(plan, connection):
-    """The flow of a connection: a directed flow is its own, a leg of a route or of a flow with legs
-    is named after its flow."""
-    return connection if connection in plan.flows else connection.rsplit('.', 1)[0]
 
 
 def _moves(connected):
@@ -116,7 +83,6 @@ class Ways:
         self.instances = []
         self.grouped = set()  # the ids of the sets that integrate with others in one instance
         self._next = 0
-        self._parts = {}  # a set -> its parts (`part`)
 
     # ---- what the ways hold now ----------------------------------------------------------------
 
@@ -129,212 +95,62 @@ class Ways:
         """The value of a store of a set at a time inside its present window."""
         return self.instance_of(store).level_at(store, t)
 
+    def store_side(self, name, t, probe):
+        """The adjacent level read by a switch of an outside flow. A switch read in the first
+        round follows the preceding store trajectory, including at a bound. Only a store that
+        the evaluation asks for is read. A sparse step keeps its cubic even in a filtered record."""
+        shared = self.run.shared
+        instance = self.instance_of(name)
+        crossing = self.run.clock.crossing
+        if shared.arrival is not None:
+            key = getattr(instance, 'key', None)
+            end = shared.ends.get(key, t)
+            before = min(end + (probe - t), math.nextafter(end, -math.inf))
+            if key in shared.steps:
+                _, cubic, low, high, _, _, _ = shared.steps[key]
+                row = instance.place[name]
+                if low[row]:
+                    return float(instance.lower[row])
+                if high[row]:
+                    return float(instance.upper[row])
+                return side_level(lambda at: float(cubic(at)[row]), end, before, crossing)
+            piece = self.run.recorder.incoming_piece(name, end)
+            if piece is not None:
+                return side_level(recorded_piece(*piece).at, end, before, crossing)
+        return side_level(lambda at: instance.level_at(name, at), t, probe, crossing)
+
     def rate(self, name, t):
         """An actual rate or a served fraction (`flow.actual_rate`, `flow.served_fraction`) at a
-        time; a flow that is in no set now (it has not joined), or that left since the flows last
-        settled, moves nothing."""
+        time. The installed way gives the rate until the next settling, including for a flow
+        whose occurrence finished in this round. A flow with no installed way reads zero."""
+        instance = self.instance_of(name.rsplit('.', 1)[0])
+        return 0.0 if instance is None else instance.rate_at(name, t)
+
+    def incoming(self, name):
+        """The requested rate at the end of its preceding segment, if it moved. Use the piece
+        already fitted for the record, or ask the incoming sparse step for this one rate."""
         flow = name.rsplit('.', 1)[0]
-        instance = self.instance_of(flow)
-        return 0.0 if instance is None or flow in self.run.left else instance.rate_at(name, t)
+        key = self.result_of.get(name)
+        instance = self.sets[key][1] if key is not None else self.instance_of(flow)
+        if instance is None and flow in self.plan.connections:
+            instance = self.instance_of(flow.rsplit('.', 1)[0])  # a leg of a route or a flow with legs
+        if not isinstance(instance, ComponentWay | Sparse | MovingDeclared):
+            return None
+        shared = self.run.shared
+        end = shared.ends.get(instance.key)
+        if end is None:
+            return None
+        piece = self.run.recorder.incoming_piece(name, end)
+        if isinstance(instance, Sparse):
+            start, _, _, _, sides, _, _ = shared.steps[instance.key]
+            if sides or piece is None or piece[0] < start:
+                piece = instance.incoming_piece(name)
+        return shared.incoming(name, piece, end) if piece is not None else None
 
     def result(self, name, t):
         """A result of a declared solver that is no rate: a stored number that it determines or an
         unknown of its own."""
         return self.sets[self.result_of[name]][1].level_at(name, t)
-
-    def giver(self, name):
-        """The id of the set that gives a rate, a served fraction, a result or an endpoint's rate over
-        its present flows (a dynamic read), or None for one that no set gives now."""
-        key = self.result_of.get(name)
-        if key is None:
-            key = self.set_of.get(name.rsplit('.', 1)[0])
-        dynamic = self.plan.dynamic.get(name) if key is None else None
-        if dynamic is not None and dynamic.source[0] == 'flows':
-            key = self.set_of.get(dynamic.source[1])
-        return key
-
-    def fresh(self, name, tx):
-        """A rate or a result that the settling decides, read while the stages or the conditions of a
-        round run (see the module; spec, "Reading a result": a stale answer is a wrong one): it fails
-        in the setup, for a flow that joined since the flows last settled, and where what it depends
-        on changed since (`stale`). A flow that left since reads zero (`rate`)."""
-        plan, run = self.plan, self.run
-        flow = name.rsplit('.', 1)[0]
-        if flow in run.left:
-            return
-        solver = plan.results.get(name) or plan.solved_flows.get(flow)
-        setup = run.moment.round == 0 and run.moment.phase == 'stages'
-        if setup and solver is None:
-            raise SimulationError(
-                f'{name} is read before the flows first settle: the setup reads it, and they settle once '
-                f'it commits. {ADVICE}'
-            )
-        if flow in run.joined or ('joined', name) in run.changed:
-            raise SimulationError(
-                f'{name} is read before its flow first settles: {flow} joined since the flows last '
-                f'settled. {ADVICE}'
-            )
-        key = self.giver(name)
-        if setup or (key is None and solver is not None):
-            raise SimulationError(
-                f'{name} is read before its first solve: it settles after the stages of the round '
-                f'commit. {ADVICE}'
-            )
-        if key is None and name not in plan.outside:
-            return  # a flow in no set moves nothing
-        found = self.stale(name, tx)
-        if found is None:
-            return
-        via, changes = found
-        follows = f'it follows {via}, and ' if via is not None else ''
-        connected = self.sets[key][0] if key is not None else None
-        if connected is not None and connected.way == DECLARED:
-            raise SimulationError(
-                f'{name} is read before its solve settles: {follows}since it last settled, '
-                f'{_listed(changes)} (the solver {connected.solver}). {ADVICE}'
-            )
-        raise SimulationError(
-            f'{name} is read before the flows settle again: {follows}since they last settled, '
-            f'{_listed(changes)}. {ADVICE}'
-        )
-
-    def stale(self, rate, tx):
-        """What changed since the flows last settled that a rate or a result read now depends on: (the
-        rate on the way to it, or None, and what changed), or None. A rate depends on its part of its
-        set (`part`): what the settings of the part's flows read, its stores, the allocations of their
-        endpoints and the flows that join or leave them, the switches of its rates that the state
-        reached at this moment, and on the parts whose rates and results those settings read, as far
-        as they go; the first part on that way at which something changed is the one named. Each part
-        costs what changed, not its size."""
-        run, plan = self.run, self.plan
-        names, marks = run.unsettled(tx)
-        joined, left = set(run.joined), set(run.left)
-        ends = {}  # a store -> what joined or left it since the flows last settled
-        for flow in (*run.joined, *run.left):
-            how = 'joined' if flow in joined else 'left'
-            for connection in plan.flows[flow].connections:
-                for end in (connection.source, connection.sink):
-                    if end is not None:
-                        ends.setdefault(end, []).append(f'{flow} {how} {end}')
-        first = self.part(rate)
-        pending, seen = deque([(first, None)]), {first}
-        while pending:
-            part, via = pending.popleft()
-            flows, stores, reads, rates = part
-            changes = [f'{name} changed' for name in sorted(names) if name in reads or name in stores]
-            for mark in sorted(marks):
-                if mark[0] == 'bound' and (mark[1] in stores or mark[1] in reads):
-                    changes.append(f'{mark[1]} met its bound')
-                elif mark[0] == 'switch' and mark[1] in flows:
-                    changes.append(f'the rate of {mark[1]} reached the switch of {mark[2]}')
-                elif mark[0] == 'allocation' and mark[1] in stores:
-                    changes.append(f'the allocation of {mark[1]}.{mark[2]} changed')
-            for store in sorted(ends):
-                # A flow that joins or leaves a store of the part, or one that its settings read,
-                # whose motion it changes: the part moves with that store from the settling on.
-                if store in stores or store in reads:
-                    changes += ends[store]
-            for each in sorted(rates):
-                flow = each.rsplit('.', 1)[0]
-                if flow in joined or flow in left:
-                    changes.append(f'{flow} {"joined" if flow in joined else "left"}')
-            if changes:
-                return via, list(dict.fromkeys(changes))
-            for each in sorted(rates):
-                found = self.part(each)
-                if found is not None and found not in seen:
-                    seen.add(found)
-                    pending.append((found, via or each))
-        return None
-
-    def part(self, rate):
-        """The part of its set that a rate or a result decides with (flows, stores, what their
-        settings read, the rates and results of other sets that they read), or None for one that no
-        set gives now. Local sharing decides a flow's rate with the flows that share a store with it,
-        and on through theirs: a set whose settings read the stores of another network moves with it
-        (`plan.connect`), and its parts decide no rate of one another. A declared solver decides all
-        that it determines together, and its set is one part. A flow from SOURCE to SINK is a part of
-        its own, its rate's name in place of its flows."""
-        key = self.giver(rate)
-        if key is None:
-            if rate not in self.plan.outside:
-                return None
-            reads, rates = self._reads((self.plan.outside[rate],))
-            return (frozenset({rate}), frozenset(), reads, rates)
-        connected = self.sets[key][0]
-        parts = self._parts.get(connected)
-        if parts is None:
-            parts = self._parts[connected] = self._parts_of(connected)
-        dynamic = self.plan.dynamic.get(rate)
-        if dynamic is not None and dynamic.source[0] == 'flows':
-            anchor = dynamic.source[1]  # an endpoint's rate: the part of its store
-        elif rate in self.result_of:
-            anchor = None
-        else:
-            anchor = _flow_of(self.plan, rate.rsplit('.', 1)[0])
-        return parts.get(anchor, parts[None])
-
-    def _parts_of(self, connected):
-        """{a flow or a store: its part} of a set, and None: the part of its results (see `part`)."""
-        plan = self.plan
-        if connected.way == DECLARED or not connected.flows:
-            whole = (
-                frozenset(connected.flows),
-                frozenset(connected.stores),
-                connected.reads,
-                connected.rates,
-            )
-            return dict.fromkeys((None, *connected.flows, *connected.stores), whole)
-        parent = {}
-
-        def root(item):
-            parent.setdefault(item, item)
-            while parent[item] != item:
-                parent[item] = parent[parent[item]]
-                item = parent[item]
-            return item
-
-        for flow in connected.flows:
-            root(flow)
-            for connection in plan.flows[flow].connections:
-                for end in (connection.source, connection.sink):
-                    if end is not None:
-                        parent[root(('store', end))] = root(flow)
-        groups = {}
-        for flow in connected.flows:
-            groups.setdefault(root(flow), []).append(flow)
-        found = {}
-        for members in groups.values():
-            stores = {
-                end
-                for flow in members
-                for connection in plan.flows[flow].connections
-                for end in (connection.source, connection.sink)
-                if end is not None
-            }
-            reads, rates = self._reads([plan.flows[flow] for flow in members])
-            part = (frozenset(members), frozenset(stores), reads, rates)
-            for item in (*members, *stores):
-                found[item] = part
-        # A store of the set that no flow meets, only reads, and its results: the whole set.
-        whole = (frozenset(connected.flows), frozenset(connected.stores), connected.reads, connected.rates)
-        for store in connected.stores:
-            found.setdefault(store, whole)
-        found[None] = whole
-        return found
-
-    def _reads(self, flows):
-        """(what the settings of some flows read, the rates and results of other sets among them)."""
-        plan = self.plan
-        found = Expanded.union(plan.settings_reads(flow) for flow in flows)
-        rates = set()
-        for name in found.leaves:
-            value, dynamic = plan.values.get(name), plan.dynamic.get(name)
-            if (value is not None and value.kind in (RATE, RESULT)) or (
-                dynamic is not None and dynamic.steps[-1:] in (('actual_rate',), ('served_fraction',))
-            ):
-                rates.add(name)
-        return frozenset(found.leaves | found.formulas | found.stepped), frozenset(rates)
 
     def linear(self, store):
         """(value, rate, since) of a store whose line holds until its instance's next event, or
@@ -367,13 +183,15 @@ class Ways:
         return found
 
     def cut(self, t):
-        """Every instance stands at time t."""
+        """Every instance stands at time t. Give the stores brought to a bound by the cut."""
+        met = set()
         for instance in self.instances:
-            instance.cut(t)
+            met.update(instance.cut(t) or ())
+        return met
 
     def switched(self, t):
         """The switches of rates that the states of the ways reached at time t, where every instance
-        stands (`cut`): (a flow whose rate reads the switch, the switch). Each
+        stands (`cut`): the flows that must rebuild at the settling. Each
         way whose rates move between moments says which of its switches its window reached at its
         end (`switched_at(t)`); a way whose rates hold between moments reaches none."""
         found = set()
@@ -408,6 +226,8 @@ class Ways:
         for name in names:
             if name in self.set_of:
                 found.add(self.set_of[name])
+            if name in self.result_of:
+                found.add(self.result_of[name])
             found |= self.readers.get(name, set())
         return found
 
@@ -458,7 +278,6 @@ class Ways:
         values = {}
         for key in sorted(ids):
             connected, instance = self.sets.pop(key)
-            self._parts.pop(connected, None)
             for store in connected.stores:
                 values[store] = instance.level_at(store, t)
             instance.retire(key)

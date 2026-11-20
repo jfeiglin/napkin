@@ -35,8 +35,8 @@ the segments of the set one after the other.
   moment finds the bounds of its state there before its rates are read, as its first segment finds
   them again (`refresh_bounds`), with the far sides of the switches that it crosses there, so that
   a read after the settling sees the rates that it settled (a starved flow carries nothing) and that
-  hold from the moment on. The switches that its segments reach at the time of a moment make the
-  rates that read them stale in the moment's stages (`switched_at`; `ways.Ways.stale`). A set built
+  hold from the moment on. At a switch reached at the time of a moment, the settling rebuilds
+  its flows after the stages (`switched_at`). A set built
   at a horizon that is a moment of a run that goes
   on too records the stores and the rates of its state there on those bounds (`finish`): a read at
   the horizon of a run that ends there is the read of a run that goes on, whose first segment of
@@ -51,7 +51,6 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import names_in
 from ..allocation import Allocation
@@ -472,7 +471,7 @@ class ComponentWay:
                 except ExpressionError as problem:
                     raise SimulationError(str(problem)) from None
             else:
-                node = plan.values[name].node
+                node = run.shared.definition(name, plan.values[name]).node
             computed[name] = {'expr': node}
         leaves = set()
         for flow in flows.values():
@@ -585,6 +584,9 @@ class ComponentWay:
 
     def _commit(self, segment):
         component = self.component
+        shared = self.run.shared
+        if segment.end > segment.start and shared.at_arrival(segment.end):
+            shared.ends.setdefault(self.key, segment.end)
         self.run.recorder.segment(component, segment, component.system.state_ids, self.rates)
         component.proceed(segment)
         self._drift = None
@@ -600,11 +602,10 @@ class ComponentWay:
         """The switches of the set's rates that its state reached at time t, a moment that falls on
         their crossing (`run.next_moment`), each with a flow whose rate reads it: those that the
         segments that ended within the time tolerance of t, or that the moment cut there, brought to
-        their switch. A rate that one of them decides is stale in the moment's stages, as one whose
-        store met its bound there is (`ways.Ways.stale`)."""
+        their switch."""
         crossing, deciding = self.run.plan.numerics.crossing, self.component.deciding()
         return {
-            (flow, f'{nodes.text(a)} against {nodes.text(b)}')
+            flow
             for at, found in self.reached
             if abs(t - at) <= crossing
             for a, b in found
@@ -658,7 +659,8 @@ class ComponentWay:
             recorder.add(name, t, float(delivered[k]), 0.0)
 
     def cut(self, t):
-        """The run stands at time t inside the next segment: the segment up to t is committed."""
+        """Commit the segment up to the moment. A bound that the segment locates at that
+        moment takes part in the re-share if the store has reached it to the solver's accuracy."""
         segment = self.pending
         if segment is None or t >= segment.end:
             return
@@ -667,10 +669,15 @@ class ComponentWay:
             return
         last = np.array(self._state(segment, t), dtype=float)
         numerical = _cut(segment.numerical, t)
+        near = ()
+        if segment.reached and self.run.clock.due(segment.end, t):
+            system = self.component.system
+            near = tuple(k for k in segment.reached if abs(segment.last[k] - last[k]) <= system.atol[k])
         cut = Segment(
             segment.start, t, segment.solution, segment.first, last, numerical, (), segment.switches
         )
         self._commit(cut)
+        return tuple(self.stores[k] for k in near)
 
     @staticmethod
     def _state(segment, t):

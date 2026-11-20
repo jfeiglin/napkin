@@ -16,8 +16,8 @@ Then each assertion over state is checked on that settled state (`check`), and t
 receiver and declaration, and the released gates go on, in the order in which their occurrences
 were made: what they start is the next round's, which settles it. A firing reads after the firings
 before it: its captures, the arguments of its start, the entry and the delay of what it starts and
-its `reset after D` read a rate that an earlier firing made stale only to stop the run by name
-(`ways.Ways.fresh`; PLAN, change 26), and a delay that reads a rate waits for the next settling
+its `reset after D` read the rates of the sharing that preceded the firings (PLAN, change 27),
+and a delay that reads a rate waits for the next settling
 (`occurrences.py`). A manual start of the event consumes nothing of its trigger. A draw of a firing
 (in a capture, in the start's arguments, in `reset after D`) is keyed by the firing's number
 (`chance.py`).
@@ -399,12 +399,12 @@ class Triggers:
     def fire(self, state, near):
         """A firing: the captures in written order, the start of the event, the reset; `near` are the
         near-ties of its condition as the conditions read it. A draw of the firing is keyed by its
-        number (`chance.py`). What it reads after an earlier firing of the same conditions changed
-        what a rate depends on is read before the flows settle again (`ways.Ways.fresh`)."""
+        number (`chance.py`). Its rates are those of the preceding sharing, also after an earlier firing started a flow."""
         run, moment = self.run, self.run.moment
         trigger = state.plan
         run.chance.firing[trigger.key] = state.firings + 1
         for name, node in trigger.captures:
+            run.shared.remember(name)
             run.env[name] = run.truth(node)
         tx = Tx(trigger.member, stage=False)
         tx.near = near

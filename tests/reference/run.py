@@ -13,10 +13,9 @@ At a time, rounds (`Run._moment`). One round is:
    amount into or out of its store, and a flow that carries a rate into or out of its store, read
    with the rates of each moment (`_frozen_flows`); a move of nothing and a connected flow at zero
    rate write nothing.
-2. *Settle.* Rates and each affected solver, once (`network.settle`). Until then a read of a rate
-   or a result whose inputs changed since the last settlement fails, also through a formula
-   (`Run.check_stale`; PLAN, change 25): a flow that a firing of the conditions before started
-   makes the rates at its stores stale in the stages of the next round, until it settles.
+2. *Settle.* Each affected solver shares its results once (`network.settle`). Until then stages
+   read the previous settlement's rates and results at this time, also through a formula. A flow
+   that joined reads zero. A flow that left keeps its rate until the settlement.
 3. *Delays.* A next delay that reads a computed result is finished with the settled result.
 4. *Conditions.* Triggers, resets and gates are all read on the settled state; then the firings
    and the released gates take effect, in a fixed order.
@@ -174,13 +173,6 @@ class Run:
         self.edit_log = []
         self.phase = 'setup'
         self.rounds, self.again = 0, False
-        # What the commits changed since the last settlement (of stages, of the setup and of the
-        # firings of the conditions before, and edits), the stores that met a bound by moving
-        # since then, and the times after the last moment at which what each calculation reads
-        # changes by itself (`_clock`), for `check_stale`.
-        self.round_written = set()
-        self.at_bound = set()
-        self.clock_of = {}
         self._setup()
 
     # --- setup -----------------------------------------------------------------------------------
@@ -330,7 +322,6 @@ class Run:
             cells[Cell(f, 'request')] = self._prop(decl.request, scope)
         for cell in network.stores_of(f):
             self._note_store(cell)
-        self.round_written |= network.stores_of(f)  # the flow joins its endpoints' collections
         self.flow_at[owner, decl.name] = f
         self.view.live.append(f)
         return f
@@ -421,7 +412,6 @@ class Run:
             view.cells[cell] = value
             if old != value:
                 view.entered[cell] = t
-            self.round_written.add(cell)
         else:
             self.stop_edits.append((cell, value))
         return old
@@ -506,8 +496,6 @@ class Run:
         for cell, p in view.levels.items():
             view.cells[cell] = p(tau)
             self._in_range(cell, view.cells[cell])
-            if view.cells[cell] in view.bounds.get(cell, ()):
-                self.at_bound.add(cell)  # a rate that this store limits is stale until it settles
         for var, p in view.rates.items():
             view.results[var] = p(tau)
         view.t, view.levels, view.rates = nxt, {}, {}
@@ -518,6 +506,14 @@ class Run:
             self._note('moment', '')
             self.rounds = 0
             if setup:  # round zero: the setup statements commit as one stage, then settle and check
+                if self.model.setup:
+                    # A result may have the path of an ordinary field. Its initializer is no solve.
+                    self.solved_cells = {
+                        var[1]
+                        for _, _, _, claimed in network.declarations(self)
+                        for var in claimed
+                        if var[0] == 'cell'
+                    }
                 self.phase = 'stages'
                 tx = Tx()
                 self._execute(self.model.setup, tx, Scope())
@@ -570,7 +566,6 @@ class Run:
     def _settle_and_check(self):
         self.phase = 'settle'
         network.settle(self)
-        self.round_written, self.at_bound = set(), set()
         self._finish_delays()
         self.phase = 'conditions'
         self._conditions()
@@ -766,14 +761,12 @@ class Run:
         the run stops there, where a read sees what the earlier commits made."""
         view = self.view
         saved = view.copy(), len(self.ledger), len(self.trace) if mark is None else mark
-        written = set(self.round_written)
         try:
             self._publish(tx)
         except RunFailed:
             frame, ledger, trace = saved
             view.__dict__.update(frame.__dict__)
             del self.ledger[ledger:], self.trace[trace:]
-            self.round_written = written
             raise
 
     def _publish(self, tx):
@@ -801,7 +794,6 @@ class Run:
             view.cells[cell] = value
             if old != value:  # `elapsed` restarts only when the committed value differs
                 view.entered[cell] = t
-        self.round_written |= set(tx.writes)
         starts, tx.starts, tx.writes, tx.moves = tx.starts, [], {}, []
         for bound, args in starts:
             self._register(bound, args)
@@ -930,7 +922,6 @@ class Run:
         for (owner, _), f in list(self.flow_at.items()):
             if owner is occ and f in view.live:
                 view.live.remove(f)
-                self.round_written |= network.stores_of(f)  # the flow leaves its endpoints' collections
         view.cells[Cell(occ, 'done')], view.cells[Cell(occ, 'active')] = True, False
         self._note('done', occ.label, origin=occ.event.origin)
         if self.phase == 'conditions':
@@ -1022,7 +1013,6 @@ class Run:
         """The times after this moment at which something can happen without a scheduled stage."""
         view = self.view
         stops = network.motion(self)
-        self.clock_of = self._clock()
 
         def watch(expr, scope, strict):
             ev = Ev(self, view, scope, mode='germ')
@@ -1043,74 +1033,19 @@ class Run:
                 raise RunFailed(f'assert {a.text or show(a.condition)} fails just after t = {view.t} h')
         return stops
 
-    def _clock(self):
-        """{calculation: the times after this moment at which what it reads changes by itself}: where a
-        comparison of its problem that reads the time or a store that moves, a least or a greatest
-        value, an absolute value or a keyed read by the time, read just after the moment with the
-        stores moving (`network.motion`), can change its answer, and so on through the results of
-        other calculations that it reads (PLAN, change 26). A rate of the calculation read at one of
-        those times, before the settlement there, is stale (`check_stale`), as one whose store meets
-        its bound there is."""
-        view, own, reads = self.view, {}, {}
-        for comp in self.components:
-            ev = Ev(self, view, None, mode='germ', unknowns=set(comp.vars))
-            network.assemble(self, comp, ev, {})
-            own[comp] = {view.t + stop for stop in ev.shared.stops}
-            reads[comp] = {self.component_of[var] for var in ev.shared.results if var in self.component_of}
-        found = {}
-        for comp in self.components:
-            times, pending, seen = set(), [comp], {comp}
-            while pending:
-                each = pending.pop()
-                times |= own.get(each, set())
-                for other in reads.get(each, ()):
-                    if other not in seen:
-                        seen.add(other)
-                        pending.append(other)
-            found[comp] = times
-        return found
-
     # --- what the evaluator asks of the run ----------------------------------------------------------
 
     def pull(self, var):
         """Solve the calculation of a result that another calculation reads."""
         network.pull(self, var)
 
-    def incident(self, view, end):
-        """The connections of an endpoint that are present."""
-        return network.incident(view, end)
+    def incident(self, flows, end):
+        """The connections of an endpoint among the given flows."""
+        return network.incident(flows, end)
 
     def key_of(self, member, view):
         """The natural key of a member: the start time of an occurrence, else its creation number."""
         return view.cells[Cell(member, 'started')] if isinstance(member, Occ) else member.number
-
-    def check_stale(self, var, tx):
-        """A rate or a result read between a change and the next settlement (decision D5; PLAN,
-        changes 25 and 26: every rate that a settlement decides, of local sharing as of a solver,
-        whoever reads it): in the stages of a round, and in its conditions once a firing has changed
-        something (a capture, an argument or a delay of a later firing, the entry of an occurrence
-        that it starts). It fails when an input of its calculation changed since the last settlement,
-        met a bound by moving, or changes by itself at this time (`_clock`), and when it has never
-        settled (in the setup, and a flow that joined since). A stale answer is a wrong one."""
-        comp = self.component_of.get(var)
-        if comp is None:
-            raise RunFailed(
-                f'{label(var)} is read before its first solve: it settles after the stages of the round '
-                'commit. Read it in a later stage or after a wait.'
-            )
-        written = self.round_written | self.at_bound | (set(tx.writes) if tx is not None else set())
-        changed = comp.deps & written
-        if changed:
-            raise RunFailed(
-                f'{label(var)} is read before its solve settles: {", ".join(sorted(label(c) for c in changed))} '
-                'changed since the last settlement. Read it in a later stage or after a wait.'
-            )
-        if self.view.t in self.clock_of.get(comp, ()):
-            raise RunFailed(
-                f'{label(var)} is read before its solve settles: what it reads changes by itself at '
-                f't = {self.view.t} h (a branch on the time or on a store, or a keyed read by the time). '
-                'Read it in a later stage or after a wait.'
-            )
 
     def entered(self, cell, tx, view):
         """The time at which a state took its present value. A write in the stage counts only when

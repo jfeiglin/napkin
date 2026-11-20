@@ -1,7 +1,7 @@
 """Rounds at one time (decision D5). Stages due together commit one after another, the
 earliest-started occurrence first, and a later stage sees what an earlier one committed. Each
-affected solve settles once per round. A read of a computed result whose inputs changed before it
-settles is an error, also through a formula: a stale answer is a wrong one."""
+affected solve settles once per round. Reads in stages, also through a formula, give the values
+of the previous settlement at the moment's time (PLAN, change 27)."""
 
 from fractions import Fraction as F
 
@@ -10,6 +10,7 @@ import pytest
 from tests.reference.errors import RunFailed
 from tests.reference.model import (
     SINK,
+    SOURCE,
     Model,
     N,
     add,
@@ -17,8 +18,13 @@ from tests.reference.model import (
     calc,
     event,
     flow,
+    formula,
+    if_,
+    leg,
+    legs,
     lit,
     set_,
+    solver,
     start,
     sub,
     this,
@@ -111,6 +117,24 @@ def test_two_writes_one_solve_and_a_reaction():
     assert (r.read(N.clinic.staff_hours, 1), r.read(N.clinic.staffing.care, 1)) == (85, F(119, 2))
 
 
+@pytest.mark.parametrize(
+    ('result', 'path'),
+    [
+        (N.clinic.staffing.care, 'clinic.staffing.care'),
+        (N.clinic.hours, 'clinic.hours'),
+    ],
+)
+def test_setup_cannot_read_a_declared_result_before_its_first_solve(result, path):
+    m = clinic([], [])
+    m.templates['clinic'].fields.append(value('hours', 100))
+    m.templates['clinic'].solvers.append(solver('hours_solver', solve_for=[this.hours]))
+    m.setup = [set_(N.clinic.seen, result)]
+    r = Run(m, horizon=0)
+    with pytest.raises(RunFailed) as failure:
+        r.run()
+    assert f'{path} is read before its first solve' in str(failure.value)
+
+
 def test_a_delay_finishes_with_the_settled_result():
     """Staff hours fall to 80 h: a next delay of `this.staffing.care` uses 56 h."""
     go = event('go', steps=[after(1, [set_(this.staff_hours, 80)]), after(this.staffing.care, [])])
@@ -118,7 +142,7 @@ def test_a_delay_finishes_with_the_settled_result():
     assert r.times('done') == [57]
 
 
-def stale(read, later=False):
+def staffing_read(read, later=False):
     """`cut` sets the staff hours to 80 at 1 h; `look` reads `read` at 1 h, in the same round or in
     the next round of that time."""
     steps = (
@@ -128,34 +152,28 @@ def stale(read, later=False):
     return Run(clinic([cut, event('look', steps=steps)], ['cut', 'look']), horizon=2)
 
 
-def test_a_stale_solver_result_is_an_error():
-    with pytest.raises(
-        RunFailed, match=r'clinic\.staffing\.care is read before its solve settles: clinic\.staff_hours'
-    ):
-        stale(this.staffing.care).run()
+def test_a_stage_reads_the_result_of_the_last_solve():
+    assert staffing_read(this.staffing.care).run().read(N.clinic.seen) == 70
 
 
-def test_a_stale_result_read_through_a_formula_is_an_error():
-    with pytest.raises(RunFailed, match=r'clinic\.staffing\.care is read before its solve settles'):
-        stale(this.care_now).run()
+def test_a_formula_reads_the_result_of_the_last_solve():
+    assert staffing_read(this.care_now).run().read(N.clinic.seen) == 70
 
 
 def test_the_result_can_be_read_once_it_settles():
     """The same read in the next round of that time sees the settled 56 h."""
-    assert stale(this.staffing.care, later=True).run().read(N.clinic.seen) == 56
+    assert staffing_read(this.staffing.care, later=True).run().read(N.clinic.seen) == 56
 
 
-def test_a_read_after_a_write_in_the_same_stage_is_an_error():
+def test_a_read_after_a_write_in_the_same_stage_uses_the_last_solve():
     go = event('go', steps=[after(1, [set_(this.staff_hours, 80), set_(this.seen, this.staffing.care)])])
-    with pytest.raises(RunFailed, match='before its solve settles'):
-        Run(clinic([go], ['go']), horizon=2).run()
+    assert Run(clinic([go], ['go']), horizon=2).run().read(N.clinic.seen) == 70
 
 
-def test_a_stage_guard_reads_no_stale_result():
+def test_a_stage_guard_reads_the_result_of_the_last_solve():
     cut = event('cut', steps=[after(1, [set_(this.staff_hours, 80)])])
     look = event('look', steps=[after(1, [set_(this.seen, 1)], this.staffing.care > 60)])
-    with pytest.raises(RunFailed, match='before its solve settles'):
-        Run(clinic([cut, look], ['cut', 'look']), horizon=2).run()
+    assert Run(clinic([cut, look], ['cut', 'look']), horizon=2).run().read(N.clinic.seen) == 1
 
 
 def tank(look_at, start_a_flow=False):
@@ -169,16 +187,35 @@ def tank(look_at, start_a_flow=False):
     return Run(m, horizon=4)
 
 
-def test_a_flow_that_joins_in_the_round_makes_the_rates_stale():
-    """A stage of the round starts an occurrence whose flow joins the tank: a later stage of that
-    round cannot read the tank's outflow before the network settles."""
+def test_a_flow_that_joins_in_the_round_is_counted_at_the_settlement():
+    """The clinic takes 3 L/h. The pipe adds 2 L/h when the round settles."""
     assert tank(1).run().read(N.tank.seen) == 3
-    with pytest.raises(RunFailed, match=r'before its (first )?solve'):
-        tank(1, start_a_flow=True).run()
+    r = tank(1, start_a_flow=True).run()
+    assert r.read(N.tank.seen) == 3
+    assert r.read(N.tank.water.outflow.actual_rate, 1) == 5
 
 
-def test_a_store_that_meets_its_bound_makes_its_rates_stale():
-    """8 L at 3 L/h empties at 8/3 h. A stage due then cannot read the rate that the empty tank
-    changes until the network settles."""
-    with pytest.raises(RunFailed, match=r'tank\.water'):
-        tank(F(8, 3)).run()
+def test_a_store_that_meets_its_bound_keeps_its_rate_until_the_settlement():
+    """8 L at 3 L/h empties at 8/3 h. The stage reads 3 L/h and the record gives zero."""
+    at = F(8, 3)
+    r = tank(at).run()
+    assert r.read(N.tank.seen, at) == 3
+    assert r.read(N.tank.water.outflow.actual_rate, at) == 0
+
+
+def test_a_leg_reads_its_carried_rate_at_a_switch_of_its_request():
+    """The tank fills from 2 L at 1 L/h. The leg asks 1 L/h while the tank holds at most 3 L.
+    At 1 h the stage sees 1 L/h. The settlement gives the leg its new 2 L/h from 1 h."""
+    m = Model()
+    work = legs('work', leg('delivery', SOURCE, SINK, request=formula(if_(this.water <= 3, 1, 2))))
+    look = event('look', steps=[after(1, [set_(this.seen, this.work.delivery.actual_rate)])])
+    m.entity(
+        'tank',
+        fields=[value('water', 2, 0, 20), value('seen', 0)],
+        flows=[flow('fill', SOURCE, this.water, request=1), work],
+        events=[look],
+    )
+    m.setup = [start(N.tank.look)]
+    r = Run(m, horizon=2).run()
+    assert r.read(N.tank.seen, 1) == 1
+    assert r.read(N.tank.work.delivery.actual_rate, 1) == 2

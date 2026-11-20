@@ -526,8 +526,7 @@ def segment_roots(system, run, watcher, environment):
                 continue
             if bound == 'min' and s.monotone[i] and run.y[i] >= limit:
                 continue  # a nondecreasing state cannot fall to its lower bound
-            target = (i, limit) if bound == 'min' else None
-            roots.append(Root('bound', direction, (i, limit, start), target))
+            roots.append(Root('bound', direction, (i, limit, start), (i, limit)))
             descriptors.append(('bound', (i, bound)))
     return roots, descriptors
 
@@ -677,10 +676,35 @@ def starting_sides(system, run, field):
         lambda node: float(evaluate(node, env, s.units)),
         lambda node: bool(s.expanded_names(node) & moving),
         field.rates,
+        held=lambda i: (i, 'min') in run.active_bounds or (i, 'max') in run.active_bounds,
     )
 
 
-def far_sides(surfaces, t, y, place, bounds, rtol, side, moving, rates):
+def clock_sides(surfaces, t, rtol, side, moving):
+    """The far side of a fixed clock switch at t, and the next such switch after t."""
+    clock, following = None, math.inf
+    for a, b in surfaces:
+        for node, other in ((a, b), (b, a)):
+            if not isinstance(node, nodes.Ref) or node.name != 't' or moving(other):
+                continue
+            try:
+                limit = side(other)
+            except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
+                continue
+            if not math.isfinite(limit):
+                continue
+            band = rtol * (abs(t) + abs(limit))
+            beyond = math.nextafter(limit, math.inf)
+            if abs(t - limit) <= band and t < beyond:
+                low = min(limit - band, clock[0]) if clock else limit - band
+                far = max(beyond, clock[2]) if clock else beyond
+                clock = (low, far, far)
+            elif t < limit:
+                following = min(following, limit)
+    return clock, following
+
+
+def far_sides(surfaces, t, y, place, bounds, rtol, side, moving, rates, clocks=None, held=None):
     """The side of each switch at which a segment starts that its state crosses there, which the
     rates of the segment read (PLAN, change 26): (switches, clock).
 
@@ -695,21 +719,21 @@ def far_sides(surfaces, t, y, place, bounds, rtol, side, moving, rates):
 
     A switch here is a quantity of the state (its place in `place`), or the time, against a side
     that does not move (`moving(node)`), at its switch to solver tolerance (`switched`); one at a
-    bound of its quantity (`bounds`: the lower and upper arrays) is a face of the store, which the
-    faces settle. A quantity crosses where its rate at (t, y) (`rates(t, y)`) carries it to the
-    other side and its rate there does not carry it back: the segment reads the quantity at the
+    bound of its quantity (`bounds`: the lower and upper arrays) can cross only into the interval,
+    as the store leaves its bound. A quantity crosses where its rate, with the clock on its far
+    side, carries it across and its rate there does not carry it back: the segment reads it at the
     first number on the far side while the state stays within the tolerance of the switch
     (`switches`: (place, low, high, number): a value in [low, high] reads as the number), so a solver
     that leaves that band reads the rates as they are. Where the rate on the far side carries the
     quantity back, its rates switch back and forth there: nothing is held, and the solver names the
     chattering. The time always crosses (`clock`: (low, high, time), or None)."""
     lower, upper = bounds
-    switches, clock, derivative = [], None, None
+    clock, _ = clock_sides(surfaces, t, rtol, side, moving) if clocks is None else clocks
+    at = t if clock is None else clock[2]  # every store crosses under the rates after the clock switches
+    switches, derivative = [], None
     for a, b in surfaces:
         for here_node, other in ((a, b), (b, a)):
-            if not isinstance(here_node, nodes.Ref) or (
-                here_node.name != 't' and here_node.name not in place
-            ):
+            if not isinstance(here_node, nodes.Ref) or here_node.name not in place:
                 continue
             if moving(other):
                 continue
@@ -717,27 +741,33 @@ def far_sides(surfaces, t, y, place, bounds, rtol, side, moving, rates):
                 limit = side(other)
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                 continue
-            here = float(t) if here_node.name == 't' else float(y[place[here_node.name]])
+            here = float(y[place[here_node.name]])
             band = rtol * (abs(here) + abs(limit))
             if not math.isfinite(limit) or abs(here - limit) > band:
                 continue
-            if here_node.name == 't':
-                beyond = math.nextafter(limit, math.inf)
-                if here < beyond and (clock is None or beyond > clock[2]):
-                    clock = (min(limit - band, clock[0]) if clock else limit - band, beyond, beyond)
-                continue
             i = place[here_node.name]
-            if limit in (lower[i], upper[i]):
-                continue
-            if derivative is None:
-                derivative = rates(t, y)
-            way = 1 if derivative[i] > 0 else -1 if derivative[i] < 0 else 0
+            if held is not None and held(i):
+                continue  # sharing keeps the store on its bound throughout the segment
+            velocity = 0.0
+            if here != limit:
+                # Roundoff at a located switch can reverse the apparent direction of departure.
+                contact = y.copy()
+                contact[i] = limit
+                velocity = rates(at, contact)[i]
+            if velocity == 0:
+                # If the contact holds the store, keep the approach direction for the far-side probe.
+                if derivative is None:
+                    derivative = rates(at, y)
+                velocity = derivative[i]
+            way = 1 if velocity > 0 else -1 if velocity < 0 else 0
+            if (limit == lower[i] and way <= 0) or (limit == upper[i] and way >= 0):
+                continue  # the store cannot leave its interval
             beyond = math.nextafter(limit, way * math.inf) if way else here
             if way == 0 or (here - beyond) * way >= 0:
                 continue  # it does not move, or it is on the far side already
             probe = np.array(y, dtype=float)
             probe[i] = beyond
-            if rates(t, probe)[i] * way < 0:
+            if rates(at, probe)[i] * way < 0:
                 continue  # the far side carries it back: chattering, which the solver names
             low, high = (limit - band, beyond) if way > 0 else (beyond, limit + band)
             switches.append((i, low, high, beyond))
@@ -868,6 +898,15 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
     """
     s = system
     time, y, lower = run.time, run.y, s.lower
+    env = field.environment(time, y)
+    _, next_clock = clock_sides(
+        switching_surfaces(s),
+        time,
+        s.cfg.rtol,
+        lambda node: float(evaluate(node, env, s.units)),
+        lambda node: bool(s.expanded_names(node) & (s.evolving | {'t'})),
+    )
+    end = min(end, next_clock)
     # Certified material rows have constant velocity on the current stock
     # face. Their first depletion clock also bounds a numerical segment
     # when unrelated clinical compartments require numerical integration.
@@ -916,12 +955,19 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
     # and compartment kernels supply structurally proved fast paths.
     context.settings['resolution_policy'] = 'physical_resolution_cap'
     context.settings['actual_max_step_h'] = s.max_step
+    rates = field.rates
+    if end == next_clock:
+        # The last Radau sample still belongs to the segment before the clock switch.
+        incoming = math.nextafter(end, -math.inf)
+
+        def rates(t, state):
+            return field.rates(min(t, incoming), state)
 
     def integrate():
         # Physical resolution complements adaptive error control.
         armed = roots + switches
         return radau(
-            field.rates,
+            rates,
             (time, end),
             y,
             roots=Roots(s, field.environment, armed, field.values_program) if armed else None,
