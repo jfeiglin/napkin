@@ -43,8 +43,9 @@ by name.
 first and the flows are shared again after, so while the stages of a round run, and its conditions
 once a firing has changed something, every rate and result that the settling decides (of local
 sharing as of a declared solver, a flow from SOURCE to SINK too) is the one of the last settling.
-The installed way keeps that answer while stages commit. A flow that joins has no installed way
-yet and reads zero. A flow that leaves keeps its way until the settling retires it.
+Each affected set publishes its numeric answers after the sharing. An untouched component or sparse
+set samples its installed segment at the moment's time when its answer is read. A flow that joins
+reads zero and a flow that leaves keeps its opening rate until the settling retires it.
 """
 
 from __future__ import annotations
@@ -58,8 +59,6 @@ from .declared import DeclaredWay, MovingDeclared
 from .family import Family
 from .lines import Lines
 from .plan import COMPONENT, DECLARED, FAMILY, LINES, ROUTE, SPARSE
-from .reads import side_level
-from .record import recorded_piece
 from .sparse import Sparse
 
 
@@ -81,6 +80,8 @@ class Ways:
         self.kept, self.last = {}, {}  # solver id -> its `solve.Solver`; -> (last problem, answer)
         self.references = {}  # a stored number that a solver determines -> its reference
         self.instances = []
+        self.sampled = {}  # component or sparse instance's first set id -> time of its published answers
+        self.moving_solvers = {}  # set ids of solvers whose incoming record needs its prepared prefix
         self.grouped = set()  # the ids of the sets that integrate with others in one instance
         self._next = 0
 
@@ -95,30 +96,6 @@ class Ways:
         """The value of a store of a set at a time inside its present window."""
         return self.instance_of(store).level_at(store, t)
 
-    def store_side(self, name, t, probe):
-        """The adjacent level read by a switch of an outside flow. A switch read in the first
-        round follows the preceding store trajectory, including at a bound. Only a store that
-        the evaluation asks for is read. A sparse step keeps its cubic even in a filtered record."""
-        shared = self.run.shared
-        instance = self.instance_of(name)
-        crossing = self.run.clock.crossing
-        if shared.arrival is not None:
-            key = getattr(instance, 'key', None)
-            end = shared.ends.get(key, t)
-            before = min(end + (probe - t), math.nextafter(end, -math.inf))
-            if key in shared.steps:
-                _, cubic, low, high, _, _, _ = shared.steps[key]
-                row = instance.place[name]
-                if low[row]:
-                    return float(instance.lower[row])
-                if high[row]:
-                    return float(instance.upper[row])
-                return side_level(lambda at: float(cubic(at)[row]), end, before, crossing)
-            piece = self.run.recorder.incoming_piece(name, end)
-            if piece is not None:
-                return side_level(recorded_piece(*piece).at, end, before, crossing)
-        return side_level(lambda at: instance.level_at(name, at), t, probe, crossing)
-
     def rate(self, name, t):
         """An actual rate or a served fraction (`flow.actual_rate`, `flow.served_fraction`) at a
         time. The installed way gives the rate until the next settling, including for a flow
@@ -126,26 +103,95 @@ class Ways:
         instance = self.instance_of(name.rsplit('.', 1)[0])
         return 0.0 if instance is None else instance.rate_at(name, t)
 
-    def incoming(self, name):
-        """The requested rate at the end of its preceding segment, if it moved. Use the piece
-        already fitted for the record, or ask the incoming sparse step for this one rate."""
-        flow = name.rsplit('.', 1)[0]
-        key = self.result_of.get(name)
-        instance = self.sets[key][1] if key is not None else self.instance_of(flow)
-        if instance is None and flow in self.plan.connections:
-            instance = self.instance_of(flow.rsplit('.', 1)[0])  # a leg of a route or a flow with legs
-        if not isinstance(instance, ComponentWay | Sparse | MovingDeclared):
-            return None
-        shared = self.run.shared
-        end = shared.ends.get(instance.key)
-        if end is None:
-            return None
-        piece = self.run.recorder.incoming_piece(name, end)
+    def publish(self, instance, t, incoming=False, flows=None):
+        """Publish the numeric answer of an installed set. Moving rates use the modes of their
+        segment at t. A connection's carried rate supplies its leg and both incident endpoints."""
+        whole = flows is None
+        if whole:
+            flows = instance.flows
         if isinstance(instance, Sparse):
-            start, _, _, _, sides, _, _ = shared.steps[instance.key]
-            if sides or piece is None or piece[0] < start:
-                piece = instance.incoming_piece(name)
-        return shared.incoming(name, piece, end) if piece is not None else None
+            pending = instance.pending
+            y = instance.y if pending is None else pending[2](t)
+            evaluations = instance.evaluations
+            try:
+                if not incoming:
+                    instance._start()
+                primary, carried = instance.values(t, y)
+            finally:
+                instance.evaluations = evaluations
+            answers = dict(zip(instance.recorded, map(float, primary)))
+            if not instance.net.plain:
+                answers.update(
+                    (f'{name}.actual_rate', float(number))
+                    for name, number in zip(instance.net.connections, carried)
+                )
+        elif isinstance(instance, ComponentWay):
+            if not incoming:
+                instance._settle()
+            component, segment = instance.component, instance.pending
+            y = component.state.y if segment is None or segment.solution is None else segment.solution(t)
+            evaluations = component.state.evaluations
+            try:
+                component.field.rates(t, component.context.project(y))
+                answers = dict(zip(instance.rates, map(float, component.field.delivered)))
+            finally:
+                component.state.evaluations = evaluations
+        elif isinstance(instance, DeclaredWay):
+            answers = instance.publish_at(t, incoming)
+        else:
+            answers = {}
+            for flow in flows:
+                row = instance.row[flow]
+                if isinstance(instance, Family):
+                    answers[f'{flow}.actual_rate'] = float(instance.rate[row])
+                else:
+                    answers[instance.recorded[row]] = float(instance.value[row])
+                    if not instance.net.plain:
+                        for c in instance.net.conns.of(row):
+                            answers[f'{instance.net.connections[c]}.actual_rate'] = float(instance.rate[c])
+        run = self.run
+        run.published.update(answers)
+        ends = {}
+        for flow in flows:
+            for connection in self.plan.flows[flow].connections:
+                amount = run.published.get(f'{connection.name}.actual_rate', 0.0)
+                for store, side in ((connection.source, 'outflow'), (connection.sink, 'inflow')):
+                    if store is not None:
+                        ends[store, side] = ends.get((store, side), 0.0) + amount
+        for (store, side), installed in ends.items():
+            # The installed connections still carry the round's opening answer after a stage
+            # changes membership. A partial refresh of fixed rows needs their unchanged neighbours.
+            total = (
+                installed
+                if whole
+                else sum(run.published.get(f'{c}.actual_rate', 0.0) for c in self.plan.incident(store, side))
+            )
+            run.published[f'{store}.{side}.actual_rate'] = total
+        if isinstance(instance, Sparse | ComponentWay):
+            self.sampled[instance.key] = t
+
+    def shared_value(self, name):
+        """A numeric answer of the last sharing. An installed moving set samples just once at this
+        time, from its held inputs, branch choices and membership, even after a stage has written."""
+        if self.sampled and name.endswith(('.actual_rate', '.served_fraction')):
+            owner = name.rsplit('.', 1)[0]
+            instance = self.instance_of(owner)
+            if instance is None and name in self.plan.shared:  # a leg or the side of a store
+                instance = self.instance_of(owner.rsplit('.', 1)[0])
+            if isinstance(instance, Sparse | ComponentWay) and self.sampled[instance.key] != self.run.now:
+                self.publish(instance, self.run.now, incoming=True)
+        return self.run.published.get(name, 0.0)
+
+    def opening(self, t):
+        """A moving solver samples before stages write inputs used to fit its incoming record."""
+        for key in self.moving_solvers:
+            self.publish(self.sets[key][1], t, incoming=True)
+
+    def sample_at_stop(self, t):
+        """Keep numeric answers at a breakpoint, including unread sets whose dense output ends here."""
+        for key, at in self.sampled.items():
+            if at != t:
+                self.publish(self.sets[key][1], t, incoming=True)
 
     def result(self, name, t):
         """A result of a declared solver that is no rate: a stored number that it determines or an
@@ -281,6 +327,8 @@ class Ways:
             for store in connected.stores:
                 values[store] = instance.level_at(store, t)
             instance.retire(key)
+            self.sampled.pop(key, None)
+            self.moving_solvers.pop(key, None)
             for name in (*connected.stores, *connected.flows):
                 if self.set_of.get(name) == key:
                     del self.set_of[name]
@@ -447,4 +495,7 @@ class Ways:
         for key in keys:
             self.sets[key] = (self.sets[key][0], instance)
         self.instances.append(instance)
+        if isinstance(instance, MovingDeclared):
+            self.moving_solvers[instance.key] = None
         instance.begin()
+        self.publish(instance, self.run.now)

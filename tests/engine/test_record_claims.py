@@ -3,8 +3,8 @@
 many random programs, then the re-audit's rows as plain tests. No expected value comes from the
 oracle: each is a rule of the spec, a number worked by hand, or the same run read two ways.
 
-- A reader gives a value only from what the record holds, else `Unavailable` with the reason; a cut of
-  a stored record answers as a fresh run of the narrower request; the books of a store keep its
+- A reader gives a value only from what the record holds, else `Unavailable` with the reason; a narrower request
+  holds just the values that it names and their dependencies; the books of a store keep its
   ledger whatever the request names (11).
 - A value is read at its own time: permuting the times permutes the values (10).
 - The proofs of an edited run follow from its edits: no proof that a report gives is contradicted by
@@ -21,7 +21,6 @@ from itertools import pairwise
 
 import pytest
 
-from napkin import store
 from napkin.engine.report import Lag, report
 from napkin.engine.timeline import Plan, Run, read, run
 from napkin.program.build import (
@@ -149,12 +148,11 @@ PATHS = [
 
 
 @pytest.mark.parametrize('seed', SEEDS)
-def test_a_narrow_record_fresh_or_cut_agrees_with_the_full_one_and_holds_nothing_else(seed):
-    """A fresh run of a random request, the same request served from the full record (`store.served`),
-    and the full record give the same value of every path that the request holds (a store's ledger with
-    the store), at every time; the narrow records give no value of any other path: each is unavailable
+def test_a_narrow_record_agrees_with_the_full_one_and_holds_nothing_else(seed):
+    """A run of a random narrow request and the full record give the same value of every path that the request holds (a store's ledger with
+    the store), at every time; the narrow record gives no value of any other path: each is unavailable
     with the reason. The run is edited at its stop at 1 h, so a ledger of an edited store is -1 L, or
-    +x L, in all three, whatever the request names."""
+    +x L, in both, whatever the request names."""
     rng = random.Random(seed)
     program, edits = plant(rng)
     stop = (Breakpoint('plant.tick.step[1]'),)
@@ -162,30 +160,22 @@ def test_a_narrow_record_fresh_or_cut_agrees_with_the_full_one_and_holds_nothing
     keys = tuple(sorted({Key('plant', tuple(path.split('.')[1:])) for path in rng.sample(PATHS, 3)}, key=str))
     narrow = Request(3, everything=False, keys=keys)
     fresh = edited(program, Configuration(narrow), stop, edits)
-    cut = store.served(full, narrow, program)
-    # One record, its histories included: the cut keeps what the fresh run of the request keeps.
-    assert cut == fresh, (
-        seed,
-        sorted(str(h.key) for h in cut.histories),
-        sorted(str(h.key) for h in fresh.histories),
-    )
     times = sorted({0, 0.5, 1, 1.5, 2, 3, *(round(rng.uniform(0, 3), 3) for _ in range(3))})
     held = {str(key) for key in keys} | {f'{key}.external' for key in keys if len(key.steps) == 1}
     for path in PATHS:
         (whole,) = read(full, program, [path], times)
-        for record in (fresh, cut):
-            (found,) = read(record, program, [path], times)
-            for at, value_, expected in zip(times, found.values, whole.values, strict=True):
-                if path in held:
-                    assert same(value_, expected), (seed, path, at, value_, expected)
-                else:
-                    assert isinstance(value_, Unavailable), (seed, path, at, value_)
-                    assert value_.reason.startswith(f'the record holds no value of {path}')
+        (found,) = read(fresh, program, [path], times)
+        for at, value_, expected in zip(times, found.values, whole.values, strict=True):
+            if path in held:
+                assert same(value_, expected), (seed, path, at, value_, expected)
+            else:
+                assert isinstance(value_, Unavailable), (seed, path, at, value_)
+                assert value_.reason.startswith(f'the record holds no value of {path}')
 
 
 def test_a_ledger_reads_the_books_of_the_store_whatever_the_request_names():
     """Row 11: the family's tank holds 6 L at 2 h and an edit lowers it to 5 L, a withdrawal of 1 L.
-    Recording the stock alone, the ledger alone or both, or serving the stock from a stored full run,
+    Recording the stock alone, the ledger alone or both,
     the ledger reads 0 L at 1 h and -1 L at 3 h; a stored value that is no store has no ledger."""
     case = SCENARIOS['family']()
     stops = (Breakpoint('tank.tick.step[1]'),)
@@ -194,10 +184,7 @@ def test_a_ledger_reads_the_books_of_the_store_whatever_the_request_names():
     for keys in ((water,), (ledger,), (water, ledger)):
         request = Request(7, everything=False, keys=keys)
         alone = edited(case.program, Configuration(request), stops, (('tank.water', 5),))
-        cut = store.served(full, request, case.program)
-        assert cut == alone, keys
-        for record in (alone, cut):
-            assert read(record, case.program, ['tank.water.external'], [1, 3])[0].values == (0, -1)
+        assert read(alone, case.program, ['tank.water.external'], [1, 3])[0].values == (0, -1)
     with pytest.raises(KeyError, match=r'tank\.ticks is no store'):
         read(full, case.program, ['tank.ticks.external'], [1])
 
@@ -596,14 +583,12 @@ def test_a_lag_of_what_is_no_number_is_refused_by_name_and_the_plain_read_stays(
 def test_a_record_holds_at_most_its_budget_and_agrees_with_the_whole_run_before_its_end(pieces):
     """The family to its horizon of 7 h, recorded within a budget: the values that the record holds
     have at most that many pieces; before the end of the record every value is the whole run's; from
-    it on each is unavailable with the budget's reason. A cut of the whole record by the same request
-    ends at the same time."""
+    it on each is unavailable with the budget's reason."""
     case = SCENARIOS['family']()
     whole = run(case.program, case.configuration)
     request = Request(7, pieces=pieces)
     budgeted = run(case.program, Configuration(request))
     assert sum(len(history.pieces) for history in budgeted.histories) <= pieces
-    assert store.served(whole, request, case.program) == budgeted
     paths = ['tank.water', 'tank.ticks', 'tank.alarms']
     times = [k * 0.25 for k in range(29)]
     for path in paths:

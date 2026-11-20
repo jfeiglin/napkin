@@ -2,8 +2,7 @@
 `scratch/rewrite/briefs/audit3b.md`, agent V).
 
 The rule (`napkin/program/record.py`, "What a record holds": a record of only some values holds what
-their values need, by one function of its request and its trace, for a run's record and for a cut of
-a longer one; spec, "Collections, keys and projections"; D10): a value read from a record of it alone
+their values need, by one function of its request and its trace, for each run's record; spec, "Collections, keys and projections"; D10): a value read from a record of it alone
 is the value that a record of every value gives. A keyed read `c.by(f).at(x)` reads the members' keys
 `f`, the tests of a `where`, its key `x` and the value of the member that it selects: a record that
 keeps a formula over it keeps each of these.
@@ -13,7 +12,7 @@ drawn or fixed), a table of tiers by a threshold, and formulas that read them by
 read: by a fixed field at the time (`Reading.instances.by(hour).at(t).factor`), at a constant key
 (`Place.instances.by(rank).at(1).base_need`), at a store that a flow fills (`.at(tank.level)`), on the
 natural keys, after a `where`. Each formula is read from a record of it alone made every way that one
-is made: a fresh run of the request, the run store's cut of a stored record of every value (warm), a
+is made: a fresh run of the request, the run store's record of the same request (warm), a
 record that a stop at a breakpoint ends, and each sample of `napkin sample`. The expected values are
 worked by hand: the member with the greatest key at or below x, the later-created of equal keys
 (spec, "c.at(x) reads the member with the greatest key at or below x").
@@ -175,7 +174,7 @@ SEEDS = range(30)
 )
 def test_a_record_of_a_keyed_read_alone_reads_as_a_record_of_every_value(seed, tmp_path):
     """Each formula over a keyed read, read from a record of every value and from a record of it
-    alone: fresh, cut from the store's record of every value, ended by a stop at 3 h, the view at
+    alone: fresh, in the store, ended by a stop at 3 h, the view at
     that stop, and the run resumed from it to its end."""
     made = case(seed)
     c = compile_text(made.text, UNITS)
@@ -189,6 +188,7 @@ def test_a_record_of_a_keyed_read_alone_reads_as_a_record_of_every_value(seed, t
         for path in paths:
             (fresh,) = read(run(program, alone(configuration, program, path)), program, [path], TIMES)
             check('a record of the value alone', path, fresh.values, made.expected[path])
+            store.run(program, alone(configuration, program, path))
             (warm,) = read(store.run(program, alone(configuration, program, path)), program, [path], TIMES)
             check('the store, warm', path, warm.values, made.expected[path])
             session = Session(program, alone(configuration, program, path), (STOP,))

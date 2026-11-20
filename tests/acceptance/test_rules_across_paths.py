@@ -240,7 +240,7 @@ def test_a_request_has_one_outcome_cold_warm_and_with_a_later_edit(tmp_path, pie
     the edit is after its horizon, so it takes no part, and the water is 5 L at 0 h and 6 L at 1 h. Its
     history has two pieces at 0 h, its start and the rate of the first round, so a budget of one piece
     ends the run at 0 h, by name, and one of two or more finishes. Asked of a fresh store (cold) and of
-    one that holds the 4 h run of the same log (warm), the request ends the same way, holds the same
+    one that holds both horizons of the same log (warm), the request ends the same way, holds the same
     values and offers the same paths. The readiness audit of 8b3a01a found a budget of 2 met cold and
     broken warm, by the ledger of the later edit."""
     from dataclasses import replace
@@ -259,7 +259,9 @@ def test_a_request_has_one_outcome_cold_warm_and_with_a_later_edit(tmp_path, pie
         cold = store.run(program, short, log)
     with store.use(tmp_path / 'warm'):
         store.run(program, configuration, log)
+        first_short = store.run(program, short, log)
         warm = store.run(program, short, log)
+        assert first_short == warm
     assert outcome(cold, program) == outcome(warm, program)
     assert held(cold) == held(warm)
     if pieces == 1:

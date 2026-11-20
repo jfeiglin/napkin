@@ -811,7 +811,8 @@ error: play.json is the log of another play: it differs in edits, so it cannot c
 
 The run store keeps each simulated run on disk, so that no command simulates the same run twice.
 `run`, `play` and `sample` use it. The store keys each run by the resolved run, its units, the
-numerical settings, the engine's code and the computer. A change to any of them simulates the run
+numerical settings, the exact request, the engine's code and the computer. The request includes the
+horizon, the selected values and the budget of pieces. Reordering the keys reuses the record. A change to any of them simulates the run
 again ([engine.md](engine.md#the-run-store)). A store serves only the computer that wrote it. When a
 study needs several runs that the store does not hold, helper processes simulate them beside the
 command.
@@ -824,5 +825,5 @@ command.
   go.
 - To clear the store, delete its folder.
 
-The store keeps only the simulations. Every check of a study still runs, and a failed run is never
-stored.
+The store keeps only the simulations. Every check of a study still runs. A record that ends with a failure,
+including a budget stop, is stored under its request.

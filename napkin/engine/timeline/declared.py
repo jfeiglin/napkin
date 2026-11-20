@@ -105,12 +105,12 @@ from scipy.sparse.linalg import splu
 from ...core import expr as nodes
 from ...core import ops
 from ...core.errors import ExpressionError
-from ..continuous import dense
+from ..continuous import dense, integrate
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
 from .collections import selected
-from .family import Columns
+from .family import Columns, due_through
 from .lines import asked_of
 from .network import (
     BACKWARD,
@@ -128,6 +128,7 @@ from .network import (
 from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE
 from .reads import lazily
 from .record import fitted
+from .region import Region, key_surfaces, trend
 
 SLACK = 1e-6  # a store at its bound holds there when its answer moves it out by less than this part
 MOVING = 20  # the most stores of a declared solver's set whose problem moves between moments
@@ -189,6 +190,7 @@ class Former:
         self.declared = run.plan.solvers[connected.solver]
         self.connected, self.net, self.connections = connected, net, connections
         self.columns = Columns(run)
+        self.region = None
         plan = self.plan
         # The engine names that are unknowns of the problem: the value of each flow, and the results.
         self.unknown = {}
@@ -234,13 +236,11 @@ class Former:
         self._names = {}  # what each name that reads an unknown gives at this instant (`_name`)
         self.pending, self.rows = [], []  # positive parts (key, Affine), rows (key, terms, lower, upper)
         problem = self.problem_
-        requests = asked_of(
-            net, np.array(self.columns.at([c.request for c in self.connections], t), float), t
-        )
+        requests = asked_of(net, np.array(self._settings([c.request for c in self.connections], t), float), t)
         capped = [k for k, c in enumerate(self.connections) if c.capacity is not None]
         capacity = np.full(len(self.connections), math.inf)
         if capped:
-            capacity[capped] = self.columns.at([self.connections[k].capacity for k in capped], t)
+            capacity[capped] = self._settings([self.connections[k].capacity for k in capped], t)
         bad = np.isnan(capacity) | (capacity < 0)
         if bad.any():
             k = int(np.flatnonzero(bad)[0])
@@ -288,7 +288,7 @@ class Former:
                 self.cols[f'{flow}.served_fraction'] = column
                 continue
             if kind == ROUTE:
-                signed = float(self.columns.at([plan.flows[flow].request], t)[0])
+                signed = float(self._settings([plan.flows[flow].request], t)[0])
                 if not math.isfinite(signed):
                     raise SimulationError(f'{flow}: a request that is {signed:g} at {t:g} h')
                 cap = capacity[mine[0]]
@@ -447,7 +447,7 @@ class Former:
         def number(node, what):
             if node is None:
                 return None
-            found = lazily(node, reader, plan.units, self.t)
+            found = self._known_value(node, reader)
             if isinstance(found, bool) or not isinstance(found, int | float) or math.isnan(found):
                 raise SimulationError(f'{name}: {what} is {found!r}, not a number')
             return float(found)
@@ -480,7 +480,7 @@ class Former:
                 names.append(((SIDES.index(side), place[store]), end))
         if not names:
             return found
-        values = self.columns.at(
+        values = self._settings(
             [end.request for _, end in names]
             + [end.capacity for _, end in names if end.capacity is not None],
             t,
@@ -556,8 +556,21 @@ class Former:
     # ---- expressions with unknowns ----------------------------------------------------------------
 
     def _reader(self):
-        t = self.t
-        return lambda name: self.run.value(name, t)
+        t, region = self.t, self.region
+        if region is None:
+            return lambda name: self.run.value(name, t)
+        return lambda name: self.run.in_region(name, t, region)
+
+    def _settings(self, names, t):
+        if self.region is None:
+            return self.columns.at(names, t)
+        read = self._reader()
+        return np.array([read(name) for name in names])
+
+    def _known_value(self, node, read):
+        if self.region is not None:
+            node = self.region.expression(node)
+        return lazily(node, read, self.plan.units, self.t)
 
     def value(self, node, label=()):
         """The value of a node at the instant: a number, a yes/no or a text where it reads no
@@ -571,7 +584,7 @@ class Former:
     def _value(self, node, label):
         """The computation of `value` (`walk.walked`): it yields the computation of each part."""
         if not self._symbolic(node):
-            return lazily(node, self._reader(), self.plan.units, self.t)
+            return self._known_value(node, self._reader())
         if isinstance(node, nodes.Ref):
             return (yield self._name(node.name))
         if isinstance(node, nodes.Unary):
@@ -711,6 +724,9 @@ class Former:
                 self.reads_unknown(read) for read in keyed.reads() - set(keyed.names)
             ):
                 raise self._refused(f'{keyed.spelled}: a lookup keyed by an unknown of the solver')
+            selected_name = self.region.keyed(name) if self.region is not None else None
+            if selected_name is not None:
+                return (yield self._value(nodes.ref(selected_name), ()))
             entry = selected(keyed, self._reader(), self.plan.units, self.t)
             if entry is None:
                 x = float(lazily(keyed.key, self._reader(), self.plan.units, self.t))
@@ -990,7 +1006,7 @@ class DeclaredWay:
                 reach = t + (value - self.lower[s]) / -slope
             elif slope > 0 and math.isfinite(self.upper[s]):
                 reach = t + (self.upper[s] - value) / slope
-            if reach <= self.plan.horizon:
+            if reach <= self.plan.horizon + self.run.clock.crossing:
                 heapq.heappush(self.due, (reach, s, int(self.version[s])))
         return changed
 
@@ -1030,10 +1046,33 @@ class DeclaredWay:
             heapq.heappop(due)
         return due[0][0] if due else math.inf
 
-    def _put(self, reach):
+    def timing_events(self, through):
+        """The bound contacts of the current lines, including coincident contacts."""
+        for at, s, version in due_through(self.due, through):
+            if version == self.version[s]:
+                yield at, self.stores[s], 'lower bound' if self.slope[s] < 0 else 'upper bound'
+
+    def _published(self, flows, results, requests):
+        values = dict(zip(self.recorded, map(float, flows), strict=True))
+        values.update(results)
+        if self.net.plain:
+            return values
+        carried = self.net.carried(flows, _Asked(requests))
+        values.update(
+            (f'{c.name}.actual_rate', float(rate))
+            for c, rate in zip(self.former.connections, carried, strict=True)
+            if c.name not in self.row
+        )
+        return values
+
+    def publish_at(self, t, incoming):
+        """The flow values, carried leg rates and results of the current sharing."""
+        return self._published(self.value, self.results, self.former.requests)
+
+    def _put(self, reach, through=None):
         """Each store whose line reaches its bound at `reach` is put on it; gives their indices."""
         found = []
-        while self.peek() == reach:
+        while self.peek() <= (reach if through is None else through):
             _, s, _ = heapq.heappop(self.due)
             bound = self.lower[s] if self.slope[s] < 0 else self.upper[s]
             self.y[s], self.since[s], self.slope[s] = bound, reach, 0.0
@@ -1050,11 +1089,11 @@ class DeclaredWay:
         changed = self._solve(reach)
         return self._lines(reach, forced=met), changed, True
 
-    def snap(self):
+    def snap(self, t=None, through=None):
         """The next lines reach their bounds at the time of a moment: the stores are put on them, and
         the moment's settling solves the set again (`ways.py`). Gives the stores, as what changed and
         as what met its bound."""
-        stores = [self.stores[s] for s in self._put(self.peek())]
+        stores = [self.stores[s] for s in self._put(self.peek() if t is None else t, through)]
         return stores, stores
 
     def cut(self, t):
@@ -1063,7 +1102,7 @@ class DeclaredWay:
 
 class Segment:
     """A segment of a moving set: from `start` to `end`, its dense output (`state(t)`), the store
-    whose event ended it (None at the end of the window), and whether it is plain: one that ends at
+    contacts on its final accepted step (empty at the end of the window), and whether it is plain: one that ends at
     no event before the end of the window, at the last time that answers before a failure."""
 
     def __init__(self, start, end, solution, event, plain=False):
@@ -1082,7 +1121,8 @@ class MovingDeclared(DeclaredWay):
     bounds (a store that the integrator puts a tolerance past a bound is at its bound: `_held`). The
     flags of the bounds hold through a segment, and a store held on a bound stays on it; a segment
     ends where a store reaches a bound or where the answer would move a store held on a bound off it,
-    found in the step's dense output to the crossing tolerance of the run (`_event`), and the problem
+    and where a physical comparison changes branch. Each contact is located on the incoming dense
+    trajectory (`_events`), and the problem
     is solved there with the new flags (a traced solve). A failure of an evaluation is placed at its
     time: the steps are made again shorter, halving, until the failure lies within the crossing
     tolerance of the last step that answered, where the run stops with the record to then (`_next`).
@@ -1108,17 +1148,117 @@ class MovingDeclared(DeclaredWay):
             )
         self.time = self.t0
         self.low, self.high = self.y <= self.lower, self.y >= self.upper
-        self.pending = None
+        self.pending = self.prefix = None
         self.snapped = False  # wait at the moment until the other ways have arrived
-        self.failed = None  # the time of the last evaluation that failed (`_at`)
+        self.failed = None  # the time and state of the last evaluation that failed (`_at`)
         self.trial = None
         self._cache = {}
         numerics = self.plan.numerics
         sizes = [run.recorder.tolerance.get(name, numerics.atol_factor) for name in self.stores]
         self.atol = np.maximum(np.array(sizes, dtype=float), 1e-12)
         self.rtol = numerics.rtol
+        sources = self.declared.nodes(self.plan)
+        settings = [name for flow in self.flows for name in self.plan.settings_of(self.plan.flows[flow])]
+        sources.extend(nodes.ref(name) for name in settings)
+        dependencies = self.plan.expansion_of({name for node in sources for name in nodes.names(node)})
+        formulas = {
+            name: value.node
+            for name in dependencies.formulas | set(settings)
+            if (value := self.plan.values.get(name)) is not None and value.kind == FORMULA
+        }
+
+        def moving(node):
+            expansion = self.plan.expansion(node)
+            return expansion.time or not expansion.leaves.isdisjoint(self.place)
+
+        surfaces = [
+            pair
+            for pair in integrate.surfaces_of(sources, formulas, moving)
+            if not any(self.former._symbolic(node) for node in pair)
+        ]
+        lookups = key_surfaces(
+            self.plan, dependencies.formulas | dependencies.stepped | dependencies.leaves, moving
+        )
+        self.region = Region(surfaces, lookups)
+        self.switches = {
+            pair: f'switch ({nodes.text(pair[0])}, {nodes.text(pair[1])})' for pair in self.region.surfaces
+        }
 
     # ---- rates at a state ----------------------------------------------------------------------
+
+    def _operands(self, pair, t, y):
+        """The physical operands of a switch on a trial trajectory."""
+        self.trial = self._held(y)
+        try:
+
+            def read(name):
+                return self.run.in_region(name, t, self.region)
+
+            return tuple(float(lazily(self.region.expression(n), read, self.plan.units, t)) for n in pair)
+        finally:
+            self.trial = None
+
+    def _select(self, t, contacts):
+        """Select the branches for the new segment, using the physical velocity at a contact."""
+        region = self.region
+        if not region.surfaces:
+            return
+        region.set({}, {})
+        self._cache.clear()
+
+        def read(name):
+            return self.run.in_region(name, t, region)
+
+        def operand(node):
+            return float(lazily(node, read, self.plan.units, t))
+
+        self.trial = self._held(self.y)
+        try:
+            signs = integrate.branch_sides(region.surfaces, operand)
+            reached = {kind for _, name, kind in contacts if name == self.declared.id}
+            ties = [pair for pair, sign in signs.items() if sign == 0 or self.switches[pair] in reached]
+            if ties:
+                flows, _ = self.answer(t, self.low, self.high)
+                speeds = self._net(flows)
+
+                def velocity(name):
+                    if name in self.place:
+                        return speeds[self.place[name]]
+                    definition = self.plan.values.get(name)
+                    if definition is not None and definition.kind == FORMULA:
+                        return trend(definition.node, read, velocity, self.plan.units, t)
+                    return 0.0
+
+                for pair in ties:
+                    a, b = pair
+                    gradient = trend(a, read, velocity, self.plan.units, t) - trend(
+                        b, read, velocity, self.plan.units, t
+                    )
+                    left, right = operand(a), operand(b)
+                    # An edit can move the operands away from the contact before this solve.
+                    if left == right or abs(left - right) <= abs(
+                        gradient
+                    ) * self.run.clock.crossing + math.ulp(left) + math.ulp(right):
+                        signs[pair] = int(gradient > 0) - int(gradient < 0)
+            region.set(signs, region.selected_rows(self.run, signs, operand))
+            self.former.region = region
+        finally:
+            self.trial = None
+
+    def publish_at(self, t, incoming):
+        """Publish every result of one trial answer, including the requests carried by its legs."""
+        if self.pending is not None:
+            if incoming and t > self.pending.start:
+                # These trial answers still use the inputs of the incoming segment.
+                pieces = list(self._pieces(t))
+                answer = self._at(t, self._state(t))
+                self.prefix = t, pieces, answer
+            else:
+                answer = self._at(t, self._state(t))
+            flows, results, _, requests = answer
+        else:
+            flows, results, requests = self.value, self.results, self.former.requests
+        return self._published(flows, results, requests)
 
     def _held(self, y):
         """A state within the stores' bounds, with each store held on a bound at its bound: what the
@@ -1142,9 +1282,9 @@ class MovingDeclared(DeclaredWay):
             self.trial = self._held(y)
             try:
                 flows, results = self.answer(float(t), self.low, self.high)
-                found = (flows, results, self._net(flows))
+                found = (flows, results, self._net(flows), self.former.requests)
             except (SimulationError, ExpressionError, ArithmeticError):
-                self.failed = float(t)
+                self.failed = float(t), np.array(y, copy=True)
                 raise
             finally:
                 self.trial = None
@@ -1158,13 +1298,33 @@ class MovingDeclared(DeclaredWay):
         rate[self.low | self.high] = 0.0  # a held store stays on its bound through the segment
         return rate
 
+    def _jacobian(self, t, y):
+        """Difference the held LP field on a feasible side of each trial coordinate."""
+        base = self._derivative(t, y)
+        jacobian = np.empty((len(y), len(y)))
+        for k, level in enumerate(y):
+            step = math.sqrt(np.finfo(float).eps) * max(1, abs(level))
+            trial = y.copy()
+            trial[k] += step
+            try:
+                rate = self._derivative(t, trial)
+            except (SimulationError, ExpressionError, ArithmeticError):
+                # A perturbation can make the continued LP infeasible just beyond a switch.
+                step = -step
+                trial[k] = level + step
+                rate = self._derivative(t, trial)
+                self.failed = None
+            jacobian[:, k] = (rate - base) / step
+        return jacobian
+
     # ---- segments ----------------------------------------------------------------------------------
 
-    def _settle(self, t):
+    def _settle(self, t, contacts=()):
         """At time t: a store held on a bound whose answer moves it off is released, until the
         flags hold; then the answer there is the present (a traced solve). Where the answer with a
         released store free moves it back past its bound, no answer holds just after t: the run
         stops by name (`DeclaredWay._settled`)."""
+        self._select(t, contacts)
         released = was_low = None
         for _ in range(len(self.stores) + 1):
             self.trial = self._held(self.y)
@@ -1217,6 +1377,7 @@ class MovingDeclared(DeclaredWay):
                         now,
                         y,
                         until,
+                        jac=self._jacobian if self.region.surfaces else None,
                         rtol=self.rtol,
                         atol=self.atol,
                         max_step=numerics.max_step,
@@ -1226,11 +1387,18 @@ class MovingDeclared(DeclaredWay):
                     raise SimulationError(f'the solver {self.declared.id}: {message} at {now:g} h')
                 start, end = float(solver.t_old), float(solver.t)
                 output = solver.dense_output()
-                found = self._event(OdeSolution([start, end], [output]), start, end)
+                found = self._events(output, start, end)
             except (SimulationError, ExpressionError, ArithmeticError):
                 solver = None
-                if self.failed is not None and self.failed - now > numerics.crossing:
-                    until = now + 0.5 * (min(self.failed, until) - now)
+                if self.failed is not None and self.failed[0] - now > numerics.crossing:
+                    failed_at, trial = self.failed
+                    limit = min(failed_at, until)
+                    # A continued LP bound may become infeasible beyond its switch. Shorten the
+                    # retry to the estimated edge. Only an accepted dense trajectory locates it.
+                    edges = self._crossings(
+                        lambda at: y + (trial - y) * ((at - now) / (failed_at - now)), now, limit
+                    )
+                    until = min((at for at, _, _ in edges if at < until), default=now + 0.5 * (limit - now))
                     continue
                 if not outputs:
                     raise
@@ -1238,8 +1406,8 @@ class MovingDeclared(DeclaredWay):
                 break
             times.append(end)
             outputs.append(output)
-            if found is not None:
-                now, event = found  # the next segment starts from the event, with the flags there
+            if found:
+                now, event = found[0][0], found
                 break
             now, y = end, np.array(solver.y, dtype=float)
             if solver.status == 'finished':
@@ -1249,54 +1417,59 @@ class MovingDeclared(DeclaredWay):
         self.run.now = self.time
         return Segment(self.time, now, OdeSolution(times, outputs), event, plain)
 
-    def _event(self, solution, start, end):
-        """(the time, the store) of the first event in a step from start to end, or None: a free store
-        that passes a bound, or a store held on a bound whose answer would move it off by more than
-        its slack, at the first time that the halving of [start, end] finds to the crossing
-        tolerance, in the step's dense output."""
+    def _events(self, solution, start, end):
+        """Locate store contacts and switch operands on this smooth step's dense trajectory."""
         found = []
-        for s in range(len(self.stores)):
+        for s, name in enumerate(self.stores):
             if self.low[s] or self.high[s]:
+                kind = 'release'
 
-                def leaves(t, s=s):
+                def gap(t, s=s):
                     rate = self._at(t, solution(t))[2][s]
-                    off = rate if self.low[s] else -rate
-                    return off > SLACK * self.atol[s]
+                    return (rate if self.low[s] else -rate) - SLACK * self.atol[s]
 
-            elif solution(end)[s] < self.lower[s] or solution(end)[s] > self.upper[s]:
-
-                def leaves(t, s=s):
-                    level = solution(t)[s]
-                    return level < self.lower[s] or level > self.upper[s]
-
+                if gap(end) <= 0:
+                    continue
             else:
+                level = solution(end)[s]
+                if level <= self.lower[s]:
+                    kind, bound, direction = 'lower bound', self.lower[s], -1
+                elif level >= self.upper[s]:
+                    kind, bound, direction = 'upper bound', self.upper[s], 1
+                else:
+                    continue
+
+                def gap(t, s=s, bound=bound, direction=direction):
+                    return direction * (solution(t)[s] - bound)
+
+                if gap(start) >= 0 and gap(end) <= 0:
+                    continue  # a free store resting exactly on its bound
+            at = start if gap(start) >= 0 else integrate.crossing_time(gap, start, end)
+            found.append((at, name, kind))
+        return sorted(set(found) | set(self._crossings(solution, start, end)))
+
+    def _crossings(self, solution, start, end):
+        """Locations of the armed physical switches bracketed by one smooth interval."""
+        for pair, sign in self.region.signs.items():
+            if not sign:
                 continue
-            if leaves(end):
-                found.append((self._first(leaves, start, end), s))
-        return min(found) if found else None
 
-    def _first(self, passed, start, end):
-        """The first time in [start, end] at which `passed` holds, which it does at end, found by
-        halving to the crossing tolerance of the run."""
-        left, right = start, end
-        while right - left > self.plan.numerics.crossing:
-            middle = 0.5 * (left + right)
-            if passed(middle):
-                right = middle
-            else:
-                left = middle
-        return right
+            def gap(at):
+                a, b = self._operands(pair, at, solution(at))
+                return a - b
+
+            if gap(start) * sign > 0 and gap(end) * sign <= 0:
+                at = integrate.crossing_time(gap, start, end)
+                yield at, self.declared.id, self.switches[pair]
 
     def _state(self, t):
         segment = self.pending
         if segment is None or t <= segment.start:
             return self._held(self.y)
-        return self._held(segment.solution(min(t, segment.end)))
+        return self._held(segment.solution(min(t, segment.solution.ts[-1])))
 
-    def _commit(self, end):
-        """The pending segment to `end`: its pieces are recorded and the state is there. The stores
-        are fitted to the integrator's dense output, to their tolerances; the rates and the results,
-        each value of which is a solve, to the precision of the solver (`ANSWER` of their size)."""
+    def _pieces(self, end):
+        """Fit the incoming stores, flow rates and solver results using their segment's inputs."""
         segment = self.pending
         if end > segment.start:
             tolerance = np.array([self.recorder.tolerance.get(name, 1e-9) for name in self.stores])
@@ -1305,13 +1478,13 @@ class MovingDeclared(DeclaredWay):
                 return np.array([self._state(at) for at in np.asarray(times).tolist()])
 
             for name, pieces in zip(self.stores, fitted(states, segment.start, end, tolerance)):
-                self.recorder.add_pieces(name, pieces)
+                yield name, pieces
             names = [*self.recorded, *self.connected.results]
 
             def answers(times):
                 rows = []
                 for at in np.asarray(times, dtype=float).tolist():
-                    flows, results, _ = self._at(at, self._state(at))
+                    flows, results, *_ = self._at(at, self._state(at))
                     rows.append([*flows, *(results[name] for name in self.connected.results)])
                 return np.array(rows, dtype=float)
 
@@ -1324,25 +1497,29 @@ class MovingDeclared(DeclaredWay):
             )
             if names:
                 for name, pieces in zip(names, fitted(answers, segment.start, end, tolerance)):
-                    self.recorder.add_pieces(name, pieces)
-            if self.run.shared.at_arrival(end):
-                self.run.shared.ends.setdefault(self.key, end)
+                    yield name, pieces
+
+    def _commit(self, end):
+        """Apply the incoming prefix, then bring the stores to the moment."""
+        pieces = self.prefix[1] if self.prefix is not None and self.prefix[0] == end else self._pieces(end)
+        for name, fitted_pieces in pieces:
+            self.recorder.add_pieces(name, fitted_pieces)
         self.y = self._state(end)
         self.time = end
-        self.pending = None
+        self.pending = self.prefix = None
 
     # ---- the interface of a way (`ways.py`) --------------------------------------------------------
 
     def begin(self):
         """The answer at the start of the instance; the first segment is made when the run asks."""
-        self._settle(self.t0)
+        self._settle(self.t0, (*self.run.prior_contacts, *self.run.contacts))
 
     def peek(self):
         """The end of the next segment, which is made now if it is not yet (`_next`)."""
         if self.snapped:
             return math.inf
         if self.pending is None:
-            until = min(self.run.limit, self.plan.horizon)
+            until = self.run.limit
             if self.time >= until:
                 return math.inf
             self.pending = self._next(until)
@@ -1355,28 +1532,43 @@ class MovingDeclared(DeclaredWay):
         segment = self.pending
         self._commit(segment.end)
         self.run.now = segment.end
-        s = segment.event
         if segment.plain:
             return list(self.stores), sorted(set(self.recorded) | set(self.connected.results)), False
-        if s is not None:
-            if self.low[s] or self.high[s]:
-                self.low[s] = self.high[s] = False  # it leaves its bound
-            else:
-                at_lower = abs(self.y[s] - self.lower[s]) <= abs(self.y[s] - self.upper[s])
-                self.y[s] = self.lower[s] if at_lower else self.upper[s]
-                (self.low if at_lower else self.high)[s] = True
-        changed = self._settle(segment.end)
-        return list(self.stores), sorted(set(changed) | set(self.recorded)), True
+        if segment.event:
+            self._put_contacts(segment.event, segment.end)
+        changed = self._settle(segment.end, segment.event or ())
+        return list(self.stores), sorted(set(changed) | set(self.recorded)), bool(segment.event)
 
-    def snap(self):
-        """Bring the stores to the moment. The stages read the incoming answer and their round
-        settles the new problem once, including any bound reached here."""
+    def _put_contacts(self, events, through):
+        met = []
+        for at, name, kind in events:
+            if at > through or name == self.declared.id:
+                continue
+            s = self.place[name]
+            if kind == 'release':
+                self.low[s] = self.high[s] = False
+            else:
+                low = kind == 'lower bound'
+                self.y[s] = self.lower[s] if low else self.upper[s]
+                (self.low if low else self.high)[s] = True
+                met.append(name)
+        return met
+
+    def timing_events(self, through):
+        """The physical switches and bounds in the pending segment."""
+        if self.pending is not None:
+            yield from (
+                contact
+                for contact in self.pending.event or ()
+                if contact[0] <= through and contact[2] != 'release'
+            )
+
+    def snap(self, t=None, through=None):
+        """Commit the incoming segment and coalesced contacts after the round's stages."""
         segment = self.pending
-        self._commit(segment.end)
-        s = segment.event
-        met = [] if s is None or self.low[s] or self.high[s] else [self.stores[s]]
-        if met:
-            self.y[s] = min((self.lower[s], self.upper[s]), key=lambda bound: abs(bound - self.y[s]))
+        t = segment.end if t is None else t
+        self._commit(t)
+        met = self._put_contacts(segment.event or (), t if through is None else through)
         self.snapped = True
         return [*self.stores, *self.flows, *self.recorded, *self.connected.results], met
 
@@ -1390,10 +1582,13 @@ class MovingDeclared(DeclaredWay):
         if segment is not None and t <= segment.start:
             self.pending = None
             return
-        if segment is None or t >= segment.end:
+        if segment is None:
             return
+        answer = (
+            self.prefix[2] if self.prefix is not None and self.prefix[0] == t else self._at(t, self._state(t))
+        )
         self._commit(t)
-        flows, results, _ = self._at(t, self.y)
+        flows, results, _, self.former.requests = answer
         self.value[:] = flows
         self.results.update(results)
 

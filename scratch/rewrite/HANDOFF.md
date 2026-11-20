@@ -128,7 +128,7 @@ fixed in one mechanism, with a test of its rule (`briefs/audit2.md`; the state f
    refused by name, and a history budget that a run would exceed stops it by name.
 6. **The checker compares how each run ended** before its values (below, "No change is silent").
 
-## What the readiness rounds changed (`PLAN.md`, changes 23 to 27)
+## What the readiness rounds changed (`PLAN.md`, changes 23 to 28)
 
 A readiness audit of `8b3a01a` found eight rules fixed on one path and still broken on another. Each
 is now fixed once, at its mechanism, with a test over every path that reads it (`briefs/audit3.md`,
@@ -154,8 +154,10 @@ four questions on the way. What you will meet in the catalogue:
    `x in [lo, hi]` whose ends a stage reversed stops the run by the name of a reversed interval.
 5. **Long chains of values compile, run and report** with no recursion in Python, through every
    path; **a value's trail** is the same whatever else its report holds; **a history budget** stops
-   a run by name when its record would exceed it, before any later stop, and the run store serves a
-   shorter request only where its cut is what a fresh run gives (change 24 a).
+   a run by name when its record would exceed it, before any later stop. The run store reuses the
+   identical request, including its budget failure. A shorter horizon, different selection or
+   different piece budget runs fresh. Selecting the same keys in another order hits the same entry
+   and gives the caller's order in the manifest (change 28).
 6. **`napkin new` writes two files** (change 24 c), `model.scn` and `style.toml`.
 
 ## The work, in order

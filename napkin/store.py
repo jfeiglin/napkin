@@ -6,8 +6,8 @@ R-A4a-08) is a digest of exactly these:
 
 - the canonical bytes of the program (`napkin/program/canonical.py`), which holds no label, text or
   evidence, so editing a label keeps the key;
-- the canonical bytes of the configuration without its request: the inputs, the mode, the seed, the
-  limits, the budgets and the numerical settings;
+- the canonical bytes of the configuration and its request, including the horizon, the requested
+  keys sorted by owner and steps, the choice of every value, and the budget of pieces;
 - a digest of the engine code: each package file that `engine/timeline/__init__.py`, the entry of a
   run, imports, directly or through other package files (its static import closure, with every
   parent package's `__init__.py`), and `expressions.py` and `distributions.py`;
@@ -24,36 +24,11 @@ A change to any of these is a miss, never a stale result. The thread settings of
 are not in the key: a run under other thread settings is not the same run bit for bit, and it agrees
 within the tolerances of the run (change 11 of the plan).
 
-**The reuse rule.** What to record, and until when (the request), is no part of the key: one entry
-holds one record of the run, and it serves every request that it covers (`covers`): a horizon at or
-before its own, and values that it holds (every value, or each value that the request names, a
-store's ledger with the store: `Manifest.names`). The record that a request gets is the stored one
-cut to the request (`served`), by the rule of a fresh run of the request (`napkin/program/record.py`,
-"One rule, as the run goes"): its pieces, its trace and its failure up to the request's horizon,
-the request's manifest, the histories that a run of the request keeps, by the function that the
-run's own record keeps them by (`engine/timeline/record.requested`: those that the request names,
-what their values need, and the ledgers of its books), and the request's budget of pieces
-(`Record.within`). So it is the record that a fresh run of the request gives, its histories
-included: a store's ledger only from its first edit, its budget ends it where it ends that run, a
-report of it says nothing of what happened later, and it holds no value that the request does not
-name. A cut at an earlier horizon, or one that the request's budget ends earlier (a run of a log
-stops by its budget at a stop, where its record ends), is that record only where the pieces that it
-keeps do not depend on where the run ended (`record.settled`): where none of them is on a curve,
-which a run fits to the steps that it takes to its own end, and no formula, reduction, keyed or
-dynamic read has a piece that the record fitted, or found by bisection, after the run, which follow
-the stretch that the run's end ends. Where one is, no cut answers as a fresh run does, in its pieces,
-their number and so the outcome of a budget, and the request runs alone, as a fresh run, and is not
-stored (the entry holds more). So a request gets one record however the store got there, bit for
-bit: the same outcome, finished or stopped where and why, the same histories and the same values. A
-request that the entry does not cover (a later horizon, a value that it does
-not hold) runs again, with a request wide enough for both (`_widened`), and the new record takes the
-entry's place: an entry never covers less than before. A run that fails is stored, with its failure:
-the same run fails the same way. A record that its budget cut is not stored, since a request of fewer
-values or with another budget holds more of the same run; when the wider run is cut, the request runs
-alone. Nothing is stored for a run that the engine refuses with an exception, or for a log that does
-not play again (`CheckpointError`). A run with edits is stored under its log and serves only that
-log. A session (`napkin.session.Session`) that waits at a stop is not over, and stores nothing: the
-run of its log goes through the store (`run(program, configuration, log)`).
+**The reuse rule.** An entry holds the record of its exact request, including a failure or a stop
+at its budget. A permutation of the requested keys uses the same entry and the caller receives its
+manifest in the order requested. A different horizon, choice of values or budget has its own entry.
+A run that raises an exception stores nothing. A session waiting at a breakpoint has no completed
+record. The run of its edit log goes through the store.
 
 Each entry is a compressed pickle in `<directory>/<2 hex>/<key>.run`, written to a temporary file and
 renamed into place, with the configuration that it ran, its log (None for none) and the digest of its
@@ -73,6 +48,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import functools
 import hashlib
 import os
 import pickle
@@ -98,7 +74,7 @@ import numpy as np
 # The folder of the package, whose files the key of a run digests (`closure`).
 PACKAGE = Path(__file__).resolve().parent
 
-FORMAT = 4
+FORMAT = 5
 MAGIC = b'napkin run store 2\n'
 # The modules whose code a run runs, as files of the package; and the module that plays a run with
 # edits, which imports the engine.
@@ -231,12 +207,23 @@ def fingerprint(value):
     return hashlib.sha256(b''.join(out)).hexdigest()
 
 
+@functools.cache
+def _module_names(directory):
+    """The actual spellings of a directory's modules, including on case-insensitive file systems."""
+    return frozenset(os.listdir(directory))
+
+
 def _module_file(parts):
     """The file of the package module `parts` (relative to the package), or None."""
-    base = PACKAGE.joinpath(*parts)
-    if base.with_suffix('.py').is_file() and parts:
-        return base.with_suffix('.py')
-    if (base / '__init__.py').is_file():
+    base = PACKAGE
+    for i, part in enumerate(parts):
+        names = _module_names(base)
+        if i == len(parts) - 1 and f'{part}.py' in names:
+            return base / f'{part}.py'
+        if part not in names or not (base / part).is_dir():
+            return None
+        base = base / part
+    if '__init__.py' in _module_names(base):
         return base / '__init__.py'
     return None
 
@@ -397,16 +384,19 @@ def _code(log):
 
 def key(program, configuration, log=None):
     """The key of a stored run of a program under a run configuration (see the module): the program's
-    digest, the canonical bytes of the configuration without its request, the code and the
+    digest, the canonical bytes of the configuration and its request, the code and the
     environment, and for a run with edits its log (`napkin.session.Log`), by its breakpoints and its
     edits. Raises TypeError when a part has no canonical bytes."""
-    from .program.canonical import configuration_bytes
+    from .program.canonical import configuration_bytes, value_bytes
 
+    request = configuration.request
+    keys = tuple(sorted(request.keys, key=lambda key: (key.owner, key.steps)))
     parts = [
         _code(log).encode(),
         _ENVIRONMENT_BYTES,
         program_digest(program).encode(),
         configuration_bytes(configuration),
+        value_bytes(replace(request, keys=keys)),
     ]
     if _edited(log):
         out = []
@@ -418,67 +408,6 @@ def key(program, configuration, log=None):
         digest.update(b'%d:' % len(part))
         digest.update(part)
     return digest.hexdigest()
-
-
-# --- The reuse rule -----------------------------------------------------------------------------
-
-
-def covers(manifest, request):
-    """Whether a record with this manifest serves a request: its horizon reaches the request's, and it
-    holds every value, or each value that the request names (`Manifest.names`)."""
-    if request.horizon > manifest.horizon:
-        return False
-    return manifest.everything or (not request.everything and all(map(manifest.names, request.keys)))
-
-
-def served(record, request, program):
-    """The record that a request gets from a stored record of a run of `program` that covers it, as a
-    fresh run of the request gives it (see the module): its pieces, its trace and its failure up to
-    the request's horizon, with the request's manifest and the histories that a run of the request
-    keeps (`engine/timeline/record.requested`, the rule of a run's own record: those that it names,
-    what their values need, and the ledgers of its books), within the request's budget of pieces. A
-    value whose first piece comes after that horizon (an occurrence that started later, the ledger of
-    a store first edited later) is left out. None where no cut answers as a fresh run does: where the
-    record is cut at an earlier horizon, or ended there by its budget, and a piece that it keeps
-    follows where its run ended (`record.settled`: a curve, a fit or a bisection of a formula)."""
-    from .engine.timeline.record import plan_for, requested, settled
-    from .program.record import History, Manifest, Record
-
-    manifest = Manifest(request.horizon, request.everything, request.keys)
-    end = request.horizon
-    earlier = record.manifest.horizon != end
-    if not earlier:
-        cut = Record(manifest, record.histories, record.trace, record.failure)
-    else:
-        histories = []
-        for history in record.histories:
-            pieces = tuple(piece for piece in history.pieces if piece.t <= end)
-            if pieces:
-                histories.append(History(history.key, pieces))
-        trace = tuple(entry for entry in record.trace if entry.t <= end)
-        failure = record.failure if record.failure is not None and record.failure.t <= end else None
-        cut = Record(manifest, tuple(histories), trace, failure)
-    plan = plan_for(program, cut.trace)
-    cut = requested(cut, program, plan)
-    bounded = cut.within(request.pieces)
-    if bounded is not cut:
-        plan = plan_for(program, bounded.trace, plan)
-        bounded = requested(bounded, program, plan)
-    if (earlier or bounded.end != cut.end) and not settled(bounded, program, plan):
-        return None
-    return bounded
-
-
-def _cut(record):
-    """Whether its budget of pieces cut a record (`Record.within`)."""
-    return record.failure is not None and record.failure.detail('budget') is not None
-
-
-def _widened(manifest, request):
-    """A request that covers both a stored record's manifest and a request that it does not cover."""
-    everything = manifest.everything or request.everything
-    keys = () if everything else tuple(dict.fromkeys((*manifest.keys, *request.keys)))
-    return replace(request, horizon=max(manifest.horizon, request.horizon), everything=everything, keys=keys)
 
 
 # --- Entries and locks ------------------------------------------------------------------------
@@ -606,20 +535,16 @@ def _touch(*paths):
             os.utime(path)
 
 
-def _held(directory, run_key, request, program):
-    """The record that the store gives a request of a key (`served`), or None when its entry does not
-    cover the request or no cut of it answers as a fresh run does; and the entry's manifest, or None
-    with no entry."""
+def _held(directory, run_key, request):
+    """The record of this exact request, with its manifest in the order the caller asked for."""
     entry = _stored(directory, run_key)
     if entry is None:
-        return None, None
+        return None
+    _touch(_entry(directory, run_key), _program_file(directory, entry['program']))
     record = entry['record']
-    if not covers(record.manifest, request):
-        return None, record.manifest
-    found = served(record, request, program)
-    if found is not None:
-        _touch(_entry(directory, run_key), _program_file(directory, entry['program']))
-    return found, record.manifest
+    if record.manifest.keys != request.keys:
+        return replace(record, manifest=replace(record.manifest, keys=request.keys))
+    return record
 
 
 # --- Running through the store ------------------------------------------------------------------
@@ -641,8 +566,8 @@ def _fresh(program, configuration, log):
 def run(program, configuration, log=None):
     """The record of a run of a program under a configuration (`napkin.engine.run`), or of the run of
     a log of its edits at the stops of its breakpoints (`log`, `napkin.session.Log`), through the
-    store of this process when one is on (see the module): the stored record when its entry covers
-    the request, else a new run, which is stored. An exception of the engine (a part that it does not
+    store of this process when one is on (see the module): the stored record of this request
+    or a new run, which is stored. An exception of the engine (a part that it does not
     run, a configuration that the program cannot take, a log that does not play again) stores
     nothing and propagates."""
     directory = _active['directory']
@@ -650,28 +575,16 @@ def run(program, configuration, log=None):
         return _fresh(program, configuration, log)
     run_key = key(program, configuration, log)
     request = configuration.request
-    record, _ = _held(directory, run_key, request, program)
+    record = _held(directory, run_key, request)
     if record is None:
         with _locked(directory, run_key):
             # Another process may have stored the run while this one waited.
-            record, manifest = _held(directory, run_key, request, program)
+            record = _held(directory, run_key, request)
             if record is None:
                 counts['misses'] += 1
-                if manifest is not None and covers(manifest, request):
-                    # The entry covers the request, and no cut of it answers as a fresh run does
-                    # (`served`): the request runs alone, and the entry, which holds more, stays.
-                    return _fresh(program, configuration, log)
-                ran = (
-                    configuration
-                    if manifest is None
-                    else replace(configuration, request=_widened(manifest, request))
-                )
-                found = _fresh(program, ran, log)
-                if _cut(found):
-                    # A record that its budget cut is not stored; the request alone may hold more.
-                    return found if ran is configuration else _fresh(program, configuration, log)
-                _save(directory, run_key, program, ran, found, log)
-                return served(found, request, program)
+                record = _fresh(program, configuration, log)
+                _save(directory, run_key, program, configuration, record, log)
+                return record
     counts['hits'] += 1
     return record
 

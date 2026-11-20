@@ -41,7 +41,7 @@ pieces of each value of a run:
   that an edit changed by its end, whatever its request names, and holds it with the store or alone
   (`Manifest.names`); a store with no ledger took nothing from outside. So a ledger has a piece only
   where an edit made one, as the run goes: a record that ends before the first edit of a store holds
-  no ledger of it, fresh or cut from a longer record (`store.served`), and an edit adds to the budget
+  no ledger of it, and an edit adds to the budget
   of pieces at its own time, never before.
 - **The time of a change** that `elapsed` reads has a piece at the start of its value and at each
   commit that changed it. It has no key in the record: the reader finds it from the history of the
@@ -57,13 +57,10 @@ pieces of each value of a run:
   `Unavailable` with the reason, from where it cannot be, found as a change of a yes/no is, also
   inside a piece (a membership whose moving end passes the other): its values before are kept.
 
-**What a record holds** is one function of its request and its trace (`requested`), for a run's
-record and for a cut of a longer one (`store.served`): every value, or the values that the request
+**What a record holds** follows from its request and trace (`requested`): every value, or the values that the request
 names, what their formulas read under each definition that the trace's commits gave them
 (`needed`), and the ledgers of the books, each history in the order of its key; a piece that starts
-at the record's end holds its value there (`_finished`). Whether a cut of a longer record at an end
-is what a run to that end makes is `settled`: no piece that it keeps is a fit or a change that the
-record found by bisection after the run. The values that a record holds have at most the request's
+at the record's end holds its value there (`_finished`). The values that a record holds have at most the request's
 budget of pieces: a record that would hold more ends before the time of the first piece that does
 not fit, naming the budget (`Record.within`), and a run whose record so far would hold more at a
 stop ends there by its budget, before any checkpoint (`checkpoints.Breaks`).
@@ -90,7 +87,6 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_left, bisect_right
-from copy import copy
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import pairwise
@@ -110,7 +106,7 @@ from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
 from .plan import BUILTINS, CHANGED, DYNAMIC, FORMULA, LOOKUP, REDUCE, SIDES, Plan, name_of
-from .reads import Reads, on_side, side_level
+from .reads import Reads
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
 FAILURES = (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError)
@@ -146,7 +142,7 @@ def fitted(values, start, end, tolerance):
     piece. A value that the series holds as a constant has the rate 0, and any other a `Curve` in
     its place, which the record's piece keeps in its own field (`_history`): a line too, as a series
     of degree one, since its slope is the fit's over the span that it was fitted to, and so follows
-    where the run ended in its last digits, as a curve does (`settled`)."""
+    where the run ended in its last digits."""
     found = [[] for _ in tolerance]
     pending, cuts = [(start, end)], 0
     while pending:
@@ -370,7 +366,26 @@ class Recorder:
             if name in plan.defined:
                 histories[name] = self._history(value.key, self._defined(name, histories, end))
                 continue
-            if name in self.formulas:
+            if name in plan.outside:
+                # Re-shares supply the point at each switch, key and write. Between those
+                # points the amount follows its request and capacity as they move.
+                anchors = {
+                    at: (amount, slope)
+                    for at, amount, slope in self.pieces.get(name, ())
+                    if start <= at <= end
+                }
+                pieces = [] if anchors else self.formula(name, histories, end, start=start)
+                for at, following in pairwise([*anchors, None]):
+                    amount, slope = anchors[at]
+                    if slope is not None:
+                        pieces.append((at, amount, slope))
+                        continue
+                    until = end if following is None else following
+                    fitted_input = self.formula(
+                        name, histories, until, start=at, anchors={at: (amount, None)}
+                    )
+                    pieces.extend(piece for piece in fitted_input if following is None or piece[0] < until)
+            elif name in self.formulas:
                 pieces = [piece for piece in self.pieces.get(name, ()) if piece[0] <= end]
             elif value.kind == REDUCE:
                 pieces = self._reduction(name, histories, end)
@@ -390,7 +405,8 @@ class Recorder:
             else:
                 pieces = self.formula(name, histories, end, start=start)
             if name in run.frozen:
-                finish = next(piece[0] for piece in self.pieces[name])
+                active = histories[f'{owner}.active'].pieces
+                finish = next(piece.t for piece in active if piece.value is False)
                 pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, run.frozen[name], 0.0)]
             histories[name] = self._history(value.key, pieces)
         # What a kept formula, reduction or dynamic read reads is kept too, so that `read` can
@@ -423,8 +439,7 @@ class Recorder:
         manifest = Manifest(request.horizon, request.everything, request.keys)
         made = _finished(Record(manifest, tuple(held), trace, failure))
         # The values that the record holds stay within the request's budget of pieces (R-A4a-07); a
-        # record that its budget ends keeps what a record to that end keeps (`requested`), as a cut
-        # of a longer record does.
+        # record that its budget ends keeps its histories up to that end (`requested`).
         bounded = made.within(request.pieces)
         return bounded if bounded is made else requested(bounded, plan.program, plan)
 
@@ -551,6 +566,7 @@ class Recorder:
         point=None,
         node=None,
         timed=None,
+        anchors=None,
     ):
         """The pieces of a formula from the histories of what it reads, from `start` on (of a
         reduction or a keyed read, when `reads` and `compute` are given: the names that it reads,
@@ -574,6 +590,7 @@ class Recorder:
         times = sorted(
             {
                 float(start),
+                *(anchors or ()),
                 *(piece.t for read in reads for piece in histories[read].pieces if start <= piece.t <= end),
             }
         )
@@ -582,8 +599,15 @@ class Recorder:
         holders = {read: _holder(histories[read]) for read in reads}
 
         names = frozenset(reads)
+        starts = sorted(anchors or ())
 
         def at(t):
+            place = bisect_right(starts, t) - 1
+            if place >= 0:
+                start = starts[place]
+                amount, slope = anchors[start]
+                if slope is not None or start == t:
+                    return amount
             if point is not None:
                 return point(t, readers)
             # Each read is taken from its history where the evaluation asks for it (`reads.py`).
@@ -698,10 +722,7 @@ def requested(record, program, plan=None):
     else the histories that its manifest names, those that their values need (`needed`, under the
     occurrences that its trace starts and the definitions that its commits gave), and the ledger of
     each store that an edit changed by its end (the store's books, `Manifest.names`); each history in
-    the order of its key, a piece at its end holding its value there (`_finished`). It is the one
-    rule of what a record holds, of a run's (`Recorder.record`) and of a cut of a longer record
-    (`store.served`), so a cut is the record of a fresh run of the shorter request, its histories
-    included. `plan` is a plan of the program that may serve (`plan_for`)."""
+    the order of its key, a piece at its end holding its value there (`_finished`). `plan` is a plan of the program that may serve (`plan_for`)."""
     histories = record.histories
     if not record.manifest.everything:
         found, names = _needed_by(program, record.manifest.keys, record.trace, plan)
@@ -730,35 +751,6 @@ def _finished(record):
         else:
             histories.append(history)
     return Record(record.manifest, tuple(histories), record.trace, record.failure)
-
-
-def settled(record, program, plan=None):
-    """Whether every piece that a record keeps is what any run to its end makes, so that a longer
-    run's record cut at that end, or ended there by its budget, is the record of a run to it
-    (`store.served`): no history is on a curve, which a fit makes (`fitted`: a line of the fit's
-    slope is one too) over the span that the run's end ends; and no value that the record makes after
-    the run from what it reads (a formula, a reduction, a keyed or a dynamic read, a value that a
-    commit gave a new definition) has a piece where nothing else that the record keeps has one: a
-    change found by bisection, over a stretch that the run's end ends. What holds between the pieces
-    of what it reads, and starts with them, is what any run makes."""
-    if any(piece.curve is not None for history in record.histories for piece in history.pieces):
-        return False
-    plan = plan_for(program, record.trace, plan)
-    definitions = plan.definitions_of(record.trace)
-    calculated = {
-        value.key
-        for name, value in plan.values.items()
-        if value.key is not None and (value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC) or name in definitions)
-    }
-    times = {
-        piece.t for history in record.histories if history.key not in calculated for piece in history.pieces
-    }
-    return all(
-        piece.t in times
-        for history in record.histories
-        if history.key in calculated
-        for piece in history.pieces
-    )
 
 
 def _needed_by(program, keys, trace, plan=None):
@@ -1161,9 +1153,6 @@ class Reader:
         self.found = {}  # (engine name, time) -> its value, or the LookupError of a value that has none
         self.read = {}  # (engine name, time) -> the engine names that its evaluation read, in order
         self.kept = {}
-        self.sharing = self.point = None  # a separate formula cache for the outgoing sides of rates
-        self.wider = None  # a second guard reader only when the adjacent operands tie
-        self.guard = None  # the distance along the outgoing piece for an outside flow's switch
         self._stores = None
         self._always = {}  # the id of a node -> what every evaluation of it reads (`proofs.always`)
         self._checked = {}  # a key that names a value -> its `Declaration` (`checked`)
@@ -1267,9 +1256,13 @@ class Reader:
         """Whether the reader finds the value of an engine name by an evaluation of what it reads (a
         formula, a collection, the time of a change) rather than from its history."""
         value = self.plan.values.get(name)
-        return value is not None and (
-            self.plan.original(name).kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED)
-            or name in self.definitions
+        return (
+            value is not None
+            and name not in self.plan.outside
+            and (
+                self.plan.original(name).kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED)
+                or name in self.definitions
+            )
         )
 
     # ---- the values of engine names ---------------------------------------------------------------
@@ -1340,23 +1333,12 @@ class Reader:
             found = self._dynamic(name, t, read)
         elif value.kind == CHANGED:
             found = self._changed(name, t, read)
-        elif value.kind != FORMULA or (owner is not None and read(f'{owner}.active') is False):
-            # A value, or a formula of a finished occurrence, which keeps its value (D7): read from
-            # its history, it is no evaluation (`reads` gives none).
-            history = self._stored(value)
-            if self.guard and name in self.stores():
-                place = bisect_right(history.pieces, t, key=lambda piece: piece.t) - 1
-                if place >= 0:
-                    return side_level(history.pieces[place].at, t, self.guard(t), self.plan.numerics.crossing)
-            return history.at(t)
-        elif self.point is None and not self.guard and name in self.plan.outside:
-            if self.sharing is None:
-                self.sharing = copy(self)
-                self.sharing.found = {}
-                self.sharing.point = copy(self)
-                self.sharing.point.guard = lambda at: math.nextafter(at, math.inf)
-                self.sharing.point.found = {}
-            return self.sharing.at(name, t)
+        elif (
+            value.kind != FORMULA
+            or name in self.plan.outside
+            or (owner is not None and read(f'{owner}.active') is False)
+        ):
+            return self._stored(value).at(t)
         else:
             # What the formula reads is read where its evaluation asks for it (`reads.py`): a read
             # that has no value then makes the formula unavailable, with its reason. What every
@@ -1366,25 +1348,7 @@ class Reader:
                 sure = self._always[id(value.node)] = always(value.node)
             self._ready(sure, t)
             try:
-                if self.point is None:
-                    at = self.guard(t) if self.guard else t
-                    found = evaluate(value.node, Reads(nodes.names(value.node), read, at), self.plan.units)
-                else:
-                    probe = math.nextafter(t, math.inf)
-
-                    crossing = self.plan.numerics.crossing
-
-                    def read_probe(other, at):
-                        asked.append(other)
-                        if at == probe:
-                            return self.point.at(other, t)
-                        if self.wider is None:
-                            self.wider = copy(self.point)
-                            self.wider.guard = lambda now: max(now + crossing, math.nextafter(now, math.inf))
-                            self.wider.found = {}
-                        return self.wider.at(other, t)
-
-                    found = on_side(value.node, read, self.plan.units, t, probe, crossing, read_probe)
+                found = evaluate(value.node, Reads(nodes.names(value.node), read, t), self.plan.units)
                 found = bool(found) if value.boolean else found if isinstance(found, str) else float(found)
             except FAILURES as problem:
                 found = Unavailable(str(problem))

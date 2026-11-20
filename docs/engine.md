@@ -1176,27 +1176,15 @@ What the engine promises of a result, and what it does not:
 
 ## The run store
 
-A simulation (`simulate`) reads only its resolved run, the units of the library, the numerical
-settings and, for a played run, what the run asks (`play`: who picks, and the picks). Its result
-depends only on these and on the engine code. The run store (`napkin/store.py`) keeps each simulated
-run on disk, keyed by:
+The run store (`napkin/store.py`) keeps each record on disk. Its key includes the canonical program,
+the configuration and the request. The request gives the horizon, the requested keys, whether to
+record every value and the budget of pieces. Reordering the requested keys reuses the entry and
+returns the manifest in the caller's order. A different horizon, selection or budget runs separately.
 
-- the canonical bytes of the resolved run, in its compiled order, of the units, of the settings and
-  of what a played run asks;
-- a digest of the engine code: each file of the package that `engine/runtime.py` imports, directly or
-  through other files of the package, with each parent package's `__init__.py`, and
-  `expressions.py` and `distributions.py`;
-- the Python, numpy and scipy versions, the machine, the processor and numpy's CPU features.
-
-A change to any of these is a miss: the run is simulated again. A change to the language's front end,
-the build, the commands or the publisher simulates nothing again when every resolved run stays the
-same. A resolved run names its claims by ID and holds no text, quote or digest of a claim or an
-assumption, so an evidence change through `tools.evidence.integrate` that keeps the IDs simulates
-nothing either. A simulation
-that the store runs gets only the units of the library, so it cannot read an input that its key
-leaves out, and a test checks that a simulation calls code only from the files that the key
-digests. The store keeps only what `simulate` returns: every check of a study still runs, and a
-failed run is never stored.
+The key also includes the digest of the engine code, the Python, numpy and scipy versions, the
+machine, the processor and numpy's CPU features. For a run with edits it includes the breakpoints,
+the edits and the code that plays the log. Changing a label preserves the program's canonical bytes.
+The store keeps finished records and records that ended with a failure, including a budget stop.
 
 The store is off until a caller turns it on. These turn it on: `napkin run` (unless `--no-store`),
 `napkin play` and `napkin sample`, with the processes of a spread; the tests outside `tests/engine`,
@@ -1209,9 +1197,7 @@ of its study that no process holds, then waits.
 A command that runs one study at a time also lets the store start helper processes: `napkin run`,
 `napkin play` and `napkin sample` one fewer than the processors, and the publisher `--jobs` processes
 in all, its workers and their helpers. When a study needs two or more runs that the store does not hold, the helpers take
-them in order through the same locks, beside the process of the study, which simulates too. A run
-that fails in a helper is not stored, so the process of the study simulates it again and reports the
-failure. The tests start no helpers. A cold study of seven runs of ten seconds each takes about 25
+them in order through the same locks, beside the process of the study, which simulates too. An exception raised in a helper leaves no record to store. The tests start no helpers. A cold study of seven runs of ten seconds each takes about 25
 seconds on four processors, where one process takes 70.
 
 The store is in `.cache/runs` of a source checkout, or in `~/.cache/napkin/runs` (under

@@ -292,11 +292,9 @@ These override the text of this plan below, wherever the two differ. The owner's
    names none, its "who acts" words and its group, so a picture is as it was. The translator moves
    each old role to both.
 
-24. **Three answers during the readiness fixes (owner, 2026-11-20).** (a) The run store serves a
-   shorter request from a longer stored run only where the cut is what a fresh run of it gives: a
-   request whose values are on curves at the shorter horizon runs fresh, since a curve is fitted to
-   its own run's end and the cut could differ within tolerance, enough to change whether a budget is
-   met. (b) A finished occurrence is frozen, and the error is an actual write to it: an assignment to
+24. **Three answers during the readiness fixes (owner, 2026-11-20).** (a) Change 28 supersedes the
+   rule for serving shorter requests from stored records. (b) A finished occurrence is frozen, and
+   the error is an actual write to it: an assignment to
    its field, a `move` of a nonzero amount, a flow carrying a nonzero rate into or out of its store;
    a connected flow at zero rate writes nothing, and the run goes on. (c) `napkin new` writes two
    files, `model.scn` and `style.toml`, whose `[role]` gives the starter's picture its icon.
@@ -332,6 +330,13 @@ These override the text of this plan below, wherever the two differ. The owner's
    2.4 L/h, and the record gives 2.4 L/h from 2 h. Setup still has no rate or result to give.
    A result-dependent delay uses the new share and a delay reached during conditions waits for
    the next re-share (spec, “Reading a result” and “Time, waiting and completion”).
+
+28. **The run store reuses an identical request (owner, 2026-11-20).** Store each horizon,
+   selection of recorded values and piece budget under its own key. The order of the selected keys
+   can differ. The returned manifest gives them in the caller's order. An identical request that
+   reached its piece budget gives the same stored failure. A different request runs fresh, including
+   a shorter horizon or a smaller selection. The program, inputs, seed, numerical settings,
+   processor, engine and edit log still contribute to the run's identity.
 
 ### If the session is cut off
 

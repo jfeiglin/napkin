@@ -153,6 +153,14 @@ class _Moving:
             self.time = t
         owner = instance.component.state if self.component else instance
         evaluations = owner.evaluations
+        # Dynamics asks for the vector field at independent points on either side of a kink.
+        # A branch selected by the timeline for its initial segment belongs only to that trajectory.
+        if self.component:
+            instance.component.field.choose({})
+            owner.switches, owner.clock = (), None
+        else:
+            instance.vector.choose({})
+            instance.sides, instance.clock = (), None
         try:
             if self.component:
                 return instance.component.field.rates(t, y)

@@ -8,7 +8,7 @@ a number that failed inside a piece held `Unavailable` over the whole piece, als
 value. The rule: a formula holds its values up to where it cannot be evaluated, found to within the
 crossing tolerance of the run as a change of a yes/no is, and `Unavailable` with the reason from
 there, on every path that reads it: the record's own history (`Record.value`), the record's reader,
-a report, and the run store, cold, warm and cut from a longer run. The run itself never evaluates
+a report, and the run store, cold and warm at each horizon. The run itself never evaluates
 these formulas, and finishes.
 
 The expected values are worked by hand. A plant's `lo` rises from 0 L at 1 L/h toward `hi` = 1 L,
@@ -131,9 +131,8 @@ def test_a_formula_holds_its_values_until_it_cannot_be_evaluated_and_unavailable
 
 
 @pytest.mark.parametrize('case', sorted(CASES))
-def test_the_run_store_gives_the_same_values_cold_warm_and_cut(case, tmp_path):
-    """A request to 3 h is served from the stored run to 4 h, or runs fresh where its values are on
-    curves (`store.served`): either way it reads as a fresh run of it, in its history and its reads."""
+def test_the_run_store_gives_the_same_values_cold_and_warm_at_each_horizon(case, tmp_path):
+    """The requests to 3 h and 4 h keep their own histories and each reads as a fresh run."""
     path, text, stretches = CASES[case]
     model = compiled(text)
     shorter = replace(model.configuration, request=replace(model.configuration.request, horizon=3))
@@ -143,11 +142,12 @@ def test_the_run_store_gives_the_same_values_cold_warm_and_cut(case, tmp_path):
     with store.use(tmp_path):
         cold = store.run(model.program, model.configuration)
         warm = store.run(model.program, model.configuration)
-        cut = store.run(model.program, shorter)
+        short = store.run(model.program, shorter)
+        again = store.run(model.program, shorter)
     fresh = run(model.program, shorter)
     # One record however the store got there, its histories included.
-    assert warm == cold and cut == fresh
-    for record in (cold, warm, cut, fresh):
+    assert warm == cold and short == again == fresh
+    for record in (cold, warm, short, again, fresh):
         assert record.failure is None
         for t in at:
             assert agrees(record.value(key, t), expected(stretches, t)), (t, record.value(key, t))

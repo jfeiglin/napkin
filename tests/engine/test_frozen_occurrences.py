@@ -29,7 +29,7 @@ the run by name at the moment that it happens; the same write while the occurren
   that enables the write gives that failure; an edit of the finished occurrence's value is refused
   (change 15: "a finished occurrence stays frozen").
 - **A shorter run.** A run whose horizon comes before the write finishes, and the failed run's
-  record cut to that horizon (`store.served`) is its record.
+  stored request to that horizon finishes too.
 
 The oracle (`tests/reference/`) follows the same rule: each model here runs there too, and must fail
 at the same time naming the same value, or go on.
@@ -467,21 +467,17 @@ def test_a_flow_opened_between_moments_fails_at_its_time_after_a_resume_three_wa
 
 
 @pytest.mark.parametrize('write', sorted(GUARDED_WRITES))
-def test_a_shorter_run_finishes_and_is_the_failed_runs_record_cut_to_its_horizon(write):
-    """To 2.5 h, before the write at 3 h, the run finishes; the failed run's record cut to 2.5 h, as
-    the run store serves it, reads as that run at every time."""
+def test_a_shorter_request_finishes_before_the_write_that_fails(write, tmp_path):
+    """The guarded write fails at 3 h. The request to 2.5 h still finishes with its own record."""
     found = guarded('true', write)
-    failed = run(found.program, found.configuration)
-    shorter = Request(2.5)
-    fresh = run(found.program, replace(found.configuration, request=shorter))
-    assert fresh.failure is None
-    cut = store.served(failed, shorter, found.program)
-    assert cut is not None and cut.failure is None
-    keys = ['crew.seen', Key('crew.repair#0', ('size',)), Key('crew.repair#0', ('batch',))]
-    times = [0, 1, 2, 2.5]
-    assert [r.values for r in read(cut, found.program, keys, times)] == [
-        r.values for r in read(fresh, found.program, keys, times)
-    ]
+    shorter = replace(found.configuration, request=Request(2.5))
+    with store.use(tmp_path):
+        failed = store.run(found.program, found.configuration)
+        first = store.run(found.program, shorter)
+        again = store.run(found.program, shorter)
+    assert failed.failure.t == 3
+    assert first == again == run(found.program, shorter)
+    assert first.failure is None and first.end == 2.5
 
 
 LINKED = """

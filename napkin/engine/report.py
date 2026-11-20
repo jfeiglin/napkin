@@ -50,8 +50,8 @@ report claims nothing that the record does not show.
   (`Record.near_ties`), with a message by the kind of its entry: a trigger that fired (`fire`), or
   that came within tolerance of its threshold and did not fire (`miss`); a test of a stage that
   committed (`commit`), or a false guard of a stage that ran nothing (`skip`); a gate that released
-  its occurrence (`release`); a split of who is served at a settling (`settle`). The report lists
-  them and computes nothing more precisely.
+  its occurrence (`release`); a split of who is served at a settling (`settle`); a switch or a
+  bound grouped with a scheduled moment (`contact`), with its timing difference and tolerance in hours.
 - **A run that stopped**: a failure, a stop at a breakpoint or the budget of its record ends the
   record (`Record.stop`). The report reads up to that time, each time after it is `Unavailable` with
   the reason, and `stopped` says when and why.
@@ -345,6 +345,7 @@ _NEAR = {
     'commit': 'this test of a stage was decided within tolerance of its boundary',
     'skip': 'this guard was false within tolerance of its boundary, and the stage ran nothing',
     'release': 'this gate released its occurrence within tolerance of its threshold',
+    'contact': 'this physical contact fell within the time tolerance of the moment',
     'settle': 'this split of who is served was decided within tolerance of its boundary',
 }
 
@@ -353,10 +354,13 @@ def _near_ties(record, model=None):
     """The near-ties of a record (`Record.near_ties`), each with its message and its member's title."""
     found = []
     for entry, (origin, comparison, difference, tolerance) in record.near_ties():
-        message = (
-            f'{origin} at {float(entry.t):g} h: {_NEAR[entry.kind]}: {comparison} '
-            f'(its sides differ by {difference:.3g}, within the tolerance {tolerance:.3g} of what it reads)'
+        difference_text = (
+            f'located at {entry.detail("located"):.17g} h, difference {difference:+.3g} h, '
+            f'tolerance {tolerance:.3g} h'
+            if entry.kind == 'contact'
+            else f'its sides differ by {difference:.3g}, within the tolerance {tolerance:.3g} of what it reads'
         )
+        message = f'{origin} at {float(entry.t):g} h: {_NEAR[entry.kind]}: {comparison} ({difference_text})'
         title = _title(model, entry.owner)
         found.append(
             NearTie(

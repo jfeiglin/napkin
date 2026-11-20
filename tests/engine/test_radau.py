@@ -317,6 +317,16 @@ def test_roots_between_check_times_inside_one_long_step_are_found_and_the_first_
     assert result.t[-1] == result.t_events[1][0] and result.y[0, -1] == pytest.approx(300.3, abs=1e-9)
 
 
+def test_two_contacts_in_one_timing_window_can_straddle_an_interior_check():
+    """The independent moment is 300 h. Its two clock roots straddle the 300 h check of a long
+    accepted step. The incoming segment ends at the first root and reports both located times."""
+    gap = 0.25e-8
+    roots = Functions([lambda t, y: t - (300 - gap), lambda t, y: t - (300 + gap)], [1, 1])
+    result = integrate.radau(lambda t, y: [1.0], (0, 1000), np.array([0.0]), roots=roots, check=1.0, **TIGHT)
+    assert result.t[-1] == 300 - gap
+    assert result.root_candidates == [(300 - gap, 0), (300 + gap, 1)]
+
+
 def test_a_root_that_changes_sign_and_back_inside_one_long_step_is_found_at_a_check_time():
     """y' = 1, and a root that is below zero only from t = 300.2 to t = 303.7. The solver crosses
     that time in one long step: the root has one sign at the two ends of the step. The check times

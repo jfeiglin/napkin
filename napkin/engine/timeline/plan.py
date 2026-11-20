@@ -2411,35 +2411,35 @@ class Plan:
         """The computation of `expanded(name)` (`walked`): found again once each expansion that it
         asks for is found."""
         self._expanded[name] = _VISITING
-        while True:
-            self._expanding = True
-            try:
-                found = self._expand(name)
-            except Pending as pending:
-                (read,) = pending.names
-                if self._expanded.get(read) is _VISITING:
-                    del self._expanded[name]
-                    raise Outside(f'{read}: a formula that reads itself') from None
-                yield self._expansion_of(read)
-                continue
-            except BaseException:
-                self._expanded.pop(name, None)
-                raise
-            finally:
-                self._expanding = False
-            self._expanded[name] = found
-            return found
-
-    def _expand(self, name):
-        """The expansion of one formula, reduction or keyed read from those of what it reads."""
         value = self.values[name]
-        if value.kind == FORMULA:
-            found = self.expansion(value.node)
-        elif value.kind == LOOKUP:
-            # What can change of it: its key, and what its members read that the inputs do not fix.
-            found = self.lookup_reads(name)
-        else:
-            found = Expanded.union(self.expanded(read) for read in self.reads(name))
+        try:
+            if value.kind == REDUCE:
+                # Keep our place while the walker expands a member of a wide reduction.
+                parts = []
+                for read in self.reads(name):
+                    self._expanding = True
+                    try:
+                        part = self.expanded(read)
+                    except Pending:
+                        part = yield self._expansion_of(read)
+                    parts.append(part)
+                found = Expanded.union(parts)
+            else:
+                while True:
+                    self._expanding = True
+                    try:
+                        found = (
+                            self.expansion(value.node) if value.kind == FORMULA else self.lookup_reads(name)
+                        )
+                        break
+                    except Pending as pending:
+                        (read,) = pending.names
+                        yield self._expansion_of(read)
+        except BaseException:
+            self._expanded.pop(name, None)
+            raise
+        finally:
+            self._expanding = False
         if value.kind == LOOKUP and self.stepped(name):
             found = Expanded(found.leaves, found.formulas, found.stepped | {name}, found.time)
         elif value.kind == LOOKUP:
@@ -2448,6 +2448,7 @@ class Plan:
             found = Expanded(found.leaves | {name}, found.formulas, found.stepped, found.time)
         else:
             found = Expanded(found.leaves, found.formulas | {name}, found.stepped, found.time)
+        self._expanded[name] = found
         return found
 
     def expansion(self, node):

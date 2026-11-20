@@ -14,7 +14,9 @@ of a run reads is here, or is made again from what is here by the same code:
   times of the changes that `elapsed` reads, what the round in progress wrote and changed, the next
   moment that it knows and the time; the record so far as the recorder holds it (the pieces of
   each value and the trace); the draws of the stage that stopped, and the hits and edits of the
-  breakpoints;
+  breakpoints. A stop in the opening stages also keeps the published numeric rates and results and
+  the direct store levels at the moment. Its recorder includes the incoming prefix. The saved
+  changes to the ways' physical states install that prefix after the held stages commit;
 - **the occurrences** (where each waits, the steps due, the delays that wait for the round's
   settling), **the triggers** (armed, rearm, firings) and **the moment** (its round, the stages held);
 - **the ways**: each connected set by its id and level, each instance with its live sets in their
@@ -44,13 +46,14 @@ The data of each part is a tuple of (name, value) fields: numbers, texts, tuples
 from __future__ import annotations
 
 import heapq
+from copy import copy, deepcopy
 from dataclasses import fields, is_dataclass
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.integrate._ivp.radau import RadauDenseOutput
 from scipy.optimize._highspy import _core as highs
 
+from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...program.refs import Expr, Path
 from ..errors import SimulationError
@@ -175,7 +178,53 @@ def _uncaptured(data):
 # ---- save ---------------------------------------------------------------------------------------------
 
 
-def save(run):
+def at_stop(run):
+    """Project the incoming record and physical end states into checkpoint data. The live ways
+    keep their pending segments. A restored run installs the end states after its held stages."""
+    run.ways.sample_at_stop(run.now)
+    if not run.arriving or run.saved_arrival is not None:
+        return run.recorder, run.saved_arrival
+    projected = copy(run)
+    projected.recorder = recorder = copy(run.recorder)
+    recorder.run = projected
+    recorder.pieces = {name: list(pieces) for name, pieces in run.recorder.pieces.items()}
+    recorder.trace = list(recorder.trace)
+    projected.moved = set(run.moved)
+    memo = {
+        id(run): projected,
+        id(run.plan): run.plan,
+        id(run.plan.units): run.plan.units,
+        id(run.recorder): recorder,
+    }
+    for solver in run.ways.kept.values():
+        memo[id(solver)] = solver  # the cut uses the prepared prefix; no solve is committed
+    ways = projected.ways = copy(run.ways)
+    ways.run = projected
+    for way in run.ways.instances:
+        if isinstance(way, Sparse) and way.solver is not None:
+            memo[id(way.solver)] = way.solver  # pending dense output is read; Radau takes no step
+        if not isinstance(way, Sparse | ComponentWay | MovingDeclared) and not any(
+            way.timing_events(run.clock.apart(run.now))
+        ):
+            memo[id(way)] = way  # a line with no due bound has no cut
+    ways.instances = [deepcopy(way, memo) for way in run.ways.instances]
+    ways.sets = {key: (connected, memo[id(way)]) for key, (connected, way) in run.ways.sets.items()}
+    projected.finish_arrival()
+    deltas = []
+    levels = {}
+    for k, (live, preview) in enumerate(zip(run.ways.instances, projected.ways.instances, strict=True)):
+        if live is preview:
+            continue
+        before = dict(_instance(live)[2])
+        delta = tuple((name, value) for name, value in _instance(preview)[2] if before[name] != value)
+        if delta:
+            deltas.append((k, delta))
+        if isinstance(live, Sparse | ComponentWay | MovingDeclared):
+            levels.update((name, live.level_at(name, run.now)) for name in live.stores)
+    return recorder, (tuple(deltas), tuple(sorted(projected.moved - run.moved)), _pairs(levels))
+
+
+def save(run, recorder, arrival):
     """The state of a run that a breakpoint stopped, as data (see the module)."""
     plan = run.plan
     index = {id(found): k for k, found in enumerate(_expressions(plan.program))}
@@ -189,7 +238,7 @@ def save(run):
             log.append(('define', name, source, t, start))
         else:
             log.append(entry)
-    recorder, occurrences, moment, breaks = run.recorder, run.occurrences, run.moment, run.breaks
+    occurrences, moment, breaks = run.occurrences, run.moment, run.breaks
     held = moment.held
     if isinstance(held, tuple):
         held = (tuple(live.id for live in held[0]), held[1])
@@ -207,17 +256,14 @@ def save(run):
                 ('frozen', _pairs(run.frozen)),
                 ('changes', tuple((name, tuple(times)) for name, times in run.changes.items())),
                 ('written', _pairs(run.written)),
-                (
-                    'shared',
-                    (
-                        _pairs(run.shared.writes),
-                        _pairs(run.shared.definitions),
-                        _pairs(run.shared.collections),
-                        tuple(sorted(run.shared.unfrozen)),
-                        run.shared.arrival,
-                        _pairs(run.shared.ends),
-                    ),
-                ),
+                ('published', _pairs(run.published)),
+                ('arrival', arrival),
+                ('outside_contacts', _pairs(run.outside.contacts)),
+                ('outside_selections', run.outside.selections()),
+                ('outside_arrived', tuple(sorted(run.outside.arrived))),
+                ('contacts', run.contacts),
+                ('prior_contacts', run.prior_contacts),
+                ('bounds_at_arrival', _pairs(run.bound_at)),
                 ('changed', tuple(sorted(run.changed, key=repr))),  # a set, in one order
                 ('moved', tuple(sorted(run.moved))),
                 ('joined', tuple(run.joined)),
@@ -228,7 +274,7 @@ def save(run):
         (
             'recorder',
             (
-                ('pieces', tuple((name, tuple(pieces)) for name, pieces in recorder.pieces.items())),
+                ('pieces', tuple((name, tuple(recorder.pieces[name])) for name in sorted(recorder.pieces))),
                 ('trace', tuple(recorder.trace)),
                 ('constants', _pairs(recorder.constants)),
                 ('tolerance', _pairs(recorder.tolerance)),
@@ -323,26 +369,6 @@ def _ways(ways):
         ('references', _pairs(ways.references)),
         ('last', tuple((solver, digest, _array(x)) for solver, (digest, x) in ways.last.items())),
         ('kept', tuple((solver, _solver(found)) for solver, found in ways.kept.items())),
-    )
-
-
-def _incoming(instance):
-    """The cubic and the modes of a sparse step whose unrecorded rates a stopped stage may read."""
-    step = instance.run.shared.steps.get(instance.key)
-    if step is None:
-        return None
-    start, cubic, low, high, sides, clock, selection = step
-    return (
-        start,
-        cubic.t_old,
-        cubic.t,
-        _array(cubic.y_old),
-        tuple(_array(row) for row in cubic.Q),
-        _array(low),
-        _array(high),
-        sides,
-        clock,
-        _pairs(selection),
     )
 
 
@@ -469,7 +495,6 @@ def _instance(instance):
             ),
         )
     if isinstance(instance, ComponentWay):
-        assert instance.pending is None, 'a component holds no segment at a stop'
         state = instance.component.state
         known, missing, rigid = instance.captured
         return (
@@ -497,7 +522,6 @@ def _instance(instance):
             ),
         )
     if isinstance(instance, Sparse):
-        assert instance.pending is None and instance.solver is None, 'a sparse set holds no step at a stop'
         return (
             'sparse',
             tuple(sorted(key for key, (_, found) in instance.run.ways.sets.items() if found is instance)),
@@ -510,7 +534,6 @@ def _instance(instance):
                 ('brief_from', instance.brief_from),
                 ('evaluations', instance.evaluations),
                 ('constants', _pairs(instance.vector.constants)),
-                ('incoming', _incoming(instance)),
                 ('switches', tuple((store, tuple(flows)) for store, flows in instance.switches.items())),
             ),
         )
@@ -523,15 +546,26 @@ def _instance(instance):
             ('slope', _array(instance.slope)),
             ('value', _array(instance.value)),
             ('results', _pairs(instance.results)),
+            ('requests', _array(instance.former.requests)),
             ('version', _array(instance.version)),
             ('due', tuple(instance.due)),
             ('alive', instance.alive),
         ]
         kind = 'declared'
         if isinstance(instance, MovingDeclared):
-            assert instance.pending is None, 'a moving solver holds no segment at a stop'
             kind = 'moving'
-            found += [('time', instance.time), ('low', _array(instance.low)), ('high', _array(instance.high))]
+            found += [
+                ('time', instance.time),
+                ('low', _array(instance.low)),
+                ('high', _array(instance.high)),
+                (
+                    'signs',
+                    tuple(
+                        (nodes.text(a), nodes.text(b), sign) for (a, b), sign in instance.region.signs.items()
+                    ),
+                ),
+                ('rows', _pairs(instance.region.rows)),
+            ]
         return (kind, (instance.key,), tuple(found))
     raise TypeError(f'no state of an instance of {type(instance).__name__}')
 
@@ -605,6 +639,10 @@ def restore(run, data):
         held = ([run.occurrences.live[name] for name in held[0]], held[1])
     moment.held = held
     _restore_ways(run, dict(parts['ways']))
+    run.outside.restore(
+        dict(dict(parts['run'])['outside_contacts']), dict(parts['run'])['outside_selections']
+    )
+    run.outside.arrived.update(dict(parts['run'])['outside_arrived'])
 
 
 def _run(run, found):
@@ -615,10 +653,13 @@ def _run(run, found):
     run.frozen = dict(found['frozen'])
     run.changes = {name: list(times) for name, times in found['changes']}
     run.written = dict(found['written'])
-    writes, definitions, collections, unfrozen, run.shared.arrival, ends = found['shared']
-    run.shared.ends = dict(ends)
-    run.shared.writes, run.shared.definitions = dict(writes), dict(definitions)
-    run.shared.collections, run.shared.unfrozen = dict(collections), set(unfrozen)
+    run.published = dict(found['published'])
+    run.saved_arrival = found['arrival']
+    if run.saved_arrival is not None:
+        run.arriving = True
+        run.opening_levels = dict(run.saved_arrival[2])
+    run.contacts, run.bound_at = tuple(found['contacts']), dict(found['bounds_at_arrival'])
+    run.prior_contacts = tuple(found['prior_contacts'])
     run.changed, run.moved = set(found['changed']), set(found['moved'])
     run.joined, run.left = list(found['joined']), list(found['left'])
     run.waiting = [_connected(data) for data in found['waiting']]
@@ -663,11 +704,19 @@ def _restore_ways(run, found):
     ways._next, ways.grouped = found['next'], set(found['grouped'])
     for key, level, data in found['sets']:
         ways._register(_connected(data), level, key)
-    for kind, keys, data in found['instances']:
+    deltas = {} if run.saved_arrival is None else dict(run.saved_arrival[0])
+    for k, (kind, keys, data) in enumerate(found['instances']):
         instance = _made(run, kind, keys, dict(data))
         for key in keys:
             ways.sets[key] = (ways.sets[key][0], instance)
         ways.instances.append(instance)
+        if isinstance(instance, Sparse | ComponentWay):
+            ways.sampled[instance.key] = run.now
+        elif isinstance(instance, MovingDeclared):
+            ways.moving_solvers[instance.key] = None
+        if k in deltas:
+            projected = _made(run, kind, keys, dict((*data, *deltas[k])))
+            run.cut_at_resume.append((k, keys, projected))
     ways.references = dict(found['references'])
     ways.last = {solver: (digest, np.array(x, dtype=float)) for solver, digest, x in found['last']}
     budgets = run.plan.configuration.budgets
@@ -791,18 +840,6 @@ def _made(run, kind, keys, data):
             given,
         )
         instance.t, instance.y = data['t'], y
-        if data['incoming'] is not None:
-            start, old, end, initial, terms, low, high, sides, clock, rows = data['incoming']
-            cubic = RadauDenseOutput(old, end, np.asarray(initial), np.asarray(terms))
-            run.shared.steps[instance.key] = (
-                start,
-                cubic,
-                np.asarray(low),
-                np.asarray(high),
-                sides,
-                clock,
-                dict(rows),
-            )
         instance.brief, instance.brief_from, instance.evaluations = (
             data['brief'],
             data['brief_from'],
@@ -822,12 +859,24 @@ def _made(run, kind, keys, data):
         )
         instance.value = np.array(data['value'], dtype=float)
         instance.results = dict(data['results'])
+        instance.former.requests = np.array(data['requests'], dtype=float)
         instance.version = np.array(data['version'], dtype=np.int64)
         instance.due = [tuple(entry) for entry in data['due']]
         heapq.heapify(instance.due)
         instance.alive = data['alive']
         if kind == 'moving':
             instance.time = data['time']
+            signs = {(a, b): sign for a, b, sign in data['signs']}
+            region = instance.region
+            region.set(
+                {
+                    (a, b): signs[key]
+                    for a, b in region.surfaces
+                    if (key := (nodes.text(a), nodes.text(b))) in signs
+                },
+                dict(data['rows']),
+            )
+            instance.former.region = region
             instance.low, instance.high = (
                 np.array(data['low'], dtype=bool),
                 np.array(data['high'], dtype=bool),

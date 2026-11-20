@@ -41,7 +41,7 @@ import math
 import numpy as np
 
 from ..errors import SimulationError
-from .family import Columns
+from .family import Columns, due_through
 from .network import BACKWARD, FORWARD, IN, OUT, ROUNDOFF, SIDES, Asked, Instant, network_of
 
 
@@ -227,11 +227,7 @@ class Lines:
             elif slope > 0 and math.isfinite(self.upper[s]):
                 reach = t + (self.upper[s] - value) / slope
             horizon = self.plan.horizon
-            if horizon < reach <= horizon + self.plan.numerics.crossing:
-                # A line that reaches its bound a roundoff past the horizon reaches it there, where the
-                # horizon settles it as any moment (spec: the horizon is an inclusive cutoff).
-                reach = horizon
-            if reach <= horizon:
+            if reach <= horizon + self.plan.numerics.crossing:
                 heapq.heappush(self.due, (reach, s, int(self.version[s])))
 
     # ---- moments ----------------------------------------------------------------------------------
@@ -379,15 +375,23 @@ class Lines:
         rates = [self.recorded[g] for g in np.flatnonzero(self.value != before).tolist()]
         return stores, rates, True
 
-    def snap(self):
-        """The next line reaches its bound at the time of a moment: the store is put on its bound,
-        and the moment's settling solves its set again (`ways.py`). Gives the store, as what changed
-        and as what met its bound."""
-        reach, s, _ = heapq.heappop(self.due)
-        bound = self.lower[s] if self.slope[s] < 0 else self.upper[s]
-        self.y[s], self.since[s], self.slope[s] = bound, reach, 0.0
-        self.version[s] += 1
-        return [self.stores[s]], [self.stores[s]]
+    def timing_events(self, through):
+        for reach, s, version in due_through(self.due, through):
+            if version == self.version[s]:
+                yield reach, self.stores[s], 'lower bound' if self.slope[s] < 0 else 'upper bound'
+
+    def snap(self, t=None, through=None):
+        """Put each due store on its bound at the time of the moment."""
+        met = []
+        while self.due:
+            reach, s, _ = heapq.heappop(self.due)
+            bound = self.lower[s] if self.slope[s] < 0 else self.upper[s]
+            self.y[s], self.since[s], self.slope[s] = bound, reach if t is None else t, 0.0
+            self.version[s] += 1
+            met.append(self.stores[s])
+            if through is None or self.peek() > through:
+                break
+        return met, met
 
     def cut(self, t):
         """Nothing to commit: a line holds to its next event."""

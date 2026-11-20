@@ -51,13 +51,14 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
+from ...core import expr as nodes
 from ...core.errors import ExpressionError
-from ...expressions import names_in
+from ...expressions import evaluate, names_in
 from ..allocation import Allocation
 from ..continuous import dense
 from ..continuous.bounds import check_bounds, correct_boundary_roundoff, refresh_bounds
 from ..continuous.fields import Field
-from ..continuous.integrate import at_their_switch, starting_sides, surfaces_of
+from ..continuous.integrate import starting_sides, surfaces_of
 from ..continuous.kernels import Affine, MatrixExponential
 from ..continuous.segment import advance
 from ..continuous.system import Context, solver_step
@@ -297,8 +298,7 @@ class Segment:
     """One segment of a component: from `start` to `end`, the function of the time that gives the
     state (`solution`), the states at its two ends, the last with the bounds that it reaches settled,
     the solver's result for a numerical segment (`numerical`: its accepted times are `t`), the
-    places in the state of the quantities that it brings to a bound at its end (`reached`), and the
-    switching surfaces at their switch at its start (`switches`)."""
+    places in the state of the quantities that it brings to a bound at its end (`reached`)."""
 
     start: float
     end: float
@@ -307,7 +307,6 @@ class Segment:
     last: np.ndarray
     numerical: object = None
     reached: tuple = ()
-    switches: frozenset = frozenset()
 
 
 class Held(Allocation):
@@ -358,14 +357,13 @@ class Component:
         s, state, field, diagnostics = self.system, self.state, self.field, self.context.diagnostics
         self.settle()
         start = state.time
-        switches = at_their_switch(s, field.environment, start, state.y)
         found = advance(s, state, field, self, self.context, horizon)
         first = state.y.copy()
         if found.rounded:
             correct_boundary_roundoff(s, diagnostics, start, state.y, found.rounded)
             check_bounds(s, state.y)
             reached = tuple(sorted(found.rounded))
-            return Segment(start, start, None, first, state.y.copy(), reached=reached, switches=switches)
+            return Segment(start, start, None, first, state.y.copy(), reached=reached)
         solution, numerical = found.solution, found.numerical
         last = np.array(solution(found.end) if numerical is None else numerical.y[:, -1], dtype=float)
         correct_boundary_roundoff(s, diagnostics, found.end, last, found.targets)
@@ -376,9 +374,27 @@ class Component:
             # outside its bounds.
             for k in range(len(numerical.t) - 1):
                 check_bounds(s, numerical.y[:, k])
+        self.put_switches(last, found.end, numerical, found.end)
         check_bounds(s, last)
         reached = tuple(sorted(found.targets or ()))
-        return Segment(start, found.end, solution, first, last, numerical, reached, switches)
+        return Segment(start, found.end, solution, first, last, numerical, reached)
+
+    def put_switches(self, y, t, numerical, through):
+        """Put a store that crossed an authored fixed level exactly on that level."""
+        if numerical is None:
+            return
+        s = self.system
+        env = self.field.environment(t, y)
+        for at, root in numerical.contacts:
+            if root.kind != 'surface' or at > through:
+                continue
+            for here, other in (root.data, root.data[::-1]):
+                if (
+                    isinstance(here, nodes.Ref)
+                    and here.name in s.index
+                    and not s.expanded_names(other) & (s.evolving | {'t'})
+                ):
+                    y[s.index[here.name]] = float(evaluate(other, env, s.units))
 
     def settle(self):
         """The state at the start of a segment, or at a moment before one: the bounds that it rests
@@ -386,18 +402,12 @@ class Component:
         crosses there (`integrate.starting_sides`), so that its rates are those that hold from there
         on."""
         s, state, field = self.system, self.state, self.field
+        field.choose({})
         state.switches, state.clock = (), None
         refresh_bounds(s, state, field)
         state.right_faces.clear()
         state.zero_faces.clear()
         starting_sides(s, state, field)
-
-    def switched(self, segment, t, last):
-        """The switches of a segment's rates that its state reaches at time t, with the state there:
-        the surfaces at their switch there that were at none at the start of the segment."""
-        if t <= segment.start:
-            return frozenset()
-        return at_their_switch(self.system, self.field.environment, t, last) - segment.switches
 
     def deciding(self):
         """{a switching surface: the flows whose rates read it, through formulas}."""
@@ -431,6 +441,16 @@ class Component:
     def proceed(self, segment):
         """The next segment starts where this one ended."""
         self.state.time, self.state.y = segment.end, segment.last.copy()
+        self.state.contact_clocks = tuple(at for at in self.state.contact_clocks if at >= segment.end)
+        self.state.contacted = (
+            tuple(
+                root.data
+                for at, root in segment.numerical.contacts
+                if root.kind == 'surface' and at == segment.end
+            )
+            if segment.numerical
+            else ()
+        )
 
 
 class ComponentWay:
@@ -446,7 +466,6 @@ class ComponentWay:
         self.stores, self.flows = list(connected.stores), list(connected.flows)
         self.alive, self.pending, self.still = True, None, 0
         self.bounded = False  # whether its state rests on the bounds that it found (`_settle`)
-        self.reached = []  # (the end of a segment, the switches that it reached there)
         self._drift = None  # the rates of the stores at the present state, once read (`drift`)
         stores = connected.stores
         sources = {plan.flows[flow].source for flow in connected.flows}
@@ -471,7 +490,7 @@ class ComponentWay:
                 except ExpressionError as problem:
                     raise SimulationError(str(problem)) from None
             else:
-                node = run.shared.definition(name, plan.values[name]).node
+                node = plan.values[name].node
             computed[name] = {'expr': node}
         leaves = set()
         for flow in flows.values():
@@ -532,6 +551,11 @@ class ComponentWay:
         self.captured = (known, missing, rigid)
         self.component = Component(system, context, [values[name] for name in stores], rigid)
         self.component.state.time = float(t)
+        self.component.state.contact_clocks = tuple(
+            at
+            for at, name, kind in (*run.prior_contacts, *run.contacts)
+            if kind == 'switch' and name in flows
+        )
         self.place = {name: k for k, name in enumerate(stores)}
         self.rates = [f'{flow}.actual_rate' for flow in system.flow_ids]
         self.flow_place = {flow: k for k, flow in enumerate(system.flow_ids)}
@@ -584,39 +608,62 @@ class ComponentWay:
 
     def _commit(self, segment):
         component = self.component
-        shared = self.run.shared
-        if segment.end > segment.start and shared.at_arrival(segment.end):
-            shared.ends.setdefault(self.key, segment.end)
         self.run.recorder.segment(component, segment, component.system.state_ids, self.rates)
         component.proceed(segment)
         self._drift = None
-        # The switches that its segments reached, kept while they are within the time tolerance of
-        # the last end: a moment there is at them (`moment.Clock`).
-        end, crossing = segment.end, self.run.plan.numerics.crossing
-        self.reached = [(at, found) for at, found in self.reached if end - at <= crossing]
-        found = component.switched(segment, end, segment.last)
-        if found:
-            self.reached.append((end, found))
 
     def switched_at(self, t):
-        """The switches of the set's rates that its state reached at time t, a moment that falls on
-        their crossing (`run.next_moment`), each with a flow whose rate reads it: those that the
-        segments that ended within the time tolerance of t, or that the moment cut there, brought to
-        their switch."""
-        crossing, deciding = self.run.plan.numerics.crossing, self.component.deciding()
-        return {
-            flow
-            for at, found in self.reached
-            if abs(t - at) <= crossing
-            for a, b in found
-            for flow in deciding.get((a, b), ())
-        }
+        state = self.component.state
+        if t != state.time:
+            return set()
+        deciding = self.component.deciding()
+        return {flow for pair in state.contacted for flow in deciding.get(pair, ())}
 
-    def snap(self):
-        """The next event at the time of a moment: committed as any other, with what it changes, and
-        the stores that its segment brings to a bound at its end."""
-        ids = self.component.system.state_ids
-        met = [ids[k] for k in self.pending.reached]
+    def timing_events(self, through):
+        segment, component = self.pending, self.component
+        if segment is None or segment.end > through:
+            return
+        system = component.system
+        if segment.numerical is None:
+            for i in segment.reached:
+                kind = 'lower bound' if segment.last[i] == system.lower[i] else 'upper bound'
+                yield segment.end, self.stores[i], kind
+            return
+        for at, root in segment.numerical.contacts:
+            if at > through:
+                continue
+            if root.kind == 'bound':
+                i, limit, _ = root.data
+                yield at, self.stores[i], 'lower bound' if limit == system.lower[i] else 'upper bound'
+            elif root.kind == 'surface':
+                for flow in component.deciding().get(root.data, ()):
+                    yield at, flow, 'switch'
+
+    def snap(self, t=None, through=None):
+        """Commit the smooth field to the canonical instant, putting each due store on its bound."""
+        segment = self.pending
+        at = segment.end if t is None else t
+        events = list(self.timing_events(segment.end if through is None else through))
+        met = []
+        last = segment.last.copy() if at == segment.end else np.array(segment.solution(at), dtype=float)
+        for _, name, kind in events:
+            if kind in ('lower bound', 'upper bound'):
+                i = self.place[name]
+                last[i] = (
+                    self.component.system.lower[i]
+                    if kind == 'lower bound'
+                    else self.component.system.upper[i]
+                )
+                met.append(name)
+        # At a near contact the moment's exact time takes the states reached by its switching
+        # field. An independently due stage may replace any of these states before the re-share.
+        self.component.put_switches(last, at, segment.numerical, segment.end if through is None else through)
+        self.pending = replace(
+            segment,
+            end=at,
+            last=last,
+            numerical=_cut(segment.numerical, at) if at != segment.end else segment.numerical,
+        )
         stores, rates, _ = self.step()
         return stores + rates, met
 
@@ -669,15 +716,7 @@ class ComponentWay:
             return
         last = np.array(self._state(segment, t), dtype=float)
         numerical = _cut(segment.numerical, t)
-        near = ()
-        if segment.reached and self.run.clock.due(segment.end, t):
-            system = self.component.system
-            near = tuple(k for k in segment.reached if abs(segment.last[k] - last[k]) <= system.atol[k])
-        cut = Segment(
-            segment.start, t, segment.solution, segment.first, last, numerical, (), segment.switches
-        )
-        self._commit(cut)
-        return tuple(self.stores[k] for k in near)
+        self._commit(Segment(segment.start, t, segment.solution, segment.first, last, numerical))
 
     @staticmethod
     def _state(segment, t):

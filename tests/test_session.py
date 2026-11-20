@@ -359,7 +359,7 @@ def test_a_stop_of_the_log_at_or_after_the_end_that_the_budget_gives_need_not_co
     (10, then 11): by hand its budget ends it at 1 h, and the run stops there by its budget, at its
     stop at 2 h, before any checkpoint (`program/record.py`, "The budget"). So the log's stops at
     2 h and 3 h cannot come, as a stop after the horizon cannot: the log plays as that record, fresh
-    and through the store, cold and cut from the stored run of the log within a wider budget, and a
+    and through the store, cold and warm under its own budget, and a
     record within three pieces, which ends at 2 h, reaches the stop at 2 h and not the one at 3 h. A
     stop before the end must come: a log whose third stop is at 1.5 h is refused."""
     program, configuration, breakpoints = clock()
@@ -375,9 +375,9 @@ def test_a_stop_of_the_log_at_or_after_the_end_that_the_budget_gives_need_not_co
         with store.use(tmp_path / str(pieces)):
             cold = store.run(program, small, log)
             store.run(program, wide, log)
-            cut = store.run(program, small, log)
-        assert cold == fresh == cut  # one record, its histories included
-        for record in (fresh, cold, cut):
+            warm = store.run(program, small, log)
+        assert cold == fresh == warm  # one record, its histories included
+        for record in (fresh, cold, warm):
             assert record.failure.detail('budget') == pieces and record.end == end, record.failure
             found = values_at(record, program, 'clock.ticks', [0.5, end])
             assert found[0] == 0 and isinstance(found[1], Unavailable), found

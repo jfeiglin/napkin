@@ -9,9 +9,8 @@ length and its UTF-8, and a node of an expression by its kind and its parts. Not
 identity of an object, the order of a dictionary or the process. A value of any other type is a
 TypeError, so nothing is keyed by its `repr`.
 
-A configuration's bytes leave out its request (what to record, and the horizon): a stored run serves
-any request that its manifest covers (R-A4a-08). A median run has no seed (`config.Configuration`),
-so two median runs of one setup have one key.
+The run store combines the configuration's bytes with the canonical bytes of the request. A model's
+identity combines them with its horizon (`model.identity`).
 
 `decode` reads the bytes back: it gives a value equal to the one that was encoded, whose nodes are the
 nodes of `napkin/core/expr` themselves (each is made once), so a program saved by one process and

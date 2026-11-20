@@ -1,14 +1,11 @@
 """What a record holds and whether a run within its budget succeeds follow one rule as the run goes
 (the readiness audit of `8b3a01a`, rows 11 and 18; `program/record.py`, `Recorder`, `Breaks`,
-`store.served`).
+`store.run`).
 
 A run whose record would hold more pieces than its budget stops then, before any later stop or
-checkpoint: no checkpoint holds a record past its budget. A cut of a longer record is the record of a
-fresh run of the shorter request by the same rule: it holds what that run holds (a store's ledger only
-from an edit that changed the store, so not one of an edit after the cut), and the budget counts what
-it holds. So the same request has one outcome (finished, or stopped: where and why) and one set of
-values, whether it runs fresh, is cut from a stored longer run, or goes on from a checkpoint saved at a
-stop and loaded again.
+checkpoint: no checkpoint holds a record past its budget. The run keeps what its request names and the budget counts those pieces.
+A store's ledger begins with the edit that changed it. The same request has one outcome and set
+of values on a fresh run, on a store hit and on a run resumed from its checkpoint.
 
 The rule test: random plants on lines (two tanks, a fill, a pipe whose request a stage changes, a drain,
 a count and a sum), stopped at random stages and statements of their tick, edited at random stops (a
@@ -41,9 +38,10 @@ from napkin.program.build import (
     this,
     value,
 )
-from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
+from napkin.program.checkpoint import Breakpoint, Checkpoint, Edit, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key, Unavailable
+from napkin.session import Log
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 LONGEST = 4  # the horizon of the stored longer run
@@ -163,27 +161,27 @@ def same(left, right):
     return left == pytest.approx(right, rel=1e-12, abs=1e-12)
 
 
-def stored(longer, request, program, configuration, breakpoints, edits):
-    """The record that the store gives a request from a stored longer run: its cut (`store.served`),
-    or, where no cut answers as a fresh run does, the request run alone (`store.run`)."""
-    found = store.served(longer, request, program)
-    return found if found is not None else fresh(program, configuration, breakpoints, edits)[0]
-
-
 @pytest.mark.parametrize('curved', [False, True], ids=['lines', 'curves'])
 @pytest.mark.parametrize('seed', range(40))
-def test_fresh_cut_and_resumed_runs_of_a_request_have_one_outcome_and_one_set_of_values(seed, curved):
+def test_fresh_stored_and_resumed_runs_of_a_request_have_one_outcome_and_one_set_of_values(
+    seed, curved, tmp_path
+):
     rng = random.Random(seed)
     program = plant(rng, curved)
     breakpoints, edits = log(rng)
-    longer, _ = fresh(program, Configuration(Request(LONGEST)), breakpoints, edits)
+    _, stops = fresh(program, Configuration(Request(LONGEST)), breakpoints, edits)
+    recorded_log = Log(
+        breakpoints,
+        tuple(cp.stop for cp in stops),
+        tuple(Edit(cp.stop.hit, target, new) for cp in stops for target, new in edits.get(cp.stop.hit, ())),
+    )
     for _ in range(4):
         horizon = rng.choice([0.5, 1, 1.5, 2, 2.5, 3, 4])
         keys = ()
         if rng.random() < 0.5:
             keys = tuple(Key('plant', tuple(path.split('.')[1:])) for path in rng.sample(PATHS + LEDGERS, 2))
         asked = Request(horizon, everything=not keys, keys=keys)
-        whole = stored(longer, asked, program, Configuration(asked), breakpoints, edits)
+        whole, _ = fresh(program, Configuration(asked), breakpoints, edits)
         count = sum(len(history.pieces) for history in whole.histories if whole.manifest.names(history.key))
         request = Request(horizon, everything=not keys, keys=keys, pieces=rng.randint(1, count + 2))
         configuration = Configuration(request)
@@ -192,14 +190,20 @@ def test_fresh_cut_and_resumed_runs_of_a_request_have_one_outcome_and_one_set_of
         for checkpoint in stops:
             assert checkpoint.record.failure is None, (seed, request, checkpoint.stop)
             assert checkpoint.stop.t <= alone.end, (seed, request, checkpoint.stop)
-        cut = stored(longer, request, program, configuration, breakpoints, edits)
+        with store.use(tmp_path):
+            cold = store.run(program, configuration, recorded_log)
+            warm = store.run(program, configuration, recorded_log)
         later = resumed(program, configuration, breakpoints, edits)
-        assert outcome(cut) == outcome(alone) == outcome(later), (seed, request, breakpoints, edits)
-        # One record, its histories included: a cut keeps what a fresh run of the request keeps.
-        assert cut == alone == later, (seed, request, differences(alone, cut), differences(alone, later))
+        assert outcome(warm) == outcome(alone) == outcome(later), (seed, request, breakpoints, edits)
+        assert cold == warm == alone == later, (
+            seed,
+            request,
+            differences(alone, warm),
+            differences(alone, later),
+        )
         times = sorted({0, horizon, *(round(rng.uniform(0, horizon), 3) for _ in range(5))})
         expected = held(alone, program, times)
-        for record in (cut, later):
+        for record in (warm, later):
             found = held(record, program, times)
             assert found.keys() == expected.keys(), (seed, request)
             for path, values in expected.items():
@@ -227,27 +231,21 @@ def tank():
 WATER = Key('tank', ('water',))
 
 
-def test_an_edit_after_the_horizon_of_a_request_takes_no_part_in_its_cut():
+def test_an_edit_after_the_horizon_of_a_request_adds_no_ledger():
     """Row 11: the tank is lowered to 4 L at the stop at 2 h. A request of the water to 1 h within two
     pieces holds the water at 0 h, 10 L, and on its line from 0 h at -2 L/h: two pieces, by hand, and no
-    ledger, since nothing came from outside by 1 h. It fits, fresh or cut from the stored run to 4 h,
-    which holds the ledger from its edit at 2 h, -2 L (6 L lowered to 4 L)."""
+    ledger, since nothing came from outside by 1 h. The 4 h run holds the ledger
+    from its edit at 2 h, -2 L (6 L lowered to 4 L)."""
     program, stops = tank(), (Breakpoint('tank.tick.step[0]'),)
     edits = {1: [(WATER, 4)]}
     longer, _ = fresh(program, Configuration(Request(4)), stops, edits)
     assert read(longer, program, ['tank.water.external'], [1, 3])[0].values == (0, -2)
     request = Request(1, everything=False, keys=(WATER,), pieces=2)
     alone, _ = fresh(program, Configuration(request), stops, edits)
-    cut = store.served(longer, request, program)
-    assert cut == alone
-    for record in (alone, cut):
-        assert record.failure is None and record.end == 1
-        assert read(record, program, ['tank.water', 'tank.water.external'], [1])[0].values == (8,)
-        assert read(record, program, ['tank.water.external'], [1])[0].values == (0,)
-        assert (
-            sum(len(history.pieces) for history in record.histories if record.manifest.names(history.key))
-            == 2
-        )
+    assert alone.failure is None and alone.end == 1
+    assert read(alone, program, ['tank.water', 'tank.water.external'], [1])[0].values == (8,)
+    assert read(alone, program, ['tank.water.external'], [1])[0].values == (0,)
+    assert sum(len(history.pieces) for history in alone.histories if alone.manifest.names(history.key)) == 2
 
 
 def test_a_run_past_its_budget_at_0_h_gives_no_checkpoint_at_2_h():

@@ -139,7 +139,6 @@ class Occurrences:
         t = run.now
         found = self.of_event.setdefault((member, event), [])
         self._limits(member, event, found)
-        run.shared.remember_members(('occurrences', member, event))
         made = plan.occurrence(member, event, len(found), args, t)
         plan.log.append(('occurrence', member, event, len(found), tuple(args), t))
         self.made += 1
@@ -161,7 +160,8 @@ class Occurrences:
         for rate in made.formulas:
             if rate in plan.outside:
                 # Its first rate will be published after these stages or firings.
-                run.shared.writes[rate] = 0.0
+                run.published[rate] = 0.0
+                run.changed.add(rate)
         run.recorder.entry(t, 'start', made.event.origin, made.id, args=tuple(args))
         run.changed.add(('occurrences', member, event))
         if run.moment.phase == 'conditions':
@@ -324,6 +324,8 @@ class Occurrences:
                     if isinstance(found, Exception):
                         raise found
                     return found
+                if name in run.published:
+                    return run.ways.shared_value(name)
                 value = plan.values.get(name)
                 if (
                     value is not None
@@ -491,7 +493,8 @@ class Occurrences:
                 frozen = Unavailable(
                     f'{name} was not available when {made.id} finished at t = {t:g} h: {problem}'
                 )
-            run.shared.unfrozen.add(name)
+            if name in plan.outside:
+                run.changed.add(name)
             run.frozen[name] = frozen
             run.recorder.add(name, t, frozen, 0.0)
         for flow in made.flows:
@@ -503,7 +506,6 @@ class Occurrences:
             store for store in made.stores if any(plan.incident(store, side) for side in SIDES)
         )
         for name, value in ((f'{made.id}.done', True), (f'{made.id}.active', False)):
-            run.shared.remember(name)
             run.env[name] = value
             run.recorder.add(name, t, value, 0.0)
             run.changed.add(name)

@@ -129,6 +129,7 @@ from ...core.errors import ExpressionError
 from ...program.record import Unavailable
 from ..continuous import dense
 from ..continuous.dense import Motion
+from ..continuous.integrate import ROOT_TOLERANCE
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .family import Family
@@ -404,7 +405,6 @@ class Triggers:
         trigger = state.plan
         run.chance.firing[trigger.key] = state.firings + 1
         for name, node in trigger.captures:
-            run.shared.remember(name)
             run.env[name] = run.truth(node)
         tx = Tx(trigger.member, stage=False)
         tx.near = near
@@ -555,7 +555,20 @@ class Triggers:
         first instant at which it does not, which either form has."""
         run = self.run
         now, earliest, window = run.now, math.inf, math.inf
-        stepping = self._moving_lookups(node)
+        atoms = self._atoms(node)
+        parts = [node]
+        if run.outside.active:
+            if run.outside.holds_between(nodes.names(node)):
+                return earliest, window
+            moving_atoms = [
+                atom
+                for atom in atoms
+                if not run.outside.holds_between(nodes.names(atom[0]) | nodes.names(atom[2]))
+            ]
+            if len(moving_atoms) != len(atoms):
+                atoms = moving_atoms
+                parts = [part for left, _, right, _ in atoms for part in (left, right)]
+        stepping = self._moving_lookups(*parts)
         if stepping:
             raise SimulationError(
                 f'the first contact of {nodes.notation(node)} cannot be certified: it reads {stepping[0]}, a '
@@ -563,7 +576,7 @@ class Triggers:
                 'engine does not locate; compare what it is keyed by with the keys, or use an inspection '
                 'schedule'
             )
-        for left, op, right, positive in self._atoms(node):
+        for left, op, right, positive in atoms:
             moving = self.moving_reads(left, right)
             if not moving:
                 continue
@@ -603,12 +616,47 @@ class Triggers:
                 earliest = min(earliest, root)
         return earliest, window
 
-    def _contact(self, left, op, right, moving, now, until, start):
+    def switching_time(self, left, right, moving, outgoing, affine):
+        """The physical crossing of a rate's operands over the current store segments.
+        The band's width is zero and the departure side is the one the last sharing selected."""
+        now = self.run.now
+        until = self._window(moving)
+        if until <= now:
+            return None
+        start = self.side(left, now) - self.side(right, now)
+        if outgoing == 0:
+            outgoing = int(start > 0) - int(start < 0)
+            if outgoing == 0:
+                return None
+        if not affine:
+            from scipy.optimize import brentq
+
+            def gap(t):
+                return self.side(left, t) - self.side(right, t)
+
+            ways = {self._giver(name) for name in moving if name != 't'}
+            breaks = sorted({at for way in ways if hasattr(way, 'breaks') for at in way.breaks(now, until)})
+            for s, e in pairwise((now, *breaks, until)):
+                if gap(s) * outgoing > 0 and gap(e) * outgoing <= 0:
+                    return brentq(gap, s, e, xtol=ROOT_TOLERANCE, rtol=ROOT_TOLERANCE)
+            return None
+        if self._linear(moving):
+            end = self.side(left, until) - self.side(right, until)
+            if start == end or (end > start and outgoing > 0) or (end < start and outgoing < 0):
+                return None
+            root = self._exact_root(left, right, moving, now)
+            if root is None:
+                root = now + start / (start - end) * (until - now)
+            return root if now < root <= until else None
+        op = 'ge' if outgoing < 0 else 'le'
+        return self._contact(left, op, right, moving, now, until, start, switching=True)
+
+    def _contact(self, left, op, right, moving, now, until, start, switching=False):
         """The first time in (now, until] at which a comparison of values on curves can change its
         answer, read within its band, or None: step by step, each piece of a step skipped, decided by
         its ends, or halved (see the module). `start` is its difference now."""
         spelled = f'{nodes.notation(left)} {_SPELLING[op]} {nodes.notation(right)}'
-        band, crossing = self.band(left, right), self.plan.numerics.crossing
+        band, crossing = 0.0 if switching else self.band(left, right), self.plan.numerics.crossing
         read = {now: start}
 
         def difference(t):
@@ -619,9 +667,18 @@ class Triggers:
             return found
 
         edges = _EDGES[op]
-        before = {edge: _side(edge, start, band) for edge in edges}
+        before = {edge: False if switching else _side(edge, start, band) for edge in edges}
         motion, breaks = self._forms(left, right, moving, now, until, spelled)
         halvings, offset = [0], None
+
+        def root(edge, s, e):
+            if switching:
+                from scipy.optimize import brentq
+
+                lo, hi = difference(s), difference(e)
+                if lo * hi < 0 or (lo and hi == 0):
+                    return brentq(difference, s, e)
+            return self._bisect(difference, edge, band, before[edge], s, e)
 
         def first(s, e):
             """The first change in (s, e], a piece inside one form of each read, where the answer has
@@ -640,7 +697,7 @@ class Triggers:
                 changed = [edge for edge in near if _side(edge, difference(e), band) != before[edge]]
                 if not changed or e - s <= crossing:
                     return e if changed else None
-                return min(self._bisect(difference, edge, band, before[edge], s, e) for edge in changed)
+                return min(root(edge, s, e) for edge in changed)
             halvings[0] += 1
             if halvings[0] > _HALVINGS:
                 raise SimulationError(
@@ -658,7 +715,7 @@ class Triggers:
             # One store that only rises or only falls, whose way gives no form: the ends decide.
             changed = [edge for edge in edges if _side(edge, difference(until), band) != before[edge]]
             found = min(
-                (self._bisect(difference, edge, band, before[edge], now, until) for edge in changed),
+                (root(edge, now, until) for edge in changed),
                 default=None,
             )
         else:
@@ -671,6 +728,8 @@ class Triggers:
                     break
         # A change just after now is read at the first instant that the engine tells apart from now:
         # what is due before it is due at now (`moment.Clock`).
+        if switching:
+            return found if found is not None and found > now else None
         return None if found is None else min(max(found, self.run.clock.apart(now)), until)
 
     def _forms(self, left, right, moving, now, until, spelled):

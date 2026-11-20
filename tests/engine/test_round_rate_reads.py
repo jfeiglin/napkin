@@ -542,3 +542,236 @@ def test_a_firing_reads_the_sharing_at_a_tanks_bound(first, amount, contact, ear
         ),
     )
     check(builder.finish(), 4, [('ops.noted', at, 2 if early else 0)])
+
+
+@pytest.mark.parametrize('inclusive', [False, True])
+def test_an_outside_clock_switch_without_a_stage_has_its_own_rate_history(inclusive):
+    b = Builder(UNITS)
+    before = t <= q(2, 'h') if inclusive else t < q(2, 'h')
+    b.entity('tap', flow('pipe', SOURCE, SINK, unit='L/h', request=formula(ifelse(before, rate(4), rate(1)))))
+    program = b.finish()
+    record = run(program, Configuration(Request(4)))
+    rate_key = key('tap.pipe.actual_rate')
+    assert record.failure is None and not record.entries('contact')
+    assert tuple(record.value(rate_key, at) for at in (1, 2, 3)) == pytest.approx((4, 1, 1))
+    assert read(record, program, [rate_key], [1, 2, 3])[0].values == pytest.approx((4, 1, 1))
+
+
+@pytest.mark.parametrize('distance', [F(-1, 200000000), F(1, 200000000)])
+def test_an_outside_switch_within_rounding_of_a_stage_uses_that_moment(distance):
+    at = F(2) + distance
+    b = Builder(UNITS)
+    b.entity(
+        'tap',
+        flow('pipe', SOURCE, SINK, unit='L/h', request=formula(ifelse(t <= q(2, 'h'), rate(4), rate(1)))),
+        value('same', 'L/h', -1),
+        value('next', 'L/h', -1),
+        event(
+            'look',
+            after(q(at, 'h'), assign(this.same, this.pipe.actual_rate)),
+            after(q(0, 'h'), assign(this.next, this.pipe.actual_rate)),
+        ),
+    )
+    b.setup(start(named('tap').look))
+    program = b.finish()
+    record = run(program, Configuration(Request(3)))
+    times = [float(at)]
+    assert [
+        reading.values
+        for reading in read(record, program, ['tap.same', 'tap.next', 'tap.pipe.actual_rate'], times)
+    ] == [(4,), (1,), (1,)]
+    assert [mark.t for mark in record.entries('contact')] == times
+
+
+@pytest.mark.parametrize('feedback', [False, True], ids=['quadratic', 'exponential'])
+def test_a_curved_store_switches_an_outside_pipe_on_its_trajectory(feedback):
+    """x(t) = t² reaches 1 L at 1 h. x(t) = exp(t) reaches 2 L at log(2) h."""
+    import math
+
+    b = Builder(UNITS)
+    fill = this.water * q(1, '1/h') if feedback else t * q(2, 'L/h/h')
+    b.entity(
+        'tank',
+        value('water', 'L', int(feedback), lower=0),
+        flow('fill', SOURCE, this.water, request=formula(fill)),
+    )
+    before = named('tank').water <= q(2 if feedback else 1, 'L')
+    b.entity('tap', flow('pipe', SOURCE, SINK, unit='L/h', request=formula(ifelse(before, rate(4), rate(1)))))
+    program = b.finish()
+    record = run(program, Configuration(Request(2)))
+    target = key('tap.pipe.actual_rate')
+    contact = math.log(2) if feedback else 1
+    assert record.failure is None and not record.entries('contact')
+    pieces = record.history(target).pieces
+    assert [(piece.value, piece.rate) for piece in pieces] == [(4, 0), (1, 0)]
+    assert pieces[1].t == pytest.approx(contact, abs=2e-7)
+    assert read(record, program, [target], [contact - 1e-6, contact + 1e-6])[0].values == (4, 1)
+    if not feedback:
+        check(program, 2, [('tap.pipe.actual_rate', F(1, 2), 4), ('tap.pipe.actual_rate', F(3, 2), 1)])
+
+
+@pytest.mark.parametrize('rising', [False, True])
+def test_an_outside_table_reads_the_row_on_each_side_of_a_moving_store_key(rising):
+    """Rising x(t)=t² and falling x(t)=2−t cross the 1 L key at 1 h."""
+    b = Builder(UNITS)
+    rows = b.template('Reading', input_('level', 'L', 0), input_('give', 'L/h', 0))
+    b.table('readings', rows, ({'level': 0, 'give': 4}, {'level': 1, 'give': 1}))
+    pipe = (
+        flow('fill', SOURCE, this.water, request=formula(t * q(2, 'L/h/h')))
+        if rising
+        else flow('drain', this.water, SINK, request=rate(1))
+    )
+    b.entity('tank', value('water', 'L', 0 if rising else 2, lower=0), pipe)
+    b.entity(
+        'tap',
+        flow(
+            'pipe',
+            SOURCE,
+            SINK,
+            unit='L/h',
+            request=formula(rows.instances.by('level').at(named('tank').water).give),
+        ),
+        value('same', 'L/h', -1),
+        value('next', 'L/h', -1),
+        event(
+            'copy',
+            after(q(1, 'h'), assign(this.same, this.pipe.actual_rate)),
+            after(q(0, 'h'), assign(this.next, this.pipe.actual_rate)),
+        ),
+    )
+    b.setup(start(named('tap').copy))
+    before, after_rate = (4, 1) if rising else (1, 4)
+    check(
+        b.finish(),
+        F(3, 2),
+        [('tap.same', 1, before), ('tap.next', 1, after_rate), ('tap.pipe.actual_rate', 1, after_rate)],
+    )
+
+
+def test_a_watched_condition_fires_when_an_outside_rate_changes_at_its_own_switch():
+    b = Builder(UNITS)
+    b.entity(
+        'tap',
+        flow('pipe', SOURCE, SINK, unit='L/h', request=formula(ifelse(t <= q(2, 'h'), rate(4), rate(1)))),
+        value('seen', 'h', -1),
+        event(
+            'copy',
+            when(this.pipe.actual_rate <= rate(2), start(this.copy), reset=reset_when(False)),
+            after(q(0, 'h'), assign(this.seen, t)),
+        ),
+    )
+    check(b.finish(), 3, [('tap.seen', 1, -1), ('tap.seen', 2, 2), ('tap.seen', 3, 2)])
+
+
+def test_a_deferred_delay_reads_the_outside_rate_just_shared_at_its_switch():
+    b = Builder(UNITS)
+    b.entity(
+        'tap',
+        flow('pipe', SOURCE, SINK, unit='L/h', request=formula(ifelse(t <= q(2, 'h'), rate(4), rate(1)))),
+        value('seen', 'h', -1),
+        event('copy', after(q(2, 'h')), after(this.pipe.actual_rate / q(1, 'L/h/h'), assign(this.seen, t))),
+    )
+    b.setup(start(named('tap').copy))
+    check(b.finish(), 6, [('tap.seen', 2, -1), ('tap.seen', 3, 3), ('tap.seen', 6, 3)])
+
+
+def test_an_outside_rate_at_a_nonlinear_clock_switch_is_the_new_branch():
+    b = Builder(UNITS)
+    before = t * t <= q(2, 'h') * q(2, 'h')
+    b.entity('tap', flow('pipe', SOURCE, SINK, unit='L/h', request=formula(ifelse(before, rate(4), rate(1)))))
+    program = b.finish()
+    record = run(program, Configuration(Request(5)))
+    assert not record.entries('contact')
+    assert [record.value(key('tap.pipe.actual_rate'), at) for at in (1, 2, 4)] == [4, 1, 1]
+
+
+def test_two_outside_switch_locations_on_one_pipe_are_reported_at_their_moment():
+    b = Builder(UNITS)
+    distance = F(1, 200000000)
+    first, second = 2 - distance, 2 + distance
+    ask = ifelse(t <= q(first, 'h'), rate(4), rate(1)) + ifelse(t <= q(second, 'h'), rate(6), rate(3))
+    b.entity(
+        'tap',
+        flow('pipe', SOURCE, SINK, unit='L/h', request=formula(ask)),
+        value('seen', 'L/h', -1),
+        value('next', 'L/h', -1),
+        event(
+            'copy',
+            after(q(2, 'h'), assign(this.seen, this.pipe.actual_rate)),
+            after(q(0, 'h'), assign(this.next, this.pipe.actual_rate)),
+        ),
+    )
+    b.setup(start(named('tap').copy))
+    program = b.finish()
+    record = run(program, Configuration(Request(3)))
+    assert [record.value(key(path), 2) for path in ('tap.seen', 'tap.next', 'tap.pipe.actual_rate')] == [
+        10,
+        4,
+        4,
+    ]
+    assert [(mark.t, mark.detail('located')) for mark in record.entries('contact')] == [
+        (2, float(first)),
+        (2, float(second)),
+    ]
+
+
+@pytest.mark.parametrize('kind', ['held', 'moving', 'key'])
+def test_an_outside_pipe_keeps_the_shared_side_until_a_later_contact(kind):
+    """The clock groups 2 h with the stage 5 billionths of an hour earlier. The next stage reads its side."""
+    b = Builder(UNITS)
+    at = F(2) - F(5, 10**9)
+    delay = F(1, 10**9)
+    if kind == 'key':
+        b.entity('gauge', value('level', 'L', 0, lower=0), flow('fill', SOURCE, this.level, request=rate(1)))
+        rows = b.template('Reading', input_('level', 'L', 0), input_('give', 'L/h', 0))
+        b.table('readings', rows, ({'level': 0, 'give': 4}, {'level': 2, 'give': 1}))
+        ask = rows.instances.by('level').at(named('gauge').level).give
+    else:
+        after_rate = rate(1) + (t - q(at, 'h')) * q(10**7, 'L/h/h') if kind == 'moving' else rate(1)
+        ask = ifelse(t <= q(2, 'h'), rate(4), after_rate)
+    b.entity(
+        'tap',
+        flow('pipe', SOURCE, SINK, unit='L/h', request=formula(ask)),
+        value('first', 'L/h', -1),
+        value('shared', 'L/h', -1),
+        value('later', 'L/h', -1),
+        event(
+            'copy',
+            after(q(at, 'h'), assign(this.first, this.pipe.actual_rate)),
+            after(q(0, 'h'), assign(this.shared, this.pipe.actual_rate)),
+            after(q(delay, 'h'), assign(this.later, this.pipe.actual_rate)),
+        ),
+    )
+    b.setup(start(named('tap').copy))
+    p = b.finish()
+    config = Configuration(Request(2 + F(1, 10**6)))
+    live = Run(Plan.of(p, config), (Breakpoint('tap.copy.step[1]'),))
+    paused = live.run()
+    assert isinstance(paused, Checkpoint)
+    for result in (run(p, config), live.resume(), resume(p, loads(dumps(paused)))):
+        assert result.failure is None
+        assert result.value(key('tap.first'), float(at)) == 4
+        assert result.value(key('tap.shared'), float(at)) == pytest.approx(1)
+        expected = 1.01 if kind == 'moving' else 1
+        for path in ('tap.later', 'tap.pipe.actual_rate'):
+            assert result.value(key(path), float(at + delay)) == pytest.approx(expected, abs=1e-7), path
+
+
+def test_a_new_switched_request_keeps_its_moving_arithmetic_in_the_record():
+    b = Builder(UNITS)
+    first = formula(rate(1) + t * q(1, 'L/h/h'))
+    changed = formula(ifelse(t < q(2, 'h'), rate(5) + t * q(1, 'L/h/h'), rate(1) + t * q(2, 'L/h/h')))
+    b.entity(
+        'tap',
+        flow('pipe', SOURCE, SINK, unit='L/h', request=first),
+        event('change', after(q(1, 'h'), assign(this.pipe.request, changed))),
+    )
+    b.setup(start(named('tap').change))
+    check(
+        b.finish(),
+        3,
+        [
+            ('tap.pipe.actual_rate', at, answer)
+            for at, answer in ((F(1, 2), F(3, 2)), (1, 6), (F(3, 2), F(13, 2)), (2, 5), (F(5, 2), 6), (3, 7))
+        ],
+    )

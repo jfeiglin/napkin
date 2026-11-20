@@ -16,6 +16,8 @@ from fractions import Fraction
 import pytest
 
 from napkin.engine import read, run
+from napkin.engine.timeline import Plan
+from napkin.engine.timeline.collections import Reduction
 from napkin.program.build import (
     BOOL,
     SINK,
@@ -58,6 +60,28 @@ PIPES = (
     {'id': 'cb', 'source': 'tanks.c', 'target': 'tanks.b', 'limit': 3},
     {'id': 'ac', 'source': 'tanks.a', 'target': 'tanks.c', 'limit': 5},
 )
+
+
+def test_planning_a_sum_visits_its_members_once(monkeypatch):
+    b = Builder(UNITS)
+    sites = b.template('Site', input_('stock', 'L', 1), value('double', 'L', formula(2 * this.stock)))
+    b.table('sites', sites, [{'id': f's{i}'} for i in range(80)])
+    b.root(value('total', 'L', formula(fsum(sites.instances.double))))
+    program = b.finish()
+    plan = Plan.of(program, Configuration(Request(1)))
+    visits = []
+    original = Reduction.reads
+
+    def reads(reduction):
+        visits.append(reduction.name)
+        return original(reduction)
+
+    monkeypatch.setattr(Reduction, 'reads', reads)
+    found = plan.expanded('total')
+    assert found.leaves == {f'sites.s{i}.stock' for i in range(80)}
+    assert found.formulas == {'total', *plan.reductions, *(f'sites.s{i}.double' for i in range(80))}
+    assert visits == list(plan.reductions)
+    assert at(run(program, Configuration(Request(1))), program, 'total', 0) == (160,)
 
 
 def configured(horizon, **settings):

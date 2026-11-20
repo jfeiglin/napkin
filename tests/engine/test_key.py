@@ -1,5 +1,5 @@
 """The key of a stored run (`napkin.store.key`, R-A4a-08): the canonical bytes of the program and of
-the configuration without its request, the engine code and the environment."""
+the configuration and its request, the engine code and the environment."""
 
 from __future__ import annotations
 
@@ -18,12 +18,12 @@ def program(water=8):
     return b.finish()
 
 
-def test_two_builds_of_one_run_have_one_key_and_the_request_is_no_part_of_it():
+def test_two_builds_of_one_request_have_one_key_and_a_different_request_has_its_own():
     first = store.key(program(), Configuration(Request(3)))
     assert len(first) == 64 and int(first, 16) >= 0
     assert store.key(program(), Configuration(Request(3))) == first
     keys = (Key('tank', ('water',)),)
-    assert store.key(program(), Configuration(Request(48, everything=False, keys=keys))) == first
+    assert store.key(program(), Configuration(Request(48, everything=False, keys=keys))) != first
 
 
 def test_what_a_run_computes_from_is_in_the_key():

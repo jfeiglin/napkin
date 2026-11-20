@@ -36,6 +36,8 @@ class Root(NamedTuple):
     direction: int
     data: tuple
     target: tuple | None = None
+    start: float | None = None  # a switch this segment has just departed
+    fixed_time: float | None = None  # an authored clock contact has an exact time
 
 
 def root_value(system, environment, root, at, state):
@@ -48,16 +50,13 @@ def root_value(system, environment, root, at, state):
       from where it comes within its tolerance.
     - release (i, limit, sign): the distance from the bound that the quantity rests on, less twice
       its tolerance.
-    - bound (i, limit, start): the distance to a finite bound, less half a tolerance. The surface lies
-      half a tolerance beyond the limit: interpolation noise below that cannot bracket it, and the
-      located crossing stays inside the balanced roundoff that the boundary correction books. At the
-      start of the segment, a quantity within its tolerance of the bound has just left it, and is on
-      the side that it left to: the segment does not stop at its start.
+    - bound (i, limit, start): the physical distance to the bound. A free store that starts
+      on a bound left it there, so the start carries the sign of its interior.
     - repayment (cash, debt, floor): the cash less the debt and the floor.
     - surface (a, b): one side of a switching surface less the other.
     """
     s = system
-    kind, direction, data, _ = root
+    kind, direction, data = root.kind, root.direction, root.data
     if kind == 'guard':
         i, value, offset = data
         return state[i] - float(evaluate(value, environment(at, state), s.units)) + offset
@@ -67,15 +66,18 @@ def root_value(system, environment, root, at, state):
     if kind == 'bound':
         i, limit, start = data
         val = state[i] - limit
-        if at == start and abs(val) <= s.atol[i]:
+        if at == start and val == 0:
             return -direction * s.atol[i]
-        return val - direction * 0.5 * s.atol[i]
+        return val
     if kind == 'repayment':
         cash, debt, floor = data
         return state[cash] - state[debt] - floor
     a, b = data
     env = environment(at, state)
-    return float(evaluate(a, env, s.units)) - float(evaluate(b, env, s.units))
+    gap = float(evaluate(a, env, s.units)) - float(evaluate(b, env, s.units))
+    if root.start is not None and (at == root.start or gap == 0):
+        return -direction * np.finfo(float).tiny
+    return gap
 
 
 class Roots:
@@ -111,7 +113,6 @@ class Roots:
         self.bound_starts = column('bound', 2)
         self.bound_directions = np.array([roots[k].direction for k in kinds.get('bound', [])], dtype=float)
         self.bound_atol = s.atol[self.bound_rows]
-        self.bound_half = self.bound_directions * 0.5 * self.bound_atol
         self.bound_start_value = -self.bound_directions * self.bound_atol
         self.cash_rows, self.debt_rows = column('repayment', 0, int), column('repayment', 1, int)
         self.floors = column('repayment', 2)
@@ -122,6 +123,7 @@ class Roots:
         index = {source: n for n, source in enumerate(dict.fromkeys(sources))}
         self.guard_values = np.array([index[roots[k].data[1]] for k in kinds.get('guard', [])], dtype=int)
         self.left = np.array([index[roots[k].data[0]] for k in kinds.get('surface', [])], dtype=int)
+        self.surface_starts = np.array([roots[k].start for k in kinds.get('surface', [])], dtype=float)
         self.right = np.array([index[roots[k].data[1]] for k in kinds.get('surface', [])], dtype=int)
         # `values_program(sources)` gives `values(at, state)` without an environment (`Field`), when it
         # can be made; else the program reads an environment.
@@ -172,15 +174,18 @@ class Roots:
                     state[self.guard_rows] - computed[self.guard_values] + self.guard_offsets
                 )
             if 'surface' in kinds:
-                out[kinds['surface']] = computed[self.left] - computed[self.right]
+                rows = kinds['surface']
+                gaps = computed[self.left] - computed[self.right]
+                leaving = np.isfinite(self.surface_starts) & ((at == self.surface_starts) | (gaps == 0))
+                out[rows] = np.where(leaving, -self.direction[rows] * np.finfo(float).tiny, gaps)
         if 'release' in kinds:
             out[kinds['release']] = (
                 self.release_signs * (state[self.release_rows] - self.release_limits) - self.release_twice
             )
         if 'bound' in kinds:
             val = state[self.bound_rows] - self.bound_limits
-            on_start = (at == self.bound_starts) & (np.abs(val) <= self.bound_atol)
-            out[kinds['bound']] = np.where(on_start, self.bound_start_value, val - self.bound_half)
+            on_start = (at == self.bound_starts) & (val == 0)
+            out[kinds['bound']] = np.where(on_start, self.bound_start_value, val)
         if 'repayment' in kinds:
             out[kinds['repayment']] = state[self.cash_rows] - state[self.debt_rows] - self.floors
         return out
@@ -195,11 +200,29 @@ def active_roots(before, after, direction):
     return np.nonzero((up & (direction > 0)) | (down & (direction < 0)) | (either & (direction == 0)))[0]
 
 
+def crossing_time(gap, start, end):
+    """A root bracketed on a smooth dense interval. When Brent's tolerance on a large absolute
+    timestamp rounds a positive interval to zero, locate that short interval relative to its
+    start. A crossing strictly after the start occupies at least the following representable time."""
+    at = brentq(gap, start, end, xtol=ROOT_TOLERANCE, rtol=ROOT_TOLERANCE)
+    if at == start and gap(start) != 0:
+        length = brentq(
+            lambda h: gap(start + h), 0, end - start, xtol=np.finfo(float).tiny, rtol=ROOT_TOLERANCE
+        )
+        return max(math.nextafter(start, end), start + length)
+    return at
+
+
 def locate(roots, k, solution, t_old, t, before, after):
     """The time of root k between two accepted steps: Brent's method on the dense solution, as
     `solve_event_equation` in scipy.integrate._ivp.ivp. At the two accepted times it takes the root's
     values at the accepted states: the dense solution there can differ from them by roundoff, and
     lose the bracket that they made."""
+
+    if isinstance(roots, Roots):
+        at = roots.roots[k].fixed_time
+        if at is not None and t_old <= at <= t:
+            return at
 
     def f(at):
         if at == t_old:
@@ -208,7 +231,7 @@ def locate(roots, k, solution, t_old, t, before, after):
             return after
         return roots.value(k, at, solution(at))
 
-    return brentq(f, t_old, t, xtol=ROOT_TOLERANCE, rtol=ROOT_TOLERANCE)
+    return crossing_time(f, t_old, t)
 
 
 # The rate of change of the dense solution of one Radau step at a time of the step.
@@ -360,6 +383,7 @@ def radau(fun, interval, initial, roots=None, check=None, moment=Numerics.crossi
         g = None
         t_events = y_events = None
     status = None
+    candidates = []
     half = None if check is None else check / 2
     halves = 0  # the halves of a check interval before the step, from the start
     # The longest step that the differences of the steps before allow the solver now.
@@ -412,6 +436,15 @@ def radau(fun, interval, initial, roots=None, check=None, moment=Numerics.crossi
                         found = [locate(roots, k, sol, before, at, g_before[k], g_at[k]) for k in active]
                         first = int(np.argmin(found))
                         ended = (found[first], int(active[first]))
+                        # A check inside this accepted step can split two roots belonging to one
+                        # scheduled moment. Search the remainder of a full timing window under the
+                        # same incoming field. The scheduler checks each root against its anchor.
+                        through = min(t, found[first] + 2 * moment)
+                        if at < through:
+                            other = roots.values(through, sol(through))
+                            later = np.setdiff1d(active_roots(g_at, other, roots.direction), active)
+                            found.extend(locate(roots, k, sol, at, through, g_at[k], other[k]) for k in later)
+                            active = np.concatenate((active, later))
                     before, g_before = at, g_at
             if ended == 'unused':
                 # The solver as it was at the start of this step, with a shorter limit on its
@@ -437,6 +470,7 @@ def radau(fun, interval, initial, roots=None, check=None, moment=Numerics.crossi
                     ended = (float(found[first]), int(active[first]))
                 g = g_new
             if ended is not None:
+                candidates = [(float(at), int(k)) for at, k in zip(found, active)]
                 te, k = ended
                 t_events[k].append(te)
                 y_events[k].append(sol(te))
@@ -448,6 +482,7 @@ def radau(fun, interval, initial, roots=None, check=None, moment=Numerics.crossi
             active = active_roots(g, g_new, roots.direction)
             if active.size > 0:
                 found = np.asarray([locate(roots, k, sol, t_old, t, g[k], g_new[k]) for k in active])
+                candidates = [(float(at), int(k)) for at, k in zip(found, active)]
                 order = np.argsort(found) if t > t_old else np.argsort(-found)
                 k, te = active[order][0], found[order][0]
                 t_events[k].append(te)
@@ -475,6 +510,7 @@ def radau(fun, interval, initial, roots=None, check=None, moment=Numerics.crossi
         short=(limit.brief_from if limit.brief else float(solver.t), float(solver.t))
         if limit is not None and status in (STALLED, -1)
         else None,
+        root_candidates=candidates,
         t=ts,
         y=ys,
         sol=OdeSolution(ts, interpolants, alt_segment=False),
@@ -588,13 +624,142 @@ def surfaces_of(sources, formulas, moving):
     return tuple(surfaces)
 
 
-def switching_roots(system, environment, repayment_surfaces, at, state):
+def branch_sides(surfaces, side):
+    """The sign of each readable pair of operands. An undefined side in an untaken branch
+    leaves its expression alone, so an evaluation still fails at the place that reads it."""
+    signs = {}
+    for a, b in surfaces:
+        try:
+            left, right = side(a), side(b)
+        except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
+            continue
+        if math.isfinite(left - right):
+            signs[(a, b)] = int(left > right) - int(left < right)
+    return signs
+
+
+def departing_branches(surfaces, t, y, side_at, rates, contacted=()):
+    """Select the sides a segment leaves on, including comparisons between two moving expressions.
+    At a contact their equal values alone cannot pick a side. Compare their values along the
+    outgoing velocity; arithmetic outside the condition continues to read the actual state."""
+    if not surfaces:
+        return {}
+    side = side_at(t, y)
+    signs = branch_sides(surfaces, side)
+    ties = set(contacted) | {pair for pair, sign in signs.items() if sign == 0}
+    if ties:
+        # The comparison can involve large nearly equal terms. A probe that moves the state
+        # by more than last-bit noise measures the relative motion of both actual operands.
+        h = math.sqrt(np.finfo(float).eps) * max(1.0, abs(t))
+        drift = rates(t, y)
+        probe = y + h * drift
+        following = branch_sides(ties, side_at(t + h, probe))
+        for pair, direction in following.items():
+            if direction:
+                signs[pair] = direction
+    return signs
+
+
+def branch_expression(source, signs):
+    """Read a segment's selected branches with the trial state's actual arithmetic operands.
+    Only comparisons that separate smooth fields change. A nested or short-circuit condition
+    keeps its own order and the expressions of its untaken branches stay unevaluated."""
+    if not signs:
+        return source
+
+    def chosen(node):
+        if isinstance(node, nodes.Compare):
+            parts = []
+            for left, op, right in zip(node.operands, node.ops, node.operands[1:]):
+                sign = signs.get((left, right))
+                if sign is None or op in ('eq', 'ne'):
+                    parts.append(nodes.compare([op], [changed[left], changed[right]]))
+                else:
+                    parts.append(
+                        nodes.const({'lt': sign < 0, 'le': sign <= 0, 'gt': sign > 0, 'ge': sign >= 0}[op])
+                    )
+            return parts[0] if len(parts) == 1 else nodes.boolean('and', parts)
+        if isinstance(node, nodes.Call):
+            args = node.args
+            if node.function == 'abs' and (args[0], ZERO) in signs:
+                value = changed[args[0]]
+                return nodes.unary('neg', value) if signs[(args[0], ZERO)] < 0 else value
+            if node.function in ('min', 'max') and len(args) >= 2:
+                way = 1 if node.function == 'min' else -1
+                beaten = set()
+                for k, left in enumerate(args):
+                    for j in range(k + 1, len(args)):
+                        sign = signs.get((left, args[j]))
+                        if sign is not None:
+                            beaten.add(k if sign * way > 0 else j)
+                kept = [changed[arg] for k, arg in enumerate(args) if k not in beaten]
+                if len(kept) == 1:
+                    return kept[0]
+                if kept:
+                    return nodes.call(node.function, kept)
+            if node.function == 'clip' and len(args) == 3:
+                x, low, high = args
+                lower_sign, upper_sign = signs.get((x, low)), signs.get((x, high))
+                if lower_sign is not None or upper_sign is not None:
+                    value = changed[x]
+                    if lower_sign is None:
+                        value = nodes.call('max', [value, changed[low]])
+                    elif lower_sign < 0:
+                        value = changed[low]
+                    if upper_sign is None:
+                        value = nodes.call('min', [value, changed[high]])
+                    elif upper_sign > 0:
+                        value = changed[high]
+                    return nodes.if_else(nodes.compare(['le'], [changed[low], changed[high]]), value, node)
+            within = nodes.membership(node)
+            if within is not None:
+                x, low, high = args
+                if (low, x) in signs and (x, high) in signs:
+                    # Preserve the native diagnostic for a reversed interval.
+                    return nodes.if_else(
+                        nodes.compare(['le'], [changed[low], changed[high]]),
+                        nodes.const(signs[low, x] <= 0 and signs[x, high] <= 0),
+                        node,
+                    )
+            return nodes.call(node.function, (changed[child] for child in args))
+        if isinstance(node, nodes.IfElse):
+            test = changed[node.test]
+            if isinstance(test, nodes.Const):
+                return changed[node.body if test.value else node.orelse]
+            return nodes.if_else(test, changed[node.body], changed[node.orelse])
+        if isinstance(node, nodes.Unary):
+            return nodes.unary(node.op, changed[node.operand])
+        if isinstance(node, nodes.Binary):
+            return nodes.binary(node.op, changed[node.left], changed[node.right])
+        if isinstance(node, nodes.BoolOp):
+            return nodes.boolean(node.op, (changed[child] for child in node.values))
+        return node
+
+    root = nodes.read(source)
+    changed = {}
+    stack = [(root, False)]
+    while stack:
+        node, ready = stack.pop()
+        if node in changed:
+            continue
+        if ready:
+            changed[node] = chosen(node)
+        else:
+            stack.append((node, True))
+            stack.extend((child, False) for child in node.children)
+    return changed[root]
+
+
+def switching_roots(
+    system, environment, repayment_surfaces, at, state, signs=None, contacted=(), consumed=()
+):
     """End numerical segments where a piecewise rate changes branch.
 
     Every switching surface of the run (`switching_surfaces`) splits two smooth regimes;
     integrating across one mixes them in a single step, so each surface that is not
-    already at its switch at the segment start becomes a terminal root.
-    Returns the roots and the surfaces already at their switch.
+    already at its switch at the segment start becomes a terminal root. A switch the state
+    leaves at its start also has a directed root for a later return. Returns those roots and
+    the surfaces already at their switch.
     """
     s = system
     units, index = s.units, s.index
@@ -613,11 +778,24 @@ def switching_roots(system, environment, repayment_surfaces, at, state):
         except (ExpressionError, TypeError, ValueError):
             continue  # an untaken branch outside its domain is not a live surface
         gap = left - right
-        # A surface already at its switch, to solver tolerance, is not armed.
-        if not math.isfinite(gap) or abs(gap) <= s.cfg.rtol * (abs(left) + abs(right)):
-            if math.isfinite(gap):
-                at_switch.append((a, b))
+        clock = fixed_clock(
+            (a, b),
+            lambda node: left if node == a else right,
+            lambda node: bool(s.expanded_names(node) & dynamic_names),
+        )
+        if clock in consumed:
             continue
+        direction, start = 0, None
+        if not math.isfinite(gap):
+            continue
+        if gap == 0 or (a, b) in contacted:
+            at_switch.append((a, b))
+            sign = (signs or {}).get((a, b))
+            if not sign:
+                continue
+            # A later return to the same switch ends this segment too. While the operands
+            # remain equal, give the root its departure sign to avoid a second event at rest.
+            direction, start = -sign, at
         # A located stock-face switch carries its exact physical target.
         # Positive interpolation roundoff at zero needs the same balanced
         # correction as negative roundoff before the next smooth segment.
@@ -632,32 +810,8 @@ def switching_roots(system, environment, repayment_surfaces, at, state):
             value = float(evaluate(target_expr, env, units))
             if value == s.lower[i]:
                 target = (i, value)
-        roots.append(Root('surface', 0, (a, b), target))
+        roots.append(Root('surface', direction, (a, b), target, start, clock))
     return roots, at_switch
-
-
-def at_their_switch(system, environment, at, state):
-    """The switching surfaces of a run (`switching_surfaces`) that are at their switch at a time and a
-    state, to solver tolerance, as `switching_roots` finds them: those that a segment that starts
-    there does not arm."""
-    s = system
-    env = environment(at, state)
-    return switched(switching_surfaces(s), lambda node: float(evaluate(node, env, s.units)), s.cfg.rtol)
-
-
-def switched(surfaces, side, rtol):
-    """The surfaces at their switch to solver tolerance, `rtol` of the sum of the sizes of their
-    sides (`side(node)`: its value). A surface whose sides cannot be read (an untaken branch outside
-    its domain) is at no switch."""
-    found = set()
-    for a, b in surfaces:
-        try:
-            left, right = side(a), side(b)
-        except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
-            continue
-        if math.isfinite(left - right) and abs(left - right) <= rtol * (abs(left) + abs(right)):
-            found.add((a, b))
-    return frozenset(found)
 
 
 def starting_sides(system, run, field):
@@ -666,6 +820,10 @@ def starting_sides(system, run, field):
     s = system
     env = field.environment(run.time, run.y)
     moving = s.evolving | {'t'}
+
+    def reversal(name):
+        raise SimulationError(f'chattering at {run.time:g} h: rates switch back and forth at {name}')
+
     run.switches, run.clock = far_sides(
         switching_surfaces(s),
         run.time,
@@ -676,11 +834,40 @@ def starting_sides(system, run, field):
         lambda node: float(evaluate(node, env, s.units)),
         lambda node: bool(s.expanded_names(node) & moving),
         field.rates,
+        clocks=clock_sides(
+            switching_surfaces(s),
+            run.time,
+            s.cfg.rtol,
+            lambda node: float(evaluate(node, env, s.units)),
+            lambda node: bool(s.expanded_names(node) & moving),
+            consumed=getattr(run, 'contact_clocks', ()),
+        ),
         held=lambda i: (i, 'min') in run.active_bounds or (i, 'max') in run.active_bounds,
+        reversal=reversal,
+        contacted=run.contacted,
     )
+    probe = run.y.copy()
+    for i, low, high, beyond in run.switches:
+        if low <= probe[i] <= high:
+            probe[i] = beyond
+    at = run.time if run.clock is None else run.clock[2]
+
+    def side_at(t, y):
+        env = field.environment(t, y)
+        return lambda node: float(evaluate(node, env, s.units))
+
+    field.choose(departing_branches(switching_surfaces(s), at, probe, side_at, field.rates, run.contacted))
 
 
-def clock_sides(surfaces, t, rtol, side, moving):
+def fixed_clock(pair, side, moving):
+    """The authored clock time of a switch, or None when its threshold moves."""
+    for node, other in (pair, pair[::-1]):
+        if isinstance(node, nodes.Ref) and node.name == 't' and not moving(other):
+            return side(other)
+    return None
+
+
+def clock_sides(surfaces, t, rtol, side, moving, consumed=()):
     """The far side of a fixed clock switch at t, and the next such switch after t."""
     clock, following = None, math.inf
     for a, b in surfaces:
@@ -693,10 +880,9 @@ def clock_sides(surfaces, t, rtol, side, moving):
                 continue
             if not math.isfinite(limit):
                 continue
-            band = rtol * (abs(t) + abs(limit))
             beyond = math.nextafter(limit, math.inf)
-            if abs(t - limit) <= band and t < beyond:
-                low = min(limit - band, clock[0]) if clock else limit - band
+            if t == limit or (limit in consumed and t <= limit):
+                low = min(t, clock[0]) if clock else t
                 far = max(beyond, clock[2]) if clock else beyond
                 clock = (low, far, far)
             elif t < limit:
@@ -704,29 +890,30 @@ def clock_sides(surfaces, t, rtol, side, moving):
     return clock, following
 
 
-def far_sides(surfaces, t, y, place, bounds, rtol, side, moving, rates, clocks=None, held=None):
-    """The side of each switch at which a segment starts that its state crosses there, which the
-    rates of the segment read (PLAN, change 26): (switches, clock).
+def far_sides(
+    surfaces,
+    t,
+    y,
+    place,
+    bounds,
+    rtol,
+    side,
+    moving,
+    rates,
+    clocks=None,
+    held=None,
+    reversal=None,
+    contacted=(),
+):
+    """Choose the departure side of a fixed store or clock threshold at the segment's start.
+    A store is at the threshold if it equals the limit or this run just located its contact.
+    Probe the rate at the limit and on the side it enters, under the departing clock. A held
+    bound keeps its equality value. A free store can leave, hold at the switch, or meet rates
+    on opposite sides that carry it back; the last case invokes the named reversal diagnostic.
 
-    A segment can start at a switch of its rates: at a moment that falls on a crossing, or at the
-    root that ended the segment before it, a roundoff short of the switch or on it. Its state then
-    crosses the switch at once, so the segment starts on the far side, as a store a roundoff short
-    of its bound starts on the bound (`bounds.refresh_bounds`): the rates that the segment starts
-    with, and that a read at the moment gives, are those that hold from there on, whatever the
-    roundoff of the state. Read on the near side instead, a quantity a roundoff short of a switch
-    that its rate crosses makes the solver's Jacobian straddle the switch, and the solver fails at
-    the start of the segment.
-
-    A switch here is a quantity of the state (its place in `place`), or the time, against a side
-    that does not move (`moving(node)`), at its switch to solver tolerance (`switched`); one at a
-    bound of its quantity (`bounds`: the lower and upper arrays) can cross only into the interval,
-    as the store leaves its bound. A quantity crosses where its rate, with the clock on its far
-    side, carries it across and its rate there does not carry it back: the segment reads it at the
-    first number on the far side while the state stays within the tolerance of the switch
-    (`switches`: (place, low, high, number): a value in [low, high] reads as the number), so a solver
-    that leaves that band reads the rates as they are. Where the rate on the far side carries the
-    quantity back, its rates switch back and forth there: nothing is held, and the solver names the
-    chattering. The time always crosses (`clock`: (low, high, time), or None)."""
+    The returned store and clock probes select the expression branches before integration.
+    Quantities in the chosen expressions continue to use the actual time and state.
+    """
     lower, upper = bounds
     clock, _ = clock_sides(surfaces, t, rtol, side, moving) if clocks is None else clocks
     at = t if clock is None else clock[2]  # every store crosses under the rates after the clock switches
@@ -743,7 +930,7 @@ def far_sides(surfaces, t, y, place, bounds, rtol, side, moving, rates, clocks=N
                 continue
             here = float(y[place[here_node.name]])
             band = rtol * (abs(here) + abs(limit))
-            if not math.isfinite(limit) or abs(here - limit) > band:
+            if not math.isfinite(limit) or (here != limit and (a, b) not in contacted):
                 continue
             i = place[here_node.name]
             if held is not None and held(i):
@@ -768,7 +955,9 @@ def far_sides(surfaces, t, y, place, bounds, rtol, side, moving, rates, clocks=N
             probe = np.array(y, dtype=float)
             probe[i] = beyond
             if rates(at, probe)[i] * way < 0:
-                continue  # the far side carries it back: chattering, which the solver names
+                if reversal is not None:
+                    reversal(here_node.name)
+                continue
             low, high = (limit - band, beyond) if way > 0 else (beyond, limit + band)
             switches.append((i, low, high, beyond))
     return tuple(switches), clock
@@ -898,15 +1087,6 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
     """
     s = system
     time, y, lower = run.time, run.y, s.lower
-    env = field.environment(time, y)
-    _, next_clock = clock_sides(
-        switching_surfaces(s),
-        time,
-        s.cfg.rtol,
-        lambda node: float(evaluate(node, env, s.units)),
-        lambda node: bool(s.expanded_names(node) & (s.evolving | {'t'})),
-    )
-    end = min(end, next_clock)
     # Certified material rows have constant velocity on the current stock
     # face. Their first depletion clock also bounds a numerical segment
     # when unrelated clinical compartments require numerical integration.
@@ -930,7 +1110,9 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
         s.index[name] for name in s.proven_faces if y[s.index[name]] > lower[s.index[name]]
     )
     start = time
-    switches, at_switch = switching_roots(s, field.environment, repayment_surfaces, time, y)
+    switches, at_switch = switching_roots(
+        s, field.environment, repayment_surfaces, time, y, field.branches, run.contacted, run.contact_clocks
+    )
     run.right_faces.update(departing_ledgers(s, run, field, at_switch, field.environment(time, y)))
     # The certified first-depletion clock already locates these physical
     # faces exactly. A second numerical root search at the same endpoint
@@ -955,22 +1137,20 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
     # and compartment kernels supply structurally proved fast paths.
     context.settings['resolution_policy'] = 'physical_resolution_cap'
     context.settings['actual_max_step_h'] = s.max_step
-    rates = field.rates
-    if end == next_clock:
-        # The last Radau sample still belongs to the segment before the clock switch.
-        incoming = math.nextafter(end, -math.inf)
-
-        def rates(t, state):
-            return field.rates(min(t, incoming), state)
 
     def integrate():
         # Physical resolution complements adaptive error control.
-        armed = roots + switches
+        armed = roots + [
+            root._replace(data=tuple(field.expression(node) for node in root.data))
+            if root.kind == 'surface'
+            else root
+            for root in switches
+        ]
         return radau(
-            rates,
+            lambda at, state: field.rates(at, state, trial=True),
             (time, end),
             y,
-            roots=Roots(s, field.environment, armed, field.values_program) if armed else None,
+            roots=Roots(s, field.branch_environment, armed, field.values_program) if armed else None,
             check=s.max_step,
             moment=s.cfg.crossing,
             rtol=s.cfg.rtol,
@@ -985,10 +1165,13 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
         raise SimulationError(
             f'Numerical event location failed at {time:g} h: {exc}', context.diagnostics
         ) from exc
-    # A switching surface that fires within the event tolerance of the start is
-    # already at its switch; it is disarmed for this segment only.
-    while solution.success and switches and solution.t[-1] - start <= s.cfg.crossing:
-        fired = {k - len(roots) for k, te in enumerate(solution.t_events) if len(te) and k >= len(roots)}
+    # A departing root that rounds to the exact start has already been consumed there.
+    while solution.success and switches and solution.t[-1] == start:
+        fired = {
+            k
+            for k, hits in enumerate(solution.t_events[len(roots) :])
+            if len(hits) and switches[k].start == start
+        }
         if not fired:
             break
         switches = [root for k, root in enumerate(switches) if k not in fired]
@@ -1018,6 +1201,8 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
             'resolution_policy': 'physical_resolution_cap',
         }
     )
+    armed = roots + switches
+    solution.contacts = [(at, armed[k]) for at, k in solution.root_candidates]
     located = {}
     if reached == end:
         located.update(depletion_targets)

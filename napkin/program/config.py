@@ -21,8 +21,8 @@ the run at a breakpoint and edits it (`checkpoint.py`).
 - **The request** says until when and what to record, within a budget of pieces (R-A4a-07): the
   values that the record holds have at most that many pieces, and a record that would hold more ends
   at the last time at which they fit, with a failure that names the budget (`record.Record.within`).
-  It is not part of what a run computes, so the key of a stored run leaves it out
-  (`canonical.configuration_bytes`, R-A4a-08).
+  The store keys the requested record by its horizon, selection and budget together with the
+  rest of the configuration (`store.key`).
 """
 
 from __future__ import annotations

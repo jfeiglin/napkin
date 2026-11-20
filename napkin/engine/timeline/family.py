@@ -378,20 +378,31 @@ class Family:
         stores = [self.stores[end] for end in (self.source[k], self.sink[k]) if end >= 0]
         return stores, [f'{self.flows[k]}.actual_rate'], True
 
-    def snap(self):
-        """The next row reaches its bound at the time of a moment: its stores stand there, the one
-        that reaches its bound on it, and the moment's settling starts the row again (`ways.py`).
-        Gives its stores, and those of them that met their bound."""
-        reach, k, _, bounded = heapq.heappop(self.due)
-        for end in (self.source[k], self.sink[k]):
-            if end >= 0:
-                self.y[end], self.since[end] = self._value(end, reach), reach
-                self.slope[end] = 0.0
-        for end in bounded:
-            self.y[end] = self.lower[end] if end == self.source[k] else self.upper[end]
-        self.version[k] += 1
-        stores = [self.stores[end] for end in (self.source[k], self.sink[k]) if end >= 0]
-        return stores, [self.stores[end] for end in bounded]
+    def timing_events(self, through):
+        for reach, k, version, bounded in due_through(self.due, through):
+            if version == self.version[k]:
+                for end in bounded:
+                    kind = 'lower bound' if end == self.source[k] else 'upper bound'
+                    yield reach, self.stores[end], kind
+
+    def snap(self, t=None, through=None):
+        """Put the rows whose contact is due on their bounds at the moment's time."""
+        changed, met = [], []
+        while self.due:
+            reach, k, _, bounded = heapq.heappop(self.due)
+            at = reach if t is None else t
+            for end in (self.source[k], self.sink[k]):
+                if end >= 0:
+                    self.y[end], self.since[end] = self._value(end, at), at
+                    self.slope[end] = 0.0
+                    changed.append(self.stores[end])
+            for end in bounded:
+                self.y[end] = self.lower[end] if end == self.source[k] else self.upper[end]
+                met.append(self.stores[end])
+            self.version[k] += 1
+            if through is None or self.peek() > through:
+                break
+        return changed, met
 
     def cut(self, t):
         """Nothing to commit: a line holds to its next event."""
@@ -400,3 +411,14 @@ class Family:
         """Each row whose store reaches its bound at or before `until`, in time order."""
         while self.peek() <= until:
             self.step()
+
+
+def due_through(heap, through):
+    """Entries at or before the cutoff, pruning entire subtrees of the time heap."""
+    pending = [0] if heap else []
+    while pending:
+        k = pending.pop()
+        if heap[k][0] > through:
+            continue
+        yield heap[k]
+        pending.extend(i for i in (2 * k + 1, 2 * k + 2) if i < len(heap))

@@ -201,13 +201,11 @@ def refresh_bounds(system, run, field):
     s = system
     run.active_bounds.clear()
     for i in range(len(run.y)):
-        # Certified faces settle exactly and retain every positive authored
-        # reserve until its actual depletion. Availability allocation starts
-        # at physical contact, rather than at the normalization tolerance.
-        min_tolerance = 0 if s.state_ids[i] in s.proven_faces else s.atol[i]
-        if run.y[i] <= s.lower[i] + min_tolerance:
+        # A store that still has room can take material. A located physical contact puts
+        # it on the bound; the error allowance on its state cannot advance that time.
+        if run.y[i] <= s.lower[i]:
             run.active_bounds.add((i, 'min'))
-        if run.y[i] >= s.upper[i] - s.atol[i]:
+        if run.y[i] >= s.upper[i]:
             run.active_bounds.add((i, 'max'))
     if run.active_bounds:
         derivative = field.rates(run.time, run.y)

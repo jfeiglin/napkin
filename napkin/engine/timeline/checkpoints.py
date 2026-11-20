@@ -54,7 +54,7 @@ from ..errors import SimulationError
 from .moment import quantity, span
 from .plan import BUILTINS, STARTS, STATE, _statements, name_of
 from .record import unit_of
-from .saved import save
+from .saved import at_stop, save
 
 _SOURCES = ('engine', 'program', 'core')  # the folders of the package whose code a run runs
 _FILES = ('__init__.py', 'expressions.py', 'distributions.py')
@@ -198,10 +198,12 @@ class Breaks:
                     self.apply(edit, stop, tx)
             return
         # The record so far is the checkpoint's; a record past its budget ends the run here instead.
-        record = run.recorder.record(run.now, pause=pause_entry(stop))
+        recorder, arrival = at_stop(run)
+        record = recorder.record(run.now, pause=pause_entry(stop))
         if record.failure is not None:
             raise OverBudget(record.failure.detail('message'))
         self.recorded = record
+        self.prefix = recorder, arrival
         # The stage runs again from its start when the run resumes: its hits are counted again.
         self.hits = self.start
         raise Stopped(stop)
@@ -297,6 +299,8 @@ class Breaks:
         """The checkpoint of a stop (`napkin/program/checkpoint.py`), with the record so far that the
         hit found within its budget."""
         run, plan = self.run, self.run.plan
+        recorder, arrival = self.prefix
+        self.prefix = None
         return Checkpoint(
             program_digest(plan.program),
             engine_version(),
@@ -306,7 +310,7 @@ class Breaks:
             self.state(),
             self.recorded,
             tuple(self.edits),
-            save(run),
+            save(run, recorder, arrival),
         )
 
     def state(self):
@@ -378,6 +382,10 @@ def _present(run, name):
     that a commit of this round wrote, or what the run holds."""
     if name in run.written:
         return run.written[name]
+    if name in run.bound_at:
+        return run.bound_at[name]
+    if name in run.opening_levels:
+        return run.opening_levels[name]
     if name in run.ways.set_of:
         return run.ways.value(name, run.now)
     return run.env.get(name)

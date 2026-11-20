@@ -10,6 +10,8 @@ import numpy as np
 from ...expressions import ExpressionError, compile_program, evaluate, names_in
 from ..allocation import Allocation
 from ..errors import SimulationError
+from .integrate import branch_expression
+from .system import Formulas
 
 
 def finite(value, where, diagnostics):
@@ -27,6 +29,8 @@ class Field:
         self.system = system
         self.run = run
         self.context = context  # the formulas, the diagnostics and the settings (`system.Context`)
+        self.branches = {}
+        self._expressions = {}
         self._program = None
         self._pattern = None
         # The faces change only between segments; their arrays serve every evaluation of a segment.
@@ -36,8 +40,34 @@ class Field:
         # active bounds (`engine/allocation.py`).
         self.allocation = Allocation(system)
 
+    def choose(self, signs):
+        if signs != self.branches:
+            self.branches = signs
+            self._expressions.clear()
+            self._program = None
+
+    def expression(self, node):
+        if not self.branches:
+            return node
+        if node not in self._expressions:
+            self._expressions[node] = branch_expression(node, self.branches)
+        return self._expressions[node]
+
     def environment(self, at, state):
         return self.context.environment(at, state, self.run.store)
+
+    def branch_environment(self, at, state):
+        """A root's operands or a slow rate evaluation, with nested formula branches held."""
+        if not self.branches:
+            return self.environment(at, state)
+        context = self.context
+        data = {**context.values, **dict(zip(context.states, state)), **self.run.store, 't': at}
+        return Formulas(
+            data,
+            {name: self.expression(node) for name, node in context.order},
+            context.missing,
+            context.units,
+        )
 
     def compiled(self, at, state):
         """Every computed value, rate, flow rate and group capacity from one generated program of the
@@ -49,7 +79,8 @@ class Field:
                 + [f.rate for f in s.flows.values()]
                 + [g.capacity for g in s.groups.values()]
             )
-            order = self._formulas_for(outputs)
+            order = [(name, self.expression(node)) for name, node in self._formulas_for(outputs)]
+            outputs = [self.expression(node) for node in outputs]
 
             def read(name):
                 # The state is checked once, before the program runs (below).
@@ -99,12 +130,12 @@ class Field:
         time, the store and the state directly and computes only the formulas that they read, with
         the semantics of evaluating them in an environment; None when it cannot be made."""
         s, run = self.system, self.run
-        key = tuple(sources)
+        key = (tuple(sources), tuple(self.branches.items()))
         program = self._value_programs.get(key)
         if program is None:
             try:
                 program = compile_program(
-                    self._formulas_for(sources),
+                    [(name, self.expression(node)) for name, node in self._formulas_for(sources)],
                     list(sources),
                     constants=s.known,
                     units=s.units,
@@ -128,7 +159,7 @@ class Field:
             found = self._faces[key] = (zero, right, np.nextafter(self.system.lower[right], np.inf))
         return found
 
-    def rates(self, at, state):
+    def rates(self, at, state, *, trial=False):
         s, run = self.system, self.run
         lower, upper, index, flows, groups = s.lower, s.upper, s.index, s.flows, s.groups
         diagnostics = self.context.diagnostics
@@ -150,10 +181,10 @@ class Field:
         trial_state[right_faces] = np.maximum(trial_state[right_faces], right_floor)
         # A switch that the state crosses at the start of the segment is read on its far side while
         # the state is within its tolerance (`integrate.starting_sides`).
-        for i, low, high, number in run.switches:
+        for i, low, high, number in () if self.branches else run.switches:
             if low <= trial_state[i] <= high:
                 trial_state[i] = number
-        if run.clock is not None and run.clock[0] <= at <= run.clock[1]:
+        if not self.branches and run.clock is not None and run.clock[0] <= at <= run.clock[1]:
             at = run.clock[2]
         base = np.zeros(len(run.y))
         capacities = self.compiled(at, trial_state)
@@ -164,35 +195,60 @@ class Field:
             # The one-expression path names the failing expression. A failure here is a numerical
             # failure of the run, never a root-location failure to retry with smaller steps.
             try:
-                env = self.environment(at, trial_state)
+                env = self.branch_environment(at, trial_state)
                 for name, derivative in s.resolved.rates.items():
                     base[index[name]] += finite(
-                        evaluate(derivative.expr, env, s.units), f'derivative {name}', diagnostics
+                        evaluate(self.expression(derivative.expr), env, s.units),
+                        f'derivative {name}',
+                        diagnostics,
                     )
                 requested = np.array(
                     [
-                        finite(evaluate(f.rate, env, s.units), f'flow {name}', diagnostics)
+                        finite(evaluate(self.expression(f.rate), env, s.units), f'flow {name}', diagnostics)
                         for name, f in flows.items()
                     ]
                 )
                 capacities = [
-                    finite(evaluate(g.capacity, env, s.units), f'allocation capacity {gid}', diagnostics)
+                    finite(
+                        evaluate(self.expression(g.capacity), env, s.units),
+                        f'allocation capacity {gid}',
+                        diagnostics,
+                    )
                     for gid, g in groups.items()
                 ]
             except ExpressionError as exc:
                 raise SimulationError(f'Rate evaluation failed at {at:g} h: {exc}', diagnostics) from exc
+        # A solver stage beyond a max(0, x) switch can see a negative smooth continuation.
+        # Check the authored request at that state. Outside its selected branch the continuation
+        # is only an ODE trial; at a located endpoint publish the nonnegative limit.
+        extended = False
         if np.any(requested < 0):
-            bad = [name for name, rate in zip(s.flow_ids, requested) if rate < 0]
-            raise SimulationError(f'Negative flow rates: {bad}', diagnostics)
-        for gid, capacity in zip(groups, capacities):
+            env = self.environment(at, trial_state) if self.branches else None
+            bad = []
+            for j in np.flatnonzero(requested < 0):
+                name = s.flow_ids[j]
+                if env is None or evaluate(flows[name].rate, env, s.units) < 0:
+                    bad.append(name)
+                elif trial:
+                    extended = True
+                else:
+                    requested[j] = 0.0
+            if bad:
+                raise SimulationError(f'Negative flow rates: {bad}', diagnostics)
+        for j, (gid, capacity) in enumerate(zip(groups, capacities)):
             if capacity < 0:
-                raise SimulationError(f'Negative capacity for {gid}')
+                if (
+                    not self.branches
+                    or evaluate(groups[gid].capacity, self.environment(at, trial_state), s.units) < 0
+                ):
+                    raise SimulationError(f'Negative capacity for {gid}')
+                capacities[j] = 0.0
         # The rates of the states, and the rates that the flows deliver, after capacities, couplings
         # and bounds.
         derivative, self.delivered = self.allocation.allocated(
             state, base, requested, capacities, run.active_bounds, run.zero_faces, bound_key
         )
-        if np.any(derivative[s.monotone] < 0):
+        if not extended and np.any(derivative[s.monotone] < 0):
             name = next(name for i, name in enumerate(s.state_ids) if s.monotone[i] and derivative[i] < 0)
             raise SimulationError(f'Nondecreasing state {name} has a negative rate')
         return derivative

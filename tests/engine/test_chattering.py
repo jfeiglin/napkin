@@ -13,6 +13,7 @@ import pytest
 from napkin.engine import read, run
 from napkin.engine.continuous import integrate
 from napkin.engine.continuous.integrate import STALLED_STEPS, Limit
+from napkin.engine.timeline import sparse
 from napkin.program.build import SOURCE, Builder, endpoint, flow, formula, ifelse, input_, q, this, value
 from napkin.program.config import Configuration, Numerics, Request
 from napkin.program.record import Key
@@ -67,9 +68,12 @@ def test_a_tank_that_empties_stops_with_chattering_at_the_time_that_it_empties()
     level = 5e4
     asked = DEMAND * sum(SHARES)
     empty = level / (asked * (1 - FILL))
+    # The hand-built tank has no random seed. Its exact emptying time is 105/13 hours.
+    assert empty == pytest.approx(105 / 13)
     failure = stopped(tank(level, cut=True))
-    assert 'chattering' in failure.detail('message')
-    assert failure.t == pytest.approx(empty, rel=1e-9)
+    message = failure.detail('message')
+    assert all(name in message for name in ('chattering', 's.tank', 's.out0', 's.out1'))
+    assert failure.t == pytest.approx(105 / 13, rel=1e-9)
 
 
 def test_the_tank_without_the_condition_gives_its_outflows_what_comes_in_when_it_is_empty():
@@ -90,16 +94,22 @@ def test_the_tank_without_the_condition_gives_its_outflows_what_comes_in_when_it
 
 
 def test_a_run_of_steps_too_short_to_tell_apart_stops_the_run_as_stalled(monkeypatch):
-    """The steps of the solver shrink as the tank comes to its switch: with a count of three steps
-    in a row shorter than the crossing tolerance, the run stops there as stalled, before the solver
-    fails, at the time that the tank empties, and names the switch."""
+    """Three accepted steps shorter than the crossing tolerance still name a stalled solver.
+    The emptying tank has a located physical switch, so it no longer takes short steps to find it.
+    Give Radau a known short first and maximum step to exercise the independent stall diagnostic."""
     monkeypatch.setattr(integrate, 'STALLED_STEPS', 3)
-    level = 5e4
-    empty = level / (DEMAND * sum(SHARES) * (1 - FILL))
-    failure = stopped(tank(level, cut=True))
+    short = Numerics().crossing / 2
+    radau = sparse.Radau
+
+    def short_steps(*args, **kwargs):
+        return radau(*args, first_step=short, max_step=short, **kwargs)
+
+    monkeypatch.setattr(sparse, 'Radau', short_steps)
+    failure = stopped(tank(5e4, cut=True))
     message = failure.detail('message')
     assert 'for 3 steps in a row' in message and 'chattering' in message
-    assert failure.t == pytest.approx(empty, rel=1e-6)
+    assert 's.tank' in message and 's.out0' in message and 's.out1' in message
+    assert f't = {3 * short:g} h' in message
 
 
 def test_a_segment_is_stalled_after_so_many_accepted_steps_in_a_row_that_are_too_short():

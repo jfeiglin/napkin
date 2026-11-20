@@ -185,7 +185,13 @@ def injected_solver(
         if len(initial) != len(stores):
             return solution  # the solver of the recovery
         is_kink = solution.success and abs(solution.t[-1] - kink) < 1e-3
-        is_final = solution.success and solution.t[-1] == 200
+        is_final = solution.success and interval[0] < 200 <= solution.t[-1]
+        if is_final and not switching and solution.t[-1] > 200:
+            # A forecast brackets contacts on either side of the horizon. Return a solver
+            # endpoint at the actual cutoff, so the injected violation is precisely at 200 h.
+            solution.t = np.append(solution.t[solution.t < 200], 200.0)
+            solution.y = solution.sol(solution.t)
+
         if (is_kink if switching else is_final) and (persistent or not injections):
             solution.y[index, -1] = (
                 value_ if value_ is not None else (-1.73 if coordinate == 'foregone' else -0.2)
@@ -226,6 +232,8 @@ def test_a_material_bound_violation_stops_the_run_at_once(monkeypatch, case):
     record = Run(plan).run()
     assert message in record.failure.detail('message')
     assert len(injections) == 1
+    if case == 'nonswitching':
+        assert injections[0].t[-1] == 200
 
 
 def cash_control_model():

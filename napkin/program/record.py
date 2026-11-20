@@ -30,8 +30,9 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   more than the tolerance of what they read, in canonical units (`Record.near_ties`). A firing and a
   commit carry it in their own entry; a trigger that came within tolerance and did not fire, a
   false guard of a stage that ran nothing, a released gate and a settling have an entry of their own
-  for it (`miss`, `skip`, `release`, `settle`). The engine detects it and computes nothing more
-  precisely.
+  for it (`miss`, `skip`, `release`, `settle`). For a switch or a bound grouped with a scheduled
+  moment, a `contact` entry gives its located time and its signed difference from the moment in
+  hours. A contact exactly at the moment has difference zero.
 - **The end.** A run that fails, or that a breakpoint stops, ends its record there: the failure, or
   the `pause` entry that ends its trace, says when (`Record.stop`). A value at a later time is
   `Unavailable` with the reason, on every path that reads one (`Record.value`, and the engine's
@@ -49,22 +50,15 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
   pieces up to a time are settled once the run is past that time: a ledger begins at its first edit,
   the values of an occurrence at its start, and no later edit or start adds a piece before its own
   time; a piece that starts at its end holds its value there, since nothing of the record follows
-  it. What a record of only some values keeps is one function of its request and its trace, for a
-  run's record and for a cut of a longer one (`engine/timeline/record.requested`), and its histories
-  are in the order of their keys. So a record cut at a time holds what a run to that time holds, its
-  histories included, and its budget counts the same pieces: the run store's cut of a longer record
-  is the record of a fresh run of the shorter request (`store.served`), and a run past its budget
-  stops where its record does, before any later stop. A fit is what a cut cannot follow: a run fits a
-  curve, or a line of a fit's slope, to the span that its own end ends, and finds a change of a
-  formula by bisection over such a span, so the store gives a request at an earlier horizon, or one
-  that its budget ends earlier, a cut only where no piece that it keeps is one of these
-  (`engine/timeline/record.settled`), and runs it otherwise.
+  it. The histories of a request are in key order. A record keeps the histories that its
+  requested values read under the definitions and occurrences of its trace
+  (`engine/timeline/record.requested`). A run past its budget stops where its record ends,
+  before any later stop.
 - **The budget** (`Record.within`, R-A4a-07): the values that a record holds have at most the
   request's number of pieces. A record that would hold more ends at the time of the first piece that
   does not fit, with a failure entry there that names the budget (the detail `budget`): it holds the
   values before that time, and from it on every value is `Unavailable` with that reason. Only the
-  pieces of the values that the record holds count, so a record of a request cut from a wider record
-  ends where a fresh run of that request ends. A run whose record so far would hold more at a stop
+  pieces of the values that the record holds count. A run whose record so far would hold more at a stop
   ends there by its budget, and gives no checkpoint (`napkin/engine/timeline/checkpoints.py`): a run
   stops by its budget where its record does, before any later stop.
 """
@@ -92,6 +86,7 @@ KINDS = (
     'skip',
     'release',
     'settle',
+    'contact',
 )
 
 

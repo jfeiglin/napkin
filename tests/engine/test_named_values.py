@@ -302,7 +302,7 @@ def test_the_endpoint_of_a_store_that_only_the_flows_of_an_event_meet_is_a_value
     2.5, 3.5 and 4.5 h, and its request 0 L/h (the spec's table of deliveries); the load of the first
     delivery, which its own flow drains at 1 L/h, has an outflow of 1 L/h while it runs and 0 L/h once
     it finished, none before its start. Nothing of the model reads them: from a record of every value,
-    of the value alone, and cut from the store."""
+    of the value alone, and from its warm store entry."""
     c = compile_text(DELIVERIES, UNITS)
     program, configuration = c.program, c.configuration
     times = [0.5, 1.5, 2.5, 3.5, 4.5]
@@ -319,7 +319,8 @@ def test_the_endpoint_of_a_store_that_only_the_flows_of_an_event_meet_is_a_value
             alone = replace(
                 configuration, request=Request(5, everything=False, keys=(key_of(program, path),))
             )
-            records[f'{path} alone, cut from the store'] = store.run(program, alone)
+            store.run(program, alone)
+            records[f'{path} alone, warm'] = store.run(program, alone)
             records[f'{path} alone'] = run(program, alone)
         for where, record in records.items():
             for found in read(
@@ -365,7 +366,7 @@ def test_an_endpoint_that_a_flow_meets_through_a_parameter_and_a_distribution_of
     start of the run: north's reads 2 L/h while the pour from it runs and 0 L/h after it, south's
     0 L/h, and each request 0 L/h; the `.mean` and `.std` of the pour's own distribution, uniform(1 h,
     3 h), are 2 h and 2/sqrt(12) h from its start, and keep them once it finished. From a record of
-    every value, of each value alone, cut from the store, at a stop before the pour's stage, and from
+    every value, of each value alone, from its warm store entry, at a stop before the pour's stage, and from
     the run resumed there."""
     c = compile_text(POUR, UNITS)
     program, configuration = c.program, c.configuration
@@ -393,7 +394,8 @@ def test_an_endpoint_that_a_flow_meets_through_a_parameter_and_a_distribution_of
             alone = replace(
                 configuration, request=Request(3, everything=False, keys=(key_of(program, path),))
             )
-            for where, record in (('alone', run(program, alone)), ('alone, cut', store.run(program, alone))):
+            store.run(program, alone)
+            for where, record in (('alone', run(program, alone)), ('alone, warm', store.run(program, alone))):
                 holds(where, read(record, program, [path], times)[0])
     session = Session(program, configuration, (Breakpoint('keeper.pour.step[0]'),))
     session.advance()

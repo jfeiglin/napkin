@@ -56,8 +56,8 @@ from ..continuous import dense, integrate
 from ..errors import SimulationError
 from .collections import combined, looked_up, selected
 from .lines import asked_of
-from .network import SIDES, Asked, Instant, network_of
-from .plan import FORMULA, LOOKUP, REDUCE, Pending
+from .network import ROUNDOFF, SIDES, Asked, Instant, network_of
+from .plan import FORMULA, LOOKUP, REDUCE, Pending, _renamed
 from .reads import Reads, lazily
 from .record import fitted
 
@@ -89,6 +89,8 @@ class Vector:
         self.rates = {} if rates is None else rates
         self.given = given
         self.constants = {}  # name -> (value, None), or (nan, the reason why it has no value)
+        self.branches = {}
+        self.nodes, self.shapes = {}, {}
         self.formulas = {}  # the definitions this installed set shares, until rebuilt
         self._kinds = {}  # name -> how an evaluation gets it (`_kind`)
         self._plans = {}  # a tuple of names -> what an evaluation of them does (`_plan`)
@@ -119,7 +121,7 @@ class Vector:
         formula, `reduction`, `stepped` keyed read by the time, `lookup`)."""
         found = self._kinds.get(name)
         if found is None:
-            value = self.run.shared.definition(name, self.plan.values.get(name))
+            value = self.plan.values.get(name)
             kind = value.kind if value is not None else None
             if name in self.place:
                 found = 'store'
@@ -249,12 +251,35 @@ class Vector:
 
         return read
 
+    def choose(self, signs):
+        """Keep branch choices only on expressions that read their switching operands."""
+        if signs == self.branches:
+            return
+        self.branches = signs
+        self.nodes, self.shapes = {}, {}
+        self._groups.clear()
+        for plan in self._plans.values():
+            plan.order = None  # groups of rows can split or join when their selected expressions change
+        if signs:
+            for name, definition in self.formulas.items():
+                node = integrate.branch_expression(definition.node, signs)
+                if node is not definition.node:
+                    self.nodes[name] = node
+                    if definition.shape is not None:
+                        places = {bound: nodes.ref(read) for read, bound in definition.binding}
+                        self.shapes[name] = _renamed(node, places)
+
+    def shape(self, name):
+        return self.shapes.get(name, self.formulas[name].shape)
+
     def one(self, name, evaluation):
         """A derived value by itself, from what `evaluation` holds (`Pending` for what it has not
         computed): a formula reads only the sides that it takes (`reads.py`)."""
         plan, kind, t = self.plan, self._kind(name), evaluation.t
         if kind in ('formula', 'member'):
-            return float(lazily(self.formulas[name].node, evaluation.read, plan.units, t))
+            return float(
+                lazily(self.nodes.get(name, self.formulas[name].node), evaluation.read, plan.units, t)
+            )
         if kind == 'reduction':
             reduction, entries = plan.reductions[name], self._kept(name)
             if reduction.names is None:
@@ -264,7 +289,8 @@ class Vector:
             return float(combined(reduction.op, [evaluation.read(each) for each in names], reduction.spelled))
         if kind == 'stepped':
             stepped = self.run.stepped_of(name)
-            return evaluation.read(stepped.names[stepped.place(t)])
+            selected_at = self.held.get(name, t)
+            return evaluation.read(stepped.name_at(selected_at))
         keyed = plan.keyed[name]
         if name in self.held:
             # The entry that the instance holds through its segment.
@@ -281,13 +307,13 @@ class Vector:
         (`reads.py`), its derived values asked for (`Pending`)."""
         found = self._groups.get(members)
         if found is None:
-            first = self.formulas[members[0]]
-            reads = [read for read, _ in first.binding]
+            shape = self.shape(members[0])
+            reads = sorted(nodes.names(shape))
             columns = {
                 read: tuple(dict(self.formulas[name].binding)[read] for name in members) for read in reads
             }
             timed = frozenset(read for read, column in columns.items() if all(name == 't' for name in column))
-            found = self._groups[members] = (first.shape, columns, timed)
+            found = self._groups[members] = (shape, columns, timed)
         shape, columns, timed = found
         t = evaluation.t
 
@@ -422,7 +448,7 @@ class _Evaluation:
                 if name in holding or vector._kind(name) != 'member':
                     found.append((name,))
                 else:
-                    grouped.setdefault(id(vector.formulas[name].shape), []).append(name)
+                    grouped.setdefault(vector.shape(name), []).append(name)
             found += [tuple(members) for members in grouped.values()]
             return found[::-1]
 
@@ -516,6 +542,11 @@ class Sparse:
         place = self.place = {name: k for k, name in enumerate(stores)}
         self.net, connections, self.recorded = network_of(run, sets, stores)
         self.stores, self.flows = stores, list(self.net.flows)
+        self.contact_clocks = tuple(
+            at
+            for at, name, kind in (*run.prior_contacts, *run.contacts)
+            if kind == 'switch' and name in self.flows
+        )
         self.stepped = frozenset(name for connected in sets for name in connected.stepped)
         self.capped = [k for k, connection in enumerate(connections) if connection.capacity is not None]
         self.end_settings = []  # (side, store, which)
@@ -538,6 +569,7 @@ class Sparse:
         earlier = [name for k, name in enumerate(self.recorded) if levels[self._set_of_flow(k)] < max(levels)]
         self.current.update(dict.fromkeys(earlier, 0.0))
         vector = self.vector = Vector(run, stores, self.selection, self.current, given)
+        self.setting_names = tuple(names)
         self.settings = vector.compiled(names)
         self.size = len(names)
         # Each level: the places of its settings, their values, and the rates that it gives.
@@ -567,6 +599,7 @@ class Sparse:
             ),
             shape=(len(stores), len(connections)),
         )
+        self.traffic = abs(self.incidence)
         # The stores that the settings of each flow read, and those of the endpoints at its ends; a
         # flow whose settings read the rates of an earlier level reads its stores too.
         self.reads = []
@@ -597,7 +630,7 @@ class Sparse:
         ]
         # The switching surfaces of the settings (`integrate.surfaces_of`), as a component has them:
         # a step starts on the far side of one that its state crosses there (`_sides`), ends where
-        # one changes side (`_turn`), and a moment at the end of a step finds the ones that it
+        # one changes side (`_turns`), and a moment at the end of a step finds the ones that it
         # reached there (`switched_at`). A surface's sides are read through their names.
         formulas = {
             name: plan.values[name].node
@@ -625,13 +658,14 @@ class Sparse:
             ):
                 self.deciding.setdefault(surface, []).append(flow)
         sided = {name for a, b in self.surfaces for name in (*nodes.names(a), *nodes.names(b))}
+        self.side_nodes = {}
         self.sided = sorted(sided - {'t'})
         self._sides_of = vector.compiled(self.sided) if self.sided else None
         self.sides, self.clock = (), None  # the far sides that the present step reads (`_sides`)
-        self.signs = {}  # the side of each switch that the present step holds (`_turn`)
+        self.signs = {}  # the side of each switch that the present step holds (`_turns`)
+        self.contacted = ()
+        self.contacts = []  # located contacts on the pending smooth step
         self.next_clock = math.inf  # the next switch of the time against a fixed value
-        self.starting = frozenset()  # the switches at their switch where the present step starts
-        self.reached = []  # (the end of a committed step, the switches that it reached there)
 
     def _selector(self, vector, keyed):
         """A function (t, y) -> the entry that a keyed read selects there (None below its first
@@ -648,6 +682,7 @@ class Sparse:
         """At the start of a segment: each keyed read that moves holds the entry that it selects."""
         y = np.minimum(np.maximum(self.y, self.lower), self.upper)
         self.selection.clear()
+        self.selection.update(dict.fromkeys(self.stepped, self.t))
         for name, select in self.switching:
             self.selection[name] = select(self.t, y)
 
@@ -690,11 +725,25 @@ class Sparse:
 
     def asked(self, t, y):
         """What the connections and the endpoints ask at time t and state y."""
-        return self._asked(self.settings(t, y), t)
+        return self._asked(self.settings(t, y), t, y)
 
-    def _asked(self, found, t):
+    def _asked(self, found, t, y):
         """What the connections and the endpoints ask, from the values of their settings."""
         count, size = len(self.stores), len(self.net.source)
+        if self.vector.nodes and np.any(found < 0):
+            # A smooth continuation of max(0, x) can be negative outside the current
+            # segment. Local sharing has a zero floor on service. Keep its floor there
+            # only when the authored setting is valid at the trial state.
+            vector = self.vector
+            held = vector.nodes, vector.shapes, vector._groups
+            try:
+                vector.nodes, vector.shapes, vector._groups = {}, {}, {}
+                read = vector._reader()
+                for k in np.flatnonzero(found < 0):
+                    if read(self.setting_names[k], t, y) >= 0:
+                        found[k] = 0.0
+            finally:
+                vector.nodes, vector.shapes, vector._groups = held
         request = asked_of(self.net, found[:size], t)
         capacity = np.full(size, math.inf)
         capacity[self.capped] = found[size : size + len(self.capped)]
@@ -726,7 +775,7 @@ class Sparse:
         found = np.zeros(self.size)
         for at, settings, gives in self.levels:
             found[at] = settings(t, trial)
-            asked = self._asked(found, t)
+            asked = self._asked(found, t, trial)
             values = Instant(self.net, asked, self.lower_flags, self.upper_flags).values()
             for k, name in gives:
                 if name in self.current:
@@ -734,7 +783,14 @@ class Sparse:
         return values, self.net.carried(values, asked)
 
     def field(self, t, y):
-        return self.incidence @ self.values(t, y)[1]
+        carried = self.values(t, y)[1]
+        change = self.incidence @ carried
+        held = self.lower_flags | self.upper_flags
+        if held.any():
+            # On a held face, proportional shares can sum a last bit above the inflow.
+            # Use the same flow-balance roundoff as Lines; an interior level keeps its headroom.
+            change[held & (np.abs(change) <= ROUNDOFF * (self.traffic @ np.abs(carried)))] = 0.0
+        return change
 
     def _held(self, t, y):
         """The time and the state that the settings read at time t and state y: a store held on a
@@ -745,10 +801,10 @@ class Sparse:
         trial = np.minimum(np.maximum(y, self.lower), self.upper)
         trial[self.lower_flags] = self.lower[self.lower_flags]
         trial[self.upper_flags] = self.upper[self.upper_flags]
-        for i, low, high, number in self.sides:
+        for i, low, high, number in () if self.vector.branches else self.sides:
             if low <= trial[i] <= high:
                 trial[i] = number
-        if self.clock is not None and self.clock[0] <= t <= self.clock[1]:
+        if not self.vector.branches and self.clock is not None and self.clock[0] <= t <= self.clock[1]:
             t = self.clock[2]
         return t, trial
 
@@ -756,19 +812,19 @@ class Sparse:
         """A function: the value of a side of a switch (a node of `surfaces`) at time t and state y."""
         found = dict(zip(self.sided, self._sides_of(t, y))) if self._sides_of is not None else {}
         units = self.plan.units
-        return lambda node: float(lazily(node, found.__getitem__, units, t))
+        return lambda node: float(lazily(self.side_nodes.get(node, node), found.__getitem__, units, t))
 
     def _sides(self):
-        """At the start of a step: the far side of each switch that its state crosses there, which
-        the rates read through the step while the state is within the switch's tolerance
-        (`integrate.far_sides`, as a component's segment reads them), so that the rates that the step
-        starts with, and that a read at the moment gives, are those that hold from there on; the
-        switches at their switch there; and the side of every other switch, which the step holds
-        (`_turn`)."""
+        """Select the branch of every rate at the segment start. A located contact uses its
+        departing side. The vector uses these branches until the next located root (_turns)."""
         rtol = self.plan.numerics.rtol
         self.sides, self.signs = (), {}
         t, trial = self._held(self.t, self.y)
         side = self._side(t, trial)
+
+        def reversal(name):
+            raise SimulationError(self._failed(self.t, f'opposing rates on the two sides of {name}'))
+
         self.sides, self.clock = integrate.far_sides(
             self.surfaces,
             t,
@@ -781,93 +837,62 @@ class Sparse:
             self.field,
             (self.clock, self.next_clock),
             held=lambda i: self.lower_flags[i] or self.upper_flags[i],
+            reversal=reversal,
+            contacted=self.contacted,
         )
-        self.starting = integrate.switched(self.surfaces, side, rtol)
         at, trial = self._held(self.t, self.y)
-        side = self._side(at, trial)
-        for a, b in self.surfaces:
+        self.signs = integrate.departing_branches(
+            self.surfaces, at, trial, self._side, self.field, self.contacted
+        )
+        self.vector.choose(self.signs)
+        self.side_nodes = {
+            node: integrate.branch_expression(node, self.signs) for pair in self.surfaces for node in pair
+        }
+
+    def _turns(self, solution, start, end):
+        """Locate every armed switch on one accepted step, using the actual dense state."""
+        if not self.signs:
+            return
+        before, after = self._side(start, solution(start)), self._side(end, solution(end))
+        for pair, sign in self.signs.items():
+            a, b = pair
             try:
-                left, right = side(a), side(b)
+                first, last = before(a) - before(b), after(a) - after(b)
+                if first * sign <= 0 or last * sign > 0:
+                    continue
+
+                def gap(t):
+                    side = self._side(t, solution(t))
+                    return side(a) - side(b)
+
+                at = integrate.fixed_clock(pair, before, self.moves)
+                if at is None:
+                    at = integrate.crossing_time(gap, start, end)
+                yield at, pair, 'switch'
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                 continue
-            if abs(left - right) > rtol * (abs(left) + abs(right)):
-                self.signs[(a, b)] = 1.0 if left > right else -1.0
-
-    def _turn(self, solution, start, end):
-        """The first time in (start, end] at which a switch is on the other side than the one that the
-        step holds, to within the crossing tolerance; or None. A rate that changes branch there ends
-        the step, as a keyed read that selects another entry does (`_switch`)."""
-        if not self.signs:
-            return None
-
-        def turned(t):
-            side = self._side(*self._held(t, solution(t)))
-            for (a, b), sign in self.signs.items():
-                try:
-                    if (side(a) - side(b)) * sign < 0:
-                        return True
-                except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
-                    continue
-            return False
-
-        if not turned(end):
-            return None
-        crossing = self.plan.numerics.crossing
-        left, right = start, end
-        while right - left > crossing:
-            middle = 0.5 * (left + right)
-            if turned(middle):
-                right = middle
-            else:
-                left = middle
-        return right
-
-    def _reached(self, start, end, solution, y):
-        """The switches that a step that ends at time `end` at state y reached there: those at their
-        switch there that were at none where it started; kept while within the crossing tolerance of
-        the last end."""
-        crossing = self.plan.numerics.crossing
-        self.reached = [(at, found) for at, found in self.reached if end - at <= crossing]
-        side = self._side(*self._held(end, y))
-        found = integrate.switched(self.surfaces, side, self.plan.numerics.rtol)
-        found -= self.starting
-        if found:
-            self.reached.append((end, found))
-        shared = self.run.shared
-        if start < end and shared.at_arrival(end) and self.key not in shared.ends:
-            shared.ends[self.key] = end
-            # The dense output and the flags of its segment already exist. The next segment
-            # replaces its flags. Keep the selected rows for any moving keyed reads.
-            shared.steps[self.key] = (
-                start,
-                solution,
-                self.lower_flags,
-                self.upper_flags,
-                self.sides + self._arriving_sides(found, side, y),
-                self.clock,
-                self.selection.copy(),
-            )
 
     def switched_at(self, t):
-        """The switches of the set's rates that its state reached at time t, a moment that falls on
-        their crossing (`run.next_moment`): the flows to rebuild at the settling."""
-        crossing = self.plan.numerics.crossing
-        return {
-            flow
-            for at, found in self.reached
-            if abs(t - at) <= crossing
-            for a, b in found
-            for flow in self.deciding.get((a, b), ())
-        }
+        """The settings whose actual switching root was reached at this instant."""
+        if t != self.t:
+            return set()
+        return {flow for pair in self.contacted for flow in self.deciding.get(pair, ())}
 
     def _start(self):
         """Where a step starts: the entries that the keyed reads hold, the flags of the bounds, and the
         far sides of the switches that the state crosses there (`_sides`)."""
+        self.vector.choose({})
+        self.side_nodes = {}
         self.sides, self.clock = (), None
         self._select()
         # The clock switches before the new segment decides which stores stay on their bounds.
         self.clock, self.next_clock = integrate.clock_sides(
-            self.surfaces, self.t, self.plan.numerics.rtol, self._side(self.t, self.y), self.moves
+            self.surfaces,
+            self.t,
+            self.plan.numerics.rtol,
+            self._side(self.t, self.y),
+            self.moves,
+            consumed=self.contact_clocks,
         )
         self._flags()
         self._sides()
@@ -902,7 +927,7 @@ class Sparse:
     def _flags(self):
         """The flags of a new segment: a store on a bound is held there while its sharing keeps it."""
         y, lower, upper = self.y, self.lower, self.upper
-        at_lower, at_upper = y <= lower + self.atol, y >= upper - self.atol
+        at_lower, at_upper = y <= lower, y >= upper
         y[at_lower] = lower[at_lower]
         y[at_upper] = upper[at_upper]
         self.lower_flags, self.upper_flags = at_lower, at_upper
@@ -935,78 +960,9 @@ class Sparse:
                 recorder.add_pieces(self.recorded[k], pieces)
             self.evaluations = evaluations
 
-    def _arriving_sides(self, found, side, y):
-        """The side from which this step reaches a store switch. The end of its dense output can
-        fall a roundoff across the threshold. A stage reads the branch the step approached on."""
-        sides = []
-        for a, b in found:
-            sign = self.signs.get((a, b))
-            if sign is None:
-                continue
-            for store, other, before in ((a, b, sign), (b, a, -sign)):
-                if not isinstance(store, nodes.Ref) or store.name not in self.place or self.moves(other):
-                    continue
-                limit = side(other)
-                i = self.place[store.name]
-                here = y[i]
-                band = self.plan.numerics.rtol * (abs(here) + abs(limit))
-                if -band <= (here - limit) * before <= 0:
-                    incoming = math.nextafter(limit, before * math.inf)
-                    low, high = (limit - band, limit) if before > 0 else (limit, limit + band)
-                    sides.append((i, low, high, incoming))
-        return tuple(sides)
-
-    def incoming_piece(self, name):
-        """Fit one rate that a stage reads when the record omitted it or its step reached a switch. Its
-        original bound flags, switches and keyed rows hold throughout this evaluation."""
-        flow = name.rsplit('.', 1)[0]
-        if name in self.recorded:
-            answer, row = 0, self.recorded.index(name)
-        elif flow in self.net.connections:
-            answer, row = 1, self.net.connections.index(flow)
-        else:
-            return None
-        shared = self.run.shared
-        start, solution, low, high, sides, clock, rows = shared.steps[self.key]
-        saved = (
-            self.lower_flags,
-            self.upper_flags,
-            self.sides,
-            self.clock,
-            self.vector.held,
-            self.evaluations,
-        )
-        self.lower_flags, self.upper_flags, self.sides, self.clock, self.vector.held = (
-            low,
-            high,
-            sides,
-            clock,
-            rows,
-        )
-        try:
-
-            def delivered(times):
-                return np.array([[self.values(at, solution(at))[answer][row]] for at in times])
-
-            tolerance = np.array([self.recorder.tolerance.get(name, 1e-9)])
-            return fitted(delivered, start, shared.ends[self.key], tolerance)[0][-1]
-        finally:
-            self.lower_flags, self.upper_flags, self.sides, self.clock, self.vector.held, self.evaluations = (
-                saved
-            )
-
     def _crossing(self, solution, start, end, k, level):
-        """The first time in [start, end] at which store k's dense value passes `level`."""
-        crossing = self.plan.numerics.crossing
-        below = solution(start)[k] < level
-        left, right = start, end
-        while right - left > crossing:
-            middle = 0.5 * (left + right)
-            if (solution(middle)[k] < level) == below:
-                left = middle
-            else:
-                right = middle
-        return right
+        """Locate the physical level on this step's dense state."""
+        return integrate.crossing_time(lambda at: solution(at)[k] - level, start, end)
 
     def _count(self, start, end):
         """A step of the solver from start to end: after `integrate.STALLED_STEPS` steps in a row
@@ -1068,18 +1024,10 @@ class Sparse:
         if self.solver is None:
             self._start()
             numerics = self.plan.numerics
-            field = self.field
-            if self.next_clock <= until or self.stepped.intersection(self.run.keyed_changes(until)):
-                # A clock switch or table key ends this segment. Radau samples the endpoint
-                # too, so use the incoming requests for that last sample.
-                until = min(self.next_clock, until)
-                left = math.nextafter(until, -math.inf)
-
-                def field(at, y):
-                    return self.field(min(at, left), y)
-
+            # Time-keyed rows remain selected until the scheduled key. The incoming trial
+            # may extend through its time band to bracket a simultaneous store bound.
             self.solver = Radau(
-                field,
+                self.field,
                 self.t,
                 self.y.copy(),
                 until,
@@ -1102,41 +1050,30 @@ class Sparse:
         y = solution(end)
         free = ~(self.lower_flags | self.upper_flags)
         events = []
-        for k in np.flatnonzero(free & (y < self.lower)).tolist():
-            events.append((self._crossing(solution, start, end, k, self.lower[k]), k))
-        for k in np.flatnonzero(free & (y > self.upper)).tolist():
-            events.append((self._crossing(solution, start, end, k, self.upper[k]), k))
+        initial = solution(start)
+        for k in np.flatnonzero(free & (y <= self.lower) & (initial > self.lower)).tolist():
+            events.append((self._crossing(solution, start, end, k, self.lower[k]), k, 'lower bound'))
+        for k in np.flatnonzero(free & (y >= self.upper) & (initial < self.upper)).tolist():
+            events.append((self._crossing(solution, start, end, k, self.upper[k]), k, 'upper bound'))
         for k in np.flatnonzero(self.lower_flags & (y > self.lower + self.atol)).tolist():
-            events.append((self._crossing(solution, start, end, k, self.lower[k] + self.atol[k]), k))
+            events.append(
+                (self._crossing(solution, start, end, k, self.lower[k] + self.atol[k]), k, 'release')
+            )
         for k in np.flatnonzero(self.upper_flags & (y < self.upper - self.atol)).tolist():
-            events.append((self._crossing(solution, start, end, k, self.upper[k] - self.atol[k]), k))
+            events.append(
+                (self._crossing(solution, start, end, k, self.upper[k] - self.atol[k]), k, 'release')
+            )
         for name, select in self.switching:
-            # A keyed read that selects another entry changes a rate by a step: the segment ends.
             at = self._switch(solution, start, end, name, select)
             if at is not None:
-                events.append((at, None))
-        at = self._turn(solution, start, end)  # so does a switch that changes side
-        crossing = self.plan.numerics.crossing
-        if at is not None and start + crossing < at < end - crossing:
-            # The step mixes the rates of the two sides of the switch, and so does its dense output:
-            # it is made again to the switch that it finds, as many times as that moves the switch.
-            self.solver = Radau(
-                self.field,
-                start,
-                np.array(solution(start), dtype=float),
-                at,
-                rtol=self.plan.numerics.rtol,
-                atol=self.atol,
-                jac_sparsity=self.pattern(),
-            )
-            self.first = start
-            return self.peek()
-        if at is not None:
-            events.append((at, None))
+                events.append((at, name, 'key'))
+        events.extend(self._turns(solution, start, end))
+        self.contacts = events
         ended = bool(events) or solver.status != 'running'
         if events:
-            end = min(at for at, _ in events)
+            end = min(at for at, _, _ in events)
             y = solution(end)
+            self._on_contacts(end, y)
         if ended and end <= self.first:
             raise SimulationError(self._failed(end, 'Integration made no progress'))
         self.pending = (start, end, solution, np.array(y, dtype=float), ended)
@@ -1148,20 +1085,70 @@ class Sparse:
         self.pending, self._drift = None, None
         self._record(solution, start, end)
         self.t, self.y = end, y
+        self.contacted = tuple(pair for at, pair, kind in self.contacts if at == end and kind == 'switch')
+        self.contact_clocks = tuple(at for at in self.contact_clocks if at >= end)
         self.run.now = end
-        self._reached(start, end, solution, y)
         if ended:
             self.solver = None
         return list(self.stores), list(self.recorded), ended
 
-    def snap(self):
-        """The next event at the time of a moment: committed as any other, with what it changes, and
-        the stores that it brings to a bound: free through the step, on a bound at its end."""
-        y = self.pending[3]
-        free = ~(self.lower_flags | self.upper_flags)
-        met = free & ((y <= self.lower + self.atol) | (y >= self.upper - self.atol))
+    def lookahead(self, t, through):
+        """A numerical step can end between the anchored moment and the far edge of its band.
+        Search the rest of the band for an independently due physical contact. The first step
+        still owns the dense state at the moment. All trial steps after it end with this round."""
+        pending = self.pending
+        if pending is None or pending[4] or not t <= pending[1] < through or self.solver is None:
+            return
+        now, brief, brief_from = self.run.now, self.brief, self.brief_from
+        try:
+            self.solver.t_bound = min(through, self.solver.t_bound)
+            while self.pending[1] < through and not self.pending[4]:
+                self.pending = None
+                self.peek()
+        finally:
+            self.pending, self.solver = pending, None
+            self.run.now, self.brief, self.brief_from = now, brief, brief_from
+
+    def timing_events(self, through):
+        if self.pending is None:
+            return
+        for at, owner, kind in self.contacts:
+            if at <= through:
+                if kind in ('lower bound', 'upper bound'):
+                    yield at, self.stores[owner], kind
+                elif kind == 'switch':
+                    for flow in self.deciding.get(owner, ()):
+                        yield at, flow, kind
+                elif kind == 'key':
+                    yield at, owner, 'switch'
+
+    def _on_contacts(self, through, y):
+        for at, owner, kind in self.contacts:
+            if at > through:
+                continue
+            if kind == 'lower bound':
+                y[owner] = self.lower[owner]
+            elif kind == 'upper bound':
+                y[owner] = self.upper[owner]
+            elif kind == 'switch':
+                for here, other in (owner, owner[::-1]):
+                    if isinstance(here, nodes.Ref) and here.name in self.place and not self.moves(other):
+                        y[self.place[here.name]] = self._side(at, y)(other)
+
+    def snap(self, t=None, through=None):
+        """Commit the incoming piece at the moment's time and put its due stores on their bounds."""
+        start, end, solution, y, ended = self.pending
+        at = end if t is None else t
+        through = end if through is None else through
+        met = [
+            name for _, name, kind in self.timing_events(through) if kind in ('lower bound', 'upper bound')
+        ]
+        if at != end:
+            y = np.array(solution(at), dtype=float)
+        self._on_contacts(through, y)
+        self.pending = start, at, solution, y, ended
         stores, rates, _ = self.step()
-        return stores + rates, [self.stores[k] for k in np.flatnonzero(met).tolist()]
+        return stores + rates, met
 
     def finish(self, t):
         """At the horizon, where the run stands (`ways.finish`): sets built there, which have made no
@@ -1169,7 +1156,7 @@ class Sparse:
         the state there, with the selections and the flags of a new segment, as the first step of a
         run that goes on would from there; sets that have made steps hold their values there in
         their pieces. The evaluations count for no budget of the run."""
-        if self.pending is not None or self.t != t or self.evaluations:
+        if self.pending is not None or self.t != t:
             return
         evaluations = self.evaluations
         try:
@@ -1196,7 +1183,7 @@ class Sparse:
             return
         self._record(solution, start, t)
         self.t, self.y = float(t), np.array(solution(t), dtype=float)
-        self._reached(start, self.t, solution, self.y)
+        self.contacted = ()
 
     def level_at(self, store, t):
         """The value of a store at time t: at the present time, inside the next step, or, before that

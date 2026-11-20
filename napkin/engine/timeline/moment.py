@@ -199,7 +199,11 @@ class Clock:
     def due(self, at, t, opening=True):
         """Whether a time is due at the moment of time t: at most the time tolerance after it when the
         moment begins (`opening`), else at t."""
-        return at <= t + self.crossing if opening else at <= t
+        return at <= self.apart(t) if opening else at <= t
+
+    def within(self, at, t):
+        """Whether a located contact is in the closed time window around the independent moment t."""
+        return t - self.crossing <= at <= self.apart(t)
 
     def apart(self, t):
         """The first time that the engine tells apart from t."""
@@ -395,6 +399,21 @@ class Moment:
         while True:
             if held is None:
                 self._round(self.round + 1)
+                if self.round == 1:
+                    for at, name, kind in run.contacts:
+                        comparison = f'{kind} of {name} and the moment at {t:g} h'
+                        value = self.plan.values.get(name)
+                        owner = (
+                            value.key.owner if value is not None and value.key else name.rpartition('.')[0]
+                        )
+                        run.recorder.entry(
+                            t,
+                            'contact',
+                            name,
+                            owner,
+                            located=at,
+                            near=((name, comparison, at - t, run.clock.crossing),),
+                        )
                 if self.round > limit:
                     raise SimulationError(self._round_limit(t, limit))
                 self.again = False
@@ -754,6 +773,7 @@ class Moment:
         sets that it built."""
         run, ways, plan, t = self.run, self.run.ways, self.plan, self.run.now
         self.phase = 'settle'
+        run.finish_arrival()
         joined, left = list(run.joined), set(run.left)
         names = run.changed_names()
         touched = ways.touched_by(names | set(run.written))
@@ -765,6 +785,8 @@ class Moment:
         touched |= {ways.set_of[flow] for flow in left if flow in ways.set_of}
         waiting, run.waiting = run.waiting, []
         if not touched and not joined and not waiting:
+            run.outside.refresh(None if self.round == 0 else names, joined, left, t)
+            run.contacts, run.bound_at = (), {}
             run.settled()
             return set()
         moving_before = set(ways.set_of)
@@ -802,6 +824,7 @@ class Moment:
                 break
             touched |= extra
         values = ways.retire(touched, t)
+        values.update(run.bound_at)
         values.update(run.written)
         for connected in made:
             for store in connected.stores:
@@ -821,6 +844,10 @@ class Moment:
                 run.tolerate(plan.flows[flow])
         run.settled()
         ways.build(made, values, t)
+        if plan.outside:
+            names.update(name for connected in made for name in ways._given(connected))
+        run.outside.refresh(None if self.round == 0 else names, joined, left, t)
+        run.contacts, run.bound_at = (), {}
         return stay
 
     def splits(self, stores):

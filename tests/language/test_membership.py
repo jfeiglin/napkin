@@ -300,10 +300,10 @@ def test_a_rate_of_the_continuous_engine_fails_by_name_where_its_interval_is_rev
     assert read(record, model.program, ['plant.water'], [0.5])[0].values == (pytest.approx(2.0),)
 
 
-def test_the_run_store_gives_the_same_failure_cold_warm_and_cut_from_a_longer_run(tmp_path):
+def test_the_run_store_gives_the_same_failure_cold_and_warm_at_each_horizon(tmp_path):
     """The run store (`napkin.store`): a run that fails by the name of a reversed interval is stored
-    with its failure, and gives it again warm; a shorter request cut from the stored longer run
-    fails the same way, where a fresh run of it does, and a formula read from it is as fresh."""
+    with its failure at each horizon. The shorter request gives the same failure and formula reads
+    as a fresh run of that request."""
     from dataclasses import replace
 
     from napkin import store
@@ -313,11 +313,12 @@ def test_the_run_store_gives_the_same_failure_cold_warm_and_cut_from_a_longer_ru
     with store.use(tmp_path):
         cold = store.run(model.program, model.configuration)
         warm = store.run(model.program, model.configuration)
-        cut = store.run(model.program, shorter)
+        short = store.run(model.program, shorter)
+        assert store.run(model.program, shorter) == short
     fresh = run(model.program, shorter)
-    assert failure(cold) == failure(warm) == failure(cut) == failure(fresh)
-    assert failure(cut)[0] == 2.0 and NAME in failure(cut)[1]
-    reading = read(cut, model.program, ['plant.ok'], [0.5, 1.5])[0].values
+    assert failure(cold) == failure(warm) == failure(short) == failure(fresh)
+    assert failure(short)[0] == 2.0 and NAME in failure(short)[1]
+    reading = read(short, model.program, ['plant.ok'], [0.5, 1.5])[0].values
     assert reading == read(fresh, model.program, ['plant.ok'], [0.5, 1.5])[0].values
     assert reading[0] is True and NAME in reading[1].reason
 
