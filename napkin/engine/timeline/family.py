@@ -55,11 +55,11 @@ class Columns:
 
     def one(self, name, t):
         """The value of one engine name at time t."""
-        return walked(self._one(name, float(t), {}, set()))
+        return walked(self._one(name, float(t), _Known(), set()))
 
     def at(self, names, t):
         """The values of engine names at time t, as an array in their order."""
-        return walked(self._at(list(names), float(t), {}, set()))
+        return walked(self._at(list(names), float(t), _Known(), set()))
 
     def _derived(self, name):
         """Whether a value is computed from others where it is read: a formula, a reduction or a
@@ -112,12 +112,8 @@ class Columns:
                 return found
             if not self._derived(each):
                 found = t if each == 't' else self.run.value_of(each)
-            elif each not in known:
-                raise Pending(each)
             else:
-                found = known[each]
-                if isinstance(found, _Failed):
-                    raise found.problem
+                found = known.read(each)
             own[each] = found
             return found
 
@@ -156,9 +152,7 @@ class Columns:
             if value is not None and value.kind == FORMULA and value.shape is not None:
                 groups.setdefault(id(value.shape), []).append(name)
             elif name in known:
-                found[name] = known[name]
-                if isinstance(found[name], _Failed):
-                    raise found[name].problem
+                found[name] = known.read(name)
             else:
                 found[name] = yield self._one(name, t, known, waiting)
         for members in groups.values():
@@ -171,25 +165,12 @@ class Columns:
             def column(read, columns=columns):
                 # A column is made when the evaluation over the rows first reads it (`reads.py`): one
                 # that this read has not found is found first (`Pending`).
-                key = ('column', columns[read])
-                if key not in known:
-                    raise Pending(key)
-                if isinstance(known[key], _Failed):
-                    raise known[key].problem
-                return known[key]
-
-            def bound(name):
-                if name not in known:
-                    raise Pending(name)
-                found = known[name]
-                if isinstance(found, _Failed):
-                    raise found.problem
-                return found
+                return known.read(('column', columns[read]))
 
             env = Reads(frozenset(columns), column)
             while True:
                 try:
-                    computed = arrays.values(first.shape, env, plan.units, len(members), columns, bound)
+                    computed = arrays.values(first.shape, env, plan.units, len(members), columns, known.read)
                 except Pending as pending:
                     yield from self._found(pending.names, t, known, waiting)
                     continue
@@ -217,6 +198,16 @@ class _Failed:
 
     def __init__(self, problem):
         self.problem = problem
+
+
+class _Known(dict):
+    def read(self, key):
+        if key not in self:
+            raise Pending(key)
+        found = self[key]
+        if isinstance(found, _Failed):
+            raise found.problem
+        return found
 
 
 class Family(Way):

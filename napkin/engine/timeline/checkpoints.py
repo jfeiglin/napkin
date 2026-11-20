@@ -21,12 +21,8 @@ on every path (`saved.py` says which), so the run that goes on is the run straig
 for number. The restored run's logical state must be the checkpoint's (`State`), or the resume is
 refused by name (`CheckpointError`), so a checkpoint never goes on as another run.
 
-**The budget of the record** holds at every stop as at the end: a stop whose record so far would hold
-more pieces than its request's budget gives no checkpoint, and the run ends there by its budget
-(`OverBudget`, a failure of the run, which `Run` records: the record then ends where its budget ends
-it, at the time of its first piece that does not fit, `Record.within`). So a run stops by its budget
-before any later stop or checkpoint, as a run with no breakpoint does, and no caller edits or resumes a
-run whose record is past its budget.
+**The budget of the record** holds at every stop. If the checkpoint's record exceeds its budget,
+`HistoryFull` returns the prefix ending at the first excess piece (`Record.within`).
 
 The checkpoint's logical state (`State`) is what a caller inspects and edits.
 """
@@ -50,10 +46,9 @@ from ...program.checkpoint import (
     encode,
 )
 from ...program.record import Entry, Key
-from ..errors import SimulationError
 from .moment import quantity, span
 from .plan import BUILTINS, STARTS, STATE, _statements, name_of
-from .record import unit_of
+from .record import HistoryFull, unit_of
 from .saved import at_stop, save
 
 _SOURCES = ('engine', 'program', 'core')  # the folders of the package whose code a run runs
@@ -95,11 +90,6 @@ class Stopped(Exception):
     def __init__(self, stop):
         super().__init__(f'stopped before {stop.at} at t = {stop.t:g} h')
         self.stop = stop
-
-
-class OverBudget(SimulationError):
-    """A hit whose record so far would hold more pieces than its budget: the run ends there, by its
-    budget, and gives no checkpoint (see the module)."""
 
 
 def _locations(program):
@@ -201,7 +191,7 @@ class Breaks:
         recorder, arrival = at_stop(run)
         record = recorder.record(run.now, pause=pause_entry(stop))
         if record.failure is not None:
-            raise OverBudget(record.failure.detail('message'))
+            raise HistoryFull(record)
         self.recorded = record
         self.prefix = recorder, arrival
         # The stage runs again from its start when the run resumes: its hits are counted again.

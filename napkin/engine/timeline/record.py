@@ -308,7 +308,7 @@ class Recorder:
         start, end, solution = segment.start, segment.end, segment.solution
         if end <= start:
             for k, name in enumerate(stores):
-                self._add(name, [(start, float(segment.last[k]), 0.0)])
+                self.add_pieces(name, [(start, float(segment.last[k]), 0.0)])
             return
         context = component.context
         if isinstance(solution, (Affine, MatrixExponential)):
@@ -317,7 +317,7 @@ class Recorder:
                 curved = {int(i) for i in solution.columns[solution.rows]}
             for k, name in enumerate(stores):
                 if k not in curved:
-                    self._add(name, [(start, float(segment.first[k]), float(solution.slope[k]))])
+                    self.add_pieces(name, [(start, float(segment.first[k]), float(solution.slope[k]))])
             spans = [(start, end)]
         else:
             curved = set(range(len(stores)))
@@ -334,13 +334,13 @@ class Recorder:
                 for k, pieces in zip(order, fitted(states, float(a), float(b), tolerance)):
                     if a == start:
                         pieces[0] = (start, float(segment.first[k]), pieces[0][2])
-                    self._add(stores[k], pieces)
+                    self.add_pieces(stores[k], pieces)
         if not flows:
             return
         if isinstance(solution, Affine):
             rates = component.delivered(segment, [0.5 * (start + end)])[0]
             for k, name in enumerate(flows):
-                self._add(name, [(start, float(rates[k]), 0.0)])
+                self.add_pieces(name, [(start, float(rates[k]), 0.0)])
             return
         tolerance = np.array([self.tolerance[name] for name in flows])
         for a, b in spans:
@@ -348,7 +348,7 @@ class Recorder:
                 flows,
                 fitted(lambda times: component.delivered(segment, times), float(a), float(b), tolerance),
             ):
-                self._add(name, pieces)
+                self.add_pieces(name, pieces)
 
     def check_budget(self, end, *, before=False, internal=False):
         """Read the pieces that the history producers have committed through this boundary."""
@@ -378,12 +378,6 @@ class Recorder:
         if prefix.failure is not None and (not before or prefix.failure.t < end):
             raise HistoryFull(prefix)
 
-    def _add(self, name, pieces):
-        if pieces:
-            self.pieces.setdefault(name, []).extend(pieces)
-            self._dirty.add(name)
-            self._from = min(self._from, pieces[0][0])
-
     def add(self, name, t, value, rate):
         """One piece of a value, which a run gives as it goes."""
         self.pieces.setdefault(name, []).append((t, value, rate))
@@ -392,7 +386,10 @@ class Recorder:
 
     def add_pieces(self, name, pieces):
         """Pieces of a value, which a run gives as it goes."""
-        self._add(name, pieces)
+        if pieces:
+            self.pieces.setdefault(name, []).extend(pieces)
+            self._dirty.add(name)
+            self._from = min(self._from, pieces[0][0])
 
     def incoming_piece(self, name, end):
         """The last recorded piece strictly before an incoming segment ends, or None."""
