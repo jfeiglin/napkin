@@ -252,6 +252,36 @@ def direct_read(name):
     return f'_missing({name!r})', True
 
 
+@pytest.mark.parametrize(
+    ('source', 'level', 'opened', 'shut'),
+    [
+        ("x.s * (m.mode == 'open') == 5e-10", 0, True, False),
+        ("x.s / (1 + 2 * (m.mode == 'open')) == 5e-10", 0, False, True),
+        ("(m.mode == 'open') / x.s >= 0.25", 2, True, False),
+    ],
+)
+def test_a_coefficient_used_by_a_comparison_reads_the_current_mode(source, level, opened, shut):
+    """At zero the first two expressions have scale floors of 1 or zero, and 1/3 or 1.
+    The last numerator gives 1/2 or zero. All programs read the mode anew at each call."""
+    node = expr.read(source)
+    for lean in (False, True):
+        program = compile_program([], [node], units=REGISTRY, lean=lean)
+        direct = compile_program(
+            [],
+            [node],
+            units=REGISTRY,
+            read=direct_read,
+            arguments=('Y', 'T', 'S', 'V', 'R'),
+            write=False,
+            lean=lean,
+        )
+        for mode, expected in [('open', opened), ('shut', shut)]:
+            env = {'x.s': level, 'm.mode': mode}
+            assert evaluate(node, env, REGISTRY) is expected
+            assert program(env, REGISTRY) == (expected,)
+            assert direct([level], 0, env, {}, REGISTRY) == (expected,)
+
+
 # A part that is not finite for x = 1e200 (its product leaves the range of a float, or it is the
 # difference of two such products), inside each reader that could hide it: the value of the whole
 # is then a finite number, or a yes/no.

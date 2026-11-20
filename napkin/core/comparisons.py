@@ -106,6 +106,10 @@ class Comparisons:
                 controls.update(expr.names(node.right))
                 pending.extend(node.children)
             else:
+                # An expression with no quantity operands (e.g. a predicate) supplies its
+                # current value when it is a coefficient in a product or quotient.
+                if node.children and not _scale_operands(node):
+                    controls.update(expr.names(node))
                 pending.extend(node.children)
         return controls
 
