@@ -104,7 +104,8 @@ class Answer:
         """Whether `x` (author units, in the order of the problem) may take this answer's place: it
         passes the end checks that this answer passed, each to its tolerance (each kept optimum,
         `ranked.KEPT`; each claim's served fraction against its fair level, and every row and bound,
-        `CHECK`), and it is no worse than this answer on any rank: no objective higher by more than
+        `CHECK`), preserves every exactly idle flow and changes each other flow within its own
+        coordinate's precision, and is no worse than this answer on any rank: no objective higher by more than
         KEPT of the size of its terms at the two answers, no claim served a smaller fraction by more
         than CHECK, and no stage of the distance farther from its targets than what its roundings
         may add (`farther`). The optimum is kept to KEPT of a reference scale, so the second check
@@ -297,6 +298,8 @@ def _end_checks(arrays, w, optima, levels):
                 stage = w.kind == kind
                 # A rounding moves a coordinate within the precision to which the end checks hold it.
                 precision = CHECK * (1.0 + np.abs(before[stage]))
+                if kind == FLOW and not rate_rounding(xi[stage], before[stage], precision):
+                    return SolveFailure(NUMERICAL, 'flow publication', 'a rounding changed a selected flow')
                 worse = farther(xi[stage], before[stage], w.target[stage], precision) if stage.any() else 0.0
                 if worse > 0:
                     return SolveFailure(
@@ -333,8 +336,15 @@ def farther(x, before, target, precision):
     whose other deviations are large. It is the rule of every change of an answer after its selection
     order: of a declared solver's (`Answer.admits`, in working units: each coordinate over its scale)
     and of local sharing's (`timeline/selection.py`, in the units of the rates)."""
-    old, new = (before - target) ** 2, (x - target) ** 2
-    change = new - old
-    rounding = np.abs(x - before) <= precision
-    allowed = float(np.maximum(change[rounding], 0.0).sum()) + ROUNDOFF * float((old + new).sum())
+    # Subtract the squares algebraically. Coordinates that did not move contribute neither a
+    # change nor roundoff, even when they missed a very large target.
+    difference = x - before
+    change = difference * ((x - target) + (before - target))
+    rounding = np.abs(difference) <= precision
+    allowed = float(np.maximum(change[rounding], 0.0).sum()) + ROUNDOFF * float(np.abs(change).sum())
     return float(change.sum()) - allowed
+
+
+def rate_rounding(x, before, precision):
+    """Each correction fits the selected coordinate's own precision, and an idle rate stays zero."""
+    return np.all((before != 0) | (x == 0)) and np.all(np.abs(x - before) <= precision)

@@ -149,14 +149,14 @@ def test_a_change_that_moves_the_delivery_onto_the_idle_pipe_is_not_admitted(sca
     """The audit's case: the solver's answer is (1, 0) (by hand: the nearest point of a + b = 1 to the
     targets (1, 0)); (0, 1) meets every row and bound and is equal on every earlier rank (there is
     none), and it is farther from the targets by a distance of 2, so it does not take the answer's
-    place; nor does any split of the delivery that moves a tenth of it. The answer itself, and a
-    rounding of it by a millionth of its precision, do. In any unit of the pipes."""
+    place; nor does any split of the delivery that moves a tenth of it. The answer itself is admitted. Even a
+    rounding by a millionth of its precision must preserve the exactly idle flow."""
     answer = Solver().solve(two_pipes(scale))
     assert answer.x == pytest.approx([scale, 0.0], abs=1e-9 * scale)
     for share in (1.0, 0.5, 0.1):
         assert not answer.admits(np.array([1 - share, share]) * scale), share
     assert answer.admits(answer.x)
-    assert answer.admits(answer.x + np.array([-1, 1]) * 1e-12 * scale)
+    assert not answer.admits(answer.x + np.array([-1, 1]) * 1e-12 * scale)
 
 
 def test_the_other_unknowns_are_a_rank_after_the_flows():
@@ -188,7 +188,10 @@ def none_farther(seed):
     # A rounding of the flows and the other unknowns by a few units of roundoff, its positive parts
     # their values at it, as any change of an answer gives them (`declared.polished`).
     moved = (rng.random(arrays.n) - 0.5) * 4e-16 * (1 + np.abs(answer.x)) * (arrays.kind != 0)
-    assert answer.admits(arrays.positive_parts(np.clip(answer.x + moved, arrays.lower, arrays.upper)))
+    candidate = arrays.positive_parts(np.clip(answer.x + moved, arrays.lower, arrays.upper))
+    idle = (arrays.kind == FLOW) & (answer.x == 0)
+    assert answer.admits(candidate) == np.all(candidate[idle] == 0)
+
     found = 0
     for y in alternatives(rng, arrays, answer.x, count=4):
         if farther(arrays, answer.x, y):

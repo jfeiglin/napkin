@@ -53,7 +53,7 @@ import numpy as np
 
 from ..continuous import highs
 from ..errors import SimulationError
-from ..solve.solver import farther
+from ..solve.solver import farther, rate_rounding
 
 TIGHT = 1e-9  # a claim can rise above its level only by more than this part of it (the oracle's)
 FEASIBLE = 1e-9  # a row holds to this part of the size of its terms
@@ -466,17 +466,17 @@ def select(rows, lower, upper, tiers, prefs, target, units=None):
         snapped[near] = bound[near]
     claims = [claim for tier in tiers for claim in tier] + list(prefs)
     candidates = (_exact(final, lower, upper, snapped, target), snapped)
-    return _kept(final, lower, upper, target, claims, found, candidates, units)
+    return _kept(final, lower, upper, target, claims, found, candidates)
 
 
-def _kept(rows, lower, upper, target, claims, answer, candidates, units=1.0):
+def _kept(rows, lower, upper, target, claims, answer, candidates):
     """The first of `candidates` (changes of `answer` after the selection order) that is no worse
     than the answer on any rank, the last included: it holds every row and bound of the part as the
     answer does (`_holds`, the end check of rank 4), serves each claim and each preferred route's
     share (`claims`, as (a, request)) no less than the answer serves it, to `FEASIBLE`, and is no
     farther from the targets (`solve.solver.farther`, the rule of every change of a published answer):
-    a coordinate that moved by at most `FEASIBLE` of its unit (`units`, the size of the part for a
-    rate) and of its size is a rounding, which the snaps of roundoff are. Else the answer. A change
+    a correction fits FEASIBLE of the coordinate's own value or target, and a flow selected at
+    zero stays zero. Else the answer. A change
     that would take a small delivery for the roundoff of a large part, break a row, or move a
     delivery onto a flow that does not ask for it, is dropped."""
     plain = _plain(rows, lower, upper)
@@ -485,10 +485,11 @@ def _kept(rows, lower, upper, target, claims, answer, candidates, units=1.0):
         return np.array([min(1.0, max(0.0, float(np.asarray(a, dtype=float) @ x) / r)) for a, r in claims])
 
     floor = served(answer) - FEASIBLE * (1.0 + np.abs(served(answer)))
-    precision = FEASIBLE * (np.asarray(units, dtype=float) + np.abs(answer))
+    precision = FEASIBLE * np.maximum(np.abs(answer), np.abs(target))
     for candidate in candidates:
         if (
-            _holds(rows, plain, candidate, target)
+            rate_rounding(candidate, answer, precision)
+            and _holds(rows, plain, candidate, target)
             and (served(candidate) >= floor).all()
             and farther(candidate, answer, target, precision) <= 0
         ):
