@@ -29,6 +29,7 @@ from napkin.draw.triggers import (
 )
 from napkin.model import semantic as s
 from tests.draw.models import compiled
+from tests.draw.test_notation import MEMBERSHIP
 
 
 def world(text):
@@ -279,7 +280,14 @@ a:
 record fixture: assumption "A synthetic test fixture."
 """
 
-SYNTHETIC = {'basic': BASIC, 'lists': LISTS, 'events': EVENTS, 'switching': SWITCHING}
+# The membership tests of the notation's plant: in formulas, a stage's guard and a trigger's condition.
+SYNTHETIC = {
+    'basic': BASIC,
+    'lists': LISTS,
+    'events': EVENTS,
+    'switching': SWITCHING,
+    'membership': MEMBERSHIP,
+}
 
 
 @pytest.fixture(scope='module')
@@ -351,6 +359,21 @@ def test_groups_have_parentheses_only_where_the_meaning_needs_them(models):
     assert formula_words(found, 'a', 'either') == 'p or q or r'
     assert formula_words(found, 'a', 'negated') == 'not (p and q)'
     assert formula_words(found, 'a', 'negated_name') == 'not p'
+
+
+def test_a_membership_test_reads_as_the_file_writes_it(models):
+    # `x in [lo, hi]` is the program's `within`, a name that the file never writes: it reads as the
+    # file's form with "is", as a comparison does, and a part of a lower precedence is in parentheses,
+    # as is the test under `not`.
+    found = models['membership']
+    assert formula_words(found, 'plant', 'inside') == 'x is in [lo, hi]'
+    assert formula_words(found, 'plant', 'fixed') == 'x + y is in [1 h, 3 h]'
+    assert formula_words(found, 'plant', 'picked') == '(x if on, else y) is in [lo, 2 × hi]'
+    go, check = line_of(found, 'plant', 'go'), line_of(found, 'plant', 'check')
+    assert go.starts == 'when on and not (x is in [lo, 3 h])'
+    assert go.steps == ('after 1 h when x is in [1 h, 2 h]: sets seen',)
+    assert check.starts == 'when x is in [lo, hi]'
+    assert check.steps == ('after 0 h when y is in [lo, hi]: sets seen',)
 
 
 def test_the_outer_parentheses_of_a_rule_never_show(models):

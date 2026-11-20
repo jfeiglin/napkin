@@ -14,10 +14,11 @@ The nodes, each a frozen dataclass:
   its unit (the unit's spelling, or None). `Text` is an enum member or a text (a string), or a yes/no
   (True or False); it is also the words of a read that no symbol stands for (a member of a keyed
   collection that only a run knows).
-- `Op` (`+ - * / **`), `Neg` and `Pos` (a sign), `Cmp`, `Logic` (`and`, `or`), `Not` and `Cases`. A
-  comparison is one `Cmp` with its operators and its operands: the chain `a < b < c` is one `Cmp` with
-  two operators and three operands. `Cases` is `a if C else b`; each `else … if` of a chain is one
-  more case, in order.
+- `Op` (`+ - * / **`), `Neg` and `Pos` (a sign), `Cmp`, `In`, `Logic` (`and`, `or`), `Not` and
+  `Cases`. A comparison is one `Cmp` with its operators and its operands: the chain `a < b < c` is one
+  `Cmp` with two operators and three operands. `In` is a membership test `x in [lo, hi]`, as the model
+  writes it: the program's operation `within`, which fails where the interval is reversed. `Cases` is
+  `a if C else b`; each `else … if` of a chain is one more case, in order.
 - `Call`: a function of the language (`min`, `max`, `clip`, `abs`, `sqrt`, `exp`, `ln`, …); a
   distribution (`uniform`, `pert`, `categorical` with a keyword argument for each outcome); `draw`
   of a distribution; and the reads of a flow or a store that are no value of their own:
@@ -43,9 +44,9 @@ place, the same function of the same values):
 - The parentheses are the fewest that keep the tree. An operand with a lower precedence than its
   operator has them. So does a right operand of `+ - * /` with the same precedence: `a - (b - c)`
   and `a + (b + c)` keep them, and `(a - b) - c` is `a - b - c`. The precedences are those of Python
-  (`precedence`). Also, for the reader: a sign after an operator or after a sign has them
-  (`a \\cdot (-b)`), and so do the operand of `\\lnot` that is not an atom and an `and` or an `or`
-  inside another.
+  (`precedence`; a membership is a comparison). Also, for the reader: a sign after an operator or
+  after a sign has them (`a \\cdot (-b)`), and so do the operand of `\\lnot` that is not an atom and an
+  `and` or an `or` inside another.
 - `*` is `\\cdot`. `/` is `\\frac{a}{b}`, except in an exponent, where it is `a / b`. The base of a
   power is in braces, `{a}^{b}`, and in parentheses too unless it is an atom (a symbol, a number
   without a unit, a function, a clock).
@@ -56,7 +57,9 @@ place, the same function of the same values):
   is `\\left|x\\right|`; a sum of a list is `\\sum(…)`; every other function is `\\operatorname{…}`, with
   its name. A keyword argument is `\\text{name}\\colon value`.
 - `Cmp` writes `<`, `\\le`, `>`, `\\ge`, `=` and `\\ne`; `Logic` and `Not` write `\\land`, `\\lor` and
-  `\\lnot`. `Cases` is `\\begin{cases} a & \\text{if } C \\\\ b & \\text{otherwise} \\end{cases}`.
+  `\\lnot`. `In` is `x \\in \\left[lo, hi\\right]`: its x is an operand of a comparison, and its ends
+  are in the brackets as the arguments of a function are, with no parentheses of their own. `Cases`
+  is `\\begin{cases} a & \\text{if } C \\\\ b & \\text{otherwise} \\end{cases}`.
 - An enum member and a text are `\\text{…}`, and a yes/no word `\\mathrm{true}` or `\\mathrm{false}`.
   Every text is escaped (`escape`).
 - `Deriv` is `\\frac{\\mathrm{d}S}{\\mathrm{d}t}`. `Assign` is `S \\leftarrow v`; for `+=` and `-=`, v is
@@ -218,6 +221,16 @@ class Cmp(Node):
 
 
 @dataclass(frozen=True)
+class In(Node):
+    """A membership test, `x in [low, high]`: whether x is in the closed interval. The program's
+    operation (`within`) fails where the interval is reversed."""
+
+    x: Node
+    low: Node
+    high: Node
+
+
+@dataclass(frozen=True)
 class Logic(Node):
     """`and` or `or` of two items or more."""
 
@@ -293,7 +306,7 @@ class Assign(Node):
 
 
 # Each class of node by its name, as `as_dict` writes it.
-_CLASSES = (Sym, Num, Text, Time, Op, Neg, Pos, Call, Sum, Cases, Cmp, Logic, Not, Since, Count, Elapsed)
+_CLASSES = (Sym, Num, Text, Time, Op, Neg, Pos, Call, Sum, Cases, Cmp, In, Logic, Not, Since, Count, Elapsed)
 NODES = {cls.__name__: cls for cls in (*_CLASSES, Deriv, Assign)}
 
 
@@ -388,6 +401,9 @@ def _apply(node, keys):
             test, body, node = node.args
             pairs.append((build(test, keys), build(body, keys)))
         return Cases(tuple(pairs), build(node, keys))
+    if op == 'call' and node.detail == 'within':
+        # The program's membership is the test that the model writes, `x in [lo, hi]`.
+        return In(*(build(arg, keys) for arg in args))
     if op == 'call':
         return Call(node.detail, tuple(build(arg, keys) for arg in args))
     raise ValueError(f'{op} is not a part of the notation')
@@ -707,15 +723,15 @@ def escape(text):
 
 def precedence(node, exponent=False):
     """The precedence of a node's LaTeX: Python's (a `Cases` 0, `or` 1, `and` 2, `not` 3, a comparison
-    4, `+ -` 5, `* /` 6, a sign 7, `**` 8), and `ATOM` for a node that writes its own bounds. A `/` is
-    an atom, `\\frac{}{}`, except in an exponent."""
+    and a membership 4, `+ -` 5, `* /` 6, a sign 7, `**` 8), and `ATOM` for a node that writes its own
+    bounds. A `/` is an atom, `\\frac{}{}`, except in an exponent."""
     if isinstance(node, Cases):
         return 0
     if isinstance(node, Logic):
         return _PRECEDENCE[node.op]
     if isinstance(node, Not):
         return 3
-    if isinstance(node, Cmp):
+    if isinstance(node, (Cmp, In)):
         return 4
     if isinstance(node, Op):
         return ATOM if node.op == '/' and not exponent else _PRECEDENCE[node.op]
@@ -815,6 +831,9 @@ class _Writer:
             for op, item in zip(node.ops, node.items[1:]):
                 parts += [_CMP[op], self.operand(item, 5, exponent)]
             return ' '.join(parts)
+        if isinstance(node, In):
+            ends = f'{self.write(node.low, exponent)}, {self.write(node.high, exponent)}'
+            return self.operand(node.x, 5, exponent) + r' \in \left[' + ends + r'\right]'
         if isinstance(node, Logic):
             word = f' {_LOGIC_WORDS[node.op]} '
             return word.join(self.operand(item, 3, exponent) for item in node.items)

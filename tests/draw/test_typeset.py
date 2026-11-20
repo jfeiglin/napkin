@@ -46,6 +46,7 @@ from napkin.draw.notation import (
     Count,
     Deriv,
     Elapsed,
+    In,
     Logic,
     Neg,
     Not,
@@ -110,7 +111,7 @@ def level(node, inline):
         return LEVELS[node.op]
     if isinstance(node, Not):
         return 3
-    if isinstance(node, Cmp):
+    if isinstance(node, (Cmp, In)):
         return 4
     if isinstance(node, Op):
         return 9 if node.op == '/' and not inline else LEVELS[node.op]
@@ -197,6 +198,9 @@ class Reader:
             for op, item in zip(node.ops, node.items[1:]):
                 text += COMPARE[op] + self.operand(item, 5, inline)
             return text
+        if isinstance(node, In):
+            ends = self.read(node.low, inline) + ',' + self.read(node.high, inline)
+            return self.operand(node.x, 5, inline) + '∈[' + ends + ']'
         if isinstance(node, Logic):
             word = '∧' if node.op == 'and' else '∨'
             return word.join(self.operand(item, 3, inline) for item in node.items)
@@ -473,6 +477,10 @@ def test_every_property_holds_on_random_nodes(node, width, lines):
         ('2.5e-07 ** a', 1),
         ('2.5 ** a', 0),
         ('sqrt(a + b) * abs(a - b)', 0),
+        ('a + b in [c - d, c * d]', 0),
+        ('(a if p else b) in [c, d]', 1),
+        ('not (a in [b, c])', 1),
+        ('(a in [b, c]) == p', 1),
     ],
 )
 def test_the_parentheses_are_those_of_the_latex_in_number_and_place(text, parentheses):
@@ -530,6 +538,7 @@ def by_text(atoms, text):
         ('a == b', ['=']),
         ('p and q or not r', ['∧', '∨', '¬']),
         ('-a', ['−']),
+        ('a in [b, c]', ['∈']),
     ],
 )
 def test_each_operator_has_its_mathematical_sign(text, signs):
@@ -537,6 +546,29 @@ def test_each_operator_has_its_mathematical_sign(text, signs):
     found = [atom.text for atom in atoms if atom.kind in ('operator', 'relation')]
     assert found == signs
     assert not any(atom.italic for atom in atoms if atom.kind in ('operator', 'relation'))
+
+
+def test_a_membership_has_its_interval_in_brackets_drawn_around_a_tall_end():
+    # `x in [lo, hi]` as the model writes it: the brackets are runs against the ends on a line, and
+    # paths around an end that is taller, as a parenthesis is.
+    symbol = lambda key: (key[2].upper(), '', None)  # noqa: E731
+    flat = typeset(built('a in [b, c]'), symbol)
+    check_geometry(flat)
+    assert flat.reading() == 'A∈[B,C]' and not flat.rules()
+    kinds = [atom.kind for atom in flat.atoms()]
+    assert kinds == ['symbol', 'relation', 'delimiter', 'symbol', 'delimiter', 'symbol', 'delimiter']
+    assert by_text(flat.atoms(), '[').anchor == 'end' and by_text(flat.atoms(), ']').anchor == 'start'
+    tall = typeset(built('a in [b / c, c]'), symbol)
+    check_geometry(tall)
+    assert tall.reading() == 'A∈[B/C,C]'
+    left, bar, right = tall.rules()
+    assert (left.kind, left.text, bar.kind, right.kind, right.text) == ('bracket', '[', 'bar', 'bracket', ']')
+    inside = [atom for atom in tall.atoms() if left.box.right < atom.box.x and atom.box.right < right.box.x]
+    assert len(inside) == 4
+    for atom in inside:
+        assert left.box.y < atom.box.y and atom.box.bottom < left.box.bottom
+    assert (left.box.y, left.box.height) == (right.box.y, right.box.height)
+    assert not [atom for atom in tall.atoms() if atom.text in '[]']
 
 
 def test_symbols_and_the_time_are_italic_and_the_rest_upright():
@@ -843,7 +875,8 @@ def test_the_limits_are_checked():
 
 # The largest advance width (em) of each character in DejaVu Sans and Liberation Sans (the metrics of
 # Arial), regular and oblique: the fonts of a Linux `sans-serif` and of Windows, measured from the
-# font files on 2026-11-11. A glyph that a font lacks is left out of that font.
+# font files on 2026-11-11 (`∈`, which Liberation Sans lacks, from DejaVu Sans on 2026-11-20). A glyph
+# that a font lacks is left out of that font.
 ADVANCES = {
     '0': 0.636, '1': 0.636, '2': 0.636, '3': 0.636, '4': 0.636, '5': 0.636, '6': 0.636, '7': 0.636,
     '8': 0.636, '9': 0.636, 'a': 0.613, 'b': 0.635, 'c': 0.55, 'd': 0.635, 'e': 0.615, 'f': 0.352,
@@ -858,7 +891,8 @@ ADVANCES = {
     '=': 0.838, '>': 0.838, '?': 0.556, '@': 1.015, '[': 0.39, '\\': 0.337, ']': 0.39, '^': 0.838,
     '_': 0.556, '`': 0.5, '{': 0.636, '|': 0.337, '}': 0.636, '~': 0.838, ' ': 0.318, '−': 0.838,
     '·': 0.333, '×': 0.838, '≤': 0.838, '≥': 0.838, '≠': 0.838, '←': 1.0, '∧': 0.75, '∨': 0.75,
-    '¬': 0.838, '±': 0.838, 'τ': 0.602, 'Σ': 0.632, '…': 1.0, '′': 0.227, 'α': 0.659, 'β': 0.638,
+    '¬': 0.838, '±': 0.838, '∈': 0.871, 'τ': 0.602, 'Σ': 0.632, '…': 1.0, '′': 0.227, 'α': 0.659,
+    'β': 0.638,
     'γ': 0.592, 'δ': 0.612, 'ϵ': 0.615, 'ε': 0.541, 'ζ': 0.544, 'η': 0.634, 'θ': 0.612, 'ϑ': 0.619,
     'ι': 0.338, 'κ': 0.589, 'λ': 0.592, 'μ': 0.636, 'ν': 0.559, 'ξ': 0.558, 'ο': 0.612, 'π': 0.69,
     'ρ': 0.635, 'σ': 0.634, 'υ': 0.579, 'ϕ': 0.66, 'φ': 0.66, 'χ': 0.578, 'ψ': 0.728, 'ω': 0.837,

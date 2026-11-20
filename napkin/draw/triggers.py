@@ -23,14 +23,16 @@ The choices of the words:
   and `false` read "yes" and "no". A number reads plainly: an integer as it is, any other number in
   its shortest form (`0.5`, `1e-9`), with its unit (`2 h`, `0 L`); a text is in quotes.
 - **Forms.** `x == s` "x is s"; `!=` "is not"; `<`, `<=`, `>`, `>=` "is below", "is at most", "is
-  above", "is at least"; `since(e) >= d` "d has passed since e", `since(e) > d` "more than d has passed
-  since e", `since(e) < d` and `<= d` "within d of e"; `elapsed(s) >= d` "d has passed since s
-  changed"; `count(e.occurrences) > 0` "e has started", `> n` "e has started more than n times" (and
-  "at least", "exactly", "no more than", "fewer than"; "once" for 1); `t >= x` "from x", `t < x`
-  "before x"; `any`, `all`, `sum`, `min` and `max` of a collection "any x of L", "every x of L", "sum
-  of x over L", "least x of L", "most x of L"; `count` of yes/no values "number of L where x", and in
-  a comparison "x holds in more than n of L". A collection reads as written: `T.instances` "T
-  instances", a literal its members, `where` "L where c", a keyed read "x of L with k v".
+  above", "is at least"; a membership test `x in [lo, hi]` "x is in [lo, hi]", as the file writes it
+  (it is the program's `within`, a name that the file never writes); `since(e) >= d` "d has passed
+  since e", `since(e) > d` "more than d has passed since e", `since(e) < d` and `<= d` "within d of e";
+  `elapsed(s) >= d` "d has passed since s changed"; `count(e.occurrences) > 0` "e has started", `> n`
+  "e has started more than n times" (and "at least", "exactly", "no more than", "fewer than"; "once"
+  for 1); `t >= x` "from x", `t < x` "before x"; `any`, `all`, `sum`, `min` and `max` of a collection
+  "any x of L", "every x of L", "sum of x over L", "least x of L", "most x of L"; `count` of yes/no
+  values "number of L where x", and in a comparison "x holds in more than n of L". A collection reads
+  as written: `T.instances` "T instances", a literal its members, `where` "L where c", a keyed read "x
+  of L with k v".
 - **Groups.** `and` reads "A and B", or "A, B, and C"; `or` reads "A or B"; `not` reads "not x", or
   "not (…)" around a comparison or a group. A group inside a group of the other kind is in
   parentheses, and nowhere else.
@@ -224,6 +226,10 @@ class _Words:
         if op == 'call':
             if node.detail in ('min', 'max'):
                 return f'{LIST_WORDS[node.detail]} of ' + _listed([self.text(arg) for arg in args]), ATOM
+            if node.detail == 'within':
+                value, low, high = args
+                ends = f'[{self.text(low)}, {self.text(high)}]'
+                return f'{self.wrapped(value, COMPARISON + 1)} is in {ends}', COMPARISON
             return f'{node.detail}(' + ', '.join(self.text(arg) for arg in args) + ')', ATOM
         return f'{op}(' + ', '.join(self.text(arg) for arg in args) + ')', ATOM
 

@@ -7,7 +7,9 @@ and the associativity of Python's operators, with the forms of the writer's text
 The symbols of a test are `x_{i}` for a value and `e_{i}` for an event: `values` maps each `x_{i}` to
 its key, and `events` each `e_{i}` to the key of its event. Anything that the writer does
 not write is an error (`LatexError`), so a text that the reader reads is a text of the subset: an
-unescaped special character in a text, a stray brace, a token after the end.
+unescaped special character in a text, a stray brace, a token after the end, a membership
+`x \\in \\left[lo, hi\\right]` in a chain of comparisons (Python reads `a < b in [c, d]` as a chain;
+the writer puts a membership inside a comparison in parentheses).
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from napkin.draw.notation import (
     Count,
     Deriv,
     Elapsed,
+    In,
     Logic,
     Neg,
     Not,
@@ -221,7 +224,19 @@ class Reader:
         while self.token() in COMPARE:
             ops.append(COMPARE[self.take()])
             items.append(self.sum())
+        if not ops and self.taken(r'\in'):
+            return self.membership(items[0])
         return items[0] if not ops else Cmp(tuple(ops), tuple(items))
+
+    def membership(self, value):
+        """The interval after `\\in`, `\\left[lo, hi\\right]`: the membership of `value`. A comparison
+        after it is a token that no rule reads, so the text is refused."""
+        self.take(r'\left[')
+        low = self.expression()
+        self.take(',')
+        high = self.expression()
+        self.take(r'\right]')
+        return In(value, low, high)
 
     def sum(self):
         node = self.product()

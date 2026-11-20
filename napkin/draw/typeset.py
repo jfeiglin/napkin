@@ -20,7 +20,9 @@ The look:
   unit follows its number after a thin space; a power of a unit (`m^2`) is a superscript. A number with
   an exponent is `1.5 × 10` with the exponent as a superscript.
 - `*` is `·`, `-` is the minus sign `−`, `<=` is `≤`, `>=` is `≥`, `==` is `=`, `!=` is `≠`, `and`, `or`
-  and `not` are `∧`, `∨` and `¬`, and a line of an event is `S ← v`. The time is an italic `t`.
+  and `not` are `∧`, `∨` and `¬`, and a line of an event is `S ← v`. The time is an italic `t`. A
+  membership test is `x ∈ [lo, hi]`, as the model writes it (`x in [lo, hi]`): `∈` is a relation, and
+  the ends are in brackets, as the LaTeX writes them.
 - `Since(e)` and `Elapsed(s)` are τ, and `Count(e)` is N, with the symbol of what they read as the
   subscript (`clocks` changes the letters). A subscript of that symbol is a subscript too, at the
   smallest size (`MIN_SIZE`).
@@ -39,7 +41,8 @@ The look:
 - `Cases` is a left brace and one row for each case: the value, then "if" and the condition, and the
   last row the value and "otherwise". The values and the words are in two columns.
 - The parentheses are those of `notation.latex` (its `precedence` and its rules for a sign, a base and
-  `not`). A parenthesis, a bar of `abs` and a brace around content taller than a line are paths.
+  `not`). A parenthesis, a bar of `abs`, a bracket of an interval and a brace around content taller
+  than a line are paths.
 
 The width of a run is the estimate of `layout.text_width` (`EM` for each character), with other widths
 for the characters that need them: an upper-case letter (a Greek capital too) is `CAPITAL` em, and
@@ -87,6 +90,7 @@ from .notation import (
     Count,
     Deriv,
     Elapsed,
+    In,
     Logic,
     Neg,
     Not,
@@ -124,7 +128,7 @@ NARROW = 0.45
 OPERATOR = 0.8
 WIDTHS = {
     **dict.fromkeys("()[]|,.:;!/·′' ijlIftr", NARROW),
-    **dict.fromkeys('+−=<>≤≥≠×¬±∧∨#&^~', OPERATOR),
+    **dict.fromkeys('+−=<>≤≥≠×¬±∧∨#&^~∈', OPERATOR),
     **{'m': 0.9, 'w': 0.8, 'M': 0.9, 'W': 1.0, 'Μ': 0.9, '%': 0.9, '@': 1.0, '…': 1.0, '—': 1.0, '←': 1.0},
     '⇔': 1.0,
     **dict.fromkeys('ωψφϕπΦΨ', 0.8),
@@ -160,7 +164,7 @@ ANCHORS = {
     'word': 'start',
     'marker': 'start',
 }
-_DELIMITER_ANCHORS = {'(': 'end', ')': 'start', ',': 'start', ':': 'start'}
+_DELIMITER_ANCHORS = {'(': 'end', ')': 'start', '[': 'end', ']': 'start', ',': 'start', ':': 'start'}
 
 MARKER = '… (continues in the LaTeX)'
 CLOCKS = {'since': 'τ', 'count': 'N', 'elapsed': 'τ'}
@@ -250,10 +254,10 @@ class Atom:
 
 @dataclass(frozen=True)
 class Rule:
-    """A path: its kind (`bar` of a fraction, `overline` and `radical` of a root, `brace`, `paren`, and
-    `bars` of `abs`), its commands ((letter, (x, y, …)), …) in the coordinates of the equation, the
-    width of its stroke, the text that it stands for in the reading order ('/', '', '√', '{', '(', ')'
-    or '|'), and its box (the box of its points)."""
+    """A path: its kind (`bar` of a fraction, `overline` and `radical` of a root, `brace`, `paren`,
+    `bars` of `abs`, and `bracket` of an interval), its commands ((letter, (x, y, …)), …) in the
+    coordinates of the equation, the width of its stroke, the text that it stands for in the reading
+    order ('/', '', '√', '{', '(', ')', '|', '[' or ']'), and its box (the box of its points)."""
 
     kind: str
     path: tuple
@@ -603,6 +607,19 @@ class _Setter:
         right = _Path('paren', (('M', (0.0, top)), ('C', (w, upper, w, lower, 0.0, bottom))), stroke, ')')
         return _row(_rule_piece(left, w), gap, piece, gap, _rule_piece(right, w))
 
+    def brackets(self, piece, size):
+        """The interval of a membership, `[piece]`, with drawn brackets around content taller than a
+        line, as `parens` draws its parentheses."""
+        if not self.tall(piece, size):
+            return _row(_run('[', size, 'delimiter'), piece, _run(']', size, 'delimiter'))
+        pad = _space(0.1, size)
+        top, bottom = -piece.ascent - pad, piece.descent + pad
+        w = half(0.3 * size)
+        stroke = _stroke(size)
+        left, right = _bracket('[', w, 0.0, top, bottom, stroke), _bracket(']', 0.0, w, top, bottom, stroke)
+        gap = _space(0.05, size)
+        return _row(_rule_piece(left, w), gap, piece, gap, _rule_piece(right, w))
+
     def bars(self, piece, size):
         if not self.tall(piece, size):
             return _row(_run('|', size, 'delimiter'), piece, _run('|', size, 'delimiter'))
@@ -733,6 +750,16 @@ class _Setter:
             for op, item in zip(node.ops, node.items[1:]):
                 parts += [gap, _run(_CMP[op], size, 'relation'), gap, self.operand(item, 5, size, inline)]
             return _row(*parts)
+        if isinstance(node, In):
+            gap = _space(RELATION, size)
+            ends = [self.write(node.low, size, inline), self.write(node.high, size, inline)]
+            return _row(
+                self.operand(node.x, 5, size, inline),
+                gap,
+                _run('∈', size, 'relation'),
+                gap,
+                self.brackets(self.commas(ends, size), size),
+            )
         if isinstance(node, Logic):
             gap = _space(LOGIC_SPACE, size)
             parts = []
@@ -1013,6 +1040,12 @@ def _brace(top, bottom, size):
         ('Q', (stem, bottom, w, bottom)),
     )
     return _Path('brace', commands, _stroke(size), '{'), w
+
+
+def _bracket(text, tip, stem, top, bottom, stroke):
+    """A square bracket (`text`) from y `top` to y `bottom`: its stem at x `stem`, its arms to x `tip`."""
+    corners = ((tip, top), (stem, top), (stem, bottom), (tip, bottom))
+    return _Path('bracket', (('M', corners[0]), *(('L', corner) for corner in corners[1:])), stroke, text)
 
 
 def _stack(rows, brace, size, cut):

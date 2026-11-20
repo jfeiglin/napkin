@@ -1731,12 +1731,14 @@ def test_without_bundles_no_two_arrows_share_an_end_or_a_stretch(picture):
 @SHAPE
 @given(pictures(groups=True))
 def test_a_bundle_of_one_arrow_is_that_arrow(picture):
-    # With at most one arrow of each bundled kind from each card, bundling changes nothing.
+    # With at most one arrow of each bundled kind (the picture's `settings.bundle`, as `check_bundles`
+    # reads it) from each card, bundling changes nothing.
+    kinds = (picture.get('settings') or {}).get('bundle', DEFAULT_BUNDLE)
     seen = set()
     arrows = []
     for given_arrow in picture['arrows']:
         key = (given_arrow['from'], given_arrow['kind'])
-        if given_arrow['kind'] not in DEFAULT_BUNDLE or key not in seen:
+        if given_arrow['kind'] not in kinds or key not in seen:
             seen.add(key)
             arrows.append(given_arrow)
     picture = {**picture, 'arrows': arrows}

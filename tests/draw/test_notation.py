@@ -11,6 +11,9 @@ node for node, and its LaTeX says the same.
 - LaTeX: `latex_subset.py` reads the LaTeX back into a node, which has the shape of the node and the
   value of the expression at the same points. Counterexamples show the parentheses that a naive
   writer leaves out.
+- A membership test (`x in [lo, hi]`, the program's `within`) is `In` wherever the model writes it,
+  its LaTeX is the model's form, and its value is the spec's: true or false, and a failure by name
+  where its interval is reversed (`MEMBERSHIP`, with values worked by hand). `napkin draw` writes it so.
 """
 
 from __future__ import annotations
@@ -21,7 +24,9 @@ import json
 import math
 import operator
 import random
+import re
 import string
+import xml.etree.ElementTree as ET
 from dataclasses import fields, is_dataclass
 
 import pytest
@@ -37,6 +42,7 @@ from napkin.draw.notation import (
     Count,
     Deriv,
     Elapsed,
+    In,
     Keys,
     Logic,
     Neg,
@@ -52,6 +58,8 @@ from napkin.draw.notation import (
 )
 from napkin.draw.things import Things
 from napkin.model import semantic as s
+from tests.commands.call import UNITS as COMMAND_UNITS
+from tests.commands.call import napkin, package
 from tests.draw.latex_subset import LatexError, read, read_line
 from tests.draw.models import compiled
 
@@ -78,8 +86,8 @@ def node_of(text):
     """The typed form of a Python text, as the declared model gives it: each name a value of the
     member `s` (`read_of`; `p`, `q` and `r` are yes/no, `go` and `stop` events), `t` the time,
     `q(x, 'unit')` a number with a unit, `since(e)` and `elapsed(x)` history, `sum`, `count`, `any`,
-    `all`, and `min` and `max` of one list `[a, b]` reductions of a literal collection, and the other
-    functions calls."""
+    `all`, and `min` and `max` of one list `[a, b]` reductions of a literal collection, the other
+    functions calls, and `x in [lo, hi]` the program's membership `within`."""
 
     def of(node):
         if isinstance(node, ast.Name):
@@ -104,6 +112,10 @@ def node_of(text):
             return s.Apply(
                 'and' if isinstance(node.op, ast.And) else 'or', tuple(map(of, node.values)), s.BOOL
             )
+        if isinstance(node, ast.Compare) and isinstance(node.ops[0], ast.In):
+            (interval,) = node.comparators
+            low, high = interval.elts
+            return s.Apply('call', (of(node.left), of(low), of(high)), s.BOOL, 'within')
         if isinstance(node, ast.Compare):
             items = (of(node.left), *map(of, node.comparators))
             return s.Apply('compare', items, s.BOOL, tuple(COMPARE[type(op)] for op in node.ops))
@@ -191,6 +203,18 @@ def _canonical(value):
 
 # ---- the two evaluators ---------------------------------------------------------------------------
 
+# The failure of a membership test whose interval is reversed (spec: "reversed bounds are an error"),
+# by the name that the program gives it.
+REVERSED = 'the interval of a membership test is reversed'
+
+
+def within(x, low, high):
+    """`x in [low, high]`: whether x is in the closed interval; a reversed interval is an error."""
+    if low > high:
+        raise ValueError(REVERSED)
+    return low <= x <= high
+
+
 FUNCTIONS = {
     'min': min,
     'max': max,
@@ -202,6 +226,7 @@ FUNCTIONS = {
     'log1p': math.log1p,
     'sqrt': math.sqrt,
     'erf': math.erf,
+    'within': within,
 }
 ARITHMETIC_OPS = {'add': operator.add, 'sub': operator.sub, 'mul': operator.mul, 'div': operator.truediv}
 ARITHMETIC_OPS['pow'] = operator.pow
@@ -351,6 +376,8 @@ def value_of_node(node, point):
                 if not ORDER[op](values[-2], values[-1]):
                     return False
             return True
+        if isinstance(node, In):
+            return within(of(node.x), of(node.low), of(node.high))
         if isinstance(node, Cases):
             for condition, value in node.pairs:
                 if of(condition):
@@ -461,6 +488,7 @@ def latex_back(node):
         ('since(go) >= q(3, "h")', Cmp(('>=',), (Since('s.go'), Num(3, 'h')))),
         ('elapsed(a)', Elapsed('s.a')),
         ('t >= 2', Cmp(('>=',), (Time(), Num(2)))),
+        ('a in [b, q(3, "h")]', In(Sym('s.a'), Sym('s.b'), Num(3, 'h'))),
         ('true', Text(True)),
         ('"a text"', Text('a text')),
     ],
@@ -637,6 +665,7 @@ lab:
         request = this.rate
     low = formula(this.level < 5 L and this.on or not this.on)
     chain = formula(1 L < this.level <= 50 L)
+    inside = formula(this.level in [1 L, 2 * this.level])
     pick = formula(this.rate if this.on else (2 * this.rate if this.level > 1 L else this.rate / 2))
     shaped = formula(clip(this.level, 1 L, 6 L) + max(this.level - 5 L, 0 L) + abs(-this.level))
     grown = formula(exp(ln(2)) * sqrt(16) - (this.level / (1 L)) ** 2)
@@ -711,6 +740,190 @@ def test_each_expression_of_a_model_keeps_its_value_and_its_latex_too(every):
             assert same(outcome(value_of_node, back, point), expected), (place, text, point.seed)
 
 
+# ---- a membership test ----------------------------------------------------------------------------
+
+# A plant with a membership test in each place where a model writes one: a formula, a stage's guard,
+# a trigger's condition and a stage's statement, with ends that the model fixes, ends that only a run
+# knows, and both. The fill reads `inside`, so the Equations panel shows that formula; the statement
+# is a jump of the panel.
+MEMBERSHIP = """\
+scenario "Interval"
+    horizon 4 h
+
+plant:
+    lo: h = 1 h
+    hi: h = 3 h
+    x: h = 2.5 h
+    y: h = 0.5 h
+    on: bool = true
+    seen: bool = false
+    water: L = 1 L in [0 L,]
+    inside = formula(this.x in [this.lo, this.hi])
+    fixed = formula(this.x + this.y in [1 h, 3 h])
+    picked = formula((this.x if this.on else this.y) in [this.lo, 2 * this.hi])
+    flow fill: SOURCE -> this.water
+        request = 2 L/h if this.inside else 1 L/h
+    go = event():
+        when this.on and not (this.x in [this.lo, 3 h]):
+            this.go.start()
+        after 1 h when this.x in [1 h, 2 h]:
+            this.seen = (this.y in [this.lo, this.hi])
+    check = event():
+        when this.x in [this.lo, this.hi]:
+            this.check.start()
+        after 0 h when this.y in [this.lo, this.hi]:
+            this.seen = false
+"""
+
+
+def plant(name):
+    return Sym(f'plant.{name}')
+
+
+# Each membership of the plant by its place: its node; its LaTeX with the symbols of the test
+# (`symbols`: x_{i} in the order of the node's reads), whose only parentheses are those of an operand
+# of a lower precedence than a comparison's (a conditional, and the membership under `not`); and its
+# value at points given by hand, in hours: true, false, and the failure of a reversed interval, which
+# ends that the model fixes cannot be (the compiler refuses them).
+MEMBERSHIPS = {
+    ('plant.inside', 'init'): (
+        In(plant('x'), plant('lo'), plant('hi')),
+        r'x_{1} \in \left[x_{2}, x_{3}\right]',
+        (({'x': 2.5, 'lo': 1, 'hi': 3}, True), ({'x': 3.5, 'lo': 1, 'hi': 3}, False)),
+        ({'x': 2.5, 'lo': 3, 'hi': 2},),
+    ),
+    ('plant.fixed', 'init'): (
+        In(Op('+', plant('x'), plant('y')), Num(1, 'h'), Num(3, 'h')),
+        r'x_{1} + x_{2} \in \left[1\,\mathrm{h}, 3\,\mathrm{h}\right]',
+        (({'x': 2.5, 'y': 0.5}, True), ({'x': 2.75, 'y': 0.5}, False)),
+        (),
+    ),
+    ('plant.picked', 'init'): (
+        In(Cases(((plant('on'), plant('x')),), plant('y')), plant('lo'), Op('*', Num(2), plant('hi'))),
+        r'\left(\begin{cases} x_{2} & \text{if } x_{1} \\ x_{3} & \text{otherwise} \end{cases}\right) '
+        r'\in \left[x_{4}, 2 \cdot x_{5}\right]',
+        (
+            ({'on': True, 'x': 2.5, 'y': 0.5, 'lo': 1, 'hi': 3}, True),
+            ({'on': False, 'x': 2.5, 'y': 0.5, 'lo': 1, 'hi': 3}, False),
+        ),
+        ({'on': True, 'x': 2.5, 'y': 0.5, 'lo': 7, 'hi': 3},),
+    ),
+    ('plant.go.when[0]', 'when'): (
+        Logic('and', (plant('on'), Not(In(plant('x'), plant('lo'), Num(3, 'h'))))),
+        r'x_{1} \land \lnot \left(x_{2} \in \left[x_{3}, 3\,\mathrm{h}\right]\right)',
+        (({'on': True, 'x': 3.5, 'lo': 1}, True), ({'on': True, 'x': 3, 'lo': 1}, False)),
+        ({'on': True, 'x': 2.5, 'lo': 4},),
+    ),
+    ('plant.go.step[0]', 'guard'): (
+        In(plant('x'), Num(1, 'h'), Num(2, 'h')),
+        r'x_{1} \in \left[1\,\mathrm{h}, 2\,\mathrm{h}\right]',
+        (({'x': 1}, True), ({'x': 2.5}, False)),
+        (),
+    ),
+    ('plant.go.step[0].do[0]', 'value'): (
+        In(plant('y'), plant('lo'), plant('hi')),
+        r'x_{1} \in \left[x_{2}, x_{3}\right]',
+        (({'y': 2, 'lo': 2, 'hi': 2}, True), ({'y': 0.5, 'lo': 1, 'hi': 3}, False)),
+        ({'y': 2, 'lo': 2.5, 'hi': 2},),
+    ),
+    ('plant.check.when[0]', 'when'): (
+        In(plant('x'), plant('lo'), plant('hi')),
+        r'x_{1} \in \left[x_{2}, x_{3}\right]',
+        (({'x': 3, 'lo': 1, 'hi': 3}, True), ({'x': 0.5, 'lo': 1, 'hi': 3}, False)),
+        ({'x': 2.5, 'lo': 3, 'hi': 1},),
+    ),
+    ('plant.check.step[0]', 'guard'): (
+        In(plant('y'), plant('lo'), plant('hi')),
+        r'x_{1} \in \left[x_{2}, x_{3}\right]',
+        (({'y': 1, 'lo': 1, 'hi': 3}, True), ({'y': 3.5, 'lo': 1, 'hi': 3}, False)),
+        ({'y': 1, 'lo': 3.5, 'hi': 3},),
+    ),
+}
+
+
+class Given(Point):
+    """A point whose values are given by hand, by name, with each unit at the scale 1."""
+
+    def __init__(self, values):
+        super().__init__(0)
+        self.given = values
+
+    def value(self, key):
+        return self.given[key.rpartition('.')[2]]
+
+    def scale(self, unit):
+        return 1
+
+
+def verdict(evaluate, *args):
+    """The value of an evaluation, or the text of its failure."""
+    try:
+        return evaluate(*args)
+    except ValueError as failure:
+        return str(failure)
+
+
+@pytest.fixture(scope='module')
+def membership():
+    return Things(compiled(MEMBERSHIP))
+
+
+def test_a_membership_is_its_node_its_latex_and_its_value_wherever_the_model_writes_it(membership):
+    found = {
+        (place.path, place.part): (expression, notation.keys_of(membership, place))
+        for place, expression in notation.walk(membership)
+    }
+    assert set(MEMBERSHIPS) <= set(found)
+    for where, (node, written, values, reversed_values) in MEMBERSHIPS.items():
+        expression, keys = found[where]
+        made = notation.build(expression, keys)
+        assert shape(made) == shape(node), (where, made)
+        text, back = latex_back(made)
+        assert text == written, where
+        assert shape(back) == shape(node), (where, text)
+        cases = [*values, *((at, REVERSED) for at in reversed_values)]
+        for at, expected in cases:
+            point = Given(at)
+            for value in (
+                verdict(value_of_typed, expression, point, keys),
+                verdict(value_of_node, made, point),
+                verdict(value_of_node, back, point),
+            ):
+                assert value == expected and type(value) is type(expected), (where, at, value)
+
+
+SVG = '{http://www.w3.org/2000/svg}'
+
+
+def test_napkin_draw_writes_a_membership_as_the_model_writes_it(tmp_path, capsys):
+    # The panel shows two memberships: the formula `inside`, which the fill reads, and the jump of
+    # `go`. Each reads as the model writes it, a symbol, `∈`, and the interval of two symbols; the
+    # LaTeX writes `\in` and the interval. The card shows the guards and the triggers' conditions in
+    # the words of `triggers.py`. Nothing names the program's `within`.
+    folder = package(tmp_path / 'interval', MEMBERSHIP, COMMAND_UNITS)
+    style = '[equations]\nthings = ["plant"]\n\n[triggers]\nrules = ["plant"]\n'
+    (folder / 'style.toml').write_text(style, encoding='utf-8')
+    picture, latex = tmp_path / 'interval.svg', tmp_path / 'interval.tex'
+    done = napkin(capsys, 'draw', folder, '-o', picture, '--latex', latex)
+    assert done.code == 0, done.err
+    root = ET.parse(picture).getroot()
+    lines = [
+        ''.join(span.text or '' for span in text.iter(f'{SVG}tspan'))
+        for text in root.iter(f'{SVG}text')
+        if text.get('class') == 'math'
+    ]
+    memberships = [line for line in lines if '∈' in line]
+    symbol = r'[^⇔←∈\[\],]+'
+    assert len(memberships) == 2, lines
+    assert all(re.fullmatch(rf'{symbol}[⇔←]{symbol}∈\[{symbol},{symbol}\]', line) for line in memberships)
+    words = '\n'.join(root.itertext())
+    assert 'go — when on and not (x is in [lo, 3 h]); after 1 h when x is in [1 h, 2 h]: sets seen' in words
+    assert 'check — when x is in [lo, hi]; after 0 h when y is in [lo, hi]: sets seen' in words
+    text = latex.read_text(encoding='utf-8')
+    assert text.count(r' \in \left[') == 2 and text.count(r'\right]') == 2
+    assert 'within' not in picture.read_text(encoding='utf-8') + text
+
+
 # ---- the LaTeX of the precedences -----------------------------------------------------------------
 
 # Pairs of texts with the same operands and operators in another grouping. A writer that leaves out the
@@ -769,6 +982,13 @@ def test_the_latex_keeps_the_grouping_that_the_tree_has(first, second):
         ('-a * b', 0),
         ('not p and (q or r)', 1),
         ('not (a < b)', 1),
+        ('a + b in [c - d, c * d]', 0),
+        ('(a if p else b) in [c, d]', 1),
+        ('not (a in [b, c])', 1),
+        ('p and a in [b, c]', 0),
+        ('(a in [b, c]) == p', 1),
+        ('(a in [b, c]) in [d, e]', 1),
+        ('a in [b in [c, d], e]', 0),
     ],
 )
 def test_the_latex_has_the_fewest_parentheses(text, parentheses):
@@ -876,6 +1096,7 @@ def _extend(children):
             st.lists(st.sampled_from(sorted(notation.COMPARISONS)), min_size=1, max_size=2),
             st.lists(children, min_size=3, max_size=3),
         ),
+        st.builds(In, children, children, children),
         st.builds(
             Logic, st.sampled_from(['and', 'or']), st.lists(children, min_size=2, max_size=3).map(tuple)
         ),
@@ -898,8 +1119,8 @@ def test_a_random_node_reads_back_from_its_latex_and_its_json(node):
     assert notation.from_dict(data) == node
 
 
-# Random expressions of the typed form: arithmetic, comparisons, groups and conditionals of the
-# values of `s`, and calls.
+# Random expressions of the typed form: arithmetic, comparisons, memberships, groups and conditionals
+# of the values of `s`, and calls.
 TYPED_TEXTS = st.recursive(
     st.one_of(st.sampled_from(['a', 'b', 'c', 't', '2', '0.5', 'q(3, "h")', 'since(go)', 'elapsed(b)'])),
     lambda children: st.one_of(
@@ -912,6 +1133,7 @@ TYPED_TEXTS = st.recursive(
         children.map(lambda a: f'(-{a})'),
         st.builds(lambda a, b: f'max({a}, {b})', children, children),
         st.builds(lambda a, b, c: f'({a} if {b} < {c} else {c})', children, children, children),
+        st.builds(lambda a, b, c: f'({a} if {b} in [{c}, {a}] else {c})', children, children, children),
         children.map(lambda a: f'exp({a})'),
     ),
     max_leaves=10,

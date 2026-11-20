@@ -28,7 +28,7 @@ from hypothesis import strategies as st
 from napkin.draw import layout as layouts
 from napkin.draw import notation, panels
 from napkin.draw.layout import layout
-from napkin.draw.notation import Assign, Call, Cases, Cmp, Count, Deriv, Neg, Num, Op, Since, Sym, Time
+from napkin.draw.notation import Assign, Call, Cases, Cmp, Count, Deriv, In, Neg, Num, Op, Since, Sym, Time
 from napkin.draw.references import COLOURS as MARK_COLOURS
 from napkin.draw.references import KIND_WORDS, KINDS
 from napkin.draw.svg import COLOURS, NAMESPACE, svg
@@ -496,6 +496,7 @@ def trees(keys, events):
         lambda inner: st.one_of(
             st.builds(Op, st.sampled_from(('+', '-', '*', '/', '**')), inner, inner),
             st.builds(lambda a, b: Cmp(('<=',), (a, b)), inner, inner),
+            st.builds(In, inner, inner, inner),
             st.builds(lambda c, a, b: Cases(((Cmp(('>',), (c, Num(0))), a),), b), inner, inner, inner),
             st.builds(Neg, inner),
             st.builds(lambda a, b: Call('min', (a, b)), inner, inner),
