@@ -81,3 +81,39 @@ joins routes only between stocked stores; yours does not. It must fail on the co
 ## When you finish
 
 Your report, as in `audit3.md`, with each changed test expectation listed and why.
+
+## The fresh review of `2cd1751` (`audit/review-2cd1751/findings.csv`)
+
+A reviewer who read only the spec, the decisions, the code and the two earlier audits found twelve
+defects; the main session reproduced each with its script (`fNN_*.py`, run from the checkout with
+`PYTHONPATH=$PWD NAPKIN_STORE=off`). Each is a cause to fix once, as above, with its rule test over
+every path that reads it. They go to the agent that owns their files.
+
+- **C** (add `napkin/engine/timeline/checkpoints.py` to your files): R03, an occurrence's formula
+  locals are evaluated when it starts, so one declared above what it reads, or an unread
+  `formula(since(e))`, fails the run at 0 h (a formula is read when something reads it, and frozen
+  when its occurrence finishes: spec.md:634, D7, D14); R06, the oracle ignores the range of an
+  event's parameter (spec.md:572); R08, the messages of a value outside its range (a move, an
+  argument, an edit) give numbers in base units and no unit, where the model declares mL or days:
+  one way to write a value in a message, in its declared unit with the unit's name, at every place;
+  R09, a trigger on a solver's unknown that moves fires late, at the horizon, without a word, where
+  the same condition on a formula of it fires on time and a moving flow rate is refused by name
+  (spec.md:674): what a trigger reads is classed by what it is, not by its spelling.
+- **L**: R10, a declared solver whose input drains to a bound: its integration evaluates the solver at
+  a trial state past the bound, and a failure that happens at 7 h or 10 h is placed at 0 h with no
+  values after it (a run fails at the time it fails, with its record to then); R12, a store of such a
+  set that meets its bound at the time of a moment raises SciPy's ValueError, with no record.
+- **V**, a new agent in its own worktree `/home/user/napkin-V`: R01 and R07, a solver's own unknown
+  is looked up as the solver, so a reader gives it in hours with no unit (wrong for any other unit)
+  and a session's view raises AttributeError; R02, a named value that the spec lets a caller read
+  (an endpoint's `actual_rate` and `request`, a distribution's `.mean` and `.std`, a flow's
+  capacity) is unavailable unless a formula reads it (spec.md:131, "Any named value can be
+  reported"; 221-227), and `napkin run --value` calls it no value; R04, `napkin compile` raises
+  AttributeError on any model with a flow with legs; R05, a record of chosen values loses the key
+  field of a keyed read (`.by(f).at(x)`), in the store and in `napkin sample`; R11, messages write
+  expressions as Python (`q(2, 'L')`) and a division by zero as Python's words; and two small ones:
+  `napkin run --at`'s help gives `160min`, which the starter's units lack, and an alias inside one
+  solver is reported as "two writers: p2.s, p2.s". V owns `napkin/engine/timeline/{reads,record}.py`,
+  `napkin/engine/report.py`, `napkin/program/{record,proofs,reach,config,check}.py`,
+  `napkin/session.py`, `napkin/store.py`, `napkin/commands/`, `napkin/core/` and their tests; a
+  change it needs in a file of C or L it makes in its worktree, the fewest lines, and lists them.
