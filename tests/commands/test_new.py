@@ -175,3 +175,26 @@ def test_a_starter_with_a_wrong_line_fails_with_its_file_line_and_column(tmp_pat
     found = napkin(capsys, 'run', folder)
     assert found.code == 1
     assert f'{path}:{len(text.splitlines()) + 1}:' in found.err
+
+
+def test_new_points_to_the_rewrite_guide(tmp_path, capsys):
+    result = napkin(capsys, 'new', tmp_path)
+    assert result.code == 0
+    for text in (result.out, (tmp_path / paths.ENTRY).read_text()):
+        assert 'scratch/rewrite/spec.md' in text
+        assert 'docs/language.md' not in text
+
+
+def test_new_round_trips_backslashes_in_titles(tmp_path, capsys):
+    title = 'A path C:\\new\\'
+    result = napkin(capsys, 'new', '--title', title, tmp_path)
+    assert result.code == 0, result.err
+    assert load_scenario(tmp_path / paths.ENTRY).declared.scenario.title == title
+
+
+def test_new_leaves_no_partial_package_on_collision(tmp_path, capsys):
+    (tmp_path / paths.VARIANTS).write_text('occupied')
+    before = written(tmp_path)
+    result = napkin(capsys, 'new', '--variants', 'east', tmp_path)
+    assert result.code != 0
+    assert written(tmp_path) == before

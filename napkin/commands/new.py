@@ -46,8 +46,8 @@ STEP = 10
 # The main file. `{title}` is the title, `{rate}` the rate and `{high}` the high end of its range.
 MODEL = """\
 # Written by `napkin new`. It compiles and runs as written: replace the title, the texts, the values
-# and the record `guess` with your own (docs/language.md).
-scenario "{title}"
+# and the record `guess` with your own (scratch/rewrite/spec.md).
+scenario {title}
     summary "A service serves the people who wait for it at a steady rate. How many people does it serve?"
     horizon 30 days
     scope "The people who wait for the service."
@@ -139,10 +139,13 @@ def files(title=TITLE, variants=()):
     file of each variant, each model file formatted (`format_text`). The k-th variant (from 1) sets the
     rate to (k + 1) × STEP people in a day, and the range of the main file's rate holds each of them."""
     from ..draw.style import STYLE_FILE
-    from ..model.language.format import format_text
+    from ..model.language.format import format_text, text_text
 
     high = STEP * max(10, len(variants) + 1)
-    found = {paths.ENTRY: format_text(MODEL.format(title=title, rate=STEP, high=high)), STYLE_FILE: STYLE}
+    found = {
+        paths.ENTRY: format_text(MODEL.format(title=text_text(title), rate=STEP, high=high)),
+        STYLE_FILE: STYLE,
+    }
     for k, name in enumerate(variants, start=1):
         text = VARIANT_MODEL.format(name=name, rate=(k + 1) * STEP)
         found[f'{paths.VARIANTS}/{name}/{paths.ENTRY}'] = format_text(text)
@@ -161,15 +164,43 @@ def main(args):
         raise common.UsageError(f'{folder} is a file: give the folder of the new scenario')
     written = files(title, variants)
     for name in written:
-        if (folder / name).exists():
-            raise common.UsageError(f'{folder / name} is there already: give a new folder')
-    for name, text in written.items():
         path = folder / name
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding='utf-8')
-        except OSError as error:
-            raise common.Failed([common.problem('file', error.strerror or str(error), path)]) from None
+        if path.exists() or path.is_symlink():
+            raise common.UsageError(f'{path} is there already: give a new folder')
+        for parent in path.parents:
+            if parent.exists() or parent.is_symlink():
+                if not parent.is_dir():
+                    raise common.UsageError(f'{parent} is not a folder')
+                break
+    created_files, created_dirs = [], []
+    try:
+        for name, content in written.items():
+            path = folder / name
+            missing = []
+            for parent in path.parents:
+                if parent.is_dir():
+                    break
+                missing.append(parent)
+            for parent in reversed(missing):
+                try:
+                    parent.mkdir()
+                except FileExistsError:
+                    if not parent.is_dir():
+                        raise
+                else:
+                    created_dirs.append(parent)
+            with path.open('x', encoding='utf-8') as stream:
+                created_files.append(path)
+                stream.write(content)
+    except OSError as error:
+        for made in reversed(created_files):
+            made.unlink(missing_ok=True)
+        for made in reversed(created_dirs):
+            try:
+                made.rmdir()
+            except OSError:
+                pass  # Another writer may now own files in this folder.
+        raise common.Failed([common.problem('file', error.strerror or str(error), path)]) from None
     sys.stdout.write(next_steps(folder, title, variants))
     sys.stdout.flush()
     return 0
@@ -199,7 +230,7 @@ def next_steps(folder, title, variants):
             f'  - the title, "{title}", and the lines summary, horizon and scope under it;',
             f'  - the inputs, each with its value, its range and its text: {common.listed(INPUTS)}{changed};',
             f'  - the records, which each value cites: {common.listed(RECORDS)}. Give each value a record of its own.',
-            f'After each change, `napkin compile {target}` checks the model (docs/language.md gives each line).',
+            f'After each change, `napkin compile {target}` checks the model (scratch/rewrite/spec.md gives each line).',
             '',
         ]
     )
