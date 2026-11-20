@@ -550,7 +550,8 @@ def trigger(when, starts=(), captures=(), reset=None):
 @dataclass
 class Event:
     """An event declared on a template. `locals` holds its local fields and flows in written order
-    (decision D14)."""
+    (decision D14); `ranges` the declared range of each parameter that has one, a `Field` whose `lo`
+    and `hi` an argument must lie in (spec.md:572)."""
 
     name: str
     params: list = field(default_factory=list)
@@ -558,6 +559,7 @@ class Event:
     triggers: list = field(default_factory=list)
     steps: list = field(default_factory=list)
     origin: str = ''
+    ranges: dict = field(default_factory=dict)
 
 
 def event(name, params=(), locals=(), triggers=(), steps=()):

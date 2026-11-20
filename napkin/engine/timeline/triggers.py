@@ -133,7 +133,7 @@ from ..continuous.walk import walked
 from ..errors import SimulationError
 from .family import Family
 from .lines import Lines
-from .moment import Tx, near_ties
+from .moment import Tx, in_unit, near_ties
 from .plan import FORMULA, LOOKUP, RATE, REDUCE
 from .reads import lazily
 
@@ -414,8 +414,10 @@ class Triggers:
             # The time at which it rearms is the clock's: exact from the duration (`moment.Clock`).
             duration = run.clock.value(trigger.reset[1], run.value, run.now)
             if isinstance(duration, bool) or not isinstance(duration, int | float | Fraction) or duration < 0:
-                shown = float(duration) if isinstance(duration, Fraction) else duration
-                raise SimulationError(f'{trigger.origin}: reset after {shown!r}, which is no duration')
+                shown = in_unit(
+                    run.plan.units, float(duration) if isinstance(duration, Fraction) else duration, 'h'
+                )
+                raise SimulationError(f'{trigger.origin}: reset after {shown}, which is no duration')
             state.rearm_at = run.clock.later(run.now, duration)
         del run.chance.firing[trigger.key]
         run.recorder.entry(run.now, 'fire', trigger.origin, trigger.member, **tx.details())
@@ -705,7 +707,7 @@ class Triggers:
                     formless.append(name)
                 continue
             value = plan.values.get(name)
-            instance = ways.instance_of(name.rsplit('.', 1)[0])
+            instance = self._giver(name)
             held = (
                 instance is None or isinstance(instance, Family | Lines) or getattr(instance, 'lines', False)
             )
@@ -826,23 +828,31 @@ class Triggers:
             found |= {leaf for leaf in leaves if leaf in plan.keyed and plan.lookup_moves(leaf, ways.set_of)}
         return sorted(found)
 
+    def _giver(self, name):
+        """The instance that moves a read (`moving_reads`), by what the read is, not by its spelling:
+        a store's set, a rate's flow's set, or the set of the declared solver of a result (its own
+        unknown, or a stored number that it determines); None for the time."""
+        ways = self.run.ways
+        if name in ways.set_of:
+            return ways.instance_of(name)
+        if name in ways.result_of:
+            return ways.sets[ways.result_of[name]][1]
+        return ways.instance_of(name.rsplit('.', 1)[0])
+
     def _window(self, moving):
         """The time until which the trajectories of the moving reads hold: the next moment that the
-        run knows, or the next event of an instance that holds one of them."""
-        run, ways = self.run, self.run.ways
-        until = run.limit
+        run knows, or the next event of an instance that moves one of them."""
+        until = self.run.limit
         for name in moving:
-            if name == 't':
-                continue
-            store = name if name in ways.set_of else name.rsplit('.', 1)[0]
-            instance = ways.instance_of(store)
+            instance = None if name == 't' else self._giver(name)
             if instance is not None:
                 until = min(until, instance.peek())
         return until
 
     def _linear(self, moving):
         """Whether each moving read is a line through the window: the time, a store on a line, or a
-        rate of the family or of the lines, which holds between their events."""
+        rate of the family or of the lines, which holds between their events. A result of a solver
+        whose problem moves is none."""
         ways = self.run.ways
         for name in moving:
             if name == 't':
@@ -851,9 +861,10 @@ class Triggers:
                 if ways.linear(name) is None:
                     return False
                 continue
-            instance = ways.instance_of(name.rsplit('.', 1)[0])
-            if instance is not None and not (
-                isinstance(instance, Family | Lines) or getattr(instance, 'lines', False)
+            instance = self._giver(name)
+            if name in ways.result_of or (
+                instance is not None
+                and not (isinstance(instance, Family | Lines) or getattr(instance, 'lines', False))
             ):
                 return False
         return True

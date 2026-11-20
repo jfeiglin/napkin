@@ -362,6 +362,12 @@ class _Translation:
 
     def event(self, event):
         locals_ = [self.flow(x) if isinstance(x, p.Flow) else self.field(x) for x in event.locals]
+        # A parameter's declared range, which each argument must lie in (spec.md:572).
+        ranges = {
+            each.name: self.field(each)
+            for each in event.params
+            if each.lower is not None or each.upper is not None
+        }
         return Event(
             event.name,
             [each.name for each in event.params],
@@ -369,6 +375,7 @@ class _Translation:
             [self.trigger(each) for each in event.triggers],
             [self.step(each) for each in event.steps],
             event.origin,
+            ranges,
         )
 
     def solver(self, solver):

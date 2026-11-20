@@ -807,8 +807,8 @@ class Run:
             self._register(bound, args)
 
     def _register(self, bound, args):
-        """A start becomes an occurrence: its copies of the arguments, then its locals and flows in
-        written order (decision D14)."""
+        """A start becomes an occurrence: its copies of the arguments, each within its parameter's
+        declared range (spec.md:572), then its locals and flows in written order (decision D14)."""
         view, t, ent, event = self.view, self.view.t, bound.ent, bound.event
         occs = view.occs[ent, event.name]
         self._limits(ent, event, occs)
@@ -821,6 +821,9 @@ class Run:
             view.cells[Cell(occ, name)] = v
             view.entered[Cell(occ, name)] = t
         scope = Scope(ent, occ)
+        for name, v in zip(event.params, args):  # each argument within its parameter's range
+            if name in event.ranges:
+                self._range(Cell(occ, name), event.ranges[name], Ev(self, view, scope), v)
         decls = event.locals
         for i, d in enumerate(decls):
             later = _forward(d, decls[i + 1 :])

@@ -77,7 +77,7 @@ from ..errors import SimulationError
 from .chance import Chance
 from .checkpoints import Breaks, Stopped
 from .collections import dynamic_value, index_of, kept, looked_up, reduced
-from .moment import Clock, Defined, Moment
+from .moment import Clock, Defined, Moment, quantity, span
 from .occurrences import Occurrences
 from .plan import (
     CHANGED,
@@ -402,7 +402,12 @@ class Run:
             lower, upper = number(value.lower), number(value.upper)
             outside = (lower is not None and found < lower) or (upper is not None and found > upper)
             if value.given and not value.boolean and outside:
-                raise ConfigurationError(f'{name}: {found:g} is outside its admitted range')
+                low = -math.inf if lower is None else lower
+                high = math.inf if upper is None else upper
+                raise ConfigurationError(
+                    f'{name} = {quantity(plan, name, found)} is outside its admitted range '
+                    f'{span(plan, name, low, high)}'
+                )
             self.bounds[name] = (-math.inf if lower is None else lower, math.inf if upper is None else upper)
             self.scales[name] = number(value.scale)
         return {name: found for name, found in self.env.items() if name != 't'}

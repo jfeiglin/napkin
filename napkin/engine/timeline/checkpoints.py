@@ -51,6 +51,7 @@ from ...program.checkpoint import (
 )
 from ...program.record import Entry, Key
 from ..errors import SimulationError
+from .moment import quantity, span
 from .plan import BUILTINS, STARTS, STATE, _statements, name_of
 from .record import unit_of
 from .saved import save
@@ -284,7 +285,10 @@ class Breaks:
             raise CheckpointError(f'{name} takes a finite number, not {value!r}')
         lower, upper = run.bounds.get(name, (-math.inf, math.inf))
         if not lower <= value <= upper:
-            raise CheckpointError(f'{name} = {value:g} is outside its range [{lower:g}, {upper:g}]')
+            # In the value's declared unit, in which the edit is given (`moment.quantity`).
+            raise CheckpointError(
+                f'{name} = {quantity(plan, name, value)} is outside its range {span(plan, name, lower, upper)}'
+            )
         return name, float(value)
 
     # ---- checkpoints ----------------------------------------------------------------------------

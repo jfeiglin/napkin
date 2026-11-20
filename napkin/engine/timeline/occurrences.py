@@ -66,6 +66,7 @@ from ...core.errors import ExpressionError
 from ...program import parts as p
 from ...program.record import Unavailable
 from ..errors import SimulationError
+from .moment import in_unit, quantity, span
 from .plan import FORMULA, RATE, RESULT, SIDES
 from .reads import lazily
 
@@ -169,12 +170,17 @@ class Occurrences:
         return live
 
     def _enter(self, name, made):
-        """One value of an occurrence takes its value at the entry, in written order."""
+        """One value of an occurrence takes its value at the entry, in written order. A `formula(...)`
+        local takes none: it is a retained calculation, read where something reads it after the
+        entry, so it may name a local below it or a value that has none yet (spec.md:634, D14), and it
+        freezes when its occurrence finishes (`complete`)."""
         run, plan = self.run, self.plan
         if name in plan.distributions:
             run.env[name] = plan.distributions[name]  # a distribution of the occurrence, to draw from
             return
         value = plan.values[name]
+        if value.kind == FORMULA:
+            return
         number = run.truth(value.node)
         if not value.boolean and isinstance(number, int | float) and not isinstance(number, bool):
             number = float(number)
@@ -188,7 +194,8 @@ class Occurrences:
             run.bounds[name] = (low, high)
             if not low <= number <= high:
                 raise SimulationError(
-                    f'{name} = {number:g} is outside its range [{low:g}, {high:g}] at t = {run.now:g} h'
+                    f'{name} = {quantity(plan, name, number)} is outside its range '
+                    f'{span(plan, name, low, high)} at t = {run.now:g} h'
                 )
         if name in made.stores:
             unit = plan.units.scale(value.unit) if value.unit else 1.0
@@ -262,10 +269,10 @@ class Occurrences:
             or not math.isfinite(delay)
             or delay < 0
         ):
-            shown = float(delay) if isinstance(delay, Fraction) else delay
+            shown = in_unit(self.plan.units, float(delay) if isinstance(delay, Fraction) else delay, 'h')
             raise SimulationError(
                 f'the delay {nodes.text(step.delay.node)} of {live.id} must be a duration that is not '
-                f'negative, and is {shown!r} at t = {run.now:g} h'
+                f'negative, and is {shown} at t = {run.now:g} h'
             )
         live.due = run.clock.later(run.now, delay)
         heapq.heappush(self.schedule, (live.due, live.number, live.id, live.version))
@@ -401,7 +408,7 @@ class Occurrences:
         unit = next(
             c.unit for c in plan.flows[_flow_of(plan, connection)].connections if c.name == connection
         )
-        shown = f'{rate / (plan.units.scale(unit) if unit else 1.0):g} {unit}'.rstrip()
+        shown = in_unit(plan.units, rate, unit)
         way = 'out of' if side == 'outflow' else 'into'
         self.writable(store, f'the flow {connection} carries {shown} {way} {store} at t = {at:g} h', rate)
 
@@ -456,12 +463,10 @@ class Occurrences:
                 continue
             left = float(run.value(store))
             if abs(left) > run.recorder.tolerance.get(store, 0.0):
-                unit = plan.values[store].unit
-                scale = plan.units.scale(unit) if unit else 1.0
                 raise SimulationError(
                     f'{made.id} cannot finish at t = {t:g} h: its store {store} still holds '
-                    f'{left / scale:g} {unit}'.rstrip()
-                    + '. Wait for it to drain, move the rest to a named stock, or send it to SINK.'
+                    f'{quantity(plan, store, left)}. Wait for it to drain, move the rest to a named stock, '
+                    'or send it to SINK.'
                 )
         # What is a formula at the finish freezes: a stage may have given a request or a capacity a
         # formula, or a number in place of one.

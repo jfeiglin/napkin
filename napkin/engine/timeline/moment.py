@@ -124,6 +124,28 @@ _EXACT = {
 _SETUP = 'setup'  # what a stop in the setup holds
 
 
+def in_unit(units, number, unit):
+    """A number of a unit as a message writes it: `5000 mL`, `3 day`; a number with no unit, or one
+    that is not finite, as it is (`inf`)."""
+    if isinstance(number, bool) or not isinstance(number, int | float):
+        return repr(number)
+    if not unit or not math.isfinite(number):
+        return f'{number:g}'
+    return f'{number / units.scale(unit):g} {unit}'
+
+
+def quantity(plan, name, number):
+    """A number of the value `name` as every message of a run writes it (spec.md:660: the amount and
+    its unit): in the value's declared unit, with the unit's name, never in canonical units."""
+    found = plan.values.get(name)
+    return in_unit(plan.units, number, found.unit if found is not None else '')
+
+
+def span(plan, name, low, high):
+    """The range of the value `name` as a message writes it: `[0 mL, 4000 mL]`."""
+    return f'[{quantity(plan, name, low)}, {quantity(plan, name, high)}]'
+
+
 class _ExactUnits(UnitSystem):
     """The units of a program, with each quantity converted in exact arithmetic and not rounded: the
     decimal that writes its number (`core.units.rational`) times the exact scale of its unit."""
@@ -554,8 +576,10 @@ class Moment:
         if upper < value <= upper + slack:
             return float(upper)
         if not lower <= value <= upper:
+            plan = self.plan
             raise SimulationError(
-                f'{name} = {value:g} is outside its range [{lower:g}, {upper:g}] at t = {self.run.now:g} h'
+                f'{name} = {quantity(plan, name, value)} is outside its range '
+                f'{span(plan, name, lower, upper)} at t = {self.run.now:g} h'
             )
         return value
 
@@ -599,18 +623,20 @@ class Moment:
         amount together: the debit and the credit cancel, and its inventory stays as it is. A move of
         an amount at a store of a finished occurrence writes it, and fails; a move of nothing goes on
         (`Occurrences.writable`)."""
-        run, origin = self.run, statement.origin
+        run, origin, plan = self.run, statement.origin, self.plan
         amount = self.truth(statement.amount, scope, origin, tx)
+        source = self.target(statement.source, scope, origin)
+        destination = self.target(statement.destination, scope, origin)
         if (
             isinstance(amount, bool)
             or not isinstance(amount, int | float)
             or not math.isfinite(amount)
             or amount < 0
         ):
-            raise SimulationError(f'{origin}: a move takes a finite amount from 0, not {amount!r}')
+            raise SimulationError(
+                f'{origin}: a move takes a finite amount from 0, not {quantity(plan, source, amount)}'
+            )
         amount = float(amount)
-        source = self.target(statement.source, scope, origin)
-        destination = self.target(statement.destination, scope, origin)
         if source == destination:
             run.occurrences.writable(source, origin, amount)
             tx.moves.append((source, destination, amount, origin))
@@ -633,8 +659,9 @@ class Moment:
             slack = run.recorder.tolerance.get(name, 0.0)
             if not low - slack <= value <= high + slack:
                 raise SimulationError(
-                    f'{origin}: the move of {amount:g} from {source} to {destination} fails: {name} would '
-                    f'hold {value:g}, outside its range [{low:g}, {high:g}]; nothing is moved'
+                    f'{origin}: the move of {quantity(plan, source, amount)} from {source} to {destination} '
+                    f'fails: {name} would hold {quantity(plan, name, value)}, outside its range '
+                    f'{span(plan, name, low, high)}; nothing is moved'
                 )
             after[name] = min(max(value, low), high)
         tx.writes.update(after)
