@@ -50,6 +50,40 @@ def real(value):
     return value
 
 
+def _unit(node):
+    """Unit size for the walk's anonymous expressions (its names are plain numbers)."""
+    if isinstance(node, expr.Unary):
+        return _unit(node.operand)
+    if isinstance(node, expr.IfElse):
+        return _unit(node.body)
+    if isinstance(node, expr.Binary):
+        if node.op == 'mul':
+            return _unit(node.left) * _unit(node.right)
+        if node.op == 'div':
+            return _unit(node.left) / _unit(node.right)
+        if node.op == 'pow':
+            return _unit(node.left) ** node.right.value if isinstance(node.right, expr.Const) else 1
+        return _unit(node.left if expr.names(node.left) or not expr.names(node.right) else node.right)
+    if isinstance(node, expr.Call):
+        if node.function == 'q':
+            return float(SCALES[node.args[1].value])
+        if node.function in ('sum', 'min', 'max', 'clip', 'abs'):
+            return _unit(node.args[0])
+        if node.function == 'sqrt':
+            return math.sqrt(_unit(node.args[0]))
+    return 1
+
+
+def _ordered(op, a, b, x, y):
+    if isinstance(x, (str, bool)) or isinstance(y, (str, bool)):
+        return ORDER[op](x, y)
+    left, right = bool(expr.names(a)), bool(expr.names(b))
+    floor = max(_unit(n) for n, use in ((a, left or not right), (b, right or not left)) if use)
+    if abs(x - y) <= 1e-9 * max(floor, abs(x), abs(y)):
+        return op in ('eq', 'le', 'ge')
+    return ORDER[op](x, y)
+
+
 def walked(node, env):
     """The value of a node, by a walk of the node."""
     if isinstance(node, expr.Ref):
@@ -68,9 +102,9 @@ def walked(node, env):
         return real(ARITHMETIC[node.op](left, right))
     if isinstance(node, expr.Compare):
         left = walked(node.operands[0], env)
-        for op, operand in zip(node.ops, node.operands[1:]):
+        for op, before, operand in zip(node.ops, node.operands, node.operands[1:]):
             right = walked(operand, env)
-            result = ORDER[op](left, right)
+            result = _ordered(op, before, operand, left, right)
             if not result:
                 return result
             left = right
@@ -116,9 +150,10 @@ def walked(node, env):
     if name == 'within':
         # The closed interval [low, high], read once; a reversed one is an error.
         value, low, high = args
-        if low > high:
+        x, lo, hi = node.args
+        if _ordered('gt', lo, hi, low, high):
             raise ValueError('reversed')
-        return low <= value <= high
+        return _ordered('le', lo, x, low, value) and _ordered('le', x, hi, value, high)
     if name in ('min', 'max'):
         return real((min if name == 'min' else max)(args))
     (value,) = args

@@ -305,7 +305,7 @@ class _Prover:
             right = self.constant_value(left, context)
             if right is None or op not in MIRRORED:
                 return context
-            left, op = other, MIRRORED[op]
+            left, other, op = other, left, MIRRORED[op]
         updated = context.new_child()
         name = _key(left)
         if not isinstance(left, expr.Ref):
@@ -320,17 +320,26 @@ class _Prover:
         lower, upper = updated[name]
         if not positive:
             op = OPPOSITE.get(op)
+        # For an inclusive predicate a nearby value on either side can also hold.
+        # If |x| supplies the band, the outer edge is right / (1 - factor).
+        near_low = near_high = right
+        if op in ('ge', 'le', 'eq'):
+            policy = self.registry.comparisons
+            gap = policy.factor * max(policy.floor(left, other), abs(right))
+            edge = right / (1 - policy.factor) if policy.factor < 1 else math.copysign(math.inf, right)
+            near_low = min(right - gap, edge)
+            near_high = max(right + gap, edge)
         if op == 'gt':
             lower = max(lower, math.nextafter(right, math.inf))
         elif op == 'ge':
-            lower = max(lower, right)
+            lower = max(lower, near_low)
         elif op == 'lt':
             upper = min(upper, math.nextafter(right, -math.inf))
         elif op == 'le':
-            upper = min(upper, right)
+            upper = min(upper, near_high)
         elif op == 'eq':
-            lower = max(lower, right)
-            upper = min(upper, right)
+            lower = max(lower, near_low)
+            upper = min(upper, near_high)
             if right == 0 and name in updated.get(NONZERO, set()):
                 updated[EMPTY] = True
         elif op == 'ne' and right == lower:
@@ -549,7 +558,7 @@ def _clip(prover, node, context, seen):
 def _within(prover, node, context, seen):
     # A membership has a value only where its interval is ordered (`ops.REVERSED`).
     args = _arguments(prover, node, context, seen)
-    if args[1][1] > args[2][0]:
+    if prover.registry.comparisons.ordered('gt', node.args[1], node.args[2], args[1][1], args[2][0]):
         raise ExpressionError('Cannot prove the ends of a membership test are ordered')
     return (0, 1)
 

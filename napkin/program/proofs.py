@@ -76,10 +76,12 @@ one.
 
 from __future__ import annotations
 
+from copy import copy
 from dataclasses import dataclass, field
 from fractions import Fraction
 
 from ..core import expr as nodes
+from ..core.comparisons import Comparisons
 from ..core.errors import ExpressionError
 from ..core.evaluation import checked_value
 from ..core.units import UnitSystem, rational
@@ -322,6 +324,10 @@ class Proofs:
         self.units = UnitSystem(
             {unit.name: {'dimensions': dict(unit.dimension), 'scale': unit.scale} for unit in program.units}
         )
+        if configuration is not None:
+            self.units.comparisons.factor = max(
+                configuration.numerics.rtol, configuration.numerics.atol_factor
+            )
         # The changes from outside of the run (see the module): every proof follows from them.
         self.changes = tuple(changes)
         self.declared = reach(program, configuration).events  # what the configuration alone reaches
@@ -539,7 +545,7 @@ class Proofs:
     def constant(self, node, reads, at):
         """The value of an expression that reads only what is fixed for the run, in canonical units, or
         None: an input that is drawn has no value known before the run."""
-        environment = {}
+        environment, points = {}, {}
         for name in nodes.names(node):
             read = reads.get(name)
             if isinstance(read, EnumValue):
@@ -550,8 +556,31 @@ class Proofs:
             if value is None:
                 return None
             environment[name] = value
+            points[name] = point
+
+        def operand(name):
+            point = points.get(name)
+            if point is None:
+                return 1.0, 1.0
+            _, _, part, place = point
+            size = (
+                self.units.scale(part.type.unit)
+                if isinstance(part.type, p.Number) and part.type.unit
+                else 1.0
+            )
+            if part.scale is None:
+                return size, size
+            scale = self.constant(part.scale.node, dict(part.scale.reads), place)
+            if scale is None:
+                raise ExpressionError('the comparison scale is not fixed')
+            return size, abs(scale)
+
+        units = self.units
+        if points:
+            units = copy(units)
+            units.comparisons = Comparisons(units, self.units.comparisons.factor, operand)
         try:
-            return checked_value(node, environment, self.units)
+            return checked_value(node, environment, units)
         except (ExpressionError, ArithmeticError, ValueError, TypeError, KeyError):
             return None
 

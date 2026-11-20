@@ -33,6 +33,7 @@ CLOSURE = (
     '__init__.py',
     'core/__init__.py',
     'core/arrays.py',
+    'core/comparisons.py',
     'core/derivatives.py',
     'core/errors.py',
     'core/evaluation.py',

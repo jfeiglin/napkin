@@ -34,6 +34,7 @@ import numpy as np
 from scipy import special
 
 from . import expr, ops
+from .comparisons import Comparisons, against
 from .errors import ExpressionError
 
 NOT_FINITE = 'Expression produced a nonfinite or non-real value'
@@ -71,7 +72,8 @@ def _number(value):
 class _Pass:
     """One pass over a node for the instances `chosen` (None: all of them; else their places)."""
 
-    def __init__(self, environment, registry, count):
+    def __init__(self, environment, registry, count, bindings):
+        self.bindings = bindings
         self.environment, self.registry, self.count = environment, registry, count
         # The value of each part for all instances, by the part. An expression can hold one part in
         # many places (a formula that is written in the place of its name, in each expression that
@@ -150,6 +152,28 @@ class _Pass:
             if sent is _OPEN:
                 stack.append((asked, wanted, self.computation(asked, wanted)))
                 sent = None
+
+    def band(self, left, right, a, b, places):
+        policy = self.registry.comparisons
+        if self.bindings and policy.named is not None:
+            names = tuple(sorted(expr.names(left) | expr.names(right)))
+            columns = tuple((name, self.bindings[name]) for name in names)
+            key = (left, right, columns)
+            floors = policy.floors.get(key)
+            if floors is None:
+                floors = np.array(
+                    [
+                        Comparisons(
+                            self.registry, policy.factor, lambda name: policy.named(self.bindings[name][i])
+                        ).floor(left, right)
+                        for i in range(self.count)
+                    ]
+                )
+                policy.floors[key] = floors
+            floor = floors if places is None else floors[places]
+        else:
+            floor = policy.floor(left, right)
+        return policy.factor * np.maximum(floor, np.maximum(np.abs(a), np.abs(b)))
 
     def spread(self, value, chosen):
         """A value as an array over the chosen instances."""
@@ -280,12 +304,18 @@ def _chain(run, node, chosen):
     result = np.ones(size, dtype=bool)
     open_places = np.arange(size)
     left = run.spread((yield node.operands[0], chosen), chosen)
-    for op, operand in zip(node.ops, node.operands[1:]):
+    for op, before, operand in zip(node.ops, node.operands, node.operands[1:]):
         if not len(open_places):
             break
         still = run.narrowed(chosen, open_places)
         right = run.spread((yield operand, still), still)
-        holds = np.broadcast_to(_ordered(op, left, right), (len(open_places),))
+        if left.dtype.kind in 'iuf' and right.dtype.kind in 'iuf':
+            band = run.band(before, operand, left, right, still)
+            with np.errstate(over='ignore'):
+                holds = against(op, left.astype(float) - right.astype(float), band)
+        else:
+            holds = _ordered(op, left, right)
+        holds = np.broadcast_to(holds, (len(open_places),))
         result[open_places[~holds]] = False
         open_places = open_places[holds]
         left = right[holds]
@@ -344,14 +374,20 @@ def _within(run, node, chosen):
     """`x in [lo, hi]` for each instance: its three values are read for every instance, as each
     instance by itself reads them, and a reversed interval of any instance fails the call."""
     value, low, high = yield from _numbers(node.args, chosen)
-    reversed_ = np.asarray(low) > np.asarray(high)
+    x, lo, hi = node.args
+    with np.errstate(over='ignore'):
+        reversed_ = np.asarray(low, dtype=float) - np.asarray(high, dtype=float) > run.band(
+            lo, hi, low, high, chosen
+        )
     if np.any(reversed_):
         k = int(np.flatnonzero(np.broadcast_to(reversed_, (run.size(chosen),)))[0])
         ends = [float(np.broadcast_to(end, (run.size(chosen),))[k]) for end in (low, high)]
         raise ExpressionError(f'{ops.REVERSED}: [{ends[0]!r}, {ends[1]!r}]')
-    if not any(isinstance(arg, np.ndarray) for arg in (value, low, high)):
-        return bool(low <= value <= high)
-    return (np.asarray(low) <= value) & (np.asarray(value) <= high)
+    with np.errstate(over='ignore'):
+        result = (np.asarray(low, dtype=float) - value <= run.band(lo, x, low, value, chosen)) & (
+            np.asarray(value, dtype=float) - high <= run.band(x, hi, value, high, chosen)
+        )
+    return bool(result) if np.ndim(result) == 0 else result
 
 
 def _of_one(compute):
@@ -445,7 +481,7 @@ TABLE = ops.handlers(
 )
 
 
-def values(node, environment, registry, count):
+def values(node, environment, registry, count, bindings=None):
     """The value of a node for each of `count` instances: an array of `count` values, or one value when
     the node reads no array of the environment. Each failure is an ExpressionError."""
-    return _Pass(environment, registry, count).value(node, None)
+    return _Pass(environment, registry, count, bindings).value(node, None)

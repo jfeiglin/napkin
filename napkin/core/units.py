@@ -29,6 +29,7 @@ from fractions import Fraction
 from types import MappingProxyType
 
 from . import expr, ops
+from .comparisons import Comparisons
 from .errors import ExpressionError
 
 
@@ -157,6 +158,7 @@ class UnitRegistry:
     composition: of the whole name, of a product of its parts and of the first parts of a quotient."""
 
     def __init__(self, definitions: Mapping):
+        self.comparisons = Comparisons(self)
         self._units, self._exact = {}, {}
         for name, spec in definitions.items():
             dimensions = spec.get('dimensions', spec.get('dimension'))

@@ -67,11 +67,14 @@ def _clip(value, low, high):
     return min(max(value, low), high)
 
 
-def _within(value, low, high):
-    """`value in [low, high]`, the closed interval; a reversed one is an error (`ops.REVERSED`)."""
-    if low > high:
+def _within(comparisons, operands, value, low, high):
+    """A closed membership, with its independently checked pair of ends."""
+    x, lower, upper = operands
+    if comparisons.ordered('gt', lower, upper, low, high):
         raise ExpressionError(f'{ops.REVERSED}: [{low!r}, {high!r}]')
-    return low <= value <= high
+    return comparisons.ordered('le', lower, x, low, value) and comparisons.ordered(
+        'le', x, upper, value, high
+    )
 
 
 def _sum(values):
@@ -162,7 +165,8 @@ class _Writer:
       Their results need no check.
     """
 
-    def __init__(self, read, constants, units, fold, lean=False):
+    def __init__(self, read, constants, units, fold, lean=False, operands=None):
+        self.operands = [] if operands is None else operands
         self.read, self.constants, self.units, self.fold, self.lean = read, constants, units, fold, lean
         self.count = 0
         self.loose = set()  # with `lean`: the code whose value is not checked yet
@@ -311,25 +315,46 @@ COMPARISONS = {
 
 
 def _chain(writer, node):
-    """A chain of comparisons. Its code is not checked: it gives a yes/no."""
+    """Short-circuit the comparison chain; its middle operands are each read once."""
     written = [(writer.sure(source), value) for source, value in map(writer.code, node.operands)]
     values = [value for _, value in written]
-    if all(value is not UNKNOWN for value in values):
-
-        def chain(*operands):
-            for op, left, right in zip(node.ops, operands, operands[1:]):
-                result = COMPARISONS[op][1](left, right)
-                if not result:
-                    return result
-            return result
-
-        result = _known(chain, *values)
-        if result is not UNKNOWN and result.__class__ is bool:
+    if writer.units is not None and all(value is not UNKNOWN for value in values):
+        comparisons = writer.units.comparisons
+        result = _known(
+            lambda: all(
+                comparisons.ordered(op, left, right, a, b)
+                for op, left, right, a, b in zip(
+                    node.ops, node.operands, node.operands[1:], values, values[1:]
+                )
+            )
+        )
+        if result is not UNKNOWN:
             return _literal(result)
-    parts = [written[0][0]]
-    for op, (source, _) in zip(node.ops, written[1:]):
-        parts += [COMPARISONS[op][0], source]
-    return '(' + ' '.join(parts) + ')', UNKNOWN
+    offset = len(writer.operands)
+    writer.operands.extend(node.operands)
+    left = written[0][0]
+    parts = []
+    for i, (op, (source, _)) in enumerate(zip(node.ops, written[1:])):
+        middle = f'_middle{offset + i + 1}'
+        right = f'({middle} := {source})' if i + 1 < len(node.ops) else source
+        parts.append(
+            f'R.comparisons.ordered({op!r}, _operands[{offset + i}], _operands[{offset + i + 1}], {left}, {right})'
+        )
+        left = middle
+    return '(' + ' and '.join(parts) + ')', UNKNOWN
+
+
+def _membership(writer, node):
+    written = [writer.code(part) for part in node.args]
+    values = [value for _, value in written]
+    if writer.units is not None and all(value is not UNKNOWN for value in values):
+        result = _known(_within, writer.units.comparisons, node.args, *values)
+        if result is not UNKNOWN:
+            return _literal(result)
+    offset = len(writer.operands)
+    writer.operands.append(node.args)
+    parts = ', '.join(writer.sure(source) for source, _ in written)
+    return f'_within(R.comparisons, _operands[{offset}], {parts})', UNKNOWN
 
 
 def _lazy(conjunction):
@@ -509,11 +534,7 @@ TABLE = ops.handlers(
         ),
         # `_within` reads its three checked values once each and gives a yes/no; a reversed interval
         # that the program knows when it is made stays code, so it fails where a run reaches it.
-        'within': _call(
-            lambda args: f'_within({args[0]}, {args[1]}, {args[2]})',
-            lambda writer, values: _known(_within, *values),
-            HIDES_ONE,
-        ),
+        'within': _membership,
         **{name: _of_one(name) for name in OF_ONE},
         'q': _call(lambda args: f'R.normalize({args[0]}, {args[1]})', _converted),
     },
@@ -556,10 +577,10 @@ def _parts(node):
     return cut
 
 
-def function_text(node):
+def function_text(node, *, operands=None):
     """The Python text of `function(node)`: an expression, or, for a node that is deeper than
     `SPLIT`, the definition of the function `_function` (`_Writer.split`)."""
-    writer = _Writer(from_environment, {}, None, fold=False)
+    writer = _Writer(from_environment, {}, None, fold=False, operands=operands)
     lines = writer.split(node)
     code = writer.code(node)[0]
     if not lines:
@@ -575,11 +596,12 @@ def function(node):
         if found is not None:
             _FUNCTIONS.move_to_end(node)
             return found
-        text = function_text(node)
+        operands = []
+        text = function_text(node, operands=operands)
+        scope = dict(RUNTIME, _operands=operands)
         if text.startswith('lambda'):
-            found = eval(compile(text, '<expression>', 'eval'), dict(RUNTIME))
+            found = eval(compile(text, '<expression>', 'eval'), scope)
         else:
-            scope = dict(RUNTIME)
             exec(compile(text, '<expression>', 'exec'), scope)
             found = scope['_function']
         _FUNCTIONS[node] = found
@@ -637,6 +659,7 @@ def program_text(
     arguments=('E', 'R'),
     write=True,
     lean=False,
+    operands=None,
 ):
     """The Python text of `program(...)`, which defines the function `program`."""
     constants = dict(constants or {})
@@ -648,7 +671,7 @@ def program_text(
             return assigned[name], True  # an assigned value was checked when it was assigned
         return read(name)
 
-    writer = _Writer(reads, constants, units, fold=True, lean=lean)
+    writer = _Writer(reads, constants, units, fold=True, lean=lean, operands=operands)
     lines = [f'def program({", ".join(arguments)}):']
     for name, node in assignments:
         lines += [f'    {line}' for line in writer.split(node)]
@@ -719,6 +742,7 @@ def program(
       but it can fail at a later part and with another failure of the arithmetic: it is for a caller
       that computes the values one by one again to report a failure.
     """
+    operands = []
     text = program_text(
         assignments,
         outputs,
@@ -728,7 +752,8 @@ def program(
         arguments=arguments,
         write=write,
         lean=lean,
+        operands=operands,
     )
-    namespace = dict(RUNTIME)
+    namespace = dict(RUNTIME, _operands=operands)
     exec(_compiled(text), namespace)
     return namespace['program']

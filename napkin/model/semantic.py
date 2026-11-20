@@ -178,6 +178,7 @@ from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import cached_property
 
+from ..core.comparisons import against
 from ..core.expr import DEEPEST
 from ..core.units import rational, scale_of
 from .language import nodes as n
@@ -2712,6 +2713,10 @@ class Resolver:
     def finish(self, path, scope, node, kind, value_type, init):
         """The declared value, with its range, its scale and its evidence."""
         lower = upper = scale = None
+        if node.scale is not None:
+            if not isinstance(value_type, Num):
+                self.fail('range', f'a scale belongs to a number, and {node.name} is {value_type}', node)
+            scale = self.bound(node.scale, scope, value_type, node)
         if node.range is not None:
             if not isinstance(value_type, Num):
                 self.fail(
@@ -2720,13 +2725,16 @@ class Resolver:
             lower, upper = (
                 self.bound(end, scope, value_type, node) for end in (node.range.low, node.range.high)
             )
-            self.interval(
-                lower, upper, f'the range of {node.name}', node.range, (node.range.low, node.range.high)
-            )
-        if node.scale is not None:
-            if not isinstance(value_type, Num):
-                self.fail('range', f'a scale belongs to a number, and {node.name} is {value_type}', node)
-            scale = self.bound(node.scale, scope, value_type, node)
+            floor = self.scale(value_type) if scale is None else self.exact(scale)
+            if floor is not None:
+                self.interval(
+                    lower,
+                    upper,
+                    f'the range of {node.name}',
+                    node.range,
+                    (node.range.low, node.range.high),
+                    floor=abs(floor),
+                )
         if (
             kind == INPUT
             and isinstance(init, Drawn)
@@ -2804,15 +2812,17 @@ class Resolver:
             )
         return found
 
-    def interval(self, lower, upper, what, node, written=(None, None)):
+    def interval(self, lower, upper, what, node, written=(None, None), floor=None):
         """Refuse a closed interval whose two ends are fixed when the model compiles and reversed,
-        compared exactly in one unit (`exact`): a range, a domain or the interval of a test, so that
+        compared in their own units within the default comparison band: a range, a domain or the interval of a test, so that
         [6 h, 1 day] runs from 6 h to 24 h, [0.1 day, 2.4 h] holds one value and [5 h, 1 h] is an
         error wherever it stands (spec: reversed bounds are an error). An end that only a run knows
         is not compared here. `what` names the interval (`the range of x`); `written` are the ends as
         the text writes them, for an end that is no number written out."""
         ends = [None if end is None else self.exact(end) for end in (lower, upper)]
-        if None in ends or ends[0] <= ends[1]:
+        if None in ends:
+            return
+        if not _fold_order('>', lower, upper, *ends, self.units, floor=floor):
             return
         shown = [
             _written(end) if isinstance(end, Const) else written_as(text)
@@ -2831,6 +2841,15 @@ class Resolver:
         at = self.exact(found) if isinstance(found, (Const, Apply)) else None
         if at is None:
             return
+        if value.lower is not None and value.upper is not None:
+            lo, hi = self.exact(value.lower), self.exact(value.upper)
+            if lo is not None and hi is not None and lo > hi:
+                floor = self.scale(value.type) if value.scale is None else self.exact(value.scale)
+                if floor is None:
+                    return
+                band = Fraction(1, 10**9) * max(abs(floor), abs(lo), abs(hi))
+                if lo - hi <= band and abs(at - (lo + hi) / 2) <= band:
+                    return
         for bound, sign, side in ((value.lower, 1, 'below'), (value.upper, -1, 'above')):
             end = None if bound is None else self.exact(bound)
             if end is not None and sign * (at - end) < 0:
@@ -3807,15 +3826,22 @@ class Resolver:
                     )
                 init = Const(init.value, declared)
         lower = upper = scale = None
+        if node.scale is not None:
+            scale = self.bound(node.scale, scope, declared, node)
         if node.range is not None:
             lower, upper = (
                 self.bound(end, scope, declared, node) for end in (node.range.low, node.range.high)
             )
-            self.interval(
-                lower, upper, f'the domain of {node.name}', node.range, (node.range.low, node.range.high)
-            )
-        if node.scale is not None:
-            scale = self.bound(node.scale, scope, declared, node)
+            floor = self.scale(declared) if scale is None else self.exact(scale)
+            if floor is not None:
+                self.interval(
+                    lower,
+                    upper,
+                    f'the domain of {node.name}',
+                    node.range,
+                    (node.range.low, node.range.high),
+                    floor=abs(floor),
+                )
         for found in (init, lower, upper, scale):
             if found is not None:
                 self.no_draws(found, node, f'the domain of {node.name}')
@@ -5468,20 +5494,26 @@ def folded(expression, units):
         values.append(found)
     if op == 'not':
         return not values[0] if isinstance(values[0], bool) else None
+    if op == 'within' and all(isinstance(each, Fraction) for each in values):
+        x, lo, hi = args
+        v, lower, upper = values
+        if _fold_order('>', lo, hi, lower, upper, units):
+            return None
+        return _fold_order('<=', lo, x, lower, v, units) and _fold_order('<=', x, hi, v, upper, units)
     if not all(isinstance(each, Fraction) for each in values) or op not in _EXACT:
         return None
     return _EXACT[op](*values)
 
 
-# A comparison of the typed form, by its symbol.
-_ORDER = {
-    '==': lambda a, b: a == b,
-    '!=': lambda a, b: a != b,
-    '<': lambda a, b: a < b,
-    '<=': lambda a, b: a <= b,
-    '>': lambda a, b: a > b,
-    '>=': lambda a, b: a >= b,
-}
+_SYMBOL = {'==': 'eq', '!=': 'ne', '<': 'lt', '<=': 'le', '>': 'gt', '>=': 'ge'}
+
+
+def _fold_order(symbol, left, right, a, b, units, floor=None):
+    """A comparison of constant numeric operands in the compiler's default band."""
+    if floor is None:
+        floor = max(units.of(each.type.unit)[1] if each.type.unit else 1 for each in (left, right))
+    band = Fraction(1, 10**9) * max(floor, abs(a), abs(b))
+    return against(_SYMBOL[symbol], a - b, band)
 
 
 def _compared(symbols, args, units):
@@ -5491,14 +5523,19 @@ def _compared(symbols, args, units):
     left = folded(args[0], units)
     if left is None:
         return None
-    for symbol, arg in zip(symbols, args[1:]):
+    for symbol, before, arg in zip(symbols, args, args[1:]):
         right = folded(arg, units)
         if right is None:
             return None
         numbers = isinstance(left, Fraction) and isinstance(right, Fraction)
         if not numbers and symbol not in ('==', '!='):
             return None
-        if not _ORDER[symbol](left, right):
+        holds = (
+            _fold_order(symbol, before, arg, left, right, units)
+            if numbers
+            else (left == right) == (symbol == '==')
+        )
+        if not holds:
             return False
         left = right
     return True
@@ -5532,11 +5569,6 @@ def _clip(value, low, high):
     return None if low > high else min(max(value, low), high)
 
 
-def _within(value, low, high):
-    """A membership exactly; None for a reversed interval, which fails where a run reads it."""
-    return None if low > high else low <= value <= high
-
-
 # The operations of numbers whose result `folded` computes exactly from exact arguments: None where
 # the result is no rational number, or is no value.
 _EXACT = {
@@ -5551,7 +5583,6 @@ _EXACT = {
     'max': lambda *values: max(values),
     'abs': abs,
     'clip': _clip,
-    'within': _within,
     'sqrt': _root,
     'exp': lambda value: Fraction(1) if value == 0 else None,
     'expm1': lambda value: Fraction(0) if value == 0 else None,

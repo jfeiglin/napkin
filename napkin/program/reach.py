@@ -29,22 +29,14 @@ commit 81b367b (`Acting`), on the parts of a program.
 
 from __future__ import annotations
 
-import operator
 from dataclasses import dataclass
 
 from ..core import expr as nodes
+from ..core.units import UnitSystem
 from . import parts as p
 from .check import ROOT_OWNER, Resolver, Scope, owner_key
 from .refs import Distribution, Draw, EnumValue, Formula, Path, Reduce
 
-_COMPARE = {
-    'eq': operator.eq,
-    'ne': operator.ne,
-    'lt': operator.lt,
-    'le': operator.le,
-    'gt': operator.gt,
-    'ge': operator.ge,
-}
 EITHER = frozenset({False, True})
 
 
@@ -76,6 +68,13 @@ class _Reach:
     def __init__(self, program, configuration):
         self.program = program
         self.resolver = Resolver(program)
+        units = UnitSystem(
+            {u.name: {'dimensions': dict(u.dimension), 'scale': u.scale} for u in program.units}
+        )
+        self.comparisons = units.comparisons
+        if configuration is not None:
+            numerics = configuration.numerics
+            self.comparisons.factor = max(numerics.rtol, numerics.atol_factor)
         self.domains, self.found, self.started = {}, {}, {}
         self.changed = False
         overrides = {(item.member, item.name): item.value for item in getattr(configuration, 'inputs', ())}
@@ -232,9 +231,10 @@ class _Reach:
             left, right = (self.node(side, reads, scope) for side in node.operands)
             if left is None or right is None:
                 return None
-            compare = _COMPARE[node.ops[0]]
             try:
-                return frozenset(compare(a, b) for a in left for b in right)
+                return frozenset(
+                    self.comparisons.ordered(node.ops[0], *node.operands, a, b) for a in left for b in right
+                )
             except TypeError:
                 return None
         if isinstance(node, nodes.Unary) and node.op == 'not':

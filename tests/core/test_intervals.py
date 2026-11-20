@@ -258,10 +258,10 @@ def test_a_prover_proves_nothing_again_that_reads_the_ranges_of_a_proof_before(m
         ('x / y if 0.5 <= y else 3', {'x': (1.0, 1.0), 'y': (0.0, 2.0)}, (0.5, 3.0)),
         ('3 if not y >= 0.5 else x / y', {'x': (1.0, 1.0), 'y': (0.0, 2.0)}, (0.5, 3.0)),
         # `and` narrows by each term; `or` narrows the branch where it fails.
-        ('x / y if y >= 0.5 and y <= 1 else 0', {'x': (1.0, 1.0), 'y': (0.0, 2.0)}, (0.0, 2.0)),
-        ('0 if y < 0.5 or y > 1 else x / y', {'x': (1.0, 1.0), 'y': (0.0, 2.0)}, (0.0, 2.0)),
+        ('x / y if y >= 0.5 and y <= 1 else 0', {'x': (1.0, 1.0), 'y': (0.0, 2.0)}, (0.0, 1 / (0.5 - 1e-9))),
+        ('0 if y < 0.5 or y > 1 else x / y', {'x': (1.0, 1.0), 'y': (0.0, 2.0)}, (0.0, 1 / (0.5 - 1e-9))),
         # A guard on an expression narrows that expression in the branch.
-        ('1 / (x - y) if x - y >= 1 else 0', {'x': (0.0, 5.0), 'y': (0.0, 5.0)}, (0.0, 1.0)),
+        ('1 / (x - y) if x - y >= 1 else 0', {'x': (0.0, 5.0), 'y': (0.0, 5.0)}, (0.0, 1 / (1 - 1e-9))),
         # `!= 0` proves that the divisor is not zero, and says nothing more of the quotient.
         ('1 / y if y != 0 else 0', {'y': (-1.0, 1.0)}, (-math.inf, math.inf)),
         # A branch that the ranges leave empty gives nothing.
@@ -322,7 +322,7 @@ def test_a_formula_has_the_interval_of_its_definition_and_a_circle_ends():
         with pytest.raises(ExpressionError, match='Cannot prove nonzero denominator in `1 / y`'):
             prove(read('bad + 1'))
     # A branch narrows what a formula reads: the formula is proved again under those facts.
-    assert prove(read('bad if y >= 0.5 else 0')) == (0.0, 2.0)
+    assert prove(read('bad if y >= 0.5 else 0')) == (0.0, 1 / (0.5 - 1e-9))
 
 
 def test_a_member_with_a_weight_is_that_many_values_in_a_sum():
