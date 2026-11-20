@@ -187,12 +187,15 @@ class Dynamic:
     spelled: str
     keep: Ends | None = None
 
+    def selected(self, members, value):
+        """The members retained by the authored filter at this read."""
+        return members if self.keep is None else [m for m in members if self.keep.keeps(m, value)]
+
 
 def dynamic_value(dynamic, members, project, value, t):
     """The value of a dynamic read at time t from its members at t (their points, in order), the
     engine name that each projects (`project(point)`) and the values of engine names."""
-    if dynamic.keep is not None:
-        members = [member for member in members if dynamic.keep.keeps(member, value)]
+    members = dynamic.selected(members, value)
     op = dynamic.op
     if op == 'latest':
         if not members:
@@ -280,10 +283,14 @@ def looked_up(keyed, value, units, t, index=None):
 def node_of(reduction, entries):
     """The node of a reduction over its kept entries, for the generated programs of a component.
     `min` and `max` of no entry have no node: the caller fails the run where a rate reads one."""
-    op = reduction.op
     if reduction.names is None:
         return nodes.const(len(entries))
-    names = [nodes.ref(reduction.names[k]) for k in entries]
+    return aggregate_node(reduction.op, (reduction.names[k] for k in entries), reduction.spelled)
+
+
+def aggregate_node(op, members, spelled):
+    """The scalar expression for an operation on its selected member names."""
+    names = [nodes.ref(name) for name in members]
     if op == 'count':
         if not names:
             return nodes.const(0)
@@ -293,7 +300,7 @@ def node_of(reduction, entries):
         empty = {'sum': 0.0, 'any': False, 'all': True}
         if op in empty:
             return nodes.const(empty[op])
-        raise ExpressionError(f'{reduction.spelled}: {op} of an empty collection has no value')
+        raise ExpressionError(f'{spelled}: {op} of an empty collection has no value')
     if len(names) == 1:
         return names[0]
     return nodes.call(op, names)

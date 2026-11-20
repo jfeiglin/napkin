@@ -807,8 +807,15 @@ class Recorder:
                     return amount
             if point is not None:
                 return point(t, readers)
+
             # Each read is taken from its history where the evaluation asks for it (`reads.py`).
-            return compute(Reads(names, lambda read: readers[read](t), t))
+            def read(key):
+                if key not in readers:
+                    # A comparison can ask for a selector inside a named operand.
+                    readers[key] = _reader(histories[key])
+                return readers[key](t)
+
+            return compute(Reads(names, read, t))
 
         def tried(t):
             """The value at t, or `Unavailable` with the reason where it cannot be evaluated."""

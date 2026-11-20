@@ -100,8 +100,8 @@ def _sum_scales(unit, args, subtract):
 
 
 @dataclass
-class IndexedScale:
-    """An indexed operand. Its index selects the declaration supplying its floor."""
+class SelectedScale:
+    """An operand whose selected members supply its comparison-scale expression."""
 
     choose: Callable
     keys: set[str]
@@ -139,7 +139,7 @@ class Comparisons:
                 definition = self._binding(node.name)[1]
                 if isinstance(definition, expr.Node):
                     pending.append(definition)
-                elif isinstance(definition, IndexedScale):
+                elif isinstance(definition, SelectedScale):
                     controls.update(definition.keys)
                     pending.extend(map(expr.ref, definition.members))
             elif isinstance(node, expr.IfElse):
@@ -173,8 +173,8 @@ class Comparisons:
                 if node not in definitions:
                     definitions[node] = self._binding(node.name)
                 unit, own = definitions[node]
-                if isinstance(own, IndexedScale):
-                    own = expr.ref(read(own))
+                if isinstance(own, SelectedScale):
+                    own = read(own)
                     definitions[node] = unit, own
                 if isinstance(own, expr.Node):
                     if own not in found:
@@ -262,7 +262,7 @@ class Comparisons:
             nonlocal dynamic
             from .evaluation import value
 
-            if isinstance(node, IndexedScale):
+            if isinstance(node, SelectedScale):
                 if read is None:
                     raise UnresolvedScale
                 dynamic = True

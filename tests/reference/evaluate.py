@@ -307,7 +307,7 @@ class Ev:
     def val(self, e):
         """The value of an expression."""
         target = self.ref(e)
-        if e._k in ('name', 'attr'):
+        if e._k in ('name', 'attr') or isinstance(target, Coll):
             self.operands[id(e)] = target
         return self.deref(target)
 
@@ -622,13 +622,17 @@ class Ev:
             raise NotCovered('a coefficient of a solve that moves between two moments')
         return x, y
 
-    def operand(self, expression):
+    def operand(self, expression, member=None):
         """Own scale and unit size of a compared value, independently of the engine."""
         kind, args = expression._k, expression._a
         if kind == 'const':
             return expression._unit_size, expression._unit_size, {}
-        if kind in ('attr', 'name'):
-            ref = self.operands[id(expression)] if id(expression) in self.operands else self.ref(expression)
+        if member is not None or kind in ('attr', 'name'):
+            ref = member
+            if ref is None:
+                ref = (
+                    self.operands[id(expression)] if id(expression) in self.operands else self.ref(expression)
+                )
 
             def quantity(floor, unit):
                 return floor, unit, {ref: floor}
@@ -691,7 +695,23 @@ class Ev:
             selected = self.choices[id(cond)] if id(cond) in self.choices else self.truth(cond)
             return self.operand(then if selected else other)
         if kind == 'fn' and args[0] in ('min', 'max', 'sum', 'abs', 'clip') and args[1]:
-            parts = [self.operand(part) for part in args[1]]
+            parts = []
+            for part in args[1]:
+                target = self.operands.get(id(part))
+                if target is None and part._k in ('attr', 'name', 'where', 'coll'):
+                    target = self.ref(part)
+                if isinstance(target, Coll):
+                    parts.extend(self.operand(part, value) for _, _, value in target.items)
+                else:
+                    parts.append(self.operand(part))
+            if not parts:
+                return Fraction(1), Fraction(1), {}
+            if args[0] == 'sum':
+                terms = {}
+                for _, _, projection in parts:
+                    for key, size in projection.items():
+                        terms[key] = terms.get(key, 0) + size
+                return max(map(abs, terms.values()), default=parts[0][0]), parts[0][1], terms
             contributors = [part for part in parts if part[2]]
             kept = contributors or parts
             floor = max(part[0] for part in kept)

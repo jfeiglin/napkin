@@ -128,7 +128,7 @@ import math
 from dataclasses import dataclass, replace
 
 from ...core import expr as nodes
-from ...core.comparisons import IndexedScale
+from ...core.comparisons import SelectedScale
 from ...core.errors import ExpressionError
 from ...expressions import UnitSystem, evaluate
 from ...program import parts as p
@@ -159,7 +159,7 @@ from ...program.refs import (
 )
 from ..continuous.walk import walked
 from ..errors import SimulationError
-from .collections import Dynamic, Ends, Entries, Keyed, Reduction, selected
+from .collections import Dynamic, Ends, Entries, Keyed, Reduction, aggregate_node, kept, node_of, selected
 from .pools import Keys, pools_of
 
 # The kinds of the values of a plan.
@@ -641,6 +641,29 @@ class Plan:
                 if owner is not None:
                     target = self.project(('occurrence', owner), projection.steps)
                     return unit, nodes.ref(target)
+            elif value.kind == DYNAMIC and self.dynamic[name].op in ('sum', 'min', 'max'):
+                dynamic = self.dynamic[name]
+
+                def choose(read):
+                    members = dynamic.selected(self.members_at(dynamic.source, read), read)
+                    return aggregate_node(
+                        dynamic.op, (self.project(m, dynamic.steps) for m in members), dynamic.spelled
+                    )
+
+                names = tuple(self.project(m, dynamic.steps) for m in self.members_ever(dynamic.source))
+                return unit, SelectedScale(choose, self.dynamic_reads(name) - set(names), names)
+            elif value.kind == REDUCE and self.reductions[name].op in ('sum', 'min', 'max'):
+                reduction = self.reductions[name]
+                if not reduction.names:
+                    return unit, unit
+                if all(test is None for test in reduction.tests):
+                    return unit, node_of(reduction, range(len(reduction.tests)))
+
+                def choose(read):
+                    return node_of(reduction, kept(reduction.tests, read, self.units))
+
+                tests = {n for test in reduction.tests if test is not None for n in nodes.names(test)}
+                return unit, SelectedScale(choose, tests, reduction.names)
             elif value.kind == LOOKUP:
                 keyed = self.keyed[name]
                 fixed = self._chosen(keyed)
@@ -651,12 +674,12 @@ class Plan:
                     k = selected(keyed, read, self.units, None)
                     if k is None:
                         raise ExpressionError(f'{keyed.spelled}: no member at this key')
-                    return keyed.names[k]
+                    return nodes.ref(keyed.names[k])
 
                 keys = set(nodes.names(keyed.key))
                 keys.update(k for k in keyed.keys if isinstance(k, str))
                 keys.update(n for test in keyed.tests if test is not None for n in nodes.names(test))
-                return unit, IndexedScale(choose, keys, keyed.names)
+                return unit, SelectedScale(choose, keys, keyed.names)
         return unit, unit
 
     def _refuse_kept_in_solvers(self):
