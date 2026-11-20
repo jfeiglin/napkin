@@ -76,7 +76,8 @@ continuous engine and the record read these names; nothing reads the spelling of
   each store meets at most one flow on each side, it has no endpoint settings and at most `LIMIT`
   stores, and on the sparse integrator otherwise (`sparse.py`). A stored value that no flow meets
   holds its value between moments. A directed flow with no store at either end moves nothing, and
-  its actual rate is the formula `min(request, capacity)`. A request or a capacity may read an
+  its actual rate is the formula `min(request, capacity)` (`outside`), which settles as every rate
+  does and stops at zero with its occurrence. A request or a capacity may read an
   actual rate or a served fraction of another set (`Connected.rates`), which settles first; of its
   own set it has no answer of local sharing, and is refused. `connect` finds the sets of any flows,
   at the start and at each moment that changes them.
@@ -545,6 +546,9 @@ class Plan:
         self.solvers = {}  # the id of each declared solver -> its `Declared`
         self.results = {}  # a value of kind RESULT -> the id of the solver that determines it
         self.solved_flows = {}  # a flow whose rate a declared solver determines -> its id
+        # The actual rate of a directed flow from SOURCE to SINK -> its `Flow`: a formula of its
+        # settings, which the settling decides as it decides every rate (`ways.Ways.fresh`).
+        self.outside = {}
         self._settings_index = ({}, {})
         # With flows of events, every endpoint's collection of flows changes in a run.
         self.dynamic_ends = any(
@@ -1007,6 +1011,7 @@ class Plan:
         if made.source is None and made.sink is None:
             # Nothing to move: the actual rate is what the flow asks.
             self._add(Value(name_of(rate), rate, FORMULA, made.rate, flow.unit))
+            self.outside[name_of(rate)] = made
         else:
             self._add(Value(name_of(rate), rate, RATE, None, flow.unit))
             self.flows[name] = made
@@ -1470,6 +1475,8 @@ class Plan:
                 continue
             for setting in self._flow_settings(name):
                 (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
+            if f'{name}.actual_rate' in self.outside:
+                formulas.append(f'{name}.actual_rate')  # from SOURCE to SINK: it stops with its occurrence
         self.occurrences[(member, event_name)].append(occ)
         flows = tuple(name for name in flows if name in self.flows)
         return Occurrence(occ, member, event, scope, tuple(initial), tuple(stores), flows, tuple(formulas))

@@ -206,10 +206,10 @@ def save(run):
                 ('changes', tuple((name, tuple(times)) for name, times in run.changes.items())),
                 ('written', _pairs(run.written)),
                 ('changed', tuple(sorted(run.changed, key=repr))),  # a set, in one order
+                ('moved', tuple(sorted(run.moved))),
                 ('joined', tuple(run.joined)),
                 ('left', tuple(run.left)),
                 ('waiting', tuple(_set(connected) for connected in run.waiting)),
-                ('waiting_names', tuple(sorted(run.waiting_names))),
             ),
         ),
         (
@@ -578,10 +578,9 @@ def _run(run, found):
     run.frozen = dict(found['frozen'])
     run.changes = {name: list(times) for name, times in found['changes']}
     run.written = dict(found['written'])
-    run.changed = set(found['changed'])
+    run.changed, run.moved = set(found['changed']), set(found['moved'])
     run.joined, run.left = list(found['joined']), list(found['left'])
     run.waiting = [_connected(data) for data in found['waiting']]
-    run.waiting_names = set(found['waiting_names'])
 
 
 def _recorder(recorder, found):

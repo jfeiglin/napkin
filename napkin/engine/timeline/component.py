@@ -288,7 +288,8 @@ class Network:
 class Segment:
     """One segment of a component: from `start` to `end`, the function of the time that gives the
     state (`solution`), the states at its two ends, the last with the bounds that it reaches settled,
-    and the solver's result for a numerical segment (`numerical`: its accepted times are `t`)."""
+    the solver's result for a numerical segment (`numerical`: its accepted times are `t`), and the
+    places in the state of the quantities that it brings to a bound at its end (`reached`)."""
 
     start: float
     end: float
@@ -296,6 +297,7 @@ class Segment:
     first: np.ndarray
     last: np.ndarray
     numerical: object = None
+    reached: tuple = ()
 
 
 class Held(Allocation):
@@ -353,7 +355,7 @@ class Component:
         if found.rounded:
             correct_boundary_roundoff(s, diagnostics, start, state.y, found.rounded)
             check_bounds(s, state.y)
-            return Segment(start, start, None, first, state.y.copy())
+            return Segment(start, start, None, first, state.y.copy(), reached=tuple(sorted(found.rounded)))
         solution, numerical = found.solution, found.numerical
         last = np.array(solution(found.end) if numerical is None else numerical.y[:, -1], dtype=float)
         correct_boundary_roundoff(s, diagnostics, found.end, last, found.targets)
@@ -365,7 +367,7 @@ class Component:
             for k in range(len(numerical.t) - 1):
                 check_bounds(s, numerical.y[:, k])
         check_bounds(s, last)
-        return Segment(start, found.end, solution, first, last, numerical)
+        return Segment(start, found.end, solution, first, last, numerical, tuple(sorted(found.targets or ())))
 
     def delivered(self, segment, times):
         """The rates that the flows deliver at times inside the present segment: one row for each
@@ -541,9 +543,12 @@ class ComponentWay:
         self._drift = None
 
     def snap(self):
-        """The next event at the time of a moment: committed as any other, with what it changes."""
+        """The next event at the time of a moment: committed as any other, with what it changes, and
+        the stores that its segment brings to a bound at its end."""
+        ids = self.component.system.state_ids
+        met = [ids[k] for k in self.pending.reached]
         stores, rates, _ = self.step()
-        return stores + rates
+        return stores + rates, met
 
     def _settle(self):
         """The state rests on the bounds that it reaches at its present time, as the next segment

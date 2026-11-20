@@ -1041,8 +1041,10 @@ class DeclaredWay:
 
     def snap(self):
         """The next lines reach their bounds at the time of a moment: the stores are put on them, and
-        the moment's settling solves the set again (`ways.py`). Gives the stores."""
-        return [self.stores[s] for s in self._put(self.peek())]
+        the moment's settling solves the set again (`ways.py`). Gives the stores, as what changed and
+        as what met its bound."""
+        stores = [self.stores[s] for s in self._put(self.peek())]
+        return stores, stores
 
     def cut(self, t):
         """Nothing to commit: a line holds to its next event."""
@@ -1265,9 +1267,12 @@ class MovingDeclared(DeclaredWay):
         return list(self.stores), sorted(set(changed) | set(self.recorded)), True
 
     def snap(self):
-        """The next segment ends at the time of a moment: committed as any other."""
+        """The next segment ends at the time of a moment: committed as any other. Gives what changed,
+        and the store whose event ended it where the store met its bound there."""
+        s = self.pending.event
+        met = [] if s is None or self.low[s] or self.high[s] else [self.stores[s]]
         stores, rates, _ = self.step()
-        return stores + rates
+        return stores + rates, met
 
     def cut(self, t):
         """The run stands at time t inside the next segment: the segment up to t is committed, and

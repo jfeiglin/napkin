@@ -26,6 +26,10 @@ At a time, rounds. One round is:
    a stage whose guard was false so commits nothing, and has an entry `skip` for its near-ties.
    A value that misses a bound by less than its tolerance is
    put on the bound; one that misses it by more fails the run, and so does a move that does not fit.
+   A rate or a result that the settling decides reads as it last settled: one that what it depends
+   on changed since (a write, an allocation, a store that met its bound at this moment, a flow that
+   joined or left) stops the run by name, as one read in the setup does (`ways.Ways.fresh`; PLAN,
+   change 25: in a moment the stages commit first and the flows are shared again after).
    A commit publishes the stage's writes, traces its edits and its moves and registers the
    occurrences that it queued, in order; a failure discards the stage and stops the run, also a
    failure in the commit itself (a start that a limit, its arguments or its entry refuse): the
@@ -33,7 +37,8 @@ At a time, rounds. One round is:
    breakpoint stops the run before a stage or a statement (`checkpoints.py`): the stage and those
    after it in its round are held (`held`), and `resume` runs them again from the stopped one.
 2. **Settle.** The connected sets that the round touched are built again from the state there
-   (`ways.py`): those that hold a store that a commit wrote, or read a value that changed (a written
+   (`ways.py`): those that hold a store that a commit wrote, whose endpoint's allocation changed or
+   that the ways changed at this moment, or read a value that changed (a written
    value, a collection of occurrences or of flows whose members changed, a rate or a result of a set
    built again, a keyed read at its key time), those that a flow joins or leaves, and the sets whose
    moving rates they read, which integrate with them. A store that no
@@ -343,11 +348,14 @@ class Moment:
         else:
             self.rounds(self.run.now, held)
 
-    def at(self, t, changed):
-        """The moment at time t; `changed` holds what the ways changed there."""
+    def at(self, t, changed, met):
+        """The moment at time t; `changed` holds what the ways changed there, which the settling
+        builds again, and `met` the stores that met a bound there, whose rates are stale until it
+        (`ways.Ways.fresh`)."""
         run = self.run
         run.now = t
-        run.changed |= changed
+        run.moved |= changed
+        run.changed |= {('bound', store) for store in met}
         run.changed.update(run.keyed_changes(t))
         self._round(0)
         self.rounds(t)
@@ -706,7 +714,7 @@ class Moment:
             # The endpoint shares its flows by its new rule once its set settles again.
             self.plan.allocate(store, side, allocation, scope, origin)
             self.plan.log.append(('allocate', store, side, origin, self.plan.owner_of(scope)))
-            run.changed.add(store)
+            run.changed.add(('allocation', store, side))
         for name, value in tx.writes.items():
             run.write(name, value)
         for member, event, args in tx.starts:

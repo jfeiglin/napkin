@@ -381,7 +381,7 @@ class Family:
     def snap(self):
         """The next row reaches its bound at the time of a moment: its stores stand there, the one
         that reaches its bound on it, and the moment's settling starts the row again (`ways.py`).
-        Gives its stores."""
+        Gives its stores, and those of them that met their bound."""
         reach, k, _, bounded = heapq.heappop(self.due)
         for end in (self.source[k], self.sink[k]):
             if end >= 0:
@@ -390,7 +390,8 @@ class Family:
         for end in bounded:
             self.y[end] = self.lower[end] if end == self.source[k] else self.upper[end]
         self.version[k] += 1
-        return [self.stores[end] for end in (self.source[k], self.sink[k]) if end >= 0]
+        stores = [self.stores[end] for end in (self.source[k], self.sink[k]) if end >= 0]
+        return stores, [self.stores[end] for end in bounded]
 
     def cut(self, t):
         """Nothing to commit: a line holds to its next event."""

@@ -373,12 +373,13 @@ class Lines:
 
     def snap(self):
         """The next line reaches its bound at the time of a moment: the store is put on its bound,
-        and the moment's settling solves its set again (`ways.py`). Gives the store."""
+        and the moment's settling solves its set again (`ways.py`). Gives the store, as what changed
+        and as what met its bound."""
         reach, s, _ = heapq.heappop(self.due)
         bound = self.lower[s] if self.slope[s] < 0 else self.upper[s]
         self.y[s], self.since[s], self.slope[s] = bound, reach, 0.0
         self.version[s] += 1
-        return [self.stores[s]]
+        return [self.stores[s]], [self.stores[s]]
 
     def cut(self, t):
         """Nothing to commit: a line holds to its next event."""

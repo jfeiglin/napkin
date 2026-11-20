@@ -37,12 +37,16 @@
 The present (`value`): the value of an engine name now, or at a time inside the present window of
 the ways (`t`): a store of a set from its instance, one written by this moment's commits from what
 was written, an actual rate or a served fraction from the instance of its flow (zero for a flow that
-is in no set), a formula from what it reads (a formula of a finished occurrence keeps its frozen
-value), a reduction, a keyed read and a dynamic read of a collection from their members (each such
+is in no set, or that left since the flows last settled), a formula from what it reads (a formula
+of a finished occurrence keeps its frozen value), a reduction, a keyed read and a dynamic read of a
+collection from their members (each such
 derived value computed after the derived values that it reads, on the stack of `walk.walked`, with
 no recursion: `_derived`), the time
 of the last change of a stored value at a commit (`changed_at`), and any other value from what the
-run holds between moments (`env`). A stage reads its own writes first. A draw is executed when an
+run holds between moments (`env`). A stage reads its own writes first. While the stages of a round
+run, a rate or a result that the settling decides (a flow from SOURCE to SINK's too) is read only
+where nothing that it depends on changed since the flows last settled, and never in the setup: a
+stale one stops the run by name (`ways.Ways.fresh`; PLAN, change 25). A draw is executed when an
 expression of a stage, an entry, a delay or a firing reads it (`truth`), which reads each name as its
 evaluation asks for it.
 
@@ -161,11 +165,17 @@ class Run:
         self.bare = False
         self.clock = Clock(plan)  # when something is due (`moment.Clock`)
         self._keyed = None  # {key time: the keyed reads by the time that change there}
-        self.changed = set()  # what a commit or an event of the ways changed: names and sources
+        self._sources = (0, {})  # (how many dynamic reads the plan names, them by their collection)
+        # What changed since the flows last settled (`unsettled`): the names that a commit wrote or
+        # gave a definition, the collections whose members changed ('occurrences' and 'flows'), the
+        # stores that met a bound at this moment ('bound'), the allocations that changed
+        # ('allocation') and the rates of the flows from SOURCE to SINK that joined ('joined'); and
+        # what the ways changed at this moment, which the settling reads alone.
+        self.changed, self.moved = set(), set()
         self.joined, self.left = [], []  # the flows that join and that leave at this moment
         # The sets that wait for the settling of the setup: those of declared solvers, and those that
-        # read their rates or results; and what they give.
-        self.waiting, self.waiting_names = [], set()
+        # read their rates or results.
+        self.waiting = []
         self.changes = {}  # a stored value -> the times of the commits that changed it (`elapsed`)
         self.checkpoint = None  # the checkpoint of a run stopped at a breakpoint, until `resume`
         self.breaks = Breaks(self, breakpoints)
@@ -295,8 +305,10 @@ class Run:
     def classes_of(self, store, side, items, number):
         """The priority classes of an endpoint as the numbers of its flows (`number`): a flow that an
         item names is a class, a keyed projection gives a class for each distinct key, lower keys
-        first, and the flows that no item names are the last class."""
-        mine = self.plan.ends[(store, side)].flows
+        first, and the flows that no item names are the last class. The flows are those of `number`
+        that are present: a set made again from a checkpoint saved after a flow joined its endpoint
+        has the flows that it was built with, which the settling then builds again (`saved.py`)."""
+        mine = [flow for flow in self.plan.ends[(store, side)].flows if flow in number]
         classes, named = [], set()
         for kind, item in items:
             if kind == 'one':
@@ -544,6 +556,8 @@ class Run:
             return lazily(tx.writes[name].node, read, plan.units, t)
         kind = plan.values[name].kind
         if kind == FORMULA:
+            if name in plan.outside and self.moment.phase == 'stages':
+                self.ways.fresh(name, tx)  # the rate of a flow from SOURCE to SINK settles too
             node = plan.values[name].node
             return read(node.name) if isinstance(node, nodes.Ref) else lazily(node, read, plan.units, t)
         if kind == REDUCE:
@@ -686,14 +700,35 @@ class Run:
         name = f'{flow}.served_fraction' if found.kind == LEGS else f'{flow}.actual_rate'
         self.recorder.add(name, self.now, 0.0, 0.0)
 
-    def changed_names(self):
-        """The engine names that changed at this moment so far, with the dynamic reads of the
-        collections whose members changed."""
-        names = {item for item in self.changed if isinstance(item, str)}
+    def unsettled(self, tx=None):
+        """What changed since the flows last settled, as a stale read names it (`Ways.stale`): the
+        engine names that a commit (of a stage, of the setup, of a firing or an edit) and the stage
+        `tx` wrote or gave a definition, with the dynamic reads of the collections whose members
+        changed and the keyed reads by the time at their key time; and the marks, ('bound', store)
+        of a store that met its bound at this moment and ('allocation', store, side) of an endpoint
+        whose allocation changed."""
+        names = {item for item in self.changed if isinstance(item, str)} | set(self.written)
         sources = {item for item in self.changed if isinstance(item, tuple)}
         if sources:
-            names |= {name for name, dynamic in self.plan.dynamic.items() if dynamic.source in sources}
-        return names
+            dynamic = self.plan.dynamic
+            if self._sources[0] != len(dynamic):  # the plan names dynamic reads as the run reads them
+                index = {}
+                for name, found in dynamic.items():
+                    index.setdefault(found.source, []).append(name)
+                self._sources = (len(dynamic), index)
+            names.update(name for source in sources for name in self._sources[1].get(source, ()))
+        marks = {item for item in sources if item[0] in ('bound', 'allocation')}
+        if tx is not None:
+            names |= set(tx.writes)
+            marks |= {('allocation', store, side) for store, side, *_ in tx.allocations}
+        return names, marks
+
+    def changed_names(self):
+        """The engine names whose sets the settling builds again: what changed since the flows last
+        settled (`unsettled`), the stores that its marks name, and what the ways changed at this
+        moment."""
+        names, marks = self.unsettled()
+        return names | {mark[1] for mark in marks} | self.moved
 
     def settled(self):
         """The changes of a round are settled."""
@@ -701,6 +736,7 @@ class Run:
         self.joined.clear()
         self.left.clear()
         self.changed.clear()
+        self.moved.clear()
 
     def kept_entries(self, entries):
         """The places of the entries of a collection that its where tests keep."""
@@ -752,7 +788,7 @@ class Run:
             waiting += more
             for connected in more:
                 given |= self._given(connected)
-        self.waiting, self.waiting_names = waiting, given
+        self.waiting = waiting
         return [connected for connected in sets if connected not in waiting]
 
     def _given(self, connected):
@@ -830,8 +866,7 @@ class Run:
         due (`moment.Clock`)."""
         horizon = self.plan.horizon
         while not self.clock.due(horizon, self.now):
-            t, touched = self.next_moment()
-            self.moment.at(t, touched)
+            self.moment.at(*self.next_moment())
         self.ways.finish(horizon, not self.bare)
 
     def discrete(self):
@@ -861,8 +896,9 @@ class Run:
         return self._keyed
 
     def next_moment(self):
-        """Run the ways to the next moment; gives its time and the engine names that changed in the
-        ways at that time (an event of an instance that a condition or a set reads)."""
+        """Run the ways to the next moment; gives its time, the engine names that changed in the
+        ways at that time (an event of an instance that a condition or a set reads), and the stores
+        that met a bound there, at an event of an instance at the time of the moment."""
         before = self.now
         limit = self.limit = float(self.discrete())
         while True:
@@ -883,8 +919,9 @@ class Run:
                 if (jumped and self.triggers.reads_any(changed)) or self.ways.touched_outside(
                     rates, instance
                 ):
+                    # The instance settled its event itself: no stage is due at its time.
                     self.ways.cut(at)
-                    return at, changed
+                    return at, changed, set()
                 self.triggers.predict(changed)
                 continue
             self.occurrences.carried(self.now, moment)
@@ -893,13 +930,15 @@ class Run:
             # (`moment.Clock`: a store that the ways bring to its bound a roundoff before a stage
             # due there), puts its store on its bound at its own time, and the moment's settling,
             # after its stages, solves the set again (as the oracle settles once).
-            changed = set()
+            changed, met = set(), set()
             while at <= moment:
-                changed |= set(instance.snap())
+                names, reached = instance.snap()
+                changed |= set(names)
+                met |= set(reached)
                 at, instance = self.ways.peek()
             self.ways.cut(moment)
             self.bare = moment == self.plan.horizon and not self._besides(before, moment, contact)
-            return moment, changed
+            return moment, changed, met
 
     def _besides(self, before, t, contact):
         """Whether a moment at time t is due for more than the horizon: a stage, a timer, a key time

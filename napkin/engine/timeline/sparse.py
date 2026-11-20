@@ -897,9 +897,13 @@ class Sparse:
         return list(self.stores), list(self.recorded), ended
 
     def snap(self):
-        """The next event at the time of a moment: committed as any other, with what it changes."""
+        """The next event at the time of a moment: committed as any other, with what it changes, and
+        the stores that it brings to a bound: free through the step, on a bound at its end."""
+        y = self.pending[3]
+        free = ~(self.lower_flags | self.upper_flags)
+        met = free & ((y <= self.lower + self.atol) | (y >= self.upper - self.atol))
         stores, rates, _ = self.step()
-        return stores + rates
+        return stores + rates, [self.stores[k] for k in np.flatnonzero(met).tolist()]
 
     def finish(self, t):
         """At the horizon, where the run stands (`ways.finish`): sets built there, which have made no

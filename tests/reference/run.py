@@ -13,8 +13,10 @@ At a time, rounds (`Run._moment`). One round is:
    amount into or out of its store, and a flow that carries a rate into or out of its store, read
    with the rates of each moment (`_frozen_flows`); a move of nothing and a connected flow at zero
    rate write nothing.
-2. *Settle.* Rates and each affected solver, once (`network.settle`). Until then a read of a
-   result whose inputs changed in the round fails, also through a formula (`Run.check_stale`).
+2. *Settle.* Rates and each affected solver, once (`network.settle`). Until then a read of a rate
+   or a result whose inputs changed since the last settlement fails, also through a formula
+   (`Run.check_stale`; PLAN, change 25): a flow that a firing of the conditions before started
+   makes the rates at its stores stale in the stages of the next round, until it settles.
 3. *Delays.* A next delay that reads a computed result is finished with the settled result.
 4. *Conditions.* Triggers, resets and gates are all read on the settled state; then the firings
    and the released gates take effect, in a fixed order.
@@ -172,8 +174,11 @@ class Run:
         self.edit_log = []
         self.phase = 'setup'
         self.rounds, self.again = 0, False
-        self.round_written = set()  # what the commits of this round changed, for `check_stale`
-        self.at_bound = set()  # stores that met a bound by moving since the last settlement
+        # What the commits changed since the last settlement (of stages, of the setup and of the
+        # firings of the conditions before, and edits), and the stores that met a bound by moving
+        # since then, for `check_stale`.
+        self.round_written = set()
+        self.at_bound = set()
         self._setup()
 
     # --- setup -----------------------------------------------------------------------------------
@@ -511,7 +516,7 @@ class Run:
             self._note('moment', '')
             self.rounds = 0
             if setup:  # round zero: the setup statements commit as one stage, then settle and check
-                self.phase, self.round_written = 'stages', set()
+                self.phase = 'stages'
                 tx = Tx()
                 self._execute(self.model.setup, tx, Scope())
                 self._commit(tx)
@@ -524,7 +529,7 @@ class Run:
                 self.rounds += 1
                 if self.rounds > self.config.max_rounds:
                     raise RunFailed(self._round_limit())
-                self.again, self.round_written = False, set()
+                self.again = False
                 queue = sorted((o for o in self.scheduled if o.due == t), key=lambda o: o.number)
             self.phase = 'stages'
             while queue:
@@ -563,7 +568,7 @@ class Run:
     def _settle_and_check(self):
         self.phase = 'settle'
         network.settle(self)
-        self.at_bound = set()
+        self.round_written, self.at_bound = set(), set()
         self._finish_delays()
         self.phase = 'conditions'
         self._conditions()
@@ -1044,20 +1049,23 @@ class Run:
         return view.cells[Cell(member, 'started')] if isinstance(member, Occ) else member.number
 
     def check_stale(self, var, tx):
-        """A result read while the stages of a round run (decision D5). It fails when an input of
-        its calculation changed in the round, or met a bound by moving, before the calculation
-        settles; and when it has never settled. A stale answer is a wrong one."""
+        """A rate or a result read while the stages of a round run (decision D5; PLAN, change 25:
+        every rate that a settlement decides, of local sharing as of a solver). It fails when an
+        input of its calculation changed since the last settlement, or met a bound by moving, and
+        when it has never settled (in the setup, and a flow that joined since). A stale answer is a
+        wrong one."""
         comp = self.component_of.get(var)
         if comp is None:
             raise RunFailed(
-                f'{label(var)} is read before its first solve: it settles after the stages of the round commit'
+                f'{label(var)} is read before its first solve: it settles after the stages of the round '
+                'commit. Read it in a later stage or after a wait.'
             )
         written = self.round_written | self.at_bound | (set(tx.writes) if tx is not None else set())
         changed = comp.deps & written
         if changed:
             raise RunFailed(
                 f'{label(var)} is read before its solve settles: {", ".join(sorted(label(c) for c in changed))} '
-                'changed in this round. Read it after the stage commits and the solve settles.'
+                'changed since the last settlement. Read it in a later stage or after a wait.'
             )
 
     def entered(self, cell, tx, view):
