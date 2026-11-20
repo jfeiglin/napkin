@@ -38,7 +38,7 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Numerics, Request
 from napkin.program.record import Key
-from tests.engine.test_clock_moments import UNITS, rate
+from tests.engine.test_clock_moments import LOOK, UNITS, network, rate
 from tests.engine.test_round_rate_reads import check
 
 
@@ -110,6 +110,46 @@ def test_the_fill_switches_when_the_drain_fires():
     # At 3 h the rising tank reaches 8 L and the drain starts. Below 8 L the 2 L/h fill
     # balances it, so the tank stays at 8 L through the next half hour.
     check(program, 4, [('tank.water', 3, 8), ('tank.water', F(7, 2), 8)])
+
+
+def test_a_new_drain_reverses_the_departure_at_a_level_and_clock_switch():
+    """Clock seed 700. An edit empties the tank at 1 h. The 2 L/h fill and 1 L/h
+    drain bring it to 2 L at 3 h. The fill then drops to 1/2 L/h and a second
+    1 L/h drain starts. The level falls, so the first drain also takes 1 L/h."""
+    program, _, edit = network(700)
+    check(
+        program,
+        4,
+        [('s0.water', 3, 2), ('s0.water', F(13, 4), F(13, 8)), ('f0.pipe.actual_rate', F(13, 4), 1)],
+        edit,
+        origin=LOOK,
+    )
+
+
+def test_two_fills_switch_together_when_the_clock_and_level_reach_their_thresholds():
+    """Clock seed 1187. At 2 h the edit empties the tank. Two fills of 1 L/h
+    bring it to 2 L at 3 h; one switches on the clock and the other on the rising
+    level. Together they add 4 L/h for the next quarter hour."""
+    program, _, edit = network(1187)
+    check(
+        program,
+        4,
+        [
+            ('s1.water', 3, 2),
+            ('s1.water', F(13, 4), 3),
+            ('f0.pipe.actual_rate', F(13, 4), 2),
+            ('f1.pipe.actual_rate', F(13, 4), 2),
+        ],
+        edit,
+        origin=LOOK,
+    )
+
+
+def test_a_drain_that_slows_as_the_tank_empties_has_no_water_left_to_take():
+    """Clock seed 1319. The tank starts at 2 L and drains 2 L/h to 0 at 1 h.
+    It then asks for 1 L/h. With no inflow the tank and its actual drain stay at zero."""
+    program, _, _ = network(1319)
+    check(program, 4, [('s1.water', 1, 0), ('s1.water', F(5, 4), 0), ('f0.pipe.actual_rate', F(5, 4), 0)])
 
 
 def test_a_component_trial_keeps_the_branch_and_reads_its_trial_state():

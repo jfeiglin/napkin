@@ -999,6 +999,13 @@ def far_sides(
     clock, _ = clock_sides(surfaces, t, rtol, side, moving) if clocks is None else clocks
     at = t if clock is None else clock[2]  # every store crosses under the rates after the clock switches
     switches, derivative = [], None
+    clock_branches = {}
+    if clock is not None and choose is not None:
+        for pair in surfaces:
+            limit = fixed_clock(pair, side, moving)
+            if limit is not None and clock[0] <= limit <= at:
+                clock_branches[pair] = 1 if isinstance(pair[0], nodes.Ref) and pair[0].name == 't' else -1
+        choose(clock_branches)
     for a, b in surfaces:
         for here_node, other in ((a, b), (b, a)):
             if not isinstance(here_node, nodes.Ref) or here_node.name not in place:
@@ -1038,12 +1045,12 @@ def far_sides(
             # Leave the arithmetic coordinates alone. A nextafter probe alone is still equal
             # under change 29 and would read the arriving branch on both sides.
             if choose is not None:
-                choose({(a, b): way if here_node == a else -way})
+                choose({**clock_branches, (a, b): way if here_node == a else -way})
             try:
                 outgoing = rates(at, probe)[i]
             finally:
                 if choose is not None:
-                    choose({})
+                    choose(clock_branches)
             if outgoing * way < 0:
                 if reversal is not None:
                     reversal(here_node.name)

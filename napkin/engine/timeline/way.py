@@ -1,5 +1,7 @@
 """What an installed set publishes and reports when the timeline reaches a moment."""
 
+from ...core import expr as nodes
+
 
 class Way:
     """An engine supplies its answers on its installed trajectory and the contacts it located."""
@@ -14,6 +16,25 @@ class Way:
     def crossed_operands(self, t, through):
         """Operands of physical switches located in the moment's closed time window."""
         return ()
+
+    def coalesced_clock(self, at):
+        """An authored clock is the independent time when a second physical contact meets it."""
+        run = self.run
+        through = run.clock.apart(at)
+        pairs = tuple(self.crossed_operands(at, through))
+        for located, pair in pairs:
+            for clock, threshold in (pair, reversed(pair)):
+                if (
+                    not isinstance(clock, nodes.Ref)
+                    or clock.name != 't'
+                    or run.triggers.moving_reads(threshold)
+                ):
+                    continue
+                if any(other != pair for _, other in pairs) or any(
+                    kind in ('lower bound', 'upper bound') for _, _, kind in self.contacts_at(at, through)
+                ):
+                    return located
+        return None
 
     def incoming_level(self, name, t):
         """The incoming trajectory, including its continuation to a coalesced moment."""
