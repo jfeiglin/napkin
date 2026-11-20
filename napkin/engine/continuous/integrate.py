@@ -200,38 +200,55 @@ def active_roots(before, after, direction):
     return np.nonzero((up & (direction > 0)) | (down & (direction < 0)) | (either & (direction == 0)))[0]
 
 
-def crossing_time(gap, start, end):
-    """A root bracketed on a smooth dense interval. When Brent's tolerance on a large absolute
-    timestamp rounds a positive interval to zero, locate that short interval relative to its
-    start. A crossing strictly after the start occupies at least the following representable time."""
-    at = brentq(gap, start, end, xtol=ROOT_TOLERANCE, rtol=ROOT_TOLERANCE)
-    if at == start and gap(start) != 0:
+def crossing_time(gap, start, end, *, side=None, accepted=None, exact=None, speed=None):
+    """Locate a contact on an incoming trajectory. A switch armed on `side` must leave that
+    open side in (start, end]. The caller can also supply a bracket already certified by the
+    step, or an analytically known time. At either endpoint the accepted samples take precedence
+    over dense interpolation, which can round a bracket away there."""
+    first = accepted[0] if accepted is not None else gap(start)
+    if side is not None and first * side <= 0:
+        return None
+    if exact is not None and (start < exact <= end or (side is None and exact == start)):
+        return exact
+    last = accepted[1] if accepted is not None else gap(end)
+    if side is not None and last * side > 0:
+        return None
+    if first == 0:
+        return start
+    if last == 0:
+        return end
+
+    def difference(at):
+        if at == start:
+            return first
+        if at == end:
+            return last
+        value = gap(at)
+        if speed is not None and value * first < 0:
+            # On a monotone piece a candidate on the outgoing side is already the physical
+            # crossing to the locator's time precision if the incoming side is that close.
+            width = ROOT_TOLERANCE * (1 + abs(at))
+            if abs(value) <= speed * width and (at - width <= start or gap(at - width) * first >= 0):
+                return 0.0
+        return value
+
+    at = brentq(difference, start, end, xtol=ROOT_TOLERANCE, rtol=ROOT_TOLERANCE)
+    if at == start:
+        # The absolute timestamp can round a positive interval to zero. Locate the short interval
+        # relative to its start; it occupies at least the following representable time.
         length = brentq(
-            lambda h: gap(start + h), 0, end - start, xtol=np.finfo(float).tiny, rtol=ROOT_TOLERANCE
+            lambda h: difference(start + h), 0, end - start, xtol=np.finfo(float).tiny, rtol=ROOT_TOLERANCE
         )
         return max(math.nextafter(start, end), start + length)
     return at
 
 
-def locate(roots, k, solution, t_old, t, before, after):
-    """The time of root k between two accepted steps: Brent's method on the dense solution, as
-    `solve_event_equation` in scipy.integrate._ivp.ivp. At the two accepted times it takes the root's
-    values at the accepted states: the dense solution there can differ from them by roundoff, and
-    lose the bracket that they made."""
-
-    if isinstance(roots, Roots):
-        at = roots.roots[k].fixed_time
-        if at is not None and t_old <= at <= t:
-            return at
-
-    def f(at):
-        if at == t_old:
-            return before
-        if at == t:
-            return after
-        return roots.value(k, at, solution(at))
-
-    return crossing_time(f, t_old, t)
+def locate(roots, k, solution, start, end, before, after):
+    """Locate a component's already bracketed root using its accepted endpoint states."""
+    fixed = roots.roots[k].fixed_time if isinstance(roots, Roots) else None
+    return crossing_time(
+        lambda at: roots.value(k, at, solution(at)), start, end, accepted=(before, after), exact=fixed
+    )
 
 
 # The rate of change of the dense solution of one Radau step at a time of the step.

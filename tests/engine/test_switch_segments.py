@@ -513,3 +513,15 @@ def test_an_internal_solver_endpoint_cannot_hide_a_bound_in_the_rest_of_the_time
     assert [v.values[0] for v in read(record, program, ['tank.seen', 'tank.outgoing'], [1])] == [upper, 0]
     (contact,) = record.entries('contact')
     assert (contact.t, contact.part, contact.detail('located')) == (1, 'tank.water', pytest.approx(upper))
+
+
+def test_a_switch_at_an_accepted_step_end_is_consumed_by_the_following_step():
+    from napkin.engine.continuous.integrate import crossing_time
+
+    # Dense interpolation can round above zero at both endpoints. The solver accepted
+    # zero at the shared endpoint, so the incoming step owns the crossing exactly once.
+    def gap(at):
+        return 2 - at + 2**-51
+
+    assert crossing_time(gap, 1, 2, side=1, accepted=(1, 0)) == 2
+    assert crossing_time(gap, 2, 3, side=1, accepted=(0, -1)) is None

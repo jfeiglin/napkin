@@ -1464,8 +1464,8 @@ class MovingDeclared(DeclaredWay):
                 a, b = self._operands(pair, at, solution(at))
                 return a - b
 
-            if gap(start) * sign > 0 and gap(end) * sign <= 0:
-                at = integrate.crossing_time(gap, start, end)
+            at = integrate.crossing_time(gap, start, end, side=sign)
+            if at is not None:
                 yield at, self.declared.id, self.switches[pair]
 
     def _state(self, t):

@@ -767,7 +767,9 @@ class Sparse:
 
     def _switch(self, solution, start, end, name, select):
         """The first time in (start, end] at which a keyed read selects another entry than the one
-        that it holds through the segment, to within the crossing tolerance; or None."""
+        that it holds through the segment, to within the crossing tolerance; or None. Here the
+        observation is the selected row identity, including filters and ranking. A numeric key
+        surface exposed by a moving segment is located with the other operands in `_turns`."""
         held = self.selection[name]
         if select(end, solution(end)) == held:
             return None
@@ -946,17 +948,15 @@ class Sparse:
                 continue
             try:
                 first, last = before(a) - before(b), after(a) - after(b)
-                if first * sign <= 0 or last * sign > 0:
-                    continue
 
                 def gap(t):
                     side = self._side(t, solution(t))
                     return side(a) - side(b)
 
-                at = integrate.fixed_clock(pair, before, self.moves)
-                if at is None:
-                    at = integrate.crossing_time(gap, start, end)
-                yield at, pair, 'switch'
+                fixed = integrate.fixed_clock(pair, before, self.moves)
+                at = integrate.crossing_time(gap, start, end, side=sign, accepted=(first, last), exact=fixed)
+                if at is not None:
+                    yield at, pair, 'switch'
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                 continue
 

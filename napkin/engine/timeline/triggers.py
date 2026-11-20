@@ -129,7 +129,7 @@ from ...core.errors import ExpressionError
 from ...program.record import Unavailable
 from ..continuous import dense
 from ..continuous.dense import Motion
-from ..continuous.integrate import ROOT_TOLERANCE
+from ..continuous.integrate import crossing_time
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .family import Family
@@ -628,26 +628,26 @@ class Triggers:
             outgoing = int(start > 0) - int(start < 0)
             if outgoing == 0:
                 return None
+
+        def gap(t):
+            return self.side(left, t) - self.side(right, t)
+
         if not affine:
-            from scipy.optimize import brentq
-
-            def gap(t):
-                return self.side(left, t) - self.side(right, t)
-
             ways = {self._giver(name) for name in moving if name != 't'}
             breaks = sorted({at for way in ways if hasattr(way, 'breaks') for at in way.breaks(now, until)})
             for s, e in pairwise((now, *breaks, until)):
-                if gap(s) * outgoing > 0 and gap(e) * outgoing <= 0:
-                    return brentq(gap, s, e, xtol=ROOT_TOLERANCE, rtol=ROOT_TOLERANCE)
+                at = crossing_time(gap, s, e, side=outgoing)
+                if at is not None:
+                    return at
             return None
         if self._linear(moving):
-            end = self.side(left, until) - self.side(right, until)
-            if start == end or (end > start and outgoing > 0) or (end < start and outgoing < 0):
+            end = gap(until)
+            if start == end:
                 return None
-            root = self._exact_root(left, right, moving, now)
-            if root is None:
-                root = now + start / (start - end) * (until - now)
-            return root if now < root <= until else None
+            exact = self._exact_root(left, right, moving, now)
+            if exact is None:
+                exact = now + start / (start - end) * (until - now)
+            return crossing_time(gap, now, until, side=outgoing, accepted=(start, end), exact=exact)
         op = 'ge' if outgoing < 0 else 'le'
         return self._contact(left, op, right, moving, now, until, start, switching=True)
 
@@ -671,13 +671,9 @@ class Triggers:
         motion, breaks = self._forms(left, right, moving, now, until, spelled)
         halvings, offset = [0], None
 
-        def root(edge, s, e):
+        def root(edge, s, e, speed=None):
             if switching:
-                from scipy.optimize import brentq
-
-                lo, hi = difference(s), difference(e)
-                if lo * hi < 0 or (lo and hi == 0):
-                    return brentq(difference, s, e)
+                return crossing_time(difference, s, e, side=-1 if op == 'ge' else 1, speed=speed)
             return self._bisect(difference, edge, band, before[edge], s, e)
 
         def first(s, e):
@@ -695,9 +691,12 @@ class Triggers:
             if piece.spread == 0 or abs(piece.rate) > piece.spread or e - s <= crossing:
                 # Its rate keeps its sign (or the piece is within the crossing tolerance): its ends decide.
                 changed = [edge for edge in near if _side(edge, difference(e), band) != before[edge]]
-                if not changed or e - s <= crossing:
-                    return e if changed else None
-                return min(root(edge, s, e) for edge in changed)
+                if not changed:
+                    return None
+                if not switching and e - s <= crossing:
+                    return e
+                speed = abs(piece.rate) + piece.spread if abs(piece.rate) > piece.spread else None
+                return min(root(edge, s, e, speed) for edge in changed)
             halvings[0] += 1
             if halvings[0] > _HALVINGS:
                 raise SimulationError(
