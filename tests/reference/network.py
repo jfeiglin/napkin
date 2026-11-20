@@ -29,6 +29,13 @@ leaves 1/2, 1/4 and 1/4; and where the first junction ranks A ahead of the onwar
 which that pipe serves, wait for A. A relation or an objective of the solver that reads a flow that it
 does not name is refused: to decide who is served, it names them.
 
+**Just after the instant** (the rule of every moment): the rates over the interval after a moment are
+those of the state just after it, whether or not a moment falls there. So a solve reads its settings
+as just after the instant (mode 'germ': a comparison at the closed side of its switch answers for the
+instants after it), and again with the stores moving as its answer moves them where that changes them
+(`settle`); and a store holds its bound only while the answer keeps it there, for local sharing as for
+a declared solver (`solve`).
+
 The structure of an instant is that of the connections that can carry flow: one of capacity zero,
 at its flow or at an endpoint, and a leg that asks nothing, pass neither supply nor room, close no
 ring and rank in no class.
@@ -59,6 +66,7 @@ class Component:
     busy: bool = False
     done: bool = False
     released: frozenset = frozenset()  # (store, 'lo' or 'hi'): a bound that its solve does not hold
+    signature: tuple = None  # the signature of the problem that its solve settled on (`_moving`)
 
 
 def var_of(flow):
@@ -166,7 +174,11 @@ def structure(run):
 
 
 def settle(run):
-    """Rates and solver results for the state as it stands. Each affected calculation is solved once."""
+    """Rates and solver results for the state as it stands, as they hold just after the instant (the
+    rule of every moment: the rates over the interval after a moment are those of the state just
+    after it, whether or not a moment falls there). Each affected calculation is solved once, and
+    again where its settings, read with the stores moving as its answer moves them, are not those
+    that it was solved with (`_moving`)."""
     comps = structure(run)
     run.components = comps
     run.component_of = {v: c for c in comps for v in c.vars}
@@ -176,8 +188,44 @@ def settle(run):
         for comp in comps:
             if not comp.done:
                 solve(run, comp)
+        _moving(run, comps)
     finally:
         run.settling = None
+
+
+def _moving(run, comps):
+    """Solve again each calculation whose problem, read with the stores moving as the published rates
+    move them (a comparison on a store at the closed side of its switch, which the store crosses as it
+    moves: `s <= 2 L` while s rises from 2 L), differs from the one that it was solved with, with the
+    stores moving, until no problem changes. Where the answers move the stores back across their
+    switches, the rates switch back and forth and local sharing has no answer that holds just after
+    the moment."""
+    view = run.view
+    for _ in range(len(comps) + 1):
+        view.levels, view.rates, _, _ = _carried(run)
+        try:
+            changed = [
+                comp
+                for comp in comps
+                if (view.levels or view.rates) and _after(run, comp)[0]['signature'] != comp.signature
+            ]
+            for comp in changed:
+                comp.done = False
+            for comp in changed:
+                if not comp.done:
+                    solve(run, comp)
+        finally:
+            view.levels, view.rates = {}, {}
+        if not changed:
+            return
+    raise NotCovered(
+        'the rates switch back and forth: the answer of '
+        + ', '.join(
+            c.sols[0][0].label if c.sols else 'the flows ' + ', '.join(f.label for f in c.flows)
+            for c in changed
+        )
+        + ' moves a store back across a switch of its settings'
+    )
 
 
 def pull(run, var):
@@ -193,34 +241,50 @@ def pull(run, var):
 def solve(run, comp):
     """Assemble one component, solve it unless the cache holds the same problem, and publish.
 
-    A declared solver's answer holds its stores on their bounds only where it keeps them there: a
-    store at a bound that the answer moves off is released, and the problem is solved again without
-    that bound, until the bounds that it holds stay (its answer is then the one that holds just
-    after the instant, whatever moments other calculations have). A release whose answer would move
-    a released store past its bound is not made. The cache holds the problem that the solve settled
-    on, with its answer and its releases: it serves again where the problem is that one, as assembled
-    or with the bounds released that the cached answer moves off. The solve is noted once."""
+    The answer is the one that holds just after the instant (the rule of every moment: the rates over
+    the interval after a moment are those of the state just after it, whether or not a moment falls
+    there). So the settings are read as just after it (`_after`: a branch on the time at the closed
+    side of its comparison takes its other branch), and a store holds its bound only where the answer
+    keeps it there: a store at a bound that the answer moves off is released, and the problem is
+    solved again without that bound, until the bounds that it holds stay. This is one rule for local
+    sharing and for a declared solver: where a store that local sharing holds at its lower bound
+    makes the claims that it supplies wait for its supply, an answer that fills it is no answer just
+    after, when it holds stock and they wait no more. Where the answer with a released store free
+    moves it back past its bound, no answer holds just after the instant: for local sharing the run
+    stops by name (`NotCovered`, as the engine stops); a declared solver's release is not made. The cache holds the problem that the solve settled on, with its
+    answer and its releases: it serves again where the problem is that one, as assembled or with the
+    bounds released that the cached answer moves off. The solve is noted once."""
     comp.busy = True
-    ev = Ev(run, run.view, None, unknowns=set(comp.vars))
-    problem = assemble(run, comp, ev)
+    problem, ev = _after(run, comp)
     answer = _cached(run, comp, problem)
     if answer is None:
         answer = _select(run, comp, problem)
-        while comp.sols:
+        while True:
             leaving = _moved(problem, answer, _one_bound(run.view, problem, comp), inward=True)
             if not leaving:
                 break
             before = comp.released
             comp.released = before | leaving
-            trial = assemble(run, comp, Ev(run, run.view, None, unknowns=set(comp.vars)))
+            trial, _ = _after(run, comp)
             found = _select(run, comp, trial)
-            if _moved(trial, found, leaving, inward=False):
+            back = _moved(trial, found, leaving, inward=False)
+            if back and not comp.sols:
+                cell, which = sorted(back, key=lambda b: label(b[0]))[0]
+                raise NotCovered(
+                    f'{label(cell)}: local sharing has no rates that hold just after the moment: held '
+                    f'at its {"lower" if which == "lo" else "upper"} bound, its sharing moves it off, and '
+                    'free, back past it; the rates switch back and forth at its bound'
+                )
+            if back:
                 comp.released = before
                 break
             problem, answer = trial, found
         run.cache[comp.key] = (problem['signature'], answer)
+        comp.signature = problem['signature']
         who = label(comp.sols[0][0]) if comp.sols else 'network'
         run._note('solve', who, origin=comp.sols[0][1].origin if comp.sols else '')
+    else:
+        comp.signature = run.cache[comp.key][0]  # served again: the problem that it settled on
     comp.deps = set(ev.shared.reads) | problem['stores']
     for var in ev.shared.results:  # a result of another calculation brings that calculation's inputs
         other = run.component_of.get(var)
@@ -229,6 +293,15 @@ def solve(run, comp):
     for var, value in answer.items():
         run.view.results[var] = value
     comp.busy, comp.done = False, True
+
+
+def _after(run, comp):
+    """The problem of a component as it holds just after the instant, and its evaluator: each setting
+    read in the time since the moment (mode 'germ'), at its value as that time starts, so that a
+    comparison answers for the instants just after the moment. A request that moves gives its value
+    at the moment (`motion` follows it)."""
+    ev = Ev(run, run.view, None, mode='germ', unknowns=set(comp.vars))
+    return assemble(run, comp, ev, {}), ev
 
 
 def _cached(run, comp, problem):
@@ -240,12 +313,10 @@ def _cached(run, comp, problem):
         return None
     if cached[0] == problem['signature']:
         return cached[1]
-    leaving = (
-        _moved(problem, cached[1], _one_bound(run.view, problem, comp), inward=True) if comp.sols else ()
-    )
+    leaving = _moved(problem, cached[1], _one_bound(run.view, problem, comp), inward=True)
     if leaving:
         comp.released = frozenset(leaving)
-        if assemble(run, comp, Ev(run, run.view, None, unknowns=set(comp.vars)))['signature'] == cached[0]:
+        if _after(run, comp)[0]['signature'] == cached[0]:
             return cached[1]
         comp.released = frozenset()
     return None
@@ -778,15 +849,16 @@ def _rises(view, f, request):
 # --- between two moments -----------------------------------------------------------------------------
 
 
-def motion(run):
-    """Set `view.levels` and `view.rates` for the time after this moment, and return the stops:
-    the times (after the moment) at which a rate input changes or a store meets a bound."""
+def _carried(run):
+    """The motion after this moment of the published rates: (the level of each store that moves, as a
+    polynomial in the time since the moment; the rate of each flow that follows a moving request;
+    each moving flow as (source, sink, its rate, its label); and the moving requests that the first
+    look finds, with every store held still)."""
     view = run.view
-    view.levels, view.rates = {}, {}
     follow = {}
     for comp in run.components:  # first look: which requests move, with every store held still
         assemble(run, comp, Ev(run, view, None, mode='germ', unknowns=set(comp.vars)), follow)
-    net, moving = {}, []
+    net, moving, rates = {}, [], {}
 
     def carry(src, dst, p, name):
         if p.c != (0,):
@@ -825,13 +897,20 @@ def motion(run):
                 raise NotCovered(
                     f'{f.label}: a request that changes continuously on a flow that something limits'
                 )
-            view.rates['rate', f] = p
+            rates['rate', f] = p
         else:
             p = Poly([rate])
         carry(f.src, f.dst, p, f.label)
-    for cell, p in net.items():
-        if p.c != (0,):
-            view.levels[cell] = Poly([view.cells[cell]]) + p.integral()
+    levels = {cell: Poly([view.cells[cell]]) + p.integral() for cell, p in net.items() if p.c != (0,)}
+    return levels, rates, moving, follow
+
+
+def motion(run):
+    """Set `view.levels` and `view.rates` for the time after this moment, and return the stops:
+    the times (after the moment) at which a rate input changes or a store meets a bound."""
+    view = run.view
+    view.levels, view.rates = {}, {}
+    view.levels, view.rates, moving, follow = _carried(run)
     stops = []
     for comp in run.components:  # second look, with the stores moving: nothing else may move
         again = {}

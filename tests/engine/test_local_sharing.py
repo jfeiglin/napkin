@@ -8,9 +8,10 @@ served at one fraction; a priority names the legs of a route and the legs of a f
 endpoints. The oracle runs the same program in exact fractions by the selection order, so it is an
 independent second reading of the rules. The rates, the fractions and the levels must agree at the
 start and at moments after it; where the oracle has no answer (`NotCovered`: a ring of empty stores
-or of full stores, a request at an endpoint that a route meets), the engine stops with a failure
-that names the stores or the endpoint. Room passed through two full stores in series is no longer
-such a case: both answer it (`tests/engine/test_full_stores.py`).
+or of full stores, a request at an endpoint that a route meets, a store that no rates hold just after
+a moment, which its sharing moves off its bound when held and back past it when free), the engine
+stops with a failure that names the stores or the endpoint. Room passed through two full stores in
+series is no longer such a case: both answer it (`tests/engine/test_full_stores.py`).
 """
 
 from __future__ import annotations
@@ -144,7 +145,11 @@ def network(seed, routes=False):
 
 
 # What a failure of the engine says where the oracle has no answer of local sharing.
-NO_ANSWER = ('ring of stores', 'a request at an endpoint that the route')
+NO_ANSWER = (
+    'ring of stores',
+    'a request at an endpoint that the route',
+    'switch back and forth at its bound',
+)
 
 
 def compare(seed, routes=False):

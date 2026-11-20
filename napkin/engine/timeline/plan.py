@@ -63,9 +63,12 @@ continuous engine and the record read these names; nothing reads the spelling of
   `inflow` (`End`): a request (zero when left out), a capacity (none when left out), the actual rate
   (the sum of its connections' actual rates, a formula) and `flows`, the collection of its
   connections keyed by their creation numbers (from one: a flow, then each of its legs, as the
-  oracle numbers them). A `priority(...)` allocation is kept as its items (`rankings`): a connection
-  (a directed flow or a leg), or a projection of a keyed collection of flows, whose keys the run
-  reads at its start; a route or a flow with legs named whole is an error of the setup.
+  oracle numbers them). The plan declares each endpoint that the program configures, reads or names
+  in a statement before the run needs it (`_declare_ends`), so that the sets of its store read it:
+  a stage may give one that nothing configured an allocation or a request. A `priority(...)`
+  allocation is kept as its items (`rankings`): a connection (a directed flow or a leg), or a
+  projection of a keyed collection of flows, whose keys the run reads at its start; a route or a flow
+  with legs named whole is an error of the setup.
 - **Connected sets.** A flow joins the ends of its connections, and a request or a capacity, of a
   connection or of an endpoint at its ends, that reads a store, through formulas, reductions or
   directly, joins that store to the flow's set: what a rate reads that moves is in its own set.
@@ -559,7 +562,7 @@ class Plan:
         )
         # The values of each scope, then the flows, whose ends are values, then the expressions of
         # each: an expression may read a part that comes later.
-        self._declared = []
+        self._declared, self._planned = [], False
         members = [
             (template, row, member)
             for template in program.templates
@@ -589,6 +592,7 @@ class Plan:
         self._copied()
         for make in self._declared:
             make()
+        self._planned = True  # what is declared from now on is made at once (`end_of`)
         for check in program.asserts:
             self._assertion(check, None)
         for scope in members:
@@ -1056,8 +1060,12 @@ class Plan:
         return point[1]
 
     def _declare_ends(self, members):
-        """The endpoints that the program sets; an endpoint that it only reads is declared when a path
-        reads it (`end_of`)."""
+        """The endpoints that the program sets, and those that a stage, a trigger or the setup names
+        (`_named_ends`), configured or not: each is in the network from the start, so that a stage may
+        set its allocation or its request and the sets of its store read it (spec: a stored quantity
+        gains an `outflow` scope when it supplies a flow). An endpoint that a formula reads is declared
+        when its path is read (`end_of`), as the plan is made; one that a path names only through an
+        occurrence, when the occurrence starts."""
         self._incident, self._stores = {}, {}
         for flow in self.flows.values():
             for connection in flow.connections:
@@ -1076,9 +1084,36 @@ class Plan:
             for side in SIDES:
                 if getattr(value, side) is not None:
                     self.end_of(store, side, value.origin)
+        self._name_ends(self.program.setup, [None], local=False)
+        for template in self.program.templates:
+            for event in template.events:
+                self._name_ends(event, [scope for scope in members if scope[0] is template], local=False)
+
+    def _name_ends(self, part, scopes, local):
+        """Declare the endpoints that the statements and the conditions of `part` (the setup's
+        statements, or an event) name, resolved in each scope of `scopes` that runs them: the paths
+        from `this`, a member, the root or the instances of a template (`local` false), or from the
+        bare names of an occurrence (`local`). A path from anything else (a where, a keyed read), and
+        one that does not resolve here or names no endpoint (a type error), is resolved when it runs,
+        as before."""
+        starts = (Local,) if local else (This, Named, Root, Instances)
+        for path, side, origin in _named_ends(part):
+            if not isinstance(path.start, starts):
+                continue
+            for scope in scopes:
+                try:
+                    point = self.resolve(path, scope, origin)
+                    for each in point[1].points if point[0] == 'many' else (point,):
+                        if each[0] == 'value' and each[1] in self._stores:
+                            self.end_of(each[1], side, origin)
+                except Outside:
+                    continue
 
     def end_of(self, store, side, origin):
-        """The endpoint `side` of a stored number, declared on its first use."""
+        """The endpoint `side` of a stored number, declared on its first use. One declared once the
+        plan is made (a path that only a run resolves, through a where or a keyed read) is made at
+        once, and its request, which nothing configured, is the formula zero, which a read evaluates
+        and which needs no starting value."""
         if (store, side) in self.ends:
             return self.ends[(store, side)]
         value, scope = self._stores[store]
@@ -1089,10 +1124,15 @@ class Plan:
         found = self.values.get(store)
         if found is None or found.kind != STATE or found.boolean:
             raise Outside(f'{value.origin}: {side} of a value that is no stored number (a type error)')
-        self._declare_end(store, value, scope, side, setting or p.Endpoint(), flows)
+        first = len(self._declared)
+        self._declare_end(store, value, scope, side, setting or p.Endpoint(), flows, late=self._planned)
+        if self._planned:
+            makers, self._declared = self._declared[first:], self._declared[:first]
+            for make in makers:
+                make()
         return self.ends[(store, side)]
 
-    def _declare_end(self, store, value, scope, side, setting, flows):
+    def _declare_end(self, store, value, scope, side, setting, flows, late=False):
         owner = self.owner_of(scope)
         # With no flow yet, the unit of the store per hour.
         unit = self.connections[flows[0]].unit if flows else f'{getattr(value.type, "unit", "") or "1"}/h'
@@ -1103,7 +1143,7 @@ class Plan:
             if expression is None and which == 'capacity':
                 continue
             key = Key(owner, (value.name, side, which))
-            kind = FORMULA if isinstance(expression, Formula) else CAPTURE
+            kind = FORMULA if isinstance(expression, Formula) or (late and expression is None) else CAPTURE
             names[which] = name_of(key)
             self._add(Value(name_of(key), key, kind, None, unit))
 
@@ -1427,15 +1467,16 @@ class Plan:
                 for connection in self.flows[name].connections:
                     self.connections[connection.name] = connection
         for part in event.locals:
+            store = name_of(Key(occ, (part.name,)))
+            found = self.values.get(store) if isinstance(part, p.Value) else None
+            if found is not None and found.kind == STATE and not found.boolean:
+                self._stores[store] = (part, scope)  # a stored number of the occurrence: it has endpoints
             # The endpoint settings of a store of the occurrence, which its own flows meet.
             if isinstance(part, p.Value) and (part.outflow is not None or part.inflow is not None):
-                store = name_of(Key(occ, (part.name,)))
-                found = self.values.get(store)
                 if found is None or found.kind != STATE or found.boolean:
                     raise Outside(
                         f'{part.origin}: an endpoint of a value that is no stored number (a type error)'
                     )
-                self._stores[store] = (part, scope)
                 for side in SIDES:
                     if getattr(part, side) is not None:
                         incident = tuple(
@@ -1446,6 +1487,7 @@ class Plan:
                             if store == (connection.source if side == 'outflow' else connection.sink)
                         )
                         self._declare_end(store, part, scope, side, getattr(part, side), incident)
+        self._name_ends(event, [scope], local=True)
         self._copied()
         makers, self._declared = self._declared[first:], self._declared[:first]
         for make in makers:
@@ -2650,6 +2692,43 @@ def _program_statements(program):
     for body in bodies:
         for statement in _statements(body):
             yield statement.origin, statement
+
+
+def _named_ends(part):
+    """(the path to a store, the side, the origin) of each path that names an endpoint
+    (`store.outflow` or `store.inflow` and what follows) in `part`: the setup's statements, or an
+    event's stages, waits and triggers, with their delays, guards, conditions and captures."""
+    found, bodies = [], []
+    if isinstance(part, p.Event):
+        for step in part.steps:
+            if isinstance(step, p.Until):
+                found.append((step.origin, step.test))
+                continue
+            found += [(step.origin, x) for x in (step.delay, step.guard) if x is not None]
+            bodies.append(step.body)
+        for trigger in part.triggers:
+            found += [(trigger.origin, trigger.test), *((trigger.origin, c.init) for c in trigger.captures)]
+            found += [(trigger.origin, trigger.reset.expr)] if trigger.reset is not None else []
+            bodies.append(trigger.body)
+    else:
+        bodies.append(part)
+    for body in bodies:
+        for statement in _statements(body):
+            if isinstance(statement, p.Assign):
+                found.append((statement.origin, statement.target))
+            found += [(statement.origin, x) for x in _statement_expressions(statement)]
+    for origin, item in found:
+        if isinstance(item, Path):
+            paths = [item]
+        elif isinstance(item, Expr):
+            paths = [read for _, read in item.reads if isinstance(read, Path)]
+        else:
+            continue
+        for path in paths:
+            for k, step in enumerate(path.steps):
+                if step in SIDES:
+                    yield Path(path.start, path.steps[:k]), step, origin
+                    break
 
 
 def _statement_expressions(statement):

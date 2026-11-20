@@ -49,6 +49,14 @@ The capacity of an endpoint that a leg of a route meets holds the positive part 
 maximize a convex function, and the oracle does not settle it either): the run stops with a failure
 that names the endpoint.
 
+**Just after the instant.** The rates of a moment are those of the state just after it, whether or
+not a moment falls there (`Instant.settle`, which lines read; the sparse integrator holds its flags the
+same way): a store rests on a bound while its sharing keeps it there. Where the rates found with a store
+held at one of its bounds move it off, it is free just after, and the part is solved again with it
+free: an empty store whose claims wait for its supply, and whose sharing fills it, holds stock just
+after, where they wait no more. Where its sharing with it free moves it back past its bound, no rates
+hold just after the moment, and the run stops by name: the rates switch back and forth at its bound.
+
 The flows that share no row and no claim are independent, so an instant cuts the flows into
 **coupled parts**: a store at its lower bound with outflows, or at its upper bound with inflows,
 couples the flows of its connections, and so does an endpoint of two connections or more that has a
@@ -94,6 +102,9 @@ DIRECT, FORWARD, BACKWARD, LEG = 0, 1, 2, 3  # the roles of a connection
 # its served fraction (one over it overflows), and only underflow makes one, such as the request of
 # a rate that decays toward zero over a long run (9 e^-t L/h at 708 h). Nor does it size a part.
 TINY = float(np.finfo(float).tiny)
+# A store's net rate within this part of what flows in and out is the roundoff of its flows: it holds
+# the store where it is.
+ROUNDOFF = 1e-12
 
 
 @dataclass(frozen=True)
@@ -635,6 +646,7 @@ class Instant:
         self.selected = 0  # the parts that the selection order solved, not a closed form
         self.carries = carrying(net, asked)  # the connections that can carry flow at the instant
         self.layer = net.layers(self.carries)  # the priority layer of each flow among them
+        self._full = None  # the value of each flow, for the nets of a part's stores (`_nets`)
 
     # ---- the coupled parts ----------------------------------------------------------------------
 
@@ -742,8 +754,9 @@ class Instant:
             'meets; local sharing has no answer for the positive part of a signed rate in a claim'
         )
 
-    def values(self):
-        """The value of every flow: a rate, a signed rate or a served fraction."""
+    def values(self, after=False):
+        """The value of every flow: a rate, a signed rate or a served fraction; with `after`, as they
+        hold just after the instant (`settle`)."""
         net, asked = self.net, self.asked
         values = self.alone(np.arange(len(net.flows)))
         stores = np.flatnonzero((self.lower & (net.counts[OUT] > 0)) | (self.upper & (net.counts[IN] > 0)))
@@ -756,8 +769,70 @@ class Instant:
         for side, s in np.argwhere(ends).tolist():
             seeds.append(int(net.of[net.ends[side].of(s)[0]]))
         for part in self.parts(seeds):
-            values[part] = self.solve(part)
+            values[part] = self.settle(part) if after else self.solve(part)
         return values
+
+    def settle(self, part):
+        """The values of the flows of one coupled part as they hold just after the instant (the rule
+        of every moment: the rates over the interval after a moment are those of the state just after
+        it). A store rests on a bound while its sharing keeps it there: where the values move a store
+        held at one of its bounds off it, it is free just after, so its flags are cleared (released)
+        and the part is solved again, until the bounds that it holds stay. So a store at its lower
+        bound whose claims wait for its supply, and whose sharing fills it, holds stock just after,
+        where they wait no more. Where the values with the store free move it back past its bound,
+        no rates hold just after the instant (held, they move it off; free, back): the rates switch
+        back and forth at its bound, and the run stops, naming it (PLAN, change 10: a run that cannot
+        answer stops by name). A net rate within the roundoff of its flows holds a store where it is."""
+        found = self.solve(part)
+        while True:
+            leaving = [
+                s
+                for s, change in self._nets(part, found)
+                if (self.lower[s] and change > 0) or (self.upper[s] and change < 0)
+            ]
+            if not leaving:
+                return found
+            saved = [(s, bool(self.lower[s]), bool(self.upper[s])) for s in leaving]
+            self.lower[leaving] = False
+            self.upper[leaving] = False
+            found = self.solve(part)
+            nets = dict(self._nets(part, found, leaving))
+            back = [s for s, low, high in saved if (low and nets[s] < 0) or (high and nets[s] > 0)]
+            if back:
+                which = 'lower' if dict((s, low) for s, low, _ in saved)[back[0]] else 'upper'
+                raise SimulationError(
+                    f'{self._name(back[0])}: local sharing has no rates that hold just after the moment: '
+                    f'held at its {which} bound, its sharing moves it off, and free, back past it; the '
+                    'rates switch back and forth at its bound'
+                )
+
+    def _nets(self, part, values, stores=None):
+        """(store, net rate) of each store of a part that its bound couples, held at one bound only
+        (or of `stores`): what flows in less what flows out at the part's `values`, 0 within the
+        roundoff of its flows. Every connection of such a store is in the part (`part`), so the
+        values of the other flows, which a buffer of the instant holds at zero, are not read."""
+        net = self.net
+        if self._full is None:
+            self._full = np.zeros(len(net.flows))
+        full = self._full
+        full[part] = values
+        if stores is None:
+            ends = {
+                int(e)
+                for f in part
+                for c in self._connections(f)
+                for e in (net.source[c], net.sink[c])
+                if e >= 0
+            }
+            stores = [s for s in sorted(ends) if self.lower[s] != self.upper[s] and self.couples(s)]
+        found = []
+        for s in stores:
+            inflow = float(net.carried(full, self.asked, net.ends[IN].of(s)).sum())
+            outflow = float(net.carried(full, self.asked, net.ends[OUT].of(s)).sum())
+            change = inflow - outflow
+            found.append((s, 0.0 if abs(change) <= ROUNDOFF * (inflow + outflow) else change))
+        full[part] = 0.0
+        return found
 
     def rates(self):
         """The rate of every connection."""

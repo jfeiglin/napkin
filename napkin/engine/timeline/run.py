@@ -14,9 +14,9 @@
    `scale` when it declares one, else the largest of one of its unit, its start value, its finite
    bounds and the largest start value of the stores that flows connect it to. A store must start
    within its bounds. A store of an occurrence takes its size when the occurrence starts.
-3. **Moments** (`moment.py`): the setup is round zero at time 0; then, at each moment, rounds of
-   stages, the settling of the sets that the round touched (`ways.py`), and the conditions
-   (`triggers.py`). Occurrences are in `occurrences.py`.
+3. **Moments** (`moment.py`): the setup is round zero at time 0, after whose commit every connected
+   set starts and the flows first settle; then, at each moment, rounds of stages, the settling of the
+   sets that the round touched (`ways.py`), and the conditions (`triggers.py`). Occurrences are in `occurrences.py`.
 4. **Between moments** each instance of a way runs its sets (`ways.py`). The next moment is the
    earliest of a stage that is due, a reset timer, a key time of a keyed read by the time, the
    horizon (`limit`) and the first contact of a watched condition or assertion; an event inside an
@@ -757,10 +757,14 @@ class Run:
 
     # ---- the run ----------------------------------------------------------------------------------
 
-    def prepare(self):
+    def prepare(self, now=True):
         """The values at the start, the checks of the setup, the size and the bounds of each store,
         the tolerances that the record keeps, and the instances of the ways of the connected sets
-        at time 0: (the values, the sizes, the instances)."""
+        at time 0: (the values, the sizes, the instances). A run (`now` false) starts no set here:
+        every set waits for the settling of the setup's commit, where the flows first settle, so that
+        what local sharing has no answer for (a ring of stores) fails there, from the state that the
+        setup leaves, as the oracle has it; `now` starts the sets at the start, for a reader of the run
+        at its start (`dynamics/field.py`)."""
         plan = self.plan
         values = self.start()
         self.recorder.constants = values
@@ -784,12 +788,16 @@ class Run:
         for flow in plan.flows.values():
             self.tolerate(flow)
         self.started = plan.started = True
-        self.ways.build(self._now(plan.sets), self.env, 0.0)
+        if now:
+            self.ways.build(self._now(plan.sets), self.env, 0.0)
+        else:
+            self.waiting = list(plan.sets)
         return values, self.sizes, list(self.ways.instances)
 
     def _now(self, sets):
-        """The sets that start before the setup: those of no declared solver and that read none of
-        their rates and results, which settle after the setup's commit (`waiting`)."""
+        """The sets that start at the start, for a reader of the run there (`prepare`): those of no
+        declared solver and that read none of their rates and results, which settle after the setup's
+        commit (`waiting`)."""
         given = set()
         waiting = [connected for connected in sets if connected.way == DECLARED]
         for connected in waiting:
@@ -855,7 +863,7 @@ class Run:
         return made
 
     def _start(self):
-        self.prepare()
+        self.prepare(now=False)
         self.moment.setup()
 
     def _resume(self):

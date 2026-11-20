@@ -35,7 +35,9 @@ linear piece at the point. A part that does not settle stops the run (`Simulatio
 gets another answer.
 
 What follows rank 4 changes the answer only by roundoff: an unknown within it of zero or of a bound
-is put there, and the point then exactly on the rows that it holds (`_exact`). Each change is a
+is put there, and the point then exactly on the rows that it holds by the other unknowns (`_exact`):
+an unknown at zero or at a bound stays there, so a junction that a route at zero meets balances
+exactly. Each change is a
 candidate that takes the answer's place only where it is no worse on any rank, the last included, as
 a change of a declared solver's answer (`_kept`; `solve.Answer.admits`): it holds every row as the
 answer does, serves each claim no less, and is no farther from the targets but by its roundings. So
@@ -476,12 +478,15 @@ def _kept(rows, lower, upper, target, claims, answer, candidates, units=1.0):
 
 def _exact(rows, lower, upper, x, target):
     """The point x put exactly on the plain rows that it holds, by the least change of the unknowns
-    that rest on no bound and meet no row with positive parts. The programs read each rate in units
-    of the part and each claim in served fractions, so a vertex comes back from them with the
-    roundoff of those changes (3 L/h over a part of 5 L/h came back 1e-15 short, which moved the
-    time at which a tank emptied); the rows that hold it give its numbers again. The change is a
-    candidate, which `_kept` checks."""
-    loose = (x != lower) & (x != upper)
+    that rest on no bound, are not zero and meet no row with positive parts. The programs read each
+    rate in units of the part and each claim in served fractions, so a vertex comes back from them
+    with the roundoff of those changes (3 L/h over a part of 5 L/h came back 1e-15 short, which moved
+    the time at which a tank emptied); the rows that hold it give its numbers again. An unknown at
+    zero is exact already (the snap of `select` put it there) and stays: the change of the least
+    squares would give it the roundoff of the others, and a route at zero that is the one connection
+    of a `[0, 0]` junction would then move the junction off its balance. The change is a candidate,
+    which `_kept` checks."""
+    loose = (x != lower) & (x != upper) & (x != 0)
     for _, parts, _ in rows.convex:
         loose[[j for j, _ in parts]] = False
     free = np.flatnonzero(loose)

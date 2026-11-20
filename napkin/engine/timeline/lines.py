@@ -9,10 +9,13 @@ that met its bound, of the flows whose requests or capacities changed, and of th
 bound since they were last solved. Every other store keeps its line, so the cost of a moment does not
 grow with the number of rows.
 
-The flags of a part are the state at the moment, as the oracle reads them: a store rests on its lower
-(upper) bound while it holds exactly that value. A store at its bound whose sharing gives it a rate
-away from the bound leaves it; its part is solved again at the next moment of the run (the horizon
-is one), from where it is then, as the oracle settles every part at each of its moments.
+The rates of a moment are those that hold just after it (`network.Instant.settle`), as the oracle
+settles them, so a run is the same whether a moment falls on it or not: a store rests on a bound
+while it holds exactly that value and its sharing keeps it there; one that its sharing moves off a
+bound is free just after, and its part is solved with it free (where that would move it back past its
+bound, no rates hold just after, and the run stops by name). A store that the closed form of groups
+moves off a bound (below), which a release would not change, leaves it, and its part is solved again
+at the next moment of the lines (the horizon is one), from where it is then.
 
 **Downstream only.** Where every flow of the sets is directed and rigid (it never carries more than
 its request: `Plan.rigid`) and no endpoint has a capacity or a request, every part has the closed
@@ -39,7 +42,7 @@ import numpy as np
 
 from ..errors import SimulationError
 from .family import Columns
-from .network import BACKWARD, FORWARD, IN, OUT, SIDES, Asked, Instant, network_of
+from .network import BACKWARD, FORWARD, IN, OUT, ROUNDOFF, SIDES, Asked, Instant, network_of
 
 
 class Lines:
@@ -172,7 +175,7 @@ class Lines:
                 self._flags(stores, t)
                 if before == [(bool(instant.lower[s]), bool(instant.upper[s])) for s in stores]:
                     break
-            found = instant.solve(part)
+            found = instant.settle(part)
             done.update(part)
             for g, value in zip(part, found.tolist()):
                 if value != self.value[g]:
@@ -199,20 +202,20 @@ class Lines:
             outflow = float(self.rate[net.ends[OUT].of(s)].sum())
             slope = inflow - outflow
             value = self._value(s, t)
-            low, high = (
-                instant.lower[s] and value <= self.lower[s],
-                instant.upper[s] and value >= self.upper[s],
-            )
+            low, high = value <= self.lower[s], value >= self.upper[s]
             if low or high:
-                # A store at its bound: a rate within the roundoff of its flows holds it there.
-                if abs(slope) <= 1e-12 * (inflow + outflow):
+                # A store at its bound, held or released (`Instant.settle`): a rate within the
+                # roundoff of its flows holds it there.
+                if abs(slope) <= ROUNDOFF * (inflow + outflow):
                     slope = 0.0
                 if (low and slope < 0) or (high and slope > 0):
                     raise SimulationError(
                         f'{self.stores[s]}: local sharing moves it past its bound at {t:g} h'
                     )
-                if slope != 0.0:
-                    self.stale.add(s)  # it leaves its bound: solved again at the next moment
+                if slope != 0.0 and (instant.lower[s] or instant.upper[s]):
+                    # Held by the closed form of groups (`_downstream`), which a release would not
+                    # change: it leaves all the same, and its part is solved again at the next moment.
+                    self.stale.add(s)
             if slope == self.slope[s] and s not in forced:
                 continue
             self.y[s], self.since[s], self.slope[s] = value, t, slope
@@ -235,7 +238,7 @@ class Lines:
         count = len(self.stores)
         self.instant = Instant(self.net, self.asked, np.zeros(count, dtype=bool), np.zeros(count, dtype=bool))
         self._flags(range(count), t)
-        self.value = self.instant.values()
+        self.value = self.instant.values(after=True)
         self.selected = bool(self.instant.selected)
         self.rate = self.net.carried(self.value, self.asked)
         for k, name in enumerate(self.recorded):

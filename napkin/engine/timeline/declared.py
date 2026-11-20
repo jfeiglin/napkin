@@ -99,7 +99,7 @@ import math
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.integrate import solve_ivp
+from scipy.integrate import OdeSolution, Radau
 from scipy.sparse.linalg import splu
 
 from ...core import expr as nodes
@@ -1051,11 +1051,13 @@ class DeclaredWay:
 
 
 class Segment:
-    """A segment of a moving set: from `start` to `end`, its dense output (`state(t)`), and the
-    store whose event ended it (None at the end of the window)."""
+    """A segment of a moving set: from `start` to `end`, its dense output (`state(t)`), the store
+    whose event ended it (None at the end of the window), and whether it is plain: one that ends at
+    no event before the end of the window, at the last time that answers before a failure."""
 
-    def __init__(self, start, end, solution, event):
+    def __init__(self, start, end, solution, event, plain=False):
         self.start, self.end, self.solution, self.event = start, end, solution, event
+        self.plain = plain
 
 
 class MovingDeclared(DeclaredWay):
@@ -1064,12 +1066,17 @@ class MovingDeclared(DeclaredWay):
     every rate that reads a moving quantity does (spec, "A rate can follow a moving quantity"; D3):
     SciPy's Radau integrates its stores, and the rates at each trial state of a step are the answer
     of the selection order there, solved on the solver's kept instance and not traced (spec,
-    "Rounds": evaluations at trial states are separate from the once-in-a-round rule). The flags of
-    the bounds hold through a segment, and a store held on a bound stays on it; a segment ends where
-    a store reaches a bound or where the answer would move a store held on a bound off it, and the
-    problem is solved there with the new flags (a traced solve). Its pieces are fitted to each
-    segment (`record.fitted`): the stores from the integrator's dense output, the rates and the
-    results from solves at the fitted times.
+    "Rounds": evaluations at trial states are separate from the once-in-a-round rule). A segment is
+    Radau's steps (`_next`) from one event to the next. A trial state is read within the stores'
+    bounds (a store that the integrator puts a tolerance past a bound is at its bound: `_held`). The
+    flags of the bounds hold through a segment, and a store held on a bound stays on it; a segment
+    ends where a store reaches a bound or where the answer would move a store held on a bound off it,
+    found in the step's dense output to the crossing tolerance of the run (`_event`), and the problem
+    is solved there with the new flags (a traced solve). A failure of an evaluation is placed at its
+    time: the steps are made again shorter, halving, until the failure lies within the crossing
+    tolerance of the last step that answered, where the run stops with the record to then (`_next`).
+    Its pieces are fitted to each segment (`record.fitted`): the stores from the integrator's dense
+    output, the rates and the results from solves at the fitted times.
 
     Each evaluation of the rates is a whole solve, and Radau's Jacobian by differences costs one for
     each store, so a step costs a few solves times the stores. A set of more than `MOVING` stores
@@ -1091,6 +1098,7 @@ class MovingDeclared(DeclaredWay):
         self.time = self.t0
         self.low, self.high = self.y <= self.lower, self.y >= self.upper
         self.pending = None
+        self.failed = None  # the time of the last evaluation that failed (`_at`)
         self.trial = None
         self._cache = {}
         numerics = self.plan.numerics
@@ -1101,8 +1109,10 @@ class MovingDeclared(DeclaredWay):
     # ---- rates at a state ----------------------------------------------------------------------
 
     def _held(self, y):
-        """A state with each store held on a bound at its bound."""
-        y = np.array(y, dtype=float)
+        """A state within the stores' bounds, with each store held on a bound at its bound: what the
+        problem reads at a trial state, which the integrator may put a tolerance past a bound that a
+        store reaches in the step (the step then ends there, `_event`)."""
+        y = np.minimum(np.maximum(np.array(y, dtype=float), self.lower), self.upper)
         y[self.low] = self.lower[self.low]
         y[self.high] = self.upper[self.high]
         return y
@@ -1121,6 +1131,9 @@ class MovingDeclared(DeclaredWay):
             try:
                 flows, results = self.answer(float(t), self.low, self.high)
                 found = (flows, results, self._net(flows))
+            except (SimulationError, ExpressionError, ArithmeticError):
+                self.failed = float(t)
+                raise
             finally:
                 self.trial = None
             if len(self._cache) > 256:
@@ -1157,40 +1170,96 @@ class MovingDeclared(DeclaredWay):
             self.recorder.add(store, t, float(self.y[s]), 0.0)
         return changed
 
-    def _segment(self, until):
-        """The next segment, from the present to `until` or the first event before it."""
-        events = []
+    def _next(self, until):
+        """The next segment from the present: Radau's steps toward `until`, to the end of the window,
+        or to the first time in a step at which a store reaches a bound or the answer would move a
+        store held on a bound off it (`_event`), which ends the segment there. A failure of an
+        evaluation is placed at its time, to the crossing tolerance: the steps are made again with a
+        bound halfway to the failure until it lies within the tolerance of the last step that
+        answered, where the segment ends (a plain one, which the run commits); its next segment then
+        fails at once, and the run stops there, with the record to then."""
+        numerics = self.plan.numerics
+        window, now, y = until, self.time, self.y.copy()
+        times, outputs, event, plain, solver = [now], [], None, False, None
+        while True:
+            self.run.now, self.failed = now, None
+            try:
+                # Radau evaluates the rates where it starts, and once more to choose its first step.
+                if solver is None:
+                    solver = Radau(
+                        self._derivative,
+                        now,
+                        y,
+                        until,
+                        rtol=self.rtol,
+                        atol=self.atol,
+                        max_step=numerics.max_step,
+                    )
+                message = solver.step()
+                if solver.status == 'failed':
+                    raise SimulationError(f'the solver {self.declared.id}: {message} at {now:g} h')
+                start, end = float(solver.t_old), float(solver.t)
+                output = solver.dense_output()
+                found = self._event(OdeSolution([start, end], [output]), start, end)
+            except (SimulationError, ExpressionError, ArithmeticError):
+                solver = None
+                if self.failed is not None and self.failed - now > numerics.crossing:
+                    until = now + 0.5 * (min(self.failed, until) - now)
+                    continue
+                if not outputs:
+                    raise
+                plain = True  # the steps that answer, to the failure: the next segment raises it
+                break
+            times.append(end)
+            outputs.append(output)
+            if found is not None:
+                now, event = found  # the next segment starts from the event, with the flags there
+                break
+            now, y = end, np.array(solver.y, dtype=float)
+            if solver.status == 'finished':
+                if now >= window:
+                    break
+                solver, until = None, window  # a bound halfway to a failure was met: on to the window
+        self.run.now = self.time
+        return Segment(self.time, now, OdeSolution(times, outputs), event, plain)
+
+    def _event(self, solution, start, end):
+        """(the time, the store) of the first event in a step from start to end, or None: a free store
+        that passes a bound, or a store held on a bound whose answer would move it off by more than
+        its slack, at the first time that the halving of [start, end] finds to the crossing
+        tolerance, in the step's dense output."""
+        found = []
         for s in range(len(self.stores)):
-            if self.low[s]:
-                events.append((s, lambda t, y, s=s: self._at(t, y)[2][s] - SLACK * self.atol[s], 1.0))
-            elif self.high[s]:
-                events.append((s, lambda t, y, s=s: -self._at(t, y)[2][s] - SLACK * self.atol[s], 1.0))
+            if self.low[s] or self.high[s]:
+
+                def leaves(t, s=s):
+                    rate = self._at(t, solution(t))[2][s]
+                    off = rate if self.low[s] else -rate
+                    return off > SLACK * self.atol[s]
+
+            elif solution(end)[s] < self.lower[s] or solution(end)[s] > self.upper[s]:
+
+                def leaves(t, s=s):
+                    level = solution(t)[s]
+                    return level < self.lower[s] or level > self.upper[s]
+
             else:
-                if math.isfinite(self.lower[s]):
-                    events.append((s, lambda t, y, s=s: y[s] - self.lower[s], -1.0))
-                if math.isfinite(self.upper[s]):
-                    events.append((s, lambda t, y, s=s: self.upper[s] - y[s], -1.0))
-        functions = []
-        for _, function, direction in events:
-            function.terminal, function.direction = True, direction
-            functions.append(function)
-        solution = solve_ivp(
-            self._derivative,
-            (self.time, until),
-            self.y,
-            method='Radau',
-            rtol=self.rtol,
-            atol=self.atol,
-            events=functions or None,
-            dense_output=True,
-            max_step=self.plan.numerics.max_step,
-        )
-        if solution.status < 0:
-            raise SimulationError(f'the solver {self.declared.id}: {solution.message} at {self.time:g} h')
-        end, event = float(solution.t[-1]), None
-        if solution.status == 1:
-            event = next(events[k][0] for k, times in enumerate(solution.t_events) if len(times))
-        return Segment(self.time, end, solution.sol, event)
+                continue
+            if leaves(end):
+                found.append((self._first(leaves, start, end), s))
+        return min(found) if found else None
+
+    def _first(self, passed, start, end):
+        """The first time in [start, end] at which `passed` holds, which it does at end, found by
+        halving to the crossing tolerance of the run."""
+        left, right = start, end
+        while right - left > self.plan.numerics.crossing:
+            middle = 0.5 * (left + right)
+            if passed(middle):
+                right = middle
+            else:
+                left = middle
+        return right
 
     def _state(self, t):
         segment = self.pending
@@ -1241,21 +1310,24 @@ class MovingDeclared(DeclaredWay):
         self._settle(self.t0)
 
     def peek(self):
-        """The end of the next segment, which is made now if it is not yet."""
+        """The end of the next segment, which is made now if it is not yet (`_next`)."""
         if self.pending is None:
             until = min(self.run.limit, self.plan.horizon)
             if self.time >= until:
                 return math.inf
-            self.pending = self._segment(until)
+            self.pending = self._next(until)
         return self.pending.end
 
     def step(self):
         """Commit the next segment; at an event a store meets or leaves its bound, and the problem
-        is solved there. Gives the stores and the rates and results that change."""
+        is solved there. Gives the stores and the rates and results that change, and whether an
+        event ended the segment (a plain segment, which ends before a failure, has none)."""
         segment = self.pending
         self._commit(segment.end)
         self.run.now = segment.end
         s = segment.event
+        if segment.plain:
+            return list(self.stores), sorted(set(self.recorded) | set(self.connected.results)), False
         if s is not None:
             if self.low[s] or self.high[s]:
                 self.low[s] = self.high[s] = False  # it leaves its bound
