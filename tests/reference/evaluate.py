@@ -599,6 +599,13 @@ class Ev:
     def _op(self, sym, a, b):
         if sym in ('and', 'or'):
             return self.logic(sym, a, b)
+        if sym in ('==', '!=') and isinstance(self.scope.extra.get(ITEM), (FlowRT, LegRT)):
+            for operand in (a, b):
+                if operand._k == 'attr':
+                    base, field = operand._a
+                    if field in ('source', 'sink') and base._k == 'name' and base._a == (ITEM,):
+                        # A flow filter compares its end with the named store or with its other end.
+                        return (self.ref(a) == self.ref(b)) == (sym == '==')
         x, y = self.val(a), self.val(b)
         if sym in ('==', '!=', '<=', '>=', '<', '>'):
             return self.compare(sym, x, y, (a, b))

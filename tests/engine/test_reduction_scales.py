@@ -5,6 +5,7 @@ import pytest
 from napkin.engine import read, run
 from napkin.program.build import (
     BOOL,
+    SINK,
     Builder,
     after,
     assign,
@@ -112,12 +113,16 @@ def test_subtracting_a_member_cancels_its_scale_in_a_sum(reader):
 
 
 @pytest.mark.parametrize('reader', ['engine', 'reference'])
-def test_an_endpoint_reduction_uses_only_its_present_filtered_flows(reader):
+@pytest.mark.parametrize('outside', [False, True], ids=['equal-stores', 'outside-sink'])
+def test_an_endpoint_reduction_uses_only_its_present_filtered_flows(reader, outside):
     """A 2e-12 L/h fine request alone differs from zero, including after a coarse temporary
-    request leaves. A filtered coarse pipe to a different store never widens either band."""
+    request leaves. Both destination stores start at zero. The filter distinguishes them
+    by identity and keeps a temporary pipe to either the included store or the outside SINK."""
     b = Builder({'h': {'time': 1}, 'L': {'volume': 1}})
-    other = b.entity('other', value('stock', 'L', 2, lower=0))
+    other = b.entity('other', value('stock', 'L', 0, lower=0))
     sink = b.entity('sink', value('stock', 'L', 0, lower=0))
+    destination = SINK if outside else sink.stock
+    kept = this.stock.outflow.flows.where(item.source == this.stock).where(other.stock != item.sink)
     plant = b.entity(
         'plant',
         value('stock', 'L', 1, lower=0),
@@ -125,12 +130,12 @@ def test_an_endpoint_reduction_uses_only_its_present_filtered_flows(reader):
         value('coarse', 'L/h', 2e-12, scale=1),
         flow('base', this.stock, sink.stock, request=formula(this.fine)),
         flow('other', this.stock, other.stock, request=formula(this.coarse)),
-        event('extra', flow('pipe', this.stock, sink.stock, request=formula(this.coarse)), after(q(1, 'h'))),
+        event('extra', flow('pipe', this.stock, destination, request=formula(this.coarse)), after(q(1, 'h'))),
         event('add', after(q(1, 'h'), start(this.extra))),
         value(
             'near',
             BOOL,
-            formula(fsum(this.stock.outflow.flows.where(item.sink != other.stock).request) == q(0, 'L/h')),
+            formula(fsum(kept.request) == q(0, 'L/h')),
         ),
     )
     b.setup(start(plant.add))
