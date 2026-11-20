@@ -51,6 +51,46 @@ def test_compile_summarizes_the_program_of_the_tank(tmp_path, capsys):
     assert (doc['horizon'], doc['inputs'], doc['diagnostics']) == (4, [], [])
 
 
+LINKED = """\
+scenario "Links"
+    horizon 2 h
+
+Tank:
+    water: L = 4 L
+    next: Tank
+
+east: Tank
+    next = west
+west: Tank
+    next = east
+    water = 6 L
+
+tanks = Tank.instances
+total = formula(sum(tanks.water))
+"""
+
+
+def test_compile_summarizes_every_kind_of_value_a_links_and_a_collections_included(tmp_path, capsys):
+    """Every kind of value of a program has its group in the summary (`compile.GROUPS` holds each of
+    `parts.KINDS`), so a model with a link or a collection compiles: it raised a KeyError on the
+    first link."""
+    from napkin.commands.compile import GROUPS
+    from napkin.program.parts import KINDS
+
+    assert {kind for kind, _ in GROUPS} == set(KINDS)
+    model = package(tmp_path / 'links', LINKED, UNITS)
+    found = napkin(capsys, 'compile', model)
+    assert found.code == 0, found.err
+    assert '  links:         east.next, west.next' in found.out.splitlines()
+    assert '  collections:   tanks' in found.out.splitlines()
+    doc = napkin(capsys, 'compile', model, '--json').doc
+    assert doc['links'] == [
+        {'path': 'east.next', 'unit': '', 'template': 'Tank'},
+        {'path': 'west.next', 'unit': '', 'template': 'Tank'},
+    ]
+    assert doc['collections'] == [{'path': 'tanks', 'unit': '', 'template': 'Tank'}]
+
+
 def test_a_status_display_compiles(tmp_path, capsys):
     """A status display, which stage C brings, compiles with the entity that shows it."""
     model = package(tmp_path / 'tank', TANK + '\nlamp:\n    status ok\n        "Fine."\n', UNITS)

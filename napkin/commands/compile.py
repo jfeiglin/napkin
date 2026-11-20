@@ -37,11 +37,15 @@ example:
   napkin compile examples/piano_tuners"""
 
 # The kinds of value of a program, as the summary groups them.
+# Each kind of value of a program (`napkin.program.parts.KINDS`) and the group of the summary that
+# lists it, in the order that the summary prints them.
 GROUPS = (
     ('input', 'inputs'),
     ('state', 'stores'),
     ('formula', 'formulas'),
     ('distribution', 'distributions'),
+    ('link', 'links'),
+    ('collection', 'collections'),
 )
 
 
@@ -149,9 +153,12 @@ def summary(model):
 
 
 def value_json(path, value):
-    """A value of the summary: its path, and its unit (`''` for a plain number, `bool` for a yes/no)."""
+    """A value of the summary: its path, and its unit (`''` for a plain number, `bool` for a yes/no);
+    for a link or a collection, the template of the members that it names (`template`)."""
     from ..program import parts as p
 
+    if isinstance(value.type, p.EntityType | p.CollectionType):
+        return {'path': path, 'unit': '', 'template': value.type.template}
     kind = value.type.of if isinstance(value.type, p.DistributionType) else value.type
     return {'path': path, 'unit': getattr(kind, 'unit', 'bool' if isinstance(kind, p.Bool) else '')}
 

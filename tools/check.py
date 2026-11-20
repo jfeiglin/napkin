@@ -10,8 +10,9 @@ Repeat it for several paths. --deep adds matching deep tests.
 --skip-summaries reuses existing publication results for a focused scenario check.
 
 The evidence stage compiles each selected package (every one with --all) and fails when a value of
-it rests on no record, the compiler's `no_record` warning (the evidence rule, change 16), or differs
-from a datum that its record cites, its `datum` warning.
+it rests on no record, the compiler's `no_record` warning (the evidence rule, change 16), or is not
+the datum that its record cites, its `datum` warning: another number, or a value that only the run
+computes, which a datum, being a number, cannot be.
 
 --all retains the complete tests and catalogue publication comparison.
 --all --deep also runs exhaustive admission tests and replays three stored simulations.
