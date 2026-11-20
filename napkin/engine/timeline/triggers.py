@@ -12,16 +12,22 @@ and gate on the settled state:
   its body starts its event, it is disarmed, and a `reset after D` captures D;
 - a gate (`until C`) releases its occurrence when C holds.
 
-Then the firings act, by receiver and declaration, and the released gates go on, in the order in
-which their occurrences were made. A manual start of the event consumes nothing of its trigger. A
-draw of a firing (in a capture, in the start's arguments, in `reset after D`) is keyed by the
-firing's number (`chance.py`).
+Then each assertion over state is checked on that settled state (`check`), and the firings act, by
+receiver and declaration, and the released gates go on, in the order in which their occurrences
+were made: what they start is the next round's, which settles it. A firing reads after the firings
+before it: its captures, the arguments of its start, the entry and the delay of what it starts and
+its `reset after D` read a rate that an earlier firing made stale only to stop the run by name
+(`ways.Ways.fresh`; PLAN, change 26), and a delay that reads a rate waits for the next settling
+(`occurrences.py`). A manual start of the event consumes nothing of its trigger. A draw of a firing
+(in a capture, in the start's arguments, in `reset after D`) is keyed by the firing's number
+(`chance.py`).
 
 **An assertion over state** (spec, "Assertions and their timing"; R-A2-15) must hold after every
-round, within the tolerance of what it reads, and just after every moment (`check`): a value that
-leaves its asserted interval at a moment fails there. Between moments it is watched as a condition
-is, so a contact with its boundary is a moment, just after which it fails; a strict comparison is
-watched too, since the first instant at which an assertion fails exists for either form.
+round, on its settled state, within the tolerance of what it reads, and just after every moment
+(`check`): a value that leaves its asserted interval at a moment fails there. Between moments it is
+watched as a condition is, so a contact with its boundary is a moment, just after which it fails; a
+strict comparison is watched too, since the first instant at which an assertion fails exists for
+either form.
 
 **Reading a condition.** A comparison whose sides read what moves between moments (a store of a set,
 an actual rate, the time) holds within the tolerance of what it reads (spec: a crossing counts as
@@ -325,7 +331,9 @@ class Triggers:
     # ---- the conditions of a round ------------------------------------------------------------------
 
     def conditions(self):
-        """Read every trigger, reset and gate on the settled state, then act (see the module)."""
+        """Read every trigger, reset and gate on the settled state, with the near-ties of each that
+        fires or releases, and check each assertion over state there (`check`); then act (see the
+        module)."""
         run = self.run
         t = run.now
         fires = []
@@ -345,7 +353,7 @@ class Triggers:
             if state.armed and state.blocked_at != t:
                 close = []
                 if self._truth(trigger.test, t, True, close):
-                    fires.append(state)
+                    fires.append((state, self.near(trigger.test, trigger.origin, t)))
                 elif close:
                     self.miss(trigger)
         releases = []
@@ -354,8 +362,9 @@ class Triggers:
             node = run.occurrences.node(step.test, live.plan.scope, step.origin)
             if self.holds(node):
                 releases.append((live, step.origin, self.near(node, step.origin, t)))
-        for state in fires:
-            self.fire(state)
+        self.check()
+        for state, near in fires:
+            self.fire(state, near)
         for live, origin, near in releases:
             if live.waiting:
                 if near:
@@ -387,16 +396,18 @@ class Triggers:
                     self.missed[(entry.part, entry.owner)] = entry.detail('near')
         return self.missed
 
-    def fire(self, state):
-        """A firing: the captures in written order, the start of the event, the reset. A draw of the
-        firing is keyed by its number (`chance.py`)."""
+    def fire(self, state, near):
+        """A firing: the captures in written order, the start of the event, the reset; `near` are the
+        near-ties of its condition as the conditions read it. A draw of the firing is keyed by its
+        number (`chance.py`). What it reads after an earlier firing of the same conditions changed
+        what a rate depends on is read before the flows settle again (`ways.Ways.fresh`)."""
         run, moment = self.run, self.run.moment
         trigger = state.plan
         run.chance.firing[trigger.key] = state.firings + 1
         for name, node in trigger.captures:
             run.env[name] = run.truth(node)
         tx = Tx(trigger.member, stage=False)
-        tx.near = self.near(trigger.test, trigger.origin, run.now)
+        tx.near = near
         moment.execute(trigger.body, tx, trigger.scope)
         state.armed, state.firings = False, state.firings + 1
         if trigger.reset is not None and trigger.reset[0] == 'after':

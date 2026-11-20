@@ -148,7 +148,8 @@ class Formulas(Mapping):
 @dataclass
 class Run:
     """What changes as a run proceeds: the time, the state and the discrete store, the bounds the
-    state rests on, the stock faces of the current segment and the level rules it watches."""
+    state rests on, the stock faces of the current segment, the sides of the switches at which it
+    starts (`integrate.starting_sides`) and the level rules it watches."""
 
     time: float
     y: np.ndarray
@@ -156,5 +157,10 @@ class Run:
     active_bounds: set = field(default_factory=set)  # (quantity index, 'min' | 'max')
     zero_faces: set = field(default_factory=set)  # stocks held on their zero face
     right_faces: set = field(default_factory=set)  # stocks evaluated just above zero
+    # (quantity index, low, high, number): a quantity in [low, high] reads as the number, the first on
+    # the far side of a switch that the segment's state crosses at its start; (low, high, time) the
+    # same for the time.
+    switches: tuple = ()
+    clock: tuple | None = None
     guards: dict = field(default_factory=dict)  # the segment's armed level rules, by rule
     evaluations: int = 0

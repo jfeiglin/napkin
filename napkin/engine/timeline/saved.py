@@ -22,7 +22,8 @@ of a run reads is here, or is made again from what is here by the same code:
   rate), the rate of each flow and what it asks, the flags of the bounds, the times at which a line
   meets a bound, what the instance captured when it was built (a component's parameters, rigid flows
   and missing values, the sparse integrator's constants), the bounds that a component's state rests
-  on as it found them and the faces of its stocks, and each declared solver's program and basis
+  on as it found them, the faces of its stocks and the sides of the switches at which it stands,
+  and each declared solver's program and basis
   (`solve.Solver`) with its last problem (a digest) and answer.
 
 What is no part of it starts again at each moment on every path, so that a run restored at a stop is
@@ -449,12 +450,15 @@ def _instance(instance):
                 ('store', _pairs(state.store)),
                 ('evaluations', state.evaluations),
                 ('still', instance.still),
-                # The bounds that the state rests on, as the component found them, and the faces of
-                # its stocks: a restored one holds them, and does not find them again (`_settle`).
+                # The bounds that the state rests on, as the component found them, the faces of its
+                # stocks and the sides of the switches at which it stands: a restored one holds them,
+                # and does not find them again (`_settle`).
                 ('bounded', instance.bounded),
                 ('bounds', tuple(sorted(state.active_bounds))),
                 ('zero_faces', tuple(sorted(state.zero_faces))),
                 ('right_faces', tuple(sorted(state.right_faces))),
+                ('switches', tuple(state.switches)),
+                ('clock', state.clock),
                 ('known', _pairs(known)),
                 ('missing', _pairs(missing)),
                 ('rigid', tuple(rigid)),
@@ -732,6 +736,8 @@ def _made(run, kind, keys, data):
         ):
             held.clear()
             held.update(tuple(each) if isinstance(each, tuple | list) else each for each in found)
+        state.switches = tuple(tuple(each) for each in data['switches'])
+        state.clock = None if data['clock'] is None else tuple(data['clock'])
         return instance
     if kind == 'sparse':
         sets = [_connected(each) for each in data['sets']]

@@ -18,9 +18,10 @@ Then it goes through its steps in order (spec, "Time, waiting and completion"):
   then 0.2 h is due at 0.3 h exactly, and the first round of a moment takes each step due within the
   time tolerance after it, as due at it; a step reached during the moment with a delay above zero
   is due later, at its own moment. Stages due together commit in the order in which their
-  occurrences were made (D5). A D that a stage reaches and that reads a rate or a result of a
-  declared solver takes them after the round's settling, so a solve that the round affects gives its
-  settled answer; what else it reads is captured when the step is reached (`delays`);
+  occurrences were made (D5). A D that a stage or the conditions of a round reach (a start of a
+  firing, a release) and that reads a rate or a result takes them after the next settling, so a
+  solve that the round affects gives its settled answer and no read of it comes before (PLAN, change
+  26); what else it reads is captured when the step is reached (`delays`);
 - `until C` is a gate: the occurrence waits there until the conditions of a round find C true
   (`triggers.py`), and goes on in that round.
 
@@ -245,8 +246,9 @@ class Occurrences:
             return
         node = self.node(step.delay, live.plan.scope, step.origin)
         computed = self._computed(node)
-        if computed and run.moment.phase == 'stages':
-            # The rates and results that it reads settle after the stages of the round (D5).
+        if computed and run.moment.phase in ('stages', 'conditions'):
+            # The rates and results that it reads settle after the stages of the round (D5), and
+            # after the firings and releases of its conditions, at the next round's settling.
             self.awaiting.append((live, live.version, node, step, self._captured(node, computed)))
             return
         self._schedule(live, run.clock.value(node, run.value, run.now), step)
@@ -282,10 +284,14 @@ class Occurrences:
 
     def _captured(self, node, computed):
         """The values now of what a delay reads other than rates and results: each value that it
-        reads, or the error that reading it raises."""
+        reads, or the error that reading it raises. A dynamic read of the rates of an endpoint's
+        flows is read with them, after the settling (`delays`)."""
         run, plan = self.run, self.plan
         found = {}
         for leaf in plan.reads_now(plan.expansion(node)).leaves - computed:
+            dynamic = plan.dynamic.get(leaf)
+            if dynamic is not None and dynamic.steps[-1:] in (('actual_rate',), ('served_fraction',)):
+                continue
             try:
                 found[leaf] = run.value(leaf)
             except (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError) as problem:

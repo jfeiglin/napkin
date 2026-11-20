@@ -21,16 +21,23 @@ the segments of the set one after the other.
   from where the one before it ended: a segment ends at the horizon, where a store reaches or leaves
   a bound, or where a rate changes its branch. Each segment (`Segment`) has the function of the time
   that gives the state through it and the states at its two ends, the last with the bounds that it
-  reaches settled. While the segment is the present one, `delivered` gives the rates that its flows
-  deliver at times inside it: the bounds and faces of the segment hold then.
+  reaches settled. A segment that starts at a switch that its state crosses there (at a moment that
+  falls on a crossing, or at the root of one, a roundoff short of it or on it) starts on its far
+  side (`settle`, `integrate.starting_sides`), as one a roundoff short of a bound starts on it: a run
+  is the same whether a crossing falls on a moment or not. While the segment is the present one,
+  `delivered` gives the rates that its flows deliver at times inside it: the bounds and faces of
+  the segment hold then.
 - `ComponentWay`: the set as a way of a run. Beside the values of its next segment, it gives the
   form of that segment to the reader of a condition that watches its stores (`breaks`, `motion`;
   `continuous/dense.py`): a line, the closed form of compartments, or the solver's steps, each the
   cubic of its dense output. Between two segments its state rests on the bounds that the last one
   found (a read at a moment sees the rates that the set had there); a set built or restored at a
   moment finds the bounds of its state there before its rates are read, as its first segment finds
-  them again (`refresh_bounds`), so that a read after the settling sees the rates that it settled
-  (a starved flow carries nothing). A set built at a horizon that is a moment of a run that goes
+  them again (`refresh_bounds`), with the far sides of the switches that it crosses there, so that
+  a read after the settling sees the rates that it settled (a starved flow carries nothing) and that
+  hold from the moment on. The switches that its segments reach at the time of a moment make the
+  rates that read them stale in the moment's stages (`switched_at`; `ways.Ways.stale`). A set built
+  at a horizon that is a moment of a run that goes
   on too records the stores and the rates of its state there on those bounds (`finish`): a read at
   the horizon of a run that ends there is the read of a run that goes on, whose first segment of
   the set starts there.
@@ -44,12 +51,14 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
+from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import names_in
 from ..allocation import Allocation
 from ..continuous import dense
 from ..continuous.bounds import check_bounds, correct_boundary_roundoff, refresh_bounds
 from ..continuous.fields import Field
+from ..continuous.integrate import at_their_switch, starting_sides, surfaces_of
 from ..continuous.kernels import Affine, MatrixExponential
 from ..continuous.segment import advance
 from ..continuous.system import Context, solver_step
@@ -288,8 +297,9 @@ class Network:
 class Segment:
     """One segment of a component: from `start` to `end`, the function of the time that gives the
     state (`solution`), the states at its two ends, the last with the bounds that it reaches settled,
-    the solver's result for a numerical segment (`numerical`: its accepted times are `t`), and the
-    places in the state of the quantities that it brings to a bound at its end (`reached`)."""
+    the solver's result for a numerical segment (`numerical`: its accepted times are `t`), the
+    places in the state of the quantities that it brings to a bound at its end (`reached`), and the
+    switching surfaces at their switch at its start (`switches`)."""
 
     start: float
     end: float
@@ -298,6 +308,7 @@ class Segment:
     last: np.ndarray
     numerical: object = None
     reached: tuple = ()
+    switches: frozenset = frozenset()
 
 
 class Held(Allocation):
@@ -346,16 +357,16 @@ class Component:
         that reaches its face within the roundoff of the time is settled there first: that gives a
         segment of no length, whose last state has the face settled."""
         s, state, field, diagnostics = self.system, self.state, self.field, self.context.diagnostics
-        refresh_bounds(s, state, field)
+        self.settle()
         start = state.time
-        state.right_faces.clear()
-        state.zero_faces.clear()
+        switches = at_their_switch(s, field.environment, start, state.y)
         found = advance(s, state, field, self, self.context, horizon)
         first = state.y.copy()
         if found.rounded:
             correct_boundary_roundoff(s, diagnostics, start, state.y, found.rounded)
             check_bounds(s, state.y)
-            return Segment(start, start, None, first, state.y.copy(), reached=tuple(sorted(found.rounded)))
+            reached = tuple(sorted(found.rounded))
+            return Segment(start, start, None, first, state.y.copy(), reached=reached, switches=switches)
         solution, numerical = found.solution, found.numerical
         last = np.array(solution(found.end) if numerical is None else numerical.y[:, -1], dtype=float)
         correct_boundary_roundoff(s, diagnostics, found.end, last, found.targets)
@@ -367,7 +378,42 @@ class Component:
             for k in range(len(numerical.t) - 1):
                 check_bounds(s, numerical.y[:, k])
         check_bounds(s, last)
-        return Segment(start, found.end, solution, first, last, numerical, tuple(sorted(found.targets or ())))
+        reached = tuple(sorted(found.targets or ()))
+        return Segment(start, found.end, solution, first, last, numerical, reached, switches)
+
+    def settle(self):
+        """The state at the start of a segment, or at a moment before one: the bounds that it rests
+        on (`refresh_bounds`), the faces of the segment cleared, and the sides of the switches that it
+        crosses there (`integrate.starting_sides`), so that its rates are those that hold from there
+        on."""
+        s, state, field = self.system, self.state, self.field
+        state.switches, state.clock = (), None
+        refresh_bounds(s, state, field)
+        state.right_faces.clear()
+        state.zero_faces.clear()
+        starting_sides(s, state, field)
+
+    def switched(self, segment, t, last):
+        """The switches of a segment's rates that its state reaches at time t, with the state there:
+        the surfaces at their switch there that were at none at the start of the segment."""
+        if t <= segment.start:
+            return frozenset()
+        return at_their_switch(self.system, self.field.environment, t, last) - segment.switches
+
+    def deciding(self):
+        """{a switching surface: the flows whose rates read it, through formulas}."""
+        s = self.system
+        if 'deciding' not in s.analysis:
+            formulas = {name: found['expr'] for name, found in s.computed.items()}
+            moving = s.evolving | {'t'}
+            found = {}
+            for key, flow in s.flows.items():
+                for surface in surfaces_of(
+                    [flow.rate], formulas, lambda node: s.expanded_names(node) & moving
+                ):
+                    found.setdefault(surface, []).append(key)
+            s.analysis['deciding'] = found
+        return s.analysis['deciding']
 
     def delivered(self, segment, times):
         """The rates that the flows deliver at times inside the present segment: one row for each
@@ -401,6 +447,7 @@ class ComponentWay:
         self.stores, self.flows = list(connected.stores), list(connected.flows)
         self.alive, self.pending, self.still = True, None, 0
         self.bounded = False  # whether its state rests on the bounds that it found (`_settle`)
+        self.reached = []  # (the end of a segment, the switches that it reached there)
         self._drift = None  # the rates of the stores at the present state, once read (`drift`)
         stores = connected.stores
         sources = {plan.flows[flow].source for flow in connected.flows}
@@ -541,6 +588,28 @@ class ComponentWay:
         self.run.recorder.segment(component, segment, component.system.state_ids, self.rates)
         component.proceed(segment)
         self._drift = None
+        # The switches that its segments reached, kept while they are within the time tolerance of
+        # the last end: a moment there is at them (`moment.Clock`).
+        end, crossing = segment.end, self.run.plan.numerics.crossing
+        self.reached = [(at, found) for at, found in self.reached if end - at <= crossing]
+        found = component.switched(segment, end, segment.last)
+        if found:
+            self.reached.append((end, found))
+
+    def switched_at(self, t):
+        """The switches of the set's rates that its state reached at time t, a moment that falls on
+        their crossing (`run.next_moment`), each with a flow whose rate reads it: those that the
+        segments that ended within the time tolerance of t, or that the moment cut there, brought to
+        their switch. A rate that one of them decides is stale in the moment's stages, as one whose
+        store met its bound there is (`ways.Ways.stale`)."""
+        crossing, deciding = self.run.plan.numerics.crossing, self.component.deciding()
+        return {
+            (flow, f'{nodes.text(a)} against {nodes.text(b)}')
+            for at, found in self.reached
+            if abs(t - at) <= crossing
+            for a, b in found
+            for flow in deciding.get((a, b), ())
+        }
 
     def snap(self):
         """The next event at the time of a moment: committed as any other, with what it changes, and
@@ -551,17 +620,14 @@ class ComponentWay:
         return stores + rates, met
 
     def _settle(self):
-        """The state rests on the bounds that it reaches at its present time, as the next segment
-        finds them (`refresh_bounds`, the faces of a segment cleared): a set built or restored at a
-        moment, before its rates are read, and at the horizon. The evaluations count for no budget of
-        the run."""
-        component = self.component
-        state = component.state
+        """The state rests on the bounds that it reaches at its present time, and on the far side of
+        the switches that it crosses there, as the next segment finds them (`Component.settle`): a set
+        built or restored at a moment, before its rates are read, and at the horizon. The evaluations
+        count for no budget of the run."""
+        state = self.component.state
         evaluations = state.evaluations
         try:
-            refresh_bounds(component.system, state, component.field)
-            state.right_faces.clear()
-            state.zero_faces.clear()
+            self.component.settle()
         finally:
             state.evaluations = evaluations
         self.bounded, self._drift = True, None
@@ -600,7 +666,10 @@ class ComponentWay:
         if t <= segment.start:
             return
         last = np.array(self._state(segment, t), dtype=float)
-        cut = Segment(segment.start, t, segment.solution, segment.first, last, _cut(segment.numerical, t))
+        numerical = _cut(segment.numerical, t)
+        cut = Segment(
+            segment.start, t, segment.solution, segment.first, last, numerical, (), segment.switches
+        )
         self._commit(cut)
 
     @staticmethod

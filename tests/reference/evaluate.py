@@ -382,7 +382,7 @@ class Ev:
             raise NeedsSettle()
         if var[0] in ('rate', 'frac') and var[1] not in self.view.live:
             return Fraction(0)  # a flow of a finished occurrence
-        if self.view is self.run.view and self.run.phase == 'stages':
+        if self.view is self.run.view and self.run.phase in ('stages', 'conditions'):
             self.run.check_stale(var, self.tx)
         if self.run.settling:
             self.run.pull(var)

@@ -44,9 +44,10 @@ derived value computed after the derived values that it reads, on the stack of `
 no recursion: `_derived`), the time
 of the last change of a stored value at a commit (`changed_at`), and any other value from what the
 run holds between moments (`env`). A stage reads its own writes first. While the stages of a round
-run, a rate or a result that the settling decides (a flow from SOURCE to SINK's too) is read only
-where nothing that it depends on changed since the flows last settled, and never in the setup: a
-stale one stops the run by name (`ways.Ways.fresh`; PLAN, change 25). A draw is executed when an
+run, and in its conditions, a rate or a result that the settling decides (a flow from SOURCE to
+SINK's too) is read only where nothing that it depends on changed since the flows last settled, and
+never in the setup: a stale one stops the run by name, whoever reads it (`ways.Ways.fresh`; PLAN,
+changes 25 and 26). A draw is executed when an
 expression of a stage, an entry, a delay or a firing reads it (`truth`), which reads each name as its
 evaluation asks for it.
 
@@ -100,6 +101,11 @@ from .triggers import Triggers
 from .ways import Ways
 
 _MISSING = object()
+
+# The phases of a moment in which a read of a rate or a result can come between a change and the
+# next settling: the stages of a round, and its conditions, once a firing has changed what a rate
+# depends on (PLAN, change 26). Before the first firing nothing changed since the settling.
+UNSETTLED = ('stages', 'conditions')
 
 
 def _literal(node, units):
@@ -168,9 +174,10 @@ class Run:
         self._sources = (0, {})  # (how many dynamic reads the plan names, them by their collection)
         # What changed since the flows last settled (`unsettled`): the names that a commit wrote or
         # gave a definition, the collections whose members changed ('occurrences' and 'flows'), the
-        # stores that met a bound at this moment ('bound'), the allocations that changed
-        # ('allocation') and the rates of the flows from SOURCE to SINK that joined ('joined'); and
-        # what the ways changed at this moment, which the settling reads alone.
+        # stores that met a bound at this moment ('bound'), the switches of rates that the ways'
+        # states reached at this moment ('switch'), the allocations that changed ('allocation') and
+        # the rates of the flows from SOURCE to SINK that joined ('joined'); and what the ways
+        # changed at this moment, which the settling reads alone.
         self.changed, self.moved = set(), set()
         self.joined, self.left = [], []  # the flows that join and that leave at this moment
         # The sets that wait for the settling of the setup: those of declared solvers, and those that
@@ -470,11 +477,11 @@ class Run:
         if kind is None and name in plan.draws:
             return self.chance.draw(name, tx=tx)  # executed: a node of a stage reads it once
         if kind == RATE:
-            if self.moment.phase == 'stages':
+            if self.moment.phase in UNSETTLED:
                 self.ways.fresh(name, tx)
             return self.ways.rate(name, t)
         if kind == RESULT:
-            if self.moment.phase == 'stages' or name not in self.ways.result_of:
+            if self.moment.phase in UNSETTLED or name not in self.ways.result_of:
                 self.ways.fresh(name, tx)
             return self.ways.result(name, t)
         if kind == CHANGED:
@@ -556,7 +563,7 @@ class Run:
             return lazily(tx.writes[name].node, read, plan.units, t)
         kind = plan.values[name].kind
         if kind == FORMULA:
-            if name in plan.outside and self.moment.phase == 'stages':
+            if name in plan.outside and self.moment.phase in UNSETTLED:
                 self.ways.fresh(name, tx)  # the rate of a flow from SOURCE to SINK settles too
             node = plan.values[name].node
             return read(node.name) if isinstance(node, nodes.Ref) else lazily(node, read, plan.units, t)
@@ -705,8 +712,9 @@ class Run:
         engine names that a commit (of a stage, of the setup, of a firing or an edit) and the stage
         `tx` wrote or gave a definition, with the dynamic reads of the collections whose members
         changed and the keyed reads by the time at their key time; and the marks, ('bound', store)
-        of a store that met its bound at this moment and ('allocation', store, side) of an endpoint
-        whose allocation changed."""
+        of a store that met its bound at this moment, ('switch', flow, switch) of a switch of the
+        rate of a flow that the state of its set reached at this moment, and ('allocation', store,
+        side) of an endpoint whose allocation changed."""
         names = {item for item in self.changed if isinstance(item, str)} | set(self.written)
         sources = {item for item in self.changed if isinstance(item, tuple)}
         if sources:
@@ -717,7 +725,7 @@ class Run:
                     index.setdefault(found.source, []).append(name)
                 self._sources = (len(dynamic), index)
             names.update(name for source in sources for name in self._sources[1].get(source, ()))
-        marks = {item for item in sources if item[0] in ('bound', 'allocation')}
+        marks = {item for item in sources if item[0] in ('bound', 'switch', 'allocation')}
         if tx is not None:
             names |= set(tx.writes)
             marks |= {('allocation', store, side) for store, side, *_ in tx.allocations}
@@ -897,8 +905,9 @@ class Run:
 
     def next_moment(self):
         """Run the ways to the next moment; gives its time, the engine names that changed in the
-        ways at that time (an event of an instance that a condition or a set reads), and the stores
-        that met a bound there, at an event of an instance at the time of the moment."""
+        ways at that time (an event of an instance that a condition or a set reads), the stores that
+        met a bound there, at an event of an instance at the time of the moment, and the switches of
+        rates that the ways' states reached there (`Ways.switched`)."""
         before = self.now
         limit = self.limit = float(self.discrete())
         while True:
@@ -921,7 +930,7 @@ class Run:
                 ):
                     # The instance settled its event itself: no stage is due at its time.
                     self.ways.cut(at)
-                    return at, changed, set()
+                    return at, changed, set(), self.ways.switched(at)
                 self.triggers.predict(changed)
                 continue
             self.occurrences.carried(self.now, moment)
@@ -938,7 +947,7 @@ class Run:
                 at, instance = self.ways.peek()
             self.ways.cut(moment)
             self.bare = moment == self.plan.horizon and not self._besides(before, moment, contact)
-            return moment, changed, met
+            return moment, changed, met, self.ways.switched(moment)
 
     def _besides(self, before, t, contact):
         """Whether a moment at time t is due for more than the horizon: a stage, a timer, a key time

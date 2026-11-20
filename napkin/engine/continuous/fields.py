@@ -148,6 +148,13 @@ class Field:
         bound_key = (frozenset(run.active_bounds), zero_key)
         trial_state[zero_faces] = lower[zero_faces]
         trial_state[right_faces] = np.maximum(trial_state[right_faces], right_floor)
+        # A switch that the state crosses at the start of the segment is read on its far side while
+        # the state is within its tolerance (`integrate.starting_sides`).
+        for i, low, high, number in run.switches:
+            if low <= trial_state[i] <= high:
+                trial_state[i] = number
+        if run.clock is not None and run.clock[0] <= at <= run.clock[1]:
+            at = run.clock[2]
         base = np.zeros(len(run.y))
         capacities = self.compiled(at, trial_state)
         if capacities is not None:

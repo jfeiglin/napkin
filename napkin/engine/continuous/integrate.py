@@ -540,21 +540,30 @@ def switching_surfaces(system):
     They read only the run's expressions and the quantities that move, so a run finds them once.
     """
     s = system
-    if 'switching' in s.analysis:
-        return s.analysis['switching']
-    computed = s.computed
-    dynamic_names = s.evolving | {'t'}
-    sources, seen, pending = [], set(), [f.rate for f in s.flows.values()]
-    pending += [d.expr for d in s.resolved.rates.values()] + [g.capacity for g in s.groups.values()]
+    if 'switching' not in s.analysis:
+        sources = [f.rate for f in s.flows.values()]
+        sources += [d.expr for d in s.resolved.rates.values()] + [g.capacity for g in s.groups.values()]
+        formulas = {name: found['expr'] for name, found in s.computed.items()}
+        moving = s.evolving | {'t'}
+        s.analysis['switching'] = surfaces_of(sources, formulas, lambda node: s.expanded_names(node) & moving)
+    return s.analysis['switching']
+
+
+def surfaces_of(sources, formulas, moving):
+    """The switching surfaces of some expressions and of the formulas that they read (`formulas`: a
+    name -> the node that computes it), in their first order: each pair of the arguments of min, max,
+    clip and abs, and of the sides of a comparison or of a membership's ends, of which one side moves
+    (`moving(node)`: whether it reads the time or a quantity that moves, through formulas)."""
+    found, seen, pending = [], set(), list(sources)
     while pending:
         expr = nodes.read(pending.pop())
         if expr in seen:
             continue
         seen.add(expr)
-        sources.append(expr)
-        pending += [computed[n]['expr'] for n in names_in(expr) if n in computed]
+        found.append(expr)
+        pending += [formulas[n] for n in names_in(expr) if n in formulas]
     surfaces = {}
-    for expr in sources:
+    for expr in found:
         for node in nodes.breadth_first(expr):
             pairs = []
             if isinstance(node, nodes.Call):
@@ -575,10 +584,9 @@ def switching_surfaces(system):
                     if op not in ('eq', 'ne')
                 ]
             for a, b in pairs:
-                if (s.expanded_names(a) | s.expanded_names(b)) & dynamic_names:
+                if moving(a) or moving(b):
                     surfaces[(a, b)] = None
-    s.analysis['switching'] = tuple(surfaces)
-    return s.analysis['switching']
+    return tuple(surfaces)
 
 
 def switching_roots(system, environment, repayment_surfaces, at, state):
@@ -627,6 +635,113 @@ def switching_roots(system, environment, repayment_surfaces, at, state):
                 target = (i, value)
         roots.append(Root('surface', 0, (a, b), target))
     return roots, at_switch
+
+
+def at_their_switch(system, environment, at, state):
+    """The switching surfaces of a run (`switching_surfaces`) that are at their switch at a time and a
+    state, to solver tolerance, as `switching_roots` finds them: those that a segment that starts
+    there does not arm."""
+    s = system
+    env = environment(at, state)
+    return switched(switching_surfaces(s), lambda node: float(evaluate(node, env, s.units)), s.cfg.rtol)
+
+
+def switched(surfaces, side, rtol):
+    """The surfaces at their switch to solver tolerance, `rtol` of the sum of the sizes of their
+    sides (`side(node)`: its value). A surface whose sides cannot be read (an untaken branch outside
+    its domain) is at no switch."""
+    found = set()
+    for a, b in surfaces:
+        try:
+            left, right = side(a), side(b)
+        except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
+            continue
+        if math.isfinite(left - right) and abs(left - right) <= rtol * (abs(left) + abs(right)):
+            found.add((a, b))
+    return frozenset(found)
+
+
+def starting_sides(system, run, field):
+    """The sides of the switches at which a segment of a component starts, as `far_sides` finds them,
+    which the field reads through the segment (`Run.switches`, `Run.clock`)."""
+    s = system
+    env = field.environment(run.time, run.y)
+    moving = s.evolving | {'t'}
+    run.switches, run.clock = far_sides(
+        switching_surfaces(s),
+        run.time,
+        run.y,
+        s.index,
+        (s.lower, s.upper),
+        s.cfg.rtol,
+        lambda node: float(evaluate(node, env, s.units)),
+        lambda node: bool(s.expanded_names(node) & moving),
+        field.rates,
+    )
+
+
+def far_sides(surfaces, t, y, place, bounds, rtol, side, moving, rates):
+    """The side of each switch at which a segment starts that its state crosses there, which the
+    rates of the segment read (PLAN, change 26): (switches, clock).
+
+    A segment can start at a switch of its rates: at a moment that falls on a crossing, or at the
+    root that ended the segment before it, a roundoff short of the switch or on it. Its state then
+    crosses the switch at once, so the segment starts on the far side, as a store a roundoff short
+    of its bound starts on the bound (`bounds.refresh_bounds`): the rates that the segment starts
+    with, and that a read at the moment gives, are those that hold from there on, whatever the
+    roundoff of the state. Read on the near side instead, a quantity a roundoff short of a switch
+    that its rate crosses makes the solver's Jacobian straddle the switch, and the solver fails at
+    the start of the segment.
+
+    A switch here is a quantity of the state (its place in `place`), or the time, against a side
+    that does not move (`moving(node)`), at its switch to solver tolerance (`switched`); one at a
+    bound of its quantity (`bounds`: the lower and upper arrays) is a face of the store, which the
+    faces settle. A quantity crosses where its rate at (t, y) (`rates(t, y)`) carries it to the
+    other side and its rate there does not carry it back: the segment reads the quantity at the
+    first number on the far side while the state stays within the tolerance of the switch
+    (`switches`: (place, low, high, number): a value in [low, high] reads as the number), so a solver
+    that leaves that band reads the rates as they are. Where the rate on the far side carries the
+    quantity back, its rates switch back and forth there: nothing is held, and the solver names the
+    chattering. The time always crosses (`clock`: (low, high, time), or None)."""
+    lower, upper = bounds
+    switches, clock, derivative = [], None, None
+    for a, b in surfaces:
+        for here_node, other in ((a, b), (b, a)):
+            if not isinstance(here_node, nodes.Ref) or (
+                here_node.name != 't' and here_node.name not in place
+            ):
+                continue
+            if moving(other):
+                continue
+            try:
+                limit = side(other)
+            except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
+                continue
+            here = float(t) if here_node.name == 't' else float(y[place[here_node.name]])
+            band = rtol * (abs(here) + abs(limit))
+            if not math.isfinite(limit) or abs(here - limit) > band:
+                continue
+            if here_node.name == 't':
+                beyond = math.nextafter(limit, math.inf)
+                if here < beyond and (clock is None or beyond > clock[2]):
+                    clock = (min(limit - band, clock[0]) if clock else limit - band, beyond, beyond)
+                continue
+            i = place[here_node.name]
+            if limit in (lower[i], upper[i]):
+                continue
+            if derivative is None:
+                derivative = rates(t, y)
+            way = 1 if derivative[i] > 0 else -1 if derivative[i] < 0 else 0
+            beyond = math.nextafter(limit, way * math.inf) if way else here
+            if way == 0 or (here - beyond) * way >= 0:
+                continue  # it does not move, or it is on the far side already
+            probe = np.array(y, dtype=float)
+            probe[i] = beyond
+            if rates(t, probe)[i] * way < 0:
+                continue  # the far side carries it back: chattering, which the solver names
+            low, high = (limit - band, beyond) if way > 0 else (beyond, limit + band)
+            switches.append((i, low, high, beyond))
+    return tuple(switches), clock
 
 
 def departing_ledgers(system, run, field, at_switch, env):

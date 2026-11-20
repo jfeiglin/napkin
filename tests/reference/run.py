@@ -175,10 +175,12 @@ class Run:
         self.phase = 'setup'
         self.rounds, self.again = 0, False
         # What the commits changed since the last settlement (of stages, of the setup and of the
-        # firings of the conditions before, and edits), and the stores that met a bound by moving
-        # since then, for `check_stale`.
+        # firings of the conditions before, and edits), the stores that met a bound by moving
+        # since then, and the times after the last moment at which what each calculation reads
+        # changes by itself (`_clock`), for `check_stale`.
         self.round_written = set()
         self.at_bound = set()
+        self.clock_of = {}
         self._setup()
 
     # --- setup -----------------------------------------------------------------------------------
@@ -572,7 +574,6 @@ class Run:
         self._finish_delays()
         self.phase = 'conditions'
         self._conditions()
-        self._asserts()
 
     def _round_limit(self):
         t, limit = self.view.t, self.config.max_rounds
@@ -944,8 +945,11 @@ class Run:
     # --- step 4: conditions ------------------------------------------------------------------------
 
     def _conditions(self):
-        """Read every trigger, reset and gate on the settled state. Then act, in a fixed order:
-        firings by receiver and declaration, then released gates by the age of the occurrence."""
+        """Read every trigger, reset and gate on the settled state, and check every assertion over
+        state there: a round's assertions read its settled state, before its firings start the
+        consequences of the next round, which settles them again (spec: "New consequences due at
+        the same timestamp start a further round"). Then act, in a fixed order: firings by receiver
+        and declaration, then released gates by the age of the occurrence."""
         view, t = self.view, self.view.t
         fires = []
         for trig in self.triggers:
@@ -968,6 +972,7 @@ class Run:
             for o in self._gates()
             if Ev(self, view, self.scope_of(o)).truth(o.event.steps[o.step].condition)
         ]
+        self._asserts()
         for trig in fires:
             self._fire(trig)
         for occ in releases:
@@ -1014,6 +1019,7 @@ class Run:
         """The times after this moment at which something can happen without a scheduled stage."""
         view = self.view
         stops = network.motion(self)
+        self.clock_of = self._clock()
 
         def watch(expr, scope, strict):
             ev = Ev(self, view, scope, mode='germ')
@@ -1034,6 +1040,33 @@ class Run:
                 raise RunFailed(f'assert {a.text or show(a.condition)} fails just after t = {view.t} h')
         return stops
 
+    def _clock(self):
+        """{calculation: the times after this moment at which what it reads changes by itself}: where a
+        comparison of its problem that reads the time or a store that moves, a least or a greatest
+        value, an absolute value or a keyed read by the time, read just after the moment with the
+        stores moving (`network.motion`), can change its answer, and so on through the results of
+        other calculations that it reads (PLAN, change 26). A rate of the calculation read at one of
+        those times, before the settlement there, is stale (`check_stale`), as one whose store meets
+        its bound there is."""
+        view, own, reads = self.view, {}, {}
+        for comp in self.components:
+            ev = Ev(self, view, None, mode='germ', unknowns=set(comp.vars))
+            network.assemble(self, comp, ev, {})
+            own[comp] = {view.t + stop for stop in ev.shared.stops}
+            reads[comp] = {self.component_of[var] for var in ev.shared.results if var in self.component_of}
+        found = {}
+        for comp in self.components:
+            times, pending, seen = set(), [comp], {comp}
+            while pending:
+                each = pending.pop()
+                times |= own.get(each, set())
+                for other in reads.get(each, ()):
+                    if other not in seen:
+                        seen.add(other)
+                        pending.append(other)
+            found[comp] = times
+        return found
+
     # --- what the evaluator asks of the run ----------------------------------------------------------
 
     def pull(self, var):
@@ -1049,11 +1082,13 @@ class Run:
         return view.cells[Cell(member, 'started')] if isinstance(member, Occ) else member.number
 
     def check_stale(self, var, tx):
-        """A rate or a result read while the stages of a round run (decision D5; PLAN, change 25:
-        every rate that a settlement decides, of local sharing as of a solver). It fails when an
-        input of its calculation changed since the last settlement, or met a bound by moving, and
-        when it has never settled (in the setup, and a flow that joined since). A stale answer is a
-        wrong one."""
+        """A rate or a result read between a change and the next settlement (decision D5; PLAN,
+        changes 25 and 26: every rate that a settlement decides, of local sharing as of a solver,
+        whoever reads it): in the stages of a round, and in its conditions once a firing has changed
+        something (a capture, an argument or a delay of a later firing, the entry of an occurrence
+        that it starts). It fails when an input of its calculation changed since the last settlement,
+        met a bound by moving, or changes by itself at this time (`_clock`), and when it has never
+        settled (in the setup, and a flow that joined since). A stale answer is a wrong one."""
         comp = self.component_of.get(var)
         if comp is None:
             raise RunFailed(
@@ -1066,6 +1101,12 @@ class Run:
             raise RunFailed(
                 f'{label(var)} is read before its solve settles: {", ".join(sorted(label(c) for c in changed))} '
                 'changed since the last settlement. Read it in a later stage or after a wait.'
+            )
+        if self.view.t in self.clock_of.get(comp, ()):
+            raise RunFailed(
+                f'{label(var)} is read before its solve settles: what it reads changes by itself at '
+                f't = {self.view.t} h (a branch on the time or on a store, or a keyed read by the time). '
+                'Read it in a later stage or after a wait.'
             )
 
     def entered(self, cell, tx, view):

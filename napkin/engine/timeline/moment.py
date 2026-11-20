@@ -27,9 +27,10 @@ At a time, rounds. One round is:
    A value that misses a bound by less than its tolerance is
    put on the bound; one that misses it by more fails the run, and so does a move that does not fit.
    A rate or a result that the settling decides reads as it last settled: one that what it depends
-   on changed since (a write, an allocation, a store that met its bound at this moment, a flow that
-   joined or left) stops the run by name, as one read in the setup does (`ways.Ways.fresh`; PLAN,
-   change 25: in a moment the stages commit first and the flows are shared again after).
+   on changed since (a write, an allocation, a store that met its bound at this moment, a switch of
+   its rates or a keyed read by the time that the clock changes at this moment, a flow that joined
+   or left) stops the run by name, as one read in the setup does (`ways.Ways.fresh`; PLAN, changes
+   25 and 26: in a moment the stages commit first and the flows are shared again after).
    A commit publishes the stage's writes, traces its edits and its moves and registers the
    occurrences that it queued, in order; a failure discards the stage and stops the run, also a
    failure in the commit itself (a start that a limit, its arguments or its entry refuse): the
@@ -54,9 +55,12 @@ At a time, rounds. One round is:
    store of a finished occurrence must carry no rate there (`Occurrences.carried`). Then each
    delay that a stage reached and that reads a rate or a result takes its value: its other reads
    were captured when the stage reached it (`occurrences.py`).
-3. **Conditions** (`triggers.py`): triggers, resets and gates are read on the settled state; then
-   the firings start their events, and the released gates go on. Then each assertion over state
-   must hold, and once the rounds of the time are done, just after it as well.
+3. **Conditions** (`triggers.py`): triggers, resets and gates are read on the settled state, and
+   each assertion over state must hold there; then the firings start their events, and the released
+   gates go on: the consequences of a further round, which settles them (spec: "New consequences
+   due at the same timestamp start a further round"). A firing reads after the firings before it:
+   a rate that one of them made stale stops the run, as in a stage. Once the rounds of the time are
+   done, each assertion must hold just after it as well.
 
 Another round follows at the same time while a stage is due there or a condition acted. The setup is
 round zero: its statements commit as one stage, the sets start, and the triggers get their first
@@ -336,7 +340,6 @@ class Moment:
         run.occurrences.delays()
         self.phase = 'conditions'
         run.triggers.conditions()
-        run.triggers.check()
         self.rounds(0.0)
 
     def resume(self):
@@ -348,14 +351,17 @@ class Moment:
         else:
             self.rounds(self.run.now, held)
 
-    def at(self, t, changed, met):
+    def at(self, t, changed, met, switched):
         """The moment at time t; `changed` holds what the ways changed there, which the settling
-        builds again, and `met` the stores that met a bound there, whose rates are stale until it
-        (`ways.Ways.fresh`)."""
+        builds again, `met` the stores that met a bound there and `switched` the switches of rates
+        that their states reached there (a flow whose rate reads it, the switch), whose rates are
+        stale until it (`ways.Ways.fresh`), as those of the keyed reads by the time at their key time
+        are (PLAN, change 26)."""
         run = self.run
         run.now = t
         run.moved |= changed
         run.changed |= {('bound', store) for store in met}
+        run.changed |= {('switch', name, switch) for name, switch in switched}
         run.changed.update(run.keyed_changes(t))
         self._round(0)
         self.rounds(t)
@@ -393,7 +399,6 @@ class Moment:
             run.occurrences.delays()
             self.phase = 'conditions'
             run.triggers.conditions()
-            run.triggers.check()
             due = run.occurrences.next_due()
             if not self.again and (due is None or not run.clock.due(due, t, opening=False)):
                 break
