@@ -301,11 +301,70 @@ def test_a_near_tie_of_the_run_is_listed_under_the_table(tmp_path, capsys):
     model = package(tmp_path / 'top', TOP_UP, UNITS)
     found = napkin(capsys, 'run', model, '--at', '3h')
     assert found.code == 0, found.err
-    (line,) = [line for line in found.out.splitlines() if line.startswith('near-tie: ')]
-    assert line.startswith('near-tie: tank.alarm.when[0] at 1 h: this trigger fired within tolerance')
+    heading, columns, row, pointer = found.out.splitlines()[-4:]
+    assert heading == 'Near-ties (1 total, from 1 h to 1 h)'
+    assert columns.split() == ['source', 'kind', 'count', 'first', 'last']
+    assert row.split() == ['tank.alarm.when[0]', 'fire', '1', '1', 'h', '1', 'h']
+    assert pointer == 'See near_ties in napkin run --json for every entry.'
     (tie,) = napkin(capsys, 'run', model, '--json', '--at', '3h').doc['near_ties']
     assert (tie['t'], tie['kind'], tie['part'], tie['owner']) == (1, 'fire', 'tank.alarm.when[0]', 'tank')
     assert tie['difference'] == (0.1 + 0.2) - 0.3
+
+
+@pytest.mark.parametrize('checks, omitted', [('zdcba', '1 more source'), ('zedcba', '2 more sources')])
+def test_the_text_counts_five_near_tie_sources_and_the_json_keeps_every_entry(
+    tmp_path, capsys, checks, omitted
+):
+    """At 1 h every guard holds at the boundary. At 2 h guard a falls just below it, then at
+    3 h guard z holds at it again. Each guard accounts for one source, and a's skip for one more."""
+    model_text = (
+        'scenario "Checks"\n    horizon 3 h\n\ntank:\n    level: L = 1 L in [0 L, 2 L]\n    total: L = 0 L\n'
+    )
+    for name in checks:
+        model_text += (
+            f'    {name} = event():\n'
+            '        after 0 h when this.level >= 1 L:\n'
+            '            this.total += 1 L\n'
+        )
+    model_text += '    checks = event():\n        after 1 h:\n'
+    model_text += ''.join(f'            this.{name}.start()\n' for name in checks)
+    model_text += """\
+        after 1 h:
+            this.level -= 0.00000000001 L
+            this.a.start()
+        after 1 h:
+            this.level = 1 L
+            this.z.start()
+
+tank.checks.start()
+"""
+    model = package(tmp_path / 'checks', model_text, UNITS)
+    found = napkin(capsys, 'run', model, '--value', 'tank.total')
+    assert found.code == 0, found.err
+    lines = found.out.splitlines()
+    start = lines.index(f'Near-ties ({len(checks) + 2} total, from 1 h to 3 h)')
+    assert [row.split() for row in lines[start + 2 : -1]] == [
+        ['tank.z.step[0]', 'commit', '2', '1', 'h', '3', 'h'],
+        ['tank.a.step[0]', 'commit', '1', '1', 'h', '1', 'h'],
+        ['tank.a.step[0]', 'skip', '1', '2', 'h', '2', 'h'],
+        ['tank.b.step[0]', 'commit', '1', '1', 'h', '1', 'h'],
+        ['tank.c.step[0]', 'commit', '1', '1', 'h', '1', 'h'],
+    ]
+    assert lines[-1] == f'and {omitted}. See near_ties in napkin run --json for every entry.'
+    ties = napkin(capsys, 'run', model, '--json', '--value', 'tank.total').doc['near_ties']
+    assert [tie['t'] for tie in ties] == [1] * len(checks) + [2, 3]
+    assert {(tie['owner'], tie['kind']) for tie in ties} == {
+        *((f'tank.{name}#0', 'commit') for name in checks),
+        ('tank.a#1', 'skip'),
+        ('tank.z#1', 'commit'),
+    }
+
+
+def test_the_text_shows_no_near_tie_section_without_entries(tmp_path, capsys):
+    model = package(tmp_path / 'no-alarm', TOP_UP.replace('>= 0.3 L', '>= 1 L'), UNITS)
+    found = napkin(capsys, 'run', model, '--at', '3h', '--value', 'tank.level')
+    assert found.code == 0, found.err
+    assert len(found.out.splitlines()) == 3  # heading, columns and the requested row
 
 
 def worked_network(tmp_path):

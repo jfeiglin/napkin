@@ -24,8 +24,8 @@ Under the table come, in this order:
 - the text of each case of a status display that the table shows, with its times: its rating is in
   the table, and two cases of one rating keep their own texts;
 - the reason of each value that is unavailable;
-- each near-tie of the run: a firing or a test that it decided within tolerance of its boundary,
-  which the engine detects and does not compute more precisely (change 10).
+- a summary of decisions within tolerance of their boundary (change 10). It gives the count and
+  times by source and kind, with the five most frequent first. The JSON gives every entry.
 
 How a value shows. A number has six significant figures, a yes/no is `true` or `false`, a link the
 name of the member it names, an enum its member. A number at most the run's absolute tolerance from
@@ -343,7 +343,15 @@ def heading(model, args, horizon):
     return f'{model.declared.scenario.title}: {run}a median run to {common.number(horizon)} h{edits}'
 
 
-def lines(model, record, configuration, times, found):
+def lines(
+    model,
+    record,
+    configuration,
+    times,
+    found,
+    *,
+    full_list='See near_ties in napkin run --json for every entry.',
+):
     """The table of the report, then what comes under it (see the module)."""
     from ..engine.report import Shown
 
@@ -373,8 +381,31 @@ def lines(model, record, configuration, times, found):
         for (text, _), item in zip(times, value.values):
             if unavailable(item):
                 shown.append(f'{value.path} at {text}: unavailable: {item.reason}')
-    shown += [f'near-tie: {tie.message}' for tie in found.near_ties]
-    return shown
+    return shown + near_tie_lines(found.near_ties, full_list)
+
+
+def near_tie_lines(ties, full_list):
+    """The count and time span of each of the five most frequent near-tie sources in the trace."""
+    if not ties:
+        return []
+    groups = {}
+    for tie in ties:
+        source = (tie.part, tie.kind)
+        count, first, _ = groups.get(source, (0, tie.t, tie.t))
+        groups[source] = (count + 1, first, tie.t)
+    sources = sorted(groups, key=lambda source: (-groups[source][0], *source))
+    rows = [['source', 'kind', 'count', 'first', 'last']]
+    for source in sources[:5]:
+        count, first, last = groups[source]
+        rows.append([*source, str(count), f'{common.number(first)} h', f'{common.number(last)} h'])
+    shown = [
+        f'Near-ties ({len(ties)} total, from {common.number(ties[0].t)} h to {common.number(ties[-1].t)} h)',
+        *common.table(rows),
+    ]
+    if len(sources) > 5:
+        more = len(sources) - 5
+        full_list = f'and {more} more {"source" if more == 1 else "sources"}. {full_list}'
+    return [*shown, full_list]
 
 
 def row_name(value):

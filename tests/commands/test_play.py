@@ -70,11 +70,16 @@ def ending(out):
     return re.split(r'The run ends at \S+ h\.\n', out, maxsplit=1)[1].splitlines()
 
 
-def unattended(capsys, model):
-    """The table of `napkin run` for the default run, without its heading."""
+def assert_unattended(capsys, model, table):
+    """Play and run give the same table and summary, each pointing to its own full list."""
     found = napkin(capsys, 'run', model)
     assert found.code == 0, found.err
-    return found.out.splitlines()[1:]
+    lines = found.out.splitlines()[1:]
+    assert table[:-1] == lines[:-1]
+    assert lines[-1] == 'See near_ties in napkin run --json for every entry.'
+    assert table[-1] == (
+        'For every entry, replay the same stops and edits in Python and read session.record.near_ties().'
+    )
 
 
 def cells(line):
@@ -107,7 +112,7 @@ def test_play_stops_before_the_switch_shows_the_stop_and_goes_on_as_the_unattend
     assert lines[stop + 6 : stop + 8] == ['Edit with PATH = VALUE, or: save FILE, go, quit.', '> go']
     # A wait and no pump sent, as in the run with no breakpoint.
     table = ending(found.out)
-    assert table == unattended(capsys, model)
+    assert_unattended(capsys, model, table)
     assert [cells(line) for line in table[1:4]] == [
         ['depot.spares', '1', '1'],
         ['depot.waits', '1', '1'],
@@ -177,7 +182,7 @@ def test_play_saves_the_stop_and_a_fresh_process_goes_on_from_it(tmp_path, capsy
     assert found.out.splitlines()[-1] == 'The run stops at its stop 1, before its end.'
     done = in_a_fresh_process(model, path, 'go\n')
     assert done.returncode == 0, done.stderr
-    assert ending(done.stdout) == unattended(capsys, model)
+    assert_unattended(capsys, model, ending(done.stdout))
     found = played(
         capsys, monkeypatch, model, '--break', SWITCH, typed=f'{ORDER} = SEND\nsave {path}\nquit\n'
     )
@@ -208,7 +213,7 @@ def test_play_refuses_an_edit_that_does_not_hold_with_its_reason_and_keeps_waiti
     assert (
         "  'jump' is no command. Edit with PATH = VALUE, or: save FILE, go, quit." in found.out.splitlines()
     )
-    assert ending(found.out) == unattended(capsys, model)
+    assert_unattended(capsys, model, ending(found.out))
 
 
 def test_play_shows_the_values_of_value_at_each_stop_and_at_the_end(tmp_path, capsys, monkeypatch):
@@ -222,7 +227,7 @@ def test_play_shows_the_values_of_value_at_each_stop_and_at_the_end(tmp_path, ca
         ['sent', '0', 'Pumps sent'],
     ]
     assert [cells(line)[0] for line in ending(found.out)[1:3]] == ['depot.waits', 'sent']
-    assert ending(found.out)[3].startswith('near-tie: ')
+    assert ending(found.out)[3] == 'Near-ties (1 total, from 0 h to 0 h)'
 
 
 def test_play_refuses_a_location_where_it_cannot_stop_and_a_checkpoint_that_is_not_one(

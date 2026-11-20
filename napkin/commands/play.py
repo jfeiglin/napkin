@@ -360,7 +360,10 @@ def ended(model, args, session, configuration, paths, entry):
     times = [(text, t) for text, t in times if t <= found.end]
     print()
     print(f'The run ends at {common.number(found.end)} h.')
-    for row in running.lines(model, record, configuration, times, found):
+    full_list = (
+        'For every entry, replay the same stops and edits in Python and read session.record.near_ties().'
+    )
+    for row in running.lines(model, record, configuration, times, found, full_list=full_list):
         print(row)
     for edit in record.entries('edit'):
         # The trace holds an edit in canonical units: the line gives it in the value's own.
