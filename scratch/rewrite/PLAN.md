@@ -811,8 +811,10 @@ is deleted.
 - Delete what is dead: old modules, old tests, `scratch/`, the superseded scoping page
   (`docs/scoping/networks-and-found-values.md`) and its row in `known-issues.md`.
 - Among the old modules: `napkin/model/types.py` and `napkin/model/uncertain.py`, whose last user is
-  the old publisher (`tools/publish/runs.py`, ported in M), and `napkin/expressions.py` with
-  `napkin/core/intervals.py`, which only the old runtime and the evidence tools reach.
+  the old publisher (`tools/publish/runs.py`, ported in M); `napkin/engine/runtime.py`, the old
+  trajectory, which only dormant test helpers import; and `napkin/expressions.py` with
+  `napkin/core/intervals.py`, which the old runtime reaches and, for `ExpressionError` and
+  `UnitSystem` only, `napkin/model/evidence.py` and `tools/evidence/adopt.py`: move those two first.
 - Rewrite the docs, one subagent for each file: `language.md`, `compiler.md`, `engine.md`,
   `modeling-guide.md`, `python-api.md`, `cli.md`, `draw.md`, `extending.md`. Record the rulings and
   the new measurements in `design.md`. Update `known-issues.md` and `CHANGELOG.md`.
