@@ -385,8 +385,7 @@ def _code(log):
 def key(program, configuration, log=None):
     """The key of a stored run of a program under a run configuration (see the module): the program's
     digest, the canonical bytes of the configuration and its request, the code and the
-    environment, and for a run with edits its log (`napkin.session.Log`), by its breakpoints and its
-    edits. Raises TypeError when a part has no canonical bytes."""
+    environment, and for a run with edits its log (`napkin.session.Log`), including each expected stop and its edits. Raises TypeError when a part has no canonical bytes."""
     from .program.canonical import configuration_bytes, value_bytes
 
     request = configuration.request
@@ -400,7 +399,7 @@ def key(program, configuration, log=None):
     ]
     if _edited(log):
         out = []
-        _encode((tuple(log.breakpoints), tuple(log.edits)), out)
+        _encode(log, out)
         parts.append(b''.join(out))
     digest = hashlib.sha256(MAGIC)
     # Each part is length-prefixed, so no two keys share their bytes across a boundary.

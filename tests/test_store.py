@@ -241,11 +241,11 @@ def test_a_run_with_edits_is_stored_under_its_log_and_a_log_without_edits_is_the
 
 
 def test_the_key_of_a_log_covers_its_breakpoints_its_edits_and_the_code_that_plays_it(monkeypatch):
-    """The session's code imports the engine's, so its digest covers both. The stops of a log are what
-    the run gives again, and no part of the key."""
+    """The session's code imports the engine's, so its digest covers both. Replay validates every expected stop,
+    so the key includes these as well as breakpoints and edits."""
     program, log = dispatch_log()
     base = store.key(program, ONE_HOUR, log)
-    assert store.key(program, ONE_HOUR, replace(log, stops=())) == base
+    assert store.key(program, ONE_HOUR, replace(log, stops=())) != base
     changed = [
         store.key(program, ONE_HOUR, dispatch_log('WAIT')[1]),
         store.key(program, ONE_HOUR, replace(log, breakpoints=(Breakpoint(DISPATCH_SWITCH),))),
@@ -449,3 +449,36 @@ def test_a_new_budget_runs_once_and_keeps_its_stop(tmp_path):
     assert first == {'hits': 0, 'misses': 1} and second == {'hits': 1, 'misses': 0}
     assert stopped == again == fresh(model.program, small)
     assert stopped.failure.detail('budget') == 2
+
+
+def test_cached_replay_validates_breakpoint_time(tmp_path):
+    from napkin.program.config import InputValue, Quantity
+
+    model = compile_text(
+        """scenario "Replay"
+    horizon 4 h
+plant:
+    input delay: h = 2 h
+    count: h = 0 h
+    tick = event():
+        after this.delay:
+            this.count = 1 h
+
+plant.tick.start()
+""",
+        UNITS,
+    )
+    logs = []
+    for delay in (2, 3):
+        config = replace(model.configuration, inputs=(InputValue('plant', 'delay', Quantity(delay, 'h')),))
+        session = Session(model.program, config, [Breakpoint('plant.tick.step[0]')])
+        assert session.advance().stop.t == delay
+        session.edit('plant.count', 2)
+        logs.append(session.log)
+    config = replace(model.configuration, inputs=(InputValue('plant', 'delay', Quantity(2, 'h')),))
+    with store.use(tmp_path):
+        with pytest.raises(CheckpointError, match='at 3 h.*at 2 h'):
+            store.run(model.program, config, logs[1])
+        assert store.run(model.program, config, logs[0]).failure is None
+        with pytest.raises(CheckpointError, match='at 3 h.*at 2 h'):
+            store.run(model.program, config, logs[1])
