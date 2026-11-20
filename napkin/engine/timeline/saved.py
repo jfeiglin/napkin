@@ -258,9 +258,6 @@ def save(run, recorder, arrival):
                 ('written', _pairs(run.written)),
                 ('published', _pairs(run.published)),
                 ('arrival', arrival),
-                ('outside_contacts', _pairs(run.outside.contacts)),
-                ('outside_selections', run.outside.selections()),
-                ('outside_arrived', tuple(sorted(run.outside.arrived))),
                 ('contacts', run.contacts),
                 ('prior_contacts', run.prior_contacts),
                 ('bounds_at_arrival', _pairs(run.bound_at)),
@@ -535,6 +532,13 @@ def _instance(instance):
                 ('evaluations', instance.evaluations),
                 ('constants', _pairs(instance.vector.constants)),
                 ('switches', tuple((store, tuple(flows)) for store, flows in instance.switches.items())),
+                ('selected', instance.selected),
+                (
+                    'signs',
+                    tuple((nodes.text(a), nodes.text(b), sign) for (a, b), sign in instance.signs.items()),
+                ),
+                ('selection', _pairs(instance.selection)),
+                ('held_rates', tuple(sorted(instance.held_rates))),
             ),
         )
     if isinstance(instance, DeclaredWay):
@@ -639,10 +643,6 @@ def restore(run, data):
         held = ([run.occurrences.live[name] for name in held[0]], held[1])
     moment.held = held
     _restore_ways(run, dict(parts['ways']))
-    run.outside.restore(
-        dict(dict(parts['run'])['outside_contacts']), dict(parts['run'])['outside_selections']
-    )
-    run.outside.arrived.update(dict(parts['run'])['outside_arrived'])
 
 
 def _run(run, found):
@@ -710,6 +710,8 @@ def _restore_ways(run, found):
         for key in keys:
             ways.sets[key] = (ways.sets[key][0], instance)
         ways.instances.append(instance)
+        if isinstance(instance, Sparse) and instance.following:
+            ways.followers.add(instance.key)
         if isinstance(instance, Sparse | ComponentWay):
             ways.sampled[instance.key] = run.now
         elif isinstance(instance, MovingDeclared):
@@ -846,6 +848,17 @@ def _made(run, kind, keys, data):
             data['evaluations'],
         )
         instance.switches = {store: list(flows) for store, flows in data['switches']}
+        if data['selected']:
+            signs = {(a, b): sign for a, b, sign in data['signs']}
+            instance.signs = {
+                (a, b): signs[key]
+                for a, b in instance.surfaces
+                if (key := (nodes.text(a), nodes.text(b))) in signs
+            }
+            instance.vector.choose(instance.signs)
+            instance.selection.update(data['selection'])
+            instance.held_rates = set(data['held_rates'])
+            instance.selected = True
         return instance
     if kind in ('declared', 'moving'):
         connected = _connected(data['set'])

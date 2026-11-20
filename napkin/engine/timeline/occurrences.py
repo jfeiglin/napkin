@@ -157,11 +157,6 @@ class Occurrences:
                         if self.frozen(end) is not None:
                             self.watched().add(end)
             run.flow_joins(flow)
-        for rate in made.formulas:
-            if rate in plan.outside:
-                # Its first rate will be published after these stages or firings.
-                run.published[rate] = 0.0
-                run.changed.add(rate)
         run.recorder.entry(t, 'start', made.event.origin, made.id, args=tuple(args))
         run.changed.add(('occurrences', member, event))
         if run.moment.phase == 'conditions':
@@ -486,15 +481,11 @@ class Occurrences:
             if found is None or found.kind != FORMULA:
                 continue
             try:
-                # A flow from SOURCE to SINK stops with its occurrence: it reads zero from now on, as a
-                # flow that leaves its endpoints does (spec, "Flows created during a run").
-                frozen = 0.0 if name in plan.outside else run.value(name)
+                frozen = run.value(name)
             except (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError) as problem:
                 frozen = Unavailable(
                     f'{name} was not available when {made.id} finished at t = {t:g} h: {problem}'
                 )
-            if name in plan.outside:
-                run.changed.add(name)
             run.frozen[name] = frozen
             run.recorder.add(name, t, frozen, 0.0)
         for flow in made.flows:

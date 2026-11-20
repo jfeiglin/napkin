@@ -1,5 +1,7 @@
 """A moving declared solver follows one branch until its stores reach the switch."""
 
+import math
+
 import pytest
 
 from napkin.engine import read
@@ -163,3 +165,65 @@ def test_a_declared_limit_falls_to_zero_on_its_incoming_segment(source):
     water, rate = read(record, model, ['tank.water', 'tank.pipe.actual_rate'], [0.5, 1, 2])
     assert water.values == pytest.approx((3 / 8, 1 / 2, 1 / 2))
     assert rate.values == pytest.approx((1 / 2, 0, 0))
+
+
+def test_a_source_to_sink_pipe_follows_the_moving_rate_of_a_declared_solver():
+    """The solver supplies 4 − t L/h and the independent pipe asks for that answer."""
+    b = Builder({'h': {'time': 1}, 'L': {'volume': 1}})
+    tank = named('tank')
+    b.entity(
+        'tank',
+        value('water', 'L', 10, lower=0),
+        flow('drain', this.water, SINK, request=q(5, 'L/h')),
+        solver(
+            'share',
+            given('drain', tank.drain),
+            solve_for(local.drain.actual_rate),
+            constraint(local.drain.actual_rate <= q(4, 'L/h') - t * q(1, 'L/h/h')),
+            maximize(local.drain.actual_rate),
+        ),
+    )
+    b.entity('tap', flow('pipe', SOURCE, SINK, unit='L/h', request=formula(tank.drain.actual_rate)))
+    program = b.finish()
+    work = Run(Plan.of(program, Configuration(Request(1))))
+    record = work.run()
+    assert record.failure is None
+    assert isinstance(work.ways.instance_of('tank.water'), MovingDeclared)
+    for reading in read(record, program, ['tank.drain.actual_rate', 'tap.pipe.actual_rate'], [0, 0.5, 1]):
+        assert reading.values == pytest.approx((4, 3.5, 3))
+
+
+@pytest.mark.parametrize('declared', [False, True], ids=['local', 'declared'])
+def test_two_storeless_rates_feed_the_field_of_the_stock_they_read(declared):
+    """A 4 L stock drains at its level times 1/h. Its level and rate are both 4 exp(-t)."""
+    b = Builder({'h': {'time': 1}, 'L': {'volume': 1}})
+    tank, tap = named('tank'), named('tap')
+    b.entity(
+        'tap',
+        flow('meter', SOURCE, SINK, unit='L/h', request=formula(tank.water * q(1, '1/h'))),
+        flow('copy', SOURCE, SINK, unit='L/h', request=formula(this.meter.actual_rate)),
+    )
+    parts = [value('water', 'L', 4, lower=0)]
+    if declared:
+        parts.extend(
+            [
+                flow('drain', this.water, SINK, request=q(5, 'L/h')),
+                solver(
+                    'share',
+                    given('drain', tank.drain),
+                    solve_for(local.drain.actual_rate),
+                    constraint(local.drain.actual_rate <= tap.copy.actual_rate),
+                    maximize(local.drain.actual_rate),
+                ),
+            ]
+        )
+    else:
+        parts.append(flow('drain', this.water, SINK, request=formula(tap.copy.actual_rate)))
+    b.entity('tank', *parts)
+    model = b.finish()
+    record = Run(Plan.of(model, Configuration(Request(1)))).run()
+    assert record.failure is None
+    paths = ['tank.water', 'tank.drain.actual_rate', 'tap.copy.actual_rate', 'tap.meter.actual_rate']
+    times = [0, 0.5, 1]
+    for reading in read(record, model, paths, times):
+        assert reading.values == pytest.approx([4 * math.exp(-at) for at in times])

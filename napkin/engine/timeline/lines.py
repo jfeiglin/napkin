@@ -85,7 +85,11 @@ class Lines:
         # Whether a moment may solve downstream only (see the module).
         self.closed = (
             self.net.plain
-            and all(plan.rigid(plan.flows[flow], run.held) for flow in self.flows)
+            and all(
+                plan.rigid(plan.flows[flow], run.held)
+                for flow in self.flows
+                if plan.flows[flow].source is not None or plan.flows[flow].sink is not None
+            )
             and not any(plan.settled(end) for (store, _), end in plan.ends.items() if store in place)
         )
         self.selected = False  # whether the selection order has solved a part of the sets
@@ -98,7 +102,7 @@ class Lines:
         self.flows_of = {
             key: [self.row[name] for name in connected.flows] for key, connected in zip(keys, sets)
         }
-        self.alive = bool(len(stores))
+        self.alive = bool(self.members)
 
     def __len__(self):
         return len(self.flows)
@@ -123,6 +127,8 @@ class Lines:
             ('outflow or inflow capacity', end_capacity, False),
         ):
             bad = np.isnan(numbers) | (numbers < 0) | (np.isinf(numbers) if finite else False)
+            if numbers is capacity:
+                bad &= ~self.net.free_pipe
             if bad.any():
                 where = np.argwhere(bad)[0]
                 part = (
@@ -417,7 +423,8 @@ def asked_of(net, raw, t):
     if not np.isfinite(raw).all():
         k = int(np.flatnonzero(~np.isfinite(raw))[0])
         raise SimulationError(f'{net.connections[k]}: a request that is {raw[k]:g} at {t:g} h')
-    if ((raw < 0) & ~signed).any():
-        k = int(np.flatnonzero((raw < 0) & ~signed)[0])
+    negative = (raw < 0) & ~signed & ~net.free_pipe
+    if negative.any():
+        k = int(np.flatnonzero(negative)[0])
         raise SimulationError(f'Negative flow rates: {net.connections[k]} asks {raw[k]:g} at {t:g} h')
     return request

@@ -54,12 +54,13 @@ from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ..continuous import dense, integrate
 from ..errors import SimulationError
-from .collections import combined, looked_up, selected
+from .collections import combined, dynamic_value, looked_up, selected
 from .lines import asked_of
 from .network import ROUNDOFF, SIDES, Asked, Instant, network_of
-from .plan import FORMULA, LOOKUP, REDUCE, Pending, _renamed
+from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE, Pending, _renamed
 from .reads import Reads, lazily
 from .record import fitted
+from .region import Region, key_surfaces
 
 _MISSING = object()
 
@@ -80,7 +81,7 @@ class Vector:
     driver of the timeline does (`walk.walked`). The members of a template that share a formula and
     that are asked together are computed together, over their rows."""
 
-    def __init__(self, run, stores, held=None, rates=None, given=None):
+    def __init__(self, run, stores, held=None, rates=None, given=None, following=None, defined=()):
         self.run, self.plan = run, run.plan
         self.place = {name: k for k, name in enumerate(stores)}
         self.held = {} if held is None else held
@@ -88,6 +89,7 @@ class Vector:
         # later level reads, at the same time and state (`Sparse`).
         self.rates = {} if rates is None else rates
         self.given = given
+        self.following, self.defined = following or {}, defined
         self.constants = {}  # name -> (value, None), or (nan, the reason why it has no value)
         self.branches = {}
         self.nodes, self.shapes = {}, {}
@@ -129,9 +131,16 @@ class Vector:
                 found = 'rate'
             elif name == 't':
                 found = 'time'
-            elif kind == FORMULA:
+            elif name in self.following:
+                found = 'trajectory'
+            elif kind == FORMULA or (name in self.defined and value is not None and value.node is not None):
                 self.formulas[name] = value
                 found = 'member' if value.shape is not None else 'formula'
+            elif kind == DYNAMIC and self.defined:
+                dynamic = self.plan.dynamic[name]
+                members = tuple(self.plan.members(dynamic.source))
+                self._entries[name] = members  # the installed membership, until the next sharing
+                found = 'dynamic'
             elif kind == REDUCE:
                 found = 'reduction'
             elif kind == LOOKUP:
@@ -145,7 +154,7 @@ class Vector:
 
     def derived(self, name):
         """Whether an evaluation computes a name from others."""
-        return self._kind(name) in ('formula', 'member', 'reduction', 'stepped', 'lookup')
+        return self._kind(name) in ('formula', 'member', 'reduction', 'stepped', 'lookup', 'dynamic')
 
     def compiled(self, names):
         """A function (t, y) -> the array of the values of `names`, in their order. Each value that
@@ -173,6 +182,13 @@ class Vector:
             return sorted(nodes.names(self.formulas[name].node) - {'t'})
         if kind == 'member':
             return [bound for _, bound in self.formulas[name].binding if bound != 't']
+        if kind == 'dynamic':
+            dynamic = plan.dynamic[name]
+            return (
+                [plan.project(member, dynamic.steps) for member in self._entries[name]]
+                if dynamic.steps
+                else []
+            )
         if kind == 'reduction':
             reduction = plan.reductions[name]
             return [] if reduction.names is None else [reduction.names[k] for k in self._kept(name)]
@@ -279,6 +295,11 @@ class Vector:
         if kind in ('formula', 'member'):
             return float(
                 lazily(self.nodes.get(name, self.formulas[name].node), evaluation.read, plan.units, t)
+            )
+        if kind == 'dynamic':
+            dynamic = plan.dynamic[name]
+            return dynamic_value(
+                dynamic, self._entries[name], lambda m: plan.project(m, dynamic.steps), evaluation.read, t
             )
         if kind == 'reduction':
             reduction, entries = plan.reductions[name], self._kept(name)
@@ -392,6 +413,11 @@ class _Evaluation:
             return value
         if kind == 'rate':
             return vector.rates[name]
+        if kind == 'trajectory':
+            way = vector.following[name]
+            if name in way.stores or name in vector.run.ways.result_of:
+                return way.level_at(name, self.t)
+            return way.rate_at(name, self.t)
         if kind == 'time':
             return float(self.t)
         found = self.known.get(name, _MISSING)
@@ -568,7 +594,32 @@ class Sparse:
         self.selection, self.current = {}, {}
         earlier = [name for k, name in enumerate(self.recorded) if levels[self._set_of_flow(k)] < max(levels)]
         self.current.update(dict.fromkeys(earlier, 0.0))
-        vector = self.vector = Vector(run, stores, self.selection, self.current, given)
+        # An empty state reads the installed steps of its producers, including declared answers.
+        # No source changes integrator or gains another stock merely because a pipe reads its value.
+        self.following = {}
+        if not stores:
+            ways = run.ways
+            for name in sets[0].rates:
+                key_of = ways.set_of.get(name, ways.result_of.get(name))
+                if key_of is None:
+                    key_of = ways.set_of.get(name.rsplit('.', 1)[0])
+                if key_of is not None and (name in plan.moving or ways.moving(key_of)):
+                    self.following[name] = ways.sets[key_of][1]
+        defined = [name for name in self.recorded if not stores and plan.values[name].node is not None]
+        formulas = {name for connected in sets for name in connected.formulas}
+        vector = self.vector = Vector(
+            run,
+            stores,
+            self.selection,
+            self.current,
+            given,
+            self.following,
+            {name for name in formulas if plan._is_rate(name)} | set(defined),
+        )
+        self.outputs = vector.compiled(defined) if defined else None
+        self.held_rates = set()
+        self.selected = False
+
         self.setting_names = tuple(names)
         self.settings = vector.compiled(names)
         self.size = len(names)
@@ -604,7 +655,7 @@ class Sparse:
         # flow whose settings read the rates of an earlier level reads its stores too.
         self.reads = []
         for f, flow in enumerate(self.flows):
-            found = plan.expansion_of(plan.settings_of(plan.flows[flow]))
+            found = plan.settings_reads(plan.flows[flow])
             mine = {place[name] for name in found.leaves if name in place}
             level = levels[self._set_of_flow(f)]
             if level > 0:
@@ -634,13 +685,17 @@ class Sparse:
         # reached there (`switched_at`). A surface's sides are read through their names.
         formulas = {
             name: plan.values[name].node
-            for name in plan.expansion_of(names).formulas
+            for name in formulas
             if getattr(plan.values.get(name), 'node', None) is not None
         }
 
         def moves(node):
             found = plan.expansion(node)
-            return found.time or any(leaf in place or leaf in self.current for leaf in found.leaves)
+            if stores and vector.defined:
+                found = plan.field_inputs(found)
+            return found.time or any(
+                leaf in place or leaf in self.current or leaf in self.following for leaf in found.leaves
+            )
 
         def nodes_of(settings):
             return [
@@ -650,20 +705,44 @@ class Sparse:
             ]
 
         self.moves = moves
-        self.surfaces = integrate.surfaces_of(nodes_of(names), formulas, moves)
+        surfaces = integrate.surfaces_of(nodes_of([*names, *defined]), formulas, moves)
+        self.region = Region(
+            surfaces, key_surfaces(plan, plan.expansion_of(names).leaves, moves) if defined else {}
+        )
+        self.surfaces = self.region.surfaces
         self.deciding = {}  # a surface -> the flows whose settings read it
         for flow in self.flows:
             for surface in integrate.surfaces_of(
                 nodes_of(plan.settings_of(plan.flows[flow])), formulas, moves
             ):
                 self.deciding.setdefault(surface, []).append(flow)
+        self.labels = {}
+        if not stores:
+            from .triggers import _affine
+
+            for pair in self.surfaces:
+                a, b = pair
+                found = plan.expansion_of(set(nodes.names(a)) | set(nodes.names(b)))
+                moving = found.leaves & self.following.keys()
+                affine = (
+                    moving <= plan.moving and _affine(a, plan.moving, plan) and _affine(b, plan.moving, plan)
+                )
+                if found.time:
+                    moving = moving | {'t'}
+                self.labels[pair] = (moving, affine, f'switch ({nodes.text(a)}, {nodes.text(b)})')
+                self.deciding[pair] = list(self.flows)
         sided = {name for a, b in self.surfaces for name in (*nodes.names(a), *nodes.names(b))}
         self.side_nodes = {}
         self.sided = sorted(sided - {'t'})
         self._sides_of = vector.compiled(self.sided) if self.sided else None
         self.sides, self.clock = (), None  # the far sides that the present step reads (`_sides`)
         self.signs = {}  # the side of each switch that the present step holds (`_turns`)
-        self.contacted = ()
+        reached = {
+            label
+            for at, owner, label in (*run.contacts, *run.prior_contacts)
+            if owner in self.recorded and at >= t - run.clock.crossing
+        }
+        self.contacted = tuple(pair for pair, (_, _, label) in self.labels.items() if label in reached)
         self.contacts = []  # located contacts on the pending smooth step
         self.next_clock = math.inf  # the next switch of the time against a fixed value
 
@@ -752,7 +831,7 @@ class Sparse:
             (end_request if which == 'request' else end_capacity)[side, s] = number
         if (
             np.isnan(found).any()
-            or (capacity < 0).any()
+            or ((capacity < 0) & ~self.net.free_pipe).any()
             or (end_capacity < 0).any()
             or not (np.isfinite(end_request) & (end_request >= 0)).all()
         ):
@@ -766,6 +845,9 @@ class Sparse:
         if self.evaluations > self.plan.numerics.max_evaluations:
             raise SimulationError('Numerical evaluation budget exceeded')
         t, trial = self._held(t, y)
+        if self.outputs is not None:
+            values = self.outputs(t, trial)
+            return values, values
         if not self.levels:
             asked = self.asked(t, trial)
             values = Instant(self.net, asked, self.lower_flags, self.upper_flags).values()
@@ -856,6 +938,12 @@ class Sparse:
         before, after = self._side(start, solution(start)), self._side(end, solution(end))
         for pair, sign in self.signs.items():
             a, b = pair
+            if pair in self.labels:
+                moving, affine, _ = self.labels[pair]
+                at = self.run.triggers.switching_time(a, b, moving, sign, affine)
+                if at is not None and start < at <= end:
+                    yield at, pair, 'switch'
+                continue
             try:
                 first, last = before(a) - before(b), after(a) - after(b)
                 if first * sign <= 0 or last * sign > 0:
@@ -881,6 +969,8 @@ class Sparse:
     def _start(self):
         """Where a step starts: the entries that the keyed reads hold, the flags of the bounds, and the
         far sides of the switches that the state crosses there (`_sides`)."""
+        if self.outputs is not None and self.selected:
+            return
         self.vector.choose({})
         self.side_nodes = {}
         self.sides, self.clock = (), None
@@ -896,6 +986,33 @@ class Sparse:
         )
         self._flags()
         self._sides()
+        if self.outputs is not None:
+            rows = self.region.selected_rows(self.run, self.signs, self._side(self.t, self.y))
+            for name, row in rows.items():
+                self.selection[name] = self.plan.keyed[name].names.index(row)
+            self.held_rates = {name for name in self.recorded if self._holds(name)}
+            self.selected = True
+
+    def _holds(self, name):
+        """Whether the chosen arithmetic reads only values held on this segment."""
+        seen, pending = set(), [name]
+        while pending:
+            key = pending.pop()
+            if key in seen:
+                continue
+            seen.add(key)
+            kind = self.vector._kind(key)
+            if kind in ('member', 'formula'):
+                node = self.vector.nodes.get(key, self.vector.formulas[key].node)
+                pending.extend(nodes.names(node))
+            elif key in self.selection:
+                if kind == 'stepped':
+                    pending.append(self.run.stepped_of(key).name_at(self.selection[key]))
+                elif self.selection[key] is not None:
+                    pending.append(self.plan.keyed[key].names[self.selection[key]])
+            elif kind != 'constant':
+                return False
+        return True
 
     def pattern(self):
         """The sparse pattern of the Jacobian for the flags of the segment."""
@@ -950,6 +1067,8 @@ class Sparse:
             for k, pieces in zip(self.kept_stores, fitted(states, start, end, tolerance)):
                 recorder.add_pieces(self.stores[k], pieces)
         if self.kept_flows:
+            if self.outputs is not None and (self.held_rates or not (self.surfaces or self.stepped)):
+                return  # this branch already has its anchor from the sharing
             evaluations = self.evaluations
             tolerance = np.array([recorder.tolerance.get(self.recorded[k], 1e-9) for k in self.kept_flows])
 
@@ -1003,7 +1122,17 @@ class Sparse:
     # ---- the interface of a way (`ways.py`) ------------------------------------------------------
 
     def begin(self):
-        """Nothing yet: the first step is made when the run asks for it."""
+        """Anchor an algebraic output at its sharing. Its smooth span reads its input histories."""
+        if self.outputs is not None:
+            self._start()
+            self._anchor()
+
+    def _anchor(self):
+        numbers = self.values(self.t, self.y)[0]
+        for k in self.kept_flows:
+            name = self.recorded[k]
+            held = name in self.held_rates or self.surfaces or self.stepped
+            self.recorder.add(name, self.t, float(numbers[k]), 0.0 if held else None)
 
     def retire(self, key):
         """The set leaves the run's ways."""
@@ -1021,6 +1150,19 @@ class Sparse:
         until = self.run.limit
         if self.t >= until:
             return math.inf
+        if not self.stores:
+            choose = not self.selected
+            self._start()
+            if choose and self.outputs is not None:
+                self._anchor()
+            until = min((until, *(way.peek() for way in set(self.following.values()))))
+            if until <= self.t:
+                return math.inf  # the producer commits its due step before the next window
+            self.run.now = self.t
+            self.contacts = list(self._turns(lambda at: self.y, self.t, until))
+            end = min((at for at, _, _ in self.contacts), default=until)
+            self.pending = self.t, end, lambda at: self.y, self.y, bool(self.contacts)
+            return end
         if self.solver is None:
             self._start()
             numerics = self.plan.numerics
@@ -1090,6 +1232,7 @@ class Sparse:
         self.run.now = end
         if ended:
             self.solver = None
+            self.selected = False
         return list(self.stores), list(self.recorded), ended
 
     def lookahead(self, t, through):
@@ -1116,6 +1259,8 @@ class Sparse:
             if at <= through:
                 if kind in ('lower bound', 'upper bound'):
                     yield at, self.stores[owner], kind
+                elif kind == 'switch' and owner in self.labels:
+                    yield at, self.recorded[0], self.labels[owner][2]
                 elif kind == 'switch':
                     for flow in self.deciding.get(owner, ()):
                         yield at, flow, kind
@@ -1148,6 +1293,9 @@ class Sparse:
         self._on_contacts(through, y)
         self.pending = start, at, solution, y, ended
         stores, rates, _ = self.step()
+        self.contacted = tuple(
+            pair for when, pair, kind in self.contacts if when <= through and kind == 'switch'
+        )
         return stores + rates, met
 
     def finish(self, t):
@@ -1156,7 +1304,7 @@ class Sparse:
         the state there, with the selections and the flags of a new segment, as the first step of a
         run that goes on would from there; sets that have made steps hold their values there in
         their pieces. The evaluations count for no budget of the run."""
-        if self.pending is not None or self.t != t:
+        if self.pending is not None or self.t != t or self.outputs is not None:
             return
         evaluations = self.evaluations
         try:

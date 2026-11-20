@@ -87,7 +87,7 @@ from .plan import (
     STATE,
     Pending,
 )
-from .reads import OutsideRates, lazily
+from .reads import lazily
 from .record import Recorder, remember
 from .saved import restore
 from .triggers import Triggers
@@ -165,7 +165,6 @@ class Run:
         self._sources = (0, {})  # (how many dynamic reads the plan names, them by their collection)
         # Written names and changed collections, and the stores and flows due for rebuilding.
         self.published = {}  # plain answers of the last sharing, at the current moment
-        self.outside = OutsideRates(self)
         self.arriving = False
         self.saved_arrival = None
         self.cut_at_resume = []
@@ -533,17 +532,16 @@ class Run:
         kind = found.kind if found is not None else None
         return kind in (REDUCE, LOOKUP, DYNAMIC) or (kind == FORMULA and name not in self.frozen)
 
-    def in_region(self, name, t, region, shared=False):
-        """Read a calculation on its segment's branches. When sharing an outside pipe at a moment,
-        its network inputs come from their installed sets' published answers there."""
-        if shared and name in self.published and name not in self.plan.outside:
-            return self.ways.shared_value(name)
+    def in_region(self, name, t, region):
+        """Read a calculation on the branches selected for its segment."""
         found = self.plan.values.get(name)
-        if found is not None and found.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC) and name not in self.frozen:
-            return walked(self._derived(name, t, None, {}, set(), region, shared))
+        if name in region.defined or (
+            found is not None and found.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC) and name not in self.frozen
+        ):
+            return walked(self._derived(name, t, None, {}, set(), region))
         return self.value(name, t)
 
-    def _derived(self, name, t, tx, known, waiting, region=None, shared=False):
+    def _derived(self, name, t, tx, known, waiting, region=None):
         """The value of a derived value (`_is_derived`) at time t, as a computation of `walk.walked`
         (re-audit 15): what it reads is read as its evaluation asks for it (`reads.py`), and each
         derived value among those that this read has not computed yet (`known`) is computed first,
@@ -557,9 +555,7 @@ class Run:
             found = own.get(each, _MISSING)
             if found is not _MISSING:
                 return found
-            if shared and each in self.published and each not in self.plan.outside:
-                found = self.ways.shared_value(each)
-            elif self._is_derived(each, tx):
+            if self._is_derived(each, tx) or (region is not None and each in region.defined):
                 if each not in known:
                     raise Pending(each)
                 found = known[each]
@@ -578,13 +574,10 @@ class Run:
                 for each in pending.names:
                     if each in known:
                         continue
-                    if shared and each in self.published and each not in self.plan.outside:
-                        known[each] = self.ways.shared_value(each)
-                        continue
                     if each in waiting:
                         raise SimulationError(f'{each}: a value that reads itself at t = {t:g} h') from None
                     try:
-                        known[each] = yield self._derived(each, t, tx, known, waiting, region, shared)
+                        known[each] = yield self._derived(each, t, tx, known, waiting, region)
                     except Exception as problem:  # raised where the evaluation reads it, as a call raises
                         known[each] = _Failed(problem)
                 continue
@@ -599,7 +592,7 @@ class Run:
             return lazily(tx.writes[name].node, read, plan.units, t)
         value = plan.values[name]
         kind = value.kind
-        if kind == FORMULA:
+        if kind == FORMULA or (region is not None and name in region.defined):
             node = value.node if region is None else region.expression(value.node)
             return read(node.name) if isinstance(node, nodes.Ref) else lazily(node, read, plan.units, t)
         if kind == REDUCE:
@@ -847,8 +840,9 @@ class Run:
         if flow.kind == LEGS:
             self.recorder.tolerance[f'{flow.name}.served_fraction'] = factor
             return
-        size = max(self.sizes[end] for end in (flow.source, flow.sink) if end is not None)
-        self.recorder.tolerance[f'{flow.name}.actual_rate'] = factor * size
+        sizes = [self.sizes[end] for end in (flow.source, flow.sink) if end is not None]
+        if sizes:
+            self.recorder.tolerance[f'{flow.name}.actual_rate'] = factor * max(sizes)
 
     def run(self):
         """The record of the run: to the horizon, or to the failure that stopped it; or the checkpoint
@@ -958,28 +952,26 @@ class Run:
                 # A known moment due at a contact is one moment with it (`moment.Clock`), at the time
                 # that the run knows exactly: the contact holds there within its tolerance.
                 moment = limit
-            outside = self.outside.next_contact()
-            independent = outside >= moment or self.clock.within(outside, moment)
+            independent = not (
+                at < moment
+                and not self.clock.within(at, moment)
+                and not instance.stores
+                and any(instance.timing_events(at))
+            )
             if not independent:
-                moment = outside
+                moment = at  # a switch in an output rate cuts its suppliers' incoming segments here
             if at < moment and (
-                not independent
-                or not self.clock.within(at, moment)
-                or not any(instance.timing_events(self.clock.apart(moment)))
+                not self.clock.within(at, moment) or not any(instance.timing_events(self.clock.apart(moment)))
             ):
                 # A flow at a store of a finished occurrence carries no rate up to the event.
                 self.occurrences.carried(self.now, at)
-                if self.outside.recording:
-                    rates = getattr(instance, 'recorded', getattr(instance, 'rates', ()))
-                    self.outside.record_to(at, (*instance.stores, *rates, *getattr(instance, 'results', ())))
                 self.now = at
                 stores, rates, jumped = instance.step()
                 changed = set(stores) | set(rates)
-                if self.plan.outside:
-                    self.outside.changed_segment(changed)
-                if (
-                    jumped and (self.triggers.reads_any(changed) or self.outside.reads_any(changed))
-                ) or self.ways.touched_outside(rates, instance):
+                readers = self.ways.touched_outside(changed if jumped else rates, instance)
+                if not jumped:
+                    readers -= self.ways.followers  # these sets follow each smooth step of their suppliers
+                if readers or (jumped and self.triggers.reads_any(changed)):
                     # The instance settled its event itself: no stage is due at its time.
                     self.ways.cut(at)
                     return at, changed, set(), self.ways.switched(at)
@@ -991,8 +983,6 @@ class Run:
                 self.triggers.predict(changed)
                 continue
             self.occurrences.carried(self.now, moment)
-            if self.outside.recording:
-                self.outside.record_to(moment)
             self.now = moment
             threshold = self.clock.apart(moment)
             if independent:
@@ -1004,7 +994,7 @@ class Run:
                 sorted(
                     {
                         event
-                        for way in (*self.ways.instances, self.outside)
+                        for way in self.ways.instances
                         if independent
                         for event in way.timing_events(threshold)
                         if self.clock.within(event[0], moment)
@@ -1012,7 +1002,6 @@ class Run:
                 )
             )
             self.ways.opening(moment)
-            self.outside.refresh((), (), (), moment, incoming=True)
             self.bound_at = {
                 name: self.bounds[name][int(kind == 'upper bound')]
                 for _, name, kind in self.contacts
@@ -1040,10 +1029,14 @@ class Run:
                 )
             )
         if self.saved_arrival is not None:
+            replaced = {self.ways.instances[k]: instance for k, _, instance in self.cut_at_resume}
             for k, keys, instance in self.cut_at_resume:
                 self.ways.instances[k] = instance
                 for key in keys:
                     self.ways.sets[key] = self.ways.sets[key][0], instance
+            for key in self.ways.followers:
+                inputs = self.ways.sets[key][1].following
+                inputs.update((name, replaced[way]) for name, way in inputs.items() if way in replaced)
             self.moved.update(self.saved_arrival[1])
             self.saved_arrival = None
             self.cut_at_resume.clear()
@@ -1051,13 +1044,13 @@ class Run:
             return
         t = self.now
         through = self.clock.apart(t) if self.contacts else t
-        for way in self.ways.instances:
+        for way in self.ways.cut_order():
             events = way.timing_events(through)
             if way.peek() <= t or any(self.clock.within(at, t) for at, _, _ in events):
                 changed, met = way.snap(t, through)
                 self.moved.update(changed)
                 self.moved.update(met)
-        self.moved.update(self.ways.cut(t))
+            self.moved.update(way.cut(t) or ())
         self.moved.update(self.ways.switched(t))
         self.now = t
 

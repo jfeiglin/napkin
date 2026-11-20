@@ -9,7 +9,8 @@ from .reads import lazily
 class Region:
     """A segment's comparisons and selected key rows, shared by its trial evaluations."""
 
-    def __init__(self, surfaces=(), lookups=None):
+    def __init__(self, surfaces=(), lookups=None, defined=()):
+        self.defined = defined  # rates whose arithmetic is part of this trial field
         self.lookups = lookups or {}
         keys = (pair for rows in self.lookups.values() for pair in rows)
         self.surfaces = tuple(dict.fromkeys((*surfaces, *keys)))

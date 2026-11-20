@@ -663,6 +663,22 @@ def test_a_watched_condition_fires_when_an_outside_rate_changes_at_its_own_switc
     check(b.finish(), 3, [('tap.seen', 1, -1), ('tap.seen', 2, 2), ('tap.seen', 3, 2)])
 
 
+def test_a_watched_source_to_sink_rate_reaches_a_threshold_on_its_line():
+    """The request rises by 1 L/h each hour and reaches 1 L/h after the first hour."""
+    b = Builder(UNITS)
+    b.entity(
+        'tap',
+        flow('pipe', SOURCE, SINK, unit='L/h', request=formula(t * q(1, 'L/h/h'))),
+        value('seen', 'h', -1),
+        event(
+            'copy',
+            when(this.pipe.actual_rate >= rate(1), start(this.copy), reset=reset_when(False)),
+            after(q(0, 'h'), assign(this.seen, t)),
+        ),
+    )
+    check(b.finish(), 3, [('tap.seen', F(1, 2), -1), ('tap.seen', 1, 1), ('tap.seen', 3, 1)])
+
+
 def test_a_deferred_delay_reads_the_outside_rate_just_shared_at_its_switch():
     b = Builder(UNITS)
     b.entity(
@@ -775,3 +791,23 @@ def test_a_new_switched_request_keeps_its_moving_arithmetic_in_the_record():
             for at, answer in ((F(1, 2), F(3, 2)), (1, 6), (F(3, 2), F(13, 2)), (2, 5), (F(5, 2), 6), (3, 7))
         ],
     )
+
+
+@pytest.mark.parametrize(('asked', 'capacity', 'answer'), [(5, 3, 3), (-1, 3, -1), (5, -2, -2)])
+def test_a_held_source_to_sink_pipe_has_its_own_set_on_lines(asked, capacity, answer):
+    """With no endpoint claim the published rate is min(request, capacity)."""
+    from napkin.engine.timeline.lines import Lines
+
+    b = Builder(UNITS)
+    b.entity('tap', flow('pipe', SOURCE, SINK, unit='L/h', request=rate(asked), capacity=rate(capacity)))
+    p = b.finish()
+    actual = key('tap.pipe.actual_rate')
+    work = Run(Plan.of(p, Configuration(Request(2, keys=(actual,), everything=False))))
+    result = work.run()
+    assert result.failure is None
+    way = work.ways.instance_of('tap.pipe')
+    assert isinstance(way, Lines)
+    assert [(part.stores, part.flows) for part in way.sets] == [((), ('tap.pipe',))]
+    assert result.value(actual, 1) == answer
+    assert result.history(key('tap.pipe.request')).at(1) == asked
+    assert result.history(key('tap.pipe.capacity')).at(1) == capacity

@@ -79,7 +79,7 @@ continuous engine and the record read these names; nothing reads the spelling of
   each store meets at most one flow on each side, it has no endpoint settings and at most `LIMIT`
   stores, and on the sparse integrator otherwise (`sparse.py`). A stored value that no flow meets
   holds its value between moments. A directed flow with no store at either end moves nothing, and
-  its actual rate is the formula `min(request, capacity)` (`outside`), which settles as every rate
+  its set gives `min(request, capacity)` on lines or follows its moving inputs, settles as every rate
   does and stops at zero with its occurrence. A request or a capacity may read an
   actual rate or a served fraction of another set (`Connected.rates`), which settles first; of its
   own set it has no answer of local sharing, and is refused. `connect` finds the sets of any flows,
@@ -550,10 +550,7 @@ class Plan:
         self.solvers = {}  # the id of each declared solver -> its `Declared`
         self.results = {}  # a value of kind RESULT -> the id of the solver that determines it
         self.solved_flows = {}  # a flow whose rate a declared solver determines -> its id
-        # The actual rate of a directed flow from SOURCE to SINK -> its `Flow`: a formula of its
-        # settings, which the settling decides as it decides every rate.
-        self.outside = {}
-        self.shared = set()  # calculated leg, endpoint and outside rates, read as whole answers
+        self.shared = set()  # calculated leg and endpoint rates, read as whole answers
         self._settings_index = ({}, {})
         # With flows of events, every endpoint's collection of flows changes in a run.
         self.dynamic_ends = any(
@@ -1021,14 +1018,9 @@ class Plan:
             return
         made = Flow(name, *ends, request, capacity, flow.unit)
         self._parts[name] = (DIRECTED, made)
-        if made.source is None and made.sink is None:
-            # Nothing to move: the actual rate is what the flow asks.
-            self._add(Value(name_of(rate), rate, FORMULA, made.rate, flow.unit))
-            self.shared.add(name_of(rate))
-            self.outside[name_of(rate)] = made
-        else:
-            self._add(Value(name_of(rate), rate, RATE, None, flow.unit))
-            self.flows[name] = made
+        node = made.rate if made.source is None and made.sink is None else None
+        self._add(Value(name_of(rate), rate, RATE, node, flow.unit))
+        self.flows[name] = made
 
     def _settings(self, flow, steps, scope, origin):
         """The engine names of the request (zero when left out) and of the capacity (None when left
@@ -1451,7 +1443,7 @@ class Plan:
                         self.fail(f'{solver.origin}: {each[1]} has two writers: {taken} and {sid}')
                     elif taken == sid:
                         continue  # named again, by an input: the solver is its one writer
-                    elif found is not None and found.kind == RATE:
+                    elif found is not None and found.kind == RATE and found.node is None:
                         flow = each[1].rsplit('.', 1)[0]
                         self.solved_flows[flow] = sid
                         flows.append(flow)
@@ -1636,8 +1628,6 @@ class Plan:
                 continue
             for setting in self._flow_settings(name):
                 (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
-            if f'{name}.actual_rate' in self.outside:
-                formulas.append(f'{name}.actual_rate')  # from SOURCE to SINK: it stops with its occurrence
         self.occurrences[(member, event_name)].append(occ)
         flows = tuple(name for name in flows if name in self.flows)
         return Occurrence(occ, member, event, scope, tuple(initial), tuple(stores), flows, tuple(formulas))
@@ -2523,7 +2513,31 @@ class Plan:
     def settings_reads(self, flow):
         """What the settings of a flow read (`Expanded`), through the members of their dynamic reads
         now (`reads_now`)."""
-        return self.reads_now(self.expansion_of(self.settings_of(flow)))
+        found = self.reads_now(self.expansion_of(self.settings_of(flow)))
+        if flow.kind == DIRECTED and flow.source is None and flow.sink is None:
+            return found
+        return self.field_inputs(found)
+
+    def field_inputs(self, found):
+        """The leaves of a stock's field. A rate defined solely by its request and capacity is
+        arithmetic on the trial state, including when that field changes the stock it reads."""
+        formulas = set()
+        parts, pending = [found], list(found.leaves)
+        while pending:
+            name = pending.pop()
+            value = self.values.get(name)
+            if value is None or value.kind != RATE or value.node is None or name in formulas:
+                continue
+            formulas.add(name)
+            inner = self.reads_now(self.expansion(value.node))
+            pending.extend(inner.leaves)
+            parts.append(inner)
+        if not formulas:
+            return found
+        all_reads = Expanded.union(parts)
+        return Expanded(
+            all_reads.leaves - formulas, all_reads.formulas | formulas, all_reads.stepped, all_reads.time
+        )
 
     def reads_now(self, found):
         """An expansion with what the members of its dynamic reads project now, and what those read,
@@ -2567,6 +2581,7 @@ class Plan:
             parent[root(a)] = root(b)
 
         reads = {}
+        storeless = set()
         for name in flows:
             flow = self.flows[name]
             root(name)
@@ -2575,17 +2590,20 @@ class Plan:
                     if end is not None:
                         join(('store', end), name)
             found = reads[name] = self.settings_reads(flow)
-            for leaf in found.leaves:
-                if leaf in moving:
-                    join(('store', leaf), name)
+            if flow.kind == DIRECTED and flow.source is None and flow.sink is None:
+                storeless.add(name)
+            else:
+                for leaf in found.leaves:
+                    if leaf in moving:
+                        join(('store', leaf), name)
             if name in self.solved_flows:
                 join(('solver', self.solved_flows[name]), name)
         problems = {}  # what the problem of each solver reads beyond the settings of its flows
         mine = {item[1] for item in parent if isinstance(item, tuple) and item[0] == 'solver'}
         for sid in sorted(mine | set(self.solvers if solvers is None else solvers)):
             root(('solver', sid))
-            found = problems[sid] = self.reads_now(
-                Expanded.union(self.expansion(node) for node in self.solvers[sid].nodes(self))
+            found = problems[sid] = self.field_inputs(
+                self.reads_now(Expanded.union(self.expansion(node) for node in self.solvers[sid].nodes(self)))
             )
             for leaf in found.leaves:
                 if leaf in moving:
@@ -2611,9 +2629,10 @@ class Plan:
                 for end in (connection.source, connection.sink):
                     if end is not None:
                         stores_of.setdefault(root(name), set()).add(end)
-            for leaf in reads[name].leaves:
-                if leaf in moving:
-                    stores_of.setdefault(root(name), set()).add(leaf)
+            if name not in storeless:
+                for leaf in reads[name].leaves:
+                    if leaf in moving:
+                        stores_of.setdefault(root(name), set()).add(leaf)
         place = self._place_of()
         for key, (stores, _) in sets.items():
             stores.extend(sorted(stores_of.get(key, ()), key=place))
@@ -2682,6 +2701,11 @@ class Plan:
             )
             if sid is not None:
                 way = DECLARED
+            elif not stores and members and members[0] in storeless:
+                # A pipe with no stock of its own follows the changing stores on their installed
+                # segments. Their levels are dependencies in the same order as moving rate reads.
+                rates.update(leaf for leaf in found.leaves if leaf in moving)
+                way = SPARSE if moves else LINES
             elif not moves:
                 way = FAMILY if len(members) == 1 and not settled and directed else LINES
             elif (

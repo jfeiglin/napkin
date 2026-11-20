@@ -51,6 +51,7 @@ reads zero and a flow that leaves keeps its opening rate until the settling reti
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 from ..continuous.walk import walked
 from ..errors import SimulationError
@@ -82,6 +83,7 @@ class Ways:
         self.instances = []
         self.sampled = {}  # component or sparse instance's first set id -> time of its published answers
         self.moving_solvers = {}  # set ids of solvers whose incoming record needs its prepared prefix
+        self.followers = set()  # ids of sets that sample another instance's incoming segment
         self.grouped = set()  # the ids of the sets that integrate with others in one instance
         self._next = 0
 
@@ -102,6 +104,11 @@ class Ways:
         whose occurrence finished in this round. A flow with no installed way reads zero."""
         instance = self.instance_of(name.rsplit('.', 1)[0])
         return 0.0 if instance is None else instance.rate_at(name, t)
+
+    def held_rate(self, name):
+        """Whether the active expression for a rate holds through the present segment."""
+        way = self.instance_of(name.rsplit('.', 1)[0])
+        return isinstance(way, Family | Lines) or (isinstance(way, Sparse) and name in way.held_rates)
 
     def publish(self, instance, t, incoming=False, flows=None):
         """Publish the numeric answer of an installed set. Moving rates use the modes of their
@@ -219,10 +226,18 @@ class Ways:
                     sides.add('in')
         return len(sides) <= 1
 
+    def cut_order(self):
+        """A set records its rates before a supplier discards the segment those rates read."""
+        if not self.followers:
+            return self.instances
+        readers = [self.sets[key][1] for key in sorted(self.followers, key=self.levels.get, reverse=True)]
+        first = set(readers)
+        return [*readers, *(way for way in self.instances if way not in first)]
+
     def peek(self):
         """(the time of the next event of an instance, the instance), or (inf, None)."""
         found = (math.inf, None)
-        for instance in self.instances:
+        for instance in self.cut_order():
             at = instance.peek()
             if at < found[0]:
                 found = (at, instance)
@@ -231,7 +246,7 @@ class Ways:
     def cut(self, t):
         """Every instance stands at time t. Give the stores brought to a bound by the cut."""
         met = set()
-        for instance in self.instances:
+        for instance in self.cut_order():
             met.update(instance.cut(t) or ())
         return met
 
@@ -282,6 +297,8 @@ class Ways:
         connected sets `sets` read: they integrate with them (`build`)."""
         found = set()
         for connected in sets:
+            if not connected.stores and connected.solver is None:
+                continue  # an empty state follows its producer's installed trajectory
             for name in connected.rates:
                 key = self.result_of.get(name)
                 if key is None:
@@ -314,7 +331,7 @@ class Ways:
         """What a set gives that other sets may read: the rates of its flows and of its endpoints,
         and the results of its solver."""
         found = [name for flow in connected.flows for name in self.plan.rates_of_flow(flow)]
-        return found + list(connected.results)
+        return found + list(connected.results) + list(connected.stores)
 
     # ---- rebuilding sets -------------------------------------------------------------------------
 
@@ -341,6 +358,7 @@ class Ways:
                     found.discard(key)
             self.levels.pop(key, None)
             self.grouped.discard(key)
+            self.followers.discard(key)
         self.instances = [instance for instance in self.instances if instance.alive]
         return values
 
@@ -404,8 +422,17 @@ class Ways:
             moving[index] = _moves(connected)
             for name in connected.rates:
                 owner = new_rates.get(name)
+                if not connected.stores and connected.solver is None:
+                    producer = rate_sets.get(name)
+                    moves = (
+                        moving[owner] if owner is not None else producer is not None and self.moving(producer)
+                    )
+                    if moves:
+                        made[index] = replace(connected, way=SPARSE, moves=True)
+                        moving[index] = True
+                    continue
                 if owner is None:
-                    if self.moving(rate_sets[name]):
+                    if name in rate_sets and self.moving(rate_sets[name]):
                         raise SimulationError(
                             f'{name}: a rate that moves, read by a set built again without its own set'
                         )
@@ -495,6 +522,8 @@ class Ways:
         for key in keys:
             self.sets[key] = (self.sets[key][0], instance)
         self.instances.append(instance)
+        if isinstance(instance, Sparse) and instance.following:
+            self.followers.add(instance.key)
         if isinstance(instance, MovingDeclared):
             self.moving_solvers[instance.key] = None
         instance.begin()

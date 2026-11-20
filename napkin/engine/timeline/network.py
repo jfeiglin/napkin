@@ -514,6 +514,7 @@ class Network:
         self.kinds = (
             np.full(len(self.flows), DIRECTED, dtype=np.int64) if kinds is None else np.asarray(kinds)
         )
+        self.free_pipe = (self.roles == DIRECT) & (self.source < 0) & (self.sink < 0)
         self.connections = self.flows if connections is None else tuple(connections)
         self.conns = Csr(self.of, len(self.flows))  # the connections of each flow
         self.first = self.conns.items[self.conns.start[:-1]] if size else np.zeros(0, dtype=np.int64)
@@ -633,8 +634,11 @@ class Instant:
         # largest request of those endpoints.
         self.capacity = asked.capacity.astype(float)
         self.extra = np.zeros(len(net.source))
+        # With no endpoint there is no competing claim, including a claim of zero.
+        self.extra[net.free_pipe] = -math.inf
         for side, ends in ((OUT, net.source), (IN, net.sink)):
-            alone = np.flatnonzero((ends >= 0) & (net.counts[side][np.maximum(ends, 0)] == 1))
+            met = np.flatnonzero(ends >= 0)
+            alone = met[net.counts[side][ends[met]] == 1]
             self.capacity[alone] = np.minimum(self.capacity[alone], asked.end_capacity[side][ends[alone]])
             self.extra[alone] = np.maximum(self.extra[alone], asked.end_request[side][ends[alone]])
         sets = int(max(net.flow_sets.max(initial=-1), net.store_sets.max(initial=-1))) + 1

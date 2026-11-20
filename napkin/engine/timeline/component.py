@@ -494,7 +494,7 @@ class ComponentWay:
             computed[name] = {'expr': node}
         leaves = set()
         for flow in flows.values():
-            leaves |= plan.expansion(flow.rate).leaves
+            leaves |= plan.field_inputs(plan.expansion(flow.rate)).leaves
         stepped = set(connected.stepped)
         known, missing = {name: values[name] for name in stores}, {}
         if captured is None:

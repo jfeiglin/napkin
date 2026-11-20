@@ -105,7 +105,7 @@ from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Recor
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
-from .plan import BUILTINS, CHANGED, DYNAMIC, FORMULA, LOOKUP, REDUCE, SIDES, Plan, name_of
+from .plan import BUILTINS, CHANGED, DYNAMIC, FORMULA, LOOKUP, RATE, REDUCE, SIDES, Plan, name_of
 from .reads import Reads
 
 # What evaluating a formula can raise: it then holds `Unavailable` with the reason.
@@ -330,13 +330,26 @@ class Recorder:
         # The occurrences that the trace starts (None: no occurrence's): a start that a failed commit
         # discarded is in the plan, and its values are in no record (`moment._Savepoint`).
         started = {entry.owner for entry in self.trace if entry.kind == 'start'} | {None}
+        # Some published rates have a definition between their recorded anchors. Its inputs
+        # need histories before the recorder can fit that part of the rate.
+        calculated = {
+            name
+            for name, value in plan.values.items()
+            if (
+                value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC)
+                or (value.kind == RATE and value.node is not None)
+                or name in plan.defined
+            )
+            and (needed is None or name in needed)
+            and plan.occurrence_of(name) in started
+        }
         histories = {}
         for name, value in plan.values.items():
             if needed is not None and name not in needed:
                 continue
             if plan.occurrence_of(name) not in started:
                 continue
-            if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED) or name in plan.defined:
+            if value.kind == CHANGED or name in calculated:
                 continue
             # The value at the start, then the pieces that the run gave it: a store's lines and
             # curves, a value that a commit wrote, an occurrence's values from its start.
@@ -348,13 +361,6 @@ class Recorder:
                 # The time of the last change at a commit: a constant piece at the start and at each.
                 times = [run.changed_start(stored), *run.changes.get(stored, ())]
                 histories[name] = self._history(None, [(at, at, 0.0) for at in times if at <= end])
-        calculated = {
-            name
-            for name, value in plan.values.items()
-            if (value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC) or name in plan.defined)
-            and (needed is None or name in needed)
-            and plan.occurrence_of(name) in started
-        }
         for name in plan.ordered(calculated, ever=True):
             value = plan.values[name]
             owner = plan.occurrence_of(name)
@@ -366,7 +372,7 @@ class Recorder:
             if name in plan.defined:
                 histories[name] = self._history(value.key, self._defined(name, histories, end))
                 continue
-            if name in plan.outside:
+            if value.kind == RATE:
                 # Re-shares supply the point at each switch, key and write. Between those
                 # points the amount follows its request and capacity as they move.
                 anchors = {
@@ -404,10 +410,14 @@ class Recorder:
                 continue
             else:
                 pieces = self.formula(name, histories, end, start=start)
-            if name in run.frozen:
+            if name in run.frozen or (owner is not None and value.kind == RATE):
+                # A checkpoint can follow the finish in the same round, before the set is
+                # retired. Its occurrence's rate history already ends at zero there.
                 active = histories[f'{owner}.active'].pieces
-                finish = next(piece.t for piece in active if piece.value is False)
-                pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, run.frozen[name], 0.0)]
+                finish = next((piece.t for piece in active if piece.value is False), None)
+                if finish is not None:
+                    final = run.frozen.get(name, 0.0)
+                    pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, final, 0.0)]
             histories[name] = self._history(value.key, pieces)
         # What a kept formula, reduction or dynamic read reads is kept too, so that `read` can
         # evaluate it (`_needed`).
@@ -698,12 +708,13 @@ def needed(plan, names, definitions):
         if name in found or name not in plan.values:
             continue
         found.add(name)
-        kind = plan.values[name].kind
-        if kind in (FORMULA, REDUCE, LOOKUP) or name in definitions:
-            if kind == LOOKUP:
-                pending.extend(plan.keyed[name].reads())
-            elif kind in (FORMULA, REDUCE):
-                pending.extend(plan.reads(name))
+        value = plan.values[name]
+        kind = value.kind
+        if kind == LOOKUP:
+            pending.extend(plan.keyed[name].reads())
+        elif kind in (FORMULA, REDUCE) or (kind == RATE and value.node is not None):
+            pending.extend(plan.reads(name))
+        if name in definitions:
             for _, value in definitions.get(name, ()):
                 if value.kind == FORMULA:
                     pending.extend(set(nodes.names(value.node)) - {'t'})
@@ -1256,13 +1267,9 @@ class Reader:
         """Whether the reader finds the value of an engine name by an evaluation of what it reads (a
         formula, a collection, the time of a change) rather than from its history."""
         value = self.plan.values.get(name)
-        return (
-            value is not None
-            and name not in self.plan.outside
-            and (
-                self.plan.original(name).kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED)
-                or name in self.definitions
-            )
+        return value is not None and (
+            self.plan.original(name).kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC, CHANGED)
+            or name in self.definitions
         )
 
     # ---- the values of engine names ---------------------------------------------------------------
@@ -1333,11 +1340,7 @@ class Reader:
             found = self._dynamic(name, t, read)
         elif value.kind == CHANGED:
             found = self._changed(name, t, read)
-        elif (
-            value.kind != FORMULA
-            or name in self.plan.outside
-            or (owner is not None and read(f'{owner}.active') is False)
-        ):
+        elif value.kind != FORMULA or (owner is not None and read(f'{owner}.active') is False):
             return self._stored(value).at(t)
         else:
             # What the formula reads is read where its evaluation asks for it (`reads.py`): a read

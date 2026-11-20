@@ -293,7 +293,7 @@ class Triggers:
         found = 0.0
         tolerance = self.run.recorder.tolerance
         for part in parts:
-            expanded = self.plan.reads_now(self.plan.expansion(part))
+            expanded = self.plan.reads_now(self.plan.field_inputs(self.plan.expansion(part)))
             if expanded.time:
                 found = max(found, self.plan.numerics.crossing)
             for name in expanded.leaves:
@@ -312,13 +312,15 @@ class Triggers:
                 found = max(found, tolerance.get(name, 0.0))
         return found
 
-    def moving_reads(self, *parts):
+    def moving_reads(self, *parts, through_rates=True):
         """The engine names that the nodes read, through formulas, that move between moments: the
         time, the stores of the sets, and the rates of flows."""
         run, plan = self.run, self.plan
         found = set()
         for part in parts:
-            expanded = plan.reads_now(plan.expansion(part))
+            expanded = plan.reads_now(
+                plan.field_inputs(plan.expansion(part)) if through_rates else plan.expansion(part)
+            )
             if expanded.time:
                 found.add('t')
             for name in expanded.leaves:
@@ -556,18 +558,16 @@ class Triggers:
         run = self.run
         now, earliest, window = run.now, math.inf, math.inf
         atoms = self._atoms(node)
-        parts = [node]
-        if run.outside.active:
-            if run.outside.holds_between(nodes.names(node)):
-                return earliest, window
-            moving_atoms = [
-                atom
-                for atom in atoms
-                if not run.outside.holds_between(nodes.names(atom[0]) | nodes.names(atom[2]))
-            ]
-            if len(moving_atoms) != len(atoms):
-                atoms = moving_atoms
-                parts = [part for left, _, right, _ in atoms for part in (left, right)]
+        moving_atoms = []
+        for atom in atoms:
+            direct = self.moving_reads(atom[0], atom[2], through_rates=False)
+            if not direct or not all(run.ways.held_rate(name) for name in direct):
+                moving_atoms.append(atom)
+        parts = (
+            [node]
+            if len(atoms) == len(moving_atoms)
+            else [part for a, _, b, _ in moving_atoms for part in (a, b)]
+        )
         stepping = self._moving_lookups(*parts)
         if stepping:
             raise SimulationError(
@@ -576,7 +576,7 @@ class Triggers:
                 'engine does not locate; compare what it is keyed by with the keys, or use an inspection '
                 'schedule'
             )
-        for left, op, right, positive in atoms:
+        for left, op, right, positive in moving_atoms:
             moving = self.moving_reads(left, right)
             if not moving:
                 continue
@@ -816,7 +816,12 @@ class Triggers:
             value = plan.values.get(node.name)
             if node.name in moving or node.name == 't':
                 found[node.name] = found.get(node.name, 0.0) + scale
-            elif value is not None and value.kind == FORMULA and node.name not in self.run.frozen:
+            elif (
+                value is not None
+                and value.kind in (FORMULA, RATE)
+                and value.node is not None
+                and node.name not in self.run.frozen
+            ):
                 yield self._weights_of(value.node, moving, t, scale, found)
             elif value is not None and value.kind == REDUCE:
                 names = plan.reductions[node.name].names  # a sum, which `_affine` admits
@@ -883,7 +888,9 @@ class Triggers:
         plan, ways = self.plan, self.run.ways
         found = set()
         for part in parts:
-            leaves = plan.reads_now(plan.expansion(part)).leaves | plan.expansion(part).stepped
+            leaves = (
+                plan.reads_now(plan.field_inputs(plan.expansion(part))).leaves | plan.expansion(part).stepped
+            )
             found |= {leaf for leaf in leaves if leaf in plan.keyed and plan.lookup_moves(leaf, ways.set_of)}
         return sorted(found)
 
@@ -963,7 +970,13 @@ def _affine_of(node, moving, plan):
                         return False
                 return True
             return not (_reads(node, plan) & (moving | {'t'}))
-        if node.name in moving or node.name == 't' or value is None or value.kind != FORMULA:
+        if (
+            node.name in moving
+            or node.name == 't'
+            or value is None
+            or value.node is None
+            or value.kind not in (FORMULA, RATE)
+        ):
             return True
         return (yield _affine_of(value.node, moving, plan))
     if isinstance(node, nodes.Unary) and node.op in ('neg', 'pos'):
@@ -988,7 +1001,7 @@ def _affine_of(node, moving, plan):
 
 def _reads(node, plan):
     """The names that a node reads, through formulas, with the time."""
-    expanded = plan.expansion(node)
+    expanded = plan.field_inputs(plan.expansion(node))
     return set(expanded.leaves) | ({'t'} if expanded.time else set())
 
 

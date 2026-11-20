@@ -785,7 +785,6 @@ class Moment:
         touched |= {ways.set_of[flow] for flow in left if flow in ways.set_of}
         waiting, run.waiting = run.waiting, []
         if not touched and not joined and not waiting:
-            run.outside.refresh(None if self.round == 0 else names, joined, left, t)
             run.contacts, run.bound_at = (), {}
             run.settled()
             return set()
@@ -844,9 +843,6 @@ class Moment:
                 run.tolerate(plan.flows[flow])
         run.settled()
         ways.build(made, values, t)
-        if plan.outside:
-            names.update(name for connected in made for name in ways._given(connected))
-        run.outside.refresh(None if self.round == 0 else names, joined, left, t)
         run.contacts, run.bound_at = (), {}
         return stay
 

@@ -125,7 +125,7 @@ from .network import (
     claim_order,
     network_of,
 )
-from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE
+from .plan import DYNAMIC, FORMULA, LOOKUP, RATE, REDUCE
 from .reads import lazily
 from .record import fitted
 from .region import Region, key_surfaces, trend
@@ -190,7 +190,8 @@ class Former:
         self.declared = run.plan.solvers[connected.solver]
         self.connected, self.net, self.connections = connected, net, connections
         self.columns = Columns(run)
-        self.region = None
+        defined = {name for name in connected.formulas if run.plan._is_rate(name)}
+        self.region = Region(defined=defined) if defined else None
         plan = self.plan
         # The engine names that are unknowns of the problem: the value of each flow, and the results.
         self.unknown = {}
@@ -218,7 +219,7 @@ class Former:
             if name in self.unknown:
                 found = True
             else:
-                expanded = self.plan.reads_now(self.plan.expanded(name))
+                expanded = self.plan.field_inputs(self.plan.reads_now(self.plan.expanded(name)))
                 found = any(leaf in self.unknown for leaf in expanded.leaves)
             self._reads[name] = found
         return found
@@ -699,7 +700,7 @@ class Former:
         if name in self.cols:
             return Affine({self.cols[name]: 1.0})
         value = self.plan.values[name]
-        if value.kind == FORMULA:
+        if value.kind == FORMULA or (self.region and name in self.region.defined):
             # An enforced equality is the equality here; its readers compare it within the solver's
             # tolerance (`plan.Plan._tolerate_enforced`).
             found = yield self._value(self.plan.enforced.get(name, value.node), ())
@@ -1160,15 +1161,17 @@ class MovingDeclared(DeclaredWay):
         sources = self.declared.nodes(self.plan)
         settings = [name for flow in self.flows for name in self.plan.settings_of(self.plan.flows[flow])]
         sources.extend(nodes.ref(name) for name in settings)
-        dependencies = self.plan.expansion_of({name for node in sources for name in nodes.names(node)})
+        dependencies = self.plan.field_inputs(
+            self.plan.expansion_of({name for node in sources for name in nodes.names(node)})
+        )
         formulas = {
             name: value.node
             for name in dependencies.formulas | set(settings)
-            if (value := self.plan.values.get(name)) is not None and value.kind == FORMULA
+            if (value := self.plan.values.get(name)) is not None and value.kind in (FORMULA, RATE)
         }
 
         def moving(node):
-            expansion = self.plan.expansion(node)
+            expansion = self.plan.field_inputs(self.plan.expansion(node))
             return expansion.time or not expansion.leaves.isdisjoint(self.place)
 
         surfaces = [
@@ -1179,7 +1182,10 @@ class MovingDeclared(DeclaredWay):
         lookups = key_surfaces(
             self.plan, dependencies.formulas | dependencies.stepped | dependencies.leaves, moving
         )
-        self.region = Region(surfaces, lookups)
+        defined = self.former.region.defined if self.former.region is not None else ()
+        self.region = Region(surfaces, lookups, defined)
+        if defined:
+            self.former.region = self.region
         self.switches = {
             pair: f'switch ({nodes.text(pair[0])}, {nodes.text(pair[1])})' for pair in self.region.surfaces
         }
