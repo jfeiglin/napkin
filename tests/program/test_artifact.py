@@ -224,3 +224,13 @@ def test_origins_find_each_part_of_a_program():
     ]
     assert {type(part).__name__ for part in found.values()} >= {'Event', 'After', 'Assign', 'Start'}
     assert set(EXECUTABLE) >= {'event', 'stage', 'assign', 'start'}
+
+
+def test_old_language_artifact_requires_recompilation():
+    data = Artifact(grinder_refill().program).data()
+    old = data.replace(b'language ' + LANGUAGE_VERSION.encode() + b'\n', b'language 0.1.0\n', 1)
+    with pytest.raises(ArtifactError, match='compile') as error:
+        loads(old)
+    assert error.value.code == 'language_version'
+    assert LANGUAGE_VERSION == '0.2.0'
+    assert loads(data).program == grinder_refill().program
