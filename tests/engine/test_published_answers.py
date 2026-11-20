@@ -266,6 +266,7 @@ def sharing(monkeypatch, seed, routes):
     monkeypatch.setattr(selection, '_kept', spy)
     source, _ = network(seed, routes)
     run(source, Configuration(Request(3)))
+    monkeypatch.setattr(selection, '_kept', kept)  # the checks after the run call it themselves
     return found
 
 

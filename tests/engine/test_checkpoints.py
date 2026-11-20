@@ -58,6 +58,7 @@ from napkin.program.build import (
     sqrt,
     start,
     switch,
+    t,
     this,
     uniform,
     value,
@@ -287,11 +288,37 @@ def dispatch_no_spare():
     return dispatch(0)
 
 
+def emptying():
+    """A tank of 1 L that drains at 1 L/h and its water an hour, a component: 2 e^-t - 1 L, empty at
+    ln 2 h, when a trigger starts a check. Its first stage reads the drain there, 0 L/h, so the
+    component finds the bound that its tank rests on; the run stops before the second, which reads
+    it again, and goes on to 2 h with the tank empty."""
+    b = Builder(UNITS)
+    rate = formula(q(1, 'L/h') + this.water / q(1, 'h'))
+    b.entity(
+        'tank',
+        value('water', 'L', 1, lower=0),
+        value('seen', 'L/h', -1),
+        value('late', 'L/h', -1),
+        value('at', 'h', -1),
+        flow('drain', this.water, SINK, request=rate, capacity=rate),
+        event(
+            'check',
+            when(this.water <= q(0, 'L'), start(this.check), reset=reset_when(False)),
+            after(q(0, 'h'), assign(this.seen, this.drain.actual_rate), assign(this.at, t)),
+            after(q(0, 'h'), assign(this.late, this.drain.actual_rate)),
+        ),
+    )
+    breakpoints = (Breakpoint('tank.check.step[1]'),)
+    return Case(b.finish(), Configuration(Request(2)), breakpoints, frozenset({COMPONENT}))
+
+
 SCENARIOS = {
     case.__name__: case
     for case in (
         draining,
         draining_sparse,
+        emptying,
         family,
         lines,
         ordering,
@@ -366,6 +393,45 @@ def test_a_resumed_run_is_the_run_straight_through_three_ways(name, tmp_path):
         assert paused(checkpoint.record).detail('hit') == checkpoint.stop.hit
         assert loads(dumps(checkpoint)) == checkpoint
     assert in_a_fresh_process(case.program, stops, tmp_path) == [*stops[1:], final]
+
+
+def bounds_of(made):
+    """The state of the bounds of each component of a run: whether it has found the bounds that its
+    state rests on, and those bounds, and the faces of its stocks (`ComponentWay`)."""
+    found = []
+    for _, way in made.ways.sets.values():
+        state = getattr(getattr(way, 'component', None), 'state', None)
+        if state is not None:
+            found.append(
+                (
+                    way.bounded,
+                    frozenset(state.active_bounds),
+                    frozenset(state.zero_faces),
+                    frozenset(state.right_faces),
+                )
+            )
+    return found
+
+
+def test_a_component_that_rests_on_its_bound_at_a_stop_is_restored_on_it(tmp_path):
+    """Exact resume (PLAN, change 15): the run made again from a checkpoint holds the state that the
+    run held at the stop. The tank of `emptying` rests on its bound at the stop at ln 2 h, which the
+    component found when the first stage read the drain: restored in this process from the
+    checkpoint's bytes, it holds that bound, and finds none again (`ComponentWay._settle`). The
+    stages read 0 L/h at ln 2 h, and the run is the run straight through, three ways."""
+    case = emptying()
+    made = Run(Plan.of(case.program, case.configuration), case.breakpoints)
+    stop = made.run()
+    assert isinstance(stop, Checkpoint) and stop.stop.t == pytest.approx(math.log(2), abs=1e-9)
+    held = bounds_of(made)
+    assert held == [(True, frozenset({(0, 'min')}), frozenset(), frozenset())], held
+    again = Run.restored(Plan.of(case.program, case.configuration), loads(dumps(stop)))
+    assert bounds_of(again) == held
+    straight = run(case.program, case.configuration)
+    assert made.resume() == again.resume() == straight
+    assert in_a_fresh_process(case.program, [stop], tmp_path) == [straight]
+    found = read(straight, case.program, ['tank.seen', 'tank.late', 'tank.at', 'tank.water'], [2])
+    assert [reading.values[0] for reading in found] == [0, 0, pytest.approx(math.log(2), abs=1e-9), 0]
 
 
 def starts(record, part):

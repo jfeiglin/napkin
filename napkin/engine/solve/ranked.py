@@ -12,7 +12,10 @@ its tolerance (1e-7), so a dual that it gives can have the wrong sign by less th
 from such a dual could cut optimal answers away and change the later ranks silently. So `exact` runs
 HiGHS once more, with its tightest tolerances, when a dual has the wrong sign by more than TAU; a
 column or row is pinned only where its dual has the sign of the bound it rests on. (A3 pinned by the
-sign of the dual alone, which sends a column with a dual of the wrong sign to its other bound.)
+sign of the dual alone, which sends a column with a dual of the wrong sign to its other bound.) It
+does so too where the answer misses a row by more than the tightest tolerance: two rows of one
+unknown that nearly tie (a moving solver whose two bounds meet) were answered on the looser, the
+other missed by less than 1e-7, and the pin of the looser left the later ranks an empty face.
 
 All values are in working units (`scaled.Scaled`), where each objective has a largest coefficient of
 one.
@@ -24,7 +27,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from .failures import INFEASIBLE, NUMERICAL, UNBOUNDED, SolveFailure
-from .kept import OPTIMAL, Status
+from .kept import OPTIMAL, TIGHT, Status
 
 TAU = 1e-9  # a reduced cost or a dual above this is not zero
 KEPT = 1e-7  # an optimum is kept to this, relative to the size of its terms (HiGHS's feasibility)
@@ -103,8 +106,12 @@ def _feasible(kept):
 
 def exact(kept, run, work, step):
     """`run`, or a second run with tight tolerances when a dual of `run` has the wrong sign by more
-    than TAU."""
-    if _wrong_sign(kept, run) > TAU:
+    than TAU, or when its answer misses a row or a bound of the program by more than the tight
+    tolerance, relative to the size of its terms (`Kept._missed`): HiGHS holds a row to its own
+    tolerance, so where two rows nearly tie it can answer on one and miss the other, and a pin of
+    that answer would make an equality that the other row cuts away, a face that the ranks after it,
+    which hold their rows to the tight tolerance, find empty."""
+    if _wrong_sign(kept, run) > TAU or (run.missed is not None and run.missed > TIGHT):
         work.tight += 1
         run = kept.tight()
         if run.status != OPTIMAL or not run.answered:

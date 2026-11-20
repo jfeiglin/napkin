@@ -257,13 +257,15 @@ def test_napkin_run_lists_no_occurrence_and_reads_one_by_its_id(tmp_path, capsys
     found = napkin(capsys, 'run', model, '--at', '0h,1h,2h,3h,4h')
     assert found.code == 0, found.err
     rows = {line.split()[0]: line.split()[1:] for line in found.out.splitlines()[2:]}
+    # The named values in the order of the file, then the others that the record holds, in the order
+    # of their keys (the record's order, whatever made it: `engine/timeline/record.requested`).
     assert list(rows) == [
         'tank.water',
         'started',
         'current',
         'requested',
-        'tank.water.outflow.request',
         'tank.water.outflow.actual_rate',
+        'tank.water.outflow.request',
     ]
     assert rows['tank.water'] == ['L', '100', '100', '98', '98', '96']
     assert rows['current'] == ['0', '1', '0', '1', '0']

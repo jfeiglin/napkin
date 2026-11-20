@@ -21,8 +21,9 @@ of a run reads is here, or is made again from what is here by the same code:
   order, and in each the line of each store (the time at which it starts, the value there, its
   rate), the rate of each flow and what it asks, the flags of the bounds, the times at which a line
   meets a bound, what the instance captured when it was built (a component's parameters, rigid flows
-  and missing values, the sparse integrator's constants), and each declared solver's program and
-  basis (`solve.Solver`) with its last problem (a digest) and answer.
+  and missing values, the sparse integrator's constants), the bounds that a component's state rests
+  on as it found them and the faces of its stocks, and each declared solver's program and basis
+  (`solve.Solver`) with its last problem (a digest) and answer.
 
 What is no part of it starts again at each moment on every path, so that a run restored at a stop is
 the run straight through: the sparse integrator's Radau solver (`sparse.Sparse.cut`), a moving solver's
@@ -448,6 +449,12 @@ def _instance(instance):
                 ('store', _pairs(state.store)),
                 ('evaluations', state.evaluations),
                 ('still', instance.still),
+                # The bounds that the state rests on, as the component found them, and the faces of
+                # its stocks: a restored one holds them, and does not find them again (`_settle`).
+                ('bounded', instance.bounded),
+                ('bounds', tuple(sorted(state.active_bounds))),
+                ('zero_faces', tuple(sorted(state.zero_faces))),
+                ('right_faces', tuple(sorted(state.right_faces))),
                 ('known', _pairs(known)),
                 ('missing', _pairs(missing)),
                 ('rigid', tuple(rigid)),
@@ -718,6 +725,14 @@ def _made(run, kind, keys, data):
         state.store.clear()
         state.store.update(dict(data['store']))
         state.evaluations, instance.still = data['evaluations'], data['still']
+        instance.bounded = data['bounded']
+        for held, found in (
+            (state.active_bounds, data['bounds']),
+            (state.zero_faces, data['zero_faces']),
+            (state.right_faces, data['right_faces']),
+        ):
+            held.clear()
+            held.update(tuple(each) if isinstance(each, tuple | list) else each for each in found)
         return instance
     if kind == 'sparse':
         sets = [_connected(each) for each in data['sets']]

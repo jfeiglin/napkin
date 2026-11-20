@@ -674,10 +674,10 @@ def requested(record, program, plan=None):
     else the histories that its manifest names, those that their values need (`needed`, under the
     occurrences that its trace starts and the definitions that its commits gave), and the ledger of
     each store that an edit changed by its end (the store's books, `Manifest.names`); each history in
-    the order of its key, a piece at its end holding its value there (`_finished`). It is the one rule of what a record holds, of a run's (`Recorder.record`)
-    and of a cut of a longer record (`store.served`), so a cut is the record of a fresh run of the
-    shorter request, its histories included. `plan` is a plan of the program that may serve
-    (`plan_for`)."""
+    the order of its key, a piece at its end holding its value there (`_finished`). It is the one
+    rule of what a record holds, of a run's (`Recorder.record`) and of a cut of a longer record
+    (`store.served`), so a cut is the record of a fresh run of the shorter request, its histories
+    included. `plan` is a plan of the program that may serve (`plan_for`)."""
     histories = record.histories
     if not record.manifest.everything:
         found, names = _needed_by(program, record.manifest.keys, record.trace, plan)
