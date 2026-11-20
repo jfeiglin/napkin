@@ -383,19 +383,21 @@ def route_against_its_request(stage=None):
     'stage', [None, assign(named('ops').mark, 1), assign(named('r0').link.capacity, q(1, 'L/h'))]
 )
 def test_a_route_against_its_request_out_of_a_full_store_carries_what_holds_just_after(stage):
-    """At 0 h, with s1 held at its lower bound, the claim of the route (from s1) waits for the supply of
-    s1, and the feed takes first the room that the route makes going forward, 1/2 L/h, which fills s1.
-    Just after, s1 holds stock: the route's claim shares the feed's tier, the feed's room comes only
-    from the route going against its request (a served fraction below zero), and the smallest fraction
-    is largest with both at zero. That answer holds s1 at 0 L, so it is the answer just after: nothing
-    flows, whatever stage falls at 2 h (before, the oracle stopped the route at the stage, at 1 L, and
-    the engine carried 1/2 L/h on, or stopped where the stage wrote the route)."""
+    """The route's claim, 2 L/h from s1 to s0, is served at no state: s0 is full, and the only room
+    in it is what the route itself takes out. A fulfilled fraction counts from zero (spec, "Selection
+    order": "A positive request measures its fulfilled fraction up to 100%"; the backward leg
+    "exposes the positive part of its negation"), so going forward the route's fraction is zero, not
+    below, and it may carry against its request to make room for the feed ("An edge may carry more
+    than its own request to meet another request"): the feed is served in full, 1/2 L/h, from the
+    start, and s1 fills at 1/2 L/h, whatever stage falls at 2 h: 1/2 L at 1 h, 1.25 L at 2.5 h, 2 L
+    at 4 h. (Before, the route's fraction was its signed rate over its request, below zero going
+    forward: the oracle stopped both at its next moment, the engine at its own.)"""
     program = route_against_its_request(stage)
     engine, exact, failure, failed = both(program, Key('s1', ('water',)), [1, Fraction(5, 2), 4])
     assert failure is None and failed is None
-    assert engine == exact == [0, 0, 0]
+    assert engine == pytest.approx([0.5, 1.25, 2.0], rel=1e-12) and exact == [0.5, 1.25, 2.0]
     engine, exact, _, _ = both(program, Key('r0', ('link', 'actual_rate')), [0, 1, 3])
-    assert engine == exact == [0, 0, 0]
+    assert engine == pytest.approx([0.5, 0.5, 0.5], rel=1e-12) and exact == [0.5, 0.5, 0.5]
 
 
 def fed(test):

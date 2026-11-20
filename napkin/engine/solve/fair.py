@@ -1,6 +1,12 @@
 """The fair-sharing rank: within one priority tier, raise the smallest served fraction as far as the
 face allows, then the next smallest, until no claim can rise without lowering one that is no higher
-(the lexicographic max-min of fraction_i = min(1, F_i . x)). Tiers go in order, tier 0 first.
+(the lexicographic max-min of fraction_i = min(1, max(0, F_i . x))). Tiers go in order, tier 0 first.
+A fraction counts from zero (spec, "Selection order": a positive request measures its fulfilled
+fraction up to 100%): a route's claim reads its signed rate in the direction of its request, below
+zero where it carries against it, where its fraction is zero, the rate of its leg in that direction.
+So where the smallest fraction of a part is zero, the claims that no answer serves are held at zero
+and nothing more (`_unserved`), and a route may carry against its request to make room for another
+one; where each claim left can be served but not all together, the part is held as below.
 
 The exact sequential method (prototype A3): one linear program `max t` with F_i . x >= t for each
 pending claim of the tier and t <= 1. At its optimum t*, a claim whose row has a dual above TAU is at
@@ -55,7 +61,7 @@ import scipy.sparse as sp
 from scipy.sparse.csgraph import connected_components
 
 from . import ranked
-from .failures import FAIR_BUDGET, NUMERICAL, SolveFailure
+from .failures import FAIR_BUDGET, NUMERICAL, UNBOUNDED, SolveFailure
 from .kept import INF, PRIMAL_SIMPLEX, TIGHT
 from .scaled import row_max
 
@@ -120,6 +126,25 @@ def _tier(kept, face, F, tier, budget, work):
                 if programs == 1:
                     primal.enter_context(kept.option('simplex_strategy', PRIMAL_SIMPLEX))
                 found = run.x[t]  # t* of each part
+                # A served fraction counts from zero: in a part whose smallest fraction is zero or
+                # below, the claims that no answer serves are held at zero and nothing more, and the
+                # part shares the rest (`_unserved`); where each can be served but not all together,
+                # the part is held as below, on the signed fractions.
+                low = pending.copy()
+                low[pending] = found[part[pending]] <= FIX
+                if low.any():
+
+                    def check():
+                        if work.fair_programs >= budget.fair_programs:
+                            raise _exceeded(step, reached, programs, levels, pending, budget)
+
+                    unserved = _unserved(kept, F, np.flatnonzero(low), width, step, work, check)
+                    kept.set_cost(cost)
+                    if len(unserved):
+                        levels[unserved] = 0.0
+                        pending[unserved] = False
+                        _hold_zero(kept, face, F, scale, first, unserved, single, width)
+                        continue
                 full = found >= 1.0 - FULL
                 for p in np.unique(part[pending]).tolist():
                     reached[p].append(1.0 if full[p] else float(found[p]))
@@ -186,6 +211,51 @@ def _hold(kept, face, F, scale, first, index, single, level, width):
             lower, np.full(len(many), INF), sp.hstack([rows, sp.csr_array((len(many), kept.n - width))])
         )
         face.add(rows, lower, np.full(len(many), INF))
+
+
+def _unserved(kept, F, claims, width, step, work, check):
+    """The claims of `claims` that no answer of the face serves: the largest F_i . x, by a program of
+    its own, is at most TAU (a route's claim reads its signed rate in the direction of its request,
+    which is below zero where it carries against it). Each program counts toward the budget of fair
+    sharing (`check`)."""
+    found = []
+    for i in claims.tolist():
+        check()
+        cost = np.zeros(kept.n)
+        start, end = F.indptr[i], F.indptr[i + 1]
+        cost[F.indices[start:end]] = -F.data[start:end]
+        kept.set_cost(cost)
+        try:
+            run = ranked.solve(kept, step)
+        except SolveFailure as failure:
+            if failure.name == UNBOUNDED:
+                continue  # served without end
+            raise
+        work.programs += 1
+        work.fair_programs += 1
+        if -float(run.objective) <= TAU:
+            found.append(i)
+    return np.array(found, dtype=np.int64)
+
+
+def _hold_zero(kept, face, F, scale, first, index, single, width):
+    """F_i . x <= 0 for the claims `index`, which no answer serves: a bound for a claim of one column,
+    else a row; their rows of the tier's program hold nothing more."""
+    kept.set_row_bounds(first[index], np.full(len(index), -INF), np.full(len(index), INF))
+    one = single[index]
+    if one.any():
+        claims = index[one]
+        columns = F.indices[F.indptr[claims]]
+        rising = F.data[F.indptr[claims]] > 0
+        np.minimum.at(face.upper, columns[rising], 0.0)
+        np.maximum.at(face.lower, columns[~rising], 0.0)
+        kept.set_bounds(columns, face.lower[columns], face.upper[columns])
+    many = index[~one]
+    if len(many):
+        rows = sp.csr_array(sp.diags_array(scale[many]) @ F[many])
+        lower, upper = np.full(len(many), -INF), np.zeros(len(many))
+        kept.add_rows(lower, upper, sp.hstack([rows, sp.csr_array((len(many), kept.n - width))]))
+        face.add(rows, lower, upper)
 
 
 def _distinct(reached):

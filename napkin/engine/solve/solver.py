@@ -278,10 +278,11 @@ def _end_checks(arrays, w, optima, levels):
                         {'objective': k + 1},
                     )
         if len(levels):
-            served = w.F @ xi
+            # A served fraction counts from zero (`fair.py`): a route's claim against its request.
+            served = np.maximum(w.F @ xi, 0.0)
             floor = np.minimum(levels, 1.0)
             if before is not None:
-                floor = np.maximum(floor, np.minimum(w.F @ before, 1.0))
+                floor = np.maximum(floor, np.clip(w.F @ before, 0.0, 1.0))
             short = np.flatnonzero(served < floor - CHECK * (1.0 + abs(w.F) @ np.abs(xi)))
             if len(short):
                 i = int(short[0])

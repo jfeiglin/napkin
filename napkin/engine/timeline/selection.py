@@ -482,8 +482,8 @@ def _kept(rows, lower, upper, target, claims, answer, candidates, units=1.0):
     delivery onto a flow that does not ask for it, is dropped."""
     plain = _plain(rows, lower, upper)
 
-    def served(x):
-        return np.array([min(1.0, float(np.asarray(a, dtype=float) @ x) / r) for a, r in claims])
+    def served(x):  # from zero (a route against its request) up to one
+        return np.array([min(1.0, max(0.0, float(np.asarray(a, dtype=float) @ x) / r)) for a, r in claims])
 
     floor = served(answer) - FEASIBLE * (1.0 + np.abs(served(answer)))
     precision = FEASIBLE * (np.asarray(units, dtype=float) + np.abs(answer))
