@@ -74,7 +74,8 @@ STORES = {  # start, lower, upper
 LOOK = 'ops.look.step[0]'  # the reading stage, where the runs with an edit stop
 STALE = 'is read before'  # the words of every stale read, of the engine and of the oracle
 # Where local sharing has no answer, the oracle has none (`NotCovered`) and the engine stops, naming
-# the stores; the engine finds it when it starts the sets, before the setup (the oracle after it).
+# the stores; both find it where the flows first settle, after the setup's commit, from the state that
+# the setup leaves (`run.Run.prepare`).
 NO_ANSWER = ('ring of stores', 'a request at an endpoint that the route')
 
 

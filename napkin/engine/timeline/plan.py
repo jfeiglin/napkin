@@ -124,6 +124,7 @@ errors that the program's check lets through.
 from __future__ import annotations
 
 import functools
+import math
 from dataclasses import dataclass, replace
 
 from ...core import expr as nodes
@@ -1067,6 +1068,13 @@ class Plan:
         when its path is read (`end_of`), as the plan is made; one that a path names only through an
         occurrence, when the occurrence starts."""
         self._incident, self._stores = {}, {}
+        self._set_ends = set()  # (store, side): an endpoint whose request or capacity a statement sets
+        self._open_capacities(self.program.setup, [None], local=False)
+        for template in self.program.templates:
+            for event in template.events:
+                self._open_capacities(
+                    event, [scope for scope in members if scope[0] is template], local=False
+                )
         for flow in self.flows.values():
             for connection in flow.connections:
                 self.connections[connection.name] = connection
@@ -1097,7 +1105,7 @@ class Plan:
         one that does not resolve here or names no endpoint (a type error), is resolved when it runs,
         as before."""
         starts = (Local,) if local else (This, Named, Root, Instances)
-        for path, side, origin in _named_ends(part):
+        for path, side, origin, sets in _named_ends(part):
             if not isinstance(path.start, starts):
                 continue
             for scope in scopes:
@@ -1106,8 +1114,60 @@ class Plan:
                     for each in point[1].points if point[0] == 'many' else (point,):
                         if each[0] == 'value' and each[1] in self._stores:
                             self.end_of(each[1], side, origin)
+                            if sets:
+                                self._set_ends.add((each[1], side))
+                            if sets == 'capacity':
+                                self._open_end_capacity(each[1], side)
                 except Outside:
                     continue
+
+    def _open_capacities(self, part, scopes, local):
+        """A flow's capacity that the model leaves out and that a statement of `part` sets (the setup's
+        statements, or an event, from the starts that `_name_ends` takes) is a value of its own: no
+        limit until a stage sets it (spec: "Omission imposes no extra throughput limit"; "an event ...
+        assigns its capacity a rate"), held as the number of no limit (`math.inf`, which a checkpoint
+        holds as `{"float": "inf"}`) until a stage writes another. A read of it before then gives no
+        limit."""
+        starts = (Local,) if local else (This, Named, Root, Instances)
+        for path, origin in _set_capacities(part):
+            if not isinstance(path.start, starts):
+                continue
+            for scope in scopes:
+                try:
+                    point = self.resolve(path, scope, origin)
+                except Outside:
+                    continue
+                for each in point[1].points if point[0] == 'many' else (point,):
+                    if each[0] == 'flow':
+                        self._open_capacity(each[1])
+
+    def _open_capacity(self, name):
+        """The capacity of no limit of the flow or the leg `name`, where it has none (`_open_capacities`),
+        in the place of that flow or leg."""
+        what, found = self._parts[name]
+        if what not in (DIRECTED, ROUTE, LEG) or found.capacity is not None:
+            return
+        own = self.values[found.request].key
+        key = Key(own.owner, (*own.steps[:-1], 'capacity'))
+        self._add(Value(name_of(key), key, CAPTURE, nodes.const(math.inf), found.unit))
+        made = replace(found, capacity=name_of(key))
+        self._parts[name] = (what, made)
+        if what == LEG:
+            parent = self.flows[name.rsplit('.', 1)[0]]
+            legs = tuple(made if leg.name == name else leg for leg in parent.legs)
+            self.flows[parent.name] = replace(parent, legs=legs)
+        else:
+            self.flows[name] = made
+
+    def _open_end_capacity(self, store, side):
+        """The capacity of no limit of an endpoint that a statement sets, where it has none."""
+        end = self.ends[(store, side)]
+        if end.capacity is not None:
+            return
+        own = self.values[end.request].key
+        key = Key(own.owner, (*own.steps[:-1], 'capacity'))
+        self._add(Value(name_of(key), key, CAPTURE, nodes.const(math.inf), self.values[end.request].unit))
+        self.ends[(store, side)] = replace(end, capacity=name_of(key))
 
     def end_of(self, store, side, origin):
         """The endpoint `side` of a stored number, declared on its first use. One declared once the
@@ -1462,6 +1522,7 @@ class Plan:
             if isinstance(part, p.Flow):
                 self._declare_flow(part, scope)
                 flows.append(name_of(Key(occ, (part.name,))))
+        self._open_capacities(event, [scope], local=True)
         for name in flows:
             if name in self.flows:
                 for connection in self.flows[name].connections:
@@ -1500,13 +1561,16 @@ class Plan:
             ):
                 continue  # a reference names an occurrence, and a collection its members: no value
             if isinstance(part, p.Value):
-                initial.append(name)
+                value = self.values.get(name)
+                if value is None or value.kind != FORMULA:
+                    # A `formula(...)` local takes no value at the entry: it is read where something
+                    # reads it, and freezes when its occurrence finishes (spec.md:634, D7, D14).
+                    initial.append(name)
                 for side in SIDES:
                     end = self.ends.get((name, side))
                     for setting in (end.request, end.capacity) if end is not None else ():
                         if setting is not None:
                             (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
-                value = self.values.get(name)
                 if value is None:
                     continue  # a distribution
                 if value.kind == STATE and isinstance(part.type, p.Number):
@@ -2373,10 +2437,14 @@ class Plan:
         return list(dict.fromkeys(names))
 
     def settled(self, end):
-        """Whether an endpoint has a capacity or a request that is not left out."""
+        """Whether an endpoint has a capacity or a request that is not left out, or one that a run can
+        give it: a statement that sets its request or its capacity (an edit changes stored values
+        only). The way of its sets follows what a run can make of it, not its start value."""
         request = self.values[end.request]
-        return end.capacity is not None or not (
-            isinstance(request.node, nodes.Const) and request.node.value == 0
+        return (
+            end.capacity is not None
+            or (end.store, end.side) in self._set_ends
+            or not (isinstance(request.node, nodes.Const) and request.node.value == 0)
         )
 
     def _connect(self):
@@ -2694,6 +2762,24 @@ def _program_statements(program):
             yield statement.origin, statement
 
 
+def _set_capacities(part):
+    """(the path to a flow or a leg, the origin) of each assignment of `part` (the setup's
+    statements, or an event's stages and triggers) to a capacity of it, not of an endpoint."""
+    bodies = [part] if not isinstance(part, p.Event) else []
+    if isinstance(part, p.Event):
+        bodies += [step.body for step in part.steps if not isinstance(step, p.Until)]
+        bodies += [trigger.body for trigger in part.triggers]
+    for body in bodies:
+        for statement in _statements(body):
+            target = statement.target if isinstance(statement, p.Assign) else None
+            if (
+                target is not None
+                and target.steps[-1:] == ('capacity',)
+                and not set(target.steps) & set(SIDES)
+            ):
+                yield Path(target.start, target.steps[:-1]), statement.origin
+
+
 def _named_ends(part):
     """(the path to a store, the side, the origin) of each path that names an endpoint
     (`store.outflow` or `store.inflow` and what follows) in `part`: the setup's statements, or an
@@ -2712,10 +2798,12 @@ def _named_ends(part):
             bodies.append(trigger.body)
     else:
         bodies.append(part)
+    targets = set()  # the ids of the paths that an assignment writes
     for body in bodies:
         for statement in _statements(body):
             if isinstance(statement, p.Assign):
                 found.append((statement.origin, statement.target))
+                targets.add(id(statement.target))
             found += [(statement.origin, x) for x in _statement_expressions(statement)]
     for origin, item in found:
         if isinstance(item, Path):
@@ -2727,7 +2815,11 @@ def _named_ends(part):
         for path in paths:
             for k, step in enumerate(path.steps):
                 if step in SIDES:
-                    yield Path(path.start, path.steps[:k]), step, origin
+                    after = path.steps[k + 1 :]
+                    sets = (
+                        after[0] if id(path) in targets and after in (('request',), ('capacity',)) else None
+                    )
+                    yield Path(path.start, path.steps[:k]), step, origin, sets
                     break
 
 

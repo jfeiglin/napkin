@@ -368,7 +368,7 @@ class Moment:
         """Go on where a breakpoint stopped the run (`checkpoints.py`): the stopped stage again, with
         the draws that it made, then the rest of its round and of its moment."""
         held = self.held
-        if held is _SETUP:
+        if held == _SETUP:  # by value: a checkpoint's saved state holds the stop as data (`saved.py`)
             self._setup()
         else:
             self.rounds(self.run.now, held)

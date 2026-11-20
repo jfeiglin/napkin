@@ -170,17 +170,16 @@ class Occurrences:
         return live
 
     def _enter(self, name, made):
-        """One value of an occurrence takes its value at the entry, in written order. A `formula(...)`
-        local takes none: it is a retained calculation, read where something reads it after the
-        entry, so it may name a local below it or a value that has none yet (spec.md:634, D14), and it
-        freezes when its occurrence finishes (`complete`)."""
+        """One value of an occurrence takes its value at the entry, in written order: each of its
+        initial values (`plan.Occurrence.initial`), which hold no `formula(...)` local, a retained
+        calculation that is read where something reads it after the entry, so that it may name a local
+        below it or a value that has none yet (spec.md:634, D14), and that freezes when its occurrence
+        finishes (`complete`)."""
         run, plan = self.run, self.plan
         if name in plan.distributions:
             run.env[name] = plan.distributions[name]  # a distribution of the occurrence, to draw from
             return
         value = plan.values[name]
-        if value.kind == FORMULA:
-            return
         number = run.truth(value.node)
         if not value.boolean and isinstance(number, int | float) and not isinstance(number, bool):
             number = float(number)

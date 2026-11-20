@@ -898,8 +898,10 @@ class DeclaredWay:
         them there: a store on one bound that the answer moves off is released, and the problem is
         solved again without that bound, until the flags stay. The answer is then the one that holds
         just after t, whatever moments other sets have, as the oracle's (`tests/reference/network.py`,
-        `solve`); it matters where a claim's level reads the bound (`network.supply_depths`). A
-        release whose answer would move a released store past its bound is not made.
+        `solve`); it matters where a claim's level reads the bound (`network.supply_depths`). Where the
+        answer with a released store free moves it back past its bound, no answer holds just after t,
+        and the run stops by name (PLAN, change 10: a run that cannot answer stops with a named
+        failure), as local sharing does (`network.Instant.settle`).
 
         The solver keeps the problem that it settled on and its answer (`Ways.last`), which serve
         again, unsolved, where the problem is that one, as formed or with the bounds released that
@@ -924,13 +926,22 @@ class DeclaredWay:
             again = self._formed(t, low & ~leaving, high & ~leaving)
             found = self._solved(t, again[0], again[1])
             moved = self._values(again[1], found)
-            if self._moved(moved[0], leaving, low, inward=False).any():
-                break
+            back = self._moved(moved[0], leaving, low, inward=False)
+            if back.any():
+                raise SimulationError(self._no_answer(int(np.flatnonzero(back)[0]), bool(low[back][0])))
             low, high = low & ~leaving, high & ~leaving
             signature, x, (flows, results) = again[2], found, moved
         ways.last[sid] = (signature, x)
         self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
         return flows, results
+
+    def _no_answer(self, s, lower):
+        """What a store says that no answer of the solver holds just after the moment at its bound."""
+        return (
+            f'{self.stores[s]}: the solver {self.declared.id} has no answer that holds just after the '
+            f'moment: held at its {"lower" if lower else "upper"} bound, its answer moves it off, and '
+            'free, back past it; the rates switch back and forth at its bound'
+        )
 
     def _moved(self, flows, stores, low, inward):
         """The flags of the stores of `stores` (each on its lower bound where `low` holds, else on its
@@ -1150,7 +1161,10 @@ class MovingDeclared(DeclaredWay):
 
     def _settle(self, t):
         """At time t: a store held on a bound whose answer moves it off is released, until the
-        flags hold; then the answer there is the present (a traced solve)."""
+        flags hold; then the answer there is the present (a traced solve). Where the answer with a
+        released store free moves it back past its bound, no answer holds just after t: the run
+        stops by name (`DeclaredWay._settled`)."""
+        released = was_low = None
         for _ in range(len(self.stores) + 1):
             self.trial = self._held(self.y)
             try:
@@ -1158,11 +1172,22 @@ class MovingDeclared(DeclaredWay):
             finally:
                 self.trial = None
             rate = self._net(flows)
+            if released is not None:
+                # A store released here that the answer free moves back past its bound: no answer
+                # holds just after t.
+                back = released & (
+                    (was_low & (rate < -SLACK * (1.0 + np.abs(rate))))
+                    | (~was_low & (rate > SLACK * (1.0 + np.abs(rate))))
+                )
+                if back.any():
+                    s = int(np.flatnonzero(back)[0])
+                    raise SimulationError(self._no_answer(s, bool(was_low[s])))
             leaving = (self.low & (rate > SLACK * (1.0 + np.abs(rate)))) | (
                 self.high & (rate < -SLACK * (1.0 + np.abs(rate)))
             )
             if not leaving.any():
                 break
+            released, was_low = leaving, self.low.copy()
             self.low, self.high = self.low & ~leaving, self.high & ~leaving
         self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
         changed = self._publish(t, flows, results)
@@ -1496,7 +1521,9 @@ def polished(arrays, x, levels):
         sides.append(np.ones(len(full)))
         groups = {}
         for i, level in enumerate(levels.tolist()):
-            if level < 1.0:
+            # A claim at level zero that its answer serves below zero (a route against its request,
+            # `solve/fair.py`) is held only from above: it is on no fraction of a level.
+            if level < 1.0 and not (level <= 0.0 and served[i] < 0.0):
                 groups.setdefault(level, []).append(i)
         for members in groups.values():
             if len(members) > 1:

@@ -27,5 +27,33 @@ out, assigned: uncaught Outside. 6 moment.resume `is _SETUP`. 7 test_stale_rates
   ends, cuts). ways.stale: `store in stores or store in reads` (C's former file, one line + comment).
 - test_clock_moments + test_stale_rates: 827 passed.
 
+## 2: done (spec 246, 546)
+- Places: oracle order._maxmin; engine selection._share and _kept's served; solve fair._tier,
+  constant levels, solver end checks (served clipped), declared.polished (level groups); the
+  solve tests' exact reference (tests/engine/solve/exact.py).
+- Rule: a fraction counts from zero; at a zero level, a claim that no answer serves is held from
+  above (served <= 0) and the rest go on; where each can be served alone but not together, the
+  tier goes on as before (signed). fair: `_unserved` on a fresh instance, `_hold_zero`.
+- Expectations changed: test_local_sharing_rule named case (round 1 item 1: now 1/2 L/h, 1.25 L
+  at 2.5 h); tests/engine/solve/exact.py levels from zero (test_random seed 2: -4/3 -> 0).
+
+## 8 (V's find): done. plan.settled read the start node: a stage-set endpoint request left a set
+  on FAMILY (3 L/h, oracle 5) and a solver ignored it. Fix: `_named_ends` marks the endpoints whose
+  request or capacity a statement sets (`_set_ends`), settled from the start (edits change stores
+  only). Rule test: named case (both ways), fails on 1564ac7.
+## 3: done. declared._settled, MovingDeclared._settle, oracle network.solve: no answer just after
+  (free: back past its bound) stops by name ("switch back and forth at its bound"), as local
+  sharing. Rule tests: property over test_claim_order solver networks + named seed 40 (fails before).
+## 4: done. plan.occurrence lists no formula local in `initial`; occurrences._enter (C's former)
+  loses its exception. test_formula_locals: 163 of 184 fail without the mechanism, all pass with it.
+## 6: done. moment.resume `held == _SETUP`. tests/engine/test_setup_stops.py (3 ways, edits): fails
+  on 1564ac7 (TypeError), passes. The ring case resumes from the saved state again.
+## 7: done. test_stale_rates.py comment: both refuse where the flows first settle.
+
+## 5: done. plan._open_capacities/_open_capacity/_open_end_capacity (+ `_set_capacities`): a
+  capacity left out that a statement sets is a CAPTURE of no limit (inf; a checkpoint holds it),
+  patched into its flow, leg or endpoint before their connections are indexed. Rule test: named
+  case (flow, endpoint; stop and resume); fails on 1564ac7.
+
 ## In progress
-- Items 2-7.
+- Final: tests/engine + tests/reference not deep; deep sets; ruff.

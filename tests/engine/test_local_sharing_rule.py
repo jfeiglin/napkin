@@ -63,6 +63,8 @@ from napkin.program.build import (
     proportional,
     q,
     route,
+    solve_for,
+    solver,
     start,
     t,
     this,
@@ -71,6 +73,8 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.engine.test_claim_order import chosen
+from tests.engine.test_claim_order import network as claim_network
 from tests.reference.errors import NotCovered, RunFailed
 from tests.reference.from_program import config_of, model_of, scale_at, value_at
 from tests.reference.run import Run as Oracle
@@ -493,9 +497,10 @@ def test_a_setup_that_breaks_a_ring_runs_and_one_that_keeps_it_stops_after_it():
     record = run(program, Configuration(Request(HORIZON)))
     assert record.failure.t == 0 and 'ring of stores' in record.failure.detail('message')
     made = Run(Plan.of(program, Configuration(Request(HORIZON))), (Breakpoint('setup[0]'),))
-    assert isinstance(made.run(), Checkpoint)
-    record = made.resume()
-    assert record.failure.t == 0 and 'ring of stores' in record.failure.detail('message')
+    stopped = made.run()
+    assert isinstance(stopped, Checkpoint)
+    for record in (made.resume(), resume(program, loads(dumps(stopped)))):
+        assert record.failure.t == 0 and 'ring of stores' in record.failure.detail('message')
 
 
 def tank(change, occurrence=False):
@@ -540,3 +545,97 @@ def test_an_endpoint_that_only_a_stage_names_is_in_the_network_from_the_start():
     engine, exact, failure, failed = both(b.finish(), Key('ops.deliver#0', ('tank',)), [1, 2, 3, 4])
     assert failure is None and failed is None
     assert engine == pytest.approx([4, 2, 0, 0], abs=1e-12) and exact == [4, 2, 0, 0]
+
+
+def test_the_way_of_a_set_follows_a_request_that_a_stage_sets_on_an_endpoint():
+    """A tank of 20 L with one pipe out at 3 L/h, whose outflow the model leaves out; a stage sets
+    the outflow's request to 5 L/h at 1 h. The pipe, which has no capacity, carries the endpoint's
+    request (a request is soft: "An edge may carry more than its own request to meet another
+    request"): 3 L/h to 17 L at 1 h, then 5 L/h, 12 L at 2 h and 7 L at 3 h, with a solver that
+    determines the pipe too. (Before, the set of one flow ran on the arrays of one-flow sets, whose
+    way was chosen by the request's start value, zero, and kept 3 L/h: 14 L at 2 h.)"""
+    for solved in (False, True):
+        b = Builder(UNITS)
+        b.entity(
+            's0',
+            value('water', 'L', 20, lower=0, upper=20),
+            flow('pipe', this.water, SINK, request=q(3, 'L/h')),
+        )
+        b.entity(
+            'ops', event('change', after(q(1, 'h'), assign(named('s0').water.outflow.request, q(5, 'L/h'))))
+        )
+        if solved:
+            b.entity('hub', solver('share', solve_for(named('s0').pipe.actual_rate)))
+        b.setup(start(named('ops').change))
+        engine, exact, failure, failed = both(b.finish(), Key('s0', ('water',)), [1, 2, 3], horizon=3)
+        assert failure is None and failed is None
+        assert engine == pytest.approx([17, 12, 7], rel=1e-9) and exact == [17, 12, 7]
+
+
+@pytest.mark.parametrize('seed', range(60))
+def test_a_solver_whose_answer_holds_at_no_state_just_after_a_moment_stops_by_name(seed):
+    """PLAN, change 10: a run that cannot answer stops with a named failure. Where a declared solver's
+    answer moves a store held on a bound off it, and its answer with the store free moves it back
+    past it, no answer holds just after the moment: the run stops there, naming the store and the
+    solver, in the engine and the oracle alike, as local sharing does (seed 40 with routes: the
+    solver of `test_claim_order`'s networks holds s1 empty and fills it, and with s1 free empties it
+    again; before, both kept the held answer, which held only until the next moment)."""
+    for routes in (False, True):
+        _, _, _, names = claim_network(seed, routes, solved=True)
+        program = claim_network(seed, routes, chosen(seed, names), solved=True)[0]
+        configuration = Configuration(Request(HORIZON))
+        _, failed, uncovered = oracle_of(program, configuration, [])
+        record = run(program, configuration)
+        message = None if record.failure is None else record.failure.detail('message')
+        if uncovered is not None and 'just after the moment' in str(failed):
+            assert message is not None and 'has no answer that holds just after the moment' in message, (
+                seed,
+                message,
+            )
+            assert 'switch back and forth at its bound' in message
+            assert record.failure.t == pytest.approx(float(uncovered)), (seed, message)
+        else:
+            assert message is None or 'just after the moment' not in message, (seed, message)
+
+
+def test_the_solver_of_seed_40_holds_no_answer_just_after_its_start_and_stops_by_name():
+    """The case that the property above finds (seed 40 of `test_claim_order`, with routes): the run
+    stops at 0 h, naming s1.water and the solver, in the engine and the oracle."""
+    _, _, _, names = claim_network(40, True, solved=True)
+    program = claim_network(40, True, chosen(40, names), solved=True)[0]
+    configuration = Configuration(Request(HORIZON))
+    _, failed, uncovered = oracle_of(program, configuration, [])
+    assert uncovered == 0 and 'provider.plan has no answer that holds just after the moment' in str(failed)
+    record = run(program, configuration)
+    message = record.failure.detail('message')
+    assert record.failure.t == 0 and message.startswith('s1.water: the solver provider.plan has no answer')
+    assert 'switch back and forth at its bound' in message
+
+
+@pytest.mark.parametrize('target', ['flow', 'endpoint'])
+def test_a_stage_assigns_a_capacity_that_the_model_leaves_out(target, tmp_path):
+    """spec: "Omission imposes no extra throughput limit", and "an event ... assigns its capacity a
+    rate". A tank of 10 L with one pipe out at 3 L/h; a stage at 1 h gives the pipe, or the tank's
+    outflow, a capacity of 1 L/h, which the model left out: 7 L at 1 h, then 1 L/h, 6 L at 2 h and
+    4 L at 4 h, straight and stopped at the stage, resumed in place and from the saved state (a
+    capacity of no limit until the stage, which the checkpoint holds). Before, the stage raised an
+    uncaught `Outside`: "a capacity left out, has no value"."""
+    b = Builder(UNITS)
+    outflow = {'outflow': endpoint()} if target == 'endpoint' else {}
+    b.entity('s0', value('water', 'L', 10, lower=0, upper=10, **outflow))
+    b.entity('a', flow('pipe', named('s0').water, SINK, request=q(3, 'L/h')))
+    path = named('a').pipe.capacity if target == 'flow' else named('s0').water.outflow.capacity
+    b.entity('ops', event('change', after(q(1, 'h'), assign(path, q(1, 'L/h')))))
+    b.setup(start(named('ops').change))
+    program = b.finish()
+    engine, exact, failure, failed = both(program, Key('s0', ('water',)), [1, 2, 4])
+    assert failure is None and failed is None
+    assert engine == pytest.approx([7, 6, 4], rel=1e-12) and exact == [7, 6, 4]
+    made = Run(Plan.of(program, Configuration(Request(HORIZON))), (Breakpoint('ops.change.step[0]'),))
+    stopped = made.run()
+    assert isinstance(stopped, Checkpoint)
+    for record in (made.resume(), resume(program, loads(dumps(stopped)))):
+        assert record.failure is None
+        assert read(record, program, [Key('s0', ('water',))], [1.0, 2.0, 4.0])[0].values == pytest.approx(
+            [7, 6, 4]
+        )

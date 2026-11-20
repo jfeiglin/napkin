@@ -88,7 +88,7 @@ def _tier(kept, face, F, tier, budget, work):
     fixed = face.lower == face.upper
     constant = np.diff(F.indptr) == np.diff(sp.csr_array(F[:, fixed]).indptr) if K else np.zeros(0, bool)
     if constant.any():
-        levels[constant] = np.minimum(1.0, F[constant] @ np.where(fixed, face.lower, 0.0))
+        levels[constant] = np.clip(F[constant] @ np.where(fixed, face.lower, 0.0), 0.0, 1.0)
     pending = ~constant
     if not pending.any():
         return levels
@@ -139,7 +139,6 @@ def _tier(kept, face, F, tier, budget, work):
                             raise _exceeded(step, reached, programs, levels, pending, budget)
 
                     unserved = _unserved(kept, F, np.flatnonzero(low), width, step, work, check)
-                    kept.set_cost(cost)
                     if len(unserved):
                         levels[unserved] = 0.0
                         pending[unserved] = False
@@ -216,25 +215,28 @@ def _hold(kept, face, F, scale, first, index, single, level, width):
 def _unserved(kept, F, claims, width, step, work, check):
     """The claims of `claims` that no answer of the face serves: the largest F_i . x, by a program of
     its own, is at most TAU (a route's claim reads its signed rate in the direction of its request,
-    which is below zero where it carries against it). Each program counts toward the budget of fair
-    sharing (`check`)."""
-    found = []
-    for i in claims.tolist():
-        check()
-        cost = np.zeros(kept.n)
-        start, end = F.indptr[i], F.indptr[i + 1]
-        cost[F.indices[start:end]] = -F.data[start:end]
-        kept.set_cost(cost)
-        try:
-            run = ranked.solve(kept, step)
-        except SolveFailure as failure:
-            if failure.name == UNBOUNDED:
-                continue  # served without end
-            raise
-        work.programs += 1
-        work.fair_programs += 1
-        if -float(run.objective) <= TAU:
-            found.append(i)
+    which is below zero where it carries against it). The programs run on a fresh instance of the
+    kept program (`kept.Kept.fresh`), so that the basis and the factorization that the tier's own
+    programs go on from are the ones that they had. Each counts toward the budget of fair sharing
+    (`check`)."""
+    found, probe = [], kept.fresh()
+    with probe.option('primal_feasibility_tolerance', TIGHT):
+        for i in claims.tolist():
+            check()
+            cost = np.zeros(probe.n)
+            start, end = F.indptr[i], F.indptr[i + 1]
+            cost[F.indices[start:end]] = -F.data[start:end]
+            probe.set_cost(cost)
+            try:
+                run = ranked.solve(probe, step)
+            except SolveFailure as failure:
+                if failure.name == UNBOUNDED:
+                    continue  # served without end
+                raise
+            work.programs += 1
+            work.fair_programs += 1
+            if -float(run.objective) <= TAU:
+                found.append(i)
     return np.array(found, dtype=np.int64)
 
 

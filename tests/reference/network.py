@@ -250,8 +250,8 @@ def solve(run, comp):
     sharing and for a declared solver: where a store that local sharing holds at its lower bound
     makes the claims that it supplies wait for its supply, an answer that fills it is no answer just
     after, when it holds stock and they wait no more. Where the answer with a released store free
-    moves it back past its bound, no answer holds just after the instant: for local sharing the run
-    stops by name (`NotCovered`, as the engine stops); a declared solver's release is not made. The cache holds the problem that the solve settled on, with its
+    moves it back past its bound, no answer holds just after the instant: the run stops by name
+    (`NotCovered`, as the engine stops; PLAN, change 10), for local sharing and for a solver. The cache holds the problem that the solve settled on, with its
     answer and its releases: it serves again where the problem is that one, as assembled or with the
     bounds released that the cached answer moves off. The solve is noted once."""
     comp.busy = True
@@ -268,16 +268,18 @@ def solve(run, comp):
             trial, _ = _after(run, comp)
             found = _select(run, comp, trial)
             back = _moved(trial, found, leaving, inward=False)
-            if back and not comp.sols:
-                cell, which = sorted(back, key=lambda b: label(b[0]))[0]
-                raise NotCovered(
-                    f'{label(cell)}: local sharing has no rates that hold just after the moment: held '
-                    f'at its {"lower" if which == "lo" else "upper"} bound, its sharing moves it off, and '
-                    'free, back past it; the rates switch back and forth at its bound'
-                )
             if back:
-                comp.released = before
-                break
+                cell, which = sorted(back, key=lambda b: label(b[0]))[0]
+                who = (
+                    f'the solver {label(comp.sols[0][0])} has no answer that holds'
+                    if comp.sols
+                    else 'local sharing has no rates that hold'
+                )
+                raise NotCovered(
+                    f'{label(cell)}: {who} just after the moment: held at its '
+                    f'{"lower" if which == "lo" else "upper"} bound, its sharing moves it off, and free, back '
+                    'past it; the rates switch back and forth at its bound'
+                )
             problem, answer = trial, found
         run.cache[comp.key] = (problem['signature'], answer)
         comp.signature = problem['signature']

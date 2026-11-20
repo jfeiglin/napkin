@@ -248,6 +248,17 @@ def select(n, boxes, constraints, objectives, claims, flows, others, target, sca
                 lifted.append(([v / request for v in f] + [Fraction(-1)], GE, Fraction(0)))
             lifted.append(([Fraction(0)] * n + [Fraction(1)], LE, Fraction(1)))
             level, _ = linear([Fraction(0)] * n + [Fraction(1)], lifted, n + 1, maximize=True)
+            if level <= 0:
+                # A served fraction counts from zero: a claim that no answer serves is held there,
+                # from above (a route against its request), and the others go on.
+                unserved = [i for i in pending if _highest(rows, claims[i], n) <= 0]
+                if unserved:
+                    for i in unserved:
+                        f, request, _ = claims[i]
+                        rows.append(([v / request for v in f], LE, Fraction(0)))
+                        levels[i] = Fraction(0)
+                    pending = [i for i in pending if i not in unserved]
+                    continue
             floors = [([v / claims[i][1] for v in claims[i][0]], GE, level) for i in pending]
             if level == 1:
                 held = list(pending)
