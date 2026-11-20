@@ -286,6 +286,21 @@ def locate(roots, k, solution, start, end, before, after):
     )
 
 
+def switch_time(pair, reader, start, end, units, side, *, accepted=None, exact=None):
+    """Locate an armed comparison of two operands on this trajectory, in their own band."""
+
+    def gap(t):
+        read = reader(t)
+        return read(pair[0]) - read(pair[1])
+
+    if not side:
+        first = accepted[0] if accepted is not None else gap(start)
+        side = int(first > 0) - int(first < 0)
+    return crossing_time(
+        gap, start, end, side=side, accepted=accepted, exact=exact, within=contact_band(pair, reader, units)
+    )
+
+
 def contact_band(pair, reader, units):
     """Test the residual of a located switch in the units of its two operands."""
 

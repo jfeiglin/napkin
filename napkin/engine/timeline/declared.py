@@ -1150,15 +1150,17 @@ class MovingDeclared(DeclaredWay):
         # floor belongs to the unit and must be the same when this instance is restored.
         self.atol = np.array([run.amount_tolerance(name) for name in self.stores])
         self.rtol = numerics.rtol
-        sources = self.declared.nodes(self.plan)
-        settings = [name for flow in self.flows for name in self.plan.settings_of(self.plan.flows[flow])]
-        sources.extend(nodes.ref(name) for name in settings)
+        settings = {
+            flow: list(map(nodes.ref, self.plan.settings_of(self.plan.flows[flow]))) for flow in self.flows
+        }
+        fields = [node for group in settings.values() for node in group]
+        sources = self.declared.nodes(self.plan) + fields
         dependencies = self.plan.field_inputs(
             self.plan.expansion_of({name for node in sources for name in nodes.names(node)})
         )
         formulas = {
             name: value.node
-            for name in dependencies.formulas | set(settings)
+            for name in dependencies.formulas | {node.name for node in fields}
             if (value := self.plan.values.get(name)) is not None and value.kind in (FORMULA, RATE)
         }
 
@@ -1178,28 +1180,25 @@ class MovingDeclared(DeclaredWay):
         self.region = Region(surfaces, lookups, defined)
         if defined:
             self.former.region = self.region
-        self.switch_origins = integrate.flow_switches(
-            (
-                (name, [nodes.ref(field) for field in self.plan.settings_of(self.plan.flows[name])])
-                for name in self.flows
-            ),
-            formulas,
-            moving,
-        )
+        self.switch_origins = integrate.flow_switches(settings.items(), formulas, moving)
 
     # ---- rates at a state ----------------------------------------------------------------------
 
-    def _switch_value(self, n, t, y):
-        """A physical switch operand or its scale on a trial trajectory."""
-        self.trial = self._held(y)
-        try:
+    def _side(self, t, y):
+        """Read switch operands and their scales in one physical trial state."""
+        trial = self._held(y)
 
-            def read(name):
-                return self.run.in_region(name, t, self.region)
+        def read(name):
+            return self.run.in_region(name, t, self.region)
 
-            return lazily(self.region.expression(n), read, self.plan.units, t)
-        finally:
-            self.trial = None
+        def operand(node):
+            self.trial = trial
+            try:
+                return lazily(self.region.expression(node), read, self.plan.units, t)
+            finally:
+                self.trial = None
+
+        return operand
 
     def _select(self, t, contacted):
         """Install the shared outgoing branches using the solver's physical velocity."""
@@ -1210,11 +1209,10 @@ class MovingDeclared(DeclaredWay):
         region.set({}, {})
         self._cache.clear()
 
-        def side_at(at, y):
-            return lambda node: self._switch_value(node, at, y)
+        side = self._side(t, self.y)
 
         def choose(signs):
-            region.set(signs, region.selected_rows(self.run, signs, side_at(t, self.y)))
+            region.set(signs, region.selected_rows(self.run, signs, side))
             self._cache.clear()
 
         def reversal(name):
@@ -1226,7 +1224,7 @@ class MovingDeclared(DeclaredWay):
             self.y,
             self.place,
             (self.lower, self.upper),
-            side_at,
+            self._side,
             self.run.triggers.moving_reads,
             self._derivative,
             choose,
@@ -1239,17 +1237,15 @@ class MovingDeclared(DeclaredWay):
 
     def answers_at(self, t, incoming, flows):
         """Publish every result of one trial answer, including the requests carried by its legs."""
-        if self.pending is not None:
-            if incoming and t > self.pending.start:
-                # These trial answers still use the inputs of the incoming segment.
-                pieces = list(self._pieces(t))
-                answer = self._at(t, self._state(t))
-                self.prefix = t, pieces, answer
-            else:
-                answer = self._at(t, self._state(t))
-            flows, results, _, requests = answer
-        else:
-            flows, results, requests = self.value, self.results, self.former.requests
+        if self.pending is None:
+            return super().answers_at(t, incoming, flows)
+        # Prepare the fit before the stages change any inputs. Commit it only after the
+        # entire incoming answer succeeds, including the solve at the endpoint.
+        pieces = list(self._pieces(t)) if incoming and t > self.pending.start else None
+        answer = self._at(t, self._state(t))
+        if pieces is not None:
+            self.prefix = t, pieces, answer
+        flows, results, _, requests = answer
         return self._published(flows, results, requests)
 
     def _held(self, y):
@@ -1268,10 +1264,11 @@ class MovingDeclared(DeclaredWay):
 
     def _at(self, t, y):
         """(flows, results, the rate of each store) at a trial state, solved once for each state."""
-        key = (float(t), self._held(y).tobytes())
+        trial = self._held(y)
+        key = (float(t), trial.tobytes())
         found = self._cache.get(key)
         if found is None:
-            self.trial = self._held(y)
+            self.trial = trial
             try:
                 flows, results = self.answer(float(t), self.low, self.high)
                 found = (flows, results, self._net(flows), self.former.requests)
@@ -1441,23 +1438,12 @@ class MovingDeclared(DeclaredWay):
 
     def _crossings(self, solution, start, end):
         """Locations of the armed physical switches bracketed by one smooth interval."""
+
+        def reader(t):
+            return self._side(t, solution(t))
+
         for pair, sign in self.region.signs.items():
-
-            def reader(at):
-                state = solution(at)
-                return lambda n: self._switch_value(n, at, state)
-
-            def gap(at):
-                read = reader(at)
-                a, b = (read(node) for node in pair)
-                return a - b
-
-            departure = sign
-            if not departure:
-                first = gap(start)
-                departure = int(first > 0) - int(first < 0)
-            within = integrate.contact_band(pair, reader, self.plan.units)
-            at = integrate.crossing_time(gap, start, end, side=departure, within=within)
+            at = integrate.switch_time(pair, reader, start, end, self.plan.units, sign)
             if at is not None:
                 yield at, pair, 'switch'
 
@@ -1469,35 +1455,30 @@ class MovingDeclared(DeclaredWay):
 
     def _pieces(self, end):
         """Fit the incoming stores, flow rates and solver results using their segment's inputs."""
-        segment = self.pending
-        if end > segment.start:
+        start = self.pending.start
 
-            def states(times):
-                return np.array([self._state(at) for at in np.asarray(times).tolist()])
+        def states(times):
+            return np.array([self._state(at) for at in np.asarray(times).tolist()])
 
-            for name, pieces in zip(self.stores, fitted(states, segment.start, end, self.atol)):
-                yield name, pieces
-            names = [*self.recorded, *self.connected.results]
+        yield from zip(self.stores, fitted(states, start, end, self.atol))
+        names = [*self.recorded, *self.connected.results]
 
-            def answers(times):
-                rows = []
-                for at in np.asarray(times, dtype=float).tolist():
-                    flows, results, *_ = self._at(at, self._state(at))
-                    rows.append([*flows, *(results[name] for name in self.connected.results)])
-                return np.array(rows, dtype=float)
+        def answers(times):
+            rows = []
+            for at in np.asarray(times, dtype=float).tolist():
+                flows, results, *_ = self._at(at, self._state(at))
+                rows.append([*flows, *(results[name] for name in self.connected.results)])
+            return np.array(rows, dtype=float)
 
-            first = answers([segment.start])[0]
-            tolerance = np.array(
-                [
-                    max(
-                        self.recorder.tolerance.get(name, 0.0), ANSWER * max(self.run.own_scale(name), abs(v))
-                    )
-                    for name, v in zip(names, first)
-                ]
-            )
-            if names:
-                for name, pieces in zip(names, fitted(answers, segment.start, end, tolerance)):
-                    yield name, pieces
+        first = answers([start])[0]
+        tolerance = np.array(
+            [
+                max(self.recorder.tolerance.get(name, 0.0), ANSWER * max(self.run.own_scale(name), abs(v)))
+                for name, v in zip(names, first)
+            ]
+        )
+        if names:
+            yield from zip(names, fitted(answers, start, end, tolerance))
 
     def incoming_history(self, end):
         """Record the incoming answer while the trial solves still see their original inputs."""
@@ -1598,10 +1579,8 @@ class MovingDeclared(DeclaredWay):
         segment = self.pending
         self.snapped = False
         self._cache.clear()
-        if segment is not None and t <= segment.start:
+        if segment is None or t <= segment.start:
             self.pending = None
-            return
-        if segment is None:
             return
         answer = (
             self.prefix[2] if self.prefix is not None and self.prefix[0] == t else self._at(t, self._state(t))

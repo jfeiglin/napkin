@@ -943,42 +943,32 @@ class Sparse(Way):
         """Locate every armed switch on one accepted step, using the actual dense state."""
         if not self.signs:
             return
-        before, after = self._side(start, solution(start)), self._side(end, solution(end))
+
+        def reader(t):
+            return self._side(t, solution(t))
+
+        before, after = reader(start), reader(end)
         for pair, sign in self.signs.items():
             a, b = pair
             if pair in self.labels:
                 moving, affine, _ = self.labels[pair]
                 at = self.run.triggers.switching_time(a, b, moving, sign, affine)
-                if at is not None and start < at <= end:
-                    yield at, pair, 'switch'
-                continue
-            try:
-                first, last = before(a) - before(b), after(a) - after(b)
-
-                def gap(t):
-                    side = self._side(t, solution(t))
-                    return side(a) - side(b)
-
-                fixed = integrate.fixed_clock(pair, before, self.moves)
-                departure = sign or int(first > 0) - int(first < 0)
-                if not departure:
+            else:
+                try:
+                    at = integrate.switch_time(
+                        pair,
+                        reader,
+                        start,
+                        end,
+                        self.plan.units,
+                        sign,
+                        accepted=(before(a) - before(b), after(a) - after(b)),
+                        exact=integrate.fixed_clock(pair, before, self.moves),
+                    )
+                except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                     continue
-
-                at = integrate.crossing_time(
-                    gap,
-                    start,
-                    end,
-                    side=departure,
-                    accepted=(first, last),
-                    exact=fixed,
-                    within=integrate.contact_band(
-                        pair, lambda t: self._side(t, solution(t)), self.plan.units
-                    ),
-                )
-                if at is not None:
-                    yield at, pair, 'switch'
-            except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
-                continue
+            if at is not None and start < at <= end:
+                yield at, pair, 'switch'
 
     def switched_at(self, t):
         """The settings whose actual switching root was reached at this instant."""
