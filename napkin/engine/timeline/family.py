@@ -178,10 +178,18 @@ class Columns:
                     raise known[key].problem
                 return known[key]
 
+            def bound(name):
+                if name not in known:
+                    raise Pending(name)
+                found = known[name]
+                if isinstance(found, _Failed):
+                    raise found.problem
+                return found
+
             env = Reads(frozenset(columns), column)
             while True:
                 try:
-                    computed = arrays.values(first.shape, env, plan.units, len(members), columns)
+                    computed = arrays.values(first.shape, env, plan.units, len(members), columns, bound)
                 except Pending as pending:
                     yield from self._found(pending.names, t, known, waiting)
                     continue

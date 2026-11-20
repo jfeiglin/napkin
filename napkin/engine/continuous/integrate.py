@@ -271,11 +271,11 @@ def locate(roots, k, solution, start, end, before, after):
     if target is not None and target.kind == 'surface':
         pair, units = target.data, roots.system.units
 
-        def operands(at):
+        def reader(at):
             env = roots.environment(at, solution(at))
-            return (float(evaluate(node, env, units)) for node in pair)
+            return lambda node: evaluate(node, env, units)
 
-        within = contact_band(pair, operands, units)
+        within = contact_band(pair, reader, units)
     return crossing_time(
         lambda at: roots.value(k, at, solution(at)),
         start,
@@ -286,9 +286,14 @@ def locate(roots, k, solution, start, end, before, after):
     )
 
 
-def contact_band(pair, operands, units):
+def contact_band(pair, reader, units):
     """Test the residual of a located switch in the units of its two operands."""
-    return lambda t, gap: abs(gap) <= units.comparisons.band(*pair, *operands(t))
+
+    def within(t, gap):
+        read = reader(t)
+        return abs(gap) <= units.comparisons.band(*pair, *(read(node) for node in pair), read)
+
+    return within
 
 
 # The rate of change of the dense solution of one Radau step at a time of the step.
@@ -716,7 +721,7 @@ def departing_branches(surfaces, t, y, side_at, rates, contacted=(), comparisons
     if comparisons is not None:
         for a, b in signs.keys() - ties:
             left, right = side(a), side(b)
-            if abs(left - right) <= comparisons.band(a, b, left, right):
+            if abs(left - right) <= comparisons.band(a, b, left, right, side):
                 signs[a, b] = 0
     if ties:
         # The comparison can involve large nearly equal terms. A probe that moves the state
@@ -729,7 +734,7 @@ def departing_branches(surfaces, t, y, side_at, rates, contacted=(), comparisons
             try:
                 left, right = side(a), side(b)
                 gap = left - right
-                if comparisons is not None and abs(gap) > comparisons.band(a, b, left, right):
+                if comparisons is not None and abs(gap) > comparisons.band(a, b, left, right, side):
                     continue  # an edit can move the operands away from the located contact
                 change = (following(a) - left) - (following(b) - right)
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
@@ -1004,7 +1009,7 @@ def far_sides(
             here = float(y[place[here_node.name]])
             if not math.isfinite(limit) or (here != limit and (a, b) not in contacted):
                 continue
-            band = comparisons.band(here_node, other, here, limit)
+            band = comparisons.band(here_node, other, here, limit, side)
             if abs(here - limit) > band:
                 continue  # an edit replaced the stock or its threshold before the re-share
             i = place[here_node.name]

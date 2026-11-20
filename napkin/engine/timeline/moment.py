@@ -913,7 +913,9 @@ def split_ties(run, store, side):
     for k in range(len(classes) - 1):
         ahead += claims[k]
         difference = limit - ahead
-        band = plan.units.comparisons.band(nodes.ref(operand), rate, limit, ahead)
+        band = plan.units.comparisons.band(
+            nodes.ref(operand), rate, limit, ahead, lambda n: lazily(n, run.value, plan.units, run.now)
+        )
         if claims[k + 1] > band and abs(difference) <= band:
             served = [c for members in classes[: k + 1] for c in members]
             comparison = (
@@ -995,7 +997,7 @@ def near_ties(node, origin, plan, frozen, side, tolerance, later=None):
                     return False, []
                 continue
             difference = float(a) - float(b)
-            band = tolerance(left, right, a, b)
+            band = tolerance(left, right, a, b, side)
             exact_count = (
                 any(
                     isinstance(part, nodes.Ref)

@@ -128,6 +128,8 @@ import math
 from dataclasses import dataclass, replace
 
 from ...core import expr as nodes
+from ...core.comparisons import IndexedScale
+from ...core.errors import ExpressionError
 from ...expressions import UnitSystem, evaluate
 from ...program import parts as p
 from ...program.config import ConfigurationError, Quantity
@@ -157,7 +159,7 @@ from ...program.refs import (
 )
 from ..continuous.walk import walked
 from ..errors import SimulationError
-from .collections import Dynamic, Ends, Entries, Keyed, Reduction
+from .collections import Dynamic, Ends, Entries, Keyed, Reduction, selected
 from .pools import Keys, pools_of
 
 # The kinds of the values of a plan.
@@ -500,6 +502,7 @@ class Plan:
             {unit.name: {'dimensions': dict(unit.dimension), 'scale': unit.scale} for unit in program.units}
         )
         self.comparison_scales = {}
+        self.frozen_scales = {}
         self.units.comparisons.factor = max(self.numerics.rtol, self.numerics.atol_factor)
         self.units.comparisons.named = lambda name: self.comparison_quantity(name, self.comparison_scales)
         self.pools = pools_of(program)
@@ -614,27 +617,47 @@ class Plan:
         self._connect()
         self._classify_asserts()
 
-    def comparison_quantity(self, name, scales, lookup=None, resolve=None):
-        """The declared unit size and numeric scale of a named operand, following an alias."""
-        lookup = self.values.get if lookup is None else lookup
-        value = lookup(name)
+    def comparison_quantity(self, name, scales, lookup=None, resolve=None, latest=None):
+        """The declared unit size and the explicit floor or defining formula for a name."""
+        live = lookup is None
+        value = self.values.get(name) if live else lookup(name)
         unit = self.units.scale(value.unit) if value is not None and value.unit else 1.0
-        seen = set()
-        while value is not None and name not in seen:
-            seen.add(name)
-            if name in scales:
-                return unit, scales[name]
+        if live and name in self.frozen_scales:
+            return unit, self.frozen_scales[name]
+        if name in scales:
+            return unit, scales[name]
+        if value is not None:
             if value.scale is not None:
                 if resolve is not None:
                     return unit, resolve(name, value.scale)
                 if not nodes.names(value.scale):
                     return unit, abs(float(evaluate(value.scale, {}, self.units)))
-            if value.kind != FORMULA or not isinstance(value.node, nodes.Ref) or value.scale is not None:
-                break
-            name = value.node.name
-            value = lookup(name)
-        other = self.units.scale(value.unit) if value is not None and value.unit else unit
-        return unit, other
+            elif value.kind == FORMULA:
+                return unit, value.node
+            elif value.kind == DYNAMIC and self.dynamic[name].op == 'at':
+                projection = self.dynamic[name]
+                members = self.occurrences[projection.source[1:]]
+                owner = members[-1] if live and members else latest(members) if latest else None
+                if owner is not None:
+                    target = self.project(('occurrence', owner), projection.steps)
+                    return unit, nodes.ref(target)
+            elif value.kind == LOOKUP:
+                keyed = self.keyed[name]
+                fixed = self._chosen(keyed)
+                if fixed:
+                    return unit, nodes.ref(fixed)
+
+                def choose(read):
+                    k = selected(keyed, read, self.units, None)
+                    if k is None:
+                        raise ExpressionError(f'{keyed.spelled}: no member at this key')
+                    return keyed.names[k]
+
+                keys = set(nodes.names(keyed.key))
+                keys.update(k for k in keyed.keys if isinstance(k, str))
+                keys.update(n for test in keyed.tests if test is not None for n in nodes.names(test))
+                return unit, IndexedScale(choose, keys, keyed.names)
+        return unit, unit
 
     def _refuse_kept_in_solvers(self):
         """A solver's problem reads a where over the flows of an endpoint whose members change in a
@@ -1512,6 +1535,7 @@ class Plan:
         `index`-th start of that event on it: its parameters take the arguments (an entity's id for
         an entity parameter), `started` the time of its start, `done` false and `active` true."""
         template, row, receiver, event = self.events[(member, event_name)]
+        self.units.comparisons.floors.clear()
         occ = f'{member}.{event_name}#{index}'
         frame = Frame(occ, {})
         scope = (template, row, receiver, frame)

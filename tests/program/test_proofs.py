@@ -457,6 +457,31 @@ def test_a_proof_reads_each_quantity_at_its_exact_scale(given):
     assert proof.holds, proof.reason
 
 
+def test_a_never_falls_proof_compares_an_expression_at_its_inputs_scale():
+    """An input of 1e-12 L with the same declared scale exceeds zero.
+    The selected stock drains at 1 L/h. Adding zero to the input must still select it."""
+    from napkin.model.compile import compile_text
+
+    model = compile_text(
+        """scenario "A stock at a fine resolution"
+    horizon 1 h
+
+plant:
+    input signal: L = 1e-12 L scale 1e-12 L
+    stock: L = 2 L in [0,]
+    flow drain: this.stock -> SINK
+        request = 1 L/h
+    direct = formula(this.stock if this.signal > 0 L else 0 L)
+    wrapped = formula(this.stock if this.signal + 0 L > 0 L else 0 L)
+""",
+        UNITS,
+    )
+    for name in ('direct', 'wrapped'):
+        proof = proved(model.program, 'plant', name, configuration=model.configuration)
+        assert not proof.holds, (name, proof.reason)
+        assert 'plant.drain' in proof.reason
+
+
 def test_a_read_through_a_reference_to_an_occurrence_reads_that_occurrence():
     """A check saves a reference to the newest repair and writes the repair's amount into `held`
     through it: what `held` reads is the writing stage and the amount of the repair's occurrences, and

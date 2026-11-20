@@ -342,9 +342,16 @@ These override the text of this plan below, wherever the two differ. The owner's
 29. **Comparisons and crossings (owner, 2026-11-20).** In every evaluator and in the reference
     interpreter, two numeric operands within `max(rtol, atol_factor) × max(scale, |a|, |b|)`
     compare equal. A quantity supplies its declared scale, or the size of one declared unit. A literal
-    threshold uses the compared quantity's scale on either side. An alias keeps its quantity's
-    scale and an unnamed expression uses its result unit. For two independently declared
-    quantities, take the larger floor to cover both uncertainties. An interval is reversed only
+    threshold uses the compared quantity's scale on either side. Inline and named formulas keep
+    the comparison scale separate from the result unit. An explicit result scale wins. A literal
+    offset leaves the scale unchanged. Add or subtract each quantity's signed contributions
+    through its aliases and take the largest absolute contribution among independent quantities.
+    A literal factor scales the contribution by its value in canonical units. Products,
+    quotients, powers and square roots transform the floor in the result's units. A unary
+    dimensionless function and an absolute value keep the input floor. Min, max and clip take
+    the largest contributing floor. A conditional takes its selected arm's scale. A keyed
+    read takes its selected member's scale. A frozen formula keeps its floor at retirement. Two
+    independently compared quantities use the larger floor. This amendment is language 0.2.1. An interval is reversed only
     when its lower end exceeds its upper end by more than their band. Inverted hard bounds within
     the band admit one point, their midpoint. Authored evidence stays exact.
     At a located trigger or switch crossing, place a single store exactly on its threshold,

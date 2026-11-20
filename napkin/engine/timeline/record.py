@@ -1345,12 +1345,13 @@ class Reader:
         self.record, self.program = record, program
         self.plan = _plan_of(program, record)
         self.units = copy(self.plan.units)
-        scales = dict(record.manifest.comparison_scales)
+        self.comparison_scales = dict(record.manifest.comparison_scales)
+        self.frozen_scales = {}
         self.comparison_time = None
         self.units.comparisons = Comparisons(
             self.units,
             record.manifest.comparison_factor,
-            lambda name: self.plan.comparison_quantity(name, scales, self._comparison_value),
+            self._comparison_quantity,
         )
 
         # The definitions that the commits of the run gave values, from its trace: a value is read
@@ -1363,6 +1364,7 @@ class Reader:
         self.finished_at = {}
         for entry in record.entries('finish'):
             self.finished_at[entry.owner] = entry.t
+            self.frozen_scales.update((name, (entry.t, size)) for name, size in entry.detail('scales') or ())
             for name, reads in entry.detail('reads') or ():
                 self.read[name, entry.owner] = reads
         self.kept = {}
@@ -1496,7 +1498,7 @@ class Reader:
         the time of a change from what it reads, in canonical units; a LookupError for a value that
         has none then. Depth first, with no recursion (see the class)."""
         t = float(t)
-        if self.definitions and self.comparison_time != t:
+        if (self.definitions or self.starts) and self.comparison_time != t:
             self.units.comparisons.floors.clear()
         self.comparison_time = t
         stack, waiting = [name], set()
@@ -1534,6 +1536,17 @@ class Reader:
         if isinstance(found, LookupError):
             raise found
         return found
+
+    def _comparison_quantity(self, name):
+        def latest(members):
+            place = bisect_right(members, self.comparison_time, key=self.starts.__getitem__)
+            return members[place - 1] if place else None
+
+        unit, size = self.plan.comparison_quantity(
+            name, self.comparison_scales, self._comparison_value, latest=latest
+        )
+        frozen = self.frozen_scales.get(name)
+        return (unit, frozen[1]) if frozen and frozen[0] <= self.comparison_time else (unit, size)
 
     def _comparison_value(self, name):
         if name not in self.plan.values:

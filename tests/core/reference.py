@@ -50,35 +50,66 @@ def real(value):
     return value
 
 
-def _unit(node):
-    """Unit size for the walk's anonymous expressions (its names are plain numbers)."""
-    if isinstance(node, expr.Unary):
-        return _unit(node.operand)
+def _scale(node, env):
+    """The walk's floor and signed contributions. Every independent name has scale one."""
+    if isinstance(node, expr.Ref):
+        return 1, {node: 1}
     if isinstance(node, expr.IfElse):
-        return _unit(node.body)
+        return _scale(node.body if walked(node.test, env) else node.orelse, env)
+    if isinstance(node, expr.Binary) and node.op == 'pow':
+        base, terms = _scale(node.left, env)
+        exponent = walked(node.right, env)
+        size = base**exponent
+        return size, terms if exponent == 1 else {node: size} if terms else {}
     if isinstance(node, expr.Binary):
-        if node.op == 'mul':
-            return _unit(node.left) * _unit(node.right)
-        if node.op == 'div':
-            return _unit(node.left) / _unit(node.right)
-        if node.op == 'pow':
-            return _unit(node.left) ** node.right.value if isinstance(node.right, expr.Const) else 1
-        return _unit(node.left if expr.names(node.left) or not expr.names(node.right) else node.right)
-    if isinstance(node, expr.Call):
+        (a, left), (b, right) = (_scale(child, env) for child in node.children)
+        if node.op in ('mul', 'div'):
+            if left and not right:
+                k = walked(node.right, env)
+                factor = k if node.op == 'mul' else 1 / k
+                return a * abs(factor), {n: c * factor for n, c in left.items()}
+            if right and not left:
+                k = walked(node.left, env)
+                if node.op == 'mul':
+                    return abs(k) * b, {n: k * c for n, c in right.items()}
+                a = abs(k)
+            size = a * b if node.op == 'mul' else a / b if b else 0
+            return size, {node: size} if left or right else {}
+        parts = [(a, left), (b, right)]
+    elif isinstance(node, expr.Call):
         if node.function == 'q':
-            return float(SCALES[node.args[1].value])
-        if node.function in ('sum', 'min', 'max', 'clip', 'abs'):
-            return _unit(node.args[0])
+            size, terms = _scale(node.args[0], env)
+            unit = float(SCALES[node.args[1].value])
+            return size * unit, {n: v * unit for n, v in terms.items()}
+        parts = [_scale(arg, env) for arg in node.args]
         if node.function == 'sqrt':
-            return math.sqrt(_unit(node.args[0]))
-    return 1
+            size = math.sqrt(parts[0][0])
+            return size, {node: size} if parts[0][1] else {}
+    elif isinstance(node, expr.Unary):
+        size, terms = _scale(node.operand, env)
+        return size, {n: -c for n, c in terms.items()} if node.op == 'neg' else terms
+    else:
+        return 1, {}
+    contributors = [part for part in parts if part[1]]
+    if not contributors:
+        return max(size for size, _ in parts), {}
+    if isinstance(node, expr.Binary) or node.function == 'sum':
+        terms = {}
+        for i, (_, signed) in enumerate(parts):
+            subtract = i and isinstance(node, expr.Binary) and node.op == 'sub'
+            for name, size in signed.items():
+                terms[name] = terms.get(name, 0) + (-size if subtract else size)
+        return max(map(abs, terms.values())), terms
+    size = max(size for size, _ in contributors)
+    return size, {node: size}
 
 
-def _ordered(op, a, b, x, y):
+def _ordered(op, a, b, x, y, env):
     if isinstance(x, (str, bool)) or isinstance(y, (str, bool)):
         return ORDER[op](x, y)
-    left, right = bool(expr.names(a)), bool(expr.names(b))
-    floor = max(_unit(n) for n, use in ((a, left or not right), (b, right or not left)) if use)
+    sizes = [_scale(node, env) for node in (a, b)]
+    named = any(is_named for _, is_named in sizes)
+    floor = max(size for size, is_named in sizes if is_named or not named)
     if abs(x - y) <= 1e-9 * max(floor, abs(x), abs(y)):
         return op in ('eq', 'le', 'ge')
     return ORDER[op](x, y)
@@ -104,7 +135,7 @@ def walked(node, env):
         left = walked(node.operands[0], env)
         for op, before, operand in zip(node.ops, node.operands, node.operands[1:]):
             right = walked(operand, env)
-            result = _ordered(op, before, operand, left, right)
+            result = _ordered(op, before, operand, left, right, env)
             if not result:
                 return result
             left = right
@@ -151,9 +182,9 @@ def walked(node, env):
         # The closed interval [low, high], read once; a reversed one is an error.
         value, low, high = args
         x, lo, hi = node.args
-        if _ordered('gt', lo, hi, low, high):
+        if _ordered('gt', lo, hi, low, high, env):
             raise ValueError('reversed')
-        return _ordered('le', lo, x, low, value) and _ordered('le', x, hi, value, high)
+        return _ordered('le', lo, x, low, value, env) and _ordered('le', x, hi, value, high, env)
     if name in ('min', 'max'):
         return real((min if name == 'min' else max)(args))
     (value,) = args

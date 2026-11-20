@@ -683,7 +683,7 @@ class Former:
             values.append((yield self._value(part, label)))
         x, low, high = values
         if not isinstance(low, Affine | list) and not isinstance(high, Affine | list) and low > high:
-            if self.plan.units.comparisons.ordered('gt', node.args[1], node.args[2], low, high):
+            if self.plan.units.comparisons.ordered('gt', node.args[1], node.args[2], low, high, self.value):
                 raise ExpressionError(f'{ops.REVERSED}: [{low!r}, {high!r}]')
             low = high = high + (low - high) / 2
         return self._chain(chain, [low, x, high], label)
@@ -783,7 +783,7 @@ def _compare(op, a, b, left, right, label, former):
             raise former._refused('a comparison of a relation')
         return (
             []
-            if former.plan.units.comparisons.ordered(op, left, right, a, b)
+            if former.plan.units.comparisons.ordered(op, left, right, a, b, former.value)
             else [(Affine({}, 1.0), '<=', label)]
         )
     if op in ('lt', 'gt', 'ne'):
@@ -1189,15 +1189,15 @@ class MovingDeclared(DeclaredWay):
 
     # ---- rates at a state ----------------------------------------------------------------------
 
-    def _operands(self, pair, t, y):
-        """The physical operands of a switch on a trial trajectory."""
+    def _switch_value(self, n, t, y):
+        """A physical switch operand or its scale on a trial trajectory."""
         self.trial = self._held(y)
         try:
 
             def read(name):
                 return self.run.in_region(name, t, self.region)
 
-            return tuple(float(lazily(self.region.expression(n), read, self.plan.units, t)) for n in pair)
+            return lazily(self.region.expression(n), read, self.plan.units, t)
         finally:
             self.trial = None
 
@@ -1211,21 +1211,7 @@ class MovingDeclared(DeclaredWay):
         self._cache.clear()
 
         def side_at(at, y):
-            def operand(node):
-                self.trial = self._held(y)
-                try:
-                    return float(
-                        lazily(
-                            region.expression(node),
-                            lambda name: self.run.in_region(name, at, region),
-                            self.plan.units,
-                            at,
-                        )
-                    )
-                finally:
-                    self.trial = None
-
-            return operand
+            return lambda node: self._switch_value(node, at, y)
 
         def choose(signs):
             region.set(signs, region.selected_rows(self.run, signs, side_at(t, self.y)))
@@ -1457,17 +1443,20 @@ class MovingDeclared(DeclaredWay):
         """Locations of the armed physical switches bracketed by one smooth interval."""
         for pair, sign in self.region.signs.items():
 
+            def reader(at):
+                state = solution(at)
+                return lambda n: self._switch_value(n, at, state)
+
             def gap(at):
-                a, b = self._operands(pair, at, solution(at))
+                read = reader(at)
+                a, b = (read(node) for node in pair)
                 return a - b
 
             departure = sign
             if not departure:
                 first = gap(start)
                 departure = int(first > 0) - int(first < 0)
-            within = integrate.contact_band(
-                pair, lambda t: self._operands(pair, t, solution(t)), self.plan.units
-            )
+            within = integrate.contact_band(pair, reader, self.plan.units)
             at = integrate.crossing_time(gap, start, end, side=departure, within=within)
             if at is not None:
                 yield at, pair, 'switch'

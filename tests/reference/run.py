@@ -1045,9 +1045,14 @@ class Run:
                     f'{occ.label} cannot finish at t = {t} h: its store {label(cell)} still holds {self._quantity(cell, left)}. '
                     'Wait for it to drain, move the rest to a named stock, or send it to SINK.'
                 )
-        for cell, v in list(view.cells.items()):
-            if isinstance(v, FormulaV) and _holder(cell.owner) is occ:
-                view.cells[cell] = self._frozen(cell, occ)
+        retiring = [
+            cell for cell, v in view.cells.items() if isinstance(v, FormulaV) and _holder(cell.owner) is occ
+        ]
+        frozen = {cell: self._frozen(cell, occ) for cell in retiring}
+        for cell, (value, floor) in frozen.items():
+            view.cells[cell] = value
+            if floor is not None:
+                view.frozen_scales[cell] = floor
         for (owner, _), f in list(self.flow_at.items()):
             if owner is occ and f in view.live:
                 view.live.remove(f)
@@ -1059,11 +1064,18 @@ class Run:
     def _frozen(self, cell, occ):
         """The result that a formula of a finishing occurrence keeps, or the recorded reason."""
         try:
-            return plain(Ev(self, self.view, Scope()).cell(cell))
+            evaluator = Ev(self, self.view, Scope())
+            value = plain(evaluator.cell(cell))
+            field = self.fields.get(cell)
+            floor = None
+            if type(value) in (int, Fraction) and (field is None or field.scale is None):
+                formula = self.view.cells[cell]
+                floor = evaluator.formula_scopes[cell].operand(formula.expr)[0]
+            return value, floor
         except RunFailed as e:
             return Failed(
                 f'{label(cell)} was not available when {occ.label} finished at t = {self.view.t} h: {e}'
-            )
+            ), None
 
     # --- step 4: conditions ------------------------------------------------------------------------
 

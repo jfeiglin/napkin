@@ -346,7 +346,7 @@ class Vector:
             return self._gathered(self._plan(columns[read]), evaluation, ask=True)
 
         values = arrays.values(
-            shape, Reads(frozenset(columns), column), self.plan.units, len(members), columns
+            shape, Reads(frozenset(columns), column), self.plan.units, len(members), columns, evaluation.read
         )
         return np.broadcast_to(np.asarray(values, dtype=float), (len(members),)).tolist()
 
@@ -964,10 +964,6 @@ class Sparse(Way):
                 if not departure:
                     continue
 
-                def operands(t):
-                    side = self._side(t, solution(t))
-                    return side(a), side(b)
-
                 at = integrate.crossing_time(
                     gap,
                     start,
@@ -975,7 +971,9 @@ class Sparse(Way):
                     side=departure,
                     accepted=(first, last),
                     exact=fixed,
-                    within=integrate.contact_band(pair, operands, self.plan.units),
+                    within=integrate.contact_band(
+                        pair, lambda t: self._side(t, solution(t)), self.plan.units
+                    ),
                 )
                 if at is not None:
                     yield at, pair, 'switch'

@@ -54,6 +54,15 @@ class Reads(Mapping):
             self.found[name] = found
         return found
 
+    def for_scale(self, node):
+        """A named operand's formula can choose an arm using names outside its caller."""
+        names = nodes.names(node)
+        if names <= self.names:
+            return self
+        extended = Reads(self.names | names, self.read)
+        extended.found = self.found
+        return extended
+
     def __contains__(self, name):
         return name in self.found or name in self.names
 

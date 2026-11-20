@@ -30,12 +30,15 @@ is read.
 
 from __future__ import annotations
 
+from copy import copy
+
 import numpy as np
 from scipy import special
 
 from . import expr, ops
-from .comparisons import Comparisons, against
+from .comparisons import Comparisons, UnresolvedScale, against
 from .errors import ExpressionError
+from .evaluation import value as scalar_value
 
 NOT_FINITE = 'Expression produced a nonfinite or non-real value'
 # What `_Pass.ready` gives for a part that needs a computation of its own.
@@ -72,7 +75,8 @@ def _number(value):
 class _Pass:
     """One pass over a node for the instances `chosen` (None: all of them; else their places)."""
 
-    def __init__(self, environment, registry, count, bindings):
+    def __init__(self, environment, registry, count, bindings, read_bound):
+        self.read_bound = read_bound
         self.bindings = bindings
         self.environment, self.registry, self.count = environment, registry, count
         # The value of each part for all instances, by the part. An expression can hold one part in
@@ -156,24 +160,44 @@ class _Pass:
     def band(self, left, right, a, b, places):
         policy = self.registry.comparisons
         if self.bindings and policy.named is not None:
-            names = tuple(sorted(expr.names(left) | expr.names(right)))
-            columns = tuple((name, self.bindings[name]) for name in names)
-            key = (left, right, columns)
+            names = sorted(expr.names(left) | expr.names(right))
+            key = (left, right, tuple((n, self.bindings[n]) for n in names))
             floors = policy.floors.get(key)
             if floors is None:
-                floors = np.array(
-                    [
-                        Comparisons(
-                            self.registry, policy.factor, lambda name: policy.named(self.bindings[name][i])
-                        ).floor(left, right)
-                        for i in range(self.count)
-                    ]
-                )
+                try:
+                    floors = np.array([self.row_policy(i).floor(left, right) for i in range(self.count)])
+                except UnresolvedScale:
+                    floors = _OPEN
                 policy.floors[key] = floors
-            floor = floors if places is None else floors[places]
+            if floors is _OPEN:
+                floor = [self.row_floor(left, right, i) for i in self.places(places)]
+            else:
+                floor = floors if places is None else floors[places]
         else:
-            floor = policy.floor(left, right)
+            try:
+                floor = policy.floor(left, right)
+            except UnresolvedScale:
+                floor = [self.row_floor(left, right, i) for i in self.places(places)]
         return policy.factor * np.maximum(floor, np.maximum(np.abs(a), np.abs(b)))
+
+    def row_policy(self, i):
+        policy = self.registry.comparisons
+        if not self.bindings or policy.named is None:
+            return policy
+
+        def bound(name):
+            concrete = self.bindings[name][i] if name in self.bindings else name
+            return policy.named(concrete)
+
+        return Comparisons(self.registry, policy.factor, bound)
+
+    def row_floor(self, left, right, i):
+        """Read a scale's selected arm in this row, including through a named formula."""
+        policy = self.row_policy(i)
+        units = copy(self.registry)
+        units.comparisons = policy
+        row = _Row(self.environment, self.read_bound, i)
+        return policy.floor(left, right, lambda node: scalar_value(node, row, units))
 
     def spread(self, value, chosen):
         """A value as an array over the chosen instances."""
@@ -186,6 +210,25 @@ class _Pass:
         if isinstance(found, np.ndarray):
             return found.astype(bool)
         return np.full(self.size(chosen), bool(found))
+
+
+class _Row:
+    """One instance's values for a scale that depends on its chosen branch."""
+
+    def __init__(self, environment, read_bound, index):
+        self.environment, self.read_bound, self.index = environment, read_bound, index
+
+    def __contains__(self, name):
+        return name in self.environment or self.read_bound is not None
+
+    def __getitem__(self, name):
+        if name not in self.environment:
+            return self.read_bound(name)
+        values = self.environment[name]
+        if isinstance(values, np.ndarray):
+            entry = values[self.index]
+            return entry.item() if isinstance(entry, np.generic) else entry
+        return values
 
 
 def _numbers(args, chosen):
@@ -481,7 +524,7 @@ TABLE = ops.handlers(
 )
 
 
-def values(node, environment, registry, count, bindings=None):
+def values(node, environment, registry, count, bindings=None, read_bound=None):
     """The value of a node for each of `count` instances: an array of `count` values, or one value when
     the node reads no array of the environment. Each failure is an ExpressionError."""
-    return _Pass(environment, registry, count, bindings).value(node, None)
+    return _Pass(environment, registry, count, bindings, read_bound).value(node, None)

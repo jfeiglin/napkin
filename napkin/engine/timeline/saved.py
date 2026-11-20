@@ -635,6 +635,9 @@ def restore(run, data):
     plan.log = log
     _run(run, dict(parts['run']))
     _recorder(run.recorder, dict(parts['recorder']))
+    for entry in run.recorder.trace:
+        if entry.kind == 'finish':
+            plan.frozen_scales.update(entry.detail('scales') or ())
     run.chance.kept = set(dict(parts['draws'])['kept'])
     found = dict(parts['breaks'])
     breaks = run.breaks

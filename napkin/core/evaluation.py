@@ -29,6 +29,7 @@ from collections import OrderedDict
 from threading import RLock
 
 from . import expr, ops
+from .comparisons import Comparisons
 from .errors import ExpressionError
 
 # The value of code that a program computes when it runs.
@@ -67,14 +68,28 @@ def _clip(value, low, high):
     return min(max(value, low), high)
 
 
-def _within(comparisons, operands, value, low, high):
+def _within(comparisons, operands, value, low, high, read=None):
     """A closed membership, with its independently checked pair of ends."""
     x, lower, upper = operands
-    if comparisons.ordered('gt', lower, upper, low, high):
+    if comparisons.ordered('gt', lower, upper, low, high, read):
         raise ExpressionError(f'{ops.REVERSED}: [{low!r}, {high!r}]')
-    return comparisons.ordered('le', lower, x, low, value) and comparisons.ordered(
-        'le', x, upper, value, high
+    return comparisons.ordered('le', lower, x, low, value, read) and comparisons.ordered(
+        'le', x, upper, value, high, read
     )
+
+
+def _scale_value(node, environment, registry):
+    """Read a selected arm's condition in the same environment as its value."""
+    if hasattr(environment, 'for_scale'):
+        environment = environment.for_scale(node)
+    return value(node, environment, registry)
+
+
+class _ScaleNames(dict):
+    """Lazy reads from the locals of a generated continuous program."""
+
+    def __getitem__(self, name):
+        return super().__getitem__(name)()
 
 
 def _sum(values):
@@ -97,6 +112,8 @@ RUNTIME = {
     '_clip': _clip,
     '_within': _within,
     '_sum': _sum,
+    '_scale_value': _scale_value,
+    '_ScaleNames': _ScaleNames,
     'min': min,
     'max': max,
     'abs': abs,
@@ -168,6 +185,7 @@ class _Writer:
     def __init__(self, read, constants, units, fold, lean=False, operands=None):
         self.operands = [] if operands is None else operands
         self.read, self.constants, self.units, self.fold, self.lean = read, constants, units, fold, lean
+        self.ordinary_environment = True
         self.count = 0
         self.loose = set()  # with `lean`: the code whose value is not checked yet
         # The parts of a deep node that have code of their own (`split`): node -> (the code that
@@ -222,6 +240,17 @@ class _Writer:
     def sure(self, code):
         """The code of a value for a reader that could hide a value that is not finite."""
         return self.checked(code) if code in self.loose else code
+
+    def scale_reader(self, pairs):
+        """The expression reader for scales that depend on the current point."""
+        if self.ordinary_environment:
+            return 'lambda n: _scale_value(n, E, R)'
+        policy = self.units.comparisons if self.units is not None else Comparisons(None)
+        names = policy.control_names(part for pair in pairs for part in pair)
+        if not names:
+            return 'None'
+        fields = ', '.join(f'{name!r}: lambda: {self.code(expr.ref(name))[0]}' for name in sorted(names))
+        return f'lambda n: _scale_value(n, _ScaleNames({{{fields}}}), R)'
 
     def given(self, code):
         """The code of a result that is finite when the values that it reads are checked: a check
@@ -322,7 +351,7 @@ def _chain(writer, node):
         comparisons = writer.units.comparisons
         result = _known(
             lambda: all(
-                comparisons.ordered(op, left, right, a, b)
+                comparisons.ordered(op, left, right, a, b, lambda n: value(n, writer.constants, writer.units))
                 for op, left, right, a, b in zip(
                     node.ops, node.operands, node.operands[1:], values, values[1:]
                 )
@@ -337,8 +366,9 @@ def _chain(writer, node):
     for i, (op, (source, _)) in enumerate(zip(node.ops, written[1:])):
         middle = f'_middle{offset + i + 1}'
         right = f'({middle} := {source})' if i + 1 < len(node.ops) else source
+        reader = writer.scale_reader([(node.operands[i], node.operands[i + 1])])
         parts.append(
-            f'R.comparisons.ordered({op!r}, _operands[{offset + i}], _operands[{offset + i + 1}], {left}, {right})'
+            f'R.comparisons.ordered({op!r}, _operands[{offset + i}], _operands[{offset + i + 1}], {left}, {right}, {reader})'
         )
         left = middle
     return '(' + ' and '.join(parts) + ')', UNKNOWN
@@ -348,13 +378,21 @@ def _membership(writer, node):
     written = [writer.code(part) for part in node.args]
     values = [value for _, value in written]
     if writer.units is not None and all(value is not UNKNOWN for value in values):
-        result = _known(_within, writer.units.comparisons, node.args, *values)
+        result = _known(
+            _within,
+            writer.units.comparisons,
+            node.args,
+            *values,
+            lambda n: value(n, writer.constants, writer.units),
+        )
         if result is not UNKNOWN:
             return _literal(result)
     offset = len(writer.operands)
     writer.operands.append(node.args)
     parts = ', '.join(writer.sure(source) for source, _ in written)
-    return f'_within(R.comparisons, _operands[{offset}], {parts})', UNKNOWN
+    x, lo, hi = node.args
+    reader = writer.scale_reader([(lo, hi), (lo, x), (x, hi)])
+    return f'_within(R.comparisons, _operands[{offset}], {parts}, {reader})', UNKNOWN
 
 
 def _lazy(conjunction):
@@ -672,6 +710,7 @@ def program_text(
         return read(name)
 
     writer = _Writer(reads, constants, units, fold=True, lean=lean, operands=operands)
+    writer.ordinary_environment = 'E' in arguments and write
     lines = [f'def program({", ".join(arguments)}):']
     for name, node in assignments:
         lines += [f'    {line}' for line in writer.split(node)]

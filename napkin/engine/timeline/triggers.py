@@ -233,7 +233,11 @@ class Triggers:
                         raise ExpressionError(f'{nodes.notation(node)}: only == and != compare these values')
                 else:
                     difference = float(a) - float(b)
-                    tolerance = self.comparison_band(left, right, a, b) if band or close is not None else 0.0
+                    tolerance = (
+                        self.comparison_band(left, right, a, b, lambda n: self.side(n, t))
+                        if band or close is not None
+                        else 0.0
+                    )
                     if close is not None and abs(difference) <= tolerance:
                         close.append(node)
                     found = against(op, difference, tolerance if band else 0.0)
@@ -269,13 +273,15 @@ class Triggers:
             later,
         )
 
-    def comparison_band(self, left, right, a, b):
+    def comparison_band(self, left, right, a, b, read=None):
         """Change 29: scale the band in the unit of the compared values."""
-        return self.plan.units.comparisons.band(left, right, a, b)
+        return self.plan.units.comparisons.band(left, right, a, b, read)
 
     def band(self, left, right, t=None):
         at = self.run.now if t is None else t
-        return self.comparison_band(left, right, self.side(left, at), self.side(right, at))
+        return self.comparison_band(
+            left, right, self.side(left, at), self.side(right, at), lambda n: self.side(n, at)
+        )
 
     def moving_reads(self, *parts, through_rates=True):
         """The engine names that the nodes read, through formulas, that move between moments: the
@@ -657,7 +663,7 @@ class Triggers:
             levels[name] = value
             tx.writes[name] = value
             a, b = side(left), side(right)
-        band = self.comparison_band(left, right, a, b)
+        band = self.comparison_band(left, right, a, b, side)
         if abs(a - b) > band:
             raise SimulationError(
                 f'the crossing of {nodes.notation(left)} and {nodes.notation(right)} at {t:g} h '

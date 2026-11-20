@@ -33,6 +33,7 @@ import math
 from collections import ChainMap
 
 from . import evaluation, expr, ops
+from .comparisons import UnresolvedScale
 from .errors import ExpressionError
 
 # Marks in a context: some narrowed interval has no value; a condition narrows an expression that is
@@ -265,22 +266,25 @@ class _Prover:
         flags = bool(context.get(EMPTY)), bool(context.get(GUARDED))
         return (bounds, nonzero, flags) if bounds or nonzero or any(flags) else ()
 
-    def constant_value(self, node, context):
-        """The value of a node whose names all have one value in the context, else None."""
+    def known_value(self, node, context):
+        """Evaluate from the single-valued names of this branch, including a scale's selector."""
+        env = {}
+        for name in expr.names(node):
+            pair = context.get(name)
+            if isinstance(pair, tuple) and pair[0] == pair[1]:
+                env[name] = pair[0]
         try:
-            needed = expr.names(node)
-            env = {}
-            for name in needed:
-                pair = context.get(name)
-                if isinstance(pair, tuple) and pair[0] == pair[1]:
-                    env[name] = pair[0]
-            if needed <= env.keys():
-                result = evaluation.value(node, env, self.registry)
-                if isinstance(result, (int, float)) and not isinstance(result, bool):
-                    return float(result)
-        except (ExpressionError, ValueError, KeyError, OverflowError, ZeroDivisionError):
-            pass
-        return None
+            return evaluation.value(node, env, self.registry)
+        except (ExpressionError, ValueError, KeyError, OverflowError, ZeroDivisionError) as problem:
+            raise UnresolvedScale from problem
+
+    def constant_value(self, node, context):
+        """A fixed numeric threshold in this branch, else None."""
+        try:
+            result = self.known_value(node, context)
+        except UnresolvedScale:
+            return None
+        return float(result) if isinstance(result, (int, float)) and not isinstance(result, bool) else None
 
     def refine(self, context, condition, positive):
         """The context of the branch where `condition` holds (`positive`) or fails. Each refinement
@@ -325,7 +329,11 @@ class _Prover:
         near_low = near_high = right
         if op in ('ge', 'le', 'eq'):
             policy = self.registry.comparisons
-            gap = policy.factor * max(policy.floor(left, other), abs(right))
+            try:
+                floor = policy.floor(left, other, read=lambda node: self.known_value(node, context))
+            except UnresolvedScale:
+                return context  # an unknown floor cannot narrow an inclusive condition
+            gap = policy.factor * max(floor, abs(right))
             edge = right / (1 - policy.factor) if policy.factor < 1 else math.copysign(math.inf, right)
             near_low = min(right - gap, edge)
             near_high = max(right + gap, edge)
@@ -558,7 +566,18 @@ def _clip(prover, node, context, seen):
 def _within(prover, node, context, seen):
     # A membership has a value only where its interval is ordered (`ops.REVERSED`).
     args = _arguments(prover, node, context, seen)
-    if prover.registry.comparisons.ordered('gt', node.args[1], node.args[2], args[1][1], args[2][0]):
+    low, high = args[1][1], args[2][0]
+    if low <= high:
+        return (0, 1)
+    policy = prover.registry.comparisons
+    try:
+        reversed_ = policy.ordered(
+            'gt', *node.args[1:], low, high, read=lambda n: prover.known_value(n, context)
+        )
+    except UnresolvedScale:
+        # Only the known operands give a guaranteed band across all possible choices.
+        reversed_ = low - high > policy.factor * max(abs(low), abs(high))
+    if reversed_:
         raise ExpressionError('Cannot prove the ends of a membership test are ordered')
     return (0, 1)
 

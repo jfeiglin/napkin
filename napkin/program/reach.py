@@ -232,8 +232,12 @@ class _Reach:
             if left is None or right is None:
                 return None
             try:
+                # The finite numeric sets here contain dimensionless literals and occurrence
+                # counts. A choice has already selected its possible values in this scope.
                 return frozenset(
-                    self.comparisons.ordered(node.ops[0], *node.operands, a, b) for a in left for b in right
+                    self.comparisons.ordered(node.ops[0], nodes.const(a), nodes.const(b), a, b)
+                    for a in left
+                    for b in right
                 )
             except TypeError:
                 return None

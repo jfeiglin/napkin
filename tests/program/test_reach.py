@@ -14,6 +14,7 @@ from napkin.program.build import (
     draw,
     event,
     if_,
+    ifelse,
     input_,
     named,
     q,
@@ -28,6 +29,17 @@ from napkin.program.config import Configuration, InputValue, Request
 from napkin.program.reach import reach
 from napkin.program.refs import EnumValue
 from tests.program.examples import EXAMPLES, UNITS
+
+
+def test_a_fixed_gate_selects_the_operand_of_a_reachability_comparison():
+    """The gate stays closed. The condition reads zero and cannot start the event."""
+    b = Builder(UNITS)
+    b.entity(
+        'plant',
+        input_('open', BOOL, False),
+        event('work', when(ifelse(this.open, 2, 0) > 1, start(this.work)), after(q(1, 'h'))),
+    )
+    assert reach(b.finish()).events['plant.work'][0] is False
 
 
 def _plant(gate='CLOSED', as_input=False):

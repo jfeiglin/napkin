@@ -220,6 +220,7 @@ class View:
     def __init__(self):
         self.t = Fraction(0)
         self.cells = {}  # Cell -> value
+        self.frozen_scales = {}
         self.results = None  # var -> value of the last settlement. None before the first one.
         self.occs = {}  # (Ent, event name) -> list of Occ
         self.live = []  # the flows that are connected now, in creation order
@@ -232,6 +233,7 @@ class View:
         """A copy that later changes of this view leave as it is: a frame of the record."""
         v = View()
         v.t, v.cells = self.t, dict(self.cells)
+        v.frozen_scales = self.frozen_scales.copy()
         v.results = None if self.results is None else dict(self.results)
         v.occs = {k: list(o) for k, o in self.occs.items()}
         v.live, v.entered, v.bounds = list(self.live), dict(self.entered), dict(self.bounds)
@@ -275,6 +277,8 @@ class Ev:
         self.run, self.view, self.scope, self.mode, self.tx = run, view, scope or Scope(), mode, tx
         self.unknowns = unknowns
         self.operands = {}
+        self.choices = {}
+        self.formula_scopes = {}
         self.shared = shared or SimpleNamespace(
             stops=[],
             contacts=[],
@@ -362,7 +366,8 @@ class Ev:
             self.shared.busy.append(c)
             self.shared.in_formula += 1
             try:
-                return self.fork(v.scope).val(v.expr)
+                evaluator = self.formula_scopes[c] = self.fork(v.scope)
+                return evaluator.val(v.expr)
             finally:
                 self.shared.busy.pop()
                 self.shared.in_formula -= 1
@@ -621,56 +626,77 @@ class Ev:
         """Own scale and unit size of a compared value, independently of the engine."""
         kind, args = expression._k, expression._a
         if kind == 'const':
-            return expression._unit_size, expression._unit_size, False
+            return expression._unit_size, expression._unit_size, {}
         if kind in ('attr', 'name'):
             ref = self.operands[id(expression)] if id(expression) in self.operands else self.ref(expression)
+
+            def quantity(floor, unit):
+                return floor, unit, {ref: floor}
+
             target = ref.var[1] if isinstance(ref, Res) else ref.owner if isinstance(ref, Cell) else None
-            if isinstance(target, End):
-                unit = self.run.fields[target.cell].unit
-                size = self.run.model.units.get(unit) or (scale_of(unit) if unit else Fraction(1))
-                return size, size, True
-            if isinstance(target, (FlowRT, LegRT)):
-                decl = target.decl or target.flow.decl
-                size = Fraction(1) if isinstance(ref, Res) and ref.var[0] == 'frac' else decl.unit_size
-                return size, size, True
             if isinstance(target, Sol):
                 solver = next(s for s in target.ent.template.solvers if s.name == target.name)
                 local = next(u for u in solver.solve_for if isinstance(u, Unknown) and u.name == ref.var[2])
                 if local.scale is not None:
                     owner = self.fork(Scope(target.ent))
                     scope = Scope(target.ent, extra={n: owner.ref(e) for n, e in solver.inputs.items()})
-                    return abs(owner.fork(scope).num(local.scale)), local.unit_size, True
-                return local.unit_size, local.unit_size, True
+                    return quantity(abs(owner.fork(scope).num(local.scale)), local.unit_size)
+                return quantity(local.unit_size, local.unit_size)
             field = self.run.fields.get(ref) if isinstance(ref, Cell) else None
             unit = self.run.model.units.get(field.unit) if field is not None else None
             unit = unit or (scale_of(field.unit) if field is not None and field.unit else Fraction(1))
-            if field is not None:
+            if isinstance(target, End):
+                spelled = self.run.fields[target.cell].unit
+                unit = self.run.model.units.get(spelled) or (scale_of(spelled) if spelled else Fraction(1))
+            if isinstance(target, (FlowRT, LegRT)):
+                decl = target.decl or target.flow.decl
+                unit = Fraction(1) if isinstance(ref, Res) and ref.var[0] == 'frac' else decl.unit_size
+            if ref in self.view.frozen_scales:
+                return quantity(self.view.frozen_scales[ref], unit)
+            if field is not None and field.scale is not None:
+                captured = self.run.own_scales.get(ref)
                 owner = self.fork(self.run.scope_of(ref.owner))
-                if field.scale is not None:
-                    captured = self.run.own_scales.get(ref)
-                    return abs(owner.num(field.scale)) if captured is None else captured, unit, True
-                formula = self.raw(ref)
-                if isinstance(formula, FormulaV) and formula.expr._k in ('attr', 'name'):
-                    return self.fork(formula.scope).operand(formula.expr)[0], unit, True
-            return unit, unit, True
+                return quantity(abs(owner.num(field.scale)) if captured is None else captured, unit)
+            formula = self.raw(ref) if isinstance(ref, Cell) else None
+            if isinstance(formula, FormulaV):
+                evaluator = self.formula_scopes.get(ref) or self.fork(formula.scope)
+                own, _, terms = evaluator.operand(formula.expr)
+                return own, unit, terms or {ref: own}
+            return quantity(unit, unit)
         if kind == 'op':
             sym, a, b = args
-            _, left, read_left = self.operand(a)
-            _, right, read_right = self.operand(b)
-            size = (
-                left * right if sym == '*' else left / right if sym == '/' else left if read_left else right
-            )
-            return size, size, read_left or read_right
+            left, left_unit, lterms = self.operand(a)
+            right, right_unit, rterms = self.operand(b)
+            if sym == '+' or sym == '-':
+                terms = lterms.copy()
+                for quantity, size in rterms.items():
+                    terms[quantity] = terms.get(quantity, 0) + (size if sym == '+' else -size)
+                floor = max(map(abs, terms.values()), default=max(left, right))
+                return floor, right_unit if rterms and not lterms else left_unit, terms
+            unit = left_unit * right_unit if sym == '*' else left_unit / right_unit
+            if not rterms and lterms:
+                factor = self.num(b) if sym == '*' else 1 / self.num(b)
+                return left * abs(factor), unit, {k: size * factor for k, size in lterms.items()}
+            if sym == '*' and not lterms and rterms:
+                factor = self.num(a)
+                return right * abs(factor), unit, {k: size * factor for k, size in rterms.items()}
+            numerator = abs(self.num(a)) if rterms and not lterms else left
+            floor = left * right if sym == '*' else numerator / right if right else 0
+            return floor, unit, {expression: floor} if lterms or rterms else {}
         if kind == 'neg':
-            _, unit, named = self.operand(args[0])
-            return unit, unit, named
+            floor, unit, terms = self.operand(args[0])
+            return floor, unit, {k: -size for k, size in terms.items()}
         if kind == 'if':
-            scale = self.operand(args[1])[1]
-            return scale, scale, True
+            cond, then, other = args
+            selected = self.choices[id(cond)] if id(cond) in self.choices else self.truth(cond)
+            return self.operand(then if selected else other)
         if kind == 'fn' and args[0] in ('min', 'max', 'sum', 'abs', 'clip') and args[1]:
-            _, size, named = self.operand(args[1][0])
-            return size, size, named
-        return Fraction(1), Fraction(1), True
+            parts = [self.operand(part) for part in args[1]]
+            contributors = [part for part in parts if part[2]]
+            kept = contributors or parts
+            floor = max(part[0] for part in kept)
+            return floor, kept[0][1], {expression: floor} if contributors else {}
+        return Fraction(1), Fraction(1), {expression: Fraction(1)}
 
     def band(self, a, b, x, y):
         left, _, named_left = self.operand(a)
@@ -747,6 +773,7 @@ class Ev:
         c = self.val(cond)
         if isinstance(c, (Rel, list)):
             raise Diagnostic('unsupported in a solver: a choice that reads an unknown')
+        self.choices[id(cond)] = c
         return self.ref(then if c else other)
 
     def _in(self, x, lo, hi):

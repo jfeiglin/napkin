@@ -68,6 +68,24 @@ class Counted(dict):
         return super().__getitem__(name)
 
 
+@pytest.mark.parametrize(
+    ('gate', 'ordered'), [((True, True), True), ((False, False), False), ((0, 1), False)]
+)
+def test_a_membership_proof_uses_the_scale_of_every_possible_selected_end(gate, ordered):
+    """Both lower ends hold 2e-12. The coarse one compares equal to zero.
+    The fine one exceeds zero, so its interval is reversed whenever it is selected."""
+    units = UnitSystem({})
+    units.comparisons.named = lambda name: (1, 1e-12 if name == 'fine' else 1)
+    ranges = {'gate': gate, 'coarse': (2e-12, 2e-12), 'fine': (2e-12, 2e-12)}
+    prove = domain_prover(ranges, units)
+    test = nodes.read('within(0, coarse if gate else fine, 0)')
+    if ordered:
+        assert prove(test) == (0, 1)
+    else:
+        with pytest.raises(ExpressionError, match='ends of a membership test are ordered'):
+            prove(test)
+
+
 def test_each_entry_of_the_expressions_takes_a_node_or_a_number_and_refuses_a_text():
     """A text is a TypeError at each entry, and in each place of an entry that takes an expression;
     the node of the same text and a number are taken."""
