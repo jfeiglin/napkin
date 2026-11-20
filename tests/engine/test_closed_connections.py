@@ -13,6 +13,7 @@ carries nothing. Then the audit's case and its variants, worked by hand.
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 
 import pytest
 
@@ -41,11 +42,11 @@ from tests.engine.test_claim_order import TIMES, chosen, drawn, network
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 
 
-def values(program, keys):
-    """The values of `keys` at TIMES and the time at which the run failed (None if it did not)."""
-    record = run(program, Configuration(Request(TIMES[-1])))
+def values(program, keys, configuration):
+    """The values of `keys` at TIMES, or the failure that ended the run."""
+    record = run(program, configuration)
     if record.failure is not None:
-        return None, record.failure.t
+        return None, record.failure
     return {name: read(record, program, [key], list(TIMES))[0].values for name, key in keys.items()}, None
 
 
@@ -61,12 +62,18 @@ def closed_pipe_changes_nothing(seed, routes, solved):
         sink = rng.choice([s for s in [None, *range(len(kinds))] if s is None or s != source])
     extra = (source, sink if source is not None or sink is not None else 0, rng.choice([0, 1, 3]))
     mine = chosen(seed, [*names, 'x']) if solved else set()
-    before, failed = values(network(seed, routes, mine - {'x'}, solved=solved)[0], keys)
+    configuration = Configuration(Request(TIMES[-1]))
+    before, failed = values(network(seed, routes, mine - {'x'}, solved=solved)[0], keys, configuration)
     keys = {**keys, 'x': Key('x', ('pipe', 'actual_rate'))}
-    found, failed_now = values(network(seed, routes, mine, extra=extra, solved=solved)[0], keys)
-    assert failed_now == failed, (seed, extra, failed, failed_now)
-    if before is None:
+    found, failed_now = values(
+        network(seed, routes, mine, extra=extra, solved=solved)[0], keys, configuration
+    )
+    if failed is not None:
+        assert failed_now is not None, (seed, extra, failed)
+        assert failed_now.t == pytest.approx(failed.t, rel=0, abs=configuration.numerics.crossing)
+        assert replace(failed_now, t=failed.t) == failed, (seed, extra)
         return
+    assert failed_now is None, (seed, extra, failed_now)
     assert found['x'] == (0,) * len(TIMES), (seed, extra)
     for name, expected in before.items():
         assert found[name] == pytest.approx(expected, rel=1e-9, abs=1e-9), (seed, extra, name)
