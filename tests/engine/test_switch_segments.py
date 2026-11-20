@@ -24,11 +24,15 @@ from napkin.program.build import (
     flow,
     fmax,
     formula,
+    given,
     ifelse,
     input_,
+    local,
     named,
     q,
     reset_when,
+    solve_for,
+    solver,
     start,
     t,
     this,
@@ -246,6 +250,37 @@ def test_a_located_switch_belongs_to_the_scheduled_moment_only_inside_its_time_b
     assert [item.values[0] for item in observed] == [3 if gap < -1 else 1, 1 if gap > 1 else 3]
     contacts = [(entry.t, entry.part, entry.detail('located')) for entry in record.entries('contact')]
     assert contacts == ([(1, 'tank.fill', pytest.approx(located, abs=2e-14))] if abs(gap) <= 1 else [])
+
+
+@pytest.mark.parametrize('gap', [F(-1, 10**10), F(1, 10**10)], ids=['early', 'late'])
+@pytest.mark.parametrize('way', ['component', 'sparse', 'declared'])
+def test_a_clock_inside_the_comparison_band_of_a_stage_keeps_its_outgoing_rate(gap, way):
+    at = 2 + gap
+    b = Builder(UNITS)
+    tank = b.entity(
+        'tank',
+        value('water', 'L', 0, lower=0, inflow=endpoint(capacity=rate(10)) if way == 'sparse' else None),
+        value('incoming', 'L/h', 0),
+        value('outgoing', 'L/h', 0),
+        flow('fill', SOURCE, this.water, request=formula(ifelse(t <= q(2, 'h'), rate(1), rate(3)))),
+        event(
+            'look',
+            after(q(at, 'h'), assign(this.incoming, this.fill.actual_rate)),
+            after(q(0, 'h'), assign(this.outgoing, this.fill.actual_rate)),
+        ),
+    )
+    if way == 'declared':
+        b.entity('provider', solver('dispatch', given('fill', tank.fill), solve_for(local.fill.actual_rate)))
+    b.setup(start(named('tank').look))
+    program = b.finish()
+    rec = run(program, Configuration(Request(3)))
+    assert rec.failure is None
+    (clock,) = rec.entries('contact', 'provider.dispatch' if way == 'declared' else 'tank.fill')
+    assert clock.t == float(at) and clock.detail('located') == 2
+    rows = read(rec, program, ['tank.incoming', 'tank.outgoing', 'tank.water'], [3])
+    assert [row.values[0] for row in rows] == pytest.approx(
+        [1, 3, float(at + 3 * (3 - at))], abs=1e-12, rel=0
+    )
 
 
 @pytest.mark.parametrize('capped', [False, True], ids=['component', 'sparse'])
@@ -470,6 +505,34 @@ def test_a_falling_request_reaches_zero_without_spending_negative_water(capped):
     record = run(program, Configuration(Request(2)))
     assert record.failure is None
     assert read(record, program, ['tank.water'], [0.5, 1, 2])[0].values == pytest.approx([3 / 8, 0.5, 0.5])
+
+
+@pytest.mark.parametrize('gap', [-0.5, 0.5])
+def test_an_authored_clock_groups_a_bound_in_an_independent_set_without_a_stage(gap):
+    crossing = 2**-16
+    limit = 1 + crossing * gap
+    builder = Builder(UNITS)
+    builder.entity(
+        'clocked',
+        value('water', 'L', 0, lower=0),
+        flow('fill', SOURCE, this.water, request=formula(ifelse(t < q(1, 'h'), rate(1), rate(2)))),
+    )
+    builder.entity(
+        'bounded',
+        value('water', 'L', 0, lower=0, upper=limit),
+        flow('fill', SOURCE, this.water, request=rate(1)),
+    )
+    program = builder.finish()
+    record = run(program, Configuration(Request(2), numerics=Numerics(crossing=crossing)))
+    assert record.failure is None
+    (bound,) = record.entries('contact', 'bounded.water')
+    assert bound.t == 1 and bound.detail('located') == pytest.approx(limit)
+    for row, expected in zip(
+        read(record, program, ['bounded.water', 'clocked.water'], [1, 2]),
+        ((limit, limit), (1, 3)),
+        strict=True,
+    ):
+        assert row.values == pytest.approx(expected, abs=1e-12, rel=0)
 
 
 @pytest.mark.parametrize('capped', [False, True])

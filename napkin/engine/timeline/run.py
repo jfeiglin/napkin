@@ -1029,7 +1029,7 @@ class Run:
             if not independent:
                 moment = at  # a switch in an output rate cuts its suppliers' incoming segments here
             if at < moment and independent and not self.clock.within(at, moment):
-                coalesced = instance.coalesced_clock(at)
+                coalesced = self.ways.coalesced_clock(at, instance)
                 if coalesced is not None:
                     moment = coalesced
             levels = {}

@@ -900,7 +900,7 @@ class Sparse(Way):
             change[held & (np.abs(change) <= ROUNDOFF * (self.traffic @ np.abs(carried)))] = 0.0
         return change
 
-    def _held(self, t, y):
+    def _held(self, t, y, *, departure=False):
         """The time and the state that the settings read at time t and state y: a store held on a
         bound through the segment is on it (what its settings read of it is the bound, not the
         roundoff of the integrator within its tolerance), and a switch that the state crosses at the
@@ -909,10 +909,14 @@ class Sparse(Way):
         trial = np.minimum(np.maximum(y, self.lower), self.upper)
         trial[self.lower_flags] = self.lower[self.lower_flags]
         trial[self.upper_flags] = self.upper[self.upper_flags]
-        for i, low, high, number in () if self.vector.branches else self.sides:
+        for i, low, high, number in self.sides if departure or not self.vector.branches else ():
             if low <= trial[i] <= high:
                 trial[i] = number
-        if not self.vector.branches and self.clock is not None and self.clock[0] <= t <= self.clock[1]:
+        if (
+            (departure or not self.vector.branches)
+            and self.clock is not None
+            and self.clock[0] <= t <= self.clock[1]
+        ):
             t = self.clock[2]
         return t, trial
 
@@ -949,19 +953,14 @@ class Sparse(Way):
             contacted=self.contacted,
             choose=self.vector.choose,
         )
-        at, trial = self._held(self.t, self.y)
+        at, trial = self._held(self.t, self.y, departure=True)
         contacts = list(self.contacted)
         contacts.extend(
             pair
             for pair, sign in integrate.branch_sides(self.surfaces, self._side(self.t, self.y)).items()
             if sign == 0
         )
-        if self.clock is not None:
-            contacts.extend(
-                pair
-                for pair in self.surfaces
-                if integrate.fixed_clock(pair, side, self.moves) == math.nextafter(at, -math.inf)
-            )
+        contacts.extend(self.vector.branches)
         self.signs = integrate.departing_branches(
             self.surfaces, at, trial, self._side, self.field, contacts, self.plan.units.comparisons
         )

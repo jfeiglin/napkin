@@ -53,6 +53,7 @@ from __future__ import annotations
 import math
 from dataclasses import replace
 
+from ...core import expr as nodes
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .component import ComponentWay
@@ -182,6 +183,38 @@ class Ways:
             if at < found[0]:
                 found = (at, instance)
         return found
+
+    def coalesced_clock(self, at, first):
+        """A solitary internal event settles in its set. When another physical root meets an
+        authored clock, its exact time anchors both, including across independent sets."""
+        if not any(first.timing_events(at)):
+            return None
+        run = self.run
+        through = run.clock.apart(at)
+        pairs = {}
+        for instance in self.instances:
+            instance.lookahead(at, through)
+            pairs.update((pair, located) for located, pair in instance.crossed_operands(at, through))
+        clocks = []
+        for pair, located in pairs.items():
+            for clock, threshold in (pair, pair[::-1]):
+                if (
+                    isinstance(clock, nodes.Ref)
+                    and clock.name == 't'
+                    and not run.triggers.moving_reads(threshold)
+                ):
+                    clocks.append(located)
+                    break
+        if clocks and (
+            len(pairs) > 1
+            or any(
+                kind in ('lower bound', 'upper bound')
+                for instance in self.instances
+                for _, _, kind in instance.contacts_at(at, through)
+            )
+        ):
+            return min(clocks)
+        return None
 
     def cut(self, t):
         """Every instance stands at time t. Give the stores brought to a bound by the cut."""

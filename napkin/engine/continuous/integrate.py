@@ -925,13 +925,7 @@ def starting_sides(system, run, field):
         for pair, sign in branch_sides(switching_surfaces(s), side_at(run.time, run.y)).items()
         if sign == 0
     )
-    if run.clock is not None:
-        contacts.extend(
-            pair
-            for pair in switching_surfaces(s)
-            if fixed_clock(pair, side_at(run.time, run.y), lambda node: bool(s.expanded_names(node) & moving))
-            == math.nextafter(at, -math.inf)
-        )
+    contacts.extend(field.branches)  # the clock branches established before sampling the velocity
     field.choose(
         departing_branches(
             switching_surfaces(s), at, probe, side_at, field.rates, contacts, s.units.comparisons
@@ -945,6 +939,20 @@ def fixed_clock(pair, side, moving):
         if isinstance(node, nodes.Ref) and node.name == 't' and not moving(other):
             return side(other)
     return None
+
+
+def departed_clocks(surfaces, t, side, moving):
+    """The outgoing branches of authored clocks already crossed on this trajectory.
+    A late grouped moment can still compare equal to the clock in ordinary predicates."""
+    signs = {}
+    for pair in surfaces:
+        try:
+            limit = fixed_clock(pair, side, moving)
+        except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
+            continue
+        if limit is not None and 0 <= limit <= t:
+            signs[pair] = 1 if isinstance(pair[0], nodes.Ref) and pair[0].name == 't' else -1
+    return signs
 
 
 def clock_sides(surfaces, t, rtol, side, moving, consumed=()):
@@ -999,12 +1007,8 @@ def far_sides(
     clock, _ = clock_sides(surfaces, t, rtol, side, moving) if clocks is None else clocks
     at = t if clock is None else clock[2]  # every store crosses under the rates after the clock switches
     switches, derivative = [], None
-    clock_branches = {}
-    if clock is not None and choose is not None:
-        for pair in surfaces:
-            limit = fixed_clock(pair, side, moving)
-            if limit is not None and clock[0] <= limit <= at:
-                clock_branches[pair] = 1 if isinstance(pair[0], nodes.Ref) and pair[0].name == 't' else -1
+    clock_branches = departed_clocks(surfaces, at, side, moving)
+    if choose is not None:
         choose(clock_branches)
     for a, b in surfaces:
         for here_node, other in ((a, b), (b, a)):
