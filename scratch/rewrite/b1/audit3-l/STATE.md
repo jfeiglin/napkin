@@ -55,5 +55,8 @@ out, assigned: uncaught Outside. 6 moment.resume `is _SETUP`. 7 test_stale_rates
   patched into its flow, leg or endpoint before their connections are indexed. Rule test: named
   case (flow, endpoint; stop and resume); fails on 1564ac7.
 
-## In progress
-- Final: tests/engine + tests/reference not deep; deep sets; ruff.
+## Final (stopped by the main session)
+- Not deep, engine + reference: 5899 passed. Deep rule tests: 3 failed of 1534 (381, 1005: the
+  conflict fallback held at zero, infeasible -> keep the signed level; 1167: a bound a roundoff past
+  the horizon -> lines reach it at the horizon); fixed, test_local_sharing_rule 373 passed after.
+- Deep test_clock_moments stopped at 68%: about 10 failures, not examined (seeds unknown).
