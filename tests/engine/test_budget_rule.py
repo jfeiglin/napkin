@@ -308,7 +308,7 @@ def test_history_budget_stops_work_at_the_first_excess_piece(monkeypatch):
     assert visited == [1]
 
 
-@pytest.mark.parametrize('first_stage', [1, 10])
+@pytest.mark.parametrize('first_stage', [None, 1, 10])
 def test_a_clock_formula_exhausts_its_budget_on_its_original_fit_before_the_next_stage(first_stage):
     """The clock alone fixes its fits over [0, 10]. The degree-eight fit of exp(t)
     needs a split on [0, 1.25] and passes on [0, 0.625]. Its second piece is due
@@ -316,18 +316,33 @@ def test_a_clock_formula_exhausts_its_budget_on_its_original_fit_before_the_next
     from napkin.program.build import call, t
 
     b = Builder(UNITS)
+    ticks = (
+        [
+            event(
+                'tick',
+                after(q(0, 'h'), assign(this.ticks, 0)),
+                after(q(0, 'h'), assign(this.ticks, 0)),
+                *(after(q(first_stage, 'h'), add(this.ticks, 1)) for _ in range(10 // first_stage)),
+            )
+        ]
+        if first_stage is not None
+        else []
+    )
     b.entity(
         'plant',
         value('curve', '', formula(call('exp', t / q(1, 'h')))),
         value('ticks', '', 0),
-        event('tick', *(after(q(first_stage, 'h'), add(this.ticks, 1)) for _ in range(10 // first_stage))),
+        *ticks,
     )
-    b.setup(start(named('plant').tick))
+    if ticks:
+        b.setup(start(named('plant').tick))
     key = Key('plant', ('curve',))
     request = Request(10, everything=False, keys=(key,), pieces=1)
     made = Run(Plan.of(b.finish(), Configuration(request)))
     record = made.run()
     assert record.failure is not None and record.failure.t == 0.625
+    # The next recorded event starts a new moment in round 1. A bare horizon has none.
+    assert record.failure.round == (1 if ticks else 0)
     assert record.history(key).pieces[0].curve.length == 0.625
     assert made.env['plant.ticks'] == 0
 

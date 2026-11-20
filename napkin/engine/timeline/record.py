@@ -381,7 +381,9 @@ class Recorder:
         probe = copy(self)
         probe._probe_end = end
         probe._open_from = math.inf
-        prefix = probe.record(end, pause=Entry(end, self.round, 'pause', '', ''))
+        # A budget cut inherits the next traced round. A bare horizon has no such entry.
+        round_ = int(not self.run.bare) if before else self.round
+        prefix = probe.record(end, pause=Entry(end, round_, 'pause', '', ''))
         if prefix.failure is None:
             return
         failure = prefix.failure.t
