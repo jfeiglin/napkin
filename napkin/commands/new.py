@@ -16,6 +16,7 @@ is there already. Then it prints what to replace next: the title, the inputs and
 import re
 import shlex
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 from .. import paths
@@ -196,10 +197,8 @@ def main(args):
         for made in reversed(created_files):
             made.unlink(missing_ok=True)
         for made in reversed(created_dirs):
-            try:
+            with suppress(OSError):  # Another writer may now own files in this folder.
                 made.rmdir()
-            except OSError:
-                pass  # Another writer may now own files in this folder.
         raise common.Failed([common.problem('file', error.strerror or str(error), path)]) from None
     sys.stdout.write(next_steps(folder, title, variants))
     sys.stdout.flush()

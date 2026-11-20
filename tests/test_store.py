@@ -477,8 +477,8 @@ plant.tick.start()
         logs.append(session.log)
     config = replace(model.configuration, inputs=(InputValue('plant', 'delay', Quantity(2, 'h')),))
     with store.use(tmp_path):
-        with pytest.raises(CheckpointError, match='at 3 h.*at 2 h'):
+        with pytest.raises(CheckpointError, match=r'at 3 h.*at 2 h'):
             store.run(model.program, config, logs[1])
         assert store.run(model.program, config, logs[0]).failure is None
-        with pytest.raises(CheckpointError, match='at 3 h.*at 2 h'):
+        with pytest.raises(CheckpointError, match=r'at 3 h.*at 2 h'):
             store.run(model.program, config, logs[1])

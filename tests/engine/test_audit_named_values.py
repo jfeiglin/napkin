@@ -133,3 +133,25 @@ def test_frozen_formula_keeps_its_finish_time_evidence(tmp_path, everything):
         evidence = {e.origin: e for e in value.trail}
         assert evidence['plant.measured'].exercised is True
         assert evidence['plant.fallback'].exercised is not True
+
+
+def test_live_and_frozen_reports_at_the_same_time_follow_their_own_reads(tmp_path):
+    text = OCCURRENCE.replace(
+        '    job = event():\n        sample = formula(this.measured if this.use_measurement else this.fallback)',
+        '    selected = formula(this.measured if this.use_measurement else this.fallback)\n'
+        '    job = event():\n        sample = formula(this.selected)',
+    ).replace('        after 1 h:', '        after 0.5 h\n        after 0 h:')
+    model, _ = fixture(tmp_path, text)
+    result = run(model.program, model.configuration)
+    assert result.failure is None
+    # Both paths visit plant.selected at 2 h. The occurrence finished before the switch in
+    # the next round at that same time. The live reader follows the new branch.
+    paths = ['plant.selected', 'plant.job#0.sample']
+    for asked in (paths, paths[::-1]):
+        shown = report(result, model.program, model.configuration, asked, [2], model=model.declared)
+        for name, reading in zip(asked, shown.values, strict=True):
+            live = name == 'plant.selected'
+            assert reading.values == ((9,) if live else (1,))
+            evidence = {each.origin: each.exercised for each in reading.trail}
+            assert evidence['plant.measured'] is (not live)
+            assert evidence['plant.fallback'] is live
