@@ -153,12 +153,6 @@ MODEL = """
     """
 
 
-@pytest.mark.xfail(
-    raises=AssertionError,
-    strict=True,
-    reason='model/lowering.py `_relations` (F) writes a membership of a constraint as its two relations, so '
-    'the solve is infeasible: keep `within` there, which the solver reads as its chain (for F)',
-)
 def test_a_membership_of_a_model_reversed_at_a_solve_stops_the_run_by_name():
     model = compile_text(textwrap.dedent(MODEL), UNITS)
     found = failure(run(model.program, model.configuration))

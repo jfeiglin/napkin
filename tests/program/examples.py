@@ -31,6 +31,7 @@ from napkin.program.build import (
     assign,
     case,
     categorical,
+    chained,
     constraint,
     count,
     dist_of,
@@ -44,7 +45,6 @@ from napkin.program.build import (
     fsum,
     given,
     ifelse,
-    in_range,
     input_,
     item,
     legs,
@@ -940,7 +940,7 @@ def _distance(name, targets, equality, answer):
     and other unknowns"): two plain unknowns, equally scaled, and their written initializers as
     their preferred values (acceptance row 17)."""
     b = Builder(UNITS)
-    test = local.x + local.y == 1 if equality else in_range(local.x + local.y, 4, 6)
+    test = local.x + local.y == 1 if equality else chained(4, local.x + local.y, 6)
     b.entity(
         'plan',
         solver(

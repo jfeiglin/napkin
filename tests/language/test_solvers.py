@@ -351,9 +351,15 @@ def test_the_text_of_each_example_formats_to_a_text_of_the_same_tree():
         assert format_text(once) == once
 
 
-def test_a_range_test_in_a_constraint_is_the_chain_of_its_two_relations():
+def test_a_range_test_in_a_constraint_stays_a_membership():
+    """`x + y in [4, 6]` lowers to the membership `within`, not to the chain `4 <= x + y <= 6`, so that
+    a solve checks its ends as every evaluation of a membership does (spec: "Reversed bounds are an
+    error"); the solver reads it as its chain (`tests/engine/test_solver_memberships.py`)."""
     found = compiled(DISTANCE.format(target=0, test='x + y in [4, 6]')).program
-    assert program_bytes(found) == program_bytes(EXAMPLES['distance_targets_zero']().program)
+    (solver,) = [solver for template in found.templates for solver in template.solvers]
+    (constraint,) = solver.constraints
+    assert str(constraint.test.node) == 'within(x + y, 4, 6)'
+    assert [name for name, _ in constraint.test.reads] == ['x', 'y']
 
 
 def test_each_example_with_a_solver_has_its_text():

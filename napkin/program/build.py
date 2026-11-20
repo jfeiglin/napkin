@@ -398,9 +398,9 @@ def ifelse(test, body, orelse):
     return _apply(nodes.if_else, test, body, orelse)
 
 
-def in_range(value, lower, upper):
-    """`value in [lower, upper]` as a solver's constraint: the chain of its two relations, `lower <=
-    value <= upper`, which reads the value once. A membership that a run evaluates is `within`."""
+def chained(lower, value, upper):
+    """`lower <= value <= upper`, the chain of two relations, which reads the value once (a solver's
+    constraint `4 <= x + y <= 6`). A membership `value in [lower, upper]` is `within`."""
     return _apply(lambda lo, x, hi: nodes.compare(['le', 'le'], [lo, x, hi]), lower, value, upper)
 
 
