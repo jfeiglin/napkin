@@ -8,9 +8,12 @@ everything you need is in the repository, and this file says where. Read it all 
 
 - The rewrite replaces napkin's language, compiler and engine in place. Stages S0 to S7 and C are
   done, gate G2 passed on branch `claude/blissful-heisenberg-5me2hn`, and the fixes of three audits
-  after it (changes 19 to 26, below) are in: every central test passes with no catalogue
-  (7,263 passed, 2 skipped for TeX and Ghostscript), every deep test passes (14,984), and ruff is
-  clean on `napkin/`, `tests/` and `tools/`.
+  and a fresh review after it (changes 19 to 28, below) are in, at `6bfc700`. Every central test
+  passes with no catalogue: 10,212 passed and 2 skipped on Linux, 10,213 passed and one platform
+  skip on macOS. The deep selection of the rule tests passes on macOS (6,631), and its clock and
+  switch cases on Linux as well (2,044): results no longer depend on the machine. Ruff is clean on
+  `napkin/`, `tests/` and `tools/`. The whole deep set (`-m deep tests`) was last run in full
+  before the readiness rounds: run it once before you start, and report what fails.
 - What is left is the catalogue: the five model packages under `scenarios/` and `examples/` (all
   but `examples/piano_tuners`) are still in the old language, and so are their tests. That is your
   work, stage M, and it ends at gate G3. Stage F (docs, deleting `scratch/`) comes after, not now.
@@ -51,11 +54,12 @@ export NAPKIN_BASE="$(cd ../napkin-base && pwd)"
 ## Read, in this order
 
 1. `scratch/rewrite/PLAN.md`: the progress list at the top (the last entries say what G2 left
-   open), then "Changes after G0", items 1 to 22. These override the rest of the plan and the spec.
+   open), then "Changes after G0", items 1 to 28. These override the rest of the plan and the spec.
    The ones you will feel most: 10 (the owner's priorities: defensibility, then speed, then
    precision), 11 (reproducibility), 12 (no `delayed`), 13 (the publisher is ported in M), 15
    (breakpoints and checkpoints replace player machinery: `choose`, `sees`, controllers are gone),
-   16 (the evidence rule), 18 (speedups), 19 to 22 (the owner's answers after two audits, below).
+   16 (the evidence rule), 18 (speedups), 19 to 22 (the owner's answers after two audits, below),
+   23 to 28 (the readiness rounds, below; 27 and 28 replace 24 a, 25 and 26).
 2. `scratch/rewrite/g0-decisions.md`: the owner's decisions. They win over everything else.
 3. `scratch/rewrite/briefs/m.md`: the detailed brief of stage M: the scripts, the measured state of
    the translation, each package's needs, the tests each one unlocks, and the rule that no change is
@@ -159,6 +163,59 @@ four questions on the way. What you will meet in the catalogue:
    different piece budget runs fresh. Selecting the same keys in another order hits the same entry
    and gives the caller's order in the manifest (change 28).
 6. **`napkin new` writes two files** (change 24 c), `model.scn` and `style.toml`.
+7. **One rule for coincidences.** A switch that flips or a bound that a store reaches within the
+   crossing tolerance of a scheduled moment counts as at that moment, decided the same way in every
+   engine and on every machine (the one exception: a computed contact exactly at the window's edge
+   can land either side). A stage that reads such a store sees its exact bound. Switches are
+   located on the trajectory that arrives at them, so values near a switch can differ in the last
+   digits from the old engine's.
+8. **Near-ties are reported, exact ties included** (change 10). Text reports (`napkin run`,
+   `napkin play`) summarize them by source and kind, the five most frequent first; the JSON and the
+   Python report keep every entry. Models with round numbers (a tank full at exactly 2 h, an hourly
+   event) produce many: count them in each package's notes, and say if a report needs more than the
+   summary.
+9. **Local sharing uses the state just after a moment.** A route may carry against its request to
+   make room for another request; its served share stays within 0 and 1 (spec, "Capacity, request
+   and bounds"). Where no answer holds just after a moment, as for a store that the sharing would
+   switch back and forth at its bound, the run stops by name, for local sharing and declared
+   solvers alike. An old model that ran on an answer that depended on its moments stops there: list
+   it in `changed.md`. A ring of stores with no answer is refused after the setup, which can break
+   it. A capacity that the model leaves out can be set by a stage: no limit until then.
+10. **Any named value can be reported** (spec, "Any named value can be reported"): an endpoint's
+    `actual_rate` and `request`, a distribution's `.mean` and `.std`, and a solver's unknowns in
+    their declared units; `napkin run --value` takes them.
+11. **An occurrence's formulas are evaluated when something reads them,** not at its start, and
+    frozen when it finishes.
+12. **A trigger on a value that moves on a curve between moments,** a declared solver's result or a
+    rate of a set whose rates move, is refused by name ("cannot be certified"). Write the trigger on
+    the stores that the value follows: it fires on time.
+13. **Messages write values in the model's units, with the unit's name, and expressions in the
+    model's notation** (`2 L`, not `q(2, 'L')`).
+
+Under change 27 a rule that reads a rate after changing what it depends on, in the same moment,
+reads the rate as the round began, which is what the old engine gave: a translated rule keeps its
+meaning, and needs `after 0 h:` only where it means the rate after the change.
+
+## Known issues at handoff
+
+Nothing known gives a wrong value without a word. What remains:
+
+- **Refused by name, by design:** a trigger on a value that moves on a curve (item 12); a store
+  with no consistent sharing at its bound, and a ring of stores that local sharing cannot answer
+  (item 9); what the spec leaves out of the first version (spec, "What the first version leaves out").
+- **Kept by choice:** the five engines (Lines, Family, Component, Sparse, Declared) step on their own,
+  for speed; what they share is written once (the contacts at a moment, the bound handler, the
+  locator of crossings). A run resumes from saved state written for each engine, guarded by the
+  tests that compare a resumed run with one that did not stop.
+- **Deferred:** a record that keeps only what a request needs rests on a closure of dependencies;
+  a 30,000-place network solves in minutes; the reference interpreter refuses solvers whose problem
+  moves and crossings at irrational times, so those are checked by hand-worked tests only. A test
+  that starts a fresh process can time out on a busy machine: run it again alone.
+- **Not done:** the catalogue and the publisher (stage M, yours); deleting the old-language modules
+  and `scratch/`, and the docs (stage F).
+- **Likely unknown:** each audit and review found defects that the tests had not; real models will
+  combine features that the generators do not. Report an engine bug apart from a translation
+  problem, with its smallest failing example.
 
 ## The work, in order
 
@@ -273,7 +330,7 @@ from source for each package's headline numbers. A run that re-integrates after 
 Open the pull request into `claude/blissful-heisenberg-5me2hn`, and do not merge it. Its description:
 
 1. For each package: what was translated by hand and why, and the result of `check.py`.
-2. How each decision of changes 19 to 22 applied to the packages, and the heat-wave and cyber
+2. How each decision of changes 19 to 28 applied to the packages, and the heat-wave and cyber
    models' accuracy without `timescales`.
 3. The changed numbers: a link to each `changed.md`, and the five largest changes in a table.
 4. Every decision you made that the owner did not, one line each.
