@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from .. import paths
 from ..core.units import scale_of
 from ..program.artifact import Artifact, SideTable
 from ..program.config import Configuration, Numerics, Request
@@ -157,6 +158,8 @@ def load_scenario(path, *, run=None, edits=None):
     from .library import load_library
 
     path = Path(path)
+    if path.is_dir():
+        path = paths.entry(path)
     found = package_files(path)
     problems, trees, files, offset = list(found.problems), [], [], 0
     for file, text in found.files:

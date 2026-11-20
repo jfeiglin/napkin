@@ -209,3 +209,17 @@ def test_the_version_and_the_schema_version_are_plain_attributes():
     """The studies import the schema version by name (`engine/study.py`)."""
     assert {'__version__', 'SCHEMA_VERSION'} <= set(vars(napkin))
     assert napkin.SCHEMA_VERSION == '0.0.1' and isinstance(napkin.__version__, str)
+
+
+def test_load_scenario_accepts_a_package_folder(tmp_path):
+    from napkin.commands.new import files
+
+    for relative, content in files(variants=('east',)).items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    for folder in (tmp_path, tmp_path / 'variants' / 'east'):
+        from_folder = napkin.load_scenario(folder)
+        from_file = napkin.load_scenario(folder / 'model.scn')
+        assert from_folder.artifact().data() == from_file.artifact().data()
+        assert from_folder.configuration == from_file.configuration
