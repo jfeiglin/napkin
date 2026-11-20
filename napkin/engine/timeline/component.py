@@ -58,7 +58,7 @@ from ..allocation import Allocation
 from ..continuous import dense
 from ..continuous.bounds import check_bounds, correct_boundary_roundoff, refresh_bounds
 from ..continuous.fields import Field
-from ..continuous.integrate import starting_sides, surfaces_of
+from ..continuous.integrate import flow_switches, starting_sides, switching_surfaces
 from ..continuous.kernels import Affine, MatrixExponential
 from ..continuous.segment import advance
 from ..continuous.system import Context, solver_step
@@ -419,13 +419,11 @@ class Component:
         if 'deciding' not in s.analysis:
             formulas = {name: found['expr'] for name, found in s.computed.items()}
             moving = s.evolving | {'t'}
-            found = {}
-            for key, flow in s.flows.items():
-                for surface in surfaces_of(
-                    [flow.rate], formulas, lambda node: s.expanded_names(node) & moving
-                ):
-                    found.setdefault(surface, []).append(key)
-            s.analysis['deciding'] = found
+            s.analysis['deciding'] = flow_switches(
+                ((name, [flow.rate]) for name, flow in s.flows.items()),
+                formulas,
+                lambda node: s.expanded_names(node) & moving,
+            )
         return s.analysis['deciding']
 
     def delivered(self, segment, times):
@@ -445,7 +443,9 @@ class Component:
     def proceed(self, segment):
         """The next segment starts where this one ended."""
         self.state.time, self.state.y = segment.end, segment.last.copy()
-        self.state.contact_clocks = tuple(at for at in self.state.contact_clocks if at >= segment.end)
+        self.state.contact_clocks = {
+            pair: at for pair, at in self.state.contact_clocks.items() if at >= segment.end
+        }
         self.state.contacted = (
             tuple(
                 root.data
@@ -555,11 +555,10 @@ class ComponentWay(Way):
         self.captured = (known, missing, rigid)
         self.component = Component(system, context, [values[name] for name in stores], rigid)
         self.component.state.time = float(t)
-        self.component.state.contact_clocks = tuple(
-            at
-            for at, name, kind in (*run.prior_contacts, *run.contacts)
-            if kind == 'switch' and name in flows
+        self.component.state.contact_clocks = (
+            run.consumed_in(switching_surfaces(system), t) if run.consumed else {}
         )
+        self.component.state.contacted = tuple(self.component.state.contact_clocks)
         self.place = {name: k for k, name in enumerate(stores)}
         self.rates = [f'{flow}.actual_rate' for flow in system.flow_ids]
         self.flow_place = {flow: k for k, flow in enumerate(system.flow_ids)}

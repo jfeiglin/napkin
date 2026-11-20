@@ -172,7 +172,7 @@ class Run:
         self.cut_at_resume = []
         self.opening_levels = {}
         self.contacts = ()
-        self.prior_contacts = ()  # grouped switches whose located time is still ahead of the run
+        self.consumed = {}  # resolved operands -> (located time, canonical moment) of grouped switches
         self.bound_at = {}
         self.changed, self.moved = set(), set()
         self.joined, self.left = [], []  # the flows that join and that leave at this moment
@@ -1086,10 +1086,13 @@ class Run:
             self.ways.opening(moment)
             self.bound_at = bound_values(self.bounds, self.contacts)
             levels = self.triggers.levels_at(moment, dict(self.bound_at))
+            if self.consumed:
+                self.consumed = {pair: times for pair, times in self.consumed.items() if max(times) >= moment}
             if self.contacts or not independent:
                 for way in self.ways.instances:
                     for located, pair in way.crossed_operands(moment, threshold):
                         self.triggers.anchor(levels, *pair, moment, located)
+                        self.consumed[tuple(map(nodes.text, pair))] = located, moment
             self.bound_at.update(levels)
             self.moved.update(levels)
             self.arriving = True
@@ -1100,19 +1103,21 @@ class Run:
             )
             return moment, set(), set(), set()
 
+    def consumed_in(self, surfaces, t):
+        """Located switches of this set still consumed at t, including on a rebuilt or restored set."""
+        if not self.consumed:
+            return {}
+        return {
+            pair: times[0]
+            for pair in surfaces
+            if (times := self.consumed.get(tuple(map(nodes.text, pair)))) and max(times) >= t
+        }
+
     def finish_arrival(self):
         """Commit incoming segments after the opening stages; grouped contacts use the moment's time."""
         if not self.arriving:
             return
         self.arriving = False
-        if self.contacts or self.prior_contacts:
-            self.prior_contacts = tuple(
-                dict.fromkeys(
-                    event
-                    for event in (*self.prior_contacts, *self.contacts)
-                    if event[0] > self.now and event[2].startswith('switch')
-                )
-            )
         if self.saved_arrival is not None:
             replaced = {self.ways.instances[k]: instance for k, _, instance in self.cut_at_resume}
             for k, keys, instance in self.cut_at_resume:

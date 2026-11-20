@@ -267,7 +267,7 @@ def save(run, recorder, arrival):
                 ('published', _pairs(run.published)),
                 ('arrival', arrival),
                 ('contacts', run.contacts),
-                ('prior_contacts', run.prior_contacts),
+                ('consumed', _pairs(run.consumed)),
                 ('bounds_at_arrival', _pairs(run.bound_at)),
                 ('changed', tuple(sorted(run.changed, key=repr))),  # a set, in one order
                 ('moved', tuple(sorted(run.moved))),
@@ -673,7 +673,7 @@ def _run(run, found):
         run.arriving = True
         run.opening_levels = dict(run.saved_arrival[2])
     run.contacts, run.bound_at = tuple(found['contacts']), dict(found['bounds_at_arrival'])
-    run.prior_contacts = tuple(found['prior_contacts'])
+    run.consumed = dict(found.get('consumed', ()))
     run.changed, run.moved = set(found['changed']), set(found['moved'])
     run.joined, run.left = list(found['joined']), list(found['left'])
     run.waiting = [_connected(data) for data in found['waiting']]

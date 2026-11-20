@@ -1,9 +1,7 @@
 """The branches and keyed rows of a smooth segment. The arithmetic on them still moves."""
 
 from ...core import expr as nodes
-from ...core.derivatives import derivative
 from ..continuous.integrate import branch_expression
-from .reads import lazily
 
 
 class Region:
@@ -49,13 +47,3 @@ def key_surfaces(plan, names, moving):
         for name in names
         if (keyed := plan.keyed.get(name)) is not None and moving(keyed.key)
     }
-
-
-def trend(node, read, velocity, units, t):
-    """The derivative along a trajectory. A stationary operand contributes nothing."""
-    result = 0.0
-    for name in nodes.names(node):
-        speed = 1.0 if name == 't' else velocity(name)
-        if speed:
-            result += float(lazily(derivative(node, name), read, units, t)) * speed
-    return result

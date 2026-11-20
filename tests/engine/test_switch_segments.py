@@ -130,6 +130,19 @@ def test_a_new_drain_reverses_the_departure_at_a_level_and_clock_switch():
     )
 
 
+def test_an_edit_above_a_located_switch_leaves_the_replacement_stock_on_its_side():
+    """Clock seed 305. A 3 L/h fill and two 1 L/h drains take the tank from 2 to 4 L at 2 h.
+    The breakpoint puts 10 L in it. Above 4 L only the drains run, leaving 9.5 L at 2.25 h."""
+    program, _, edit = network(305)
+    check(
+        program,
+        4,
+        [('s0.water', 2, 10), ('f1.pipe.actual_rate', 2, 0), ('s0.water', F(9, 4), F(19, 2))],
+        edit,
+        origin=LOOK,
+    )
+
+
 def test_two_fills_switch_together_when_the_clock_and_level_reach_their_thresholds():
     """Clock seed 1187. At 2 h the edit empties the tank. Two fills of 1 L/h
     bring it to 2 L at 3 h; one switches on the clock and the other on the rising
@@ -275,7 +288,7 @@ def test_a_clock_inside_the_comparison_band_of_a_stage_keeps_its_outgoing_rate(g
     program = b.finish()
     rec = run(program, Configuration(Request(3)))
     assert rec.failure is None
-    (clock,) = rec.entries('contact', 'provider.dispatch' if way == 'declared' else 'tank.fill')
+    (clock,) = rec.entries('contact', 'tank.fill')
     assert clock.t == float(at) and clock.detail('located') == 2
     rows = read(rec, program, ['tank.incoming', 'tank.outgoing', 'tank.water'], [3])
     assert [row.values[0] for row in rows] == pytest.approx(

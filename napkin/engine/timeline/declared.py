@@ -129,7 +129,7 @@ from .network import (
 from .plan import DYNAMIC, FORMULA, LOOKUP, RATE, REDUCE
 from .reads import lazily
 from .record import fitted
-from .region import Region, key_surfaces, trend
+from .region import Region, key_surfaces
 from .way import Way
 
 SLACK = 1e-6  # a store at its bound holds there when its answer moves it out by less than this part
@@ -1178,9 +1178,14 @@ class MovingDeclared(DeclaredWay):
         self.region = Region(surfaces, lookups, defined)
         if defined:
             self.former.region = self.region
-        self.switches = {
-            pair: f'switch ({nodes.text(pair[0])}, {nodes.text(pair[1])})' for pair in self.region.surfaces
-        }
+        self.switch_origins = integrate.flow_switches(
+            (
+                (name, [nodes.ref(field) for field in self.plan.settings_of(self.plan.flows[name])])
+                for name in self.flows
+            ),
+            formulas,
+            moving,
+        )
 
     # ---- rates at a state ----------------------------------------------------------------------
 
@@ -1196,56 +1201,55 @@ class MovingDeclared(DeclaredWay):
         finally:
             self.trial = None
 
-    def _select(self, t, contacts):
-        """Select the branches for the new segment, using the physical velocity at a contact."""
+    def _select(self, t, contacted):
+        """Install the shared outgoing branches using the solver's physical velocity."""
         region = self.region
         if not region.surfaces:
             return
+        self.former.region = region
         region.set({}, {})
         self._cache.clear()
 
-        def read(name):
-            return self.run.in_region(name, t, region)
-
-        def operand(node):
-            return float(lazily(node, read, self.plan.units, t))
-
-        self.trial = self._held(self.y)
-        try:
-            signs = integrate.branch_sides(region.surfaces, operand)
-            reached = {kind for _, name, kind in contacts if name == self.declared.id}
-            ties = [pair for pair, sign in signs.items() if sign == 0 or self.switches[pair] in reached]
-            for a, b in signs.keys() - set(ties):
-                left, right = operand(a), operand(b)
-                if abs(left - right) <= self.plan.units.comparisons.band(a, b, left, right):
-                    signs[a, b] = 0
-            if ties:
-                flows, _ = self.answer(t, self.low, self.high)
-                speeds = self._net(flows)
-
-                def velocity(name):
-                    if name in self.place:
-                        return speeds[self.place[name]]
-                    definition = self.plan.values.get(name)
-                    if definition is not None and definition.kind == FORMULA:
-                        return trend(definition.node, read, velocity, self.plan.units, t)
-                    return 0.0
-
-                for pair in ties:
-                    a, b = pair
-                    gradient = trend(a, read, velocity, self.plan.units, t) - trend(
-                        b, read, velocity, self.plan.units, t
+        def side_at(at, y):
+            def operand(node):
+                self.trial = self._held(y)
+                try:
+                    return float(
+                        lazily(
+                            region.expression(node),
+                            lambda name: self.run.in_region(name, at, region),
+                            self.plan.units,
+                            at,
+                        )
                     )
-                    left, right = operand(a), operand(b)
-                    # An edit can move the operands away from the contact before this solve.
-                    if left == right or abs(left - right) <= abs(
-                        gradient
-                    ) * self.run.clock.crossing + math.ulp(left) + math.ulp(right):
-                        signs[pair] = int(gradient > 0) - int(gradient < 0)
-            region.set(signs, region.selected_rows(self.run, signs, operand))
-            self.former.region = region
-        finally:
-            self.trial = None
+                finally:
+                    self.trial = None
+
+            return operand
+
+        def choose(signs):
+            region.set(signs, region.selected_rows(self.run, signs, side_at(t, self.y)))
+            self._cache.clear()
+
+        def reversal(name):
+            raise SimulationError(f'chattering at {t:g} h: rates switch back and forth at {name}')
+
+        integrate.far_sides(
+            region.surfaces,
+            t,
+            self.y,
+            self.place,
+            (self.lower, self.upper),
+            side_at,
+            self.run.triggers.moving_reads,
+            self._derivative,
+            choose,
+            self.plan.units.comparisons,
+            held=lambda i: self.low[i] or self.high[i],
+            reversal=reversal,
+            contacted=contacted,
+            consumed=contacted,
+        )
 
     def answers_at(self, t, incoming, flows):
         """Publish every result of one trial answer, including the requests carried by its legs."""
@@ -1446,7 +1450,8 @@ class MovingDeclared(DeclaredWay):
                     continue  # a free store resting exactly on its bound
             at = start if gap(start) >= 0 else integrate.crossing_time(gap, start, end)
             found.append((at, name, kind))
-        return sorted(set(found) | set(self._crossings(solution, start, end)))
+        found.extend(self._crossings(solution, start, end))
+        return sorted(found, key=lambda event: event[0])
 
     def _crossings(self, solution, start, end):
         """Locations of the armed physical switches bracketed by one smooth interval."""
@@ -1465,7 +1470,7 @@ class MovingDeclared(DeclaredWay):
             )
             at = integrate.crossing_time(gap, start, end, side=departure, within=within)
             if at is not None:
-                yield at, self.declared.id, self.switches[pair]
+                yield at, pair, 'switch'
 
     def _state(self, t):
         segment = self.pending
@@ -1525,7 +1530,7 @@ class MovingDeclared(DeclaredWay):
 
     def begin(self):
         """The answer at the start of the instance; the first segment is made when the run asks."""
-        self._settle(self.t0, (*self.run.prior_contacts, *self.run.contacts))
+        self._settle(self.t0, self.run.consumed_in(self.region.surfaces, self.t0))
 
     def peek(self):
         """The end of the next segment, which is made now if it is not yet (`_next`)."""
@@ -1552,16 +1557,17 @@ class MovingDeclared(DeclaredWay):
             return list(self.stores), sorted(set(self.recorded) | set(self.connected.results)), False
         if segment.event:
             self._put_contacts(segment.event, segment.end)
-        changed = self._settle(segment.end, segment.event or ())
+        contacted = {pair: at for at, pair, kind in segment.event or () if kind == 'switch'}
+        changed = self._settle(segment.end, contacted)
         return list(self.stores), sorted(set(changed) | set(self.recorded)), bool(segment.event)
 
     def crossed_operands(self, t, through):
-        reached = {
-            kind: at
-            for at, name, kind in self.timing_events(through)
-            if name == self.declared.id and self.run.clock.within(at, t)
-        }
-        return ((reached[kind], pair) for pair, kind in self.switches.items() if kind in reached)
+        if self.pending is not None:
+            yield from (
+                (at, pair)
+                for at, pair, kind in self.pending.event or ()
+                if kind == 'switch' and at <= through and self.run.clock.within(at, t)
+            )
 
     def _put_contacts(self, events, through):
         due = [event for event in events if event[0] <= through]
@@ -1575,11 +1581,17 @@ class MovingDeclared(DeclaredWay):
     def timing_events(self, through):
         """The physical switches and bounds in the pending segment."""
         if self.pending is not None:
-            yield from (
-                contact
-                for contact in self.pending.event or ()
-                if contact[0] <= through and contact[2] != 'release'
-            )
+            for at, name, kind in self.pending.event or ():
+                if at > through or kind == 'release':
+                    continue
+                if kind != 'switch':
+                    yield at, name, kind
+                elif name in self.switch_origins:
+                    for flow in self.switch_origins[name]:
+                        yield at, flow, kind
+                else:
+                    a, b = name
+                    yield at, self.declared.id, f'switch ({nodes.text(a)}, {nodes.text(b)})'
 
     def snap(self, t=None, through=None):
         """Commit the incoming segment and coalesced contacts after the round's stages."""

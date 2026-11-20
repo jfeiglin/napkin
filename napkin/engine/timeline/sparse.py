@@ -571,11 +571,6 @@ class Sparse(Way):
         place = self.place = {name: k for k, name in enumerate(stores)}
         self.net, connections, self.recorded = network_of(run, sets, stores)
         self.stores, self.flows = stores, list(self.net.flows)
-        self.contact_clocks = tuple(
-            at
-            for at, name, kind in (*run.prior_contacts, *run.contacts)
-            if kind == 'switch' and name in self.flows
-        )
         self.stepped = frozenset(name for connected in sets for name in connected.stepped)
         self.capped = [k for k, connection in enumerate(connections) if connection.capacity is not None]
         self.end_settings = []  # (side, store, which)
@@ -715,12 +710,9 @@ class Sparse(Way):
             surfaces, key_surfaces(plan, plan.expansion_of(names).leaves, moves) if defined else {}
         )
         self.surfaces = self.region.surfaces
-        self.deciding = {}  # a surface -> the flows whose settings read it
-        for flow in self.flows:
-            for surface in integrate.surfaces_of(
-                nodes_of(plan.settings_of(plan.flows[flow])), formulas, moves
-            ):
-                self.deciding.setdefault(surface, []).append(flow)
+        self.deciding = integrate.flow_switches(
+            ((name, nodes_of(plan.settings_of(plan.flows[name]))) for name in self.flows), formulas, moves
+        )
         self.labels = {}
         if not stores:
             from .triggers import _affine
@@ -742,12 +734,8 @@ class Sparse(Way):
         self._sides_of = vector.compiled(self.sided) if self.sided else None
         self.sides, self.clock = (), None  # the far sides that the present step reads (`_sides`)
         self.signs = {}  # the side of each switch that the present step holds (`_turns`)
-        reached = {
-            label
-            for at, owner, label in (*run.contacts, *run.prior_contacts)
-            if owner in self.recorded and at >= t - run.clock.crossing
-        }
-        self.contacted = tuple(pair for pair, (_, _, label) in self.labels.items() if label in reached)
+        self.contact_clocks = run.consumed_in(self.surfaces, t)
+        self.contacted = tuple(self.contact_clocks)
         self.contacts = []  # located contacts on the pending smooth step
         self.next_clock = math.inf  # the next switch of the time against a fixed value
 
@@ -900,7 +888,7 @@ class Sparse(Way):
             change[held & (np.abs(change) <= ROUNDOFF * (self.traffic @ np.abs(carried)))] = 0.0
         return change
 
-    def _held(self, t, y, *, departure=False):
+    def _held(self, t, y):
         """The time and the state that the settings read at time t and state y: a store held on a
         bound through the segment is on it (what its settings read of it is the bound, not the
         roundoff of the integrator within its tolerance), and a switch that the state crosses at the
@@ -909,14 +897,10 @@ class Sparse(Way):
         trial = np.minimum(np.maximum(y, self.lower), self.upper)
         trial[self.lower_flags] = self.lower[self.lower_flags]
         trial[self.upper_flags] = self.upper[self.upper_flags]
-        for i, low, high, number in self.sides if departure or not self.vector.branches else ():
+        for i, low, high, number in self.sides if not self.vector.branches else ():
             if low <= trial[i] <= high:
                 trial[i] = number
-        if (
-            (departure or not self.vector.branches)
-            and self.clock is not None
-            and self.clock[0] <= t <= self.clock[1]
-        ):
+        if not self.vector.branches and self.clock is not None and self.clock[0] <= t <= self.clock[1]:
             t = self.clock[2]
         return t, trial
 
@@ -926,45 +910,31 @@ class Sparse(Way):
         units = self.plan.units
         return lambda node: float(lazily(self.side_nodes.get(node, node), found.__getitem__, units, t))
 
-    def _sides(self):
+    def _sides(self, clocks):
         """Select the branch of every rate at the segment start. A located contact uses its
         departing side. The vector uses these branches until the next located root (_turns)."""
-        rtol = self.plan.numerics.rtol
         self.sides, self.signs = (), {}
-        t, trial = self._held(self.t, self.y)
-        side = self._side(t, trial)
+        _, trial = self._held(self.t, self.y)
 
         def reversal(name):
             raise SimulationError(self._failed(self.t, f'opposing rates on the two sides of {name}'))
 
-        self.sides, self.clock = integrate.far_sides(
+        self.sides, self.clock, self.signs = integrate.far_sides(
             self.surfaces,
-            t,
+            self.t,
             trial,
             self.place,
             (self.lower, self.upper),
-            rtol,
-            side,
+            self._side,
             self.moves,
             self.field,
-            (self.clock, self.next_clock),
+            self.vector.choose,
+            self.plan.units.comparisons,
             held=lambda i: self.lower_flags[i] or self.upper_flags[i],
             reversal=reversal,
             contacted=self.contacted,
-            choose=self.vector.choose,
+            clocks=clocks,
         )
-        at, trial = self._held(self.t, self.y, departure=True)
-        contacts = list(self.contacted)
-        contacts.extend(
-            pair
-            for pair, sign in integrate.branch_sides(self.surfaces, self._side(self.t, self.y)).items()
-            if sign == 0
-        )
-        contacts.extend(self.vector.branches)
-        self.signs = integrate.departing_branches(
-            self.surfaces, at, trial, self._side, self.field, contacts, self.plan.units.comparisons
-        )
-        self.vector.choose(self.signs)
         self.side_nodes = {
             node: integrate.branch_expression(node, self.signs) for pair in self.surfaces for node in pair
         }
@@ -1028,16 +998,16 @@ class Sparse(Way):
         self.sides, self.clock = (), None
         self._select()
         # The clock switches before the new segment decides which stores stay on their bounds.
-        self.clock, self.next_clock = integrate.clock_sides(
+        clocks = integrate.clock_sides(
             self.surfaces,
             self.t,
-            self.plan.numerics.rtol,
             self._side(self.t, self.y),
             self.moves,
             consumed=self.contact_clocks,
         )
+        self.clock, self.next_clock, _ = clocks
         self._flags()
-        self._sides()
+        self._sides(clocks)
         if self.signs and np.any((self.y <= self.lower) | (self.y >= self.upper)):
             self._flags()  # compute bound release with the actual outgoing branches installed
         if self.outputs is not None:
@@ -1291,7 +1261,7 @@ class Sparse(Way):
                 y[self.place[name]] = levels[name]
         self.t, self.y = end, y
         self.contacted = tuple(pair for at, pair, kind in self.contacts if at == end and kind == 'switch')
-        self.contact_clocks = tuple(at for at in self.contact_clocks if at >= end)
+        self.contact_clocks = {pair: at for pair, at in self.contact_clocks.items() if at >= end}
         self.run.now = end
         if ended:
             self.solver = None

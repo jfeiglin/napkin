@@ -681,6 +681,15 @@ def surfaces_of(sources, formulas, moving):
     return tuple(surfaces)
 
 
+def flow_switches(settings, formulas, moving):
+    """The authored flows whose settings include each physical switching surface."""
+    owners = {}
+    for name, sources in settings:
+        for pair in surfaces_of(sources, formulas, moving):
+            owners.setdefault(pair, []).append(name)
+    return owners
+
+
 def branch_sides(surfaces, side):
     """The sign of each readable pair of operands. An undefined side in an untaken branch
     leaves its expression alone, so an evaluation still fails at the place that reads it."""
@@ -715,10 +724,19 @@ def departing_branches(surfaces, t, y, side_at, rates, contacted=(), comparisons
         h = math.sqrt(np.finfo(float).eps) * max(1.0, abs(t))
         drift = rates(t, y)
         probe = y + h * drift
-        following = branch_sides(ties, side_at(t + h, probe))
-        for pair, direction in following.items():
-            if direction:
-                signs[pair] = direction
+        following = side_at(t + h, probe)
+        for a, b in signs.keys() & ties:
+            try:
+                left, right = side(a), side(b)
+                gap = left - right
+                if comparisons is not None and abs(gap) > comparisons.band(a, b, left, right):
+                    continue  # an edit can move the operands away from the located contact
+                change = (following(a) - left) - (following(b) - right)
+            except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
+                continue
+            # A stationary contact holds its equality branch, including when evaluating the
+            # exact stock threshold leaves a last-bit residual in a formula such as water².
+            signs[a, b] = int(change > 0) - int(change < 0)
     return signs
 
 
@@ -845,7 +863,7 @@ def switching_roots(
             lambda node: left if node == a else right,
             lambda node: bool(s.expanded_names(node) & dynamic_names),
         )
-        if clock in consumed:
+        if (a, b) in consumed and consumed[a, b] == clock:
             continue
         direction, start = 0, None
         if not math.isfinite(gap):
@@ -880,56 +898,30 @@ def starting_sides(system, run, field):
     """The sides of the switches at which a segment of a component starts, as `far_sides` finds them,
     which the field reads through the segment (`Run.switches`, `Run.clock`)."""
     s = system
-    env = field.environment(run.time, run.y)
     moving = s.evolving | {'t'}
-
-    def reversal(name):
-        raise SimulationError(f'chattering at {run.time:g} h: rates switch back and forth at {name}')
-
-    run.switches, run.clock = far_sides(
-        switching_surfaces(s),
-        run.time,
-        run.y,
-        s.index,
-        (s.lower, s.upper),
-        s.cfg.rtol,
-        lambda node: float(evaluate(node, env, s.units)),
-        lambda node: bool(s.expanded_names(node) & moving),
-        field.rates,
-        clocks=clock_sides(
-            switching_surfaces(s),
-            run.time,
-            s.cfg.rtol,
-            lambda node: float(evaluate(node, env, s.units)),
-            lambda node: bool(s.expanded_names(node) & moving),
-            consumed=getattr(run, 'contact_clocks', ()),
-        ),
-        held=lambda i: (i, 'min') in run.active_bounds or (i, 'max') in run.active_bounds,
-        reversal=reversal,
-        contacted=run.contacted,
-        choose=field.choose,
-    )
-    probe = run.y.copy()
-    for i, low, high, beyond in run.switches:
-        if low <= probe[i] <= high:
-            probe[i] = beyond
-    at = run.time if run.clock is None else run.clock[2]
 
     def side_at(t, y):
         env = field.environment(t, y)
         return lambda node: float(evaluate(node, env, s.units))
 
-    contacts = list(run.contacted)
-    contacts.extend(
-        pair
-        for pair, sign in branch_sides(switching_surfaces(s), side_at(run.time, run.y)).items()
-        if sign == 0
-    )
-    contacts.extend(field.branches)  # the clock branches established before sampling the velocity
-    field.choose(
-        departing_branches(
-            switching_surfaces(s), at, probe, side_at, field.rates, contacts, s.units.comparisons
-        )
+    def reversal(name):
+        raise SimulationError(f'chattering at {run.time:g} h: rates switch back and forth at {name}')
+
+    run.switches, run.clock, _ = far_sides(
+        switching_surfaces(s),
+        run.time,
+        run.y,
+        s.index,
+        (s.lower, s.upper),
+        side_at,
+        lambda node: bool(s.expanded_names(node) & moving),
+        field.rates,
+        field.choose,
+        s.units.comparisons,
+        held=lambda i: (i, 'min') in run.active_bounds or (i, 'max') in run.active_bounds,
+        reversal=reversal,
+        contacted=run.contacted,
+        consumed=run.contact_clocks,
     )
 
 
@@ -941,41 +933,30 @@ def fixed_clock(pair, side, moving):
     return None
 
 
-def departed_clocks(surfaces, t, side, moving):
-    """The outgoing branches of authored clocks already crossed on this trajectory.
-    A late grouped moment can still compare equal to the clock in ordinary predicates."""
-    signs = {}
+def clock_sides(surfaces, t, side, moving, consumed=()):
+    """Each fixed clock is evaluated once. An early grouped clock moves the clock probe
+    beyond its located time. A past clock keeps its outgoing sign even inside the amount band."""
+    limits, far, following = {}, None, math.inf
     for pair in surfaces:
         try:
             limit = fixed_clock(pair, side, moving)
         except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
             continue
-        if limit is not None and 0 <= limit <= t:
-            signs[pair] = 1 if isinstance(pair[0], nodes.Ref) and pair[0].name == 't' else -1
-    return signs
-
-
-def clock_sides(surfaces, t, rtol, side, moving, consumed=()):
-    """The far side of a fixed clock switch at t, and the next such switch after t."""
-    clock, following = None, math.inf
-    for a, b in surfaces:
-        for node, other in ((a, b), (b, a)):
-            if not isinstance(node, nodes.Ref) or node.name != 't' or moving(other):
-                continue
-            try:
-                limit = side(other)
-            except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
-                continue
-            if not math.isfinite(limit):
-                continue
+        if limit is None or not math.isfinite(limit):
+            continue
+        limits[pair] = limit
+        if t == limit or (pair in consumed and consumed[pair] == limit and t <= limit):
             beyond = math.nextafter(limit, math.inf)
-            if t == limit or (limit in consumed and t <= limit):
-                low = min(t, clock[0]) if clock else t
-                far = max(beyond, clock[2]) if clock else beyond
-                clock = (low, far, far)
-            elif t < limit:
-                following = min(following, limit)
-    return clock, following
+            far = beyond if far is None else max(far, beyond)
+        elif t < limit:
+            following = min(following, limit)
+    at = t if far is None else far
+    signs = {
+        pair: 1 if isinstance(pair[0], nodes.Ref) and pair[0].name == 't' else -1
+        for pair, limit in limits.items()
+        if 0 <= limit <= at
+    }
+    return None if far is None else (t, far, far), following, signs
 
 
 def far_sides(
@@ -984,32 +965,32 @@ def far_sides(
     y,
     place,
     bounds,
-    rtol,
-    side,
+    side_at,
     moving,
     rates,
-    clocks=None,
-    held=None,
-    reversal=None,
+    choose,
+    comparisons,
+    *,
+    held,
+    reversal,
     contacted=(),
-    choose=None,
+    consumed=(),
+    clocks=None,
 ):
-    """Choose the departure side of a fixed store or clock threshold at the segment's start.
-    A store is at the threshold if it equals the limit or this run just located its contact.
-    Probe the rate at the limit and on the side it enters, under the departing clock. A held
-    bound keeps its equality value. A free store can leave, hold at the switch, or meet rates
-    on opposite sides that carry it back; the last case invokes the named reversal diagnostic.
-
-    The returned store and clock probes select the expression branches before integration.
-    Quantities in the chosen expressions continue to use the actual time and state.
-    """
+    """Select the open segment at the actual state after the round's edits. The outgoing clock
+    chooses the velocity used to resolve coincident store and composite switches. All fields
+    install the same branches; only their evaluation of rates and operands differs."""
+    if not surfaces:
+        choose({})
+        return (), None, {}
+    side = side_at(t, y)
+    if clocks is None:
+        clocks = clock_sides(surfaces, t, side, moving, consumed)
     lower, upper = bounds
-    clock, _ = clock_sides(surfaces, t, rtol, side, moving) if clocks is None else clocks
+    clock, _, clock_branches = clocks
     at = t if clock is None else clock[2]  # every store crosses under the rates after the clock switches
     switches, derivative = [], None
-    clock_branches = departed_clocks(surfaces, at, side, moving)
-    if choose is not None:
-        choose(clock_branches)
+    choose(clock_branches)
     for a, b in surfaces:
         for here_node, other in ((a, b), (b, a)):
             if not isinstance(here_node, nodes.Ref) or here_node.name not in place:
@@ -1021,11 +1002,13 @@ def far_sides(
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                 continue
             here = float(y[place[here_node.name]])
-            band = rtol * (abs(here) + abs(limit))
             if not math.isfinite(limit) or (here != limit and (a, b) not in contacted):
                 continue
+            band = comparisons.band(here_node, other, here, limit)
+            if abs(here - limit) > band:
+                continue  # an edit replaced the stock or its threshold before the re-share
             i = place[here_node.name]
-            if held is not None and held(i):
+            if held(i):
                 continue  # sharing keeps the store on its bound throughout the segment
             velocity = 0.0
             if here != limit:
@@ -1048,20 +1031,24 @@ def far_sides(
             probe[i] = beyond
             # Leave the arithmetic coordinates alone. A nextafter probe alone is still equal
             # under change 29 and would read the arriving branch on both sides.
-            if choose is not None:
-                choose({**clock_branches, (a, b): way if here_node == a else -way})
+            choose({**clock_branches, (a, b): way if here_node == a else -way})
             try:
                 outgoing = rates(at, probe)[i]
             finally:
-                if choose is not None:
-                    choose(clock_branches)
+                choose(clock_branches)
             if outgoing * way < 0:
-                if reversal is not None:
-                    reversal(here_node.name)
-                continue
+                reversal(here_node.name)
             low, high = (limit - band, beyond) if way > 0 else (beyond, limit + band)
             switches.append((i, low, high, beyond))
-    return tuple(switches), clock
+    departure = y.copy()
+    for i, low, high, beyond in switches:
+        if low <= departure[i] <= high:
+            departure[i] = beyond
+    reached = set(contacted) | clock_branches.keys()
+    reached.update(pair for pair, sign in branch_sides(surfaces, side).items() if not sign)
+    signs = departing_branches(surfaces, at, departure, side_at, rates, reached, comparisons)
+    choose(signs)
+    return tuple(switches), clock, signs
 
 
 def departing_ledgers(system, run, field, at_switch, env):

@@ -88,7 +88,7 @@ def test_a_moving_solver_drains_at_the_incoming_rate_until_the_tank_reaches_two_
     for record in (straight, paused.resume(), resume(model, loads(dumps(edited)))):
         assert record.failure is None
         before, afterward, water = read(record, model, names, [stage_time, 2])
-        contacts = [e for e in record.entries('contact') if e.part == 'tank.share']
+        contacts = record.entries('contact', 'tank.drain' if source == 'capacity' else 'tank.share')
         assert len(contacts) == 1 and contacts[0].t == stage_time
         assert contacts[0].detail('located') == pytest.approx(1, abs=2e-12)
         assert before.values[0] == pytest.approx(2)
