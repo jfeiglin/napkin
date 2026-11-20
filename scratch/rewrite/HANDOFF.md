@@ -8,12 +8,13 @@ everything you need is in the repository, and this file says where. Read it all 
 
 - The rewrite replaces napkin's language, compiler and engine in place. Stages S0 to S7 and C are
   done, gate G2 passed on branch `claude/blissful-heisenberg-5me2hn`, and the fixes of three audits
-  and a fresh review after it (changes 19 to 28, below) are in, at `6bfc700`. Every central test
-  passes with no catalogue: 10,212 passed and 2 skipped on Linux, 10,213 passed and one platform
-  skip on macOS. The deep selection of the rule tests passes on macOS (6,631), and its clock and
-  switch cases on Linux as well (2,044): results no longer depend on the machine. Ruff is clean on
-  `napkin/`, `tests/` and `tools/`. The whole deep set (`-m deep tests`) was last run in full
-  before the readiness rounds: run it once before you start, and report what fails.
+  and a fresh review after it (changes 19 to 29, below) are in, with the fixes of the readiness
+  audit of `6f297e5` (`audit/readiness-6f297e5.md`; `audit/readiness-fixes-6f297e5.md` and
+  `audit/premerge-e6d17b5.md` give each finding's test), at `ad690c3`. Every central test passes
+  with no catalogue: 10,399 passed and 2 skipped on Linux, 10,400 passed and one platform skip on
+  macOS. The whole deep set (`-m deep tests`) passes on macOS, 23,547 tests with no failure, and
+  its timing, budget and cross-engine cases on Linux as well (2,094): results no longer depend on
+  the machine. Ruff is clean on `napkin/`, `tests/` and `tools/`.
 - What is left is the catalogue: the five model packages under `scenarios/` and `examples/` (all
   but `examples/piano_tuners`) are still in the old language, and so are their tests. That is your
   work, stage M, and it ends at gate G3. Stage F (docs, deleting `scratch/`) comes after, not now.
@@ -192,6 +193,20 @@ four questions on the way. What you will meet in the catalogue:
     the stores that the value follows: it fires on time.
 13. **Messages write values in the model's units, with the unit's name, and expressions in the
     model's notation** (`2 L`, not `q(2, 'L')`).
+14. **Comparisons are tolerant** (change 29). Two numbers whose difference is within a band count
+    as equal: `==`, `<=` and `>=` hold, `!=`, `<` and `>` do not. The band is `rtol` (1e-9) times
+    the largest of the two values and a floor, the larger of the declared scales of the quantities
+    that the two sides read (a literal has none, and takes the other side's). So `0.1 + 0.2 <= 0.3`
+    is true, and a value that approaches a threshold reaches it within the band. A range is reversed
+    only beyond the band. Where a trigger or a switch fires at a located crossing of one store, the
+    store is put exactly on the threshold, so a comparison against the same threshold sees equality
+    (the reservoir's 80 hours at risk). A decision taken within the band is a near-tie.
+15. **The audit of `6f297e5`'s fixes that an author meets.** A route that a solver leaves idle
+    carries exactly zero. Reports give a capacity first set during a run, an occurrence's
+    `.started`, `.active` and `.done`, and the evidence of a frozen formula. Evidence numbers keep
+    every digit. A history budget stops a run at the first piece that its complete record holds past
+    the budget, the same fresh, cut from the store or resumed. `load_scenario` takes a package folder.
+    A program compiled before language `0.2.1` is refused, by name: compile it again.
 
 Under change 27 a rule that reads a rate after changing what it depends on, in the same moment,
 reads the rate as the round began, which is what the old engine gave: a translated rule keeps its
