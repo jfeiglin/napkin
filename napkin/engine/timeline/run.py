@@ -29,7 +29,10 @@
    window up to the next event or moment (`Occurrences.carried`): the run fails where one does.
 5. **The horizon** is an inclusive cutoff: the work due there settles as at any moment, by the
    clock's rule (`moment.Clock`): the last moment is the first at which the horizon is due, and the
-   record holds the state that its last round committed.
+   record holds the state that its last round committed. A value there reads as it does in a run
+   that goes on (`ways.finish`): where something else is due at the horizon, a run that goes on has
+   that moment too, and a set built there records its state with the rates that it settled; where
+   the horizon is all (`bare`), the segments that end there hold their values in their pieces.
 
 The present (`value`): the value of an engine name now, or at a time inside the present window of
 the ways (`t`): a store of a set from its instance, one written by this moment's commits from what
@@ -153,6 +156,9 @@ class Run:
         self.written = {}  # a store of a set that a commit of this moment wrote, and its value
         self.frozen = {}  # a formula of a finished occurrence -> its value or `Unavailable` (D7)
         self.limit = plan.horizon  # the next moment that the run knows (`next_moment`)
+        # Whether the last moment is the horizon and nothing else, which a longer run does not have
+        # (`ways.finish`); a run stopped at a stage there is not.
+        self.bare = False
         self.clock = Clock(plan)  # when something is due (`moment.Clock`)
         self._keyed = None  # {key time: the keyed reads by the time that change there}
         self.changed = set()  # what a commit or an event of the ways changed: names and sources
@@ -826,7 +832,7 @@ class Run:
         while not self.clock.due(horizon, self.now):
             t, touched = self.next_moment()
             self.moment.at(t, touched)
-        self.ways.finish(horizon)
+        self.ways.finish(horizon, not self.bare)
 
     def discrete(self):
         """The next time after now at which a stage is due, a trigger rearms or a keyed read by the
@@ -857,6 +863,7 @@ class Run:
     def next_moment(self):
         """Run the ways to the next moment; gives its time and the engine names that changed in the
         ways at that time (an event of an instance that a condition or a set reads)."""
+        before = self.now
         limit = self.limit = float(self.discrete())
         while True:
             at, instance = self.ways.peek()
@@ -891,7 +898,15 @@ class Run:
                 changed |= set(instance.snap())
                 at, instance = self.ways.peek()
             self.ways.cut(moment)
+            self.bare = moment == self.plan.horizon and not self._besides(before, moment, contact)
             return moment, changed
+
+    def _besides(self, before, t, contact):
+        """Whether a moment at time t is due for more than the horizon: a stage, a timer, a key time
+        after `before` or a contact due there, so that a run that goes on has it too."""
+        found = [self.occurrences.next_due(), self.triggers.next_timer(), contact]
+        found += [at for at in self.key_times() if at > before]
+        return any(at is not None and self.clock.due(at, t) for at in found)
 
 
 class _Failed:

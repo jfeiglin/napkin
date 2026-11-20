@@ -58,6 +58,7 @@ import heapq
 import math
 from dataclasses import dataclass, field
 from fractions import Fraction
+from itertools import pairwise
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
@@ -355,7 +356,9 @@ class Occurrences:
         finish and flows join (`complete`, `register`), and found once from the finished occurrences
         by a run that a checkpoint restored, which keeps no more than its occurrences (`saved.py`)."""
         if self._watched is None:
-            self._watched = {store for live in self.live.values() if not live.active for store in live.plan.stores}
+            self._watched = {
+                store for live in self.live.values() if not live.active for store in live.plan.stores
+            }
         return self._watched
 
     def carried(self, start, end=None):
@@ -384,7 +387,9 @@ class Occurrences:
         at, rate, store, side, connection = first
         run.ways.cut(at)
         run.now = at
-        unit = next(c.unit for c in plan.flows[_flow_of(plan, connection)].connections if c.name == connection)
+        unit = next(
+            c.unit for c in plan.flows[_flow_of(plan, connection)].connections if c.name == connection
+        )
         shown = f'{rate / (plan.units.scale(unit) if unit else 1.0):g} {unit}'.rstrip()
         way = 'out of' if side == 'outflow' else 'into'
         self.writable(store, f'the flow {connection} carries {shown} {way} {store} at t = {at:g} h', rate)
@@ -403,9 +408,8 @@ class Occurrences:
         times = [start]
         if end is not None and end > start and key is not None and run.ways.moving(key):
             breaks = getattr(run.ways.sets[key][1], 'breaks', lambda a, b: [])(start, end)
-            ends = [start, *breaks, end]
             times = [start]
-            for a, b in zip(ends, ends[1:]):
+            for a, b in pairwise([start, *breaks, end]):
                 times += [0.5 * (a + b), b]
         before = None
         for at in times:

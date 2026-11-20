@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import math
 
+from ..continuous.walk import walked
 from ..errors import SimulationError
 from .component import ComponentWay
 from .declared import DeclaredWay, MovingDeclared
@@ -176,13 +177,17 @@ class Ways:
         for solver in self.kept.values():
             solver.renew()
 
-    def finish(self, t):
-        """At the horizon: each instance stands there, the lines settle what left a bound, and a set
-        whose rates move records its state there, with the rates that its next segment would start
-        with (a value at the horizon reads the same in a run that ends there as in one that goes on)."""
+    def finish(self, t, moment=True):
+        """At the horizon: each instance stands there and the lines settle what left a bound. Where
+        the horizon is a moment that a run that goes on has too (`moment`: a stage, a timer, a key
+        time or a contact is due there), a set whose rates move that was built there records its state
+        there, with the rates that its first segment would start with; at a horizon that is no other
+        moment, the sets whose segments merely end there hold their values in their pieces, as a
+        longer run's segments through it do. So a value at the horizon reads the same in a run that
+        ends there as in one that goes on."""
         self.cut(t)
         for instance in self.instances:
-            if isinstance(instance, Lines | ComponentWay | Sparse):
+            if isinstance(instance, Lines) or (moment and isinstance(instance, ComponentWay | Sparse)):
                 instance.finish(t)
 
     def touched_by(self, names):
@@ -278,6 +283,9 @@ class Ways:
         level = [None] * len(made)
 
         def level_of(index, path):
+            """The level of a new set, as a computation of `walk.walked`, so that a chain of sets that
+            read the rates of the next is no limit: each new set whose rates it reads is one that it
+            yields. `path` holds the sets on the way to it, which the driver walks depth first."""
             if level[index] is not None:
                 return level[index]
             if index in path:
@@ -287,17 +295,19 @@ class Ways:
                     'the rates of two calculations needs one declared solver that owns them both, '
                     'which states it as a constraint'
                 )
+            path.add(index)
             found = 0
             for name in made[index].rates:
                 if name in new_rates:
-                    found = max(found, level_of(new_rates[name], path | {index}) + 1)
+                    found = max(found, (yield level_of(new_rates[name], path)) + 1)
                 elif name in rate_sets:
                     found = max(found, self.levels[rate_sets[name]] + 1)
+            path.discard(index)
             level[index] = found
             return found
 
         for index in range(len(made)):
-            level_of(index, frozenset())
+            walked(level_of(index, set()))
         # A set whose settings read a rate of another set that moves between moments integrates
         # with it, on the sparse integrator, level by level (`Sparse`): they are one instance.
         together = list(range(len(made)))

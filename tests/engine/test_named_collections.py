@@ -9,7 +9,8 @@ collection written in its place, and the closed form worked here from the member
 - at the top level (`tanks = C`, read by a formula of the root), in an entity (`this.tanks`) and in
   an event (a local of an occurrence, read by its stage and by a formula of it);
 - for `C` the instances of a template, a literal (its members in their order of creation), a
-  `where` on an input, a `by` on an input, and another named collection;
+  `where` on an input, a `by` on an input, and another named collection, narrowed (`big.where(...)`)
+  or named again as it is (`tanks = big`, an alias);
 - for `sum`, `min`, `max` and `any`/`all` of a projection, `count` of the members and of a yes/no,
   `.at(x)` after `by`, and `where` after the name;
 - an empty collection: `min` and `max` fail when read, both ways;
@@ -111,18 +112,25 @@ Tank:
 
 def place_model(where, read_text, collection_text, named, kind):
     """A model that reads `read_text` (over C) at a place: as a formula of the root, of an entity,
-    or of an occurrence and its stage; with C named (`tanks = ...`) or written in place. It
-    returns the model and the path of what it reads at 1 h."""
+    or of an occurrence and its stage; with C named (`named`: `tanks = ...`), named and then named
+    again as it is (`alias`: `big = ...`, `tanks = big`), or written in place (None). It returns
+    the model and the path of what it reads at 1 h."""
     name = {'top': 'tanks', 'entity': 'this.tanks', 'event': 'tanks'}[where]
     read_of = read_text.replace('C', name if named else collection_text)
     unit = {'L': 'L', '': '1', 'bool': 'bool'}[kind]
+    big = {'top': 'big', 'entity': 'this.big', 'event': 'big'}[where]
+    lines = {
+        None: [],
+        'named': [f'tanks = {collection_text}'],
+        'alias': [f'big = {collection_text}', f'tanks = {big}'],
+    }[named]
     if where == 'top':
-        binding = f'tanks = {collection_text}\n' if named else ''
+        binding = ''.join(f'{line}\n' for line in lines)
         return HEAD + binding + f'total = formula({read_of})\n', 'total'
     if where == 'entity':
-        binding = f'    tanks = {collection_text}\n' if named else ''
+        binding = ''.join(f'    {line}\n' for line in lines)
         return HEAD + f'boss:\n{binding}    total = formula({read_of})\n', 'boss.total'
-    binding = f'        tanks = {collection_text}\n' if named else ''
+    binding = ''.join(f'        {line}\n' for line in lines)
     initial = {'L': '0 L', '1': '0', 'bool': 'false'}[unit]
     return (
         HEAD
@@ -156,10 +164,12 @@ def test_a_read_over_a_named_collection_is_the_read_over_the_collection_in_its_p
     collection_text, held = collection(rng, data)
     read_text, expected, kind = reading(rng, data, held)
     members = members_text(data) + '\n\n'
-    named = outcome(*_with(place_model(where, read_text, collection_text, True, kind), members))
-    written = outcome(*_with(place_model(where, read_text, collection_text, False, kind), members))
-    assert named == written
-    assert named == ('failed' if expected is None else expected)
+    written = outcome(*_with(place_model(where, read_text, collection_text, None, kind), members))
+    assert written == ('failed' if expected is None else expected)
+    for named in ('named', 'alias'):
+        assert (
+            outcome(*_with(place_model(where, read_text, collection_text, named, kind), members)) == written
+        )
 
 
 def _with(made, members):
@@ -169,8 +179,8 @@ def _with(made, members):
 
 def test_a_named_collection_of_a_named_collection_reads_its_members():
     """`big = Tank.instances.where(full)`, `tanks = big.where(rank >= 2)`: at the top level, in an
-    entity and in an event, the sum over `tanks` is that over the full tanks of rank 2 at least: 6 L.
-    (A bare `tanks = big` is no collection value of the language.)"""
+    entity and in an event, the sum over `tanks` is that over the full tanks of rank 2 at least: 6 L;
+    and `same = big`, the named collection named again as it is, holds every full tank: 10 L."""
     text = (
         HEAD
         + members_text([(1, True, 4), (2, False, 5), (3, True, 6)])
@@ -178,18 +188,25 @@ def test_a_named_collection_of_a_named_collection_reads_its_members():
 
 big = Tank.instances.where(full)
 tanks = big.where(rank >= 2)
+same = big
 total = formula(sum(tanks.water))
+whole = formula(sum(same.water))
 
 boss:
     big = Tank.instances.where(full)
     tanks = this.big.where(rank >= 2)
+    same = this.big
     total = formula(sum(this.tanks.water))
+    whole = formula(sum(this.same.water))
     seen: L = 0 L
+    every: L = 0 L
     look = event():
         big = Tank.instances.where(full)
         tanks = big.where(rank >= 2)
+        same = big
         after 1 h:
             this.seen = sum(tanks.water)
+            this.every = sum(same.water)
 
 boss.look.start()
 """
@@ -197,8 +214,8 @@ boss.look.start()
     found = compiled(text)
     record = run(found.program, found.configuration)
     assert record.failure is None, record.failure.detail('message')
-    paths = ['total', 'boss.total', 'boss.seen']
-    assert [r.values[0] for r in read(record, found.program, paths, [1.5])] == [6, 6, 6]
+    paths = ['total', 'boss.total', 'boss.seen', 'whole', 'boss.whole', 'boss.every']
+    assert [r.values[0] for r in read(record, found.program, paths, [1.5])] == [6, 6, 6, 10, 10, 10]
 
 
 BROADCAST = (

@@ -376,6 +376,7 @@ def test_a_stop_of_the_log_at_or_after_the_end_that_the_budget_gives_need_not_co
             cold = store.run(program, small, log)
             store.run(program, wide, log)
             cut = store.run(program, small, log)
+        assert cold == fresh == cut  # one record, its histories included
         for record in (fresh, cold, cut):
             assert record.failure.detail('budget') == pieces and record.end == end, record.failure
             found = values_at(record, program, 'clock.ticks', [0.5, end])

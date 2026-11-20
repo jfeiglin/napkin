@@ -143,6 +143,20 @@ def held(record, program, times):
     return found
 
 
+def differences(one, other):
+    """What differs between two records, for a failure's message: the keys of the histories that one
+    holds and the other does not, those whose pieces differ, and whether the traces and the failures
+    differ."""
+    mine = {history.key: history.pieces for history in one.histories}
+    theirs = {history.key: history.pieces for history in other.histories}
+    return (
+        sorted(map(str, mine.keys() ^ theirs.keys())),
+        sorted(str(key) for key in mine.keys() & theirs.keys() if mine[key] != theirs[key]),
+        one.trace != other.trace,
+        one.failure != other.failure,
+    )
+
+
 def same(left, right):
     if isinstance(left, (bool, str, Unavailable)) or isinstance(right, (bool, str, Unavailable)):
         return left == right
@@ -152,7 +166,7 @@ def same(left, right):
 def stored(longer, request, program, configuration, breakpoints, edits):
     """The record that the store gives a request from a stored longer run: its cut (`store.served`),
     or, where no cut answers as a fresh run does, the request run alone (`store.run`)."""
-    found = store.served(longer, request)
+    found = store.served(longer, request, program)
     return found if found is not None else fresh(program, configuration, breakpoints, edits)[0]
 
 
@@ -181,6 +195,8 @@ def test_fresh_cut_and_resumed_runs_of_a_request_have_one_outcome_and_one_set_of
         cut = stored(longer, request, program, configuration, breakpoints, edits)
         later = resumed(program, configuration, breakpoints, edits)
         assert outcome(cut) == outcome(alone) == outcome(later), (seed, request, breakpoints, edits)
+        # One record, its histories included: a cut keeps what a fresh run of the request keeps.
+        assert cut == alone == later, (seed, request, differences(alone, cut), differences(alone, later))
         times = sorted({0, horizon, *(round(rng.uniform(0, horizon), 3) for _ in range(5))})
         expected = held(alone, program, times)
         for record in (cut, later):
@@ -222,7 +238,8 @@ def test_an_edit_after_the_horizon_of_a_request_takes_no_part_in_its_cut():
     assert read(longer, program, ['tank.water.external'], [1, 3])[0].values == (0, -2)
     request = Request(1, everything=False, keys=(WATER,), pieces=2)
     alone, _ = fresh(program, Configuration(request), stops, edits)
-    cut = store.served(longer, request)
+    cut = store.served(longer, request, program)
+    assert cut == alone
     for record in (alone, cut):
         assert record.failure is None and record.end == 1
         assert read(record, program, ['tank.water', 'tank.water.external'], [1])[0].values == (8,)

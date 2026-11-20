@@ -162,7 +162,13 @@ def test_a_narrow_record_fresh_or_cut_agrees_with_the_full_one_and_holds_nothing
     keys = tuple(sorted({Key('plant', tuple(path.split('.')[1:])) for path in rng.sample(PATHS, 3)}, key=str))
     narrow = Request(3, everything=False, keys=keys)
     fresh = edited(program, Configuration(narrow), stop, edits)
-    cut = store.served(full, narrow)
+    cut = store.served(full, narrow, program)
+    # One record, its histories included: the cut keeps what the fresh run of the request keeps.
+    assert cut == fresh, (
+        seed,
+        sorted(str(h.key) for h in cut.histories),
+        sorted(str(h.key) for h in fresh.histories),
+    )
     times = sorted({0, 0.5, 1, 1.5, 2, 3, *(round(rng.uniform(0, 3), 3) for _ in range(3))})
     held = {str(key) for key in keys} | {f'{key}.external' for key in keys if len(key.steps) == 1}
     for path in PATHS:
@@ -187,10 +193,10 @@ def test_a_ledger_reads_the_books_of_the_store_whatever_the_request_names():
     full = edited(case.program, Configuration(Request(7)), stops, (('tank.water', 5),))
     for keys in ((water,), (ledger,), (water, ledger)):
         request = Request(7, everything=False, keys=keys)
-        for record in (
-            edited(case.program, Configuration(request), stops, (('tank.water', 5),)),
-            store.served(full, request),
-        ):
+        alone = edited(case.program, Configuration(request), stops, (('tank.water', 5),))
+        cut = store.served(full, request, case.program)
+        assert cut == alone, keys
+        for record in (alone, cut):
             assert read(record, case.program, ['tank.water.external'], [1, 3])[0].values == (0, -1)
     with pytest.raises(KeyError, match=r'tank\.ticks is no store'):
         read(full, case.program, ['tank.ticks.external'], [1])
@@ -597,7 +603,7 @@ def test_a_record_holds_at_most_its_budget_and_agrees_with_the_whole_run_before_
     request = Request(7, pieces=pieces)
     budgeted = run(case.program, Configuration(request))
     assert sum(len(history.pieces) for history in budgeted.histories) <= pieces
-    assert store.served(whole, request).end == budgeted.end
+    assert store.served(whole, request, case.program) == budgeted
     paths = ['tank.water', 'tank.ticks', 'tank.alarms']
     times = [k * 0.25 for k in range(29)]
     for path in paths:

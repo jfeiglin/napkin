@@ -48,12 +48,17 @@ manifest of what it holds (R-A4a-07, R-A4a-08).
 - **One rule, as the run goes.** A record holds the pieces that its run made up to its end, and its
   pieces up to a time are settled once the run is past that time: a ledger begins at its first edit,
   the values of an occurrence at its start, and no later edit or start adds a piece before its own
-  time. So a record cut at a time holds what a run to that time holds, and its budget counts the
-  same pieces: the run store's cut of a longer record answers as a fresh run of the shorter request
-  (`store.served`), and a run past its budget stops where its record does, before any later stop. A
-  curve is what a cut cannot follow: a run fits it to the steps that it takes to its own end, so the
-  store gives a request at an earlier horizon a cut only where no value that it holds is on a curve
-  by then, and runs it otherwise.
+  time; a piece that starts at its end holds its value there, since nothing of the record follows
+  it. What a record of only some values keeps is one function of its request and its trace, for a
+  run's record and for a cut of a longer one (`engine/timeline/record.requested`), and its histories
+  are in the order of their keys. So a record cut at a time holds what a run to that time holds, its
+  histories included, and its budget counts the same pieces: the run store's cut of a longer record
+  is the record of a fresh run of the shorter request (`store.served`), and a run past its budget
+  stops where its record does, before any later stop. A fit is what a cut cannot follow: a run fits a
+  curve, or a line of a fit's slope, to the span that its own end ends, and finds a change of a
+  formula by bisection over such a span, so the store gives a request at an earlier horizon, or one
+  that its budget ends earlier, a cut only where no piece that it keeps is one of these
+  (`engine/timeline/record.settled`), and runs it otherwise.
 - **The budget** (`Record.within`, R-A4a-07): the values that a record holds have at most the
   request's number of pieces. A record that would hold more ends at the time of the first piece that
   does not fit, with a failure entry there that names the budget (the detail `budget`): it holds the

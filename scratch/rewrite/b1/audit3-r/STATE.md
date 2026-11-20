@@ -39,11 +39,20 @@
 - M12 test_solver_memberships.py: 5/5 failed. `Former._membership`: x and ends read once, known
   ends checked (`ops.REVERSED`), then the chain's relations; lines, moving, stage, edit, fresh.
 - test_budget_rule: the skip of curves' rates at the horizon dropped (others fixed ways.finish).
+- Coordinator: a warm cut held more histories than the cold run. `record.requested` (one rule: the
+  manifest's, `needed` under the trace's occurrences and definitions on a declared plan `plan_for`,
+  ledgers; sorted by key; an end piece holds its value, `_finished`), used by Recorder.record and
+  store.served(record, request, program); `settled`: no fit (a fitted line is now a degree-1 Curve)
+  nor bisected change of a calculated value; served only so at an earlier horizon or budget end.
+  Rule tests assert record equality: budget_rule (cut == alone == later: 5 failed before), record
+  claims, formula failures, session; test_store window: a shorter everything request runs alone.
 
 ## Decisions
 - A formula that only the record evaluates is `Unavailable` by name where it fails (D7, F's rule
   test: a formula read is Unavailable), not the run's failure: the run never evaluated it.
 - A stop at the end of a budget's record within the crossing tolerance counts as after it.
+- 24(a) "only where the cut is what a fresh run gives": a fitted line counts as a curve (its slope
+  follows the fit's span), so a shorter request with a formula over moving values runs fresh.
 
 ## For the main session
 - F: keep `within` in a constraint (lowering._relations, build.in_range) and read it in the oracle

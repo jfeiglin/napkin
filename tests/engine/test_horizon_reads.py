@@ -17,9 +17,17 @@ tolerance, on either side of it (`moment.Clock`); a moving solver bounds the pip
 it reads as it moves, and the tank never empties: each value read at each moment and between them, in a run to that
 time and in a run to 4 h, agree, exactly on lines and within the integration's tolerance on curves.
 Worked by hand: the pipe carries 1 L/h at 1 h in both.
+
+A horizon at which nothing else is due is no moment of a run that goes on: its segments go through
+it, and the run that ends there holds the values of the segments that end there. Three compartments
+in a chain, whose first holds 100 e^(-t) L, within its tolerance of its face by 24 h: a run to 24 h
+finishes (it does not find the bounds of the state there, where the component would refuse it), and
+reads at 24 h as a run to 30 h, and as the Bateman equations give, within the record's tolerance.
 """
 
 from __future__ import annotations
+
+import math
 
 import pytest
 
@@ -136,3 +144,29 @@ def test_a_value_at_a_time_reads_the_same_in_a_run_that_ends_there_and_in_one_th
         if t == 1:
             # The commit of the moment lowers the request: the pipe carries 1 L/h there.
             assert here[keys.index('plant.pipe.actual_rate')] == pytest.approx(1, abs=1e-9)
+
+
+def test_a_horizon_at_which_nothing_else_is_due_reads_as_a_longer_run():
+    b = Builder(UNITS)
+    b.entity(
+        'chain',
+        value('a', 'L', 100, lower=0),
+        value('b', 'L', 0, lower=0),
+        value('c', 'L', 0, lower=0),
+        flow('ab', this.a, this.b, request=formula(this.a / q(1, 'h'))),
+        flow('bc', this.b, this.c, request=formula(this.b / q(2, 'h'))),
+        flow('out', this.c, SINK, request=formula(this.c / q(3, 'h'))),
+    )
+    program = b.finish()
+    keys = ['chain.a', 'chain.b', 'chain.c', 'chain.ab.actual_rate', 'chain.out.actual_rate']
+    ended, _ = ran(program, 24)
+    longer, _ = ran(program, 30)
+    here = [reading.values[0] for reading in read(ended, program, keys, [24])]
+    there = [reading.values[0] for reading in read(longer, program, keys, [24])]
+    # Within the tolerance of the record, to which its pieces on curves are fitted: 1e-10 of 100 L.
+    assert here == pytest.approx(there, rel=1e-7, abs=1e-8)
+    # The Bateman equations: b = 200 (e^(-t/2) - e^-t), c = 50 (3 e^-t - 12 e^(-t/2) + 9 e^(-t/3)).
+    e = math.exp
+    assert here[1:3] == pytest.approx(
+        [200 * (e(-12) - e(-24)), 50 * (3 * e(-24) - 12 * e(-12) + 9 * e(-8))], abs=1e-8
+    )

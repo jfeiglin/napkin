@@ -3,9 +3,9 @@
 A total read through 100 acyclic child links raised a RecursionError: each formula that a formula
 read was evaluated one Python call deeper, in the present (`run.Run.value`), in the expansions of the
 plan and in the walks of the conditions. One driver now walks the graph on an explicit stack
-(`plan.walked`). The rule: for random acyclic graphs far deeper than Python's recursion limit, with
-that limit lowered to 400 frames, the run gives each value its closed form, computed here by
-evaluating the same graph in Python integers, in the order of its links:
+(`continuous/walk.walked`). The rule: for random acyclic graphs far deeper than Python's recursion
+limit, with that limit lowered to 400 frames, the run gives each value its closed form, computed here
+by evaluating the same graph in Python integers, in the order of its links:
 
 - a random graph of formulas through links, a stage and an assertion over state reading its end;
 - a chain of boolean formulas that a trigger, its near-ties and its prediction read;

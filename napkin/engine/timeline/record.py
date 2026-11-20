@@ -14,9 +14,10 @@ pieces of each value of a run:
   and a flow one constant piece. A curved segment (an exponential closed form, or the solver) gives
   pieces with a `Curve` (`napkin/program/record.py`): the value follows a Chebyshev series of
   degree `DEGREE` over the piece, within the tolerance of the value, and a piece is cut in two until
-  it does. A solver's segment is fitted step by step: its dense output is a cubic in each step,
-  which the series holds exactly. The state that a segment starts from opens its pieces, so a
-  settled bound is a jump.
+  it does; a fit that comes out a line of a slope other than zero is a series of degree one, since
+  its slope is the fit's over its span (`fitted`). A solver's segment is fitted step by step: its
+  dense output is a cubic in each step, which the series holds exactly. The state that a segment
+  starts from opens its pieces, so a settled bound is a jump.
 - **The family** (`family.py`) gives exact lines: a piece of each store and of each actual rate at
   each change of its line, and a piece of a request or a capacity that is a formula at each change
   of its value.
@@ -54,13 +55,18 @@ pieces of each value of a run:
   each change, located to within the crossing tolerance of the run (`Numerics.crossing`). A formula
   that only names another value has that value's history. A formula that cannot be evaluated holds
   `Unavailable` with the reason, from where it cannot be, found as a change of a yes/no is, also
-  inside a piece (a membership whose moving end passes the other): its values before are kept. A
-  record that keeps only some values keeps what their formulas read too.
+  inside a piece (a membership whose moving end passes the other): its values before are kept.
 
-The values that a record holds have at most the request's budget of pieces: a record that would hold
-more ends before the time of the first piece that does not fit, naming the budget (`Record.within`),
-and a run whose record so far would hold more at a stop ends there by its budget, before any checkpoint
-(`checkpoints.Breaks`).
+**What a record holds** is one function of its request and its trace (`requested`), for a run's
+record and for a cut of a longer one (`store.served`): every value, or the values that the request
+names, what their formulas read under each definition that the trace's commits gave them
+(`needed`), and the ledgers of the books, each history in the order of its key; a piece that starts
+at the record's end holds its value there (`_finished`). Whether a cut of a longer record at an end
+is what a run to that end makes is `settled`: no piece that it keeps is a fit or a change that the
+record found by bisection after the run. The values that a record holds have at most the request's
+budget of pieces: a record that would hold more ends before the time of the first piece that does
+not fit, naming the budget (`Record.within`), and a run whose record so far would hold more at a
+stop ends there by its budget, before any checkpoint (`checkpoints.Breaks`).
 
 Numbers are in the canonical unit of their dimension. `read` gives them in the declared unit of each
 path, from what the record holds and from nothing else (`Record.unavailable`): any other value is
@@ -123,8 +129,10 @@ def fitted(values, start, end, tolerance):
     """The pieces of k values from `start` to `end`: one list for each value, each piece a (time,
     value, rate). `values(times)` gives an array of one row for each time; `tolerance` holds one
     number for each value, which a fit may widen to `RELATIVE` of the value's largest size in the
-    piece. A value that the series holds as a line has a number for its rate, and any other a
-    `Curve` in its place, which the record's piece keeps in its own field (`_history`)."""
+    piece. A value that the series holds as a constant has the rate 0, and any other a `Curve` in
+    its place, which the record's piece keeps in its own field (`_history`): a line too, as a series
+    of degree one, since its slope is the fit's over the span that it was fitted to, and so follows
+    where the run ended in its last digits, as a curve does (`settled`)."""
     found = [[] for _ in tolerance]
     pending, cuts = [(start, end)], 0
     while pending:
@@ -149,8 +157,11 @@ def fitted(values, start, end, tolerance):
             series = coefficients[:, k] if coefficients.ndim > 1 else coefficients
             curved = series[2:]
             if np.all(np.abs(curved) <= allowed[k] / 16):
-                # A line: its slope is the first coefficient over the half of the span.
-                at.append((a, float(first[k]), float(series[1]) * 2.0 / (b - a) if b > a else 0.0))
+                # A line: its slope is the first coefficient over the half of the span; a constant is
+                # what any fit of it gives, and a line of another slope is the fit's (see above).
+                slope = float(series[1]) * 2.0 / (b - a) if b > a else 0.0
+                line = Curve(b - a, (float(series[0]), float(series[1])))
+                at.append((a, float(first[k]), 0.0 if slope == 0 else line))
             else:
                 at.append((a, float(first[k]), Curve(b - a, tuple(float(c) for c in series))))
     return [sorted(pieces, key=lambda piece: piece[0]) for pieces in found]
@@ -292,7 +303,9 @@ class Recorder:
         its failure or of its stop at a breakpoint, whose entry ends the trace)."""
         plan, run = self.plan, self.run
         request = plan.configuration.request
-        needed = None if request.everything else self._needed(request.keys)
+        last = failure if failure is not None else pause
+        trace = tuple(self.trace) + ((last,) if last is not None else ())
+        needed = None if request.everything else _needed_by(plan.program, request.keys, trace, plan)[1]
         # The occurrences that the trace starts (None: no occurrence's): a start that a failed commit
         # discarded is in the plan, and its values are in no record (`moment._Savepoint`).
         started = {entry.owner for entry in self.trace if entry.kind == 'start'} | {None}
@@ -377,49 +390,18 @@ class Recorder:
             ledger = Key(key.owner, (*key.steps, 'external'))
             histories[f'{name}.external'] = self._history(ledger, pieces)
             keys.add(ledger)
-        kept = [
+        held = [
             history
             for history in histories.values()
             if history.key is not None and history.pieces and (request.everything or history.key in keys)
         ]
         manifest = Manifest(request.horizon, request.everything, request.keys)
-        last = failure if failure is not None else pause
-        trace = tuple(self.trace) + ((last,) if last is not None else ())
-        # The values that the record holds stay within the request's budget of pieces (R-A4a-07).
-        return Record(manifest, tuple(kept), trace, failure).within(request.pieces)
-
-    def _needed(self, keys):
-        """The engine names whose histories a record of only these keys needs: theirs, and what
-        their formulas and reductions read."""
-        return self._needed_names([name_of(key) for key in keys])
-
-    def _needed_names(self, names):
-        """The engine names whose histories a record of these names needs (`_needed`): what their
-        formulas read under every definition that they had. Each name adds what it reads directly
-        (`Plan.reads`), which the walk follows in turn, so a chain is walked once, and not once for
-        each of its links."""
-        plan, found = self.plan, set()
-        pending = list(names)
-        while pending:
-            name = pending.pop()
-            if name in found or name not in plan.values:
-                continue
-            found.add(name)
-            kind = plan.values[name].kind
-            if kind in (FORMULA, REDUCE, LOOKUP) or name in plan.defined:
-                if kind in (FORMULA, REDUCE, LOOKUP):
-                    pending.extend(plan.reads(name))
-                for _, value in plan.defined.get(name, ()):
-                    if value.kind == FORMULA:
-                        pending.extend(set(nodes.names(value.node)) - {'t'})
-            elif kind == CHANGED:
-                pending += sorted(plan.reads(name))  # the value that it follows
-            elif kind == DYNAMIC:
-                pending += sorted(plan.dynamic_reads(name))  # what its members project, and when
-            owner = plan.occurrence_of(name)
-            if owner is not None:
-                pending += [f'{owner}.started', f'{owner}.active']
-        return found
+        made = _finished(Record(manifest, tuple(held), trace, failure))
+        # The values that the record holds stay within the request's budget of pieces (R-A4a-07); a
+        # record that its budget ends keeps what a record to that end keeps (`requested`), as a cut
+        # of a longer record does.
+        bounded = made.within(request.pieces)
+        return bounded if bounded is made else requested(bounded, plan.program, plan)
 
     @staticmethod
     def _history(key, pieces):
@@ -653,6 +635,138 @@ class Recorder:
         if finish is not None and finish <= end:
             pieces = [piece for piece in pieces if piece[0] < finish] + [(finish, run.frozen[name], 0.0)]
         return pieces
+
+
+def needed(plan, names, definitions):
+    """The engine names whose histories a record of only these names needs: theirs, what their
+    formulas, reductions, keyed and dynamic reads read under each definition that they have
+    (`definitions`, {name: [(time, value)]}, as `Plan.definitions_of` gives them), the value that the
+    time of a change follows, and the fields that say when each occurrence among them is. Each name
+    adds what it reads directly (`Plan.reads` of its declared value, and the node of each
+    definition), which the walk follows in turn, so a chain is walked once, and not once for each of
+    its links."""
+    found = set()
+    pending = list(names)
+    while pending:
+        name = pending.pop()
+        if name in found or name not in plan.values:
+            continue
+        found.add(name)
+        kind = plan.values[name].kind
+        if kind in (FORMULA, REDUCE, LOOKUP) or name in definitions:
+            if kind in (FORMULA, REDUCE, LOOKUP):
+                pending.extend(plan.reads(name))
+            for _, value in definitions.get(name, ()):
+                if value.kind == FORMULA:
+                    pending.extend(set(nodes.names(value.node)) - {'t'})
+        elif kind == CHANGED:
+            pending += sorted(plan.reads(name))  # the value that it follows
+        elif kind == DYNAMIC:
+            pending += sorted(plan.dynamic_reads(name))  # what its members project, and when
+        owner = plan.occurrence_of(name)
+        if owner is not None:
+            pending += [f'{owner}.started', f'{owner}.active']
+    return found
+
+
+def requested(record, program, plan=None):
+    """The record with what a record of its request keeps: every history, of a record of every value;
+    else the histories that its manifest names, those that their values need (`needed`, under the
+    occurrences that its trace starts and the definitions that its commits gave), and the ledger of
+    each store that an edit changed by its end (the store's books, `Manifest.names`); each history in
+    the order of its key, a piece at its end holding its value there (`_finished`). It is the one rule of what a record holds, of a run's (`Recorder.record`)
+    and of a cut of a longer record (`store.served`), so a cut is the record of a fresh run of the
+    shorter request, its histories included. `plan` is a plan of the program that may serve
+    (`plan_for`)."""
+    histories = record.histories
+    if not record.manifest.everything:
+        found, names = _needed_by(program, record.manifest.keys, record.trace, plan)
+        keys = set(record.manifest.keys) | {found.values[name].key for name in names}
+        histories = [history for history in histories if history.key in keys or history.key.store is not None]
+    return _finished(Record(record.manifest, tuple(histories), record.trace, record.failure))
+
+
+def _finished(record):
+    """A record as the rule holds it (`requested`): each history in the order of its key, whatever
+    made the record, and each piece that starts at the record's end holding its value there, since the
+    record holds nothing after its end: a run that ends there and one that goes on differ only in the
+    rate there, which no read of the record sees. Such a piece that then continues the one before it
+    is left out, as the recorder leaves it out (`_compact`)."""
+    end = record.end
+    histories = []
+    for history in sorted(record.histories, key=_order):
+        if any(piece.t == end and (piece.rate != 0 or piece.curve is not None) for piece in history.pieces):
+            pieces = [
+                (piece.t, piece.value, 0.0)
+                if piece.t == end
+                else (piece.t, piece.value, piece.rate if piece.curve is None else piece.curve)
+                for piece in history.pieces
+            ]
+            histories.append(Recorder._history(history.key, pieces))
+        else:
+            histories.append(history)
+    return Record(record.manifest, tuple(histories), record.trace, record.failure)
+
+
+def settled(record, program, plan=None):
+    """Whether every piece that a record keeps is what any run to its end makes, so that a longer
+    run's record cut at that end, or ended there by its budget, is the record of a run to it
+    (`store.served`): no history is on a curve, which a fit makes (`fitted`: a line of the fit's
+    slope is one too) over the span that the run's end ends; and no value that the record makes after
+    the run from what it reads (a formula, a reduction, a keyed or a dynamic read, a value that a
+    commit gave a new definition) has a piece where nothing else that the record keeps has one: a
+    change found by bisection, over a stretch that the run's end ends. What holds between the pieces
+    of what it reads, and starts with them, is what any run makes."""
+    if any(piece.curve is not None for history in record.histories for piece in history.pieces):
+        return False
+    plan = plan_for(program, record.trace, plan)
+    definitions = plan.definitions_of(record.trace)
+    calculated = {
+        value.key
+        for name, value in plan.values.items()
+        if value.key is not None and (value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC) or name in definitions)
+    }
+    times = {
+        piece.t for history in record.histories if history.key not in calculated for piece in history.pieces
+    }
+    return all(
+        piece.t in times
+        for history in record.histories
+        if history.key in calculated
+        for piece in history.pieces
+    )
+
+
+def _needed_by(program, keys, trace, plan=None):
+    """(the plan, the engine names) of what a record of only `keys` that ends with `trace` needs
+    (`needed`): on a plan whose values are as the program declares them and whose occurrences are
+    those that the trace starts (`plan_for`), under the definitions that the trace's commits gave."""
+    plan = plan_for(program, trace, plan)
+    return plan, needed(plan, [name_of(key) for key in keys], plan.definitions_of(trace))
+
+
+def plan_for(program, trace, plan=None):
+    """A plan of a program whose values are as the program declares them (no commit gave one a new
+    definition) and whose occurrences are those that a trace starts: `plan`, or the plan that the
+    reader keeps (`remember`), when it is one; else one made again from the trace (`Plan.replay`). So
+    what a record needs follows from the record, and not from the run that made the plan."""
+    starts = {entry.owner for entry in trace if entry.kind == 'start'}
+    kept = _PLANS.get(id(program))
+    for found in (plan, kept[1] if kept is not None and kept[0] is program else None):
+        if (
+            found is not None
+            and not found.defined
+            and starts == {occurrence for made in found.occurrences.values() for occurrence in made}
+        ):
+            return found
+    made = Plan.of(program, Configuration(Request(0)))
+    made.replay(trace)
+    return made
+
+
+def _order(history):
+    """The place of a history in a record: by its key, whatever made the record."""
+    return history.key.owner, history.key.steps
 
 
 def _switches(at, a, b, first, crossing):

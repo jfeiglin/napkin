@@ -17,10 +17,12 @@ run goes and its record is read (the programs are made by the program's builder)
 - a declared solver's input read through a chain of formulas of known values, and a solver's
   constraint that reads the rate that it determines through a chain (`declared.py`); a rate read
   through a chain of known formulas, on arrays and on lines (`family.py`, `core/arrays.py`);
-- the paths that recurse in files of other agents, marked as such (`xfail`, strict, so that the fix
-  shows): a rate that moves, read through a chain, on a component (`component.py`; the proofs of
-  `continuous/kernels.py` that it reaches next walk on the driver) and on the sparse integrator
-  (`sparse.py`).
+- a chain of connected sets, each of whose requests reads the actual rate of the set written after
+  it, so that each settles after that one (`ways.Ways.build`, the levels of the sets);
+- a rate that moves, read through a chain, on a component (the names that a formula reads,
+  `component.Network.expanded_names`, and the proofs of `continuous/kernels.py`) and on the sparse
+  integrator (its compile and each evaluation of its settings, `sparse.Vector`), the last at 1,000
+  links, since each step of its solver evaluates the whole chain.
 
 Each expected value is a closed form: the number of links, or the exponential decay of a tank that
 drains at its water over 10 h, 10 e^(-t / 10 h) L.
@@ -72,11 +74,6 @@ from napkin.program.config import Configuration, Request
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 LIMIT = 400  # Python's recursion limit while the plan is made, the run goes and its record is read
 DEPTHS = [1500, pytest.param(5000, marks=pytest.mark.deep)]
-
-
-def elsewhere(where):
-    """A path that recurses in a file of another agent (`briefs/audit3.md`, "For the main session")."""
-    return pytest.mark.xfail(raises=RecursionError, strict=True, reason=f'recursion in {where}')
 
 
 @contextmanager
@@ -320,17 +317,34 @@ def test_a_rate_read_through_a_chain_of_known_formulas_is_held_between_moments(w
     assert values(record, program, ['tank.water'], 5) == [pytest.approx(100 - 10 * drains)]
 
 
+@pytest.mark.parametrize('depth', DEPTHS)
+def test_a_chain_of_sets_that_read_the_rate_of_the_set_after_settles_level_by_level(depth):
+    """Tank k drains at the actual rate of the drain of tank k + 1, written after it, and the last at
+    1 L/h: each drain carries 1 L/h, so each tank holds 10 - 5 L at 5 h, the first as the last. The
+    sets are made in the order in which they are written, and each settles after the one that it
+    reads, so the first waits on every other."""
+    b = Builder(UNITS)
+    for k in range(depth):
+        rate = q(1, 'L/h') if k == depth - 1 else formula(named(f'tank{k + 1}').drain.actual_rate)
+        b.entity(f'tank{k}', value('water', 'L', 10, lower=0), flow('drain', this.water, SINK, request=rate))
+    program = b.finish()
+    record, made = ran(program, 5)
+    assert max(made.ways.levels.values()) == depth - 1
+    assert values(record, program, ['tank0.water', f'tank{depth - 1}.water'], 5) == [5, 5]
+
+
 @pytest.mark.parametrize(
-    'way',
+    ('way', 'depth'),
     [
-        pytest.param(COMPONENT, marks=elsewhere('component.py: _expand, through each formula')),
-        pytest.param(SPARSE, marks=elsewhere('sparse.py: compiled and _group, through each formula')),
+        (COMPONENT, 1500),
+        (SPARSE, 1000),
+        pytest.param(COMPONENT, 5000, marks=pytest.mark.deep),
+        pytest.param(SPARSE, 5000, marks=pytest.mark.deep),
     ],
 )
-def test_a_rate_that_moves_through_a_chain_of_formulas_integrates_to_its_closed_form(way):
+def test_a_rate_that_moves_through_a_chain_of_formulas_integrates_to_its_closed_form(way, depth):
     """A tank of 10 L drains at y / 10 h, y its water through the chain: 10 e^(-t / 10 h) L. With an
     endpoint setting on the tank, its set runs on the sparse integrator; without, on a component."""
-    depth = 1500
     b = Builder(UNITS)
     settings = {'outflow': endpoint(capacity=q(100, 'L/h'))} if way == SPARSE else {}
     tank = b.entity('tank', value('water', 'L', 10, lower=0, **settings))

@@ -145,6 +145,8 @@ def test_the_run_store_gives_the_same_values_cold_warm_and_cut(case, tmp_path):
         warm = store.run(model.program, model.configuration)
         cut = store.run(model.program, shorter)
     fresh = run(model.program, shorter)
+    # One record however the store got there, its histories included.
+    assert warm == cold and cut == fresh
     for record in (cold, warm, cut, fresh):
         assert record.failure is None
         for t in at:

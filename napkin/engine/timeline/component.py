@@ -30,9 +30,10 @@ the segments of the set one after the other.
   found (a read at a moment sees the rates that the set had there); a set built or restored at a
   moment finds the bounds of its state there before its rates are read, as its first segment finds
   them again (`refresh_bounds`), so that a read after the settling sees the rates that it settled
-  (a starved flow carries nothing). At the horizon (`finish`) it records the stores and the rates
-  of its state there on those bounds: a read at the horizon of a run that ends there is the read of
-  a run that goes on, whose next segment starts there.
+  (a starved flow carries nothing). A set built at a horizon that is a moment of a run that goes
+  on too records the stores and the rates of its state there on those bounds (`finish`): a read at
+  the horizon of a run that ends there is the read of a run that goes on, whose first segment of
+  the set starts there.
 """
 
 from __future__ import annotations
@@ -558,25 +559,30 @@ class ComponentWay:
             state.zero_faces.clear()
         finally:
             state.evaluations = evaluations
-        self.bounded = True
+        self.bounded, self._drift = True, None
 
     def finish(self, t):
-        """At the horizon, where the run stands (`ways.finish`): the stores and the rates of the state
-        there, on the bounds that it rests on, which the first segment of a run that goes on would
-        record from there (see the module)."""
+        """At the horizon, where the run stands and a run that goes on has a moment too
+        (`ways.finish`): a set built there, which has made no segment (and so no evaluation of its
+        field, which a checkpoint keeps), records the stores and the rates of its state there, on the
+        bounds that it rests on, as its first segment in a run that goes on would from there (see the
+        module): each store with its rate there, each flow's rate held. A set that has made segments
+        holds its values there in their pieces."""
         component, recorder = self.component, self.run.recorder
         state = component.state
-        if self.pending is not None or state.time != t:
+        if self.pending is not None or state.time != t or state.evaluations:
             return
-        self._settle()
+        if not self.bounded:
+            self._settle()
         evaluations = state.evaluations
         try:
-            component.field.rates(state.time, state.y)
+            # The rates of the stores there, which an affine first segment takes as its slopes.
+            slopes = np.array(component.field.rates(state.time, state.y), dtype=float)
             delivered = np.array(component.field.delivered, dtype=float)
         finally:
             state.evaluations = evaluations
         for k, name in enumerate(component.system.state_ids):
-            recorder.add(name, t, float(state.y[k]), 0.0)
+            recorder.add(name, t, float(state.y[k]), float(slopes[k]))
         for k, name in enumerate(self.rates):
             recorder.add(name, t, float(delivered[k]), 0.0)
 
@@ -613,8 +619,6 @@ class ComponentWay:
         (`triggers.AFTER`) follows before the next segment is made, as a line follows its rate. The
         evaluation counts for no budget of the run."""
         if self._drift is None:
-            if not self.bounded:
-                self._settle()
             state = self.component.state
             evaluations = state.evaluations
             try:

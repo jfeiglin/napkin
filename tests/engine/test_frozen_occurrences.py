@@ -229,7 +229,11 @@ CASES = {
     # between moments but for the start of a later watch.
     'a stage opens it': (INTO, 'request = 0 L/h', {'STAGE': 'pipe.request = 1 L/h'}),
     'the time opens it': (INTO, f'request = {SWITCH}', {}),
-    'its store fills': (INTO, 'request = 1 L/h\n                capacity = 1 L/h', {'WATER': '0 L', 'TAP': TAP}),
+    'its store fills': (
+        INTO,
+        'request = 1 L/h\n                capacity = 1 L/h',
+        {'WATER': '0 L', 'TAP': TAP},
+    ),
     'it rises with the water': (
         INTO,
         'request = formula(this.water / 10 h)\n                capacity = formula(this.water / 10 h)',
@@ -471,8 +475,8 @@ def test_a_shorter_run_finishes_and_is_the_failed_runs_record_cut_to_its_horizon
     shorter = Request(2.5)
     fresh = run(found.program, replace(found.configuration, request=shorter))
     assert fresh.failure is None
-    cut = store.served(failed, shorter)
-    assert cut.failure is None
+    cut = store.served(failed, shorter, found.program)
+    assert cut is not None and cut.failure is None
     keys = ['crew.seen', Key('crew.repair#0', ('size',)), Key('crew.repair#0', ('batch',))]
     times = [0, 1, 2, 2.5]
     assert [r.values for r in read(cut, found.program, keys, times)] == [

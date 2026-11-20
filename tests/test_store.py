@@ -121,16 +121,23 @@ def test_another_seed_runs_again(tmp_path):
 
 def test_a_window_that_the_stored_run_lacks_runs_again(tmp_path):
     """A stored run to 4 h serves no request to 6 h; the run to 6 h takes the entry's place and then
-    serves the request to 4 h too."""
+    serves a request of the water to 4 h too, as the record of a run of that request to 4 h, bit for
+    bit. A request of every value to 4 h runs alone: the level is a formula of the water, which the
+    record fits after the run over the stretch that the run's end ends, so its slope follows that end
+    in its last digits (`record.settled`)."""
     model = tank()
     to_six = replace(model.configuration, request=Request(6))
+    to_four = replace(model.configuration, request=Request(4, everything=False, keys=(WATER,)))
     with store.use(tmp_path):
         store.run(model.program, model.configuration)
         longer, used = counted(lambda: store.run(model.program, to_six))
-        shorter, again = counted(lambda: store.run(model.program, model.configuration))
+        shorter, again = counted(lambda: store.run(model.program, to_four))
+        whole, alone = counted(lambda: store.run(model.program, model.configuration))
     assert used == {'hits': 0, 'misses': 1} and again == {'hits': 1, 'misses': 0}
+    assert alone == {'hits': 0, 'misses': 1}
     assert water(longer, model, [6]) == pytest.approx((12,))
-    assert shorter.manifest == Manifest(4) and water(shorter, model, [4]) == pytest.approx((8,))
+    assert shorter == fresh(model.program, to_four) and water(shorter, model, [4]) == pytest.approx((8,))
+    assert whole == fresh(model.program, model.configuration)
     # The cut answers as a run to 4 h would: nothing at 5 h, though the entry holds the run to 6 h.
     assert water(shorter, model, [5]) == (
         Unavailable('the record holds no value at 5 h: it reaches to its horizon, 4 h'),

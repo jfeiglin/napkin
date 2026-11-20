@@ -734,7 +734,9 @@ class Run:
         for c in dict.fromkeys((src, dst)):
             holder = _holder(c.owner)
             if amount != 0 and isinstance(holder, Occ) and not self.view.cells[Cell(holder, 'active')]:
-                raise RunFailed(f'{label(c)} belongs to the finished occurrence {holder.label}, which is frozen')
+                raise RunFailed(
+                    f'{label(c)} belongs to the finished occurrence {holder.label}, which is frozen'
+                )
         if src == dst:
             # One store at both ends: the debit and the credit cancel, so the move writes nothing and
             # checks nothing (its resulting inventory is its own); the books still show it.

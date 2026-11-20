@@ -30,17 +30,22 @@ before its own, and values that it holds (every value, or each value that the re
 store's ledger with the store: `Manifest.names`). The record that a request gets is the stored one
 cut to the request (`served`), by the rule of a fresh run of the request (`napkin/program/record.py`,
 "One rule, as the run goes"): its pieces, its trace and its failure up to the request's horizon,
-the request's manifest, and the request's budget of pieces (`Record.within`), so it holds what a
-fresh run of the request holds, a store's ledger only from its first edit, and its budget ends it
-where it ends that run: a report of it says nothing of what happened later, and holds no value that
-the request does not name (the record's reader and the trail read only what its manifest names). A
-cut at an earlier horizon is that record only where the pieces of the values that the request holds
-up to the horizon do not depend on where the run ended: where none of them is on a curve, which a run
-fits to the steps that it takes to its own end. Where one is, no cut answers as a fresh run does, in
-its pieces, their number and so the outcome of a budget, and the request runs alone, as a fresh run,
-and is not stored (the entry holds more). So a request gets one record however the store got there:
-the same outcome, finished or stopped where and why, and the same values, those of lines to the
-roundoff of their fit. A request that the entry does not cover (a later horizon, a value that it does
+the request's manifest, the histories that a run of the request keeps, by the function that the
+run's own record keeps them by (`engine/timeline/record.requested`: those that the request names,
+what their values need, and the ledgers of its books), and the request's budget of pieces
+(`Record.within`). So it is the record that a fresh run of the request gives, its histories
+included: a store's ledger only from its first edit, its budget ends it where it ends that run, a
+report of it says nothing of what happened later, and it holds no value that the request does not
+name. A cut at an earlier horizon, or one that the request's budget ends earlier (a run of a log
+stops by its budget at a stop, where its record ends), is that record only where the pieces that it
+keeps do not depend on where the run ended (`record.settled`): where none of them is on a curve,
+which a run fits to the steps that it takes to its own end, and no formula, reduction, keyed or
+dynamic read has a piece that the record fitted, or found by bisection, after the run, which follow
+the stretch that the run's end ends. Where one is, no cut answers as a fresh run does, in its pieces,
+their number and so the outcome of a budget, and the request runs alone, as a fresh run, and is not
+stored (the entry holds more). So a request gets one record however the store got there, bit for
+bit: the same outcome, finished or stopped where and why, the same histories and the same values. A
+request that the entry does not cover (a later horizon, a value that it does
 not hold) runs again, with a request wide enough for both (`_widened`), and the new record takes the
 entry's place: an entry never covers less than before. A run that fails is stored, with its failure:
 the same run fails the same way. A record that its budget cut is not stored, since a request of fewer
@@ -426,42 +431,42 @@ def covers(manifest, request):
     return manifest.everything or (not request.everything and all(map(manifest.names, request.keys)))
 
 
-def served(record, request):
-    """The record that a request gets from a stored record that covers it, as a fresh run of the
-    request gives it (see the module): its pieces, its trace and its failure up to the request's
-    horizon, with the request's manifest, within the request's budget of pieces. A value whose first
-    piece comes after that horizon (an occurrence that started later, the ledger of a store first
-    edited later) is left out. None where no cut answers as a fresh run does: at an earlier horizon,
-    where a value that the request holds is on a curve by then (`_curved`)."""
+def served(record, request, program):
+    """The record that a request gets from a stored record of a run of `program` that covers it, as a
+    fresh run of the request gives it (see the module): its pieces, its trace and its failure up to
+    the request's horizon, with the request's manifest and the histories that a run of the request
+    keeps (`engine/timeline/record.requested`, the rule of a run's own record: those that it names,
+    what their values need, and the ledgers of its books), within the request's budget of pieces. A
+    value whose first piece comes after that horizon (an occurrence that started later, the ledger of
+    a store first edited later) is left out. None where no cut answers as a fresh run does: where the
+    record is cut at an earlier horizon, or ended there by its budget, and a piece that it keeps
+    follows where its run ended (`record.settled`: a curve, a fit or a bisection of a formula)."""
+    from .engine.timeline.record import plan_for, requested, settled
     from .program.record import History, Manifest, Record
 
     manifest = Manifest(request.horizon, request.everything, request.keys)
-    if record.manifest.horizon == request.horizon:
-        return Record(manifest, record.histories, record.trace, record.failure).within(request.pieces)
     end = request.horizon
-    if _curved(record, manifest, end):
+    earlier = record.manifest.horizon != end
+    if not earlier:
+        cut = Record(manifest, record.histories, record.trace, record.failure)
+    else:
+        histories = []
+        for history in record.histories:
+            pieces = tuple(piece for piece in history.pieces if piece.t <= end)
+            if pieces:
+                histories.append(History(history.key, pieces))
+        trace = tuple(entry for entry in record.trace if entry.t <= end)
+        failure = record.failure if record.failure is not None and record.failure.t <= end else None
+        cut = Record(manifest, tuple(histories), trace, failure)
+    plan = plan_for(program, cut.trace)
+    cut = requested(cut, program, plan)
+    bounded = cut.within(request.pieces)
+    if bounded is not cut:
+        plan = plan_for(program, bounded.trace, plan)
+        bounded = requested(bounded, program, plan)
+    if (earlier or bounded.end != cut.end) and not settled(bounded, program, plan):
         return None
-    histories = []
-    for history in record.histories:
-        pieces = tuple(piece for piece in history.pieces if piece.t <= end)
-        if pieces:
-            histories.append(History(history.key, pieces))
-    trace = tuple(entry for entry in record.trace if entry.t <= end)
-    failure = record.failure if record.failure is not None and record.failure.t <= end else None
-    return Record(manifest, tuple(histories), trace, failure).within(request.pieces)
-
-
-def _curved(record, manifest, end):
-    """Whether a value that `manifest` holds is on a curve in a record by the time `end`: a run fits a
-    curve to the steps that it takes to its own end, so a run to `end` fits its last stretch to `end`,
-    and its pieces there, and their number, are not those of a longer run."""
-    return any(
-        piece.curve is not None
-        for history in record.histories
-        if manifest.names(history.key)
-        for piece in history.pieces
-        if piece.t <= end
-    )
+    return bounded
 
 
 def _cut(record):
@@ -601,7 +606,7 @@ def _touch(*paths):
             os.utime(path)
 
 
-def _held(directory, run_key, request):
+def _held(directory, run_key, request, program):
     """The record that the store gives a request of a key (`served`), or None when its entry does not
     cover the request or no cut of it answers as a fresh run does; and the entry's manifest, or None
     with no entry."""
@@ -611,7 +616,7 @@ def _held(directory, run_key, request):
     record = entry['record']
     if not covers(record.manifest, request):
         return None, record.manifest
-    found = served(record, request)
+    found = served(record, request, program)
     if found is not None:
         _touch(_entry(directory, run_key), _program_file(directory, entry['program']))
     return found, record.manifest
@@ -645,11 +650,11 @@ def run(program, configuration, log=None):
         return _fresh(program, configuration, log)
     run_key = key(program, configuration, log)
     request = configuration.request
-    record, _ = _held(directory, run_key, request)
+    record, _ = _held(directory, run_key, request, program)
     if record is None:
         with _locked(directory, run_key):
             # Another process may have stored the run while this one waited.
-            record, manifest = _held(directory, run_key, request)
+            record, manifest = _held(directory, run_key, request, program)
             if record is None:
                 counts['misses'] += 1
                 if manifest is not None and covers(manifest, request):
@@ -666,7 +671,7 @@ def run(program, configuration, log=None):
                     # A record that its budget cut is not stored; the request alone may hold more.
                     return found if ran is configuration else _fresh(program, configuration, log)
                 _save(directory, run_key, program, ran, found, log)
-                return served(found, request)
+                return served(found, request, program)
     counts['hits'] += 1
     return record
 

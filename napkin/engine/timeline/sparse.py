@@ -33,9 +33,10 @@ says that the rates chatter there and names the stores and the flows.
 
 The recorder takes the pieces of the stores and of what the network gives of each flow (an actual
 rate, a route's signed rate, a served fraction) that the record keeps, fitted step by step to the
-step's dense output (`record.fitted`). At the horizon (`finish`) it takes their values there, with
-the flags that a new segment would find: a read at the horizon of a run that ends there is the read
-of a run that goes on, whose next step starts there. A reader of a condition that watches the
+step's dense output (`record.fitted`). Sets built at a horizon that is a moment of a run that goes
+on too take their values there, with the flags that a new segment would find (`finish`): a read at
+the horizon of a run that ends there is the read of a run that goes on, whose first step of the sets
+starts there. A reader of a condition that watches the
 stores reads the form of the next step (`motion`: the cubic of its dense output,
 `continuous/dense.py`).
 """
@@ -901,20 +902,23 @@ class Sparse:
         return stores + rates
 
     def finish(self, t):
-        """At the horizon, where the run stands (`ways.finish`): the kept stores and rates of the
-        state there, with the selections and the flags of a new segment, which the first step of a
-        run that goes on would record from there. The evaluations count for no budget of the run."""
-        if self.pending is not None or self.t != t:
+        """At the horizon, where the run stands (`ways.finish`): sets built there, which have made no
+        step (and so no evaluation, which a checkpoint keeps), record the kept stores and rates of
+        the state there, with the selections and the flags of a new segment, as the first step of a
+        run that goes on would from there; sets that have made steps hold their values there in
+        their pieces. The evaluations count for no budget of the run."""
+        if self.pending is not None or self.t != t or self.evaluations:
             return
         evaluations = self.evaluations
         try:
             self._select()
             self._flags()
-            values = self.values(t, self.y)[0]
+            values, carried = self.values(t, self.y)
         finally:
             self.evaluations = evaluations
+        slopes = self.incidence @ carried  # the rate of each store there
         for k in self.kept_stores:
-            self.recorder.add(self.stores[k], t, float(self.y[k]), 0.0)
+            self.recorder.add(self.stores[k], t, float(self.y[k]), float(slopes[k]))
         for k in self.kept_flows:
             self.recorder.add(self.recorded[k], t, float(values[k]), 0.0)
 
