@@ -1,10 +1,11 @@
-"""Assertion rewriting for shared test helpers, the run store for the tests that use it, and the
-selection of scenarios (`--scenario`)."""
+"""Assertion rewriting for shared test helpers, the run store for the tests that use it, the
+selection of scenarios (`--scenario`), and the examples of the property tests."""
 
 import os
 from pathlib import Path
 
 import pytest
+from hypothesis import settings
 
 from napkin import store
 from tests import selection
@@ -12,6 +13,13 @@ from tests.result_cache import clear_result_caches
 from tools import catalogue
 
 ROOT = Path(__file__).resolve().parent
+
+# Every property test draws the same examples on every run, as a run of napkin gives the same result
+# (PLAN, changes after G0, items 10 and 11): a seed from the test itself, and no database of the
+# examples of earlier runs, which held examples of other code and made a test's examples depend on
+# what ran before it on this machine. A test's own `@settings` adds to this profile.
+settings.register_profile('napkin', derandomize=True, database=None)
+settings.load_profile('napkin')
 
 
 def catalogue_test_modules(root):
