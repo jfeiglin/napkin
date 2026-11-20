@@ -225,8 +225,9 @@ def _maxmin(variables, rows, claims):
     direction (spec: "the backward leg exposes the positive part of its negation"). So where the
     smallest fraction is zero, a claim that no answer serves is held at zero and nothing more, and a
     route may carry against its request to make room for another one ("An edge may carry more than
-    its own request to meet another request"); where every claim left can be served, but not all of
-    them together, none is served against another: each is held at zero or above, as before."""
+    its own request to meet another request"); where every claim left can be served alone, but not
+    all of them together, the tier is shared on their signed fractions, as before: the smallest is
+    made as large as it can be, so that none is served against another more than the others."""
     rows = list(rows)
     open_ = list(claims)
     levels = []
@@ -253,7 +254,6 @@ def _maxmin(variables, rows, claims):
                 levels += [Fraction(0)] * len(unserved)
                 open_ = still
                 continue
-            level = Fraction(0)
         hold = [Rel(Lin(k=level * r) - served, '<=') for served, r in open_]
         still = []
         for served, r in open_:  # can this claim alone rise above the level while the others keep it?

@@ -226,7 +226,12 @@ class Lines:
                 reach = t + (value - self.lower[s]) / -slope
             elif slope > 0 and math.isfinite(self.upper[s]):
                 reach = t + (self.upper[s] - value) / slope
-            if reach <= self.plan.horizon:
+            horizon = self.plan.horizon
+            if horizon < reach <= horizon + self.plan.numerics.crossing:
+                # A line that reaches its bound a roundoff past the horizon reaches it there, where the
+                # horizon settles it as any moment (spec: the horizon is an inclusive cutoff).
+                reach = horizon
+            if reach <= horizon:
                 heapq.heappush(self.due, (reach, s, int(self.version[s])))
 
     # ---- moments ----------------------------------------------------------------------------------

@@ -136,8 +136,8 @@ def _share(rows, limits, claims):
     in the direction of its request, below zero where it carries against it, and its fraction is
     then zero, the rate of its leg in that direction. So where the smallest fraction is zero, a claim
     that no point serves is held at zero and nothing more, and a route may carry against its request
-    to make room for another one; where every claim left can be served, but not all of them
-    together, none is served against another: each is held at zero or above (the oracle's
+    to make room for another one; where every claim left can be served alone, but not all of them
+    together, the tier is shared on their signed fractions, as before (the oracle's
     `order._maxmin`)."""
     n = rows.n
     pending = [np.asarray(a, dtype=float) / r for a, r in claims]  # f.x is the served fraction
@@ -166,7 +166,6 @@ def _share(rows, limits, claims):
                     rows.at_most(f, 0.0)
                 pending = [f for f in pending if not any(f is g for g in unserved)]
                 continue
-            level = 0.0
         hold = [(-f, -level) for f in pending]
         still = []
         for f in pending:
