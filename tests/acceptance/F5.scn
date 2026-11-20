@@ -10,7 +10,6 @@ scenario "Every construct once"
 
 attacker:  @fixture
     "The attacker, which opens the drain."
-    role adversary
     event start when t >= 0 h:  @fixture
         "The attacker opens the drain."
         tank.drain = "open"
@@ -18,7 +17,6 @@ attacker:  @fixture
 tank:  @fixture
     "The tank."
     title "Water tank"
-    role operator
     input level0 = 120 L in 100 L to 1000 L  @fixture
         "Water in the tank at the start"
     input drain_rate = 10 L/h in 1 L/h to 100 L/h  @fixture
@@ -51,7 +49,6 @@ tank:  @fixture
 
 basin:  @fixture
     "The basin."
-    role environment
     let buckets = [bucket_a, bucket_b]
     var water: L = 0 L size 120 L  @fixture
         "Water in the basin"
@@ -94,7 +91,6 @@ basin:  @fixture
 
 Bucket:  @fixture
     "A bucket."
-    role environment
     input fill_time = 3 h in 1 h to 24 h  @fixture
         "Time at which the bucket counts as full"
     var water: L = 0 L size 120 L  @fixture
@@ -116,7 +112,6 @@ bucket_b: Bucket
 
 Meter:  @fixture
     "A meter."
-    role environment
     let step = 1 L/h  @fixture
         "Rate of the first meter"
     var reading: L = 0 L size 100 L  @fixture
@@ -128,7 +123,6 @@ meters: Meter * 2
 
 operators:  @fixture
     "The operators."
-    role operator
     sees tank.drain, notice
     input close_odds: fraction = 1 in 0 to 1  @fixture
         "Chance that the operators close the drain"

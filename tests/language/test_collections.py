@@ -650,3 +650,173 @@ def test_a_fixed_formula_reads_the_entry_that_its_key_selects():
     (top,) = (member for member in model.program.template('Node').members if member.id == 'top')
     (formula_read,) = (read for _, read in dict(top.values)['total'].expr.reads if read.steps == ('total',))
     assert formula_read == Path(Named('leaf'), ('total',))
+
+
+# ---- a named collection that names another ------------------------------------------------------
+
+# Three tanks, of which t0 (rank 1, 4 L) and t2 (rank 3, 6 L) are full; `big` holds the full ones, and
+# each other collection names it, directly or through a chain: at the top level (`more = tanks`,
+# `tanks = big`), in an entity through a link to another (`this.store.big`, then `this.tanks`), in an
+# event (a local that names a local), and as a member's own value (`h` names the root's `big`).
+NAMED = """
+    scenario "Named"
+        horizon 2 h
+
+    Tank:
+        input rank = 1
+        input full: bool = false
+        water: L = 1 L
+
+    t0: Tank
+        rank = 1
+        full = true
+        water = 4 L
+    t1: Tank
+        rank = 2
+        full = false
+        water = 5 L
+    t2: Tank
+        rank = 3
+        full = true
+        water = 6 L
+
+    big = Tank.instances.where(full)
+    tanks = big
+    more = tanks
+    {reads}
+
+    depot:
+        big = Tank.instances.where(full)
+
+    boss:
+        store = depot
+        tanks = this.store.big
+        mine = this.tanks
+        {own}
+        seen: L = 0 L
+        counted: number = 0
+        look = event():
+            big = Tank.instances.where(full)
+            tanks = big
+            after 1 h:
+                this.seen = sum(tanks.water)
+                this.counted = count(tanks)
+
+    Holder:
+        tanks = Tank.instances
+        held = formula(sum(this.tanks.water))
+
+    h: Holder
+        tanks = big
+
+    boss.look.start()
+    """
+
+# Each read over a collection `{c}`, and its value over the full tanks, worked by hand: their sum, their
+# count, the least and the most water, the tank of the greatest rank at or below 2 (t0), and the sum
+# over those of rank 2 or more (t2).
+READS = {
+    'total': ('formula(sum({c}.water))', 10),
+    'n': ('formula(count({c}))', 2),
+    'least': ('formula(min({c}.water))', 4),
+    'most': ('formula(max({c}.water))', 6),
+    'keyed': ('formula({c}.by(rank).at(2).water)', 4),
+    'ranked': ('formula(sum({c}.where(rank >= 2).water))', 6),
+}
+
+
+def named_model():
+    reads = '\n'.join(f'{name} = {text.format(c="more")}' for name, (text, _) in READS.items())
+    own = '\n'.join(f'    {name} = {text.format(c="this.mine")}' for name, (text, _) in READS.items())
+    return compiled(
+        NAMED.replace('    {reads}\n', textwrap.indent(reads, '    ') + '\n').replace(
+            '        {own}\n', textwrap.indent(own, '    ') + '\n'
+        )
+    )
+
+
+def test_a_named_collection_that_names_another_is_the_collection_that_it_names():
+    """A named collection is the collection that it names (spec, "Collections, keys and projections";
+    re-audit 15): every reduction, count, keyed read and `where` over a collection that names another,
+    directly or through a chain, or through a link, equals the same over the collection written in
+    its place, at the top level, in an entity, in an event and as a member's own value, on the
+    engine and on the oracle, with the values worked by hand above."""
+    from napkin.program.record import Key
+    from napkin.program.refs import ROOT, Local, Where
+    from tests.reference.from_program import run_of, value_at
+
+    model = named_model()
+    program = model.program
+    roots = {value.name: value for value in program.root}
+    assert roots['tanks'].init == Path(ROOT, ('big',)) and roots['more'].init == Path(ROOT, ('tanks',))
+    (look,) = program.template('boss').events
+    locals_ = {local.name: local.init for local in look.locals}
+    assert isinstance(locals_['big'].start, Where) and locals_['tanks'] == Path(Local('big'))
+    expected = {Key('', (name,)): value for name, (_, value) in READS.items()}
+    expected |= {Key('boss', (name,)): value for name, (_, value) in READS.items()}
+    expected |= {Key('boss', ('seen',)): 10, Key('boss', ('counted',)): 2, Key('h', ('held',)): 10}
+    record = run(program, model.configuration)
+    assert record.failure is None, record.failure.detail('message')
+    paths = [str(key) for key in expected]
+    found = [reading.values[0] for reading in read(record, program, paths, [1.5])]
+    assert found == [pytest.approx(value) for value in expected.values()]
+    oracle, failed = run_of(program, model.configuration)
+    assert failed is None, failed
+    assert [value_at(oracle, program, key, 1.5) for key in expected] == list(expected.values())
+
+
+@pytest.mark.parametrize(
+    'text',
+    ['first = second\nsecond = first\n', 'holder:\n    first = this.second\n    second = this.first\n'],
+    ids=['top', 'entity'],
+)
+def test_named_collections_that_name_each_other_are_a_cycle_with_its_chain(text):
+    """Two collections that name each other name no members: a cycle, reported with its chain."""
+    found = refused(PUMPS.rstrip(' ') + textwrap.indent(text, '    '), 'cycle')
+    assert 'first' in found.message and 'second' in found.message
+
+
+def test_a_named_collection_that_names_another_reports_stores_and_resumes_as_the_collection_in_its_place(
+    tmp_path,
+):
+    """The same model with the full tanks written in place of each named collection: a report of
+    each read, with a lag of 0.5 h and its evidence trail, is the same at 0 h and 1.5 h; the run store
+    gives the same record cold and warm; and a stop before the event's stage at 1 h that edits t0's
+    water to 7 L makes the stage's sum over its local 13 L (7 L + 6 L, by hand), resumed in place and
+    in a fresh process."""
+    from napkin import store
+    from napkin.engine.report import Lag, report
+    from napkin.engine.timeline import Plan, Run
+    from napkin.program.checkpoint import Breakpoint, Checkpoint
+    from tests.engine.test_checkpoints import in_a_fresh_process
+
+    model = named_model()
+    full = 'Tank.instances.where(full)'
+    reads = '\n'.join(f'{name} = {text.format(c=full)}' for name, (text, _) in READS.items())
+    own = '\n'.join(f'    {name} = {text.format(c=full)}' for name, (text, _) in READS.items())
+    placed = compiled(
+        NAMED.replace('    {reads}\n', textwrap.indent(reads, '    ') + '\n').replace(
+            '        {own}\n', textwrap.indent(own, '    ') + '\n'
+        )
+    )
+    records = [run(each.program, each.configuration) for each in (model, placed)]
+    for path in [*READS, *(f'boss.{name}' for name in READS), 'h.held']:
+        named, written = (
+            report(record, each.program, each.configuration, [path], [0, 1.5], {path: Lag(0.5, 1)}).values[0]
+            for record, each in zip(records, (model, placed))
+        )
+        assert named.values == written.values and named.trail == written.trail, path
+    with store.use(tmp_path / 'store'):
+        cold = store.run(model.program, model.configuration)
+        warm = store.run(model.program, model.configuration)
+    paths = [*READS, 'boss.seen', 'h.held']
+    assert read(cold, model.program, paths, [1.5]) == read(warm, model.program, paths, [1.5])
+    made = Run(Plan.of(model.program, model.configuration), (Breakpoint('boss.look.step[0]'),))
+    stopped = made.run()
+    assert isinstance(stopped, Checkpoint) and stopped.stop.t == 1.0
+    edited = made.edit('t0.water', 7)
+    resumed = made.resume()
+    (fresh,) = in_a_fresh_process(model.program, [edited], tmp_path)
+    for record in (resumed, fresh):
+        assert record.failure is None
+        assert read(record, model.program, ['boss.seen'], [1.5])[0].values == (pytest.approx(13),)

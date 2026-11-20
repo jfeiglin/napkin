@@ -38,7 +38,6 @@ runs:
 
 service:
     "The service."
-    role operator
     input n: people = 20 people in [0 people, 100 people]  @fixture
         "People who need the service"
     input rate: people/h = 2 people/h in [0 people/h, 10 people/h]  @access

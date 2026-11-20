@@ -13,6 +13,8 @@ no claim for one. So the test makes its nodes by kind.
 
 import math
 import random
+import sys
+from contextlib import contextmanager
 
 import numpy as np
 import pytest
@@ -285,3 +287,53 @@ def test_a_membership_over_many_instances_is_that_of_each_instance_and_fails_by_
             assert found.tolist() == wanted
         else:
             assert all(found is want for want in wanted)
+
+
+@contextmanager
+def shallow(limit=400):
+    """Python's recursion limit lowered to `limit` frames, so that a walk by calls of a deep node fails."""
+    before = sys.getrecursionlimit()
+    sys.setrecursionlimit(limit)
+    try:
+        yield
+    finally:
+        sys.setrecursionlimit(before)
+
+
+def test_a_node_of_any_height_has_its_values_over_arrays_at_a_recursion_limit_of_400():
+    """`evaluation` writes the code of a deep node in parts, so a node of any height has a value for
+    one instance; the arrays reach its parts with a list and not with calls (re-audit 15), so they
+    give it for many. Each value is worked by hand:
+
+    - a choice nested 5,000 deep, `j if c > j else ...` from j = 4,999 outside to 0 inside, then c:
+      the greatest j below c, or c itself when c is 0 or less;
+    - a product of 5,000 factors from the left: (-1)^5000 is 1, and 1 stays 1;
+    - 5,000 `not`, an even number: the comparison itself;
+    - `c > 0 and (c > 0 and (... and ln(c) > 0))` nested 5,000 deep: c > 1, and no instance fails at
+      the logarithm, since one with c at 0 or less stops at the first term (a branch that would fail
+      is no failure for an instance that does not take it); with c > -2 in its place, c = -1 reaches
+      the logarithm, and the call fails."""
+    n = 5000
+    c = np.array([2.5, 7000.0, -1.0, 0.5, 4999.0, 3.0])
+    choice = expr.ref('c')
+    for j in range(n):
+        choice = expr.if_else(expr.compare(['gt'], [expr.ref('c'), expr.const(j)]), expr.const(j), choice)
+    product = expr.ref('k')
+    for _ in range(n - 1):
+        product = expr.binary('mul', product, expr.ref('k'))
+    negated = expr.compare(['gt'], [expr.ref('c'), expr.const(0)])
+    for _ in range(n):
+        negated = expr.unary('not', negated)
+    positive = expr.compare(['gt'], [expr.ref('c'), expr.const(0)])
+    guarded = unguarded = expr.compare(['gt'], [expr.call('ln', [expr.ref('c')]), expr.const(0)])
+    for _ in range(n):
+        guarded = expr.boolean('and', [positive, guarded])
+        unguarded = expr.boolean('and', [expr.compare(['gt'], [expr.ref('c'), expr.const(-2)]), unguarded])
+    env = {'c': c, 'k': np.array([1.0, -1.0, 1.0, -1.0, -1.0, 1.0])}
+    with shallow():
+        assert arrays.values(choice, env, UNITS, COUNT).tolist() == [2, 4999, -1.0, 0, 4998, 2]
+        assert arrays.values(product, env, UNITS, COUNT).tolist() == [1.0] * COUNT
+        assert arrays.values(negated, env, UNITS, COUNT).tolist() == [True, True, False, True, True, True]
+        assert arrays.values(guarded, env, UNITS, COUNT).tolist() == [True, True, False, False, True, True]
+        with pytest.raises(ExpressionError):
+            arrays.values(unguarded, env, UNITS, COUNT)

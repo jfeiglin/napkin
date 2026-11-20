@@ -2699,12 +2699,11 @@ class Resolver:
                     'as sum(c.f)',
                     node,
                 )
-            if init.steps or init.start[0] not in ('literal', 'instances', 'where', 'by'):
-                self.fail(
-                    'collection',
-                    'a collection value is a literal, the instances of a template, or a where or a by of one',
-                    node,
-                )
+            # A collection value is a collection written in place (a literal, the instances of a
+            # template, a where or a by of one) or a read of one that another value holds, of the top
+            # level, of a member (through its links) or of the event (`tanks = big`): it is the
+            # collection that it names (re-audit 15). No other read gives a collection: a parameter
+            # holds none.
             if node.modifier == 'input':
                 self.fail('collection', f'{node.name} is a collection: it is no input', node)
             kind = COLLECTION
@@ -3965,14 +3964,8 @@ class Resolver:
                 code = 'unit' if isinstance(found.type, Num) and isinstance(value.type, Num) else 'type'
                 self.fail(code, f'{name} of {template} is {value.type}, and this value is {found.type}', node)
             found = Const(found.value, value.type)
-        if value.kind == COLLECTION and (
-            found.steps or found.start[0] not in ('literal', 'instances', 'where', 'by')
-        ):
-            self.fail(
-                'collection',
-                'a collection value is a literal, the instances of a template, or a where or a by of one',
-                node,
-            )
+        # A member's own collection is a collection value as a declaration's is: one written in
+        # place, or a read of one that another value holds.
         self.within(found, value, node)
         return False, Given(name, found, evidence, line)
 

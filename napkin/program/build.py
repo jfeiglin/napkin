@@ -612,9 +612,11 @@ def _initial(value, value_type):
         and value._path is not None
         and (
             isinstance(value._path.start, (Literal, Instances, Where, By))
-            or isinstance(value_type, p.OccurrenceType)
+            or isinstance(value_type, (p.OccurrenceType, p.CollectionType))
         )
     ):
+        # A collection or an occurrence starts from a path: a collection written in place, or a
+        # value that holds one (`tanks = big`), which is the collection that it names.
         return value._path
     unit = value_type.unit if isinstance(value_type, p.Number) else ''
     if unit and isinstance(value, (int, float, Fraction)) and not isinstance(value, bool):

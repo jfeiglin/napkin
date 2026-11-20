@@ -468,12 +468,20 @@ class Template:
     origin: str = ''
 
     def part(self, name):
-        """The value, flow, event or solver of this name, or None."""
+        """The value, flow, event or solver of this name, or None. It is found by its name in an index
+        made at the first lookup, so a template of thousands of parts, which the plan, the proofs and
+        the checker read part by part, costs one step a lookup and not a walk of its parts."""
+        return self._parts.get(name)
+
+    @cached_property
+    def _parts(self):
+        # The first part of each name, in the order of the groups, as a walk of them finds it. A
+        # record's fields are what the program's bytes and its artifact hold, not this index.
+        found = {}
         for group in (self.values, self.flows, self.events, self.solvers):
             for part in group:
-                if part.name == name:
-                    return part
-        return None
+                found.setdefault(part.name, part)
+        return found
 
 
 @dataclass(frozen=True)
@@ -494,11 +502,15 @@ class Program:
         for template in self.templates:
             for row, member in enumerate(template.members):
                 members[member.id] = (template, row)
+        roots = {}
+        for value in self.root:
+            roots.setdefault(value.name, value)
         return (
             {unit.name: unit for unit in self.units},
             {enum.name: enum for enum in self.enums},
             {template.name: template for template in self.templates},
             members,
+            roots,
         )
 
     def unit(self, name):
@@ -519,5 +531,5 @@ class Program:
         return self._index[3][id]
 
     def root_value(self, name):
-        """The root's value of a name, or None."""
-        return next((value for value in self.root if value.name == name), None)
+        """The root's value of a name, or None, found by its name (as a part of a template is)."""
+        return self._index[4].get(name)

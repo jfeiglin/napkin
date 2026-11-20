@@ -462,30 +462,57 @@ def _tree_names(tree):
 
 def names(node):
     """The names that an expression reads: each reference in it. The name of a function is no name
-    that it reads."""
+    that it reads. They are found with a list and not with calls, as the height is, so a chain of
+    thousands of operations has its names too. Each node keeps them."""
     try:
         return node._names
     except AttributeError:
         pass
-    if isinstance(node, Ref):
-        found = frozenset((node.name,))
-    elif isinstance(node, Foreign):
-        found = _tree_names(node.tree)
-    else:
-        found = frozenset().union(*map(names, node.children))
-    object.__setattr__(node, '_names', found)
-    return found
+    pending = [node]
+    while pending:
+        part = pending[-1]
+        if hasattr(part, '_names'):  # a part that two others share, found once already
+            pending.pop()
+            continue
+        if isinstance(part, Ref):
+            found = frozenset((part.name,))
+        elif isinstance(part, Foreign):
+            found = _tree_names(part.tree)
+        else:
+            waiting = [child for child in part.children if not hasattr(child, '_names')]
+            if waiting:
+                pending += waiting
+                continue
+            found = frozenset().union(*(child._names for child in part.children))
+        pending.pop()
+        object.__setattr__(part, '_names', found)
+    return node._names
 
 
 def outside(node):
-    """Whether an expression has a part that is outside the language."""
+    """Whether an expression has a part that is outside the language, found with a list and not with
+    calls, as the names are. Each node keeps it."""
     try:
         return node._outside
     except AttributeError:
         pass
-    found = isinstance(node, Foreign) or any(map(outside, node.children))
-    object.__setattr__(node, '_outside', found)
-    return found
+    pending = [node]
+    while pending:
+        part = pending[-1]
+        if hasattr(part, '_outside'):
+            pending.pop()
+            continue
+        if isinstance(part, Foreign):
+            found = True
+        else:
+            waiting = [child for child in part.children if not hasattr(child, '_outside')]
+            if waiting:
+                pending += waiting
+                continue
+            found = any(child._outside for child in part.children)
+        pending.pop()
+        object.__setattr__(part, '_outside', found)
+    return node._outside
 
 
 def height(node):

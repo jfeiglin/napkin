@@ -27,7 +27,6 @@ record fixture: assumption "The values and events of a test."
 
 north:
     "A district."
-    role community
     input x: h = 2 h in [1 h, 5 h]  @fixture
         "X"
     people: people = 10 people in [0,]  @fixture
@@ -39,7 +38,6 @@ north:
 
 shop:
     "A shop."
-    role operator
     input staffed: bool = false  @fixture
     open: bool = true  @fixture
     close = event():  @fixture

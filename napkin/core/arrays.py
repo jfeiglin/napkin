@@ -19,6 +19,11 @@ by itself gives a whole number; and `exp`, `expm1`, `ln`, `log1p`, `sqrt`, `erf`
 of numpy and SciPy, which can differ from Python's by a rounding of the last place. Sums, differences,
 products and quotients are the same bit for bit.
 
+The parts of a node are reached with a list and not with calls (re-audit 15), so a node of any height
+has its values, as `evaluation` gives one instance its value (it writes the code of a deep node in
+parts): the handler of each operation is a computation, a generator that yields each part that it
+needs, with the instances that need it, is sent the part's value, and returns its own (`_Pass.value`).
+
 What this module does with each operation is in `TABLE`, which `ops.handlers` checks when the module
 is read.
 """
@@ -32,6 +37,8 @@ from . import expr, ops
 from .errors import ExpressionError
 
 NOT_FINITE = 'Expression produced a nonfinite or non-real value'
+# What `_Pass.ready` gives for a part that needs a computation of its own.
+_OPEN = object()
 
 
 def _checked(value):
@@ -87,7 +94,9 @@ class _Pass:
             return chosen
         return self.places(chosen)[places]
 
-    def value(self, node, chosen):
+    def ready(self, node, chosen):
+        """The value of a part that needs no computation of its own (a constant, a name, a part
+        already computed for all the instances), else `_OPEN`."""
         if isinstance(node, expr.Const):
             return _checked(node.value)
         if isinstance(node, expr.Ref):
@@ -103,17 +112,44 @@ class _Pass:
             kept = self.kept.get(id(node))
             if kept is not None:
                 return kept[1]
+        return _OPEN
+
+    def computation(self, node, chosen):
+        """The computation of an operation for the chosen instances (see the module)."""
         name = ops.operation_of(node)
         if isinstance(node, expr.Call):
             if name not in TABLE:
                 raise ExpressionError('Unsupported function or keyword arguments')
             if not ops.arity_holds(ops.OPERATIONS[name], len(node.args)):
                 raise ExpressionError(f'Invalid argument count for {name}')
-        found = TABLE[name](self, node, chosen)
-        if chosen is None:
-            # The node is kept with its value: its place in memory names it while the pass lives.
-            self.kept[id(node)] = (node, found)
-        return found
+        return TABLE[name](self, node, chosen)
+
+    def value(self, node, chosen):
+        """The value of a node for the chosen instances. The computations that wait for a part are on
+        an explicit stack, each with its node and its instances. No computation catches the failure
+        of a part, so a failure ends the whole pass, at the part where a walk by calls would fail."""
+        found = self.ready(node, chosen)
+        if found is not _OPEN:
+            return found
+        stack = [(node, chosen, self.computation(node, chosen))]
+        sent = None
+        while True:
+            part, instances, computation = stack[-1]
+            try:
+                asked, wanted = computation.send(sent)
+            except StopIteration as done:
+                stack.pop()
+                sent = done.value
+                if instances is None:
+                    # The part is kept with its value: its place in memory names it while the pass lives.
+                    self.kept[id(part)] = (part, sent)
+                if not stack:
+                    return sent
+                continue
+            sent = self.ready(asked, wanted)
+            if sent is _OPEN:
+                stack.append((asked, wanted, self.computation(asked, wanted)))
+                sent = None
 
     def spread(self, value, chosen):
         """A value as an array over the chosen instances."""
@@ -121,18 +157,26 @@ class _Pass:
             return value
         return np.full(self.size(chosen), value)
 
-    def truth(self, node, chosen):
-        """The yes/no of a node for each chosen instance, as an array."""
-        found = self.value(node, chosen)
+    def truth(self, found, chosen):
+        """A value of a yes/no for each chosen instance, as an array."""
         if isinstance(found, np.ndarray):
             return found.astype(bool)
         return np.full(self.size(chosen), bool(found))
 
 
+def _numbers(args, chosen):
+    """The values of the parts `args` for the chosen instances, each checked as a value that
+    arithmetic takes when it comes, before the next part is computed: a computation, for `yield from`."""
+    found = []
+    for arg in args:
+        found.append(_number((yield arg, chosen)))
+    return found
+
+
 def _arithmetic(compute):
     def handler(run, node, chosen):
-        left = _number(run.value(node.left, chosen))
-        right = _number(run.value(node.right, chosen))
+        left = _number((yield node.left, chosen))
+        right = _number((yield node.right, chosen))
         if not isinstance(left, np.ndarray) and not isinstance(right, np.ndarray):
             try:
                 return _checked(compute(left, right))
@@ -147,8 +191,8 @@ def _arithmetic(compute):
 
 
 def _power(run, node, chosen):
-    left = _number(run.value(node.left, chosen))
-    right = _number(run.value(node.right, chosen))
+    left = _number((yield node.left, chosen))
+    right = _number((yield node.right, chosen))
     if np.any(np.abs(right) > 1024):
         raise ExpressionError('Exponent exceeds supported magnitude 1024')
     if not isinstance(left, np.ndarray) and not isinstance(right, np.ndarray):
@@ -161,16 +205,16 @@ def _power(run, node, chosen):
 
 
 def _neg(run, node, chosen):
-    found = _number(run.value(node.operand, chosen))
+    found = _number((yield node.operand, chosen))
     return _checked(-found.astype(float) if isinstance(found, np.ndarray) else -found)
 
 
 def _pos(run, node, chosen):
-    return run.value(node.operand, chosen)
+    return (yield node.operand, chosen)
 
 
 def _not(run, node, chosen):
-    found = run.value(node.operand, chosen)
+    found = yield node.operand, chosen
     return ~found.astype(bool) if isinstance(found, np.ndarray) else (not found)
 
 
@@ -185,7 +229,8 @@ def _lazy(conjunction):
         for term in terms:
             if not len(open_places):
                 break
-            found = run.truth(term, run.narrowed(chosen, open_places))
+            still = run.narrowed(chosen, open_places)
+            found = run.truth((yield term, still), still)
             decided = ~found if conjunction else found
             result[open_places[decided]] = not conjunction
             open_places = open_places[~decided]
@@ -234,12 +279,12 @@ def _chain(run, node, chosen):
     size = run.size(chosen)
     result = np.ones(size, dtype=bool)
     open_places = np.arange(size)
-    left = run.spread(run.value(node.operands[0], chosen), chosen)
+    left = run.spread((yield node.operands[0], chosen), chosen)
     for op, operand in zip(node.ops, node.operands[1:]):
         if not len(open_places):
             break
         still = run.narrowed(chosen, open_places)
-        right = run.spread(run.value(operand, still), still)
+        right = run.spread((yield operand, still), still)
         holds = np.broadcast_to(_ordered(op, left, right), (len(open_places),))
         result[open_places[~holds]] = False
         open_places = open_places[holds]
@@ -251,13 +296,16 @@ def _chain(run, node, chosen):
 
 def _choice(run, node, chosen):
     """A choice: for each instance, only the branch that its test takes."""
-    test = run.value(node.test, chosen)
+    test = yield node.test, chosen
     if not isinstance(test, np.ndarray):
-        return _checked(run.value(node.body if test else node.orelse, chosen))
+        return _checked((yield (node.body if test else node.orelse), chosen))
     test = test.astype(bool)
     yes, no = run.narrowed(chosen, np.flatnonzero(test)), run.narrowed(chosen, np.flatnonzero(~test))
-    taken = run.spread(run.value(node.body, yes), yes) if test.any() else None
-    other = run.spread(run.value(node.orelse, no), no) if (~test).any() else None
+    taken = other = None
+    if test.any():
+        taken = run.spread((yield node.body, yes), yes)
+    if (~test).any():
+        other = run.spread((yield node.orelse, no), no)
     kinds = [part.dtype for part in (taken, other) if part is not None]
     if any(kind.kind in 'USO' for kind in kinds) and not all(kind.kind in 'USO' for kind in kinds):
         result = np.empty(len(test), dtype=object)
@@ -272,7 +320,7 @@ def _choice(run, node, chosen):
 
 def _extreme(reduce):
     def handler(run, node, chosen):
-        args = [_number(run.value(arg, chosen)) for arg in node.args]
+        args = yield from _numbers(node.args, chosen)
         if not any(isinstance(arg, np.ndarray) for arg in args):
             return _checked((min if reduce is np.minimum else max)(args))
         found = np.asarray(args[0], dtype=float)
@@ -284,7 +332,7 @@ def _extreme(reduce):
 
 
 def _clip(run, node, chosen):
-    value, low, high = (_number(run.value(arg, chosen)) for arg in node.args)
+    value, low, high = yield from _numbers(node.args, chosen)
     if np.any(np.asarray(low) > np.asarray(high)):
         raise ExpressionError('clip lower bound exceeds upper bound')
     if not any(isinstance(arg, np.ndarray) for arg in (value, low, high)):
@@ -295,7 +343,7 @@ def _clip(run, node, chosen):
 def _within(run, node, chosen):
     """`x in [lo, hi]` for each instance: its three values are read for every instance, as each
     instance by itself reads them, and a reversed interval of any instance fails the call."""
-    value, low, high = (_number(run.value(arg, chosen)) for arg in node.args)
+    value, low, high = yield from _numbers(node.args, chosen)
     reversed_ = np.asarray(low) > np.asarray(high)
     if np.any(reversed_):
         k = int(np.flatnonzero(np.broadcast_to(reversed_, (run.size(chosen),)))[0])
@@ -308,7 +356,7 @@ def _within(run, node, chosen):
 
 def _of_one(compute):
     def handler(run, node, chosen):
-        (value,) = (_number(run.value(arg, chosen)) for arg in node.args)
+        (value,) = yield from _numbers(node.args, chosen)
         with np.errstate(all='ignore'):
             found = compute(np.asarray(value, dtype=float))
         return _checked(found if isinstance(value, np.ndarray) else float(found))
@@ -317,12 +365,13 @@ def _of_one(compute):
 
 
 def _absolute(run, node, chosen):
-    (value,) = (_number(run.value(arg, chosen)) for arg in node.args)
+    (value,) = yield from _numbers(node.args, chosen)
     return _checked(abs(value))
 
 
 def _quantity(run, node, chosen):
-    value, unit = (run.value(arg, chosen) for arg in node.args)
+    value = yield node.args[0], chosen
+    unit = yield node.args[1], chosen
     if not isinstance(unit, str):
         raise ExpressionError('The unit of a quantity is a written name')
     if not isinstance(value, np.ndarray):
@@ -341,11 +390,13 @@ def _quantity(run, node, chosen):
 def _sum(run, node, chosen):
     """The members added from the left, each sum of two checked. One member is that member."""
     if len(node.args) == 1:
-        return run.value(node.args[0], chosen)
-    total = _number(run.value(node.args[0], chosen))
+        return (yield node.args[0], chosen)
+    total = _number((yield node.args[0], chosen))
     for arg in node.args[1:]:
+        # The part is computed outside `errstate`, which no other computation may run under.
+        part = _number((yield arg, chosen))
         with np.errstate(all='ignore'):
-            total = _checked(total + _number(run.value(arg, chosen)))
+            total = _checked(total + part)
     return total
 
 
@@ -354,8 +405,8 @@ def _listed(conjunction):
 
     def handler(run, node, chosen):
         if len(node.args) == 1:
-            return run.value(node.args[0], chosen)
-        return lazy(run, node, chosen, node.args)
+            return (yield node.args[0], chosen)
+        return (yield from lazy(run, node, chosen, node.args))
 
     return handler
 

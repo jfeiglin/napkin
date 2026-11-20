@@ -6,6 +6,8 @@ reads a stock in another way, or a name that is not fixed, is not admitted.
 """
 
 import random
+import sys
+from contextlib import contextmanager
 
 from napkin.core import expr, faces
 from tests.core.reference import UNITS, walked
@@ -102,3 +104,45 @@ def test_a_formula_is_constant_when_what_it_reads_is():
     # A formula that many read is walked once: the answer of a wide chain comes at once.
     chain = {'f0': 'p.x if s.a > 0 else 0', **{f'f{k}': f'f{k - 1} + f{k - 1}' for k in range(1, 60)}}
     assert proof('f59', chain) == {'s.a'}
+
+
+@contextmanager
+def shallow(limit=400):
+    """Python's recursion limit lowered to `limit` frames, so that a walk by calls of a chain fails."""
+    before = sys.getrecursionlimit()
+    sys.setrecursionlimit(limit)
+    try:
+        yield
+    finally:
+        sys.setrecursionlimit(before)
+
+
+def test_a_chain_of_five_thousand_formulas_and_a_deep_node_are_walked_with_no_recursion():
+    """The proof follows formulas and parts with a list and not with calls (re-audit 15): at a
+    recursion limit of 400, a chain of 5,000 formulas, each the one below plus 1, from `p.x if s.a > 0
+    else 0`, is constant on the face of s.a, as one link is; the same chain from `s.a`, a stock outside
+    a comparison, is not; a chain that comes back to its first formula is on a circle, which is never
+    constant; and a node of 5,000 choices one inside the other, each on a comparison of a stock with
+    zero, is constant on the faces of the stocks that it compares."""
+    n = 5000
+    fixed = FIXED.keys() | PARAMETERS.keys()
+    links = {f'f{k}': expr.binary('add', expr.ref(f'f{k + 1}'), expr.const(1)) for k in range(n - 1)}
+    switch = expr.if_else(
+        expr.compare(['gt'], [expr.ref('s.a'), expr.const(0)]), expr.ref('p.x'), expr.const(0)
+    )
+    deep = expr.ref('p.y')
+    for k in range(n):
+        stock = STOCKS[k % 2]
+        deep = expr.if_else(expr.compare(['le'], [expr.ref(stock), expr.ref('p.zero')]), expr.const(k), deep)
+    with shallow():
+        found = faces.constant_on_faces(
+            expr.ref('f0'), fixed, set(STOCKS), {**links, f'f{n - 1}': switch}, PARAMETERS, UNITS
+        )
+        assert found == {'s.a'}
+        found = faces.constant_on_faces(
+            expr.ref('f0'), fixed, set(STOCKS), {**links, f'f{n - 1}': expr.ref('s.a')}, PARAMETERS, UNITS
+        )
+        assert found is None
+        circle = {**links, f'f{n - 1}': expr.binary('add', expr.ref('f0'), switch)}
+        assert faces.constant_on_faces(expr.ref('f0'), fixed, set(STOCKS), circle, PARAMETERS, UNITS) is None
+        assert faces.constant_on_faces(deep, fixed, set(STOCKS), {}, PARAMETERS, UNITS) == {'s.a', 's.b'}

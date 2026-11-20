@@ -778,7 +778,6 @@ def sc99():
         'attacker:',
         quote('An attacker who sends unauthorized commands.'),
         in_place('source_transfer', 'Contract fixture.', 'C-ACTION'),
-        'role adversary',
     )
     first = start(
         'attacker',

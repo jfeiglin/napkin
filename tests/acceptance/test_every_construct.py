@@ -55,7 +55,6 @@ PARTS = """\
 plant:
     "A plant with one tank."
     title "The plant"
-    role operator
     input rate: L/h = 2 L/h in [0 L/h, 10 L/h]  @fixture
         "Fill rate"
     input repair: h = uniform(1 h, 3 h).draw() in [0 h,]  @fixture
