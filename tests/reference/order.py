@@ -218,7 +218,15 @@ def _minimise(variables, rows, objective, text):
 def _maxmin(variables, rows, claims):
     """Rank 3, one tier: make the smallest served fraction as large as it can be, then the next.
 
-    A claim is (lin, request): its served fraction is lin / request, counted up to one."""
+    A claim is (lin, request): its served fraction is lin / request, counted from zero up to one
+    (spec, "Selection order": "A positive request measures its fulfilled fraction up to 100%"). The
+    lin of a route's claim is its signed rate in the direction of its request, which is below zero
+    where the route carries against it: its fraction is then zero, the rate of its leg in that
+    direction (spec: "the backward leg exposes the positive part of its negation"). So where the
+    smallest fraction is zero, a claim that no answer serves is held at zero and nothing more, and a
+    route may carry against its request to make room for another one ("An edge may carry more than
+    its own request to meet another request"); where every claim left can be served, but not all of
+    them together, none is served against another: each is held at zero or above, as before."""
     rows = list(rows)
     open_ = list(claims)
     levels = []
@@ -231,6 +239,21 @@ def _maxmin(variables, rows, claims):
             rows += [Rel(Lin(k=r) - served, '<=') for served, r in open_]
             levels += [Fraction(1)] * len(open_)
             break
+        if level <= 0:
+            # The smallest fraction is zero: the claims that no answer serves are held there.
+            unserved, still = [], []
+            for served, r in open_:
+                status, value, _ = _lp(variables, rows, -served)
+                if status != 'unbounded' and -value <= TIGHT * max(1.0, float(r)):
+                    unserved.append((served, r))
+                else:
+                    still.append((served, r))
+            if unserved:
+                rows += [Rel(served, '<=') for served, _ in unserved]
+                levels += [Fraction(0)] * len(unserved)
+                open_ = still
+                continue
+            level = Fraction(0)
         hold = [Rel(Lin(k=level * r) - served, '<=') for served, r in open_]
         still = []
         for served, r in open_:  # can this claim alone rise above the level while the others keep it?

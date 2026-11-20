@@ -130,7 +130,15 @@ def _failed(result, what):
 
 
 def _share(rows, limits, claims):
-    """Rank 2 for the claims of one tier: their rows are added to `rows`, in served fractions."""
+    """Rank 2 for the claims of one tier: their rows are added to `rows`, in served fractions.
+
+    A served fraction counts from zero (spec, "Selection order"): a route's claim is its signed rate
+    in the direction of its request, below zero where it carries against it, and its fraction is
+    then zero, the rate of its leg in that direction. So where the smallest fraction is zero, a claim
+    that no point serves is held at zero and nothing more, and a route may carry against its request
+    to make room for another one; where every claim left can be served, but not all of them
+    together, none is served against another: each is held at zero or above (the oracle's
+    `order._maxmin`)."""
     n = rows.n
     pending = [np.asarray(a, dtype=float) / r for a, r in claims]  # f.x is the served fraction
     while pending:
@@ -146,6 +154,19 @@ def _share(rows, limits, claims):
             for f in pending:
                 rows.at_least(f, 1.0)
             return
+        if level <= TIGHT:
+            # The smallest fraction is zero: the claims that no point serves are held there.
+            unserved = []
+            for f in pending:
+                found = _program(rows, limits, -f, [])
+                if getattr(found, 'status', 0) != 3 and found.success and -found.fun <= TIGHT:
+                    unserved.append(f)
+            if unserved:
+                for f in unserved:
+                    rows.at_most(f, 0.0)
+                pending = [f for f in pending if not any(f is g for g in unserved)]
+                continue
+            level = 0.0
         hold = [(-f, -level) for f in pending]
         still = []
         for f in pending:
