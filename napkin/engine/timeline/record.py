@@ -203,6 +203,13 @@ def _compact(pieces):
     return kept
 
 
+class HistoryFull(Exception):
+    """The committed prefix that used up the requested history budget."""
+
+    def __init__(self, record):
+        self.record = record
+
+
 class Recorder:
     """The pieces of each value of one run, and its trace (see the module). `constants` holds the
     value of each input, draw, stored value and captured property at the start."""
@@ -217,6 +224,8 @@ class Recorder:
         self._wanted = None  # what a record of some keys needs so far (`wanted`), once asked
         # A store that edits changed -> (its start, [(time, amount from outside)]) (`external`).
         self.transfers = {}
+        self._budget_state = None  # rebuilt from the raw pieces on first use, including on resume
+        self._budget_shape = None
 
     def entry(self, t, kind, part, owner='', **details):
         """One entry of the trace, in the round where the run is (`round`: 0 is the setup)."""
@@ -281,12 +290,122 @@ class Recorder:
             ):
                 self._add(name, pieces)
 
+    def _note_pieces(self, name, pieces):
+        times, moving = self._budget_state
+        for at, _, rate in pieces:
+            times.add(at)
+            if rate != 0:
+                moving.add(name)
+        self._raw_count += len(pieces)
+        self._longest = max(self._longest, len(self.pieces[name]))
+
+    def check_budget(self, end):
+        """Stop as soon as the committed history exceeds its allowance. A conservative piece
+        count avoids fitting a second copy of a record that is certain to fit."""
+        request = self.plan.configuration.request
+        if not request.everything:
+            # Only requested histories count, including a requested store's edit ledger. If
+            # they are all raw, their uncompacted lengths already bound the whole request.
+            count = 0
+            for key in request.keys:
+                name = name_of(key.store or key)
+                transfers = self.transfers.get(name)
+                if transfers is not None:
+                    count += len(transfers[1])
+                if key.store is not None:
+                    continue
+                value = self.plan.values.get(name)
+                if value is None:
+                    continue
+                if (
+                    value.kind in (CHANGED, FORMULA, REDUCE, LOOKUP, DYNAMIC)
+                    or (value.kind == RATE and value.node is not None)
+                    or name in self.plan.defined
+                ):
+                    break
+                count += int(name in self.constants) + len(self.pieces.get(name, ()))
+            else:
+                if count <= request.pieces:
+                    return
+        if self._budget_state is None:
+            self._budget_state = (set(), set())
+            self._raw_count = self._longest = 0
+            for name, pieces in self.pieces.items():
+                self._note_pieces(name, pieces)
+        times, moving = self._budget_state
+        plan = self.plan
+        # Each raw write can also appear in a changed-at history or an edit ledger.
+        # An alias can inherit several raw pieces at one time. Bound those copies too.
+        anchors = 2 + max(self._longest, len(times)) + len(self.trace)
+        raw = 3 * self._raw_count + len(plan.values)
+        budget = plan.configuration.request.pieces
+        if raw + anchors * len(plan.values) <= budget:
+            signature = (len(plan.values), len(plan.defined), len(moving))
+            if self._budget_shape is None or self._budget_shape[0] != signature:
+                self._budget_shape = signature, self._per_interval(moving)
+            if raw + anchors * self._budget_shape[1] <= budget:
+                return
+        # Use the same value selection, compaction, fits and cutoff as a checkpoint at this time.
+        prefix = self.record(end, pause=Entry(end, self.round, 'pause', '', ''))
+        if prefix.failure is not None:
+            raise HistoryFull(prefix)
+
+    def _per_interval(self, moving):
+        """Upper bound on pieces produced between successive raw anchors or trace times.
+        Held expressions add one. A moving expression can subdivide its inputs at most once
+        per check point for availability and MOST times per available stretch for its fit."""
+        plan = self.plan
+        budget = plan.configuration.request.pieces
+        if plan.keyed or plan.defined:
+            # A new keyed interval or definition can introduce an independent set of anchors.
+            return budget + 1
+        derived = {
+            name
+            for name, value in plan.values.items()
+            if value.kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC)
+            or (value.kind == RATE and value.node is not None)
+        }
+        size, changes = len(plan.values), {}
+        for name in plan.ordered(derived):
+            value = plan.values[name]
+            reads = plan.reads(name)
+            if name in self.formulas:
+                continue  # the family supplied its pieces directly
+            timed = value.node is not None and 't' in nodes.names(value.node)
+            if not timed and not any(each in moving or each in changes for each in reads):
+                continue
+            if (
+                value.kind == FORMULA
+                and isinstance(value.node, nodes.Ref)
+                and plan.occurrence_of(name) is None
+            ):
+                count = changes.get(value.node.name, 1)
+            else:
+                fits = len(_CHECKS) + 1
+                if not value.boolean:
+                    fits *= MOST + 1
+                count = fits * (1 + sum(changes.get(each, 0) for each in reads))
+            changes[name] = count
+            size += count
+            if size > budget:
+                return size
+        return size
+
     def _add(self, name, pieces):
         self.pieces.setdefault(name, []).extend(pieces)
+        if self._budget_state is not None:
+            self._note_pieces(name, pieces)
 
     def add(self, name, t, value, rate):
         """One piece of a value, which a run gives as it goes."""
         self.pieces.setdefault(name, []).append((t, value, rate))
+        if self._budget_state is not None:
+            times, moving = self._budget_state
+            times.add(t)
+            if rate != 0:
+                moving.add(name)
+            self._raw_count += 1
+            self._longest = max(self._longest, len(self.pieces[name]))
 
     def add_pieces(self, name, pieces):
         """Pieces of a value, which a run gives as it goes."""

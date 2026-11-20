@@ -361,6 +361,7 @@ class Moment:
         self.settle()
         self.splits(None)  # every set has just started
         run.occurrences.carried(run.now)
+        run.recorder.check_budget(0.0)
         run.occurrences.delays()
         self.phase = 'conditions'
         run.triggers.conditions()
@@ -432,9 +433,11 @@ class Moment:
             self.splits(self.settle())
             # A flow at a store of a finished occurrence that the round gave a rate writes it.
             run.occurrences.carried(t)
+            run.recorder.check_budget(t)
             run.occurrences.delays()
             self.phase = 'conditions'
             run.triggers.conditions()
+            run.recorder.check_budget(t)
             due = run.occurrences.next_due()
             if not self.again and (due is None or not run.clock.due(due, t, opening=False)):
                 break

@@ -89,7 +89,7 @@ from .plan import (
     Pending,
 )
 from .reads import lazily
-from .record import Recorder, remember
+from .record import HistoryFull, Recorder, remember
 from .saved import restore
 from .triggers import Triggers
 from .ways import Ways
@@ -899,6 +899,8 @@ class Run:
         try:
             begin()
             self.loop()
+        except HistoryFull as full:
+            return full.record
         except Stopped as stopped:
             # The draws that the stopped stage made are in the trace: the stage that runs again keeps them.
             self.chance.kept = {(site, owner) for site, owner, _ in self.chance.made}
@@ -976,6 +978,7 @@ class Run:
                 self.occurrences.carried(self.now, at)
                 self.now = at
                 stores, rates, jumped = instance.step()
+                self.recorder.check_budget(at)
                 changed = set(stores) | set(rates)
                 readers = self.ways.touched_outside(changed if jumped else rates, instance)
                 if not jumped:

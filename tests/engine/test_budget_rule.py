@@ -283,3 +283,26 @@ def test_a_rate_at_the_horizon_is_the_one_that_its_last_round_committed():
         for horizon in (1, 4):
             record = Run(Plan.of(program, Configuration(Request(horizon)))).run()
             assert read(record, program, ['plant.pipe.actual_rate'], [1])[0].values == (1,), (curved, horizon)
+
+
+def test_history_budget_stops_work_at_the_first_excess_piece(monkeypatch):
+    b = Builder(UNITS)
+    b.entity(
+        'plant',
+        value('count', '', 0),
+        event('tick', *(after(q(1, 'h'), add(this.count, 1)) for _ in range(10))),
+    )
+    b.setup(start(named('plant').tick))
+    request = Request(10, everything=False, keys=(Key('plant', ('count',)),), pieces=1)
+    made = Run(Plan.of(b.finish(), Configuration(request)))
+    visited = []
+    at = made.moment.at
+
+    def observe(t, *args):
+        visited.append(t)
+        return at(t, *args)
+
+    monkeypatch.setattr(made.moment, 'at', observe)
+    record = made.run()
+    assert record.failure.t == 1
+    assert visited == [1]
