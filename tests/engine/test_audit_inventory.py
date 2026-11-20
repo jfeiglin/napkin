@@ -425,3 +425,43 @@ def test_a_bounded_move_preserves_both_inventories(initial_src, floor, initial_d
         key = Key('yard', (field,))
         assert value_at(oracle, program, key, 1) == left
         assert read(record, program, [key], [1])[0].values == (float(left),)
+
+
+def test_seven_moves_empty_their_source_across_a_checkpoint():
+    """Seven moves of 10/7 L transfer exactly 10 L. Subtracting the first six in floats
+    leaves less than the last request; the accumulated arithmetic allows that final transfer."""
+    b = Builder(UNITS)
+    amount = q(10, 'L') / 7
+    yard = b.entity(
+        'yard',
+        value('supply', 'L', 10, lower=0),
+        value('sink', 'L', 0, lower=0),
+        event('empty', *(after(q(1, 'h'), move(amount, this.supply, this.sink)) for _ in range(7))),
+    )
+    b.setup(start(yard.empty))
+    program, config = b.finish(), Configuration(Request(7))
+    record = run(program, config)
+    assert record.failure is None
+    assert read(record, program, ['yard.supply', 'yard.sink'], [7])[0].values == (0,)
+    assert read(record, program, ['yard.sink'], [7])[0].values == pytest.approx(
+        (10,), abs=7 * math.ulp(10), rel=0
+    )
+    live = Run(Plan.of(program, config), (Breakpoint('yard.empty.step[6]'),))
+    stopped = live.run()
+    assert isinstance(stopped, Checkpoint)
+    assert live.resume() == resume(program, stopped) == record
+
+
+def test_a_positive_shortage_in_the_first_move_is_not_cumulative_roundoff():
+    """0.01000000000001 L exceeds the authored 0.01 L in an untouched store, by many ulps."""
+    b = Builder(UNITS)
+    yard = b.entity(
+        'yard',
+        value('supply', 'L', 0.01, lower=0, scale=1_000_000_000),
+        value('sink', 'L', 0, lower=0),
+        event('empty', after(q(1, 'h'), move(q(0.01000000000001, 'L'), this.supply, this.sink))),
+    )
+    b.setup(start(yard.empty))
+    program, config = b.finish(), Configuration(Request(1))
+    record = run(program, config)
+    assert record.failure is not None and not record.entries('move')

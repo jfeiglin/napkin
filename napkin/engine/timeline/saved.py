@@ -256,6 +256,7 @@ def save(run, recorder, arrival):
                 ('frozen', _pairs(run.frozen)),
                 ('changes', tuple((name, tuple(times)) for name, times in run.changes.items())),
                 ('written', _pairs(run.written)),
+                ('move_roundoff', _pairs(run.move_roundoff)),
                 ('published', _pairs(run.published)),
                 ('arrival', arrival),
                 ('contacts', run.contacts),
@@ -657,6 +658,7 @@ def _run(run, found):
     run.frozen = dict(found['frozen'])
     run.changes = {name: list(times) for name, times in found['changes']}
     run.written = dict(found['written'])
+    run.move_roundoff = dict(found.get('move_roundoff', ()))
     run.published = dict(found['published'])
     run.saved_arrival = found['arrival']
     if run.saved_arrival is not None:

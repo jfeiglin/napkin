@@ -156,6 +156,7 @@ class Run:
         self._kept, self._stepped, self._indexes, self._known = {}, {}, {}, {}
         self.started = False  # once true, `value_of` reads the present
         self.written = {}  # a store of a set that a commit of this moment wrote, and its value
+        self.move_roundoff = {}  # store -> (inventory after the last move, accumulated arithmetic error)
         self.frozen = {}  # a formula of a finished occurrence -> its value or `Unavailable` (D7)
         self.limit = plan.horizon  # the next moment that the run knows (`next_moment`)
         # Whether the last moment is the horizon and nothing else, which a longer run does not have
@@ -720,6 +721,7 @@ class Run:
         it from now on. A definition (`Defined`), and a number in place of a request's or a
         capacity's formula, changes what the value is from now on (`define`)."""
         plan = self.plan
+        self.move_roundoff.pop(name, None)
         found = plan.values.get(name)  # none for a distribution-valued value
         if isinstance(value, Defined) or (found is not None and found.kind == FORMULA):
             self.define(name, value.node if isinstance(value, Defined) else None)

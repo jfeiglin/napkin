@@ -229,6 +229,7 @@ class Breaks:
         details = {'breakpoint': stop.breakpoint.at, 'target': name, 'old': old, 'new': value}
         if tx is not None:
             tx.writes[name] = value
+            tx.move_roundoff.pop(name, None)
             tx.edits.append((stop.at, stop.owner, details))
             return
         run.recorder.entry(run.now, 'edit', stop.at, stop.owner, **details)
