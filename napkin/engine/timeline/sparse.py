@@ -594,6 +594,42 @@ class Sparse:
             for name in sorted(plan.expansion_of(names).leaves)
             if name in plan.keyed and not plan.stepped(name) and plan.lookup_moves(name, place)
         ]
+        # The switching surfaces of the settings (`integrate.surfaces_of`), as a component has them:
+        # a step starts on the far side of one that its state crosses there (`_sides`), ends where
+        # one changes side (`_turn`), and a moment at the end of a step finds the ones that it
+        # reached there (`switched_at`). A surface's sides are read through their names.
+        formulas = {
+            name: plan.values[name].node
+            for name in plan.expansion_of(names).formulas
+            if getattr(plan.values.get(name), 'node', None) is not None
+        }
+
+        def moves(node):
+            found = plan.expansion(node)
+            return found.time or any(leaf in place for leaf in found.leaves)
+
+        def nodes_of(settings):
+            return [
+                plan.values[name].node
+                for name in settings
+                if getattr(plan.values.get(name), 'node', None) is not None
+            ]
+
+        self.moves = moves
+        self.surfaces = integrate.surfaces_of(nodes_of(names), formulas, moves)
+        self.deciding = {}  # a surface -> the flows whose settings read it
+        for flow in self.flows:
+            for surface in integrate.surfaces_of(
+                nodes_of(plan.settings_of(plan.flows[flow])), formulas, moves
+            ):
+                self.deciding.setdefault(surface, []).append(flow)
+        sided = {name for a, b in self.surfaces for name in (*nodes.names(a), *nodes.names(b))}
+        self.sided = sorted(sided - {'t'})
+        self._sides_of = vector.compiled(self.sided) if self.sided else None
+        self.sides, self.clock = (), None  # the far sides that the present step reads (`_sides`)
+        self.signs = {}  # the side of each switch that the present step holds (`_turn`)
+        self.starting = frozenset()  # the switches at their switch where the present step starts
+        self.reached = []  # (the end of a committed step, the switches that it reached there)
 
     def _selector(self, vector, keyed):
         """A function (t, y) -> the entry that a keyed read selects there (None below its first
@@ -678,11 +714,7 @@ class Sparse:
         self.evaluations += 1
         if self.evaluations > self.plan.numerics.max_evaluations:
             raise SimulationError('Numerical evaluation budget exceeded')
-        # A store held on a bound through the segment is on it: what its settings read of it is
-        # the bound, not the roundoff of the integrator within its tolerance.
-        trial = np.minimum(np.maximum(y, self.lower), self.upper)
-        trial[self.lower_flags] = self.lower[self.lower_flags]
-        trial[self.upper_flags] = self.upper[self.upper_flags]
+        t, trial = self._held(t, y)
         if not self.levels:
             asked = self.asked(t, trial)
             values = Instant(self.net, asked, self.lower_flags, self.upper_flags).values()
@@ -701,6 +733,113 @@ class Sparse:
 
     def field(self, t, y):
         return self.incidence @ self.values(t, y)[1]
+
+    def _held(self, t, y):
+        """The time and the state that the settings read at time t and state y: a store held on a
+        bound through the segment is on it (what its settings read of it is the bound, not the
+        roundoff of the integrator within its tolerance), and a switch that the state crosses at the
+        start of the step is read on its far side while the state is within its tolerance, as the
+        time is (`_sides`)."""
+        trial = np.minimum(np.maximum(y, self.lower), self.upper)
+        trial[self.lower_flags] = self.lower[self.lower_flags]
+        trial[self.upper_flags] = self.upper[self.upper_flags]
+        for i, low, high, number in self.sides:
+            if low <= trial[i] <= high:
+                trial[i] = number
+        if self.clock is not None and self.clock[0] <= t <= self.clock[1]:
+            t = self.clock[2]
+        return t, trial
+
+    def _side(self, t, y):
+        """A function: the value of a side of a switch (a node of `surfaces`) at time t and state y."""
+        found = dict(zip(self.sided, self._sides_of(t, y))) if self._sides_of is not None else {}
+        units = self.plan.units
+        return lambda node: float(lazily(node, found.__getitem__, units, t))
+
+    def _sides(self):
+        """At the start of a step: the far side of each switch that its state crosses there, which
+        the rates read through the step while the state is within the switch's tolerance
+        (`integrate.far_sides`, as a component's segment reads them), so that the rates that the step
+        starts with, and that a read at the moment gives, are those that hold from there on; the
+        switches at their switch there; and the side of every other switch, which the step holds
+        (`_turn`)."""
+        rtol = self.plan.numerics.rtol
+        self.sides, self.clock, self.signs = (), None, {}
+        t, trial = self._held(self.t, self.y)
+        side = self._side(t, trial)
+        self.sides, self.clock = integrate.far_sides(
+            self.surfaces, t, trial, self.place, (self.lower, self.upper), rtol, side, self.moves, self.field
+        )
+        self.starting = integrate.switched(self.surfaces, side, rtol)
+        side = self._side(*self._held(self.t, self.y))
+        for a, b in self.surfaces:
+            try:
+                left, right = side(a), side(b)
+            except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
+                continue
+            if abs(left - right) > rtol * (abs(left) + abs(right)):
+                self.signs[(a, b)] = 1.0 if left > right else -1.0
+
+    def _turn(self, solution, start, end):
+        """The first time in (start, end] at which a switch is on the other side than the one that the
+        step holds, to within the crossing tolerance; or None. A rate that changes branch there ends
+        the step, as a keyed read that selects another entry does (`_switch`)."""
+        if not self.signs:
+            return None
+
+        def turned(t):
+            side = self._side(*self._held(t, solution(t)))
+            for (a, b), sign in self.signs.items():
+                try:
+                    if (side(a) - side(b)) * sign < 0:
+                        return True
+                except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
+                    continue
+            return False
+
+        if not turned(end):
+            return None
+        crossing = self.plan.numerics.crossing
+        left, right = start, end
+        while right - left > crossing:
+            middle = 0.5 * (left + right)
+            if turned(middle):
+                right = middle
+            else:
+                left = middle
+        return right
+
+    def _reached(self, end, y):
+        """The switches that a step that ends at time `end` at state y reached there: those at their
+        switch there that were at none where it started; kept while within the crossing tolerance of
+        the last end."""
+        crossing = self.plan.numerics.crossing
+        self.reached = [(at, found) for at, found in self.reached if end - at <= crossing]
+        found = integrate.switched(self.surfaces, self._side(*self._held(end, y)), self.plan.numerics.rtol)
+        found -= self.starting
+        if found:
+            self.reached.append((end, found))
+
+    def switched_at(self, t):
+        """The switches of the set's rates that its state reached at time t, a moment that falls on
+        their crossing (`run.next_moment`), each with a flow whose rate reads it: a rate that one of
+        them decides is stale in the moment's stages (`ways.Ways.stale`), as a component's is."""
+        crossing = self.plan.numerics.crossing
+        return {
+            (flow, f'{nodes.text(a)} against {nodes.text(b)}')
+            for at, found in self.reached
+            if abs(t - at) <= crossing
+            for a, b in found
+            for flow in self.deciding.get((a, b), ())
+        }
+
+    def _start(self):
+        """Where a step starts: the entries that the keyed reads hold, the flags of the bounds, and the
+        far sides of the switches that the state crosses there (`_sides`)."""
+        self.sides, self.clock = (), None
+        self._select()
+        self._flags()
+        self._sides()
 
     def pattern(self):
         """The sparse pattern of the Jacobian for the flags of the segment."""
@@ -836,8 +975,7 @@ class Sparse:
         if self.t >= until:
             return math.inf
         if self.solver is None:
-            self._select()
-            self._flags()
+            self._start()
             numerics = self.plan.numerics
             self.solver = Radau(
                 self.field,
@@ -876,12 +1014,30 @@ class Sparse:
             at = self._switch(solution, start, end, name, select)
             if at is not None:
                 events.append((at, None))
+        at = self._turn(solution, start, end)  # so does a switch that changes side
+        crossing = self.plan.numerics.crossing
+        if at is not None and start + crossing < at < end - crossing:
+            # The step mixes the rates of the two sides of the switch, and so does its dense output:
+            # it is made again to the switch that it finds, as many times as that moves the switch.
+            self.solver = Radau(
+                self.field,
+                start,
+                np.array(solution(start), dtype=float),
+                at,
+                rtol=self.plan.numerics.rtol,
+                atol=self.atol,
+                jac_sparsity=self.pattern(),
+            )
+            self.first = start
+            return self.peek()
+        if at is not None:
+            events.append((at, None))
         ended = bool(events) or solver.status != 'running'
         if events:
             end = min(at for at, _ in events)
             y = solution(end)
         if ended and end <= self.first:
-            raise SimulationError(f'Integration made no progress at {end:g} h')
+            raise SimulationError(self._failed(end, 'Integration made no progress'))
         self.pending = (start, end, solution, np.array(y, dtype=float), ended)
         return end
 
@@ -892,6 +1048,7 @@ class Sparse:
         self._record(solution, start, end)
         self.t, self.y = end, y
         self.run.now = end
+        self._reached(end, y)
         if ended:
             self.solver = None
         return list(self.stores), list(self.recorded), ended
@@ -915,8 +1072,7 @@ class Sparse:
             return
         evaluations = self.evaluations
         try:
-            self._select()
-            self._flags()
+            self._start()
             values, carried = self.values(t, self.y)
         finally:
             self.evaluations = evaluations
@@ -939,6 +1095,7 @@ class Sparse:
             return
         self._record(solution, start, t)
         self.t, self.y = float(t), np.array(solution(t), dtype=float)
+        self._reached(self.t, self.y)
 
     def level_at(self, store, t):
         """The value of a store at time t: at the present time, inside the next step, or, before that
@@ -957,6 +1114,8 @@ class Sparse:
         if self._drift is None:
             evaluations = self.evaluations
             try:
+                if self.pending is None and self.solver is None:
+                    self._start()  # the rates that the next step starts with
                 self._drift = self.field(self.t, self.y)
             finally:
                 self.evaluations = evaluations
@@ -972,6 +1131,8 @@ class Sparse:
         )
         evaluations = self.evaluations
         try:
+            if self.pending is None and self.solver is None:
+                self._start()  # the rates that the next step starts with
             return float(self.values(t, y)[0][self.recorded.index(name)])
         finally:
             self.evaluations = evaluations

@@ -230,7 +230,9 @@ class Ways:
                 elif mark[0] == 'allocation' and mark[1] in stores:
                     changes.append(f'the allocation of {mark[1]}.{mark[2]} changed')
             for store in sorted(ends):
-                if store in stores:
+                # A flow that joins or leaves a store of the part, or one that its settings read,
+                # whose motion it changes: the part moves with that store from the settling on.
+                if store in stores or store in reads:
                     changes += ends[store]
             for each in sorted(rates):
                 flow = each.rsplit('.', 1)[0]
