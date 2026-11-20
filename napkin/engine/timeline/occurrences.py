@@ -476,12 +476,13 @@ class Occurrences:
                 )
         # What is a formula at the finish freezes: a stage may have given a request or a capacity a
         # formula, or a number in place of one.
+        observations = {}
         for name in dict.fromkeys((*made.formulas, *made.initial)):
             found = plan.values.get(name)  # none for a distribution-valued local
             if found is None or found.kind != FORMULA:
                 continue
             try:
-                frozen = run.value(name)
+                frozen = run.value(name, observations=observations)
             except (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError) as problem:
                 frozen = Unavailable(
                     f'{name} was not available when {made.id} finished at t = {t:g} h: {problem}'
@@ -501,6 +502,7 @@ class Occurrences:
             run.recorder.add(name, t, value, 0.0)
             run.changed.add(name)
         run.changed.add(('occurrences', made.member, made.event.name))
-        run.recorder.entry(t, 'finish', made.event.origin, made.id)
+        details = {'reads': tuple((name, tuple(reads)) for name, reads in observations.items())} if observations else {}
+        run.recorder.entry(t, 'finish', made.event.origin, made.id, **details)
         if run.moment.phase == 'conditions':
             run.moment.again = True

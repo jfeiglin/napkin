@@ -50,6 +50,7 @@ hold. A run that stops prints the values up to the time at which it stopped, the
 A path, a run or a time that the model does not have is a usage error (exit 2).
 """
 
+import math
 import sys
 
 from . import common
@@ -443,7 +444,7 @@ def floor_of(record, program, value, factor):
 
 def number_like(value):
     """Whether a value is a number: not a yes/no, a text, a status display or `Unavailable`."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def unavailable(value):

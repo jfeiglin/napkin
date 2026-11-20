@@ -175,7 +175,7 @@ DESCRIBED = 'described'  # `.mean` or `.std` of a distribution-valued value (`Pl
 RESULT = 'result'  # a value that a declared solver determines (`Plan.results`): its answer
 STARTS = (INPUT, STATE, CAPTURE, LINK)  # the kinds that the start of a run evaluates once
 FIXED = (INPUT, LINK)  # what an assertion over inputs may read
-BUILTINS = ('started', 'done', 'active')  # the fields of every occurrence
+BUILTINS = p.OCCURRENCE_PROPERTIES
 SIDES = ('outflow', 'inflow')  # the endpoints of a stored number
 # The ways of a connected set (`Connected.way`).
 FAMILY, LINES, COMPONENT, SPARSE, DECLARED = 'family', 'lines', 'component', 'sparse', 'declared'

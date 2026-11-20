@@ -1195,6 +1195,8 @@ class Proofs:
             receiver, event_name = owner.rsplit('#', 1)[0].rsplit('.', 1)
             template, member = self.rows[receiver]
             event = template.part(event_name)
+            if len(steps) == 1 and steps[0] in p.OCCURRENCE_PROPERTIES:
+                return Part('event', event.origin, receiver), {}
             at = _At(template, member, event)
             flow = next((each for each in event.locals if each.name == steps[0]), None)
             points = [(('flow', at.owner, flow, at), True)] if isinstance(flow, p.Flow) else []

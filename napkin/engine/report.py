@@ -449,7 +449,7 @@ class _Trail:
         through an evaluation of the reader (`Reader.refusal`)."""
         evaluated = self.reader.read
         start = name_of(key)
-        pairs = frozenset((start, t) for t in times if (start, t) in evaluated)
+        pairs = frozenset(pair for t in times if (pair := self.reader.evidence_pair(start, t)) in evaluated)
         sure, maybe, unread, applied, seen = set(), set(), {}, {}, set()
         if not pairs and self.reader.evaluates(start):
             # The report read no value of the formula at its times (each was unavailable before it
@@ -522,9 +522,10 @@ class _Trail:
                 continue
             done.add((name, t))
             for other in self.reader.reads(name, t):
-                found.add((other, t))
-                if (other, t) in self.reader.read:
-                    pending.append((other, t))
+                pair = self.reader.evidence_pair(other, t)
+                found.add(pair)
+                if pair in self.reader.read:
+                    pending.append(pair)
         return found
 
     def ran(self, part):

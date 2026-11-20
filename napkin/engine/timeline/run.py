@@ -457,7 +457,7 @@ class Run:
 
     # ---- the present ----------------------------------------------------------------------------------
 
-    def value(self, name, t=None, tx=None):
+    def value(self, name, t=None, tx=None, *, observations=None):
         """The value of an engine name now, or at a time t inside the present window of the ways (see
         the module); a stage's own writes (`tx`) first."""
         t = self.now if t is None else float(t)
@@ -485,7 +485,7 @@ class Run:
             if isinstance(value, Unavailable):
                 raise ExpressionError(value.reason)
             if isinstance(value, Defined):  # a calculation that the stage gave the value
-                return walked(self._derived(name, t, tx, {}, set()))
+                return walked(self._derived(name, t, tx, {}, set(), observations=observations))
             return value
         if name == 't':
             return t
@@ -514,7 +514,7 @@ class Run:
                     raise ExpressionError(frozen.reason)
                 return frozen
         if kind in (FORMULA, REDUCE, LOOKUP, DYNAMIC):
-            return walked(self._derived(name, t, tx, {}, set()))
+            return walked(self._derived(name, t, tx, {}, set(), observations=observations))
         if name in self.ways.set_of:
             return self.ways.value(name, t)
         try:
@@ -542,7 +542,7 @@ class Run:
             return walked(self._derived(name, t, None, {}, set(), region))
         return self.value(name, t)
 
-    def _derived(self, name, t, tx, known, waiting, region=None):
+    def _derived(self, name, t, tx, known, waiting, region=None, observations=None):
         """The value of a derived value (`_is_derived`) at time t, as a computation of `walk.walked`
         (re-audit 15): what it reads is read as its evaluation asks for it (`reads.py`), and each
         derived value among those that this read has not computed yet (`known`) is computed first,
@@ -567,10 +567,18 @@ class Run:
             own[each] = found
             return found
 
+        take = read
+        if observations is not None:
+            asked = observations.setdefault(name, {})
+
+            def take(each):
+                asked[each] = None
+                return read(each)
+
         waiting.add(name)
         while True:
             try:
-                found = self._evaluated(name, t, tx, read, known, region)
+                found = self._evaluated(name, t, tx, take, known, region)
             except Pending as pending:
                 for each in pending.names:
                     if each in known:
@@ -578,7 +586,7 @@ class Run:
                     if each in waiting:
                         raise SimulationError(f'{each}: a value that reads itself at t = {t:g} h') from None
                     try:
-                        known[each] = yield self._derived(each, t, tx, known, waiting, region)
+                        known[each] = yield self._derived(each, t, tx, known, waiting, region, observations)
                     except Exception as problem:  # raised where the evaluation reads it, as a call raises
                         known[each] = _Failed(problem)
                 continue

@@ -52,6 +52,9 @@ class Unit:
         return self.dimension == other.dimension
 
 
+OCCURRENCE_PROPERTIES = ('started', 'done', 'active')
+
+
 PLAIN = Unit('', (), Fraction(1))
 
 

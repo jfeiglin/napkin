@@ -163,7 +163,6 @@ FLOW_PROPERTIES = ('actual_rate', 'request', 'capacity', 'source', 'sink')
 ROUTE_PROPERTIES = ('actual_rate', 'request', 'capacity')
 LEG_VIEW_PROPERTIES = ('actual_rate', 'request', 'source', 'sink')
 ENDPOINT_PROPERTIES = ('actual_rate', 'capacity', 'request', 'allocation')
-OCCURRENCE_PROPERTIES = ('started', 'done', 'active')
 FIXED_PROPERTIES = ('source', 'sink')
 SETTABLE_PROPERTIES = ('request', 'capacity', 'allocation')
 
@@ -365,7 +364,7 @@ class Resolver:
                 if part.name == name:
                     kind = 'value' if isinstance(part, p.Value) else 'flow'
                     return Found(kind, part, found.part, many)
-            if name in OCCURRENCE_PROPERTIES:
+            if name in p.OCCURRENCE_PROPERTIES:
                 return Found('property', many=many, name=name, of=found)
             return None
         if kind == 'solver':

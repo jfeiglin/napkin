@@ -192,7 +192,10 @@ def _compact(pieces):
             t0, v0, r0 = kept[-1]
             if not isinstance(r0, Curve) and not isinstance(v0, (bool, str, Unavailable)):
                 scale = max(abs(v0), abs(value), 1e-300)
-                if rate == r0 and abs(v0 + r0 * (t - t0) - value) <= 1e-13 * scale:
+                if rate == r0 and (
+                    (v0 == value and rate == 0)
+                    or (math.isfinite(scale) and abs(v0 + r0 * (t - t0) - value) <= 1e-13 * scale)
+                ):
                     continue
         elif kept and isinstance(value, (bool, str, Unavailable)) and kept[-1][1] == value:
             continue
@@ -962,7 +965,7 @@ def declaration(program, key):
         if not isinstance(found, p.Event):
             raise KeyError(f'{key}: no value of the program: {key.owner} is no occurrence of an event')
         if head in BUILTINS and not rest:
-            return Declaration(None, 'builtin')  # the time of the start is in hours; the others are yes/no
+            return Declaration(found, 'builtin', 'h' if head == 'started' else '')
         part = next((each for each in (*found.params, *found.locals) if each.name == head), None)
         if part is not None and part in found.params and not rest:
             return _number(program, part, 'parameter', getattr(part.type, 'unit', ''))
@@ -1048,8 +1051,7 @@ def declared(program, key):
 def absent(key, found):
     """Why the program gives no number to a key that names one of its properties (`Declaration`), or
     None: a capacity that a flow, a leg or an endpoint leaves out (spec, "Capacity, request and
-    bounds": "A flow that declares no capacity has no ceiling of its own"). No stage can give it one,
-    since a path to a capacity left out is refused, so it holds for the whole run."""
+    bounds": "A flow that declares no capacity has no ceiling of its own"). A stage may subsequently set a ceiling."""
     if key.steps[-1] != 'capacity':
         return None
     if found.what in ('flow', 'leg') and found.part.capacity is None:
@@ -1163,6 +1165,11 @@ class Reader:
         self.starts = {entry.owner: float(entry.t) for entry in record.trace if entry.kind == 'start'}
         self.found = {}  # (engine name, time) -> its value, or the LookupError of a value that has none
         self.read = {}  # (engine name, time) -> the engine names that its evaluation read, in order
+        self.finished_at = {}
+        for entry in record.entries('finish'):
+            self.finished_at[entry.owner] = entry.t
+            for name, reads in entry.detail('reads') or ():
+                self.read[name, entry.owner] = reads
         self.kept = {}
         self._stores = None
         self._always = {}  # the id of a node -> what every evaluation of it reads (`proofs.always`)
@@ -1213,7 +1220,12 @@ class Reader:
         try:
             if key.store is not None:
                 return self.ledger(key, t)
-            return self.at(name_of(key), t)
+            value = self.at(name_of(key), t)
+            if key.steps[-1] == 'capacity' and value == math.inf:
+                why = absent(key, self._checked[key])
+                if why is not None:
+                    return Unavailable(why)
+            return value
         except LookupError as problem:
             stopped = self.record.stopped()
             return Unavailable(str(problem) + (f': {stopped}' if stopped else ''))
@@ -1257,11 +1269,21 @@ class Reader:
         start = self.starts.get(owner)
         return start is not None and start <= t
 
+    def evidence_pair(self, name, at):
+        """Identify a live evaluation by time or a frozen evaluation by its finishing occurrence."""
+        if isinstance(at, str) and (name, at) in self.read:
+            return name, at
+        time = self.finished_at[at] if isinstance(at, str) else at
+        owner = self.plan.occurrence_of(name)
+        if (name, owner) in self.read and time >= self.finished_at[owner]:
+            return name, owner
+        return name, at
+
     def reads(self, name, t):
         """The engine names that the evaluation of an engine name at a time read, after `at` found its
         value: what its formula asked for, the members and the entries that a collection read; none
         for a value read from its history."""
-        return self.read.get((name, float(t)), ())
+        return self.read.get(self.evidence_pair(name, t), ())
 
     def evaluates(self, name):
         """Whether the reader finds the value of an engine name by an evaluation of what it reads (a
