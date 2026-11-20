@@ -45,12 +45,17 @@ The expressions of the solver read its unknowns as symbols (`Affine`): a formula
 dynamic read that reads an unknown is expanded where it is read, a keyed read whose key and keys are
 known numbers reads the member that it selects (one keyed by an unknown is refused by name, as the
 spec leaves it out), and any other value is a number of the instant, read from the run. The forms
-are those of the spec: affine `==`, `<=` and `>=`, their conjunction, `all(...)` and sums, products and quotients by known numbers, and positive parts
-(`max` of an unknown is `a + max(0, b - a)`, one INTERNAL unknown of the library for each), where
-they are convex: minimized, or on the small side of `<=`. A strict relation, `!=`, `or`, `any`,
-`not` of a relation, a relation under a condition, `min` of an unknown, a product of two unknowns, a
-division by one, another function of one, and a request or a capacity of the set that reads one fail
-the run with a diagnostic that names the solver and the form.
+are those of the spec: affine `==`, `<=` and `>=`, their conjunction, `all(...)` and sums, products
+and quotients by known numbers, a membership `x in [lo, hi]` (the chain `lo <= x <= hi` of its two
+relations, once the ends that the solve knows are checked as every evaluation of a membership checks
+them: a reversed interval stops the run by the name of its failure, `ops.REVERSED`), and positive
+parts (`max` of an unknown is `a + max(0, b - a)`, one INTERNAL unknown of the library for each),
+where they are convex: minimized, or on the small side of `<=`. A strict relation, `!=`, `or`,
+`any`, `not` of a relation, a relation under a condition, `min` of an unknown, a product of two
+unknowns, a division by one, another function of one, and a request or a capacity of the set that
+reads one fail the run with a diagnostic that names the solver and the form. An expression is read
+with no recursion (`walk.walked`): a chain of formulas that read an unknown is followed to its end,
+each formula once at an instant.
 
 **Between moments the answer holds** where the problem reads nothing that moves between moments:
 the rates are constant and each store is a line, as on the lines (`lines.py`). A store that reaches
@@ -98,8 +103,10 @@ from scipy.integrate import solve_ivp
 from scipy.sparse.linalg import splu
 
 from ...core import expr as nodes
+from ...core import ops
 from ...core.errors import ExpressionError
 from ..continuous import dense
+from ..continuous.walk import walked
 from ..errors import SimulationError
 from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
 from .collections import selected
@@ -196,6 +203,7 @@ class Former:
         for name in connected.results:
             self.unknown[name] = ('value', name)
         self._reads = {}
+        self._names = {}  # what each name that reads an unknown gives at the instant (`_name`)
         self._touch = None  # the place of each store in the oracle's order (`_first_touch`)
 
     # ---- whether a name reads an unknown -------------------------------------------------------
@@ -223,6 +231,7 @@ class Former:
         bounds; the request of each connection is `requests`."""
         plan, net, declared = self.plan, self.net, self.declared
         self.t, self.problem_, self.cols, self.convex, self.parts = t, Problem(), {}, set(), {}
+        self._names = {}  # what each name that reads an unknown gives at this instant (`_name`)
         self.pending, self.rows = [], []  # positive parts (key, Affine), rows (key, terms, lower, upper)
         problem = self.problem_
         requests = asked_of(
@@ -552,20 +561,29 @@ class Former:
 
     def value(self, node, label=()):
         """The value of a node at the instant: a number, a yes/no or a text where it reads no
-        unknown; else an `Affine`, or the relations of a test (a list of (Affine, op, label))."""
+        unknown; else an `Affine`, or the relations of a test (a list of (Affine, op, label)). It is
+        found with no recursion (`walk.walked`): each part of the node, and each formula that it reads
+        and that reads an unknown, is a computation on the driver's stack, so a chain of formulas of
+        any length reads the unknown at its end; what each such name gives is found once at the
+        instant."""
+        return walked(self._value(node, label))
+
+    def _value(self, node, label):
+        """The computation of `value` (`walk.walked`): it yields the computation of each part."""
         if not self._symbolic(node):
             return lazily(node, self._reader(), self.plan.units, self.t)
         if isinstance(node, nodes.Ref):
-            return self._name(node.name)
+            return (yield self._name(node.name))
         if isinstance(node, nodes.Unary):
-            found = self.value(node.operand, label)
+            found = yield self._value(node.operand, label)
             if node.op == 'neg':
                 return _affine(found).times(-1.0) if isinstance(found, Affine) else -found
             if node.op == 'pos':
                 return found
             raise self._refused('not of a relation or of an unknown')
         if isinstance(node, nodes.Binary):
-            left, right = self.value(node.left, label), self.value(node.right, label)
+            left = yield self._value(node.left, label)
+            right = yield self._value(node.right, label)
             if isinstance(left, list) or isinstance(right, list):
                 raise self._refused('arithmetic on a relation')
             if node.op == 'add':
@@ -584,15 +602,14 @@ class Former:
                 return left.times(1.0 / right)
             raise self._refused(f'the operation {node.op} of an unknown')
         if isinstance(node, nodes.Compare):
-            values = [self.value(part, label) for part in node.operands]
-            found = []
-            for op, a, b in zip(node.ops, values, values[1:]):
-                found += _compare(op, a, b, label, self)
-            return found
+            values = []
+            for part in node.operands:
+                values.append((yield self._value(part, label)))
+            return self._chain(node.ops, values, label)
         if isinstance(node, nodes.BoolOp):
             found = []
             for part in node.values:
-                value = self.value(part, label)
+                value = yield self._value(part, label)
                 if node.op == 'or' and isinstance(value, list | Affine):
                     raise self._refused('a disjunction')
                 if isinstance(value, list):
@@ -603,13 +620,17 @@ class Former:
                     return True
             return found if node.op == 'and' else False
         if isinstance(node, nodes.IfElse):
-            test = self.value(node.test, label)
+            test = yield self._value(node.test, label)
             if isinstance(test, list | Affine):
                 raise self._refused('a relation under a condition')
-            return self.value(node.body if test else node.orelse, label)
+            return (yield self._value(node.body if test else node.orelse, label))
         if isinstance(node, nodes.Call):
+            if node.function == 'within':
+                return (yield self._membership(node, label))
             if node.function == 'max':
-                values = [self.value(part, label) for part in node.args]
+                values = []
+                for part in node.args:
+                    values.append((yield self._value(part, label)))
                 best = values[0]
                 for k, value in enumerate(values[1:], 1):
                     if isinstance(best, Affine) or isinstance(value, Affine):
@@ -623,12 +644,39 @@ class Former:
             raise self._refused(f'the function {node.function} of an unknown')
         raise self._refused(f'an expression of kind {type(node).__name__}')
 
+    def _chain(self, ops_, values, label):
+        """The relations of a chain of comparisons of `values`, each pair once (`_compare`)."""
+        found = []
+        for op, a, b in zip(ops_, values, values[1:]):
+            found += _compare(op, a, b, label, self)
+        return found
+
+    def _membership(self, node, label):
+        """A membership `x in [lo, hi]` that reads an unknown (`expr.membership`): x and its ends are
+        read once, the ends that the instant knows are checked as every evaluation of a membership
+        checks them (a reversed interval is an error that names itself, `ops.REVERSED`; spec: "Reversed
+        bounds are an error"), and the membership is the chain `lo <= x <= hi` of its relations."""
+        chain, _, _ = nodes.membership(node)
+        values = []
+        for part in node.args:
+            values.append((yield self._value(part, label)))
+        x, low, high = values
+        if not isinstance(low, Affine | list) and not isinstance(high, Affine | list) and low > high:
+            raise ExpressionError(f'{ops.REVERSED}: [{low!r}, {high!r}]')
+        return self._chain(chain.ops, [low, x, high], label)
+
     def _refused(self, what):
         return Unsupported(f'unsupported in the solver {self.declared.id}: {what}')
 
     def _name(self, name):
         """A name that reads an unknown: the unknown, or what a formula, a reduction or a dynamic
-        read gives of it."""
+        read gives of it (a computation of `walk.walked`), found once at the instant."""
+        found = self._names.get(name)
+        if found is None:
+            found = self._names[name] = yield self._named(name)
+        return found
+
+    def _named(self, name):
         if name in self.undecided:
             raise Unsupported(
                 f'the solver {self.declared.id} reads {name}, which it does not determine: a flow that '
@@ -641,19 +689,21 @@ class Former:
         if value.kind == FORMULA:
             # An enforced equality is the equality here; its readers compare it within the solver's
             # tolerance (`plan.Plan._tolerate_enforced`).
-            found = self.value(self.plan.enforced.get(name, value.node))
+            found = yield self._value(self.plan.enforced.get(name, value.node), ())
             if isinstance(found, list):
                 return [(affine, op, (name, *label)) for affine, op, label in found]
             return found
         if value.kind == REDUCE:
             reduction = self.plan.reductions[name]
             entries = self.run.kept_of(name)
-            return self._reduced(reduction.op, [reduction.names[k] for k in entries], reduction.spelled)
+            return (
+                yield self._reduced(reduction.op, [reduction.names[k] for k in entries], reduction.spelled)
+            )
         if value.kind == DYNAMIC:
             dynamic = self.plan.dynamic[name]
             members = self.plan.members(dynamic.source)
             names = [self.plan.project(point, dynamic.steps) for point in members]
-            return self._reduced(dynamic.op, names, dynamic.spelled)
+            return (yield self._reduced(dynamic.op, names, dynamic.spelled))
         if value.kind == LOOKUP:
             # A keyed read that selects its member from known numbers reads that member's value.
             keyed = self.plan.keyed[name]
@@ -665,14 +715,16 @@ class Former:
             if entry is None:
                 x = float(lazily(keyed.key, self._reader(), self.plan.units, self.t))
                 raise SimulationError(f'{keyed.spelled}: no member has a key at or below {x:g}')
-            return self.value(nodes.ref(keyed.names[entry]))
+            return (yield self._value(nodes.ref(keyed.names[entry]), ()))
         raise self._refused(f'{name}, which the problem reads as an unknown')
 
     def _reduced(self, op, names, spelled):
+        """What a sum, an `all` or a `max` of the values of `names` gives (a computation of
+        `walk.walked`)."""
         if op == 'sum':
             total = Affine()
             for name in names:
-                found = self.value(nodes.ref(name))
+                found = yield self._value(nodes.ref(name), ())
                 if isinstance(found, list):
                     raise self._refused(f'{spelled}: a sum of relations')
                 total = total.plus(found)
@@ -680,14 +732,16 @@ class Former:
         if op == 'all':
             found = []
             for name in names:
-                value = self.value(nodes.ref(name))
+                value = yield self._value(nodes.ref(name), ())
                 if isinstance(value, list):
                     found += [(affine, o, label or (name,)) for affine, o, label in value]
                 elif not value:
                     return [(Affine({}, 1.0), '<=', (name,))]
             return found
         if op == 'max':
-            values = [self.value(nodes.ref(name)) for name in names]
+            values = []
+            for name in names:
+                values.append((yield self._value(nodes.ref(name), ())))
             if not values:
                 raise SimulationError(f'{spelled} reads an empty collection')
             best = values[0]

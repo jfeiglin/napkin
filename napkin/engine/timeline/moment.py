@@ -9,7 +9,8 @@ At a time, rounds. One round is:
    run in order and each sees the writes before it (`Tx`): `=`, `+=` and `-=` on a writable value (of
    the receiver, through a link or an entity parameter, of the occurrence of the stage or of another
    that a saved reference, a copy of one or `.occurrences.at(t)` names; a finished occurrence is
-   frozen, and a write to it fails the run, as each end of a `move` does: `Occurrences.writable`),
+   frozen, and an assignment to it fails the run, as a `move` of an amount into or out of its store
+   does, where a move of nothing goes on: `Occurrences.writable`),
    `=` of a distribution on a distribution-valued value, which the draws after it read,
    of an allocation on an endpoint, by which it shares its flows from the settling on, and of a
    `formula(...)` on a formula, a request or a capacity, which reads the new calculation from the
@@ -44,7 +45,8 @@ At a time, rounds. One round is:
    at a bound) is within the tolerance of what it reads of the claims of the classes ahead of a
    class that claims more, has an entry `settle` with the detail `near`. The sets that it built are
    checked, and in round zero every set, which starts then. A split that a way makes between
-   moments, where a store meets a bound inside its instance, is not marked. Then each
+   moments, where a store meets a bound inside its instance, is not marked. A flow present at a
+   store of a finished occurrence must carry no rate there (`Occurrences.carried`). Then each
    delay that a stage reached and that reads a rate or a result takes its value: its other reads
    were captured when the stage reached it (`occurrences.py`).
 3. **Conditions** (`triggers.py`): triggers, resets and gates are read on the settled state; then
@@ -325,6 +327,7 @@ class Moment:
         self.commit(tx)
         self.settle()
         self.splits(None)  # every set has just started
+        run.occurrences.carried(run.now)
         run.occurrences.delays()
         self.phase = 'conditions'
         run.triggers.conditions()
@@ -377,6 +380,8 @@ class Moment:
                 self.stage(live)
             self.held = None
             self.splits(self.settle())
+            # A flow at a store of a finished occurrence that the round gave a rate writes it.
+            run.occurrences.carried(t)
             run.occurrences.delays()
             self.phase = 'conditions'
             run.triggers.conditions()
@@ -505,8 +510,8 @@ class Moment:
 
     def target(self, path, scope, origin):
         """The engine name of a value that a statement writes: a value of a scope, or a value of the
-        newest occurrence of an event. A value of a finished occurrence is frozen, whatever spells
-        it (`Occurrences.writable`)."""
+        newest occurrence of an event. Whether it may write it is the statement's check: a value of
+        a finished occurrence is frozen, whatever spells it (`Occurrences.writable`)."""
         run, plan = self.run, self.plan
         point = self.resolved(path, scope, origin)
         if point[0] != 'value':
@@ -518,7 +523,6 @@ class Moment:
             if dynamic.op != 'at' or not members:
                 raise SimulationError(f'{origin}: {dynamic.spelled} names no occurrence at t = {run.now:g} h')
             name = plan.project(members[-1], dynamic.steps, origin)
-        run.occurrences.writable(name, origin)
         return name
 
     def checked(self, name, value, origin):
@@ -553,6 +557,7 @@ class Moment:
             tx.allocations.append((point[1], point[2], statement.value, scope, statement.origin))
             return
         name = self.target(statement.target, scope, statement.origin)
+        run.occurrences.writable(name, statement.origin)  # an assignment always writes
         if isinstance(statement.value, Distribution):
             # A new distribution for the draws to come; what was drawn stays as it is.
             tx.writes[name] = statement.value
@@ -578,7 +583,9 @@ class Moment:
         """`move amount from source to destination`: both inventories are checked before anything
         changes, and a move that would leave less than the tolerance of its source moves all. Two ends
         that name one store (two arguments of an event that name one member) give and take the same
-        amount together: the debit and the credit cancel, and its inventory stays as it is."""
+        amount together: the debit and the credit cancel, and its inventory stays as it is. A move of
+        an amount at a store of a finished occurrence writes it, and fails; a move of nothing goes on
+        (`Occurrences.writable`)."""
         run, origin = self.run, statement.origin
         amount = self.truth(statement.amount, scope, origin, tx)
         if (
@@ -592,6 +599,7 @@ class Moment:
         source = self.target(statement.source, scope, origin)
         destination = self.target(statement.destination, scope, origin)
         if source == destination:
+            run.occurrences.writable(source, origin, amount)
             tx.moves.append((source, destination, amount, origin))
             return
         had = float(run.value(source, tx=tx))
@@ -604,6 +612,8 @@ class Moment:
                 left = float(lower)
             else:
                 amount, left = 0.0, had
+        for end in (source, destination):
+            run.occurrences.writable(end, origin, amount)  # what the move moves, at each end
         after = {source: left, destination: float(run.value(destination, tx=tx)) + amount}
         for name, value in after.items():
             low, high = run.bounds.get(name, (-math.inf, math.inf))

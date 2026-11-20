@@ -14,13 +14,13 @@ run goes and its record is read (the programs are made by the program's builder)
   the nodes;
 - keyed reads on every link (`v = Node.instances.at(k - 1).v + 1`, a constant key over the natural
   keys), with a keyed read by a key that moves, read by stages, and a trigger on the last link;
-- a declared solver's input read through a chain of formulas of known values;
+- a declared solver's input read through a chain of formulas of known values, and a solver's
+  constraint that reads the rate that it determines through a chain (`declared.py`); a rate read
+  through a chain of known formulas, on arrays and on lines (`family.py`, `core/arrays.py`);
 - the paths that recurse in files of other agents, marked as such (`xfail`, strict, so that the fix
-  shows): a solver's constraint that reads the rate that it determines through a chain
-  (`declared.py`); a rate read through a chain of known formulas, on arrays and on lines
-  (`family.py`, `core/arrays.py`); a rate that moves, read through a chain, on a component
-  (`component.py`; the proofs of `continuous/kernels.py` that it reaches next walk on the driver)
-  and on the sparse integrator (`sparse.py`).
+  shows): a rate that moves, read through a chain, on a component (`component.py`; the proofs of
+  `continuous/kernels.py` that it reaches next walk on the driver) and on the sparse integrator
+  (`sparse.py`).
 
 Each expected value is a closed form: the number of links, or the exponential decay of a tank that
 drains at its water over 10 h, 10 e^(-t / 10 h) L.
@@ -278,10 +278,9 @@ def test_a_solver_reads_its_input_through_a_chain_of_known_values(depth):
     assert values(record, program, ['clinic.use.actual_rate'], 0.5) == [pytest.approx(5)]
 
 
-@elsewhere('declared.py: value and _name, through each formula that reads an unknown')
-def test_a_solver_reads_the_rate_that_it_determines_through_a_chain_of_formulas():
+@pytest.mark.parametrize('depth', DEPTHS)
+def test_a_solver_reads_the_rate_that_it_determines_through_a_chain_of_formulas(depth):
     """The solver's constraint reads the rate that it determines through the chain: at most 3 L/h."""
-    depth = 1500
     b = Builder(UNITS)
     tank = b.entity('tank', value('water', 'L', 100, lower=0))
     use = b.entity('clinic', flow('use', tank.water, SINK, request=q(10, 'L/h')))
@@ -302,17 +301,11 @@ def test_a_solver_reads_the_rate_that_it_determines_through_a_chain_of_formulas(
     assert values(record, program, ['clinic.use.actual_rate'], 0.5) == [pytest.approx(3)]
 
 
-@pytest.mark.parametrize(
-    'way',
-    [
-        pytest.param(FAMILY, marks=elsewhere('family.py at and core/arrays.py values, through each formula')),
-        pytest.param(LINES, marks=elsewhere('family.py at and core/arrays.py values, through each formula')),
-    ],
-)
-def test_a_rate_read_through_a_chain_of_known_formulas_is_held_between_moments(way):
+@pytest.mark.parametrize('depth', DEPTHS)
+@pytest.mark.parametrize('way', [FAMILY, LINES])
+def test_a_rate_read_through_a_chain_of_known_formulas_is_held_between_moments(way, depth):
     """A tank of 100 L drains at y, a chain from 2 L/h: on arrays, alone, it holds 90 L at 5 h; on
     lines, with a second drain of the same rate, 80 L."""
-    depth = 1500
     b = Builder(UNITS)
     chain = formula_chain(b, 'reading', q(2, 'L/h'), 'L/h', depth)
     tank = b.entity('tank', value('water', 'L', 100, lower=0))

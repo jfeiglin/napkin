@@ -16,8 +16,9 @@ edit that it made, at the stop of its hit. A session made with a log plays it ag
 stop of the log before the last with the log's edits there, and waits at the last with its edits
 made, as the logged session did. Each stop must be the log's stop of its hit again, with its time
 within the tolerance in time of a crossing (`Numerics.crossing`), and the run must reach each stop
-of the log up to its horizon, or the log is refused by name (`CheckpointError`): a log never goes on
-as another run. The run of a log (`play`) goes on past every stop to the end; exact resume makes it
+of the log up to its horizon, or up to the end of its record where its budget ends it (a run stops by
+its budget where its record does, before any later stop), or the log is refused by name
+(`CheckpointError`): a log never goes on as another run. The run of a log (`play`) goes on past every stop to the end; exact resume makes it
 the logged session's run, with the same values, draws, event times and event order, when that
 session went on to the end with no other edit. The run store keeps the run of a log under its key
 (`napkin.store.run`).
@@ -213,9 +214,17 @@ class Session:
             if hit >= self._last:
                 return self.checkpoint
             found = self._run.resume()
-        # A stop of the log after the horizon of this run cannot come; one before it must.
+        # A stop of the log after the horizon of this run cannot come, nor one at or after the end of
+        # a record that its budget ends: a run stops by its budget where its record does, before any
+        # later stop (`program/record.py`, "The budget"). One before them must.
         reached, horizon = (self.stops[-1].hit if self.stops else 0), self.configuration.request.horizon
-        missing = sorted(hit for hit, stop in self._expected.items() if hit > reached and stop.t <= horizon)
+        crossing = self.configuration.numerics.crossing
+        budget = found.failure is not None and found.failure.detail('budget') is not None
+        missing = sorted(
+            hit
+            for hit, stop in self._expected.items()
+            if hit > reached and stop.t <= horizon and not (budget and stop.t + crossing >= found.end)
+        )
         if missing:
             self._refused = f'the log does not play again: the run ends before its stop {missing[0]}'
             raise CheckpointError(self._refused)

@@ -32,6 +32,7 @@ from pathlib import Path
 import pytest
 
 from napkin import session as session_module
+from napkin import store
 from napkin.engine.timeline import read, run
 from napkin.model.compile import compile_text
 from napkin.program.artifact import Artifact
@@ -350,6 +351,39 @@ def test_a_stop_of_the_log_after_the_horizon_need_not_come_and_one_before_it_mus
     one_more = replace(session.log, stops=(*stops, replace(stops[1], hit=3)))
     with pytest.raises(CheckpointError, match='the run ends before its stop 3'):
         play(program, Configuration(Request(2.5)), replace(one_more, breakpoints=breakpoints[:2]))
+
+
+def test_a_stop_of_the_log_at_or_after_the_end_that_the_budget_gives_need_not_come(tmp_path):
+    """The log stops at 1 h, 2 h and 3 h, with 10 ticks given at 1 h. A record of the ticks within
+    two pieces holds their start, 0 at 0 h, and the edit and the stage's commit give two more at 1 h
+    (10, then 11): by hand its budget ends it at 1 h, and the run stops there by its budget, at its
+    stop at 2 h, before any checkpoint (`program/record.py`, "The budget"). So the log's stops at
+    2 h and 3 h cannot come, as a stop after the horizon cannot: the log plays as that record, fresh
+    and through the store, cold and cut from the stored run of the log within a wider budget, and a
+    record within three pieces, which ends at 2 h, reaches the stop at 2 h and not the one at 3 h. A
+    stop before the end must come: a log whose third stop is at 1.5 h is refused."""
+    program, configuration, breakpoints = clock()
+    session = Session(program, configuration, breakpoints)
+    session.advance()
+    session.edit('clock.ticks', 10)
+    log = finished(session) and session.log
+    ticks = Key('clock', ('ticks',))
+    for pieces, end in ((2, 1), (3, 2)):
+        small = Configuration(Request(4, everything=False, keys=(ticks,), pieces=pieces))
+        wide = Configuration(Request(4, everything=False, keys=(ticks,)))
+        fresh = play(program, small, log)
+        with store.use(tmp_path / str(pieces)):
+            cold = store.run(program, small, log)
+            store.run(program, wide, log)
+            cut = store.run(program, small, log)
+        for record in (fresh, cold, cut):
+            assert record.failure.detail('budget') == pieces and record.end == end, record.failure
+            found = values_at(record, program, 'clock.ticks', [0.5, end])
+            assert found[0] == 0 and isinstance(found[1], Unavailable), found
+    stops = log.stops
+    early = replace(log, stops=(*stops[:2], replace(stops[2], t=1.5)))
+    with pytest.raises(CheckpointError, match='the run ends before its stop 3'):
+        play(program, Configuration(Request(4, everything=False, keys=(ticks,), pieces=3)), early)
 
 
 # ---- edits and views ----------------------------------------------------------------------------

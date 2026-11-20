@@ -107,7 +107,7 @@ class Answer:
         `CHECK`), and it is no worse than this answer on any rank: no objective higher by more than
         KEPT of the size of its terms at the two answers, no claim served a smaller fraction by more
         than CHECK, and no stage of the distance farther from its targets than what its roundings
-        may add (`_farther`). The optimum is kept to KEPT of a reference scale, so the second check
+        may add (`farther`). The optimum is kept to KEPT of a reference scale, so the second check
         is what keeps a value far below one: a delivery of 5e-8 L/h that meets a request is no
         rounding of zero, whatever a change of it does to the optimum's tolerance."""
         return self._checks(np.asarray(x, dtype=float), self.x) is None
@@ -252,7 +252,7 @@ def _end_checks(arrays, w, optima, levels):
     or None: each kept optimum (`ranked.lost`), each claim's served fraction against its fair level,
     and every row and bound, in working units, each to its tolerance; and, for an x that would replace
     the answer `replaced`, every rank against that answer's, in the order of the selection order:
-    each objective, each claim's served fraction, and each stage of the distance (`_farther`,
+    each objective, each claim's served fraction, and each stage of the distance (`farther`,
     `Answer.admits`)."""
 
     def check(x, replaced=None):
@@ -294,7 +294,9 @@ def _end_checks(arrays, w, optima, levels):
         if before is not None:
             for kind, what in ((FLOW, 'the flows'), (OTHER, 'the others')):
                 stage = w.kind == kind
-                worse = _farther(xi[stage], before[stage], w.target[stage]) if stage.any() else 0.0
+                # A rounding moves a coordinate within the precision to which the end checks hold it.
+                precision = CHECK * (1.0 + np.abs(before[stage]))
+                worse = farther(xi[stage], before[stage], w.target[stage], precision) if stage.any() else 0.0
                 if worse > 0:
                     return SolveFailure(
                         NUMERICAL,
@@ -319,17 +321,19 @@ def _end_checks(arrays, w, optima, levels):
     return check
 
 
-def _farther(xi, before, target):
-    """How much farther from its targets a change `xi` of the answer `before` takes one stage of the
-    distance, in working units (each coordinate over its scale): its sum of squared deviations less
-    the answer's, less what its roundings add, a rounding being a coordinate that moved by at most
-    CHECK times one plus its size, the precision to which the end checks hold it, and less the
-    roundoff of the sums. Above zero, the change is worse on that rank: what moved by more than a
-    rounding took the stage farther from its targets. Roundings are allowed whatever they add, so a
-    polish that puts a claim exactly on its request passes, and so a delivery moved from one pipe
-    to another does not hide in a stage whose other deviations are large."""
-    old, new = (before - target) ** 2, (xi - target) ** 2
+def farther(x, before, target, precision):
+    """How much farther from its targets a change `x` of the answer `before` takes one stage of the
+    distance, the last rank of a selection order: its sum of squared deviations less the answer's,
+    less what its roundings add, a rounding being a coordinate that moved by at most its `precision`
+    (the precision to which the answer's checks hold it), and less the roundoff of the sums. Above
+    zero, the change is worse on that rank: what moved by more than a rounding took the stage farther
+    from its targets. Roundings are allowed whatever they add, so a polish that puts a claim exactly
+    on its request passes, and so a delivery moved from one pipe to another does not hide in a stage
+    whose other deviations are large. It is the rule of every change of an answer after its selection
+    order: of a declared solver's (`Answer.admits`, in working units: each coordinate over its scale)
+    and of local sharing's (`timeline/selection.py`, in the units of the rates)."""
+    old, new = (before - target) ** 2, (x - target) ** 2
     change = new - old
-    rounding = np.abs(xi - before) <= CHECK * (1.0 + np.abs(before))
+    rounding = np.abs(x - before) <= precision
     allowed = float(np.maximum(change[rounding], 0.0).sum()) + ROUNDOFF * float((old + new).sum())
     return float(change.sum()) - allowed

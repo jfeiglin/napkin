@@ -36,6 +36,7 @@ from napkin.program.build import (
     fsum,
     group_of,
     input_,
+    item,
     literal,
     named,
     q,
@@ -124,6 +125,28 @@ def inputs(n):
     return b.finish(), Key('m', ('tally',))
 
 
+def collections(n):
+    """A tank that a flow fills from 0 L at 1 L/h, and named collections of the top level: `c0` the
+    tanks, each next one the one before narrowed again by an input; the end is the sum of the water
+    over the last, the tank's water, read through every link (a named collection is the collection
+    that it names)."""
+    b = Builder(UNITS)
+    tank = b.template(
+        'Tank',
+        input_('rank', '', 1),
+        value('water', 'L', 0, lower=0),
+        flow('fill', SOURCE, this.water, request=q(1, 'L/h')),
+    )
+    b.member(tank, 't0')
+    chain = [value('c0', group_of('Tank'), tank.instances)]
+    chain += [
+        value(f'c{k}', group_of('Tank'), getattr(root, f'c{k - 1}').where(item.rank >= 1))
+        for k in range(1, n)
+    ]
+    b.root(*chain, value('total', 'L', formula(fsum(getattr(root, f'c{n - 1}').water))))
+    return b.finish(), Key('', ('total',))
+
+
 FILLED = ('top level', 'entity', 'greatest')  # the forms whose chain reads a tank that a flow fills
 
 # Each form: its program and the key of its end, and the end's value at 2 h and its lag there.
@@ -134,6 +157,83 @@ FORMS = {
     'children': (children, None, None),  # n L, at every time
     'inputs': (inputs, 1, 1),
 }
+
+
+def keyed(n):
+    """Nodes whose values each read the one before by a constant key over the natural keys:
+    `n{k}.v = Node.instances.at(k - 1).v + 1` from `n0.v = 1`, so the end, `n{n-1}.v`, is n."""
+    b = Builder(UNITS)
+    node = b.template('Node', value('one', '', 1), value('v', '', formula(this.one)))
+    b.member(node, 'n0')
+    for k in range(1, n):
+        b.member(node, f'n{k}', v=formula(node.instances.at(k - 1).v + 1))
+    return b.finish(), Key(f'n{n - 1}', ('v',))
+
+
+@pytest.mark.parametrize('narrow', [False, True], ids=['everything', 'the end'])
+@pytest.mark.parametrize('n', [300, pytest.param(2000, marks=pytest.mark.deep)])
+def test_a_chain_of_keyed_reads_by_constant_keys_reads_one_history_a_link(n, narrow, monkeypatch):
+    """A constant key over the natural keys selects its entry when the plan is made, and the read
+    reads that entry alone (`Plan.reads`): so does the record, which makes the history of each link
+    from the history of the one before, and not from all of the chain before it (agent E's finding:
+    n^2 / 2 histories read); and a record of the end alone finds what it needs in one walk of what
+    each link reads, not of all that each reads through the chain. The end is n, at every time, with
+    the limit lowered."""
+    from napkin.engine.timeline import record as recorded
+
+    program, end = keyed(n)
+    made, walked = [], []
+    holder, reads, expanded = recorded._holder, Plan.reads, Plan.expanded_ever
+
+    def counted(history):
+        made.append(history.key)
+        return holder(history)
+
+    def direct(self, name):
+        found = reads(self, name)
+        walked.append(len(found))
+        return found
+
+    def through(self, name):
+        found = expanded(self, name)
+        walked.append(len(found.leaves | found.formulas | found.stepped))
+        return found
+
+    monkeypatch.setattr(recorded, '_holder', counted)
+    monkeypatch.setattr(Plan, 'reads', direct)
+    monkeypatch.setattr(Plan, 'expanded_ever', through)
+    request = Request(2, everything=not narrow, keys=(end,) if narrow else ())
+    with shallow():
+        record = Run(Plan.of(program, Configuration(request))).run()
+        assert record.failure is None, record.failure
+        assert read(record, program, [str(end)], [0, 2])[0].values == (n, n)
+    assert len(made) <= 4 * n, len(made)
+    assert sum(walked) <= 20 * n, sum(walked)
+
+
+@pytest.mark.parametrize('narrow', [False, True], ids=['everything', 'the end'])
+@pytest.mark.parametrize('n', DEPTHS)
+def test_a_chain_of_named_collections_is_lagged_and_traced_without_recursion(n, narrow):
+    """The tank holds t L at t h, so the end reads 2 L at 2 h and its lag from 0.5 h to 1 h there is
+    1.25 L: it never falls, since the fill only adds to the water that it counts. Its trail is the end,
+    the water and the fill, each exercised, but the fill's rate, which a record of the end alone does
+    not hold."""
+    program, end = collections(n)
+    path = str(end)
+    configuration = Configuration(Request(2, everything=not narrow, keys=(end,) if narrow else ()))
+    with shallow():
+        record = Run(Plan.of(program, configuration)).run()
+        assert record.failure is None, record.failure
+        (plain,) = report(record, program, configuration, [path], [2]).values
+        (delayed,) = report(record, program, configuration, [path], [2], {path: LAG}).values
+    assert plain.values == (pytest.approx(2),)
+    assert delayed.lag == LAG and delayed.values == (pytest.approx(1.25),), delayed.note
+    trail = {(used.kind, used.origin, used.owner): used.exercised for used in plain.trail}
+    assert trail == {
+        ('value', 'total', ''): True,
+        ('value', 'Tank.water', 't0'): True,
+        ('flow', 'Tank.fill', 't0'): None if narrow else True,
+    }
 
 
 @pytest.mark.parametrize('narrow', [False, True], ids=['everything', 'the end'])

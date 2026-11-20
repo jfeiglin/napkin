@@ -259,9 +259,11 @@ class Breaks:
         if found is None or found.kind != STATE:
             what = 'no value of the run' if found is None else f'a value of kind {found.kind}'
             raise CheckpointError(f'{name}: an edit changes a stored value, and this is {what}')
+        # A finished occurrence is frozen: the one rule of every write of a run (`Occurrences.frozen`).
+        finished = run.occurrences.frozen(name)
+        if finished is not None:
+            raise CheckpointError(f'{name} belongs to the finished occurrence {finished}, which is frozen')
         owner = plan.occurrence_of(name)
-        if owner is not None and not run.occurrences.live[owner].active:
-            raise CheckpointError(f'{name} belongs to the finished occurrence {owner}, which is frozen')
         if owner is not None and _fixed(plan, name):
             raise CheckpointError(
                 f'{name}: an edit changes a stored value, and this is a parameter or a built-in field of '

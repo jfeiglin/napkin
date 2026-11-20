@@ -23,7 +23,10 @@ template share is evaluated once over the rows (`napkin/core/arrays.values`) wit
 read as a column when the evaluation first reads it, and any other value is read from the start of
 the run, or from the keyed read by the time that holds it. A column with no value for a row that
 another row's branch reads makes each row evaluate by itself, reading only its own branch
-(`reads.py`).
+(`reads.py`). The values are found with no recursion (`walk.walked`): an evaluation that reads a
+formula, a reduction, a keyed read or a column that this read has not found yet asks for it
+(`Pending`), which is found first on the driver's stack, and evaluates again with the reads that it
+made kept; so a chain of formulas of any length is read to its end, and each value once in a read.
 """
 
 from __future__ import annotations
@@ -35,9 +38,10 @@ import numpy as np
 
 from ...core import arrays
 from ...core.errors import ExpressionError
+from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import combined, looked_up
-from .plan import FORMULA, LOOKUP, REDUCE
+from .plan import FORMULA, LOOKUP, REDUCE, Pending
 from .reads import Reads, lazily
 
 
@@ -49,30 +53,99 @@ class Columns:
 
     def one(self, name, t):
         """The value of one engine name at time t."""
+        return walked(self._one(name, float(t), {}, set()))
+
+    def at(self, names, t):
+        """The values of engine names at time t, as an array in their order."""
+        return walked(self._at(list(names), float(t), {}, set()))
+
+    def _derived(self, name):
+        """Whether a value is computed from others where it is read: a formula, a reduction or a
+        keyed read."""
+        value = self.plan.values.get(name)
+        return value is not None and value.kind in (FORMULA, REDUCE, LOOKUP)
+
+    def _one(self, name, t, known, waiting):
+        """The computation of `one` (`walk.walked`). `known` keeps what this read found, a value or
+        the error that it raised (`_Failed`), which a later read of it raises again; a value that
+        waits for itself (`waiting`) reads itself."""
         plan, run = self.plan, self.run
         if name == 't':
-            return float(t)
+            return t
         value = plan.values.get(name)
         kind = value.kind if value is not None else None
         if kind == FORMULA:
-            return lazily(value.node, lambda read: self.one(read, t), plan.units, t)
+            return (
+                yield from self._evaluated(
+                    name, lambda read: lazily(value.node, read, plan.units, t), t, known, waiting
+                )
+            )
         if kind == REDUCE:
             reduction = plan.reductions[name]
             entries = run.kept_of(name)
             if reduction.names is None:
                 return combined(reduction.op, [None] * len(entries), reduction.spelled)
-            found = self.at([reduction.names[k] for k in entries], t)
+            found = yield self._at([reduction.names[k] for k in entries], t, known, waiting)
             return combined(reduction.op, list(found), reduction.spelled)
         if kind == LOOKUP and plan.stepped(name):
-            return self.one(run.stepped_of(name).name_at(t), t)
+            return (yield self._one(run.stepped_of(name).name_at(t), t, known, waiting))
         if kind == LOOKUP:
-            return looked_up(
-                plan.keyed[name], lambda read: self.one(read, t), plan.units, t, run.index_for(name)
+            keyed, index = plan.keyed[name], run.index_for(name)
+            return (
+                yield from self._evaluated(
+                    name, lambda read: looked_up(keyed, read, plan.units, t, index), t, known, waiting
+                )
             )
         return run.value_of(name)
 
-    def at(self, names, t):
-        """The values of engine names at time t, as an array in their order."""
+    def _evaluated(self, name, evaluate, t, known, waiting):
+        """The value of `evaluate(read)`, for `yield from`: each derived value that it reads and that
+        this read has not found yet (`Pending`) is found first, then it evaluates again, with what it
+        read kept."""
+        own = {}
+
+        def read(each):
+            found = own.get(each, _MISSING)
+            if found is not _MISSING:
+                return found
+            if not self._derived(each):
+                found = t if each == 't' else self.run.value_of(each)
+            elif each not in known:
+                raise Pending(each)
+            else:
+                found = known[each]
+                if isinstance(found, _Failed):
+                    raise found.problem
+            own[each] = found
+            return found
+
+        waiting.add(name)
+        while True:
+            try:
+                found = evaluate(read)
+            except Pending as pending:
+                yield from self._found(pending.names, t, known, waiting)
+                continue
+            waiting.discard(name)
+            return found
+
+    def _found(self, names, t, known, waiting):
+        """Find each of `names` that this read has not, or the error that it raises (`_Failed`)."""
+        for each in names:
+            if each in known:
+                continue
+            if each in waiting:
+                raise SimulationError(f'{each}: a value that reads itself at t = {t:g} h')
+            try:
+                if isinstance(each, tuple):  # a column of a formula that rows share (`_at`)
+                    known[each] = yield self._at(list(each[1]), t, known, waiting)
+                else:
+                    known[each] = yield self._one(each, t, known, waiting)
+            except Exception as problem:  # raised where the evaluation reads it, as a call raises
+                known[each] = _Failed(problem)
+
+    def _at(self, names, t, known, waiting):
+        """The computation of `at` (`walk.walked`)."""
         plan = self.plan
         unique = list(dict.fromkeys(names))
         found, groups = {}, {}
@@ -80,25 +153,60 @@ class Columns:
             value = plan.values.get(name)
             if value is not None and value.kind == FORMULA and value.shape is not None:
                 groups.setdefault(id(value.shape), []).append(name)
+            elif name in known:
+                found[name] = known[name]
+                if isinstance(found[name], _Failed):
+                    raise found[name].problem
             else:
-                found[name] = self.one(name, t)
+                found[name] = yield self._one(name, t, known, waiting)
         for members in groups.values():
             first = plan.values[members[0]]
             columns = {
-                read: [dict(plan.values[name].binding)[read] for name in members] for read, _ in first.binding
+                read: tuple(dict(plan.values[name].binding)[read] for name in members)
+                for read, _ in first.binding
             }
-            # A column is made when the evaluation over the rows first reads it (`reads.py`).
-            env = Reads(frozenset(columns), lambda read, columns=columns: self.at(columns[read], t))
-            try:
-                computed = arrays.values(first.shape, env, plan.units, len(members))
-            except ExpressionError:
-                # A column with no value for some row, which another row's branch reads: each row by
-                # itself reads only its own branch.
-                computed = [self.one(name, t) for name in members]
+
+            def column(read, columns=columns):
+                # A column is made when the evaluation over the rows first reads it (`reads.py`): one
+                # that this read has not found is found first (`Pending`).
+                key = ('column', columns[read])
+                if key not in known:
+                    raise Pending(key)
+                if isinstance(known[key], _Failed):
+                    raise known[key].problem
+                return known[key]
+
+            env = Reads(frozenset(columns), column)
+            while True:
+                try:
+                    computed = arrays.values(first.shape, env, plan.units, len(members))
+                except Pending as pending:
+                    yield from self._found(pending.names, t, known, waiting)
+                    continue
+                except ExpressionError:
+                    # A column with no value for some row, which another row's branch reads: each
+                    # row by itself reads only its own branch.
+                    computed = []
+                    for name in members:
+                        computed.append((yield self._one(name, t, known, waiting)))
+                break
             computed = np.broadcast_to(np.asarray(computed), (len(members),))
             for name, number in zip(members, computed.tolist()):
                 found[name] = number
         return np.array([found[name] for name in names])
+
+
+_MISSING = object()
+
+
+class _Failed:
+    """The error that a value raised where a read of `Columns` found it: a later read of it in that
+    read raises it again."""
+
+    __slots__ = ('problem',)
+
+    def __init__(self, problem):
+        self.problem = problem
 
 
 class Family:

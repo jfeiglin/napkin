@@ -53,8 +53,9 @@ pieces of each value of a run:
   where each of them holds its value, else it is fitted as a curve is, and a yes/no takes a piece at
   each change, located to within the crossing tolerance of the run (`Numerics.crossing`). A formula
   that only names another value has that value's history. A formula that cannot be evaluated holds
-  `Unavailable` with the reason. A record that keeps only some values keeps what their formulas read
-  too.
+  `Unavailable` with the reason, from where it cannot be, found as a change of a yes/no is, also
+  inside a piece (a membership whose moving end passes the other): its values before are kept. A
+  record that keeps only some values keeps what their formulas read too.
 
 The values that a record holds have at most the request's budget of pieces: a record that would hold
 more ends before the time of the first piece that does not fit, naming the budget (`Record.within`),
@@ -394,7 +395,9 @@ class Recorder:
 
     def _needed_names(self, names):
         """The engine names whose histories a record of these names needs (`_needed`): what their
-        formulas read under every definition that they had."""
+        formulas read under every definition that they had. Each name adds what it reads directly
+        (`Plan.reads`), which the walk follows in turn, so a chain is walked once, and not once for
+        each of its links."""
         plan, found = self.plan, set()
         pending = list(names)
         while pending:
@@ -404,8 +407,11 @@ class Recorder:
             found.add(name)
             kind = plan.values[name].kind
             if kind in (FORMULA, REDUCE, LOOKUP) or name in plan.defined:
-                reads = plan.expanded_ever(name)
-                pending += [*reads.leaves, *reads.formulas, *reads.stepped]
+                if kind in (FORMULA, REDUCE, LOOKUP):
+                    pending.extend(plan.reads(name))
+                for _, value in plan.defined.get(name, ()):
+                    if value.kind == FORMULA:
+                        pending.extend(set(nodes.names(value.node)) - {'t'})
             elif kind == CHANGED:
                 pending += sorted(plan.reads(name))  # the value that it follows
             elif kind == DYNAMIC:
@@ -443,8 +449,9 @@ class Recorder:
         except FAILURES as problem:
             return [(0.0, Unavailable(str(problem)), 0.0)]
         if stepped is None:
-            # What can change of what it reads has a history; what the inputs fix holds its start.
-            found = plan.lookup_reads(name)
+            # What can change of what it reads has a history; what the inputs fix holds its start. A
+            # constant key over the natural keys reads the entry that it selects alone (`Plan.reads`),
+            # so a chain of such reads reads one history a link.
             index = run.index_for(name)
 
             def compute(env):
@@ -455,10 +462,10 @@ class Recorder:
                 name,
                 histories,
                 end,
-                sorted(found.leaves | found.formulas | found.stepped),
+                sorted(plan.reads(name)),
                 compute,
                 boolean,
-                timed=found.time,
+                timed=plan.lookup_reads(name).time,
             )
         times = stepped.times.tolist()
         pieces = []
@@ -581,15 +588,22 @@ class Recorder:
             # Each read is taken from its history where the evaluation asks for it (`reads.py`).
             return compute(Reads(names, lambda read: readers[read](t), t))
 
-        firsts = []
-        for time in times:
+        def tried(t):
+            """The value at t, or `Unavailable` with the reason where it cannot be evaluated."""
             try:
-                firsts.append(at(time))
+                return at(t)
             except FAILURES as problem:
-                firsts.append(Unavailable(str(problem)))
+                return Unavailable(str(problem))
+
+        firsts = [tried(time) for time in times]
         # A yes/no and a text (an enum member) change by steps; a number is fitted.
         discrete = boolean or any(isinstance(found, str) for found in firsts)
-        cast = bool if boolean else (lambda found: found if isinstance(found, str) else float(found))
+
+        def cast(found):
+            if isinstance(found, Unavailable | str):
+                return found
+            return bool(found) if boolean else float(found)
+
         # The size of the formula, as a store's: the largest magnitude that it takes at a time at
         # which what it reads has a piece.
         size = 1.0
@@ -598,22 +612,17 @@ class Recorder:
                 if not isinstance(found, Unavailable):
                     size = max(size, abs(float(found)))
         tolerance = np.array([plan.numerics.atol_factor * size])
+        crossing = plan.numerics.crossing
         pieces = []
         for (a, b), first in zip(pairwise(bounds), firsts):
-            if isinstance(first, Unavailable):
-                pieces.append((a, first, 0.0))
-                continue
             if b <= a or (not timed and all(holders[read](a) for read in reads)):
                 # What the formula reads holds its value from a to b: so does the formula.
                 pieces.append((a, cast(first), 0.0))
             elif discrete:
-                pieces += _switches(lambda time: cast(at(time)), a, b, cast(first), plan.numerics.crossing)
+                # Where it cannot be evaluated is one more value of the yes/no or the text.
+                pieces += _switches(lambda time: cast(tried(time)), a, b, cast(first), crossing)
             else:
-                try:
-                    found = fitted(lambda ts: np.array([[float(at(t))] for t in ts]), a, b, tolerance)[0]
-                except FAILURES as problem:
-                    found = [(a, Unavailable(str(problem)), 0.0)]
-                pieces += found
+                pieces += _numbers(at, tried, a, b, first, tolerance, crossing)
         return pieces
 
     def _defined(self, name, histories, end):
@@ -648,21 +657,56 @@ class Recorder:
 
 def _switches(at, a, b, first, crossing):
     """The pieces of a yes/no or a text from a to b: one at a, and one at each change, which
-    bisection locates between the points of a fit to within the crossing tolerance."""
+    bisection locates between the points of a fit to within the crossing tolerance. `Unavailable` is
+    one value whatever its reason: a stretch where the value cannot be evaluated keeps the reason
+    that it has where it starts."""
     pieces, value = [(a, first, 0.0)], first
     points = _times(a, b, np.concatenate([[-1.0], _CHECKS[1:-1], [1.0]]))
     for before, after in pairwise(points):
-        if at(after) == value:
+        if _same(at(after), value):
             continue
         left, right = before, after
         while right - left > crossing:
             middle = 0.5 * (left + right)
-            if at(middle) == value:
+            if _same(at(middle), value):
                 left = middle
             else:
                 right = middle
         value = at(right)
         pieces.append((right, value, 0.0))
+    return pieces
+
+
+def _same(found, value):
+    """Whether two values of a piece are one: equal, or both `Unavailable`."""
+    if isinstance(found, Unavailable) or isinstance(value, Unavailable):
+        return isinstance(found, Unavailable) and isinstance(value, Unavailable)
+    return found == value
+
+
+def _numbers(at, tried, a, b, first, tolerance, crossing):
+    """The pieces of a number from a to b: fitted (`fitted`) where it can be evaluated, and
+    `Unavailable` with the reason where it cannot (`at(t)` raises one of `FAILURES` there, `tried(t)`
+    gives it), each change between the two found to within the crossing tolerance as a change of a
+    yes/no is (`_switches`). A failure between the points of that search makes the rest of its
+    stretch unavailable."""
+
+    def fit(c, d):
+        try:
+            return fitted(lambda ts: np.array([[float(at(t))] for t in ts]), c, d, tolerance)[0]
+        except FAILURES as problem:
+            return [(c, Unavailable(str(problem)), 0.0)]
+
+    if not isinstance(first, Unavailable):
+        found = fit(a, b)
+        if not any(isinstance(piece[1], Unavailable) for piece in found):
+            return found
+    stretches = _switches(
+        lambda t: not isinstance(tried(t), Unavailable), a, b, not isinstance(first, Unavailable), crossing
+    )
+    pieces = []
+    for (c, available, _), d in zip(stretches, [*(stretch[0] for stretch in stretches[1:]), b]):
+        pieces += fit(c, d) if available else [(c, tried(c), 0.0)]
     return pieces
 
 

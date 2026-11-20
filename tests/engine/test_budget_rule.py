@@ -188,8 +188,6 @@ def test_fresh_cut_and_resumed_runs_of_a_request_have_one_outcome_and_one_set_of
             assert found.keys() == expected.keys(), (seed, request)
             for path, values in expected.items():
                 for at, a, b in zip(times, found[path], values, strict=True):
-                    if curved and path.endswith('actual_rate') and at == horizon:
-                        continue  # a defect of the run at its horizon: `test_a_rate_at_the_horizon`
                     assert same(a, b), (seed, request, path, at, a, b)
 
 
@@ -247,16 +245,12 @@ def test_a_run_past_its_budget_at_0_h_gives_no_checkpoint_at_2_h():
     assert found == straight and found.end == 0 and found.failure.detail('budget') == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='timeline/ways.py `finish` settles only the lines at the horizon: a set on curves records no '
-    'rate from the commits of the horizon (for the main session)',
-)
 def test_a_rate_at_the_horizon_is_the_one_that_its_last_round_committed():
     """A read at a moment sees what its last round committed (`program/record.py`): the pipe's request
     is set from 2 L/h to 1 L/h at 1 h, so its rate at 1 h is 1 L/h, in a run to 1 h as in a run to 4 h,
-    on curves (a drain that takes half of the tank an hour) as on lines. On curves, the run to 1 h
-    reads 2 L/h: no segment starts at its horizon, so the rate that the commit gave is in no piece."""
+    on curves (a drain that takes half of the tank an hour) as on lines. On curves no segment starts at
+    the horizon: the set records its state there, with the rates of its next segment (`ways.finish`;
+    on every way, `test_horizon_reads.py`)."""
     for curved in (False, True):
         b = Builder(UNITS)
         drain = formula(this.w1 / q(2, 'h')) if curved else q(1, 'L/h')

@@ -15,7 +15,8 @@ parts of a program, member by member.
   The form admits sums, differences, products and quotients by fixed numbers, a conditional on what is
   fixed, and the formulas that it reads, each in its own member. A member that a `where`, a lookup on
   a fixed key or an entity parameter names may be any member of its collection, or none of them: its
-  coefficient may be its own or zero.
+  coefficient may be its own or zero. A named collection, of a member, of the root or a local of an
+  event, is the collection that it names, so a read over it proves as the read written in its place.
 - Every writer of each stored number of the form must leave the form from falling. A directed flow
   moves `rate * (coefficient of its sink - coefficient of its source)` at a rate that is never
   negative, so its sink's coefficient must be at least its source's (`SOURCE` and `SINK` count zero).
@@ -210,6 +211,33 @@ class _Pending(Exception):
         self.jobs = jobs
 
 
+def _walked(computation):
+    """The result of a computation on a stack of its own, with no recursion of Python (re-audit 15):
+    a computation is a generator that yields each computation that it needs and is sent its result,
+    and returns its own; an exception that a needed one raises is thrown into the one that waits for
+    it, where a call would have raised it. It is the driver of the engine's walks
+    (`napkin/engine/continuous/walk.py`) for the program, which the engine imports."""
+    stack, sent, thrown = [computation], None, None
+    while True:
+        top = stack[-1]
+        try:
+            asked = top.send(sent) if thrown is None else top.throw(thrown)
+        except StopIteration as done:
+            stack.pop()
+            if not stack:
+                return done.value
+            sent, thrown = done.value, None
+            continue
+        except Exception as problem:
+            stack.pop()
+            if not stack:
+                raise
+            sent, thrown = None, problem
+            continue
+        stack.append(asked)
+        sent, thrown = None, None
+
+
 def _formula(point):
     """The key of a formula of a member (owner, name) that a point names, or None."""
     if point[0] == 'value' and point[2].kind == p.FORMULA:
@@ -335,10 +363,23 @@ class Proofs:
         whose first item is its kind: `member`, `root`, `value` (owner, part, scope), `flow` (owner,
         flow, scope), `leg` of a route, `rate` (a property of a flow), `event`, `occurrences`,
         `occurrence`, `solver` or `other` (a description). A lookup whose key moves is `other`, but
-        with `moving`, which a writer's target takes, its members."""
-        found = self._start(path.start, at, moving)
+        with `moving`, which a writer's target takes, its members. A named collection is the
+        collection that it names (spec, "Collections, keys and projections"), of a member, of the root
+        or a local of an event: a path that steps into it reads its init, so a read over it is the
+        read over the collection written in its place. The walk goes on a stack of its own
+        (`_walked`): a chain of named collections, each read through the one before, of any length
+        needs no recursion of Python."""
+        return _walked(self._points(path, at, moving))
+
+    def _points(self, path, at, moving):
+        """The computation of `points` (`_walked`)."""
+        found = yield self._start(path.start, at, moving)
         for step in path.steps:
-            found = [(after, one and also) for point, one in found for after, also in self._step(point, step)]
+            after = []
+            for point, one in found:
+                stepped = yield self._step(point, step)
+                after += [(each, one and also) for each, also in stepped]
+            found = after
         return found
 
     def _start(self, start, at, moving):
@@ -350,36 +391,41 @@ class Proofs:
             template, member = self.rows[start.id]
             return [(('member', template, member), True)]
         if isinstance(start, Local):
-            return self._local(start.name, at)
+            return (yield self._local(start.name, at))
         if isinstance(start, Instances):
             template = self.program.template(start.template)
             return [(('member', template, member), True) for member in template.members]
         if isinstance(start, Literal):
-            return [found for item in start.items for found in self.points(item, at, moving)]
+            found = []
+            for item in start.items:
+                found += yield self._points(item, at, moving)
+            return found
         if isinstance(start, By):
-            return self.points(start.source, at, moving)
+            return (yield self._points(start.source, at, moving))
         if isinstance(start, Where):
-            return [(point, False) for point, _ in self.points(start.source, at, moving)]
+            found = yield self._points(start.source, at, moving)
+            return [(point, False) for point, _ in found]
         if isinstance(start, Lookup):
-            if not moving and not self.fixed(start.key.node, dict(start.key.reads), at):
+            if not moving and not (yield self._fixed(start.key.node, dict(start.key.reads), at)):
                 return [(('other', 'a keyed read whose key moves, which can select a smaller value'), True)]
             # One member of the collection, or the newest occurrence of an event.
+            found = yield self._points(start.source, at, moving)
             return [
                 (
                     ('occurrence', *point[1:4]) if point[0] == 'occurrences' and point[4] is None else point,
                     False,
                 )
-                for point, _ in self.points(start.source, at, moving)
+                for point, _ in found
             ]
         return [(('other', 'the member of a where'), True)]
 
     def _local(self, name, at):
         """A bare name: an input or an unknown of a solver, a capture of a trigger, or a parameter, a
-        local or a flow of an event."""
+        local (a named collection: its members) or a flow of an event."""
         if at.solver is not None:
             for binding in at.solver.inputs:
                 if binding.name == name:
-                    return self.points(binding.source, _At(at.template, at.member))
+                    return (yield self._points(binding.source, _At(at.template, at.member), False))
             if any(unknown.name == name for unknown in at.solver.unknowns):
                 return [(('other', f'{name}, an unknown of {at.solver.origin}'), True)]
         if at.trigger is not None and any(capture.name == name for capture in at.trigger.captures):
@@ -388,6 +434,8 @@ class Proofs:
             for part in (*at.event.params, *at.event.locals):
                 if part.name != name:
                     continue
+                if isinstance(part, p.Value) and part.kind == p.COLLECTION:
+                    return (yield self._points(part.init, at, True))
                 if isinstance(part, p.Value) and isinstance(part.type, p.EntityType):
                     # An entity parameter can pass any member of its template (D13).
                     template = self.program.template(part.type.template)
@@ -403,10 +451,15 @@ class Proofs:
         return [(('other', f'the bare name {name}'), True)]
 
     def _step(self, point, name):
+        """The points of one step of a path from a point (`_points`)."""
         kind = point[0]
         if kind == 'root':
             part = self.program.root_value(name)
-            return [(('value', '', part, _At()), True)] if part is not None else [(('other', name), True)]
+            if part is None:
+                return [(('other', name), True)]
+            if part.kind == p.COLLECTION:
+                return (yield self._points(part.init, _At(), True))
+            return [(('value', '', part, _At()), True)]
         if kind == 'member':
             _, template, member = point
             part = template.part(name) if template is not None else None
@@ -416,7 +469,7 @@ class Proofs:
                     target = self.program.template(part.type.template)
                     return [(('member', target, target.members[member.link(name)]), True)]
                 if part.kind == p.COLLECTION:
-                    return self.points(member.value(name) or part.init, at, True)
+                    return (yield self._points(member.value(name) or part.init, at, True))
                 return [(('value', member.id, part, at), True)]
             if isinstance(part, p.Flow):
                 return [(('flow', member.id, part, at), True)]
@@ -429,7 +482,7 @@ class Proofs:
             _, owner, flow, at = point
             if name in ('source', 'sink'):
                 end = getattr(flow, name)
-                return [] if isinstance(end, p.Outside) else self.points(end, at, True)
+                return [] if isinstance(end, p.Outside) else (yield self._points(end, at, True))
             if name in ('forward', 'backward'):
                 return [(('leg', owner, flow, at, name), True)]
             for leg in flow.legs:
@@ -440,7 +493,7 @@ class Proofs:
             _, owner, flow, at, side = point
             if name in ('source', 'sink'):
                 end = flow.source if (side == 'forward') == (name == 'source') else flow.sink
-                return self.points(end, at, True)
+                return (yield self._points(end, at, True))
             return [(('rate', owner, flow, name, at), True)]
         if kind == 'event':
             return (
@@ -464,13 +517,17 @@ class Proofs:
 
     def fixed(self, node, reads, at):
         """Whether an expression reads only what is fixed for the run: constants, inputs and links."""
+        return _walked(self._fixed(node, reads, at))
+
+    def _fixed(self, node, reads, at):
+        """The computation of `fixed` (`_walked`): the points of each read are found on the stack."""
         for name in nodes.names(node):
             read = reads.get(name)
             if isinstance(read, EnumValue):
                 continue
             if not isinstance(read, Path):
                 return False
-            found = self.points(read, at)
+            found = yield self._points(read, at, False)
             if len(found) != 1 or found[0][0][0] not in ('value', 'member'):
                 return False
             if found[0][0][0] == 'value' and found[0][0][2].kind not in (p.INPUT, p.LINK):
@@ -1145,7 +1202,7 @@ class Proofs:
             path = Path(Named(owner), steps[:1]) if owner else Path(Root(), steps[:1])
             points = self.points(path, _At(), True)
             if len(steps) > 1 and points and points[0][0][0] == 'flow':
-                points = [(after, True) for after, _ in self._step(points[0][0], steps[1])]
+                points = [(after, True) for after, _ in _walked(self._step(points[0][0], steps[1]))]
         parts = [part for point, _ in points for part in self._point_parts(point, places)]
         if not parts:
             raise KeyError(f'{key}: no value of the program')

@@ -8,7 +8,11 @@ At a time, rounds (`Run._moment`). One round is:
    D5), the stage of the occurrence that started first going first. A later stage sees what an
    earlier one committed: from 20 g, a stage that sets 8 g and then one that adds 4 g leave 12 g.
    A commit publishes the stage's writes and registers the occurrences that it queued; an
-   occurrence that has no step left finishes, and its record freezes (decision D7).
+   occurrence that has no step left finishes, and its record freezes (decision D7). A write to a
+   finished occurrence fails the run (PLAN, change 24 b): an assignment to its field, a move of an
+   amount into or out of its store, and a flow that carries a rate into or out of its store, read
+   with the rates of each moment (`_frozen_flows`); a move of nothing and a connected flow at zero
+   rate write nothing.
 2. *Settle.* Rates and each affected solver, once (`network.settle`). Until then a read of a
    result whose inputs changed in the round fails, also through a formula (`Run.check_stale`).
 3. *Delays.* A next delay that reads a computed result is finished with the settled result.
@@ -536,7 +540,25 @@ class Run:
                 break
         self.phase = 'between'
         self.stops = self._stops()
+        self._frozen_flows()
         self.frames.append(self.view.copy())
+
+    def _frozen_flows(self):
+        """A flow that carries a rate into or out of a store of a finished occurrence writes it
+        (PLAN, change 24 b): with the rates of this moment (`network.motion`), one that carries a
+        rate now, or whose rate rises from zero after the moment while the run goes on, fails the
+        run here. A flow at zero rate carries nothing."""
+        view, horizon = self.view, self.config.horizon
+        for src, dst, p, name in self.moving:
+            for cell, way in ((dst, 'into'), (src, 'out of')):
+                holder = _holder(cell.owner) if cell is not None else None
+                if not isinstance(holder, Occ) or view.cells[Cell(holder, 'active')]:
+                    continue
+                if p(0) != 0 or horizon is None or view.t < horizon:
+                    raise RunFailed(
+                        f'the flow {name} carries a rate {way} {label(cell)} from t = {view.t} h: '
+                        f'{label(cell)} belongs to the finished occurrence {holder.label}, which is frozen'
+                    )
 
     def _settle_and_check(self):
         self.phase = 'settle'
@@ -709,6 +731,10 @@ class Run:
                 raise Diagnostic(
                     f'move: {show(s.source if c is src else s.destination)} is not a stored quantity'
                 )
+        for c in dict.fromkeys((src, dst)):
+            holder = _holder(c.owner)
+            if amount != 0 and isinstance(holder, Occ) and not self.view.cells[Cell(holder, 'active')]:
+                raise RunFailed(f'{label(c)} belongs to the finished occurrence {holder.label}, which is frozen')
         if src == dst:
             # One store at both ends: the debit and the credit cancel, so the move writes nothing and
             # checks nothing (its resulting inventory is its own); the books still show it.

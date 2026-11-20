@@ -26,7 +26,13 @@ the segments of the set one after the other.
 - `ComponentWay`: the set as a way of a run. Beside the values of its next segment, it gives the
   form of that segment to the reader of a condition that watches its stores (`breaks`, `motion`;
   `continuous/dense.py`): a line, the closed form of compartments, or the solver's steps, each the
-  cubic of its dense output.
+  cubic of its dense output. Between two segments its state rests on the bounds that the last one
+  found (a read at a moment sees the rates that the set had there); a set built or restored at a
+  moment finds the bounds of its state there before its rates are read, as its first segment finds
+  them again (`refresh_bounds`), so that a read after the settling sees the rates that it settled
+  (a starved flow carries nothing). At the horizon (`finish`) it records the stores and the rates
+  of its state there on those bounds: a read at the horizon of a run that ends there is the read of
+  a run that goes on, whose next segment starts there.
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 
 from ...core.errors import ExpressionError
+from ...expressions import names_in
 from ..allocation import Allocation
 from ..continuous import dense
 from ..continuous.bounds import check_bounds, correct_boundary_roundoff, refresh_bounds
@@ -46,6 +53,7 @@ from ..continuous.kernels import Affine, MatrixExponential
 from ..continuous.segment import advance
 from ..continuous.system import Context, solver_step
 from ..continuous.system import Run as State
+from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import node_of
 
@@ -231,43 +239,48 @@ class Network:
         return f'_missing({name!r})', True
 
     def expanded_frozen(self, expr):
-        """The names that an expression reads, through formulas, as one shared frozen set."""
+        """The names other than formulas that an expression reads, through formulas, as one shared
+        frozen set (`expanded_names`)."""
         found = self._expanded.get(expr)
         if found is None:
-            found = self._expanded[expr] = frozenset(self.expanded_names(expr, ()))
+            found = self._expanded[expr] = walked(self._expand(expr, set()))[0]
         return found
 
-    def expanded_names(self, expr, seen=None):
-        """The names that an expression reads, through formulas."""
-        if seen is None:
-            if expr not in self._expanded:
-                self._expanded[expr] = frozenset(self._expand(expr, frozenset())[0])
-            return set(self._expanded[expr])
-        return self._expand(expr, frozenset(seen))[0]
+    def expanded_names(self, expr):
+        """The names other than formulas that an expression reads, through formulas: its stores,
+        its inputs and the time, which is what its readers ask of it (whether it reads what moves).
+        Followed with no recursion (`walk.walked`), so a chain of formulas is no limit, and each
+        formula keeps its own once, shared with the formula above it where that adds none, so a
+        chain costs no more than its links (re-audit 15)."""
+        return set(self.expanded_frozen(expr))
 
-    def _expand(self, expr, seen):
-        """The names that `expr` reads through formulas, and whether a formula on the path reached
-        itself (a plan refuses such a formula, so this is a guard)."""
-        from ...expressions import names_in
-
-        names = set(names_in(expr))
-        cyclic = False
-        for name in list(names):
+    def _expand(self, expr, path):
+        """The names other than formulas that `expr` reads through formulas, and whether a formula on
+        the path reached itself (a plan refuses such a formula, so this is a guard), as a computation
+        of `walk.walked`: each formula that it reads and that is not known yet (`_reads`) is one that
+        it yields. `path` holds the formulas on the way to it, which the driver walks depth first."""
+        leaves, found, cyclic = set(), [], False
+        for name in names_in(expr):
             if name not in self.computed:
+                leaves.add(name)
                 continue
-            if name in seen:
+            if name in path:
                 cyclic = True
                 continue
             kept = self._reads.get(name)
             if kept is None:
-                found, hit = self._expand(self.computed[name]['expr'], seen | {name})
-                names |= found
+                path.add(name)
+                try:
+                    kept, hit = yield self._expand(self.computed[name]['expr'], path)
+                finally:
+                    path.discard(name)
                 cyclic |= hit
-                if hit:
-                    continue
-                kept = self._reads[name] = frozenset(found)
-            names |= kept
-        return names, cyclic
+                if not hit:
+                    self._reads[name] = kept
+            found.append(kept)
+        if len(found) == 1 and leaves <= found[0]:
+            return found[0], cyclic
+        return frozenset(leaves.union(*found)), cyclic
 
 
 @dataclass
@@ -384,6 +397,7 @@ class ComponentWay:
         self.run, self.key, self.connected = run, key, connected
         self.stores, self.flows = list(connected.stores), list(connected.flows)
         self.alive, self.pending, self.still = True, None, 0
+        self.bounded = False  # whether its state rests on the bounds that it found (`_settle`)
         self._drift = None  # the rates of the stores at the present state, once read (`drift`)
         stores = connected.stores
         sources = {plan.flows[flow].source for flow in connected.flows}
@@ -506,6 +520,7 @@ class ComponentWay:
             if state.time >= self.run.limit:
                 return math.inf
             self.pending = self.component.next(self.run.limit)
+            self.bounded = True  # a segment finds the bounds of its start (`Component.next`)
         return self.pending.end
 
     def step(self):
@@ -528,6 +543,42 @@ class ComponentWay:
         """The next event at the time of a moment: committed as any other, with what it changes."""
         stores, rates, _ = self.step()
         return stores + rates
+
+    def _settle(self):
+        """The state rests on the bounds that it reaches at its present time, as the next segment
+        finds them (`refresh_bounds`, the faces of a segment cleared): a set built or restored at a
+        moment, before its rates are read, and at the horizon. The evaluations count for no budget of
+        the run."""
+        component = self.component
+        state = component.state
+        evaluations = state.evaluations
+        try:
+            refresh_bounds(component.system, state, component.field)
+            state.right_faces.clear()
+            state.zero_faces.clear()
+        finally:
+            state.evaluations = evaluations
+        self.bounded = True
+
+    def finish(self, t):
+        """At the horizon, where the run stands (`ways.finish`): the stores and the rates of the state
+        there, on the bounds that it rests on, which the first segment of a run that goes on would
+        record from there (see the module)."""
+        component, recorder = self.component, self.run.recorder
+        state = component.state
+        if self.pending is not None or state.time != t:
+            return
+        self._settle()
+        evaluations = state.evaluations
+        try:
+            component.field.rates(state.time, state.y)
+            delivered = np.array(component.field.delivered, dtype=float)
+        finally:
+            state.evaluations = evaluations
+        for k, name in enumerate(component.system.state_ids):
+            recorder.add(name, t, float(state.y[k]), 0.0)
+        for k, name in enumerate(self.rates):
+            recorder.add(name, t, float(delivered[k]), 0.0)
 
     def cut(self, t):
         """The run stands at time t inside the next segment: the segment up to t is committed."""
@@ -562,6 +613,8 @@ class ComponentWay:
         (`triggers.AFTER`) follows before the next segment is made, as a line follows its rate. The
         evaluation counts for no budget of the run."""
         if self._drift is None:
+            if not self.bounded:
+                self._settle()
             state = self.component.state
             evaluations = state.evaluations
             try:
@@ -572,6 +625,8 @@ class ComponentWay:
 
     def rate_at(self, name, t):
         """The actual rate of a flow at time t."""
+        if not self.bounded:
+            self._settle()
         segment, state, field = self.pending, self.component.state, self.component.field
         k = self.flow_place[name.rsplit('.', 1)[0]]
         evaluations = state.evaluations

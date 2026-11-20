@@ -32,14 +32,20 @@ has none (D7). Its flows leave the network at the settling of the round, and rea
 `done` becomes true and `active` false: the occurrence is a stable record.
 
 **A finished occurrence is frozen** (spec, "State owned by an invocation": "a write to it is an
-error"), and one check says so wherever a write or a transfer of a run lands (`writable`): the
-target of an assignment and each end of a `move` (`moment.py`), whatever spells it (a reference
-saved at the entry, a copy of one, `.occurrences.at(t)`, another member's through a link); each end
-of a flow as it joins the network (`register`); and each store of an occurrence as it finishes,
-which no flow of another occurrence may still meet (`complete`): a flow is present at its ends for
-its owner's lifetime, whatever its rate, and a frozen store can neither take nor give. The run
-fails there, at that moment, naming the value, the finished occurrence and the writer. An edit at a
-stop is refused by the same rule (`frozen`, `checkpoints.py`).
+error"), and the error is an actual write to it (PLAN, change 24 b): an assignment to its field,
+which always writes; a `move` of an amount into or out of its store; a flow that carries a rate into
+or out of its store. A move of nothing moves nothing, and a connected flow at zero rate writes
+nothing ("A flow whose rate falls to zero stays connected for its owner's lifetime"): the run goes
+on. One check says so wherever a write or a transfer of a run lands (`writable`): the target of an
+assignment and each end of a `move` (`moment.py`), whatever spells it (a reference saved at the
+entry, a copy of one, `.occurrences.at(t)`, another member's through a link), and each flow present
+at a store of a finished occurrence (`carried`): at every settling, where a commit, a start or a
+finish changes its rate, and between moments through the window of its instance, where an event of
+the way changes it or a rate that moves leaves zero. An amount or a rate is nothing within the
+tolerance of the store (a rate: what moves the store by its tolerance in an hour), the resolution
+at which a run tells two values of it apart (D8). The run fails at that moment, naming the value,
+the finished occurrence and the writer: a statement by its origin, a flow by its name, its rate and
+the time. An edit at a stop is refused by the same rule (`frozen`, `checkpoints.py`).
 
 The limits of a runaway run (D6) are checked before each start: `max_occurrences` starts of one
 event, and `max_active` occurrences of one event alive at once, whose message names the oldest
@@ -58,8 +64,14 @@ from ...core.errors import ExpressionError
 from ...program import parts as p
 from ...program.record import Unavailable
 from ..errors import SimulationError
-from .plan import FORMULA, RATE, RESULT
+from .plan import FORMULA, RATE, RESULT, SIDES
 from .reads import lazily
+
+
+def _flow_of(plan, connection):
+    """The flow of a connection: a directed flow is its own, a leg of a route or of a flow with legs
+    is named after its flow."""
+    return connection if connection in plan.flows else connection.rsplit('.', 1)[0]
 
 
 @dataclass(eq=False)
@@ -97,6 +109,9 @@ class Occurrences:
         self.sources = {}  # the id of such a node -> (its expression, owner, origin), for `saved.py`
         self.awaiting = []  # delays that wait for the round's settling (`delays`)
         self._delays = {}  # a delay's node -> the rates and results that it reads
+        # The stores of finished occurrences that a present connection may meet (`carried`), found
+        # when first asked from the occurrences that the run holds (`watched`).
+        self._watched = None
 
     def node(self, expression, scope, origin):
         """The node of an expression of a scope over engine names, made once."""
@@ -133,10 +148,11 @@ class Occurrences:
             for connection in plan.flows[flow].connections:
                 for end in (connection.source, connection.sink):
                     if end is not None:
-                        # A flow that would take from or give to a frozen store fails as it joins; a
-                        # store of an occurrence that it meets is retired as met (`complete`).
-                        self.writable(end, f'the flow {connection.name}')
+                        # A store of an occurrence that it meets is retired as met (`complete`); one
+                        # of a finished occurrence is watched from its settling on (`carried`).
                         self.met(end)
+                        if self.frozen(end) is not None:
+                            self.watched().add(end)
             run.flow_joins(flow)
         run.recorder.entry(t, 'start', made.event.origin, made.id, args=tuple(args))
         run.changed.add(('occurrences', member, event))
@@ -322,15 +338,93 @@ class Occurrences:
         live = self.live.get(owner) if owner is not None else None
         return owner if live is not None and not live.active else None
 
-    def writable(self, name, writer):
-        """The one check of a write or a transfer that lands on an engine name (see the module): a
-        value of a finished occurrence is frozen, and the run fails, naming the value, its
-        occurrence and the writer (a statement's origin, or a flow)."""
+    def writable(self, name, writer, amount=None):
+        """The one check of a write or a transfer that lands on an engine name (see the module): an
+        assignment (`amount` None) always writes; a move of `amount`, or a flow at the rate `amount`,
+        writes where it is more than the tolerance of the store. A write to a value of a finished
+        occurrence fails the run, naming the value, its occurrence and the writer."""
         owner = self.frozen(name)
-        if owner is not None:
-            raise SimulationError(
-                f'{writer}: {name} belongs to the finished occurrence {owner}, which is frozen'
-            )
+        if owner is None:
+            return
+        if amount is not None and abs(amount) <= self.run.recorder.tolerance.get(name, 0.0):
+            return
+        raise SimulationError(f'{writer}: {name} belongs to the finished occurrence {owner}, which is frozen')
+
+    def watched(self):
+        """The stores of finished occurrences that a present connection may meet: kept as stores
+        finish and flows join (`complete`, `register`), and found once from the finished occurrences
+        by a run that a checkpoint restored, which keeps no more than its occurrences (`saved.py`)."""
+        if self._watched is None:
+            self._watched = {store for live in self.live.values() if not live.active for store in live.plan.stores}
+        return self._watched
+
+    def carried(self, start, end=None):
+        """No flow present at a store of a finished occurrence carries a rate (see the module): each
+        is read at `start`, and, where its rate moves between moments, through the present window of
+        its instance to `end`, at the steps of its form and between them. A rate beyond the
+        tolerance of the store fails the run (`writable`) at the first time at which one is, found
+        to within the crossing tolerance; the ways stand there."""
+        watched = self.watched()
+        if not watched:
+            return
+        run, plan = self.run, self.plan
+        first = None  # (time, store, side, connection, rate)
+        for store in sorted(watched):
+            present = [(side, c) for side in SIDES for c in plan.incident(store, side)]
+            if not present:
+                watched.discard(store)  # a flow that joins it again watches it again (`register`)
+                continue
+            within = run.recorder.tolerance.get(store, 0.0)
+            for side, connection in present:
+                found = self._beyond(connection, start, end, within)
+                if found is not None and (first is None or found[0] < first[0]):
+                    first = (*found, store, side, connection)
+        if first is None:
+            return
+        at, rate, store, side, connection = first
+        run.ways.cut(at)
+        run.now = at
+        unit = next(c.unit for c in plan.flows[_flow_of(plan, connection)].connections if c.name == connection)
+        shown = f'{rate / (plan.units.scale(unit) if unit else 1.0):g} {unit}'.rstrip()
+        way = 'out of' if side == 'outflow' else 'into'
+        self.writable(store, f'the flow {connection} carries {shown} {way} {store} at t = {at:g} h', rate)
+
+    def _beyond(self, connection, start, end, within):
+        """(the first time in [start, end] at which a connection's rate is more than `within`, the
+        rate there), or None: at `start` alone where its rate holds between moments."""
+        run = self.run
+        name = f'{connection}.actual_rate'
+        flow = _flow_of(self.plan, connection)
+        key = run.ways.set_of.get(flow)
+
+        def rate(at):
+            return float(run.value(name, at))
+
+        times = [start]
+        if end is not None and end > start and key is not None and run.ways.moving(key):
+            breaks = getattr(run.ways.sets[key][1], 'breaks', lambda a, b: [])(start, end)
+            ends = [start, *breaks, end]
+            times = [start]
+            for a, b in zip(ends, ends[1:]):
+                times += [0.5 * (a + b), b]
+        before = None
+        for at in times:
+            found = rate(at)
+            if abs(found) <= within:
+                before = at
+                continue
+            if before is None:
+                return at, found
+            # Between the last time within its tolerance and this one: the first time beyond it.
+            crossing, after = self.plan.numerics.crossing, at
+            while after - before > crossing:
+                middle = 0.5 * (before + after)
+                if abs(rate(middle)) > within:
+                    after = middle
+                else:
+                    before = middle
+            return after, rate(after)
+        return None
 
     def waiting(self):
         """The occurrences that wait at a gate, in the order in which they were made."""
@@ -371,13 +465,11 @@ class Occurrences:
         for flow in made.flows:
             run.flow_leaves(flow)
         live.active = False
-        for store in made.stores:
-            # A flow of another occurrence that still meets one of its stores would write the frozen
-            # store from now on: a transfer that goes on after an occurrence finishes belongs on an
-            # entity (G0, "Endpoint collections describe the present").
-            for side in ('outflow', 'inflow'):
-                for connection in plan.incident(store, side):
-                    self.writable(store, f'the flow {connection}, which still meets it as {made.id} finishes')
+        # A flow of another occurrence that still meets one of its stores writes it where it carries
+        # a rate, from the settling of this round on (`carried`).
+        self.watched().update(
+            store for store in made.stores if any(plan.incident(store, side) for side in SIDES)
+        )
         for name, value in ((f'{made.id}.done', True), (f'{made.id}.active', False)):
             run.env[name] = value
             run.recorder.add(name, t, value, 0.0)

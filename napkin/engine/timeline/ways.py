@@ -177,10 +177,12 @@ class Ways:
             solver.renew()
 
     def finish(self, t):
-        """At the horizon: each instance stands there, and the lines settle what left a bound."""
+        """At the horizon: each instance stands there, the lines settle what left a bound, and a set
+        whose rates move records its state there, with the rates that its next segment would start
+        with (a value at the horizon reads the same in a run that ends there as in one that goes on)."""
         self.cut(t)
         for instance in self.instances:
-            if isinstance(instance, Lines):
+            if isinstance(instance, Lines | ComponentWay | Sparse):
                 instance.finish(t)
 
     def touched_by(self, names):

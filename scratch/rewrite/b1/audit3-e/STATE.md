@@ -1,64 +1,60 @@
 # Audit 3, agent E: the engine (track b1/audit3-e)
 
-Brief: `briefs/audit3.md` "E", `COMMON-B.md`. Before-states: new tests run on `git archive 8b3a01a`.
+Brief: `briefs/audit3.md` "E", `COMMON-B.md`; round 2: the main session's message (PLAN change 24 b,
+R's horizon rate, recursion left in my files). Before-states: new tests run on `git archive` of HEAD.
 
 ## Where each cause acts (listed before any change)
-F14 a write to a finished occurrence: moment.target (only `.at(t)` checked), moment.assign
-(allocation), occurrences.register (a flow joining a finished store; another's store never met, so
-not retired), occurrences.complete (another's flow still at its store); checkpoints.checked (R,
-holds); oracle `_move` and flows (not mine).
-N15 a named collection: plan._step root (plan.py:1650), an event's collection local (no value:
-KeyError), solver inputs; proofs.py _step root/_local and the trail (R). Holds: member, solvers.py.
-R15 chains: plan._named/resolve (a chain of names), plan._where (nested tests), keyed reads
-(_chosen, _fixed, _members_part, `reads`: cubic); kernels.py proofs and affine forms (by calls);
-not mine: declared.value, family.at + core/arrays, component._expand, sparse.compiled, core/faces,
-record._lookup (quadratic).
+F14 a write to a finished occurrence: moment.target/assign/move, occurrences.register/complete (a
+flow at a frozen store), ways between moments (run.next_moment), checkpoints.checked (R: edits,
+holds), oracle `_assign`/`_move`/flows (tests/reference/run.py, mine for this). N15 named
+collections: plan._step root, an event's collection local, solver inputs; proofs (R). R15 chains:
+plan._named/_where, keyed reads; kernels.py; component._expand, sparse.compiled/_group (mine now);
+not mine: declared.py, family.py (R), core/arrays.py, core/faces.py (F). `names_in`: core
+expr.names recurses by a node's depth, bounded by `expr.limited`: not on a chain's path.
 M12 `within`: triggers._truth_of/_atoms_of, moment.near_ties, integrate.switching_surfaces.
+H (R's): at the horizon a set on curves records no rate from its commits: ways.finish (lines only),
+component/sparse (no piece at the horizon); a new component reads its rates before finding its
+bounds (`active_bounds` empty: a starved flow reads its request after a rebuild).
 
 ## Rule tests (written first; failure on the code as it was)
-- test_frozen_occurrences.py (51): 25 failed (writes after the finish made; flows; retirement).
-- test_named_collections.py (45): 29 failed (top level and event: Outside / KeyError).
-- test_deep_engine_paths.py (5 + 5 deep + 5 strict xfail, others' files): named collections failed
-  (Outside), then recursed (_named, nodes.names); keyed chain cubic (26 s at 100 links).
-- test_membership_conditions.py (7): 4 failed on 8b3a01a; with `within`, trigger/gate never met.
-- test_compiled_chains.py (8 deep): F's forms at 5,000 links run, read, trigger at limit 400.
-- kernels.py: with component._expand iterative (a probe), proven_zero recursed, then linear.
+- test_frozen_occurrences.py (71, change 24 b): 27 failed (a move of 0 L failed; zero-rate flows
+  failed when met; message; oracle: moves and flows unchecked).
+- test_horizon_reads.py (6 ways): component and sparse failed (2/6). R's xfail now passes.
+- test_named_collections.py (45), test_membership_conditions.py (7), test_compiled_chains.py
+  (8 deep), test_deep_engine_paths.py (5 + 5 deep + 5 strict xfail): round 1, as recorded.
 
 ## Done
-- F14: one check `Occurrences.writable` (`frozen` its rule): target, allocation, each end of a
-  joining flow, each store of a finishing occurrence met by another's flow; others' stores met.
-- N15: plan._named: init resolved in its scope, once, on an explicit stack; flat where of where.
-- Keyed reads: `_chosen` once per entries, `_fixed` memo, members' parts lazily, a source written
-  again shares its entries, a chosen read reads its entry (`reads`), `define` clears `_members`.
-- M12: a membership is evaluated (ops.REVERSED by name), then read as its chain.
-- continuous/walk.py holds the driver; kernels.py walks on it.
+- 24 b: `Occurrences.writable(name, writer, amount)`: an assignment always; a move's amount or a
+  flow's rate beyond the store's tolerance (D8). Flows: `carried(start, end)` over `watched` stores
+  (kept at complete/register, found from `live` after a restore): after each settling, and in
+  next_moment over each window, sampled at the form's steps, bisected to the crossing tolerance.
+  Oracle: `_move` (amount != 0), `_frozen_flows` after each moment's motion.
+- H: ways.finish -> ComponentWay.finish / Sparse.finish record the state at the horizon on its
+  bounds; ComponentWay._settle finds the bounds of a fresh or restored state before a read.
+- Round 1: F14 statements, N15, keyed reads, M12, continuous/walk.py (see code docstrings).
+
+## In progress / next
+- Item 3: component._expand, sparse.compiled/_group on `walk.walked`; xfails -> tests.
+- Item 4: B's docstring (test_deep_graphs.py). Item 5: checks and final runs.
 
 ## Decisions
-- A flow at a frozen store fails the run when they meet, whatever its rate: spec "a write to it is
-  an error", "A flow whose rate falls to zero stays connected for its owner's lifetime"; G0 "A
-  transfer that should continue after an event finishes belongs on the entity".
-- Any statement that targets a frozen value fails (a move of 0 L too), as the oracle's `_assign`.
+- "Nonzero" is beyond the store's tolerance, for a move's amount (after the rule that a move leaving
+  less than the source's tolerance moves all) and a flow's rate (per hour, as `Run.tolerate`): the
+  resolution of D8 at which a run tells two values apart. The oracle is exact.
+- A rate that rises from zero fails at the first time beyond its tolerance (within the crossing
+  tolerance of the moment); the oracle fails at the moment, or not at the horizon.
+- Curves: an event within the crossing tolerance of the horizon is due there (`moment.Clock`), so a
+  read exactly at a jump of a curve may differ from a longer run's; the test avoids such times.
 
 ## For R
-- proofs.py `_step` root / `_local`: a named collection read as a value: a lag of
-  `formula(sum(tanks.water))` refused (in place it lags: 12 for 14), the trail lists only `total`.
-- record.py `formula` -> `_switches(at)`: a yes/no formula that raises inside a piece (a membership
-  reversed at 1 h) escapes as an ExpressionError (`run()` raises); `firsts` catches it.
-- record.py `_lookup`: a chain of n constant-key reads is n^2 holders (39 of 54 s at 2,000): read
-  the chosen entry alone (`plan._chosen`), as `plan.reads` does.
-- checkpoints.checked: its finished-occurrence test is `run.occurrences.frozen(name)`: use it.
+- proofs.py `_step`/`_local` (named collection lag), record.py `formula`/`_switches`, `_lookup`
+  (n^2), checkpoints `frozen`: as in round 1. Solver: a degenerate tie of two bounds of a moving
+  solver fails "numerical in fair sharing, tier 0" (seen in test_horizon_reads, avoided there).
 ## For F
-- core/arrays.py values (family.py at): a rate through a chain of known formulas recurses (xfail);
-  core/faces.constant_on_faces walks formulas by calls. Your chain-form rate switch: not
-  reproduced (rising and falling, three spellings give 3, 5, 6, 7 L).
+- core/arrays.py values (family.py at), core/faces.constant_on_faces: recursion, as in round 1.
 ## For the main session
-- Strict xfails in test_deep_engine_paths.py: declared.py value/_name/reads_unknown; family.py at;
-  component.py _expand (iterative in a probe: then the path passes); sparse.py compiled/_group.
-- Oracle tests/reference/run.py: `_move` and flows do not check a finished occurrence.
-- tests/engine/test_deep_graphs.py (B's) docstring: `plan.walked` is now `walk.walked`.
-- Found, not fixed (continuous/, as on 8b3a01a; F saw it): on a component, a rate that switches
-  where a rising store meets its threshold at a segment's end stops ("the solver failed ... rates
-  switch back and forth"): `2 L/h if water >= 3 L else 1 L/h` from 1 L fails at 2 h; `3 L <= water
-  <= 5 L` from 2 L at 1 h; from 1 L with horizon 7 h it gives 4.994 L at 3 h for 5 L (4 h: right).
+- Strict xfails left in test_deep_engine_paths.py: declared.py (R), family.py + core/arrays (F/R).
+- Found, not fixed: a component's rate switching where a rising store meets its threshold at a
+  segment's end ("rates switch back and forth"), as on 8b3a01a.
 ## For the owner
-- A flow at a frozen store with a zero rate: fail when they meet (done), or only once it transfers?
+- None open: 24 b answered the zero-rate flow.

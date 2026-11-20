@@ -36,8 +36,11 @@ gets another answer.
 
 What follows rank 4 changes the answer only by roundoff: an unknown within it of zero or of a bound
 is put there, and the point then exactly on the rows that it holds (`_exact`). Each change is a
-candidate that takes the answer's place only where it holds every row as the answer does and serves
-each claim no less (`_kept`), so a small delivery in a large part is never taken for roundoff.
+candidate that takes the answer's place only where it is no worse on any rank, the last included, as
+a change of a declared solver's answer (`_kept`; `solve.Answer.admits`): it holds every row as the
+answer does, serves each claim no less, and is no farther from the targets but by its roundings. So
+a small delivery in a large part is never taken for roundoff, and no delivery moves onto a flow that
+does not ask for it.
 """
 
 from __future__ import annotations
@@ -48,6 +51,7 @@ import numpy as np
 
 from ..continuous import highs
 from ..errors import SimulationError
+from ..solve.solver import farther
 
 TIGHT = 1e-9  # a claim can rise above its level only by more than this part of it (the oracle's)
 FEASIBLE = 1e-9  # a row holds to this part of the size of its terms
@@ -440,23 +444,32 @@ def select(rows, lower, upper, tiers, prefs, target, units=None):
         snapped[near] = bound[near]
     claims = [claim for tier in tiers for claim in tier] + list(prefs)
     candidates = (_exact(final, lower, upper, snapped, target), snapped)
-    return _kept(final, lower, upper, target, claims, found, candidates)
+    return _kept(final, lower, upper, target, claims, found, candidates, units)
 
 
-def _kept(rows, lower, upper, target, claims, answer, candidates):
-    """The first of `candidates` (changes of `answer` after the selection order) that holds every
-    row and bound of the part as the answer does (`_holds`, the end check of rank 4) and serves each
-    claim and each preferred route's share (`claims`, as (a, request)) no less than the answer
-    serves it, to `FEASIBLE`; else the answer. A change that would take a small delivery for the
-    roundoff of a large part, or break a row, is dropped."""
+def _kept(rows, lower, upper, target, claims, answer, candidates, units=1.0):
+    """The first of `candidates` (changes of `answer` after the selection order) that is no worse
+    than the answer on any rank, the last included: it holds every row and bound of the part as the
+    answer does (`_holds`, the end check of rank 4), serves each claim and each preferred route's
+    share (`claims`, as (a, request)) no less than the answer serves it, to `FEASIBLE`, and is no
+    farther from the targets (`solve.solver.farther`, the rule of every change of a published answer):
+    a coordinate that moved by at most `FEASIBLE` of its unit (`units`, the size of the part for a
+    rate) and of its size is a rounding, which the snaps of roundoff are. Else the answer. A change
+    that would take a small delivery for the roundoff of a large part, break a row, or move a
+    delivery onto a flow that does not ask for it, is dropped."""
     plain = _plain(rows, lower, upper)
 
     def served(x):
         return np.array([min(1.0, float(np.asarray(a, dtype=float) @ x) / r) for a, r in claims])
 
     floor = served(answer) - FEASIBLE * (1.0 + np.abs(served(answer)))
+    precision = FEASIBLE * (np.asarray(units, dtype=float) + np.abs(answer))
     for candidate in candidates:
-        if _holds(rows, plain, candidate, target) and (served(candidate) >= floor).all():
+        if (
+            _holds(rows, plain, candidate, target)
+            and (served(candidate) >= floor).all()
+            and farther(candidate, answer, target, precision) <= 0
+        ):
             return candidate
     return answer
 

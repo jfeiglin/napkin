@@ -14,7 +14,10 @@ which a provider's solver names some, limits, orders and objectives of shortfall
 2. the same model written in L, mL and kL gives the same physical values.
 
 Then the audit's two cases and their variants at smaller requests, worked by hand, and the same rule
-in local sharing, whose snaps of roundoff are candidates too (`selection._kept`).
+in local sharing, whose snaps of roundoff are candidates too (`selection._kept`): a candidate takes
+the answer's place only where it is no worse on any rank, the last included (the readiness audit of
+`8b3a01a`, row 06's rule): by hand, and on the random networks of `test_local_sharing`, where a point
+of the rows of every rank nearest other targets, and farther from these, is never published.
 """
 
 from __future__ import annotations
@@ -25,7 +28,8 @@ import numpy as np
 import pytest
 
 from napkin.engine import read, run
-from napkin.engine.timeline import declared
+from napkin.engine.errors import SimulationError
+from napkin.engine.timeline import declared, selection
 from napkin.program.build import (
     SINK,
     SOURCE,
@@ -46,6 +50,7 @@ from napkin.program.build import (
 )
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
+from tests.engine.test_local_sharing import network
 from tests.engine.test_random_solvers import HORIZON, SCALES, TIMES, UNITS, program
 
 KEPT = 1e-6  # an objective, a served fraction, a row or a bound is held to this of the size of its terms
@@ -215,3 +220,110 @@ def test_local_sharing_keeps_a_small_delivery_in_a_large_part(small):
     big, found = (reading.values[0] for reading in read(record, source, keys, [0.5]))
     assert big == pytest.approx(1 / (1 + small), rel=1e-12)
     assert found == pytest.approx(small / (1 + small), rel=1e-3, abs=0)
+
+
+# ---- local sharing: every rank, the last included ------------------------------------------------------
+
+
+def two_outlets():
+    """A part of local sharing by hand: a store held at its top passes 2 L/h on to two outlets, `a`
+    asking 1 L/h and `b` idle (its target zero), so `a + b == 2` and `a` is served in full. Rank 4 puts
+    the rates nearest their targets on that row: (1.5, 0.5), at a squared distance of 0.5."""
+    rows = selection.Rows(2)
+    rows.equal_to([1.0, 1.0], 2.0)
+    lower, upper, target = np.zeros(2), np.full(2, np.inf), np.array([1.0, 0.0])
+    claims = [(np.array([1.0, 0.0]), 1.0)]  # a served in full keeps a >= 1 (rank 2)
+    rows.at_least([1.0, 0.0], 1.0)
+    return rows, lower, upper, target, claims
+
+
+def test_local_sharing_gives_no_candidate_farther_from_the_targets_the_answers_place():
+    """(1, 1) and (2, 0) hold the row and serve `a` in full, as the answer (1.5, 0.5) does, and are
+    farther from the targets, at 1: neither takes the answer's place. A rounding of the answer by
+    1e-13 does, as the snaps of roundoff after rank 4 do (`selection._kept`)."""
+    rows, lower, upper, target, claims = two_outlets()
+    answer = selection.nearest(rows, lower, upper, target, np.array([1.0, 1.0]), 2.0)
+    assert answer == pytest.approx([1.5, 0.5], abs=1e-12)
+    for candidate in ([1.0, 1.0], [2.0, 0.0], [1.25, 0.75]):
+        found = selection._kept(rows, lower, upper, target, claims, answer, (np.array(candidate),))
+        assert found is answer, candidate
+    rounded = answer + np.array([1e-13, -1e-13])
+    assert selection._kept(rows, lower, upper, target, claims, answer, (rounded,)) is rounded
+
+
+def sharing(monkeypatch, seed, routes):
+    """Each part of local sharing of a run of a random network (`test_local_sharing.network`): its
+    rows of every rank, its bounds and targets, its claims, the answer of rank 4 and the published
+    answer (`selection._kept`)."""
+    found = []
+    kept = selection._kept
+
+    def spy(rows, lower, upper, target, claims, answer, candidates, *rest):
+        made = kept(rows, lower, upper, target, claims, answer, candidates, *rest)
+        found.append((rows, lower, upper, target, claims, answer, rest, np.array(made)))
+        return made
+
+    monkeypatch.setattr(selection, '_kept', spy)
+    source, _ = network(seed, routes)
+    run(source, Configuration(Request(3)))
+    return found
+
+
+def distance(x, target):
+    return float(np.sqrt(((x - target) ** 2).sum()))
+
+
+def precision(x, target):
+    """How far a rounding of x within the rows' precision (`selection.FEASIBLE` of the part's size)
+    can move the root of its distance from the targets."""
+    size = max(float(np.abs(x).max(initial=0.0)), float(np.abs(target).max(initial=0.0)))
+    return float(np.sqrt(((selection.FEASIBLE * (size + np.abs(x))) ** 2).sum()))
+
+
+def no_farther_in_local_sharing(monkeypatch, seed, routes):
+    """The published answer of each part is the rank-4 answer's distance from the targets to its
+    precision; and a point of the rows of every rank (equal on each rank before the distance) that is
+    nearest other targets, and clearly farther from these, never takes the answer's place. Gives how
+    many alternatives were farther."""
+    rng = np.random.default_rng(seed)
+    farther = 0
+    for rows, lower, upper, target, claims, answer, rest, made in sharing(monkeypatch, seed, routes):
+        near = distance(answer, target)
+        assert abs(distance(made, target) - near) <= precision(answer, target), (seed, answer, made)
+        size = max(1.0, float(np.abs(answer).max(initial=0.0)), float(np.abs(target).max(initial=0.0)))
+        other = np.clip(answer + (rng.random(len(answer)) * 4 - 2) * (1.0 + np.abs(answer)), lower, upper)
+        try:
+            alternative = selection.nearest(rows, lower, upper, other, answer, size)
+        except SimulationError:
+            continue
+        margin = 1000 * precision(answer, target) + 1e-3 * near
+        if distance(alternative, target) > near + margin and selection._holds(
+            rows, selection._plain(rows, lower, upper), alternative, target
+        ):
+            farther += 1
+            chosen = selection._kept(rows, lower, upper, target, claims, answer, (alternative,), *rest)
+            assert chosen is answer, (seed, answer, alternative)
+    return farther
+
+
+@pytest.mark.parametrize('routes', [False, True], ids=['flows', 'routes and legs'])
+@pytest.mark.parametrize('seed', range(60))
+def test_local_sharing_publishes_no_answer_farther_from_the_targets(monkeypatch, seed, routes):
+    no_farther_in_local_sharing(monkeypatch, seed, routes)
+
+
+@pytest.mark.deep
+@pytest.mark.parametrize('routes', [False, True], ids=['flows', 'routes and legs'])
+@pytest.mark.parametrize('seed', range(60, 600))
+def test_more_parts_of_local_sharing_publish_no_answer_farther_from_the_targets(monkeypatch, seed, routes):
+    no_farther_in_local_sharing(monkeypatch, seed, routes)
+
+
+def test_the_alternatives_of_local_sharing_are_farther_on_many_networks(monkeypatch):
+    """The rule above is not vacuous: many random networks have a part with an alternative that is
+    farther from the targets, which is equal on every earlier rank."""
+    found = 0
+    for seed in range(30):
+        with monkeypatch.context() as patched:
+            found += no_farther_in_local_sharing(patched, seed, False) > 0
+    assert found >= 5, found

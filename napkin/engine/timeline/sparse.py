@@ -33,8 +33,11 @@ says that the rates chatter there and names the stores and the flows.
 
 The recorder takes the pieces of the stores and of what the network gives of each flow (an actual
 rate, a route's signed rate, a served fraction) that the record keeps, fitted step by step to the
-step's dense output (`record.fitted`). A reader of a condition that watches the stores reads the
-form of the next step (`motion`: the cubic of its dense output, `continuous/dense.py`).
+step's dense output (`record.fitted`). At the horizon (`finish`) it takes their values there, with
+the flags that a new segment would find: a read at the horizon of a run that ends there is the read
+of a run that goes on, whose next step starts there. A reader of a condition that watches the
+stores reads the form of the next step (`motion`: the cubic of its dense output,
+`continuous/dense.py`).
 """
 
 from __future__ import annotations
@@ -53,18 +56,28 @@ from ..errors import SimulationError
 from .collections import combined, looked_up, selected
 from .lines import asked_of
 from .network import SIDES, Asked, Instant, network_of
-from .plan import FORMULA, LOOKUP, REDUCE
+from .plan import FORMULA, LOOKUP, REDUCE, Pending
 from .reads import Reads, lazily
 from .record import fitted
+
+_MISSING = object()
 
 
 class Vector:
     """The values of engine names at a time and a state of a set's stores, as arrays (see the
     module). `stores` are the names of the state, in its order; `held` gives, for a keyed read that
     an instance holds through its segment, the entry that it selects (`Sparse`). A value that holds
-    between moments is read once, when it is compiled (`constants`: its value, or the reason why it
-    has none), or taken from `given`, the constants that a restored instance had (`saved.py`). A
-    yes/no, an enum member or a text is held as it is, and an array that holds one holds objects."""
+    between moments is read once, when it is first compiled or met (`constants`: its value, or the
+    reason why it has none), or taken from `given`, the constants that a restored instance had
+    (`saved.py`). A yes/no, an enum member or a text is held as it is, and an array that holds one
+    holds objects.
+
+    A derived value (a formula, a reduction, a keyed read) is computed where an evaluation reads it,
+    with no recursion (re-audit 15), so a chain of formulas is no limit: one evaluation
+    (`_Evaluation`) keeps the values that it computed, and a value that reads a derived one that it
+    has not computed yet asks for it (`Pending`) and is computed again once it is known, as the
+    driver of the timeline does (`walk.walked`). The members of a template that share a formula and
+    that are asked together are computed together, over their rows."""
 
     def __init__(self, run, stores, held=None, rates=None, given=None):
         self.run, self.plan = run, run.plan
@@ -75,6 +88,11 @@ class Vector:
         self.rates = {} if rates is None else rates
         self.given = given
         self.constants = {}  # name -> (value, None), or (nan, the reason why it has no value)
+        self._kinds = {}  # name -> how an evaluation gets it (`_kind`)
+        self._plans = {}  # a tuple of names -> what an evaluation of them does (`_plan`)
+        self._groups = {}  # members of a template -> their formula, columns and timed reads
+        self._entries = {}  # a reduction -> its kept entries
+        self._met = set()  # the names whose kinds a compile has found, with what they read
 
     def constant(self, name):
         """(the value now of a name that holds between moments, or nan, and None or the reason)."""
@@ -93,155 +111,379 @@ class Vector:
         self.constants[name] = found
         return found
 
-    def compiled(self, names):
-        """A function (t, y) -> the array of the values of `names`, in their order."""
-        plan, place = self.plan, self.place
-        unique = list(dict.fromkeys(names))
-        back = np.array([unique.index(name) for name in names], dtype=np.int64)
-        held_at, held_from, constant_at, constants, steps = [], [], [], [], []
-        groups, failed = {}, []
-        for k, name in enumerate(unique):
-            value = plan.values.get(name)
+    def _kind(self, name):
+        """How an evaluation gets a name: a leaf (`store`, `rate` of an earlier level, `time`,
+        `constant`, read once) or a derived value (`formula`, `member` of a template's shared
+        formula, `reduction`, `stepped` keyed read by the time, `lookup`)."""
+        found = self._kinds.get(name)
+        if found is None:
+            value = self.plan.values.get(name)
             kind = value.kind if value is not None else None
-            if name in place:
-                held_at.append(k)
-                held_from.append(place[name])
+            if name in self.place:
+                found = 'store'
             elif name in self.rates:
-                steps.append(([k], lambda t, y, name=name: self.rates[name]))
+                found = 'rate'
             elif name == 't':
-                steps.append(([k], lambda t, y: t))
-            elif kind == FORMULA and value.shape is not None:
-                groups.setdefault(id(value.shape), []).append((k, name))
+                found = 'time'
             elif kind == FORMULA:
-                steps.append(([k], self._single(name)))
+                found = 'member' if value.shape is not None else 'formula'
             elif kind == REDUCE:
-                steps.append(([k], self._reduction(name)))
-            elif kind == LOOKUP and plan.stepped(name):
-                steps.append(([k], self._stepped(name)))
+                found = 'reduction'
             elif kind == LOOKUP:
-                steps.append(([k], self._lookup(name)))
+                found = 'stepped' if self.plan.stepped(name) else 'lookup'
             else:
-                constant_at.append(k)
-                value, reason = self.constant(name)
-                constants.append(value)
-                if reason is not None:
-                    failed.append(reason)
-        for members in groups.values():
-            steps.append(([k for k, _ in members], self._group([name for _, name in members])))
-        held_at, held_from = np.array(held_at, dtype=np.int64), np.array(held_from, dtype=np.int64)
-        plain = any(isinstance(value, bool | str) for value in constants)
-        kind = object if plain else float
-        constant_at, constants = np.array(constant_at, dtype=np.int64), np.array(constants, dtype=kind)
-        size = len(unique)
+                found = 'constant'
+                if name not in self.constants:
+                    self.constant(name)
+            self._kinds[name] = found
+        return found
+
+    def derived(self, name):
+        """Whether an evaluation computes a name from others."""
+        return self._kind(name) in ('formula', 'member', 'reduction', 'stepped', 'lookup')
+
+    def compiled(self, names):
+        """A function (t, y) -> the array of the values of `names`, in their order. Each value that
+        they may read is met now, on an explicit stack, so that the constants are read when the
+        instance is made (a keyed read that moves meets its members as it reads them)."""
+        names = tuple(names)
+        stack = [name for name in names if name not in self._met]
+        while stack:
+            name = stack.pop()
+            if name in self._met:
+                continue
+            self._met.add(name)
+            stack.extend(read for read in self._reads(name) if read not in self._met)
+        plan = self._plan(names)
 
         def values(t, y):
-            if failed:
-                raise ExpressionError(failed[0])
-            found = np.empty(size, dtype=kind)
-            found[held_at] = y[held_from]
-            found[constant_at] = constants
-            for at, step in steps:
-                found[at] = step(t, y)
-            return found[back]
+            return self._gathered(plan, _Evaluation(self, t, y))
 
         return values
 
-    def _group(self, members):
-        """The members of a template that share one formula, evaluated once over their rows."""
-        plan = self.plan
-        first = plan.values[members[0]]
-        reads = [read for read, _ in first.binding]
-        columns = {read: [dict(plan.values[name].binding)[read] for name in members] for read in reads}
-        timed = {read for read, column in columns.items() if all(name == 't' for name in column)}
-        subs = {read: self.compiled(column) for read, column in columns.items() if read not in timed}
-        count, units, shape = len(members), plan.units, first.shape
-        alone = []  # each member by itself, made when a column has no value for some member
+    def _reads(self, name):
+        """What an evaluation of a derived value may read, which a compile meets."""
+        plan, kind = self.plan, self._kind(name)
+        if kind == 'formula':
+            return sorted(plan.reads(name))
+        if kind == 'member':
+            return [bound for _, bound in plan.values[name].binding if bound != 't']
+        if kind == 'reduction':
+            reduction = plan.reductions[name]
+            return [] if reduction.names is None else [reduction.names[k] for k in self._kept(name)]
+        if kind == 'stepped':
+            return list(self.run.stepped_of(name).names)
+        return []
 
-        def values(t, y):
-            # A column is made when the evaluation over the rows first reads it (`reads.py`).
-            env = Reads(frozenset(columns), lambda read: float(t) if read in timed else subs[read](t, y))
-            try:
-                found = arrays.values(shape, env, units, count)
-            except ExpressionError:
-                # A column with no value for some member, which another member's branch reads: each
-                # member by itself reads only its own branch.
-                if not alone:
-                    alone.extend(self._single(name) for name in members)
-                found = [value(t, y) for value in alone]
-            return np.broadcast_to(np.asarray(found, dtype=float), (count,))
+    def _kept(self, name):
+        """The kept entries of a reduction, found once."""
+        found = self._entries.get(name)
+        if found is None:
+            found = self._entries[name] = self.run.kept_of(name)
+        return found
 
-        return values
+    def _plan(self, names):
+        """What an evaluation of a tuple of names does, made once: the places of the stores of the
+        state and of the constants among them, and the other names, which it reads one by one."""
+        found = self._plans.get(names)
+        if found is None:
+            unique = list(dict.fromkeys(names))
+            position = {name: k for k, name in enumerate(unique)}
+            held_at, held_from, constant_at, constants, failed, read_at, read = [], [], [], [], [], [], []
+            for k, name in enumerate(unique):
+                kind = self._kind(name)
+                if kind == 'store':
+                    held_at.append(k)
+                    held_from.append(self.place[name])
+                elif kind == 'constant':
+                    value, reason = self.constants[name]
+                    constant_at.append(k)
+                    constants.append(value)
+                    if reason is not None:
+                        failed.append(reason)
+                else:
+                    read_at.append(k)
+                    read.append(name)
+            plain = any(isinstance(value, bool | str) for value in constants)
+            kind = object if plain else float
+            found = self._plans[names] = _Plan(
+                np.array([position[name] for name in names], dtype=np.int64),
+                len(unique),
+                kind,
+                np.array(held_at, dtype=np.int64),
+                np.array(held_from, dtype=np.int64),
+                np.array(constant_at, dtype=np.int64),
+                np.array(constants, dtype=kind),
+                tuple(failed),
+                np.array(read_at, dtype=np.int64),
+                tuple(read),
+                tuple(name for name in read if self.derived(name)),
+            )
+        return found
 
-    def _single(self, name):
-        """A formula that no template shares (it reads an entity): evaluated by itself."""
-        plan = self.plan
-        reads = sorted(plan.reads(name))
-        subs = {read: self.compiled([read]) for read in reads}
-        node = plan.values[name].node
-
-        def value(t, y):
-            # Each read is made when the evaluation asks for it (`reads.py`).
-            return float(lazily(node, lambda read: _plain(subs[read](t, y)[0]), plan.units, t))
-
-        return value
-
-    def _stepped(self, name):
-        """A stepped keyed read: the value of the member that it selects at the time."""
-        stepped = self.run.stepped_of(name)
-        subs = [self.compiled([selected]) for selected in stepped.names]
-
-        def value(t, y):
-            return _plain(subs[stepped.place(t)](t, y)[0])
-
-        return value
-
-    def _lookup(self, name):
-        """A keyed read evaluated at each state, from what it reads: its key, its members' keys and
-        values, and their tests; where the instance holds the entry that it selects through the
-        segment (`held`), the value of that entry."""
-        plan, held = self.plan, self.held
-        keyed = plan.keyed[name]
-        index, read = self.run.index_for(name), self._reader()
-
-        def value(t, y):
-            if name in held:
-                entry = held[name]
-                if entry is None:
-                    x = float(lazily(keyed.key, lambda found: read(found, t, y), plan.units, t))
-                    raise ExpressionError(f'{keyed.spelled}: no member has a key at or below {x:g}')
-                return read(keyed.names[entry], t, y)
-            return float(looked_up(keyed, lambda found: read(found, t, y), plan.units, t, index))
-
-        return value
+    def _gathered(self, plan, evaluation, ask=False):
+        """The array of the values of a plan's names in an evaluation: its derived values computed
+        first, or, with `ask` (a column of a template's formula), asked for (`Pending`)."""
+        if plan.failed:
+            raise ExpressionError(plan.failed[0])
+        found = np.empty(plan.size, dtype=plan.kind)
+        found[plan.held_at] = evaluation.y[plan.held_from]
+        found[plan.constant_at] = plan.constants
+        if plan.read:
+            if ask:
+                evaluation.need(plan.derived)
+            else:
+                evaluation.compute(plan.derived, plan)
+            found[plan.read_at] = [evaluation.read(name) for name in plan.read]
+        return found[plan.back]
 
     def _reader(self):
-        """A function (name, t, y) -> its value, each name compiled when it is first read: a keyed
-        read reads its key and the member that it selects, not every member."""
-        subs = {}
+        """A function (name, t, y) -> its value: a keyed read reads its key and the member that it
+        selects, not every member."""
 
         def read(name, t, y):
-            sub = subs.get(name)
-            if sub is None:
-                sub = subs[name] = self.compiled([name])
-            return _plain(sub(t, y)[0])
+            return _plain(self.compiled([name])(t, y)[0])
 
         return read
 
-    def _reduction(self, name):
-        """A reduction of the values of its kept entries."""
-        plan, run = self.plan, self.run
-        reduction = plan.reductions[name]
-        entries = run.kept_of(name)
-        if reduction.names is None:
-            found = float(combined(reduction.op, [None] * len(entries), reduction.spelled))
-            return lambda t, y: found
-        sub = self.compiled([reduction.names[k] for k in entries]) if entries else None
+    def one(self, name, evaluation):
+        """A derived value by itself, from what `evaluation` holds (`Pending` for what it has not
+        computed): a formula reads only the sides that it takes (`reads.py`)."""
+        plan, kind, t = self.plan, self._kind(name), evaluation.t
+        if kind in ('formula', 'member'):
+            return float(lazily(plan.values[name].node, evaluation.read, plan.units, t))
+        if kind == 'reduction':
+            reduction, entries = plan.reductions[name], self._kept(name)
+            if reduction.names is None:
+                return float(combined(reduction.op, [None] * len(entries), reduction.spelled))
+            names = [reduction.names[k] for k in entries]
+            evaluation.need(names)
+            return float(combined(reduction.op, [evaluation.read(each) for each in names], reduction.spelled))
+        if kind == 'stepped':
+            stepped = self.run.stepped_of(name)
+            return evaluation.read(stepped.names[stepped.place(t)])
+        keyed = plan.keyed[name]
+        if name in self.held:
+            # The entry that the instance holds through its segment.
+            entry = self.held[name]
+            if entry is None:
+                x = float(lazily(keyed.key, evaluation.read, plan.units, t))
+                raise ExpressionError(f'{keyed.spelled}: no member has a key at or below {x:g}')
+            return evaluation.read(keyed.names[entry])
+        return float(looked_up(keyed, evaluation.read, plan.units, t, self.run.index_for(name)))
 
-        def value(t, y):
-            values = sub(t, y).tolist() if sub is not None else []
-            return float(combined(reduction.op, values, reduction.spelled))
+    def group(self, members, evaluation):
+        """The members of a template that share one formula, evaluated once over their rows: each
+        column of what it reads is made when the evaluation over the rows first reads it
+        (`reads.py`), its derived values asked for (`Pending`)."""
+        found = self._groups.get(members)
+        if found is None:
+            plan = self.plan
+            first = plan.values[members[0]]
+            reads = [read for read, _ in first.binding]
+            columns = {
+                read: tuple(dict(plan.values[name].binding)[read] for name in members) for read in reads
+            }
+            timed = frozenset(read for read, column in columns.items() if all(name == 't' for name in column))
+            found = self._groups[members] = (first.shape, columns, timed)
+        shape, columns, timed = found
+        t = evaluation.t
 
-        return value
+        def column(read):
+            if read in timed:
+                return float(t)
+            return self._gathered(self._plan(columns[read]), evaluation, ask=True)
+
+        values = arrays.values(shape, Reads(frozenset(columns), column), self.plan.units, len(members))
+        return np.broadcast_to(np.asarray(values, dtype=float), (len(members),)).tolist()
+
+
+class _Plan:
+    """What an evaluation of a tuple of names does (`Vector._plan`): the place of each name among
+    the distinct ones (`back`), how many and of what kind they are, the places of the stores and
+    where the state holds them, the places and the values of the constants and the reasons of those
+    that have none, and the places of the other names, which an evaluation reads one by one, with
+    the derived ones among them; and the tasks that its first evaluation completed, in their order
+    (`order`), which a later one runs first (`_Evaluation.compute`)."""
+
+    __slots__ = (
+        'back',
+        'constant_at',
+        'constants',
+        'derived',
+        'failed',
+        'held_at',
+        'held_from',
+        'kind',
+        'order',
+        'read',
+        'read_at',
+        'size',
+    )
+
+    def __init__(
+        self, back, size, kind, held_at, held_from, constant_at, constants, failed, read_at, read, derived
+    ):
+        self.back, self.size, self.kind = back, size, kind
+        self.held_at, self.held_from = held_at, held_from
+        self.constant_at, self.constants, self.failed = constant_at, constants, failed
+        self.read_at, self.read, self.derived = read_at, read, derived
+        self.order = None
+
+
+class _Failed:
+    """The error that a derived value raised in an evaluation: a read of it raises it again."""
+
+    __slots__ = ('problem',)
+
+    def __init__(self, problem):
+        self.problem = problem
+
+
+class _Evaluation:
+    """One evaluation of a vector at a time `t` and a state `y` (see `Vector`): the derived values
+    that it computed, each once, or the error that each raised, which a read of it raises again."""
+
+    __slots__ = ('known', 't', 'vector', 'y')
+
+    def __init__(self, vector, t, y):
+        self.vector, self.t, self.y = vector, t, y
+        self.known = {}
+
+    def read(self, name):
+        """The value of a name: a leaf at once, a derived value that this evaluation computed, or
+        `Pending` for one that it has not."""
+        vector = self.vector
+        kind = vector._kind(name)
+        if kind == 'store':
+            return float(self.y[vector.place[name]])
+        if kind == 'constant':
+            value, reason = vector.constants[name]
+            if reason is not None:
+                raise ExpressionError(reason)
+            return value
+        if kind == 'rate':
+            return vector.rates[name]
+        if kind == 'time':
+            return float(self.t)
+        found = self.known.get(name, _MISSING)
+        if found is _MISSING:
+            raise Pending(name)
+        if isinstance(found, _Failed):
+            raise found.problem
+        return found
+
+    def need(self, names):
+        """`Pending` for the derived names among `names` that this evaluation has not computed: a
+        value that reads them all asks for them at once."""
+        missing = [
+            name for name in dict.fromkeys(names) if name not in self.known and self.vector.derived(name)
+        ]
+        if missing:
+            raise Pending(*missing)
+
+    def compute(self, names, plan=None):
+        """Each of the derived names `names` that this evaluation has not computed, each after what
+        it reads, with no recursion. A task is the members of a template that share a formula,
+        computed together over their rows, or a value by itself; the stack holds the path of tasks
+        from the first to the one that runs, and a task that asks for values not known yet waits
+        while it runs their tasks one after the other, then runs again. A value that a task on the
+        path holds is computed by itself, and one asked for on the path of its own computation
+        reads itself, which a plan refuses (a guard).
+
+        The first evaluation of a `plan` keeps the tasks that it completed, in their order; a later
+        one runs them in that order first, so that each finds what it reads, and leaves to the
+        stack a task that asks for more (a branch that it did not take before). A value that it so
+        computes and does not read fails nothing: its error is raised where a read takes it."""
+        vector = self.vector
+        if plan is not None and plan.order is not None:
+            for task in plan.order:
+                if all(name in self.known for name in task):
+                    continue
+                try:
+                    if len(task) == 1:
+                        self.known[task[0]] = vector.one(task[0], self)
+                    else:
+                        self.known.update(zip(task, vector.group(task, self)))
+                except Pending:
+                    continue
+                except Exception as problem:  # raised where a read of it takes it, as a call raises
+                    if len(task) == 1:
+                        self.known[task[0]] = _Failed(problem)
+        completed = [] if plan is not None and plan.order is None else None
+        holding, alone = {}, set()  # the names of the tasks on the path; those of a value by itself
+
+        def tasks(missing):
+            """The tasks of the names `missing`, in the order in which they run (popped last first)."""
+            found, grouped = [], {}
+            for name in missing:
+                if name in holding or vector._kind(name) != 'member':
+                    found.append((name,))
+                else:
+                    grouped.setdefault(id(vector.plan.values[name].shape), []).append(name)
+            found += [tuple(members) for members in grouped.values()]
+            return found[::-1]
+
+        def enter(task):
+            if len(task) == 1:
+                if task[0] in alone:
+                    raise SimulationError(f'{task[0]}: a value that reads itself at t = {self.t:g} h')
+                alone.add(task[0])
+            for name in task:
+                holding[name] = holding.get(name, 0) + 1
+            stack.append([task, []])
+
+        def leave():
+            task, _ = stack.pop()
+            for name in task:
+                holding[name] -= 1
+                if not holding[name]:
+                    del holding[name]
+            if len(task) == 1:
+                alone.discard(task[0])
+
+        missing = [name for name in dict.fromkeys(names) if name not in self.known and vector.derived(name)]
+        stack = [[(), tasks(missing)]]  # the first entry holds no task of its own
+        while stack:
+            entry = stack[-1]
+            task, waiting = entry
+            while waiting and all(name in self.known for name in waiting[-1]):
+                waiting.pop()
+            if waiting:
+                enter(waiting.pop())
+                continue
+            if not task:
+                stack.pop()
+                continue
+            if all(name in self.known for name in task):
+                leave()
+                continue
+            try:
+                if len(task) == 1:
+                    self.known[task[0]] = vector.one(task[0], self)
+                else:
+                    self.known.update(zip(task, vector.group(task, self)))
+            except Pending as pending:
+                entry[1] = tasks(
+                    [
+                        name
+                        for name in dict.fromkeys(pending.names)
+                        if name not in self.known and vector.derived(name)
+                    ]
+                )
+                continue
+            except Exception as problem:  # raised where a read of it takes it, as a call raises
+                if len(task) > 1:
+                    # A column with no value for some member, which another member's branch reads:
+                    # each member by itself reads only its own branch.
+                    entry[1] = [(name,) for name in reversed(task) if name not in self.known]
+                    continue
+                self.known[task[0]] = _Failed(problem)
+            if completed is not None:
+                completed.append(task)
+            leave()
+        if completed is not None:
+            plan.order = tuple(completed)
 
 
 def _plain(value):
@@ -657,6 +899,24 @@ class Sparse:
         """The next event at the time of a moment: committed as any other, with what it changes."""
         stores, rates, _ = self.step()
         return stores + rates
+
+    def finish(self, t):
+        """At the horizon, where the run stands (`ways.finish`): the kept stores and rates of the
+        state there, with the selections and the flags of a new segment, which the first step of a
+        run that goes on would record from there. The evaluations count for no budget of the run."""
+        if self.pending is not None or self.t != t:
+            return
+        evaluations = self.evaluations
+        try:
+            self._select()
+            self._flags()
+            values = self.values(t, self.y)[0]
+        finally:
+            self.evaluations = evaluations
+        for k in self.kept_stores:
+            self.recorder.add(self.stores[k], t, float(self.y[k]), 0.0)
+        for k in self.kept_flows:
+            self.recorder.add(self.recorded[k], t, float(values[k]), 0.0)
 
     def cut(self, t):
         """The run stands at time t inside the next step: the step up to t is committed, and the

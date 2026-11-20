@@ -25,7 +25,8 @@
    known moment that is due at a contact or at such an event (`moment.Clock`) is one moment with it,
    at the time that the run knows exactly; there an event only puts its store on its bound, at its
    own time, and the moment's settling solves its set after the stages of the moment, as the oracle
-   settles once.
+   settles once. A flow present at a store of a finished occurrence carries no rate through each
+   window up to the next event or moment (`Occurrences.carried`): the run fails where one does.
 5. **The horizon** is an inclusive cutoff: the work due there settles as at any moment, by the
    clock's rule (`moment.Clock`): the last moment is the first at which the horizon is due, and the
    record holds the state that its last round committed.
@@ -867,6 +868,8 @@ class Run:
                 # that the run knows exactly: the contact holds there within its tolerance.
                 moment = limit
             if at < moment and not self.clock.due(moment, at):
+                # A flow at a store of a finished occurrence carries no rate up to the event.
+                self.occurrences.carried(self.now, at)
                 self.now = at
                 stores, rates, jumped = instance.step()
                 changed = set(stores) | set(rates)
@@ -877,6 +880,7 @@ class Run:
                     return at, changed
                 self.triggers.predict(changed)
                 continue
+            self.occurrences.carried(self.now, moment)
             self.now = moment
             # An event of an instance at the time of the moment, or one at which the moment is due
             # (`moment.Clock`: a store that the ways bring to its bound a roundoff before a stage
