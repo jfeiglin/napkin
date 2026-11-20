@@ -157,29 +157,27 @@ class _Pass:
                 stack.append((asked, wanted, self.computation(asked, wanted)))
                 sent = None
 
-    def band(self, left, right, a, b, places, *, half=False):
+    def band(self, left, right, a, b, places):
         policy = self.registry.comparisons
         if self.bindings and policy.named is not None:
             names = sorted(expr.names(left) | expr.names(right))
-            key = (left, right, tuple((n, self.bindings[n]) for n in names), half)
+            key = (left, right, tuple((n, self.bindings[n]) for n in names))
             floors = policy.floors.get(key)
             if floors is None:
                 try:
-                    floors = np.array(
-                        [self.row_policy(i).band_floor(left, right, half=half) for i in range(self.count)]
-                    )
+                    floors = np.array([self.row_policy(i).band_floor(left, right) for i in range(self.count)])
                 except UnresolvedScale:
                     floors = _OPEN
                 policy.floors[key] = floors
             if floors is _OPEN:
-                floor = [self.row_floor(left, right, i, half) for i in self.places(places)]
+                floor = [self.row_floor(left, right, i) for i in self.places(places)]
             else:
                 floor = floors if places is None else floors[places]
         else:
             try:
-                floor = policy.band_floor(left, right, half=half)
+                floor = policy.band_floor(left, right)
             except UnresolvedScale:
-                floor = [self.row_floor(left, right, i, half) for i in self.places(places)]
+                floor = [self.row_floor(left, right, i) for i in self.places(places)]
         return np.maximum(floor, policy.factor * np.maximum(np.abs(a), np.abs(b)))
 
     def ordered(self, op, left, right, a, b, places):
@@ -190,9 +188,13 @@ class _Pass:
         result = against(op, gap, band)
         wide = np.isinf(gap) & np.isinf(band)
         if np.any(wide):
-            a, b = a * 0.5, b * 0.5
-            half_band = self.band(left, right, a, b, places, half=True)
-            result = np.where(wide, against(op, a - b, half_band), result)
+            # Only the rows whose gap and band both overflow need the scalar extended range.
+            indices = self.places(places)
+            av, bv, mask = (np.broadcast_to(v, len(indices)) for v in (a, b, wide))
+            result = np.broadcast_to(result, len(indices)).copy()
+            for j in np.flatnonzero(mask):
+                policy, read = self.row_reader(indices[j])
+                result[j] = policy.ordered(op, left, right, float(av[j]), float(bv[j]), read)
         return result
 
     def row_policy(self, i):
@@ -206,13 +208,17 @@ class _Pass:
 
         return Comparisons(self.registry, policy.factor, bound)
 
-    def row_floor(self, left, right, i, half):
-        """Read a scale's selected arm in this row, including through a named formula."""
+    def row_reader(self, i):
+        """The comparison policy and scalar reader bound to this row."""
         policy = self.row_policy(i)
         units = copy(self.registry)
         units.comparisons = policy
         row = _Row(self.environment, self.read_bound, i)
-        return policy.band_floor(left, right, lambda node: scalar_value(node, row, units), half=half)
+        return policy, lambda node: scalar_value(node, row, units)
+
+    def row_floor(self, left, right, i):
+        policy, read = self.row_reader(i)
+        return policy.band_floor(left, right, read)
 
     def spread(self, value, chosen):
         """A value as an array over the chosen instances."""

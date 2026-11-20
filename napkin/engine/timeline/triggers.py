@@ -125,7 +125,7 @@ from fractions import Fraction
 from itertools import pairwise
 
 from ...core import expr as nodes
-from ...core.comparisons import against
+from ...core.comparisons import against, signed_gap
 from ...core.errors import ExpressionError
 from ...program.record import Unavailable
 from ..continuous import dense
@@ -232,13 +232,13 @@ class Triggers:
                     if found is None:
                         raise ExpressionError(f'{nodes.notation(node)}: only == and != compare these values')
                 else:
-                    difference = float(a) - float(b)
-                    tolerance = (
-                        self.comparison_band(left, right, a, b, lambda n: self.side(n, t))
-                        if band or close is not None
-                        else 0.0
-                    )
-                    if close is not None and abs(difference) <= tolerance:
+                    if band or close is not None:
+                        difference, tolerance = plan.units.comparisons.gap_band(
+                            left, right, a, b, lambda n: self.side(n, t)
+                        )
+                    else:
+                        difference, tolerance = float(a) - float(b), 0.0
+                    if close is not None and against('eq', difference, tolerance):
                         close.append(node)
                     found = against(op, difference, tolerance if band else 0.0)
                 if not found:
@@ -261,7 +261,7 @@ class Triggers:
                 a, b = self.side(left, t + AFTER), self.side(right, t + AFTER)
             except (ExpressionError, ArithmeticError, LookupError):
                 return 0.0
-            return float(a) - float(b)
+            return signed_gap(a, b)
 
         return near_ties(
             node,
@@ -269,19 +269,17 @@ class Triggers:
             self.plan,
             self.run.frozen,
             lambda side: self.side(side, t),
-            self.comparison_band,
             later,
         )
 
-    def comparison_band(self, left, right, a, b, read=None):
-        """Change 29: scale the band in the unit of the compared values."""
-        return self.plan.units.comparisons.band(left, right, a, b, read)
+    def gap_band(self, left, right, t, gap=None):
+        def read(node):
+            return self.side(node, t)
 
-    def band(self, left, right, t=None):
-        at = self.run.now if t is None else t
-        return self.comparison_band(
-            left, right, self.side(left, at), self.side(right, at), lambda n: self.side(n, at)
-        )
+        return self.plan.units.comparisons.gap_band(left, right, read(left), read(right), read, gap)
+
+    def within(self, left, right, t, gap):
+        return against('eq', *self.gap_band(left, right, t, gap))
 
     def moving_reads(self, *parts, through_rates=True):
         """The engine names that the nodes read, through formulas, that move between moments: the
@@ -585,7 +583,7 @@ class Triggers:
                 root = self._exact_root(left, right, moving, now)
                 if root is None:
                     root = now + start / (start - end) * (until - now)
-                if abs(start) <= self.band(left, right) or not now < root <= until:
+                if self.within(left, right, now, start) or not now < root <= until:
                     continue
                 physical = True
             else:
@@ -655,7 +653,7 @@ class Triggers:
             if name in levels:
                 old = levels[name]
                 store = nodes.ref(name)
-                if abs(old - value) > self.comparison_band(store, store, old, value):
+                if self.plan.units.comparisons.ordered('ne', store, store, old, value):
                     raise SimulationError(
                         f'incompatible crossing levels of {name} at {t:g} h: {old:g} and {value:g}'
                     )
@@ -663,11 +661,11 @@ class Triggers:
             levels[name] = value
             tx.writes[name] = value
             a, b = side(left), side(right)
-        band = self.comparison_band(left, right, a, b, side)
-        if abs(a - b) > band:
+        gap, band = self.plan.units.comparisons.gap_band(left, right, a, b, side)
+        if against('ne', gap, band):
             raise SimulationError(
                 f'the crossing of {nodes.notation(left)} and {nodes.notation(right)} at {t:g} h '
-                f'cannot be certified: residual {a - b:g} exceeds the comparison band {band:g}'
+                f'cannot be certified: residual {gap:g} exceeds the comparison band {band:g}'
             )
 
     def switching_time(self, left, right, moving, outgoing, affine):
@@ -691,7 +689,7 @@ class Triggers:
             breaks = sorted({at for way in ways if hasattr(way, 'breaks') for at in way.breaks(now, until)})
             for s, e in pairwise((now, *breaks, until)):
                 at = crossing_time(
-                    gap, s, e, side=outgoing, within=lambda t, d: abs(d) <= self.band(left, right, t)
+                    gap, s, e, side=outgoing, within=lambda t, d: self.within(left, right, t, d)
                 )
                 if at is not None:
                     return at
@@ -720,7 +718,7 @@ class Triggers:
             if switching or physical:
                 return 0.0
             if t not in widths:
-                widths[t] = self.band(left, right, t)
+                widths[t] = float(self.gap_band(left, right, t)[1])
             return widths[t]
 
         def difference(t):
@@ -738,7 +736,7 @@ class Triggers:
         def root(edge, s, e, speed=None):
             if physical:
                 return crossing_time(
-                    difference, s, e, within=lambda at, gap: abs(gap) <= self.band(left, right, at)
+                    difference, s, e, within=lambda at, gap: self.within(left, right, at, gap)
                 )
             if switching:
                 return crossing_time(
@@ -747,7 +745,7 @@ class Triggers:
                     e,
                     side=-1 if op == 'ge' else 1,
                     speed=speed,
-                    within=lambda at, gap: abs(gap) <= self.band(left, right, at),
+                    within=lambda at, gap: self.within(left, right, at, gap),
                 )
             return self._bisect(difference, edge, width, before[edge], s, e)
 

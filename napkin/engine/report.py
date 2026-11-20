@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from decimal import Decimal
 from itertools import pairwise
 
 import numpy as np
@@ -147,8 +148,8 @@ class NearTie:
     part: str
     owner: str
     comparison: str
-    difference: float
-    tolerance: float
+    difference: float | str
+    tolerance: float | str
     message: str
     title: str | None = None
 
@@ -354,11 +355,13 @@ def _near_ties(record, model=None):
     """The near-ties of a record (`Record.near_ties`), each with its message and its member's title."""
     found = []
     for entry, (origin, comparison, difference, tolerance) in record.near_ties():
+        gap = Decimal(difference) if isinstance(difference, str) else difference
+        band = Decimal(tolerance) if isinstance(tolerance, str) else tolerance
         difference_text = (
             f'located at {entry.detail("located"):.17g} h, difference {difference:+.3g} h, '
             f'tolerance {tolerance:.3g} h'
             if entry.kind == 'contact'
-            else f'its sides differ by {difference:.3g}, within the tolerance {tolerance:.3g} of what it reads'
+            else f'its sides differ by {gap:.3g}, within the tolerance {band:.3g} of what it reads'
         )
         message = f'{origin} at {float(entry.t):g} h: {_NEAR[entry.kind]}: {comparison} ({difference_text})'
         title = _title(model, entry.owner)

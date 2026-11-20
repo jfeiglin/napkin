@@ -153,3 +153,50 @@ def test_or_stops_at_the_term_that_decides():
     assert entry.t == 1 and entry.detail('near') is None
     (entry,) = tank(alarm(level | clock)).entries('fire')
     assert entry.t == 1 and [tie[1] for tie in entry.detail('near')] == ['tank.level >= 0.3 L']
+
+
+@pytest.mark.parametrize(('scale', 'separate'), [(2e158, True), (4e158, False)])
+def test_a_trigger_and_its_near_trace_distinguish_extreme_finite_values(scale, separate):
+    """The actual gap is 3.4e308. The 2e308 band excludes it and the 4e308 band includes it."""
+    from decimal import Decimal
+
+    from napkin.engine.report import report
+    from napkin.program.checkpoint import decode, encode
+
+    b = Builder(UNITS)
+    b.entity(
+        'meter',
+        value('x', '', 0, scale=scale),
+        value('y', '', 0, scale=1e159),
+        value('separate', BOOL, formula(this.x * this.y + 1.7e308 > -1.7e308)),
+        alarm(this.separate),
+    )
+    program = b.finish()
+    cfg = Configuration(Request(1))
+    record = run(program, cfg)
+    assert record.failure is None
+    assert [e.t for e in record.entries('fire')] == ([0] if separate else [])
+    assert len(record.entries('miss')) == (0 if separate else 1)
+    shown = report(record, program, cfg, ['meter.separate'], [0])
+    assert shown.values[0].values == (separate,)
+    if not separate:
+        ((_, (_, _, gap, band)),) = record.near_ties()
+        assert float(Decimal(str(gap)) / Decimal('1e308')) == pytest.approx(3.4)
+        assert float(Decimal(str(band)) / Decimal('1e308')) == pytest.approx(4)
+        assert decode(encode(record)).near_ties() == record.near_ties()
+        (tie,) = shown.near_ties
+        assert '3.40e+308' in tie.message and '4.00e+308' in tie.message
+
+
+@pytest.mark.parametrize(('scale', 'inside'), [(2e158, False), (4e158, True)])
+def test_contact_refinement_certifies_an_extreme_finite_gap_against_its_band(scale, inside):
+    """Contact certification uses the same 3.4e308 gap with 2e308 or 4e308 band."""
+    from napkin.core import evaluation, expr
+    from napkin.core.units import UnitRegistry
+    from napkin.engine.continuous.integrate import contact_band
+
+    units = UnitRegistry({})
+    units.comparisons.named = lambda name: (1.0, scale if name == 'x' else 1e159)
+    pair = expr.read('x*y+1.7e308'), expr.read('-1.7e308')
+    within = contact_band(pair, lambda t: lambda n: evaluation.value(n, {'x': 0.0, 'y': 0.0}, units), units)
+    assert within(0.0, float('inf')) == inside

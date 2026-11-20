@@ -26,16 +26,16 @@ ORDER = {
 def against(op, difference, band):
     """A gap in the closed band counts as equality."""
     if op == 'eq':
-        return abs(difference) <= band
+        return _magnitude(difference) <= band
     if op == 'ne':
-        return abs(difference) > band
+        return _magnitude(difference) > band
     if op == 'lt':
-        return difference < -band
+        return difference < (band.copy_negate() if isinstance(band, Decimal) else -band)
     if op == 'le':
         return difference <= band
     if op == 'gt':
         return difference > band
-    return difference >= -band
+    return difference >= (band.copy_negate() if isinstance(band, Decimal) else -band)
 
 
 # Scale metadata may grow or shrink beyond a float while the authored value
@@ -71,6 +71,19 @@ def _arithmetic(op, a, b):
 
 def _magnitude(number):
     return number.copy_abs() if isinstance(number, Decimal) else abs(number)
+
+
+def signed_gap(a, b, gap=None):
+    """Preserve the sign and size of the gap between two finite model values."""
+    gap = float(a) - float(b) if gap is None else gap
+    if math.isinf(gap) and math.isfinite(a) and math.isfinite(b):
+        return _arithmetic(operator.sub, float(a), float(b))
+    return gap
+
+
+def recorded_number(value):
+    """A numeric trace value outside float range is recorded in canonical decimal units."""
+    return str(value) if isinstance(value, Decimal) else value
 
 
 @dataclass
@@ -284,21 +297,26 @@ class Comparisons:
     def frozen_floor(self, name, read):
         """The formula's floor when retired, in a form that the record can serialize."""
         size = self.floor(expr.ref(name), expr.const(0), read)
-        return str(size) if isinstance(size, Decimal) else size
+        return recorded_number(size)
 
-    def band_floor(self, left, right, read=None, *, half=False):
-        floor = self.floor(left, right, read)
-        if half:
-            full = _arithmetic(operator.mul, floor, self.factor)
-            return float(_arithmetic(operator.mul, full, 0.5))
-        return (
-            float(_arithmetic(operator.mul, floor, self.factor))
-            if isinstance(floor, Decimal)
-            else floor * self.factor
-        )
+    def band_floor(self, left, right, read=None):
+        return float(self._width(self.floor(left, right, read)))
+
+    def _width(self, size):
+        if not isinstance(size, Decimal):
+            width = size * self.factor
+            if math.isfinite(width) or not math.isfinite(size):
+                return width
+        return _arithmetic(operator.mul, size, self.factor)
 
     def band(self, left, right, a, b, read=None):
-        return max(self.band_floor(left, right, read), self.factor * max(abs(a), abs(b)))
+        size = max(self.floor(left, right, read), abs(a), abs(b))
+        return float(self._width(size))
+
+    def gap_band(self, left, right, a, b, read=None, gap=None):
+        """The signed gap and band in the operands' units, even beyond float range."""
+        size = max(self.floor(left, right, read), abs(a), abs(b))
+        return signed_gap(a, b, gap), self._width(size)
 
     def ordered(self, op, left, right, a, b, read=None):
         if (
@@ -307,13 +325,7 @@ class Comparisons:
             or not (math.isfinite(a) and math.isfinite(b))
         ):
             return ORDER[op](a, b)
-        gap = a - b
-        if math.isinf(gap):
-            # Half the gap between any two finite floats fits. Halve the band in the same units.
-            a, b = a * 0.5, b * 0.5
-            band = max(self.band_floor(left, right, read, half=True), self.factor * max(abs(a), abs(b)))
-            return against(op, a - b, band)
-        return against(op, gap, self.band(left, right, a, b, read))
+        return against(op, *self.gap_band(left, right, a, b, read))
 
 
 def _scale_operands(node):

@@ -99,7 +99,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 from ...core import expr as nodes
-from ...core.comparisons import against
+from ...core.comparisons import against, recorded_number
 from ...core.errors import ExpressionError
 from ...core.units import rational
 from ...expressions import UnitSystem
@@ -501,14 +501,7 @@ class Moment:
             )
 
         try:
-            near = near_ties(
-                node,
-                origin,
-                self.plan,
-                run.frozen,
-                side,
-                run.triggers.comparison_band,
-            )
+            near = near_ties(node, origin, self.plan, run.frozen, side)
         except (ExpressionError, ArithmeticError, LookupError):
             near = ()  # a side that the answer did not read
         tx.near = (*tx.near, *near)
@@ -916,7 +909,7 @@ def split_ties(run, store, side):
         band = plan.units.comparisons.band(
             nodes.ref(operand), rate, limit, ahead, lambda n: lazily(n, run.value, plan.units, run.now)
         )
-        if claims[k + 1] > band and abs(difference) <= band:
+        if claims[k + 1] > band and against('eq', difference, band):
             served = [c for members in classes[: k + 1] for c in members]
             comparison = (
                 f'{what} against the claims of {_listed(served)}, served before {_listed(classes[k + 1])}'
@@ -943,7 +936,7 @@ def _listed(names):
     return shown if len(names) <= 3 else f'{shown} and {len(names) - 3} more'
 
 
-def near_ties(node, origin, plan, frozen, side, tolerance, later=None):
+def near_ties(node, origin, plan, frozen, side, later=None):
     """The near-ties of a condition (see the module): (origin, comparison, difference, tolerance) of
     each numeric comparison that decides its answer, through boolean formulas, whose sides differ by
     no more than the band of their two values, and with `later`, still do an instant later. `side(node)`
@@ -996,8 +989,7 @@ def near_ties(node, origin, plan, frozen, side, tolerance, later=None):
                 if not ((a == b) if op == 'eq' else (a != b)):
                     return False, []
                 continue
-            difference = float(a) - float(b)
-            band = tolerance(left, right, a, b, side)
+            difference, band = plan.units.comparisons.gap_band(left, right, a, b, side)
             exact_count = (
                 any(
                     isinstance(part, nodes.Ref)
@@ -1011,11 +1003,11 @@ def near_ties(node, origin, plan, frozen, side, tolerance, later=None):
                 and float(a).is_integer()
             )
             tie = (
-                [(origin, nodes.notation(part), difference, band)]
+                [(origin, nodes.notation(part), recorded_number(difference), recorded_number(band))]
                 if not exact_count
                 and band > 0
-                and abs(difference) <= band
-                and (later is None or abs(later(left, right)) <= band)
+                and against('eq', difference, band)
+                and (later is None or against('eq', later(left, right), band))
                 else []
             )
             if not against(op, difference, band):

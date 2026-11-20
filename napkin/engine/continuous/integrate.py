@@ -10,6 +10,7 @@ from scipy.integrate import OdeSolution, Radau
 from scipy.optimize import OptimizeResult, brentq
 
 from ...core import expr as nodes
+from ...core.comparisons import against
 from ...expressions import ExpressionError, compile_program, evaluate, names_in
 from ...program.config import Numerics
 from ..errors import SimulationError
@@ -306,7 +307,8 @@ def contact_band(pair, reader, units):
 
     def within(t, gap):
         read = reader(t)
-        return abs(gap) <= units.comparisons.band(*pair, *(read(node) for node in pair), read)
+        difference, width = units.comparisons.gap_band(*pair, *(read(node) for node in pair), read, gap)
+        return against('eq', difference, width)
 
     return within
 
@@ -719,7 +721,7 @@ def branch_sides(surfaces, side):
             left, right = side(a), side(b)
         except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
             continue
-        if math.isfinite(left - right):
+        if math.isfinite(left) and math.isfinite(right):
             signs[(a, b)] = int(left > right) - int(left < right)
     return signs
 
@@ -736,7 +738,7 @@ def departing_branches(surfaces, t, y, side_at, rates, contacted=(), comparisons
     if comparisons is not None:
         for a, b in signs.keys() - ties:
             left, right = side(a), side(b)
-            if abs(left - right) <= comparisons.band(a, b, left, right, side):
+            if comparisons.ordered('eq', a, b, left, right, side):
                 signs[a, b] = 0
     if ties:
         # The comparison can involve large nearly equal terms. A probe that moves the state
@@ -748,8 +750,7 @@ def departing_branches(surfaces, t, y, side_at, rates, contacted=(), comparisons
         for a, b in signs.keys() & ties:
             try:
                 left, right = side(a), side(b)
-                gap = left - right
-                if comparisons is not None and abs(gap) > comparisons.band(a, b, left, right, side):
+                if comparisons is not None and comparisons.ordered('ne', a, b, left, right, side):
                     continue  # an edit can move the operands away from the located contact
                 change = (following(a) - left) - (following(b) - right)
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
@@ -1024,8 +1025,8 @@ def far_sides(
             here = float(y[place[here_node.name]])
             if not math.isfinite(limit) or (here != limit and (a, b) not in contacted):
                 continue
-            band = comparisons.band(here_node, other, here, limit, side)
-            if abs(here - limit) > band:
+            gap, band = comparisons.gap_band(here_node, other, here, limit, side)
+            if not against('eq', gap, band):
                 continue  # an edit replaced the stock or its threshold before the re-share
             i = place[here_node.name]
             if held(i):
@@ -1058,7 +1059,7 @@ def far_sides(
                 choose(clock_branches)
             if outgoing * way < 0:
                 reversal(here_node.name)
-            low, high = (limit - band, beyond) if way > 0 else (beyond, limit + band)
+            low, high = (limit - float(band), beyond) if way > 0 else (beyond, limit + float(band))
             switches.append((i, low, high, beyond))
     departure = y.copy()
     for i, low, high, beyond in switches:
