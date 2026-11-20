@@ -5,11 +5,11 @@ the results folder of each scenario (`results/source-verification.json`). No dos
 catalogue as a whole.
 """
 
-import json
 from collections import Counter
 
 from napkin import SCHEMA_VERSION
 from napkin.model.evidence import dependencies_of
+from napkin.model.load import dump_json
 
 from .. import catalogue
 
@@ -109,6 +109,6 @@ def artifacts(ctx):
             for claim in source['claims']:
                 claim['scenario'] = sid
         outputs[catalogue.result(sid, 'source-verification.json')] = (
-            json.dumps(record, indent=2, ensure_ascii=True) + '\n'
+            dump_json(record, indent=2, ensure_ascii=True) + '\n'
         )
     return outputs

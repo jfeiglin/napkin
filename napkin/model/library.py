@@ -99,7 +99,7 @@ def folder_records(folder):
     units_path, *record_paths = folder_files(Path(folder))
     out = {'units': load_json(units_path) if units_path.is_file() else {}}
     for collection, path in zip(COLLECTIONS, record_paths):
-        out[collection] = load_json(path) if path.is_file() else []
+        out[collection] = load_json(path, evidence=collection == 'claims') if path.is_file() else []
     return out
 
 
@@ -144,7 +144,7 @@ def read_vocabulary(path):
     """The library of the file `path` (a `vocabulary.json`), with the prelude's units first, checked
     together with them: a record of the library can read a unit of the prelude, and no unit of the
     library redefines a name of the prelude."""
-    library, errors = with_prelude(load_json(Path(path)))
+    library, errors = with_prelude(load_json(Path(path), evidence=True))
     if not errors:
         errors, _ = library_checks(library)
     if errors:

@@ -150,7 +150,7 @@ def _datum_unit(spelling, units, registry):
 
 def _written(number):
     """A datum's number as its file writes it: `34`, `34.0`, `0.48`."""
-    return str(number) if isinstance(number, int) else float.__repr__(float(number))
+    return str(number)
 
 
 def _number(value):

@@ -24,6 +24,7 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from fractions import Fraction
 from types import MappingProxyType
 
@@ -74,7 +75,7 @@ def rational(number):
     its own `repr`, within half a unit of its last place of the binary value."""
     if isinstance(number, Fraction):
         return number
-    if isinstance(number, int):
+    if isinstance(number, int | Decimal):
         return Fraction(number)
     return Fraction(float.__repr__(float(number)))
 

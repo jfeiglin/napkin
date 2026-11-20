@@ -396,3 +396,38 @@ def test_every_kind_of_value_that_cites_a_datum_is_that_number_or_a_warning(tmp_
             f'crews.second.wait: {head} 35 h differs from it',
         ]
     )
+
+
+@pytest.mark.parametrize('shared', [False, True])
+@pytest.mark.parametrize('token', ['34.0000000000000001', '340000000000000001e-16'])
+def test_json_evidence_preserves_the_exact_decimal(tmp_path, shared, token):
+    import json
+
+    from napkin.model.evidence import claim_digest
+    from napkin.model.library import folder_records
+
+    path = datum_package(tmp_path, end='34.0000000000000001 h', delay=('EXACT', 'h'))
+    owned = path.parent / 'evidence' / 'claims.json'
+    claims = json.loads(owned.read_text())
+    owned.write_text(owned.read_text().replace('"EXACT"', token))
+    # Pin the claim that the reader consumes. The expected datum comparison below is independent.
+    action = next(item for item in claims if item['id'] == 'C-ACTION')
+    parsed = next(item for item in folder_records(path.parent)['claims'] if item['id'] == 'C-ACTION')
+    action['verification']['content_sha256'] = claim_digest(parsed)
+    if shared:
+        vocab_path = next(tmp_path.rglob('vocabulary.json'))
+        vocab = json.loads(vocab_path.read_text())
+        sources = path.parent / 'evidence' / 'sources.json'
+        vocab['sources'].extend(json.loads(sources.read_text()))
+        sources.write_text('[]')
+        vocab['claims'].append(action)
+        claims.remove(action)
+        vocab_path.write_text(json.dumps(vocab).replace('"EXACT"', token))
+    owned.write_text(json.dumps(claims).replace('"EXACT"', token))
+    assert data_warnings(path) == []
+    path.write_text(path.read_text().replace('34.0000000000000001 h', '34 h'))
+    (warning,) = data_warnings(path)
+    assert '34.0000000000000001' in warning[0]
+    from tools.evidence.integrate import dump
+
+    assert '34.0000000000000001' in dump(parsed)

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from decimal import Decimal
 from pathlib import Path
 
 from .. import schema as schemas
@@ -19,7 +20,55 @@ class SourceError(ValueError):
         super().__init__(f'{path}:{line}: {message}' if line else f'{path}: {message}')
 
 
-def load_json(path):
+def _evidence_number(token):
+    """Keep a decimal exactly, using a float only when its JSON spelling preserves the datum."""
+    exact = Decimal(token)
+    value = float(token)
+    return value if Decimal(str(value)) == exact else exact
+
+
+def dump_json(value, *, sort_keys=False, indent=None, ensure_ascii=True, separators=None, allow_nan=False):
+    """Write JSON, including evidence numbers too precise to round-trip through a float."""
+    options = dict(
+        sort_keys=sort_keys,
+        indent=indent,
+        ensure_ascii=ensure_ascii,
+        allow_nan=allow_nan,
+        separators=separators,
+    )
+    try:
+        return json.dumps(value, **options)
+    except TypeError:
+        # The standard encoder accepts no Decimal. Preserve its exact JSON number spelling.
+        pass
+    comma, colon = separators or ((',', ': ') if indent is not None else (', ', ': '))
+
+    def write(item, depth):
+        if isinstance(item, Decimal):
+            if not item.is_finite():
+                raise ValueError(f'non-finite JSON number {item}')
+            return str(item)
+        if isinstance(item, dict):
+            keys = sorted(item) if sort_keys else item
+            parts = [
+                json.dumps(key, ensure_ascii=ensure_ascii) + colon + write(item[key], depth + 1)
+                for key in keys
+            ]
+            left, right = '{', '}'
+        elif isinstance(item, (tuple, list)):
+            parts = [write(child, depth + 1) for child in item]
+            left, right = '[', ']'
+        else:
+            return json.dumps(item, **options)
+        if not parts or indent is None:
+            return left + comma.join(parts) + right
+        pad = '\n' + ' ' * (indent * (depth + 1))
+        return left + pad + (comma + pad).join(parts) + '\n' + ' ' * (indent * depth) + right
+
+    return write(value, 0)
+
+
+def load_json(path, *, evidence=False):
     """A JSON document (library, edits, package): duplicate keys and non-finite numbers rejected."""
 
     def pairs(items):
@@ -34,7 +83,10 @@ def load_json(path):
         raise SourceError(path, 0, f'non-finite number {value!r}')
 
     return json.loads(
-        Path(path).read_text(encoding='utf-8'), object_pairs_hook=pairs, parse_constant=bad_constant
+        Path(path).read_text(encoding='utf-8'),
+        object_pairs_hook=pairs,
+        parse_constant=bad_constant,
+        parse_float=_evidence_number if evidence else float,
     )
 
 

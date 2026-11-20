@@ -64,7 +64,7 @@ from napkin.model.library import (
     load_library,
     shared_library,
 )
-from napkin.model.load import schema_document
+from napkin.model.load import dump_json, schema_document
 
 from .. import catalogue
 from ..catalogue import ROOT
@@ -103,11 +103,11 @@ class IntegrationError(ValueError):
 
 def dump(value):
     """The library's exact on-disk format (a load and re-dump is byte-identical): UTF-8 text."""
-    return json.dumps(value, indent=2, ensure_ascii=False) + '\n'
+    return dump_json(value, indent=2, ensure_ascii=False) + '\n'
 
 
 def load_packs(directory):
-    return [(str(path), load_json(path)) for path in sorted(Path(directory).rglob('*.json'))]
+    return [(str(path), load_json(path, evidence=True)) for path in sorted(Path(directory).rglob('*.json'))]
 
 
 def cached_bytes(sha256, cache=CACHE):

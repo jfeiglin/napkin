@@ -95,7 +95,9 @@ class Owner:
         """{collection: records} of the evidence that the owner's folder owns."""
         from napkin.model import load_json
 
-        return {kind: load_json(self.evidence / f'{kind}.json') for kind in COLLECTIONS}
+        return {
+            kind: load_json(self.evidence / f'{kind}.json', evidence=kind == 'claims') for kind in COLLECTIONS
+        }
 
 
 def vocabulary(root=ROOT):

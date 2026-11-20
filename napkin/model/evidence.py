@@ -10,17 +10,17 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import json
 import math
 from collections.abc import Mapping
 
+from ..core.units import rational
 from ..expressions import ExpressionError, UnitSystem
 from .ir import basis_records, diagnostic, thaw
-from .load import schema_errors, schema_identity
+from .load import dump_json, schema_errors, schema_identity
 
 
 def canonical(value):
-    return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)
+    return dump_json(value, sort_keys=True, separators=(',', ':'), allow_nan=False)
 
 
 def digest(value):
@@ -44,7 +44,7 @@ def claim_digest(claim):
     """SHA-256 of every claim field except its verification record (canonical ASCII JSON)."""
     content = {key: value for key, value in claim.items() if key not in ('verification', 'verified')}
     return hashlib.sha256(
-        json.dumps(content, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode()
+        dump_json(content, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode()
     ).hexdigest()
 
 
@@ -130,8 +130,9 @@ def dependencies_of(named, library):
 def datum_matches(value, unit, datum, units):
     """A value in `unit` equals a cited datum after unit conversion."""
     declared, cited = units.parse_unit(unit), units.parse_unit(datum['unit'])
-    return declared.compatible(cited) and math.isclose(
-        value * declared.scale, datum['value'] * cited.scale, rel_tol=1e-12, abs_tol=0
+    return declared.compatible(cited) and (
+        rational(value) * units.exact_scale(unit)
+        == rational(datum['value']) * units.exact_scale(datum['unit'])
     )
 
 
