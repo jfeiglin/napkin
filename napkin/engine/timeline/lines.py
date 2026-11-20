@@ -44,9 +44,10 @@ from ..errors import SimulationError
 from .contacts import put_lines
 from .family import Columns, due_through
 from .network import BACKWARD, FORWARD, IN, OUT, ROUNDOFF, SIDES, Asked, Instant, network_of
+from .way import Way
 
 
-class Lines:
+class Lines(Way):
     """Sets of one run that run on lines, from the time `t` on (see the module). `keys` are the
     ids that the run gives the sets."""
 
@@ -344,6 +345,16 @@ class Lines:
         for f in self.flows_of.pop(key):
             self.dead_flows[f] = True
         self.alive = bool(self.members)
+
+    def answers_at(self, t, incoming, flows):
+        answers = {}
+        for flow in flows:
+            row = self.row[flow]
+            answers[self.recorded[row]] = float(self.value[row])
+            if not self.net.plain:
+                for c in self.net.conns.of(row):
+                    answers[f'{self.net.connections[c]}.actual_rate'] = float(self.rate[c])
+        return answers
 
     def level_at(self, store, t):
         """The value of a store at time t, on its present line."""

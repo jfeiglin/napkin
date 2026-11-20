@@ -111,71 +111,7 @@ class Ways:
         return isinstance(way, Family | Lines) or (isinstance(way, Sparse) and name in way.held_rates)
 
     def publish(self, instance, t, incoming=False, flows=None):
-        """Publish the numeric answer of an installed set. Moving rates use the modes of their
-        segment at t. A connection's carried rate supplies its leg and both incident endpoints."""
-        whole = flows is None
-        if whole:
-            flows = instance.flows
-        if isinstance(instance, Sparse):
-            pending = instance.pending
-            y = instance.y if pending is None else pending[2](t)
-            evaluations = instance.evaluations
-            try:
-                if not incoming:
-                    instance._start()
-                primary, carried = instance.values(t, y)
-            finally:
-                instance.evaluations = evaluations
-            answers = dict(zip(instance.recorded, map(float, primary)))
-            if not instance.net.plain:
-                answers.update(
-                    (f'{name}.actual_rate', float(number))
-                    for name, number in zip(instance.net.connections, carried)
-                )
-        elif isinstance(instance, ComponentWay):
-            if not incoming:
-                instance._settle()
-            component, segment = instance.component, instance.pending
-            y = component.state.y if segment is None or segment.solution is None else segment.solution(t)
-            evaluations = component.state.evaluations
-            try:
-                component.field.rates(t, component.context.project(y))
-                answers = dict(zip(instance.rates, map(float, component.field.delivered)))
-            finally:
-                component.state.evaluations = evaluations
-        elif isinstance(instance, DeclaredWay):
-            answers = instance.publish_at(t, incoming)
-        else:
-            answers = {}
-            for flow in flows:
-                row = instance.row[flow]
-                if isinstance(instance, Family):
-                    answers[f'{flow}.actual_rate'] = float(instance.rate[row])
-                else:
-                    answers[instance.recorded[row]] = float(instance.value[row])
-                    if not instance.net.plain:
-                        for c in instance.net.conns.of(row):
-                            answers[f'{instance.net.connections[c]}.actual_rate'] = float(instance.rate[c])
-        run = self.run
-        run.published.update(answers)
-        ends = {}
-        for flow in flows:
-            for connection in self.plan.flows[flow].connections:
-                amount = run.published.get(f'{connection.name}.actual_rate', 0.0)
-                for store, side in ((connection.source, 'outflow'), (connection.sink, 'inflow')):
-                    if store is not None:
-                        ends[store, side] = ends.get((store, side), 0.0) + amount
-        for (store, side), installed in ends.items():
-            # The installed connections still carry the round's opening answer after a stage
-            # changes membership. A partial refresh of fixed rows needs their unchanged neighbours.
-            total = (
-                installed
-                if whole
-                else sum(run.published.get(f'{c}.actual_rate', 0.0) for c in self.plan.incident(store, side))
-            )
-            run.published[f'{store}.{side}.actual_rate'] = total
-        if isinstance(instance, Sparse | ComponentWay):
-            self.sampled[instance.key] = t
+        instance.publish(t, incoming, flows)
 
     def shared_value(self, name):
         """A numeric answer of the last sharing. An installed moving set samples just once at this
@@ -185,7 +121,11 @@ class Ways:
             instance = self.instance_of(owner)
             if instance is None and name in self.plan.shared:  # a leg or the side of a store
                 instance = self.instance_of(owner.rsplit('.', 1)[0])
-            if isinstance(instance, Sparse | ComponentWay) and self.sampled[instance.key] != self.run.now:
+            if (
+                instance is not None
+                and instance.sample_on_read
+                and self.sampled[instance.key] != self.run.now
+            ):
                 self.publish(instance, self.run.now, incoming=True)
         return self.run.published.get(name, 0.0)
 
@@ -255,12 +195,7 @@ class Ways:
         stands (`cut`): the flows that must rebuild at the settling. Each
         way whose rates move between moments says which of its switches its window reached at its
         end (`switched_at(t)`); a way whose rates hold between moments reaches none."""
-        found = set()
-        for instance in self.instances:
-            reached = getattr(instance, 'switched_at', None)
-            if reached is not None:
-                found |= reached(t)
-        return found
+        return {flow for instance in self.instances for flow in instance.switched_at(t)}
 
     def renew(self):
         """A round's stages begin: each declared solver's next solve starts on a fresh instance with

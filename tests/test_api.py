@@ -88,6 +88,7 @@ CLOSURE = (
     'engine/timeline/sparse.py',
     'engine/timeline/trees.py',
     'engine/timeline/triggers.py',
+    'engine/timeline/way.py',
     'engine/timeline/ways.py',
     'expressions.py',
     'program/__init__.py',

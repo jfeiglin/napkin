@@ -130,6 +130,7 @@ from .plan import DYNAMIC, FORMULA, LOOKUP, RATE, REDUCE
 from .reads import lazily
 from .record import fitted
 from .region import Region, key_surfaces, trend
+from .way import Way
 
 SLACK = 1e-6  # a store at its bound holds there when its answer moves it out by less than this part
 MOVING = 20  # the most stores of a declared solver's set whose problem moves between moments
@@ -806,7 +807,7 @@ def _relations(found, origin):
     return [] if found else [(Affine({}, 1.0), '<=', ())]
 
 
-class DeclaredWay:
+class DeclaredWay(Way):
     """One connected set of a declared solver, as a way of a run (`ways.py`), from the time `t` on
     (see the module). Its rates hold between its events (`lines`)."""
 
@@ -1067,7 +1068,7 @@ class DeclaredWay:
         )
         return values
 
-    def publish_at(self, t, incoming):
+    def answers_at(self, t, incoming, flows):
         """The flow values, carried leg rates and results of the current sharing."""
         return self._published(self.value, self.results, self.former.requests)
 
@@ -1242,7 +1243,7 @@ class MovingDeclared(DeclaredWay):
         finally:
             self.trial = None
 
-    def publish_at(self, t, incoming):
+    def answers_at(self, t, incoming, flows):
         """Publish every result of one trial answer, including the requests carried by its legs."""
         if self.pending is not None:
             if incoming and t > self.pending.start:

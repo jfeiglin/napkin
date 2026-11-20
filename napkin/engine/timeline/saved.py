@@ -712,7 +712,7 @@ def _restore_ways(run, found):
         ways.instances.append(instance)
         if isinstance(instance, Sparse) and instance.following:
             ways.followers.add(instance.key)
-        if isinstance(instance, Sparse | ComponentWay):
+        if instance.sample_on_read:
             ways.sampled[instance.key] = run.now
         elif isinstance(instance, MovingDeclared):
             ways.moving_solvers[instance.key] = None

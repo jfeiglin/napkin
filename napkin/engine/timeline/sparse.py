@@ -62,6 +62,7 @@ from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE, Pending, _renamed
 from .reads import Reads, lazily
 from .record import fitted
 from .region import Region, key_surfaces
+from .way import Way
 
 _MISSING = object()
 
@@ -547,7 +548,7 @@ def _plain(value):
     return value if isinstance(value, bool | str) else float(value)
 
 
-class Sparse:
+class Sparse(Way):
     """Connected sets on the sparse integrator from the time `t` on (see the module), a way of a run
     (`ways.py`): one set, or the sets of `sets` in the order of their levels (`levels`), where the
     settings of a set read the rates of a set of an earlier level that move, so that they integrate
@@ -840,6 +841,25 @@ class Sparse:
         ):
             raise SimulationError(f'{self.stores[0]}: a capacity or a request below zero at {t:g} h')
         return Asked(request, capacity, end_request, end_capacity)
+
+    sample_on_read = True
+
+    def answers_at(self, t, incoming, flows):
+        pending = self.pending
+        y = self.y if pending is None else pending[2](t)
+        evaluations = self.evaluations
+        try:
+            if not incoming:
+                self._start()
+            primary, carried = self.values(t, y)
+        finally:
+            self.evaluations = evaluations
+        answers = dict(zip(self.recorded, map(float, primary)))
+        if not self.net.plain:
+            answers.update(
+                (f'{name}.actual_rate', float(number)) for name, number in zip(self.net.connections, carried)
+            )
+        return answers
 
     def values(self, t, y):
         """What the network gives of each flow at time t and state y, with the flags of the segment,

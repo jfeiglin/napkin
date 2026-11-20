@@ -988,17 +988,14 @@ class Run:
             threshold = self.clock.apart(moment)
             if independent:
                 for way in self.ways.instances:
-                    lookahead = getattr(way, 'lookahead', None)
-                    if lookahead is not None:
-                        lookahead(moment, threshold)
+                    way.lookahead(moment, threshold)
             self.contacts = tuple(
                 sorted(
                     {
                         event
                         for way in self.ways.instances
                         if independent
-                        for event in way.timing_events(threshold)
-                        if self.clock.within(event[0], moment)
+                        for event in way.contacts_at(moment, threshold)
                     }
                 )
             )
@@ -1042,12 +1039,7 @@ class Run:
         t = self.now
         through = self.clock.apart(t) if self.contacts else t
         for way in self.ways.cut_order():
-            events = way.timing_events(through)
-            if way.peek() <= t or any(self.clock.within(at, t) for at, _, _ in events):
-                changed, met = way.snap(t, through)
-                self.moved.update(changed)
-                self.moved.update(met)
-            self.moved.update(way.cut(t) or ())
+            self.moved.update(way.arrive(t, through))
         self.moved.update(self.ways.switched(t))
         self.now = t
 

@@ -67,6 +67,7 @@ from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import node_of
 from .contacts import put_bounds
+from .way import Way
 
 
 @dataclass(frozen=True)
@@ -454,7 +455,7 @@ class Component:
         )
 
 
-class ComponentWay:
+class ComponentWay(Way):
     """One connected set on the continuous engine, as a way of a run (`ways.py`), from the time `t`
     on. Its segments come one after the other: each is made when the run first asks for its next
     event (`peek`), as far as the next moment that the run knows (`run.limit`), and committed when
@@ -658,6 +659,21 @@ class ComponentWay:
         )
         stores, rates, _ = self.step()
         return stores + rates, met
+
+    sample_on_read = True
+
+    def answers_at(self, t, incoming, flows):
+        if not incoming:
+            self._settle()
+        component, segment = self.component, self.pending
+        y = component.state.y if segment is None or segment.solution is None else segment.solution(t)
+        evaluations = component.state.evaluations
+        try:
+            component.field.rates(t, component.context.project(y))
+            answers = dict(zip(self.rates, map(float, component.field.delivered)))
+        finally:
+            component.state.evaluations = evaluations
+        return answers
 
     def _settle(self):
         """The state rests on the bounds that it reaches at its present time, and on the far side of

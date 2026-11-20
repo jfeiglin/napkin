@@ -44,6 +44,7 @@ from .collections import combined, looked_up
 from .contacts import put_bounds
 from .plan import FORMULA, LOOKUP, REDUCE, Pending
 from .reads import Reads, lazily
+from .way import Way
 
 
 class Columns:
@@ -210,7 +211,7 @@ class _Failed:
         self.problem = problem
 
 
-class Family:
+class Family(Way):
     """Rows of the family of one run, from the time `t` on (see the module). `keys` are the ids that
     the run gives the sets, one for each row."""
 
@@ -344,6 +345,9 @@ class Family:
         self.dead[k] = True
         self.version[k] += 1
         self.alive = not self.dead.all()
+
+    def answers_at(self, t, incoming, flows):
+        return {f'{flow}.actual_rate': float(self.rate[self.row[flow]]) for flow in flows}
 
     def level_at(self, store, t):
         """The value of a store at time t, on its present line."""
