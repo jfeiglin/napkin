@@ -157,28 +157,43 @@ class _Pass:
                 stack.append((asked, wanted, self.computation(asked, wanted)))
                 sent = None
 
-    def band(self, left, right, a, b, places):
+    def band(self, left, right, a, b, places, *, half=False):
         policy = self.registry.comparisons
         if self.bindings and policy.named is not None:
             names = sorted(expr.names(left) | expr.names(right))
-            key = (left, right, tuple((n, self.bindings[n]) for n in names))
+            key = (left, right, tuple((n, self.bindings[n]) for n in names), half)
             floors = policy.floors.get(key)
             if floors is None:
                 try:
-                    floors = np.array([self.row_policy(i).floor(left, right) for i in range(self.count)])
+                    floors = np.array(
+                        [self.row_policy(i).band_floor(left, right, half=half) for i in range(self.count)]
+                    )
                 except UnresolvedScale:
                     floors = _OPEN
                 policy.floors[key] = floors
             if floors is _OPEN:
-                floor = [self.row_floor(left, right, i) for i in self.places(places)]
+                floor = [self.row_floor(left, right, i, half) for i in self.places(places)]
             else:
                 floor = floors if places is None else floors[places]
         else:
             try:
-                floor = policy.floor(left, right)
+                floor = policy.band_floor(left, right, half=half)
             except UnresolvedScale:
-                floor = [self.row_floor(left, right, i) for i in self.places(places)]
-        return policy.factor * np.maximum(floor, np.maximum(np.abs(a), np.abs(b)))
+                floor = [self.row_floor(left, right, i, half) for i in self.places(places)]
+        return np.maximum(floor, policy.factor * np.maximum(np.abs(a), np.abs(b)))
+
+    def ordered(self, op, left, right, a, b, places):
+        a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+        with np.errstate(over='ignore'):
+            gap = a - b
+        band = self.band(left, right, a, b, places)
+        result = against(op, gap, band)
+        wide = np.isinf(gap) & np.isinf(band)
+        if np.any(wide):
+            a, b = a * 0.5, b * 0.5
+            half_band = self.band(left, right, a, b, places, half=True)
+            result = np.where(wide, against(op, a - b, half_band), result)
+        return result
 
     def row_policy(self, i):
         policy = self.registry.comparisons
@@ -191,13 +206,13 @@ class _Pass:
 
         return Comparisons(self.registry, policy.factor, bound)
 
-    def row_floor(self, left, right, i):
+    def row_floor(self, left, right, i, half):
         """Read a scale's selected arm in this row, including through a named formula."""
         policy = self.row_policy(i)
         units = copy(self.registry)
         units.comparisons = policy
         row = _Row(self.environment, self.read_bound, i)
-        return policy.floor(left, right, lambda node: scalar_value(node, row, units))
+        return policy.band_floor(left, right, lambda node: scalar_value(node, row, units), half=half)
 
     def spread(self, value, chosen):
         """A value as an array over the chosen instances."""
@@ -353,9 +368,7 @@ def _chain(run, node, chosen):
         still = run.narrowed(chosen, open_places)
         right = run.spread((yield operand, still), still)
         if left.dtype.kind in 'iuf' and right.dtype.kind in 'iuf':
-            band = run.band(before, operand, left, right, still)
-            with np.errstate(over='ignore'):
-                holds = against(op, left.astype(float) - right.astype(float), band)
+            holds = run.ordered(op, before, operand, left, right, still)
         else:
             holds = _ordered(op, left, right)
         holds = np.broadcast_to(holds, (len(open_places),))
@@ -418,18 +431,12 @@ def _within(run, node, chosen):
     instance by itself reads them, and a reversed interval of any instance fails the call."""
     value, low, high = yield from _numbers(node.args, chosen)
     x, lo, hi = node.args
-    with np.errstate(over='ignore'):
-        reversed_ = np.asarray(low, dtype=float) - np.asarray(high, dtype=float) > run.band(
-            lo, hi, low, high, chosen
-        )
+    reversed_ = run.ordered('gt', lo, hi, low, high, chosen)
     if np.any(reversed_):
         k = int(np.flatnonzero(np.broadcast_to(reversed_, (run.size(chosen),)))[0])
         ends = [float(np.broadcast_to(end, (run.size(chosen),))[k]) for end in (low, high)]
         raise ExpressionError(f'{ops.REVERSED}: [{ends[0]!r}, {ends[1]!r}]')
-    with np.errstate(over='ignore'):
-        result = (np.asarray(low, dtype=float) - value <= run.band(lo, x, low, value, chosen)) & (
-            np.asarray(value, dtype=float) - high <= run.band(x, hi, value, high, chosen)
-        )
+    result = run.ordered('le', lo, x, low, value, chosen) & run.ordered('le', x, hi, value, high, chosen)
     return bool(result) if np.ndim(result) == 0 else result
 
 

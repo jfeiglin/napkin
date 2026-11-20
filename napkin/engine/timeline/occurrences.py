@@ -491,8 +491,8 @@ class Occurrences:
             try:
                 frozen = run.value(name, observations=observations)
                 if type(frozen) in (float, int) and found.scale is None:
-                    floors[name] = plan.units.comparisons.floor(
-                        nodes.ref(name), nodes.const(0), lambda n: lazily(n, run.value, plan.units, t)
+                    floors[name] = plan.units.comparisons.frozen_floor(
+                        name, lambda n: lazily(n, run.value, plan.units, t)
                     )
             except (ExpressionError, ArithmeticError, ValueError, LookupError, SimulationError) as problem:
                 frozen = Unavailable(

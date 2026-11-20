@@ -504,3 +504,108 @@ def test_a_table_key_forwards_the_selected_rows_comparison_scale(reader):
         assert record.failure is None
         found = read(record, program, [key], list(times))[0].values
     assert found == (True, False, True)
+
+
+@pytest.mark.parametrize(
+    ('expression', 'scale', 'wanted'),
+    [
+        ('(x - x + 1) ** -1 > 0', 1, True),
+        ('x ** 2 > 0', 1e200, False),
+        ('x ** -2 > 0', 1e-200, False),
+        ('x ** 2 / 1e200 + 1e192 > 0', 1e200, True),
+        ('x ** -2 / 1e200 + 1e192 > 0', 1e-200, True),
+        ('(x ** 2 - 1) * 1e200 + 1e-250 > 0', 1e-200, False),
+        ('(x ** -2 - 1) * 1e200 + 1e-250 > 0', 1e200, False),
+        ('x * x / 1e200 + 1e192 > 0', 1e200, True),
+        ('(x * x - 1) * 1e200 + 1e-250 > 0', 1e-200, False),
+        ('(x / y - 1) * 1e200 + 1e-250 > 0', 1e-200, False),
+        ('(x * 1e200 - x * 1e200) + 1 > 0', 1e200, True),
+        ('q(0, "huge") ** 2 == 0', 1, True),
+    ],
+)
+def test_finite_comparisons_keep_the_scale_through_large_and_small_intermediates(expression, scale, wanted):
+    """x = y = 1. An intermediate floor of 1e400 divided by 1e200 gives
+    a band of 1e191. A floor of 1e-400 times 1e200 gives a band of 1e-209.
+    Exact cancellation leaves zero uncertainty from that quantity."""
+    import numpy as np
+
+    from napkin.core import arrays, evaluation, expr
+    from napkin.core.units import UnitSystem
+
+    registry = UnitSystem({'huge': {'dimensions': {'volume': 1}, 'scale': 1e200}})
+    registry.comparisons.named = lambda n: (1.0, scale if n == 'x' else 1e200)
+    node = expr.read(expression)
+    env = {'x': 1.0, 'y': 1.0}
+    assert evaluation.value(node, env, registry) == wanted
+    assert evaluation.program([], [node], units=registry, write=False)(env, registry) == (wanted,)
+    assert np.all(arrays.values(node, {k: np.ones(2) for k in env}, registry, 2) == wanted)
+
+
+@pytest.mark.parametrize('reader', ['engine', 'reference'])
+def test_a_product_with_a_large_intermediate_floor_can_be_rescaled(reader):
+    """The product has floor 1e400. Dividing by 1e200 gives band 1e191.
+    Adding 1e192 puts the finite result ten bands above zero."""
+    b = Builder(UNITS)
+    b.entity(
+        'tank',
+        value('x', '', 1, scale=1e200),
+        value('positive', BOOL, formula(this.x * this.x / 1e200 + 1e192 > 0)),
+    )
+    assert values(b.finish(), Configuration(Request(1)), ['positive'], reader) == [True]
+
+
+def test_a_large_floor_gives_a_finite_band_before_comparing():
+    """A 1e310 floor has a 1e301 band. The squares 1e300 and 1e302 lie on opposite sides."""
+    import numpy as np
+
+    from napkin.core import arrays, evaluation, expr
+    from napkin.core.units import UnitRegistry
+
+    units = UnitRegistry({})
+    units.comparisons.named = lambda n: (1.0, 1e155)
+    n = expr.read('x ** 2 > 0')
+    env = {'x': np.array([1e150, 1e151])}
+    assert [evaluation.value(n, {'x': x.item()}, units) for x in env['x']] == [False, True]
+    assert list(arrays.values(n, env, units, 2, {'x': ('x0', 'x1')})) == [False, True]
+
+
+def test_a_frozen_formula_keeps_a_large_intermediate_floor_through_checkpoint():
+    """A retired x*x keeps floor 1e400. A later comparison divides by 1e200,
+    giving a finite band of 1e191, smaller than the 1e192 offset."""
+    from napkin.engine.timeline import Plan, Run
+    from napkin.program.build import t
+    from napkin.program.checkpoint import Breakpoint, dumps, loads
+
+    b = Builder(UNITS)
+    tank = b.entity(
+        'tank',
+        value('x', '', 1, scale=1e200),
+        event('job', value('square', '', formula(this.x * this.x)), after(q(1, 'h'))),
+        event('read_later', after(q(2, 'h'))),
+        value('positive', BOOL, formula(this.job.occurrences.at(t).square / 1e200 + 1e192 > 0)),
+    )
+    b.setup(start(tank.job), start(tank.read_later))
+    program, cfg = b.finish(), Configuration(Request(3))
+    machine = Run(Plan.of(program, cfg), (Breakpoint('tank.read_later.step[0]'),))
+    stopped = loads(dumps(machine.run()))
+    restored = Run.restored(Plan.of(program, cfg), stopped).resume()
+    assert restored.failure is None
+    assert read(restored, program, [Key('tank', ('positive',))], [3])[0].values == (True,)
+
+
+@pytest.mark.parametrize(('scale', 'separate'), [(2e158, True), (4e158, False)])
+def test_a_gap_and_band_outside_float_range_compare_at_their_own_magnitudes(scale, separate):
+    """The gap from -1.7e308 to 1.7e308 is 3.4e308. It exceeds the 2e308
+    band and is inside the 4e308 band. Both modeled operands remain finite."""
+    import numpy as np
+
+    from napkin.core import arrays, evaluation, expr
+    from napkin.core.units import UnitRegistry
+
+    units = UnitRegistry({})
+    units.comparisons.named = lambda n: (1.0, scale if n == 'x' else 1e159)
+    n = expr.read('x*y + 1.7e308 > -1.7e308')
+    env = {'x': 0.0, 'y': 0.0}
+    assert evaluation.value(n, env, units) == separate
+    assert evaluation.program([], [n], units=units, write=False)(env, units) == (separate,)
+    assert list(arrays.values(n, {k: np.zeros(2) for k in env}, units, 2)) == [separate] * 2

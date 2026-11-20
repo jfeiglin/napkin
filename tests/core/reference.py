@@ -5,6 +5,7 @@ it is reached). It shares no code with the code that the package writes for a no
 
 import math
 import operator
+from decimal import MAX_EMAX, MIN_EMIN, Decimal, localcontext
 from fractions import Fraction
 
 from napkin import expressions
@@ -53,43 +54,43 @@ def real(value):
 def _scale(node, env):
     """The walk's floor and signed contributions. Every independent name has scale one."""
     if isinstance(node, expr.Ref):
-        return 1, {node: 1}
+        return Decimal(1), {node: Decimal(1)}
     if isinstance(node, expr.IfElse):
         return _scale(node.body if walked(node.test, env) else node.orelse, env)
     if isinstance(node, expr.Binary) and node.op == 'pow':
         base, terms = _scale(node.left, env)
-        exponent = walked(node.right, env)
-        size = base**exponent
+        exponent = Decimal(walked(node.right, env))
+        size = Decimal(0) if not base and exponent < 0 else Decimal(1) if exponent == 0 else base**exponent
         return size, terms if exponent == 1 else {node: size} if terms else {}
     if isinstance(node, expr.Binary):
         (a, left), (b, right) = (_scale(child, env) for child in node.children)
         if node.op in ('mul', 'div'):
             if left and not right:
-                k = walked(node.right, env)
+                k = Decimal(walked(node.right, env))
                 factor = k if node.op == 'mul' else 1 / k
                 return a * abs(factor), {n: c * factor for n, c in left.items()}
             if right and not left:
-                k = walked(node.left, env)
+                k = Decimal(walked(node.left, env))
                 if node.op == 'mul':
                     return abs(k) * b, {n: k * c for n, c in right.items()}
                 a = abs(k)
-            size = a * b if node.op == 'mul' else a / b if b else 0
+            size = a * b if node.op == 'mul' else a / b if b else Decimal(0)
             return size, {node: size} if left or right else {}
         parts = [(a, left), (b, right)]
     elif isinstance(node, expr.Call):
         if node.function == 'q':
             size, terms = _scale(node.args[0], env)
-            unit = float(SCALES[node.args[1].value])
+            unit = Decimal(float(SCALES[node.args[1].value]))
             return size * unit, {n: v * unit for n, v in terms.items()}
         parts = [_scale(arg, env) for arg in node.args]
         if node.function == 'sqrt':
-            size = math.sqrt(parts[0][0])
+            size = Decimal(parts[0][0]).sqrt()
             return size, {node: size} if parts[0][1] else {}
     elif isinstance(node, expr.Unary):
         size, terms = _scale(node.operand, env)
         return size, {n: -c for n, c in terms.items()} if node.op == 'neg' else terms
     else:
-        return 1, {}
+        return Decimal(1), {}
     contributors = [part for part in parts if part[1]]
     if not contributors:
         return max(size for size, _ in parts), {}
@@ -107,11 +108,14 @@ def _scale(node, env):
 def _ordered(op, a, b, x, y, env):
     if isinstance(x, (str, bool)) or isinstance(y, (str, bool)):
         return ORDER[op](x, y)
-    sizes = [_scale(node, env) for node in (a, b)]
-    named = any(is_named for _, is_named in sizes)
-    floor = max(size for size, is_named in sizes if is_named or not named)
-    if abs(x - y) <= 1e-9 * max(floor, abs(x), abs(y)):
-        return op in ('eq', 'le', 'ge')
+    # The independent walk computes the band at an extended exponent range.
+    with localcontext(prec=50, Emax=MAX_EMAX, Emin=MIN_EMIN):
+        sizes = [_scale(node, env) for node in (a, b)]
+        named = any(is_named for _, is_named in sizes)
+        floor = max(size for size, is_named in sizes if is_named or not named)
+        a, b = Decimal(x), Decimal(y)
+        if abs(a - b) <= Decimal('1e-9') * max(floor, abs(a), abs(b)):
+            return op in ('eq', 'le', 'ge')
     return ORDER[op](x, y)
 
 

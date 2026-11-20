@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import math
 import operator
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import MAX_EMAX, MIN_EMIN, Context, Decimal
 
 from . import expr
 
@@ -36,24 +38,65 @@ def against(op, difference, band):
     return difference >= -band
 
 
+# Scale metadata may grow or shrink beyond a float while the authored value
+# remains finite. Keep the exponent until the scale comes back into range.
+_WIDE = Context(prec=40, Emax=MAX_EMAX, Emin=MIN_EMIN)
+_DECIMAL_OPS = {
+    operator.add: _WIDE.add,
+    operator.sub: _WIDE.subtract,
+    operator.mul: _WIDE.multiply,
+    operator.truediv: _WIDE.divide,
+    operator.pow: _WIDE.power,
+}
+
+
+def _arithmetic(op, a, b):
+    if op is operator.pow and a == 0 and b < 0:
+        return 0.0  # an exactly cancelled contribution to a finite reciprocal
+    if not isinstance(a, Decimal) and not isinstance(b, Decimal):
+        try:
+            result = op(a, b)
+        except OverflowError:
+            result = math.inf
+        if sys.float_info.min <= abs(result) <= sys.float_info.max:
+            return result
+        if result == 0 and (op in (operator.add, operator.sub) or a == 0 or b == 0):
+            return result
+    result = _DECIMAL_OPS[op](Decimal(a), Decimal(b))
+    rounded = float(result)
+    if result.is_zero() or sys.float_info.min <= abs(rounded) <= sys.float_info.max:
+        return rounded
+    return result
+
+
+def _magnitude(number):
+    return number.copy_abs() if isinstance(number, Decimal) else abs(number)
+
+
 @dataclass
 class _Scale:
-    unit: float
-    floor: float
+    unit: float | Decimal
+    floor: float | Decimal
     # Signed contributions in the result's units. None identifies a literal expression.
     terms: dict | None = None
 
     def scaled(self, unit, factor):
-        terms = None if self.terms is None else {key: amount * factor for key, amount in self.terms.items()}
-        return _Scale(unit, self.floor * abs(factor), terms)
+        terms = (
+            None
+            if self.terms is None
+            else {key: _arithmetic(operator.mul, amount, factor) for key, amount in self.terms.items()}
+        )
+        return _Scale(unit, _arithmetic(operator.mul, self.floor, _magnitude(factor)), terms)
 
 
 def _sum_scales(unit, args, subtract):
     terms = {}
     for i, part in enumerate(args):
         for key, amount in (part.terms or {}).items():
-            terms[key] = terms.get(key, 0.0) + (-amount if i and subtract else amount)
-    return _Scale(unit, max(map(abs, terms.values()), default=0.0), terms)
+            terms[key] = _arithmetic(
+                operator.sub if i and subtract else operator.add, terms.get(key, 0.0), amount
+            )
+    return _Scale(unit, max(map(_magnitude, terms.values()), default=0.0), terms)
 
 
 @dataclass
@@ -142,6 +185,7 @@ class Comparisons:
                         unit, basis.floor, basis.terms if basis.terms is not None else {node: basis.floor}
                     )
                 else:
+                    own = Decimal(own) if isinstance(own, str) else own
                     result = _Scale(unit, own, {node: own})
             elif isinstance(node, expr.IfElse):
                 if node not in choices:
@@ -169,15 +213,18 @@ class Comparisons:
         first = contributors[0] if contributors else _Scale(1.0, 1.0)
         unit, own = first.unit, max((arg.floor for arg in contributors), default=1.0)
         if isinstance(node, expr.Call) and node.function == 'q':
-            conversion = self.units.scale(node.args[1].value)
-            return first.scaled(unit * conversion, conversion)
+            conversion = self.units.parse_unit(node.args[1].value).scale
+            return first.scaled(_arithmetic(operator.mul, unit, conversion), conversion)
         if isinstance(node, expr.Unary):
             return first.scaled(unit, -1) if node.op == 'neg' else first
         if isinstance(node, expr.Binary):
             a = args[0]
             if node.op == 'pow':
                 exponent = read(node.right)
-                unit, own = unit**exponent, own**exponent
+                unit, own = (
+                    _arithmetic(operator.pow, unit, exponent),
+                    _arithmetic(operator.pow, own, exponent),
+                )
                 if exponent == 1:
                     return first
             else:
@@ -185,22 +232,23 @@ class Comparisons:
                 if node.op in ('add', 'sub') and quantities:
                     return _sum_scales(unit, args, node.op == 'sub')
                 if node.op == 'mul':
-                    unit = a.unit * b.unit
+                    unit = _arithmetic(operator.mul, a.unit, b.unit)
                     if len(quantities) == 1:
                         literal = node.left if a.terms is None else node.right
                         return first.scaled(unit, read(literal))
-                    own = a.floor * b.floor
+                    own = _arithmetic(operator.mul, a.floor, b.floor)
                 if node.op == 'div':
-                    unit = a.unit / b.unit
+                    unit = _arithmetic(operator.truediv, a.unit, b.unit)
                     if a.terms is not None and b.terms is None:
-                        return a.scaled(unit, 1 / read(node.right))
+                        return a.scaled(unit, _arithmetic(operator.truediv, 1.0, read(node.right)))
                     numerator = abs(read(node.left)) if b.terms is not None and a.terms is None else a.floor
-                    own = numerator / b.floor if b.floor else 0.0
+                    own = _arithmetic(operator.truediv, numerator, b.floor) if b.floor else 0.0
         elif isinstance(node, expr.Call):
             if node.function == 'sum' and quantities:
                 return _sum_scales(unit, args, False)
             if node.function == 'sqrt':
-                unit, own = math.sqrt(unit), math.sqrt(own)
+                unit = _arithmetic(operator.pow, unit, 0.5) if isinstance(unit, Decimal) else math.sqrt(unit)
+                own = _arithmetic(operator.pow, own, 0.5) if isinstance(own, Decimal) else math.sqrt(own)
         return _Scale(unit, own, {node: own} if quantities else None)
 
     def floor(self, left, right, read=None):
@@ -233,8 +281,24 @@ class Comparisons:
             self.floors[key] = result
         return result
 
+    def frozen_floor(self, name, read):
+        """The formula's floor when retired, in a form that the record can serialize."""
+        size = self.floor(expr.ref(name), expr.const(0), read)
+        return str(size) if isinstance(size, Decimal) else size
+
+    def band_floor(self, left, right, read=None, *, half=False):
+        floor = self.floor(left, right, read)
+        if half:
+            full = _arithmetic(operator.mul, floor, self.factor)
+            return float(_arithmetic(operator.mul, full, 0.5))
+        return (
+            float(_arithmetic(operator.mul, floor, self.factor))
+            if isinstance(floor, Decimal)
+            else floor * self.factor
+        )
+
     def band(self, left, right, a, b, read=None):
-        return self.factor * max(self.floor(left, right, read), abs(a), abs(b))
+        return max(self.band_floor(left, right, read), self.factor * max(abs(a), abs(b)))
 
     def ordered(self, op, left, right, a, b, read=None):
         if (
@@ -243,7 +307,13 @@ class Comparisons:
             or not (math.isfinite(a) and math.isfinite(b))
         ):
             return ORDER[op](a, b)
-        return against(op, a - b, self.band(left, right, a, b, read))
+        gap = a - b
+        if math.isinf(gap):
+            # Half the gap between any two finite floats fits. Halve the band in the same units.
+            a, b = a * 0.5, b * 0.5
+            band = max(self.band_floor(left, right, read, half=True), self.factor * max(abs(a), abs(b)))
+            return against(op, a - b, band)
+        return against(op, gap, self.band(left, right, a, b, read))
 
 
 def _scale_operands(node):

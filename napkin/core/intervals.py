@@ -330,10 +330,11 @@ class _Prover:
         if op in ('ge', 'le', 'eq'):
             policy = self.registry.comparisons
             try:
-                floor = policy.floor(left, other, read=lambda node: self.known_value(node, context))
+                gap = policy.band(
+                    left, other, right, right, read=lambda node: self.known_value(node, context)
+                )
             except UnresolvedScale:
                 return context  # an unknown floor cannot narrow an inclusive condition
-            gap = policy.factor * max(floor, abs(right))
             edge = right / (1 - policy.factor) if policy.factor < 1 else math.copysign(math.inf, right)
             near_low = min(right - gap, edge)
             near_high = max(right + gap, edge)
