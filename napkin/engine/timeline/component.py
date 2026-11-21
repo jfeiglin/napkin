@@ -561,6 +561,9 @@ class ComponentWay(MovingTransfers, Way):
                 single = system.index[end], (1 if flow.target else -1)
         self.amounts = MovingAmounts(len(system.flow_ids), t, single)
         self.amounts.clock_legs(system.flow_ids, self.place, plan, run.env)
+        self.fixed_settings = self.held_settings(
+            plan, (name for flow in self.flows for name in plan.settings_of(plan.flows[flow]))
+        )
         self.single_donor(values)
         if single is None:
             self.component.field.leg_rates = lambda: self.component.field.delivered
@@ -644,6 +647,8 @@ class ComponentWay(MovingTransfers, Way):
             if state.time >= self.run.limit:
                 return math.inf
             self.pending = self.component.next(self.run.limit)
+            if self.fixed_settings and isinstance(self.pending.solution, Affine):
+                self.amounts.held_solution(self.pending.solution.leg_rates, self.pending.start)
             self._resting()
             self.bounded = True  # a segment finds the bounds of its start (`Component.next`)
         return self.pending.end

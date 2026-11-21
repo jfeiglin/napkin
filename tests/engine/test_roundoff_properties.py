@@ -3,12 +3,11 @@
 Each test here gives one argument many cases from a seeded generator. The numbers are not dyadic
 (thirds, sevenths, tenths and their products) and their sizes go from 1e-3 to 1e7, so the arithmetic
 of doubles leaves roundoff. The oracles are independent of the engine: exact fractions of the doubles
-that the file writes, and laws that follow from the model (a store on its bound is exactly on it, the
-tallies together hold what came in). No expectation comes from a run of the engine.
+that the file writes, and conservation applied to its physical rates. The tallies and the stock
+together hold what came in.
 
-1. A store on a bound whose flows balance but for roundoff stays exactly on it, while the rates hold
-   between moments (`timeline/lines.py`, `Lines._lines`: a slope within the roundoff of its flows
-   is no rate), and its outflows share what comes in by the allocation of its outflow.
+1. A stock on a bound retains its exact balance when its legs can put it there. A saturated
+   inlet cannot supply the difference when its named outflows carry slightly more.
 2. A residual of roundoff above zero at an empty store is no rate: the store stays empty.
 3. With rates that rise with time (`timeline/sparse.py`), a full or an empty store stays on its
    bound and each tally moves its exact share of the integral of its rate.
@@ -144,13 +143,14 @@ def values(program, horizon, names, times):
     return [reading.values for reading in read(record, program, keys, times)]
 
 
-# ---- 1. A store on a bound stays exactly on it ---------------------------------------------------------
+# ---- 1. A store on a bound retains the physical incidence of its legs ------------------------------------
 
 
 @pytest.mark.parametrize('seed', [3, 4])
-def test_a_stock_on_its_upper_or_its_lower_bound_stays_exactly_on_it(seed):
+def test_a_stock_on_either_bound_keeps_what_its_capped_flows_deliver(seed):
     """Full (it starts at its upper bound) with an inflow that equals its outflows in exact
-    arithmetic, the tank stays exactly full. Empty, with an inflow of 0.9 times what the outflows
+    arithmetic, a tank can stay exactly full as long as its inlet cap permits it. Empty, with
+    an inflow of 0.9 times what the outflows
     ask, it stays exactly empty, and the outflows share the inflow by the order of the share. Each
     tally moves its exact rate times the time, within 64 units of roundoff of the size of the flows,
     as a rate. The tallies together hold what came in, within the same bound."""
@@ -160,8 +160,22 @@ def test_a_stock_on_its_upper_or_its_lower_bound_stays_exactly_on_it(seed):
         names = ['tank', *(f'used{i}' for i in range(len(factors)))]
         for start, fill_factor in ((top, 1.0), (0.0, 0.9)):
             program = shared_tank(demand, factors, start, top, fill_factor, order)
-            found = values(program, 40, names, [1.0, 40 / 3, 40.0])
-            assert list(found[0]) == [start, start, start]
+            times = [1.0, 40 / 3, 40.0]
+            record = run(program, Configuration(Request(40)))
+            assert record.failure is None
+            found = [row.values for row in read(record, program, [f's.{name}' for name in names], times)]
+            paths = ['s.fill.capacity', *(f's.out{i}.actual_rate' for i in range(len(factors)))]
+            cap, *outflows = read(record, program, paths, [0])
+            # At the upper bound the inlet is the only leg moving the stock toward full.
+            # It can reduce its amount to stay exactly full, or deliver at most its capacity.
+            net = min(0, written(cap.values[0]) - sum(written(out.values[0]) for out in outflows))
+            for time, level in zip(times, found[0], strict=True):
+                expected = float(written(start) + (net * written(time) if start else 0))
+                if not start or not net:
+                    assert level == start
+                else:
+                    assert level == pytest.approx(expected, abs=math.ulp(expected), rel=0)
+
             rates = served(demand, factors, fill_factor, order)
             scale = 2 * exact(fill_factor) * sum(exact(demand) * exact(c) for c in factors)
             bound = 64 * exact(EPS) * scale * 40

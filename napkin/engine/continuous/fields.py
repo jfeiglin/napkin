@@ -273,10 +273,11 @@ class Field:
                         side.append(sign * base[i])
                 return incoming, outgoing
 
-            physical = derivative
             derivative = departure.rates(derivative, traffic, held, terms)
             if self.physical_face_net is not None and not allocation:
-                for row in np.flatnonzero(held & (derivative == 0) & (physical != 0)).tolist():
+                for row in np.flatnonzero(
+                    held & (derivative == 0) & (traffic > 0) & (s.lower != s.upper)
+                ).tolist():
                     derivative[row] = self.physical_face_net(row, self.delivered)
         if not extended and np.any(derivative[s.monotone] < 0):
             name = next(name for i, name in enumerate(s.state_ids) if s.monotone[i] and derivative[i] < 0)

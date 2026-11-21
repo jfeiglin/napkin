@@ -224,7 +224,6 @@ class Lines(Way):
             if low or high:
                 # A store at its bound, held or released (`Instant.settle`): a rate within the
                 # roundoff of its flows holds it there.
-                physical = slope
                 slope = instant.face_rate(s, incoming, outgoing, slope, inflow + outflow)
                 on_face = slope == 0
                 if s in instant.uncertain:
@@ -237,7 +236,7 @@ class Lines(Way):
                     # Held by the closed form of groups (`_downstream`), which a release would not
                     # change: it leaves all the same, and its part is solved again at the next moment.
                     self.stale.add(s)
-                if on_face and physical and inflow and outflow and not (low and high):
+                if on_face and inflow and outflow and not (low and high):
                     slope = self.run.stock_state.physical_face_net(self, s, self.rate)
             if (low or high) and on_face and inflow and outflow:
                 changed_faces[s] = OUT if low else IN

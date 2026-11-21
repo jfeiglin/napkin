@@ -1,5 +1,6 @@
 """A physical stock leaves a face only above the owner's traffic-relative threshold."""
 
+import math
 from dataclasses import replace
 from fractions import Fraction
 
@@ -169,3 +170,35 @@ yard.inspect.start()
         assert stock.values == (0, float(unit), float(2 * unit))
         assert feed.values == (1, 1, 1)
         assert drain.values == (float(output_rate),) * 3
+
+
+@pytest.mark.parametrize('method', ['lines', 'component', 'sparse', 'declared', 'moving_declared'])
+def test_a_held_faces_intermediate_history_tracks_its_posted_legs(method, monkeypatch):
+    text = """scenario "A capped inlet at a full tank"
+    horizon 40 h
+yard:
+    tank: L = 0.01 L in [0, 0.01 L]
+    flow fill: SOURCE -> this.tank
+        request = 0.7999999999999999 L/h
+        capacity = 0.7999999999999999 L/h
+    flow first: this.tank -> SINK
+        request = 0.1 L/h
+    flow second: this.tank -> SINK
+        request = 0.7 L/h
+"""
+    model = use_method(text, method, monkeypatch, 'fill')
+    machine = Run(Plan.of(model.program, model.configuration))
+    record = machine.run()
+    assert record.failure is None
+    at = [1, 13, 40]
+    (history,) = read(record, model.program, ['yard.tank'], at)
+    way = machine.ways.instance_of('yard.tank')
+    inflow, first, second = [way.transferred('yard.' + name, 40) for name in ('fill', 'first', 'second')]
+    start = Fraction(1, 100)
+    total = inflow - first - second
+    assert start + total == machine.stock_balance('yard.tank', 40)
+    # Each actual rate is constant throughout. The balance at each reading is
+    # its fraction of the very same accepted incidence the run posts at the horizon.
+    for time, observed in zip(at, history.values, strict=True):
+        expected = float(start + total * time / 40)
+        assert observed == pytest.approx(expected, abs=math.ulp(expected), rel=0)

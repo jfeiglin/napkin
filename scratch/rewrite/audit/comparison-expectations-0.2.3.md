@@ -88,3 +88,14 @@ The basin-search fixture formerly expected the fold at `tank.mu = −5` and an o
 The removal inventory lists each changed fixture, its former expectation, the newly required physical amount or status and its retained outside-band or hard-constraint control. [Placement expectation ledger](accounting-write-sites.md#expectation-changes-from-the-stock-placement-ruling)
 
 Declared-solver seed 875 formerly required both draining stocks to end exactly empty. At the 3.1804395604395603 h contact, MovingDeclared would have to exceed `t1.f0.capacity` to post the last 2.801439037153323 × 10⁻¹⁷ L. Its books retain the positive, in-band residual at `t1.water`. The record identifies the cap and zero target. The held declared method reaches zero exactly. Both methods still empty `t0.water`, preserve the live and serialized checkpoint histories, and agree with the independent oracle at all three sampling times. [Seed 875 and its controls](../../../tests/engine/test_declared_stock_faces.py)
+
+## Recorded balances at a saturated inlet
+
+Two seeded tests formerly required a locally shared tank to record its initial level at 1, 40/3 and 40 h. In a full tank, the only leg moving it toward the upper bound is the inlet. When the distinct decimal outflows sum to more than the inlet's hard capacity, the new expected reading is the initial level plus elapsed hours times the signed rate difference. The report may round by one representable number at that level. The test still requires exact equality at all three times in every empty case and in every full case where the correction fits. The independent bounds on each receiving tally and their sum are unchanged.
+
+| Seed and generated tank index (zero-based) | Previous | Required |
+|---|---|---|
+| 3, tanks 0, 1, 5, 6, 8, 10, 11, 12, 14, 17, 18 and 19 | Initial upper bound at every reading | Post the inlet up to its capacity and the individual outflows. For tank 1 this gives a net of −2 × 10⁻¹⁵ people/h and a loss of 8 × 10⁻¹⁴ people over 40 h. |
+| 4, tanks 0, 4, 9, 11, 12, 13, 14 and 17 | Initial upper bound at every reading | Apply the same posted incidence. For tank 0 this gives a net of −7 × 10⁻¹⁰ people/h and a loss of 2.8 × 10⁻⁸ people over 40 h. |
+
+[Generated roundoff and tally controls](../../../tests/engine/test_roundoff_properties.py) · [Cross-method intermediate and terminal balances](../../../tests/engine/test_stock_departure_rule.py)

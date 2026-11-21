@@ -698,8 +698,8 @@ class Sparse(MovingTransfers, Way):
         self.size = len(names)
         if self.stores:
             self.amounts.clock_legs(self.net.connections, place, plan, run.env)
-        self.constant_requests = self.amounts.all_clock and all(
-            len(leg.polynomial) == 2 for leg in self.amounts.clocks.values()
+        self.constant_requests = self.held_settings(plan, names) or (
+            self.amounts.all_clock and all(len(leg.polynomial) == 2 for leg in self.amounts.clocks.values())
         )
         self.single_donor(values)
         self.identifiable = (
@@ -976,6 +976,9 @@ class Sparse(MovingTransfers, Way):
     def field(self, t, y, *, allocation=False):
         carried = self.values(t, y)[1]
         self.last_carried = carried
+        return self._net(carried, allocation=allocation)
+
+    def _net(self, carried, *, allocation=False):
         change = self.incidence @ carried
         held = self.lower_flags | self.upper_flags
         if held.any():
@@ -992,7 +995,6 @@ class Sparse(MovingTransfers, Way):
                         change[i],
                         gross[i],
                     )
-            raw = change.copy()
             change = departure.rates(
                 change,
                 gross,
@@ -1001,7 +1003,9 @@ class Sparse(MovingTransfers, Way):
             )
             if not allocation:
                 one_face = self.lower_flags ^ self.upper_flags
-                for row in np.flatnonzero((change == 0) & (raw != 0) & one_face).tolist():
+                for row in np.flatnonzero(
+                    (change == 0) & (gross > 0) & self.through_stores & one_face
+                ).tolist():
                     change[row] = self.run.stock_state.physical_face_net(self, row, carried)
         return change
 
@@ -1189,6 +1193,8 @@ class Sparse(MovingTransfers, Way):
 
         if self.constant_requests:
             self.amounts.held_solution(self.last_carried, self.t)
+            self.held_since = self.t
+            self.held_slopes = self._net(self.last_carried)
         self.set_resting(
             {
                 self.stores[k]: self.held_levels[k]
@@ -1203,7 +1209,13 @@ class Sparse(MovingTransfers, Way):
         if end <= start or end == self.recorded_through:
             return
         self.recorded_through = end
-        if self.kept_stores:
+        if self.constant_requests:
+            if start == self.held_since:
+                for k in self.kept_stores:
+                    recorder.add(
+                        self.stores[k], start, float(self.held_levels[k]), float(self.held_slopes[k])
+                    )
+        elif self.kept_stores:
             tolerance = np.maximum(self.atol[self.kept_stores], 1e-300)
             states = lambda times: np.array([solution(at)[self.kept_stores] for at in times])  # noqa: E731
             for k, pieces in zip(self.kept_stores, fitted(states, start, end, tolerance)):

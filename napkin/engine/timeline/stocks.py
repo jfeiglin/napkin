@@ -259,6 +259,12 @@ class Stocks:
         incoming = self.run.plan.incident(store, 'inflow')
         outgoing = self.run.plan.incident(store, 'outflow')
 
+        if (
+            len(incoming) == len(outgoing) == 1
+            and rates[way.leg_rows[incoming[0]]] == rates[way.leg_rows[outgoing[0]]]
+        ):
+            return 0.0
+
         def value(name):
             return rational(rates[way.leg_rows[name]])
 

@@ -9,6 +9,11 @@ from .stocks import RestingAmounts, RestingRates
 class MovingTransfers:
     """Read one directed connection's accepted prefix using the installed method's dense output."""
 
+    @staticmethod
+    def held_settings(plan, names):
+        """Captured settings are fixed for the whole installation, including a capped pipe."""
+        return all(plan.values[name].kind == 'capture' for name in names)
+
     def _pending_end(self):
         return self.pending.end
 

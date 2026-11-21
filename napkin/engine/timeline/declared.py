@@ -1297,7 +1297,7 @@ class DeclaredWay(Way):
             if held_low[s] and held_high[s]:
                 # The hard incidence row of a zero-width stock is an equality.
                 slope = 0.0
-            elif slope and (held_low[s] or held_high[s]):
+            elif held_low[s] or held_high[s]:
                 if (low and slope < 0) or (high and slope > 0):
                     selected = np.zeros(len(self.stores), dtype=bool)
                     selected[s] = True
@@ -1305,7 +1305,8 @@ class DeclaredWay(Way):
                         raise SimulationError(
                             f'{store}: the solver {self.declared.id} moves it past its bound at {t:g} h'
                         )
-                slope = self._physical_face_net(s, rate)
+                if inflow and outflow:
+                    slope = self._physical_face_net(s, rate)
             if (held_low[s] or held_high[s]) and inflow and outflow:
                 changed_faces[s] = OUT if low else IN
             elif self.resting_rates is not None and s in self.resting_rates.sides:
@@ -1620,7 +1621,8 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
     def _physical_net(self, net, carried):
         rate = net.copy()
         rate[self.low & self.high] = 0.0
-        for s in np.flatnonzero((self.low ^ self.high) & (rate != 0)).tolist():
+        through = (self.net.counts[IN] > 0) & (self.net.counts[OUT] > 0)
+        for s in np.flatnonzero((self.low ^ self.high) & through).tolist():
             rate[s] = self._physical_face_net(s, carried)
         return rate
 
