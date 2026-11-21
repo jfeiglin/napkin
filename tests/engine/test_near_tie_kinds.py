@@ -160,13 +160,14 @@ def test_a_gate_released_by_more_than_the_tolerance_has_no_entry():
     assert [entry.t for entry in record.entries('commit', 'tank.wait.step[1]')] == [1]
 
 
-def junction(second, use1=0.3, limit=None, later=()):
+def junction(second, use1=0.3, limit=None, later=(), parts=()):
     """A store held empty whose outflow serves `use1` (asking `use1` L/h), then `use2` (1 L/h), fed by
     two rigid fills of 0.1 and `second` L/h; with `limit`, the outflow has that capacity. A stage at
     1 h makes the statements of `later`."""
     b = Builder(UNITS)
     b.entity(
         's',
+        *parts,
         value(
             'w',
             'L',
@@ -209,14 +210,23 @@ def test_a_split_by_more_than_the_tolerance_has_no_entry():
     assert record.entries('settle') == ()
 
 
-def test_a_capacity_that_splits_within_tolerance_is_marked_where_a_stage_moves_the_claims():
+@pytest.mark.parametrize(('captured', 'expected_gap'), [(False, 0), (True, OVER)])
+def test_a_capacity_that_splits_within_tolerance_is_marked_where_a_stage_moves_the_claims(
+    captured, expected_gap
+):
     """The outflow's capacity is 0.1 L/h + 0.2 L/h, and 0.5 L/h flows in, so the store fills and
     nothing but the capacity limits the outflow. use1 asks 0.2 L/h until a stage at 1 h makes it
     0.3 L/h: the set settles again then, and the capacity splits use1 from use2 within tolerance."""
-    capacity = q(0.1, 'L/h') + q(0.2, 'L/h')
-    record, *_ = junction(0.4, use1=0.2, limit=capacity, later=(assign(this.use1.request, q(0.3, 'L/h')),))
+    first = this.first_part if captured else q(0.1, 'L/h')
+    record, *_ = junction(
+        0.4,
+        use1=0.2,
+        limit=first + q(0.2, 'L/h'),
+        later=(assign(this.use1.request, q(0.3, 'L/h')),),
+        parts=(value('first_part', 'L/h', 0.1),),
+    )
     (entry,) = record.entries('settle')
     ((_, comparison, difference, _),) = entry.detail('near')
     assert (entry.t, entry.round) == (1, 1)
     assert comparison == 'the capacity of s.w.outflow against the claims of s.use1, served before s.use2'
-    assert difference == OVER
+    assert difference == expected_gap

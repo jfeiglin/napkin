@@ -34,6 +34,8 @@ The remaining three rows still select 10 h. Their exact positive gaps are 0.0000
 
 The replacement factor-sensitivity control compares `1 h + 0 day > 0.999999999 h`. That gap is exactly 1e-9 h. On the same three factors its expected results are False, True, False. At threshold `0.999999998999999999 h`, the gap is 1.000000001e-9 h, strictly outside the closed default band.
 
+The capacity-split trace at hour 1 formerly expected a gap of 5.551115123125783e-17 L/h for the authored sum `0.1 L/h + 0.2 L/h` against a claim of 0.3 L/h. The expected gap is now zero because the literal sum rounds once to 0.3 L/h. An additional control captures the first term as a declared value and computes the capacity from that reading. Its gap remains 5.551115123125783e-17 L/h. Both runs must record the same stage, round, comparison and near-tie. [Capacity-split trace tests](../../../tests/engine/test_near_tie_kinds.py)
+
 ## Generated expectations and unit equivalence
 
 The independent scalar walk previously gave every literal a unit-sized floor. It now assigns zero to literal-only expressions, including powers. For example, `1e-300 == 0` becomes False and a membership interval spanning `[1e-300, 0]` is reversed. The independent simulation interpreter separately implements the same rule for literal arithmetic, named or inline formulas, and an empty sum. Captured quantities retain their declared scale. The existing random-expression assertions still compare execution with those independent calculations. [Scalar walk](../../../tests/core/reference.py) · [Reference interpreter](../../../tests/reference/evaluate.py)
