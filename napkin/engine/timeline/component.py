@@ -575,6 +575,7 @@ class ComponentWay(Way):
                 single = system.index[end], (1 if flow.target else -1)
         self.amounts = MovingAmounts(len(system.flow_ids), t, single)
         self.amounts.clock_legs(system.flow_ids, self.place, plan)
+        self.single_donor(values)
         if single is None:
             self.component.field.leg_rates = lambda: self.component.field.delivered
         self._stepped(float(t))
@@ -611,6 +612,7 @@ class ComponentWay(Way):
             if state.time >= self.run.limit:
                 return math.inf
             self.pending = self.component.next(self.run.limit)
+            self._resting()
             self.bounded = True  # a segment finds the bounds of its start (`Component.next`)
         return self.pending.end
 
@@ -633,7 +635,7 @@ class ComponentWay(Way):
             if self.amounts.clocks:
                 self.amounts.select_clocks(*self._clock_bounds())
             amount = self._transfer_amount(segment, segment.end)
-            self.amounts.accept(segment.start, segment.end, amount)
+            self.accept_amounts(segment.start, segment.end, amount)
         self._record(segment)
         component.proceed(segment)
         self._drift = None
@@ -691,6 +693,19 @@ class ComponentWay(Way):
         leg = self.amounts.clocks.get(row)
         mode = leg.selection(*self._clock_bounds()) if leg is not None else None
         return self.amounts.prefix(row, t, mode, interval)
+
+    def _resting(self):
+        bounds = self.component.state.active_bounds
+        if bounds or self.resting is not None:
+            self.set_resting(
+                {
+                    self.stores[i]: self.run.bounds[self.stores[i]][side == 'max']
+                    for i, side in bounds
+                    if self.run.plan.incident(self.stores[i], 'inflow')
+                    and self.run.plan.incident(self.stores[i], 'outflow')
+                },
+                self.component.state.time,
+            )
 
     def _clock_bounds(self):
         bounds = self.component.state.active_bounds
@@ -790,6 +805,7 @@ class ComponentWay(Way):
         finally:
             state.evaluations = evaluations
         self.bounded, self._drift = True, None
+        self._resting()
 
     def finish(self, t):
         """At the horizon, where the run stands and a run that goes on has a moment too

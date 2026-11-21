@@ -74,6 +74,7 @@ from .evaluate import (
     View,
     label,
 )
+from .exact import solve_affine
 from .model import Assign, Branch, Config, E, Flow, Move, Start, Switch, Until, lit, number, scale_of, show
 from .poly import Irrational, Poly, plain
 
@@ -183,7 +184,7 @@ class Run:
         self.cache = {}
         self.components, self.component_of, self.solved_cells, self.settling = [], {}, set(), None
         self.moving, self.stops = [], []
-        self.contacts, self.contact_levels = [], {}
+        self.contacts, self.bound_contacts, self.contact_levels = [], [], {}
         self.flow_numbers, self.occ_numbers = itertools.count(1), itertools.count(1)
         self.sites = _sites(model)
         self.error = self.paused = None
@@ -539,9 +540,12 @@ class Run:
         A single store takes its exact rational level at the root. A sum keeps the incoming
         trajectory and must satisfy the comparison band there."""
         view, delta = self.view, moment - self.view.t
-        grouped = False
+        for root, cell, bound in self.bound_contacts:
+            if not isinstance(root, Irrational) and abs(root - delta) <= self.config.crossing:
+                self.contact_levels[cell] = bound, root
+        grouped = bool(self.contact_levels)
         for root, scope, pair, condition in self.contacts:
-            if isinstance(root, Irrational) or root == delta or abs(root - delta) > self.config.crossing:
+            if isinstance(root, Irrational) or abs(root - delta) > self.config.crossing:
                 continue
             at_root = view.copy()
             at_root.t += root
@@ -559,14 +563,7 @@ class Run:
             if len(cells) == 1:
                 (cell,) = cells
                 level = at_root.cells[cell]
-                existing = self.contact_levels.get(cell)
-                if cell in view.levels:
-                    for bound in view.bounds.get(cell, (None, None)):
-                        if bound is None:
-                            continue
-                        hit = (view.levels[cell] - bound).first_root()
-                        if hit is not None and abs(float(hit) - delta) <= self.config.crossing:
-                            existing = bound
+                existing, placement = self.contact_levels.get(cell, (None, root))
                 if existing is not None:
                     band = max(self.config.rtol, self.config.atol_factor) * max(
                         self.own_scales[cell], abs(existing), abs(level)
@@ -574,7 +571,7 @@ class Run:
                     if abs(existing - level) > band:
                         raise RunFailed(f'incompatible crossing levels of {label(cell)} at {moment} h')
                     level = existing
-                self.contact_levels[cell] = level
+                self.contact_levels[cell] = level, placement
                 continue
             at_root.t = moment
             at_root.cells.update((c, p(delta)) for c, p in view.levels.items())
@@ -589,6 +586,92 @@ class Run:
                 )
         return grouped
 
+    def _placements(self, tau):
+        """Directed corrections for all single-store placements, using the incoming polynomials."""
+        levels = self.view.levels
+        residual = {cell: target - levels[cell](tau) for cell, (target, _) in self.contact_levels.items()}
+        if not any(residual.values()):
+            return self.moving, {}, {}
+        rates = {name: poly for _, _, poly, name in self.moving}
+        legs = sorted(
+            (
+                leg
+                for flow in self.view.live
+                for leg in (flow.legs.values() if flow.kind == 'legs' else (flow,))
+            ),
+            key=lambda leg: leg.number,
+        )
+        zero = Poly([0])
+        moving = [(leg.src, leg.dst, rates.get(leg.label, zero), leg.label) for leg in legs]
+        placements = dict(self.contact_levels)
+        incidence = {}
+        distributions = []
+        pending = [cell for cell, difference in residual.items() if difference]
+        while pending:
+            cell = pending.pop()
+            if cell in incidence:
+                continue
+            target, root = placements[cell]
+            signs = incidence[cell] = [int(dst == cell) - int(src == cell) for src, dst, _, _ in moving]
+            # The first nonzero derivative on the incoming side gives the direction even at a turn.
+            derivative = levels.get(cell, zero)
+            earlier = 1
+            while not derivative.constant:
+                derivative = Poly([i * term for i, term in enumerate(derivative.c) if i])
+                direction = earlier * derivative(root)
+                if direction:
+                    break
+                earlier = -earlier
+            else:
+                lower, upper = self.view.bounds.get(cell, (None, None))
+                direction = -1 if target == lower else 1 if target == upper else 0
+            speeds = [sign * poly(root) for sign, (_, _, poly, _) in zip(signs, moving)]
+            weights = [abs(speed) if speed * direction > 0 else 0 for speed in speeds]
+            if not any(weights):
+                eligible = [i for i, sign in enumerate(signs) if sign * direction > 0]
+                if not eligible:
+                    eligible = [i for i, sign in enumerate(signs) if sign]
+                weights[eligible[0]] = 1
+            total = sum(weights)
+            distributions.append([Fraction(weight * sign, total) for weight, sign in zip(weights, signs)])
+            # The reference omits constant levels from its polynomial table. Follow only
+            # adjusted legs to discover an exactly placed or stationary endpoint they can reopen.
+            for weight, (src, dst, _, _) in zip(weights, moving):
+                if not weight:
+                    continue
+                for other in (src, dst):
+                    if other is None or other in incidence:
+                        continue
+                    if other not in placements:
+                        level = self.view.cells[other]
+                        if other in levels or level not in self.view.bounds.get(other, ()):
+                            continue
+                        placements[other], residual[other] = (level, tau), 0
+                    pending.append(other)
+        # A correction to a leg with two placed endpoints also moves the other endpoint.
+        equations = [
+            ([sum(s * w for s, w in zip(signs, shares)) for shares in distributions], residual[cell])
+            for cell, signs in incidence.items()
+        ]
+        solution = solve_affine(equations, len(distributions))
+        if solution is None:
+            raise RunFailed('incompatible crossing levels of ' + ', '.join(map(label, residual)))
+        amounts, changes = {}, Counter()
+        for (src, dst, _, name), weights in zip(moving, zip(*distributions)):
+            adjustment = sum(w * factor for w, factor in zip(weights, solution[0]))
+            if adjustment:
+                amounts[name] = adjustment
+                if src is not None:
+                    changes[src] -= adjustment
+                if dst is not None:
+                    changes[dst] += adjustment
+        return moving, amounts, changes
+
+    def _frozen_error(self, tau, violations):
+        order = {c.label: c.number for f in self.view.live for c in network.connections(f)}
+        names = sorted(violations, key=lambda v: (v[0], v[1] != 'outflow', order[v[2]]))
+        return FrozenTransfer(self.view.t + tau, names)
+
     def _advance(self, nxt):
         """Move every store exactly to the time `nxt`, and account for what each flow carried."""
         view = self.view
@@ -597,10 +680,19 @@ class Run:
         if failure is not None:
             tau, problem = failure
             nxt = view.t + tau
-        for src, dst, p, name in self.moving:
-            self.ledger.append(('flow', view.t, nxt, name, src, dst, p.integral()(tau)))
+        moving, corrections, changes = (
+            self._placements(tau) if self.contact_levels and failure is None else (self.moving, {}, {})
+        )
+        for src, dst, p, name in moving:
+            if p.c != (0,) or name in corrections:
+                self.ledger.append(
+                    ('flow', view.t, nxt, name, src, dst, p.integral()(tau) + corrections.get(name, 0))
+                )
         for cell, p in view.levels.items():
-            view.cells[cell] = self.contact_levels.get(cell, p(tau)) if failure is None else p(tau)
+            view.cells[cell] = p(tau) + changes.get(cell, 0)
+            self._in_range(cell, view.cells[cell])
+        for cell in changes.keys() - view.levels.keys():
+            view.cells[cell] += changes[cell]
             self._in_range(cell, view.cells[cell])
         for var, p in view.rates.items():
             view.results[var] = p(tau)
@@ -665,7 +757,6 @@ class Run:
         if not groups:
             return None
         routes = {f.label for f in self.view.live if f.kind == 'reversible'}
-        order = {c.label: c.number for f in self.view.live for c in network.connections(f)}
         windows, segments = [], []
         running = self.transferred.copy()
         for cell, flows in groups.items():
@@ -715,12 +806,11 @@ class Run:
                 violations.extend(names)
             elif left <= first_upper + self.config.crossing:
                 raise NotCovered('a frozen crossing cannot be separated from the edge of its time group')
-        violations.sort(key=lambda item: (item[0], item[1] != 'outflow', order[item[2]]))
         for key, volume, lo, hi in segments:
             if first_upper > lo:
                 amount = volume(min(first_upper, hi)) - volume(lo)
                 self.transferred[key] = self.transferred.get(key, 0) + amount
-        return first_upper, FrozenTransfer(self.view.t + first_upper, violations)
+        return first_upper, self._frozen_error(first_upper, violations)
 
     def _settle_and_check(self):
         self.phase = 'settle'

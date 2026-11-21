@@ -300,6 +300,9 @@ class Family(Way):
         if t > self.t0 and rate != self.rate[k]:
             self.amounts.change(k, t, self.rate[k])
         self.rate[k] = rate
+        if t > self.t0 and held:
+            for end in ends:
+                self.y[end] = float(self.run.stock_balance(self.stores[end], t))
         self.version[k] += 1
         if source >= 0:
             self.slope[source] = -rate

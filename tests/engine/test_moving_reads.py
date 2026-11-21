@@ -344,7 +344,10 @@ def test_a_flow_that_joins_at_a_moment_and_follows_a_moving_rate_integrates_with
     assert values(record, program, 'b.count', [1, 2, 4, 5]) == pytest.approx(
         [0, *counted, counted[-1]], rel=1e-7
     )
-    assert values(record, program, 'a.water', [4]) == pytest.approx([10 * math.exp(-2)], rel=1e-7)
+    # Its supplier continues to drain after the occurrence leaves their shared integrator.
+    assert values(record, program, 'a.water', [4, 5]) == pytest.approx(
+        [10 * math.exp(-time / 2) for time in (4, 5)], rel=1e-7
+    )
 
 
 def test_a_set_that_follows_a_moving_solver_stops_the_run_by_name():

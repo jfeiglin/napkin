@@ -1083,6 +1083,7 @@ class Run:
                 self.occurrences.carried(self.now, at)
                 self.now = self.accepted = at
                 faces = bound_values(self.bounds, instance.contacts_at(at, self.clock.apart(at)))
+                faces.update(levels)
                 if faces:
                     self.stock_state.faces(faces, at)
                 stores, rates, jumped = instance.step(levels) if levels else instance.step()
@@ -1103,7 +1104,7 @@ class Run:
                 self.triggers.predict(changed)
                 continue
             self.occurrences.carried(self.now, moment)
-            self.now = self.accepted = moment
+            self.now = moment
             threshold = self.clock.apart(moment)
             if independent:
                 for way in self.ways.instances:
@@ -1120,8 +1121,6 @@ class Run:
             )
             self.ways.opening(moment)
             self.bound_at = bound_values(self.bounds, self.contacts)
-            if self.bound_at:
-                self.stock_state.faces(self.bound_at, moment)
             levels = self.triggers.levels_at(moment, dict(self.bound_at))
             if self.consumed:
                 self.consumed = {pair: times for pair, times in self.consumed.items() if max(times) >= moment}
@@ -1131,6 +1130,9 @@ class Run:
                         self.triggers.anchor(levels, *pair, moment, located)
                         self.consumed[tuple(map(nodes.text, pair))] = located, moment
             self.bound_at.update(levels)
+            self.accepted = moment
+            if self.bound_at:
+                self.stock_state.faces(self.bound_at, moment)
             self.moved.update(levels)
             self.arriving = True
             self.bare = (

@@ -952,6 +952,7 @@ def motion(run):
                 f'{changed.label}: a request that reads a store while that store moves in a feedback loop'
             )
         view.levels, view.rates, moving, follow = _carried(run, again)
+    run.bound_contacts = []
     for cell, p in view.levels.items():
         lo, hi = view.bounds.get(cell, (None, None))
         for bound, outward in ((lo, -1), (hi, 1)):
@@ -965,6 +966,7 @@ def motion(run):
             root = gap.first_root()
             if root is not None:
                 stops.append(root)
+                run.bound_contacts.append((root, cell, bound))
     run.moving = moving
     run.switch_contacts = contacts
     return stops

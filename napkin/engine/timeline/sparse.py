@@ -695,6 +695,7 @@ class Sparse(Way):
         self.size = len(names)
         if self.stores:
             self.amounts.clock_legs(self.net.connections, place, plan)
+        self.single_donor(values)
         self.identifiable = (
             self.amounts.single is None
             and self.net.plain
@@ -743,6 +744,7 @@ class Sparse(Way):
                 mine |= {k for k in range(len(stores)) if levels[int(self.net.store_sets[k])] < level}
             self.reads.append(sorted(mine))
         self.evaluations = 0
+        self.through_stores = (self.net.counts[0] > 0) & (self.net.counts[1] > 0)
         self.lower_flags = np.zeros(len(stores), dtype=bool)
         self.upper_flags = np.zeros(len(stores), dtype=bool)
         wanted = run.recorder.wanted
@@ -1152,6 +1154,14 @@ class Sparse(Way):
             self.lower_flags &= ~leaving
             self.upper_flags &= ~leaving
 
+        self.set_resting(
+            {
+                self.stores[k]: self.lower[k] if self.lower_flags[k] else self.upper[k]
+                for k in np.flatnonzero(self.through_stores & (self.lower_flags | self.upper_flags)).tolist()
+            },
+            self.t,
+        )
+
     def _record(self, solution, start, end):
         """The pieces of the kept stores and actual rates from start to end."""
         recorder = self.recorder
@@ -1361,7 +1371,7 @@ class Sparse(Way):
         if self.stores and start < end:
             if self.amounts.clocks:
                 self.amounts.select_clocks(self.lower_flags.__getitem__, self.upper_flags.__getitem__)
-            self.amounts.accept(start, end, self._transfer_amount(solution, start, end))
+            self.accept_amounts(start, end, self._transfer_amount(solution, start, end))
 
     def _clock_bounds(self):
         return self.lower_flags.__getitem__, self.upper_flags.__getitem__

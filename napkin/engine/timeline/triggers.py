@@ -709,6 +709,15 @@ class Triggers:
         """The first time in (now, until] at which a comparison of values on curves can change its
         answer, read within its band, or None: step by step, each piece of a step skipped, decided by
         its ends, or halved (see the module). `start` is its difference now."""
+        # Search the modeled interval first. Only a contact still missing there
+        # needs the incoming continuation through the horizon's coincidence band.
+        horizon = self.plan.horizon
+        if now < horizon < until:
+            at = self._contact(left, op, right, moving, now, horizon, start, switching, physical)
+            if at is not None:
+                return at
+            start = self.side(left, horizon) - self.side(right, horizon)
+            now = horizon
         spelled = f'{nodes.notation(left)} {_SPELLING[op]} {nodes.notation(right)}'
         crossing = self.plan.numerics.crossing
         read = {now: start}

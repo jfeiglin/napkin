@@ -996,6 +996,7 @@ class DeclaredWay(Way):
             self.amounts.change(row, t, self.carried[row])
         self.carried = rate
         changed = []
+        changed_faces = {}
         for s, store in enumerate(self.stores):
             inflow = float(rate[net.ends[IN].of(s)].sum())
             outflow = float(rate[net.ends[OUT].of(s)].sum())
@@ -1009,8 +1010,14 @@ class DeclaredWay(Way):
                         f'{store}: the solver {self.declared.id} moves it past its bound at {t:g} h'
                     )
                 slope = 0.0
+            if (low or high) and slope == 0 and inflow and outflow:
+                changed_faces[s] = OUT if low else IN
+            elif self.resting_rates is not None and s in self.resting_rates.sides:
+                changed_faces[s] = None
             if slope == self.slope[s] and s not in forced:
                 continue
+            if t > self.t0 and slope == 0 and s not in forced:
+                value = float(self.run.stock_balance(store, t))
             self.y[s], self.since[s], self.slope[s] = value, t, slope
             self.version[s] += 1
             self.recorder.add(store, t, value, slope)
@@ -1022,6 +1029,7 @@ class DeclaredWay(Way):
                 reach = t + (self.upper[s] - value) / slope
             if reach <= self.run.clock.apart(self.plan.horizon):
                 heapq.heappush(self.due, (reach, s, int(self.version[s])))
+        self.balance_rates(changed_faces, rate, t)
         return changed
 
     # ---- the interface of a way (`ways.py`) --------------------------------------------------------
@@ -1169,6 +1177,7 @@ class MovingDeclared(DeclaredWay):
         self.atol = np.array([run.amount_tolerance(name) for name in self.stores])
         self.amounts = MovingAmounts(len(self.leg_rows), t, None)
         self.amounts.clock_legs(self.leg_rows, self.place, self.plan)
+        self.single_donor(values)
         leg_scales = self.amounts.tolerances(run, (f'{name}.actual_rate' for name in self.leg_rows))
         self.step_atol = np.concatenate((self.atol, leg_scales))
         self.rtol = numerics.rtol
@@ -1370,6 +1379,15 @@ class MovingDeclared(DeclaredWay):
             self.low, self.high = self.low & ~leaving, self.high & ~leaving
         self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
         changed = self._publish(t, flows, results)
+        self.set_resting(
+            {
+                self.stores[s]: self.lower[s] if self.low[s] else self.upper[s]
+                for s in np.flatnonzero(
+                    (self.low | self.high) & (self.net.counts[0] > 0) & (self.net.counts[1] > 0)
+                ).tolist()
+            },
+            t,
+        )
         for s, store in enumerate(self.stores):
             self.recorder.add(store, t, float(self.y[s]), 0.0)
         return changed
@@ -1533,7 +1551,7 @@ class MovingDeclared(DeclaredWay):
         self.incoming_history(end)
         if end > self.amounts.through:
             self.amounts.select_clocks(self.low.__getitem__, self.high.__getitem__)
-            self.amounts.accept(self.amounts.through, end, self.pending.solution(end)[len(self.stores) :])
+            self.accept_amounts(self.amounts.through, end, self.pending.solution(end)[len(self.stores) :])
         self.y = self._state(end)
         self.time = end
         self.pending = self.prefix = None

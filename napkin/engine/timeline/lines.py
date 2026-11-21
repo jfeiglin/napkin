@@ -211,6 +211,7 @@ class Lines(Way):
         """Start again the line of each store whose rate changed (or that is `forced`), from its
         value at t."""
         net, instant = self.net, self.instant
+        changed_faces = {}
         for s in sorted(set(stores) | set(forced)):
             inflow = float(self.rate[net.ends[IN].of(s)].sum())
             outflow = float(self.rate[net.ends[OUT].of(s)].sum())
@@ -230,8 +231,14 @@ class Lines(Way):
                     # Held by the closed form of groups (`_downstream`), which a release would not
                     # change: it leaves all the same, and its part is solved again at the next moment.
                     self.stale.add(s)
+            if (low or high) and slope == 0 and inflow and outflow:
+                changed_faces[s] = OUT if low else IN
+            elif self.resting_rates is not None and s in self.resting_rates.sides:
+                changed_faces[s] = None
             if slope == self.slope[s] and s not in forced:
                 continue
+            if t > self.t0 and slope == 0 and s not in forced:
+                value = float(self.run.stock_balance(self.stores[s], t))
             self.y[s], self.since[s], self.slope[s] = value, t, slope
             self.version[s] += 1
             self.recorder.add(self.stores[s], t, float(value), float(slope))
@@ -242,6 +249,7 @@ class Lines(Way):
                 reach = t + (self.upper[s] - value) / slope
             if reach <= self.run.clock.apart(self.plan.horizon):
                 heapq.heappush(self.due, (reach, s, int(self.version[s])))
+        self.balance_rates(changed_faces, self.rate, t)
 
     # ---- moments ----------------------------------------------------------------------------------
 

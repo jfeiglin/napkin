@@ -68,6 +68,7 @@ from .network import Asked, Instant
 from .occurrences import Live
 from .plan import Connected
 from .sparse import Sparse
+from .stocks import RestingAmounts, RestingRates
 
 _ERRORS = {
     kind.__name__: kind
@@ -473,6 +474,17 @@ def _instance(instance):
             ),
         )
     fields += (
+        (
+            'resting_rates',
+            None
+            if instance.resting_rates is None
+            else (
+                tuple((instance.stores[i], side) for i, side in instance.resting_rates.sides.items()),
+                _pairs(instance.resting_rates.offsets),
+            ),
+        ),
+        ('resting', _pairs(instance.resting.rows) if instance.resting is not None else ()),
+        ('donor', getattr(instance, 'donor', None)),
         ('certified', _pairs(getattr(instance, 'certified', {}))),
         ('adjustments', _pairs(getattr(instance, 'adjustments', {}))),
     )
@@ -838,6 +850,18 @@ def _restore_ways(run, found):
 
 def _made(run, kind, keys, data):
     instance = _made_fields(run, kind, keys, data)
+    instance.donor = data.get('donor')
+    if data.get('resting'):
+        rests = instance.resting = RestingAmounts()
+        rests.rows = dict(data['resting'])
+        for store, (_, _, row) in rests.rows.items():
+            for name, _ in row:
+                rests.incident.setdefault(name, set()).add(store)
+    if data.get('resting_rates') is not None:
+        sides, offsets = data['resting_rates']
+        instance.resting_rates = RestingRates()
+        instance.resting_rates.sides = {instance.place[n]: side for n, side in sides if n in instance.place}
+        instance.resting_rates.offsets = {n: value for n, value in offsets if n in instance.leg_rows}
     if data.get('adjustments'):
         instance.adjustments = dict(data['adjustments'])
     if data.get('certified'):

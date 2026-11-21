@@ -21,7 +21,7 @@ class Stocks:
         self.balances = {}  # name -> (exact balance, signed incidence already posted, time)
         self.ends = {}  # incoming generation membership during a stage's membership edits
 
-    def point(self, store, t):
+    def point(self, store, t, amounts=None):
         """The physical balance and cumulative signed incidence of its installed generation.
         Read both directions from that generation even if a stage already changed membership."""
         entry = self.balances.get(store)
@@ -40,7 +40,13 @@ class Stocks:
             if names is None:
                 names = self.run.plan.incident(store, side)
             for name in names:
-                gross += sign * way.transferred(name, t)
+                if amounts is None:
+                    amount = way.transferred(name, t)
+                else:
+                    if name not in amounts:
+                        amounts[name] = way.transferred(name, t)
+                    amount = amounts[name]
+                gross = gross + amount if sign > 0 else gross - amount
         return balance + (gross - cursor), gross
 
     def stock_balance(self, store, t):
@@ -60,6 +66,19 @@ class Stocks:
         """Apply a roundoff correction at a located physical face through an incident leg.
         The same correction reaches the other endpoint when that endpoint consumes this prefix."""
         run = self.run
+        # A single draining source can use its numerical level as the best-conditioned
+        # primitive. A placement changes that level discontinuously. Preserve its incoming
+        # amount and continue from the ordinary integral before applying the placement once.
+        for name in levels:
+            way = run.ways.instance_of(name)
+            donor = getattr(way, 'donor', None)
+            if donor is not None and donor[1] == name:
+                connection = donor[0]
+                before = way.raw_transferred(connection, t)
+                way.donor = None
+                difference = before - way.raw_transferred(connection, t)
+                if difference:
+                    way.correct(connection, difference)
         residuals = {
             name: rational(bound) - self.stock_balance(name, t)
             for name, bound in levels.items()
@@ -70,26 +89,28 @@ class Stocks:
         # Each face suggests a distribution on its incident physical legs. If both ends of one
         # leg reach a face together, solve their incidence equations before applying either
         # correction. Otherwise one rounded contact could reopen the face just closed.
-        columns, equations, effects = {}, {}, {}
+        levels = dict(levels)
+        columns = {}
         todo = [name for name, delta in residuals.items() if delta]
         while todo:
             name = todo.pop()
             if name in columns:
                 continue
             shares = columns[name] = self.face_shares(name, levels[name], t)
-            for connection, weight in shares:
+            for connection, _ in shares:
                 leg = run.plan.connections[connection]
-                for end, sign in ((leg.source, -1), (leg.sink, 1)):
-                    if end not in residuals:
+                for end in (leg.source, leg.sink):
+                    if end is None or end in run.written:
                         continue
-                    row = equations.setdefault(end, {})
-                    row[name] = row.get(name, 0) + sign * weight
+                    if end not in residuals:
+                        way = run.ways.instance_of(end)
+                        if way is None or (rest := way.resting_value(end, t)) is None:
+                            continue
+                        levels[end] = rest
+                        residuals[end] = rational(rest) - self.stock_balance(end, t)
                     if end not in columns:
                         todo.append(end)
-        factors = _contact_factors(equations, residuals)
-        for name, factor in factors.items():
-            for connection, weight in columns[name]:
-                effects[connection] = effects.get(connection, 0) + factor * weight
+        effects = _incidence_effects(run.plan, columns, residuals)
         for connection, delta in effects.items():
             if delta:
                 leg = run.plan.connections[connection]
@@ -97,22 +118,50 @@ class Stocks:
 
     def face_shares(self, name, bound, t):
         run = self.run
-        side = 'outflow' if bound == run.bounds[name][0] else 'inflow'
-        sign = -1 if side == 'outflow' else 1
-        incidence = self.ends.get((name, side))
-        if incidence is None:
-            incidence = run.plan.incident(name, side)
-        if not incidence:
-            return ()
-        if len(incidence) == 1:
-            return ((incidence[0], sign),)
-        # Read the incoming allocation before this instant publishes its outgoing branches.
+        lower, upper = run.bounds[name]
         earlier = math.nextafter(t, -math.inf) if t else t
-        rates = [rational(max(0, run.value(f'{c}.actual_rate', earlier))) for c in incidence]
+
+        def incidence(side):
+            connections = self.ends.get((name, side))
+            if connections is None:
+                connections = run.plan.incident(name, side)
+            return [
+                leg
+                for leg in connections
+                if run.plan.connections[leg].source != run.plan.connections[leg].sink
+            ]
+
+        if bound == lower:
+            side = 'outflow'
+        elif bound == upper:
+            side = 'inflow'
+        else:
+            # The direction comes from the incoming trajectory, even when the moment
+            # coalesces with a crossing just before or after its mathematical root.
+            def speed(c):
+                return max(0, run.value(f'{c}.actual_rate', earlier))
+
+            inflow, outflow = incidence('inflow'), incidence('outflow')
+            net = sum(map(speed, inflow)) - sum(map(speed, outflow))
+            if net == 0:
+                ordered = sorted(
+                    [(leg, 1) for leg in inflow] + [(leg, -1) for leg in outflow],
+                    key=lambda item: run.plan.number(item[0]),
+                )
+                return ordered[:1]
+            side = 'inflow' if net > 0 else 'outflow'
+        sign = -1 if side == 'outflow' else 1
+        legs = incidence(side)
+        if not legs:
+            legs = incidence('inflow' if sign < 0 else 'outflow')
+            return ((legs[0], -sign),) if legs else ()
+        if len(legs) == 1:
+            return ((legs[0], sign),)
+        rates = [rational(max(0, run.value(f'{leg}.actual_rate', earlier))) for leg in legs]
         total = sum(rates)
         if total:
-            return [(c, sign * weight / total) for c, weight in zip(incidence, rates) if weight]
-        return ((incidence[0], sign),)
+            return [(c, sign * weight / total) for c, weight in zip(legs, rates) if weight]
+        return ((legs[0], sign),)
 
     def adjust(self, way, connection, adjustment, t):
         """Post one physical correction through its two endpoints, including any open cursor."""
@@ -153,11 +202,11 @@ class Stocks:
         The saved recorder and all posting cursors remain suitable for a continuing run."""
         end = record.end
         run = self.run
-        corrected = {}
+        corrected, amounts = {}, {}
         for history in record.histories:
             name = name_of(history.key)
             if history.pieces and name in run.ways.set_of:
-                actual = float(self.stock_balance(name, end))
+                actual = float(self.point(name, end, amounts)[0])
                 if history.at(end) != actual:
                     corrected[name] = actual
         if not corrected:
@@ -214,3 +263,181 @@ def _contact_factors(equations, residuals):
     for pivot, (row, target) in reversed(pivots.items()):
         result[pivot] = target - sum(weight * result.get(key, 0) for key, weight in row.items())
     return result
+
+
+class RestingRates:
+    """Exact incidence at stores whose held allocation keeps them on a face.
+
+    Only stores with positive pass-through have a constraint. A rate change
+    revisits the adjacent constrained component. Its small rate corrections
+    accrue as ordinary rectangles until the next change of that allocation.
+    """
+
+    def __init__(self):
+        self.sides = {}
+        self.offsets = {}
+
+    def update(self, way, changed, rate, t):
+        net = way.net
+        previous = {s for s in changed if s in self.sides}
+        for store, side in changed.items():
+            if side is None:
+                self.sides.pop(store, None)
+            else:
+                self.sides[store] = side
+        todo = list(previous | {s for s in changed if s in self.sides})
+        visited, connections, rows = set(), set(), {}
+        while todo:
+            s = todo.pop()
+            if s in visited:
+                continue
+            visited.add(s)
+            signed = {}
+            for side, sign in ((0, -1), (1, 1)):
+                for c in net.ends[side].of(s).tolist():
+                    name = net.connections[c]
+                    if not rate[c] and name not in self.offsets:
+                        continue
+                    connections.add(name)
+                    signed[name] = signed.get(name, 0) + sign
+                    neighbor = int(net.source[c] if sign > 0 else net.sink[c])
+                    if neighbor in self.sides and neighbor not in visited:
+                        todo.append(neighbor)
+            if s in self.sides:
+                rows[s] = {name: sign for name, sign in signed.items() if sign}
+        if not connections:
+            return
+        speeds = {name: rational(rate[way.leg_rows[name]]) for name in connections}
+        residuals = {s: -sum(sign * speeds[n] for n, sign in row.items()) for s, row in rows.items()}
+        updated = {}
+        if any(residuals.values()):
+            columns = {}
+            for s, row in rows.items():
+                sign = -1 if self.sides[s] == 0 else 1
+                group = [n for n, direction in row.items() if direction == sign and speeds[n]]
+                total = sum(speeds[n] for n in group)
+                columns[way.stores[s]] = [(n, sign * speeds[n] / total) for n in group]
+            updated = _incidence_effects(
+                way.run.plan, columns, {way.stores[s]: r for s, r in residuals.items()}
+            )
+        for n in connections:
+            old = self.offsets.get(n)
+            new = updated.get(n, 0)
+            if (old is None and not new) or (old is not None and old[1] == new):
+                continue
+            if old is not None:
+                start, adjustment = self.offsets.pop(n)
+                if t != start:
+                    way.correct(n, adjustment * (rational(t) - rational(start)))
+            if new:
+                self.offsets[n] = t, new
+
+
+class RestingAmounts:
+    """Conserve each resting store's signed prefix on demand during a moving regime.
+
+    A query follows only the connected resting stores incident to its leg. A mode
+    change closes the old constraint; an empty event does not settle other stores.
+    """
+
+    def __init__(self):
+        self.rows = {}  # store -> (physical face, signed gross prefix at entry, incidence)
+        self.incident = {}  # connection -> the resting stores it touches
+        self.time = None
+        self.cache = {}
+
+    def invalidate(self):
+        self.time = None
+        self.cache.clear()
+
+    def update(self, way, levels, at):
+        changed = {
+            s
+            for s in self.rows.keys() | levels.keys()
+            if s not in levels or s not in self.rows or self.rows[s][0] != levels[s]
+        }
+        if not changed:
+            return
+        new_rows = {
+            store: tuple(
+                (name, sign)
+                for side, sign in (('outflow', -1), ('inflow', 1))
+                for name in way.run.plan.incident(store, side)
+                if way.run.plan.connections[name].source != way.run.plan.connections[name].sink
+            )
+            for store in changed & levels.keys()
+        }
+        # A new or departing constraint can touch an old one. Close only their
+        # affected components, regardless of which other stores were previously read.
+        self.invalidate()
+        for store in changed & self.rows.keys():
+            _, _, row = self.rows[store]
+            if row:
+                self.amount(way, row[0][0], at)
+        for row in new_rows.values():
+            for name, _ in row:
+                if name in self.incident:
+                    self.amount(way, name, at)
+        for name, delta in list(self.cache.items()) if self.time == at else ():
+            if delta:
+                way.correct(name, delta)
+        self.invalidate()
+        for store in changed & self.rows.keys():
+            _, _, row = self.rows.pop(store)
+            for name, _ in row:
+                self.incident[name].remove(store)
+                if not self.incident[name]:
+                    del self.incident[name]
+        for store, row in new_rows.items():
+            if not row:
+                continue
+            target = sum(sign * way.raw_transferred(n, at) for n, sign in row)
+            self.rows[store] = levels[store], target, row
+            for name, _ in row:
+                self.incident.setdefault(name, set()).add(store)
+
+    def amount(self, way, name, t):
+        if name not in self.incident:
+            return 0
+        if t != self.time:
+            self.cache.clear()
+            self.time = t
+        if name in self.cache:
+            return self.cache[name]
+        todo, rows, raw = list(self.incident[name]), {}, {}
+        while todo:
+            s = todo.pop()
+            if s in rows:
+                continue
+            rows[s] = self.rows[s]
+            for leg, _ in self.rows[s][2]:
+                if leg not in raw:
+                    raw[leg] = way.raw_transferred(leg, t)
+                    todo.extend(self.incident[leg])
+        self.cache.update(dict.fromkeys(raw, 0))
+        residuals = {
+            s: target - sum(sign * raw[n] for n, sign in row) for s, (_, target, row) in rows.items()
+        }
+        if any(residuals.values()):
+            columns = {s: way.run.stock_state.face_shares(s, bound, t) for s, (bound, _, _) in rows.items()}
+            for n, delta in _incidence_effects(way.run.plan, columns, residuals).items():
+                self.cache[n] += delta
+        return self.cache[name]
+
+
+def _incidence_effects(plan, columns, residuals):
+    if len(columns) == 1:
+        store, shares = next(iter(columns.items()))
+        return {name: residuals[store] * weight for name, weight in shares}
+    equations, effects = {}, {}
+    for store, shares in columns.items():
+        for name, weight in shares:
+            leg = plan.connections[name]
+            for end, sign in ((leg.source, -1), (leg.sink, 1)):
+                if end in residuals:
+                    row = equations.setdefault(end, {})
+                    row[store] = row.get(store, 0) + sign * weight
+    for store, factor in _contact_factors(equations, residuals).items():
+        for name, weight in columns[store]:
+            effects[name] = effects.get(name, 0) + factor * weight
+    return effects
