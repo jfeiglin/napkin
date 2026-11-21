@@ -29,7 +29,7 @@ import pytest
 
 from napkin.engine import read, run
 from napkin.engine.errors import SimulationError
-from napkin.engine.timeline import declared, selection
+from napkin.engine.timeline import Plan, Run, declared, selection
 from napkin.program.build import (
     SINK,
     SOURCE,
@@ -120,18 +120,22 @@ def physical(seed, unit):
     """The values of a random program written in `unit` at the times of `test_random_solvers`, in
     litres and hours, and how its run ended."""
     source, keys = program(seed, unit)
-    record = run(source, Configuration(Request(HORIZON)))
+    machine = Run(Plan.of(source, Configuration(Request(HORIZON))))
+    record = machine.run()
     horizon = record.failure.t if record.failure is not None else HORIZON
     times = [float(time) for time in TIMES if time < horizon]
-    factor = float(SCALES[unit])
-    values = [tuple(v * factor for v in read(record, source, [key], times)[0].values) for key in keys]
-    return values, None if record.failure is None else round(record.failure.t, 9)
+    # The reader returns stock, solved rate and provider limit in their own units.
+    rows = read(record, source, [*keys, Key('provider', ('limit',))], times)
+    values = [tuple(v * machine.plan.units.scale(row.unit) for v in row.values) for row in rows]
+    scales = {name: machine.own_scale(name) for name in machine.plan.values}
+    return values, None if record.failure is None else round(record.failure.t, 9), scales
 
 
 def same_in_every_unit(seed):
-    litres, ended = physical(seed, 'L')
+    litres, ended, scales = physical(seed, 'L')
     for unit in ('mL', 'kL'):
-        found, other = physical(seed, unit)
+        found, other, converted_scales = physical(seed, unit)
+        assert converted_scales == scales, (seed, unit)
         assert other == ended, (seed, unit, other, ended)
         for a, b in zip(found, litres):
             assert a == pytest.approx(b, rel=1e-9, abs=1e-12), (seed, unit)
@@ -146,6 +150,25 @@ def test_the_same_model_in_litres_millilitres_and_kilolitres_gives_the_same_answ
 @pytest.mark.parametrize('seed', range(40, 400))
 def test_more_models_give_the_same_answer_in_every_unit_of_volume(seed):
     same_in_every_unit(seed)
+
+
+def test_changing_an_authored_rate_scale_changes_a_near_zero_comparison():
+    # Both spellings have the same physical rate (5e-11 L/h). Only the explicit
+    # comparison scale of the named provider limit changes.
+    threshold = q(0, 'mL/h')
+    for physical_scale, expected in ((1000, False), (1, True)):
+        builder = Builder(UNITS)
+        builder.entity(
+            'provider',
+            value('limit', 'mL/h', 5e-8, scale=q(physical_scale, 'mL/h')),
+            value('positive', None, formula(this.limit > threshold)),
+        )
+        source = builder.finish()
+        machine = Run(Plan.of(source, Configuration(Request(0))))
+        record = machine.run()
+        assert record.failure is None
+        assert machine.own_scale('provider.limit') == physical_scale / 1000
+        assert read(record, source, [Key('provider', ('positive',))], [0])[0].values == (expected,)
 
 
 # ---- the audit's cases and their variants, worked by hand --------------------------------------------
@@ -171,8 +194,13 @@ def split(want, unit, claim, objective):
     )
     b.entity('provider', solver('plan', *parts), value('loss', '', formula(shown)))
     source = b.finish()
-    record = run(source, Configuration(Request(1)))
+    machine = Run(Plan.of(source, Configuration(Request(1))))
+    record = machine.run()
     assert record.failure is None, record.failure
+    # This separate stress case deliberately changes the physical scale of the
+    # solver's own unknowns together with the units of their physical endpoints.
+    assert machine.own_scale('pipes.one.actual_rate') == float(SCALES[unit])
+    assert machine.own_scale('tank.water.inflow.actual_rate') == float(SCALES[unit])
     keys = [
         Key('pipes', ('one', 'actual_rate')),
         Key('pipes', ('two', 'actual_rate')),

@@ -67,11 +67,14 @@ def _half(rng, low, high):
 
 def program(seed, unit='L', size=1):
     """A random program with a declared solver (see the module), and the keys of the values to
-    compare. Its volumes are written in `unit` (L, mL or kL), each `size` times the litres that the
-    seed draws: the same physical model for any unit, and a smaller one for a small `size`."""
+    compare. Its authored quantities are written in `unit` (L, mL or kL), each `size` times
+    the litres drawn. The physical comparison scales of all named values are fixed: 1 L for
+    water and 1 L/h for authored rates and the implicit flow and endpoint fields."""
     rng = random.Random(seed)
     b = Builder(UNITS)
     rate = f'{unit}/h'
+    store_scale = q(Fraction(1) / SCALES[unit], unit) if unit != 'L' else None
+    rate_scale = q(Fraction(1) / SCALES[unit], rate) if unit != 'L' else None
 
     def volume(litres):
         return Fraction(litres) * Fraction(size) / SCALES[unit]
@@ -84,15 +87,17 @@ def program(seed, unit='L', size=1):
             kind = rng.choice(('fill', 'drain', 'pass') if len(tanks) > 1 else ('fill', 'drain'))
             capacity = q(volume(_half(rng, 1, 4)), rate) if rng.random() < 0.5 else None
             want = f'want{k}'
-            parts[name].append(value(want, rate, volume(_half(rng, 0, 4))))
+            parts[name].append(value(want, rate, volume(_half(rng, 0, 4)), scale=rate_scale))
             request = formula(getattr(this, want))
             if kind == 'fill':
-                made = flow(f'f{k}', SOURCE, this.water, request=request, capacity=capacity)
+                made = flow(f'f{k}', SOURCE, this.water, request=request, capacity=capacity, unit='L/h')
             elif kind == 'drain':
-                made = flow(f'f{k}', this.water, SINK, request=request, capacity=capacity)
+                made = flow(f'f{k}', this.water, SINK, request=request, capacity=capacity, unit='L/h')
             else:
                 other = rng.choice([each for each in tanks if each != name])
-                made = flow(f'f{k}', this.water, named(other).water, request=request, capacity=capacity)
+                made = flow(
+                    f'f{k}', this.water, named(other).water, request=request, capacity=capacity, unit='L/h'
+                )
             parts[name].append(made)
             flows.append((name, f'f{k}', capacity is not None))
             if rng.random() < 0.25:
@@ -114,6 +119,7 @@ def program(seed, unit='L', size=1):
                 volume(min(level, cap) if cap is not None else level),
                 lower=0,
                 upper=None if cap is None else volume(cap),
+                scale=store_scale,
             ),
             *parts[name],
         )
@@ -139,7 +145,7 @@ def program(seed, unit='L', size=1):
             solving.append(minimize(mine.actual_rate))
         else:
             solving.append(maximize(mine.actual_rate))
-    provider = [value('limit', rate, volume(_half(rng, 1, 6))), solver('plan', *solving)]
+    provider = [value('limit', rate, volume(_half(rng, 1, 6)), scale=rate_scale), solver('plan', *solving)]
     setup = []
     if rng.random() < 0.4:
         at = q(rng.choice((1, Fraction(3, 2), 2)), 'h')
