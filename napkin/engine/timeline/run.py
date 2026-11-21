@@ -733,8 +733,8 @@ class Run:
     def stock_balance(self, store, t):
         return self.stock_state.stock_balance(store, t)
 
-    def post_stock(self, store, t):
-        return self.stock_state.post_stock(store, t)
+    def post_stock(self, store, t, amounts=None):
+        return self.stock_state.post_stock(store, t, amounts)
 
     def present(self, name):
         """The published value of a stage or checkpoint, including a stock's accepted prefix."""

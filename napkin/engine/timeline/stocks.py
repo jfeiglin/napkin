@@ -12,7 +12,7 @@ from dataclasses import replace
 from ...core import expr as nodes
 from ...core.units import rational
 from ...program.record import History, Piece
-from ..continuous.transfers import held_elapsed
+from ..continuous.transfers import ZERO_AMOUNT, held_elapsed
 from ..errors import SimulationError
 from .moment import quantity, span
 from .plan import FORMULA, name_of
@@ -33,7 +33,8 @@ class Stocks:
             if t == at:
                 return balance, cursor
         else:
-            balance, cursor = rational(self.run.env[store]), 0
+            opening = self.run.env[store]
+            balance, cursor = rational(opening) if opening else ZERO_AMOUNT, 0
         way = self.run.ways.instance_of(store)
         if way is None:
             return balance, cursor
@@ -49,19 +50,21 @@ class Stocks:
                     if name not in amounts:
                         amounts[name] = way.transferred(name, t)
                     amount = amounts[name]
-                gross = gross + amount if sign > 0 else gross - amount
-        return balance + (gross - cursor), gross
+                if amount:
+                    gross = gross + amount if sign > 0 else gross - amount
+        change = gross - cursor if cursor else gross
+        return (balance + change if change else balance), gross
 
     def stock_balance(self, store, t):
         """Read the accepted physical balance without advancing a posting cursor."""
         return self.point(store, t)[0]
 
-    def post_stock(self, store, t):
+    def post_stock(self, store, t, amounts=None):
         """Materialize an accepted balance once at t. Return whether its cursor advanced."""
         point = self.balances.get(store)
         if point is not None and point[2] == t:
             return False
-        balance, cursor = self.point(store, t)
+        balance, cursor = self.point(store, t, amounts)
         self.balances[store] = balance, cursor, t
         return True
 
@@ -256,9 +259,9 @@ class Stocks:
                 balance, cursor, _ = entry
                 self.balances[end] = balance + direction * adjustment, cursor + direction * adjustment, t
 
-    def release_stock(self, store, t):
+    def release_stock(self, store, t, amounts=None):
         """Close the retired generation and carry its exact balance into its successor."""
-        self.run.post_stock(store, t)
+        self.run.post_stock(store, t, amounts)
         balance = self.balances[store][0]
         self.balances[store] = balance, 0, t
         for side in ('inflow', 'outflow'):
@@ -338,10 +341,11 @@ def _contact_factors(equations, residuals):
         if pivot is None:
             continue
         first = row.pop(pivot)
-        pivots[pivot] = (
-            {key: rational(weight) / first for key, weight in row.items() if weight},
-            target / first,
-        )
+        row = {key: weight for key, weight in row.items() if weight}
+        if first != 1:
+            row = {key: rational(weight) / first for key, weight in row.items()}
+            target /= first
+        pivots[pivot] = row, target
     result = {}
     for pivot, (row, target) in reversed(pivots.items()):
         result[pivot] = target - sum(weight * result.get(key, 0) for key, weight in row.items())
@@ -525,7 +529,8 @@ def _incidence_effects(plan, columns, residuals):
             for end, sign in ((leg.source, -1), (leg.sink, 1)):
                 if end in residuals:
                     row = equations.setdefault(end, {})
-                    row[store] = row.get(store, 0) + sign * weight
+                    previous = row.get(store, 0)
+                    row[store] = previous + weight if sign > 0 else previous - weight
     for store, factor in _contact_factors(equations, residuals).items():
         for name, weight in columns[store]:
             effects[name] = effects.get(name, 0) + factor * weight

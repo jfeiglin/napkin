@@ -173,6 +173,7 @@ class ClockLeg:
 # total with the smallest product (10**-648) still present, without rounding.
 _HELD_CONTEXT = Context(prec=1300)
 _ZERO = Decimal(0)
+ZERO_AMOUNT = Fraction(0)
 
 
 @lru_cache(maxsize=128)
@@ -214,7 +215,8 @@ class HeldAmounts:
             subtotal = _rectangle(left, start, old_rate, subtotal)
         if t < start:
             raise ValueError('transfer requested before its current held interval')
-        return Fraction(_rectangle(start, t, rate, subtotal))
+        amount = _rectangle(start, t, rate, subtotal)
+        return Fraction(amount) if amount else ZERO_AMOUNT
 
     def change(self, row, t, previous_rate):
         held = self.rows[row]

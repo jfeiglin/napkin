@@ -147,8 +147,8 @@ def instrument(stack, row):
     if post_stock is not None:
         postings = result['stock_materializations'] = {'post_stock_calls': 0, 'cursor_advances': 0}
 
-        def post(machine, store, t):
-            advanced = post_stock(machine, store, t)
+        def post(machine, store, t, *args):
+            advanced = post_stock(machine, store, t, *args)
             if active:
                 if not isinstance(advanced, bool):
                     raise AssertionError('Run.post_stock must identify whether it advanced the stock cursor')

@@ -309,8 +309,10 @@ class Ways:
         values = {}
         for key in sorted(ids):
             connected, instance = self.sets[key]
+            # Both ends consume the same accepted physical leg before its installation retires.
+            amounts = {} if len(connected.stores) > 1 else None
             for store in connected.stores:
-                values[store] = self.run.stock_state.release_stock(store, t)
+                values[store] = self.run.stock_state.release_stock(store, t, amounts)
             del self.sets[key]
             instance.retire(key)
             self.sampled.pop(key, None)
