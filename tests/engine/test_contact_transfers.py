@@ -97,8 +97,9 @@ def test_the_entire_contact_residual_follows_the_incoming_rates(method, monkeypa
         assert way.transferred(name, t) == machine.stock_balance(store, t) == amount
 
 
-def test_contact_with_zero_incoming_rates_uses_declaration_order(monkeypatch):
-    machine = touching(Lines, 'outflow', monkeypatch)
+@pytest.mark.parametrize('method', [Lines, ComponentWay, Sparse, DeclaredWay, MovingDeclared])
+def test_contact_with_zero_incoming_rates_uses_declaration_order(method, monkeypatch):
+    machine = touching(method, 'outflow', monkeypatch)
     # Both pipes are idle after the empty contact. Model a newly located residual on that
     # same physical face and compare each end before and after the correction.
     state = machine.stock_state

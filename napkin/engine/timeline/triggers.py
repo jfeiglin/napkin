@@ -583,8 +583,12 @@ class Triggers:
                 root = self._exact_root(left, right, moving, now)
                 if root is None:
                     root = now + start / (start - end) * (until - now)
-                if self.within(left, right, now, start) or not now < root <= until:
+                if self.within(left, right, now, start) or root <= now:
                     continue
+                if root > until:
+                    if not run.clock.within(root, until):
+                        continue
+                    root = self._continued_root(left, right, moving, until)
                 physical = True
             else:
                 root = self._contact(left, op, right, moving, now, until, float(start), physical=True)
@@ -593,6 +597,10 @@ class Triggers:
                     # A turning or asymptotic value can enter the comparison band without ever
                     # reaching the threshold. It may fire there, but it has no level to snap.
                     root = self._contact(left, op, right, moving, now, until, float(start))
+                    if root is not None and run.clock.within(root, until):
+                        crossing = self._continued_root(left, right, moving, until)
+                        if crossing is not None:
+                            root, physical = crossing, True
             if root is not None and root <= earliest:
                 if root < earliest:
                     witnesses.clear()
@@ -600,6 +608,29 @@ class Triggers:
                 if physical:
                     witnesses.append((left, right))
         return earliest, window, tuple(witnesses)
+
+    def _continued_root(self, left, right, moving, end):
+        """A separate stock threshold may land a few ulps after the dense endpoint
+        of a physical switch. Certify its crossing in the incoming time band before
+        treating the comparison as a mere near approach."""
+        run = self.run
+        if not moving <= run.plan.moving:
+            return None
+        ways = {name: run.ways.instance_of(name) for name in moving}
+        through = run.clock.apart(end)
+        if not any(any(way.contacts_at(end, through)) for way in ways.values()):
+            return None
+        tx = Tx('')
+
+        def gap(at):
+            tx.writes = {name: way.incoming_level(name, at) for name, way in ways.items()}
+            read = lambda name: run.value(name, at, tx)  # noqa: E731
+            return lazily(left, read, self.plan.units, at) - lazily(right, read, self.plan.units, at)
+
+        first, last = gap(end), gap(through)
+        if first != 0 and last != 0 and (first > 0) == (last > 0):
+            return None
+        return crossing_time(gap, end, through, accepted=(first, last))
 
     def levels_at(self, t, levels):
         """Physical crossings on the incoming state that can actually fire a watched condition.

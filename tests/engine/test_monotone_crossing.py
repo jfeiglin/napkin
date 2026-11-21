@@ -14,7 +14,7 @@ import math
 
 import pytest
 
-from napkin.engine import run
+from napkin.engine import read, run
 from napkin.program.build import (
     SOURCE,
     Builder,
@@ -87,11 +87,16 @@ def test_a_store_that_only_approaches_its_value_triggers_within_its_tolerance():
     # water is within its tolerance of 0 people (its scale, 100 people, times the tolerance factor),
     # so it fires by then, not at some later moment.
     horizon = 300
-    record = run(*tank(alarm(this.water <= q(0, 'person')), horizon=horizon))
+    program, configuration = tank(alarm(this.water <= q(0, 'person')), horizon=horizon)
+    record = run(program, configuration)
     tolerance = Numerics().rtol * START
     (at,) = fired(record)
     assert decay_time(tolerance) * (1 - 1e-6) <= at <= decay_time(tolerance / 2) * (1 + 1e-6)
     assert at < horizon
+    # It entered the comparison band without crossing zero. A near approach
+    # leaves the positive physical inventory available at the firing.
+    (remaining,) = read(record, program, ['tank.water'], [at])
+    assert remaining.values[0] > 0
 
 
 def test_a_store_with_an_inflow_and_an_outflow_on_a_curve_triggers_where_it_reaches_its_value():
