@@ -10,11 +10,12 @@ everything you need is in the repository, and this file says where. Read it all 
   done, gate G2 passed on branch `claude/blissful-heisenberg-5me2hn`, and the fixes of three audits
   and a fresh review after it (changes 19 to 29, below) are in, with the fixes of the readiness
   audit of `6f297e5` (`audit/readiness-6f297e5.md`; `audit/readiness-fixes-6f297e5.md` and
-  `audit/premerge-e6d17b5.md` give each finding's test), at `ad690c3`. Every central test passes
-  with no catalogue: 10,399 passed and 2 skipped on Linux, 10,400 passed and one platform skip on
-  macOS. The whole deep set (`-m deep tests`) passes on macOS, 23,547 tests with no failure, and
-  its timing, budget and cross-engine cases on Linux as well (2,094): results no longer depend on
-  the machine. Ruff is clean on `napkin/`, `tests/` and `tools/`.
+  `audit/premerge-e6d17b5.md` give each finding's test) and of `8e422da`
+  (`audit/readiness-fixes-8e422da.md`). Every central test passes with no catalogue: 10,546 passed
+  and one platform skip on macOS, 10,545 passed and 2 skipped on Linux. The whole deep set
+  (`-m deep tests`) passes on macOS, 23,743 tests with no failure, and this round's deep cases on
+  Linux as well (2,304): results no longer depend on the machine. Ruff is clean on `napkin/`,
+  `tests/` and `tools/`. The auditor accepted `examples/reservoir` as the first port.
 - What is left is the catalogue: the five model packages under `scenarios/` and `examples/` (all
   but `examples/piano_tuners`) are still in the old language, and so are their tests. That is your
   work, stage M, and it ends at gate G3. Stage F (docs, deleting `scratch/`) comes after, not now.
@@ -207,6 +208,16 @@ four questions on the way. What you will meet in the catalogue:
     every digit. A history budget stops a run at the first piece that its complete record holds past
     the budget, the same fresh, cut from the store or resumed. `load_scenario` takes a package folder.
     A program compiled before language `0.2.1` is refused, by name: compile it again.
+
+16. **The audit of `8e422da`'s fixes that an author meets.** A switch whose operand leaves its
+    threshold with zero speed (a level of `t²`) switches as it leaves. A store declared inside an
+    event keeps its endpoint settings, and a pipe of an event that starts uncapped takes its first
+    capacity. A transfer between a large and a small amount keeps the small one: a 50 mL refund after
+    a 4,000,000 L withdrawal is paid, and 1,000 deposits of 1 mL leave no extra inventory. A frozen
+    store's allowance is counted the same however the run is split. A proof, a folded constant and the
+    run read the same value through any spelling of it. A cited value whose unit the evidence gate
+    cannot read is refused by name. A report through a sum, a filter or a lookup cites the values
+    that selected it. A program compiled before language `0.2.2` is refused: compile it again.
 
 Under change 27 a rule that reads a rate after changing what it depends on, in the same moment,
 reads the rate as the round began, which is what the old engine gave: a translated rule keeps its
