@@ -337,10 +337,12 @@ class Comparisons:
     def literal_gap(self, left, right):
         """The exact gap and band for rational literal operands, once per comparison. A model
         predicate can be exactly on the band after a conversion, a sum or a cancellation."""
-        from .literals import Literals, node_parts
-
+        if isinstance(left, expr.Ref) or isinstance(right, expr.Ref):
+            return None
         key = left, right, self.factor
         if key not in self.literal_gaps:
+            from .literals import Literals, node_parts
+
             literals = Literals(
                 node_parts, self.units.exact_scale if self.units is not None else None, self.factor
             )
@@ -354,7 +356,7 @@ class Comparisons:
 
     def gap_band(self, left, right, a, b, read=None, gap=None):
         """The signed gap and band in the operands' units, even beyond float range."""
-        if gap is None and not expr.names(left) and not expr.names(right):
+        if gap is None:
             exact = self.literal_gap(left, right)
             if exact is not None:
                 return exact
