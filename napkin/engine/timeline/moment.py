@@ -105,9 +105,10 @@ from ...core.literals import Literals, node_parts
 from ...core.units import rational
 from ...expressions import UnitSystem, evaluate
 from ...program import parts as p
-from ...program.refs import Distribution, Formula
+from ...program.refs import Distribution, Formula, Lookup, spelled
 from ..continuous.walk import walked
 from ..errors import SimulationError
+from .collections import occurrence_at
 from .plan import BACKWARD, FORMULA, FORWARD, STATE
 from .reads import Reads, lazily
 
@@ -224,7 +225,7 @@ class Tx:
         self.moves = []  # (source, destination, amount, origin)
         self.balances = {}  # exact physical balances written by moves in this stage
         self.starts = []  # (member, event, arguments)
-        self.allocations = []  # (store, side, allocation, scope, origin) of each new allocation
+        self.allocations = []  # concrete (store, side, priority items), None for proportional()
         # A value that the stage gives a definition -> the statement that gives it its last: a
         # formula, or a captured number in place of a request's or a capacity's formula.
         self.defined = {}
@@ -261,6 +262,10 @@ class _Savepoint:
             for mapping in (run.stock_state.balances, run.env, run.written)
         ]
         self.names = tuple(tx.writes)
+        self.log = len(plan.log)
+        self.rankings = {
+            (store, side): plan.rankings.get((store, side)) for store, side, *_ in tx.allocations
+        }
         self.pieces = {name: _length(recorder.pieces, name) for name in names}
         self.changes = {name: _length(run.changes, name) for name in tx.writes}
         self.defined = {
@@ -282,6 +287,12 @@ class _Savepoint:
                 mapping.pop(name, None)
             mapping.update(previous)
         del recorder.trace[self.trace :]
+        del plan.log[self.log :]
+        for end, before in self.rankings.items():
+            if before is None:
+                plan.rankings.pop(end, None)
+            else:
+                plan.rankings[end] = before
         _cut(recorder.pieces, self.pieces)
         _cut(run.changes, self.changes)
         for store, count in self.transfers.items():
@@ -552,22 +563,32 @@ class Moment:
                 plan.log.append(('resolve', path, key[1], origin))  # it named values (`saved.py`)
         return found[0]
 
-    def target(self, path, scope, origin):
-        """The engine name of a value that a statement writes: a value of a scope, or a value of the
-        newest occurrence of an event. Whether it may write it is the statement's check: a value of
-        a finished occurrence is frozen, whatever spells it (`Occurrences.writable`)."""
-        run, plan = self.run, self.plan
-        point = self.resolved(path, scope, origin)
+    def statement_point(self, path, scope, origin, tx):
+        """Resolve an occurrence lookup using the state at this statement, including prior writes."""
+        if isinstance(path.start, Lookup):
+            source = self.resolved(path.start.source, scope, origin)
+            if source[0] == 'dynamic' and source[1][0] == 'occurrences' and not source[2]:
+                key = self.run.occurrences.node(path.start.key, scope, origin)
+
+                def read(name):
+                    return self.run.value(name, tx=tx)
+
+                try:
+                    point = occurrence_at(
+                        self.plan.members(source[1]), key, read, self.plan.units, self.run.now, spelled(path)
+                    )
+                except ExpressionError as problem:
+                    raise SimulationError(f'{origin}: {problem}') from problem
+                for step in path.steps:
+                    point = self.plan._step(point, step, origin)
+                return point
+        return self.resolved(path, scope, origin)
+
+    def target(self, path, scope, origin, tx):
+        point = self.statement_point(path, scope, origin, tx)
         if point[0] != 'value':
             raise SimulationError(f'{origin}: the target of an assignment is no value')
-        name = point[1]
-        dynamic = plan.dynamic.get(name)
-        if dynamic is not None:
-            members = plan.members(dynamic.source)
-            if dynamic.op != 'at' or not members:
-                raise SimulationError(f'{origin}: {dynamic.spelled} names no occurrence at t = {run.now:g} h')
-            name = plan.project(members[-1], dynamic.steps, origin)
-        return name
+        return point[1]
 
     def checked(self, name, value, origin):
         """A value that a write gives a value with bounds: on its bound when it misses it by less
@@ -596,13 +617,20 @@ class Moment:
         """`=`, `+=` or `-=`."""
         run = self.run
         if isinstance(statement.value, p.Priority | p.Proportional):
-            point = self.resolved(statement.target, scope, statement.origin)
+            point = self.statement_point(statement.target, scope, statement.origin, tx)
             if point[0] != 'allocation':
                 raise SimulationError(f'{statement.origin}: an allocation is the allocation of an endpoint')
             run.occurrences.writable(point[1], statement.origin)
-            tx.allocations.append((point[1], point[2], statement.value, scope, statement.origin))
+            ranking = None
+            if isinstance(statement.value, p.Priority):
+                items = (
+                    (item, self.statement_point(item, scope, statement.origin, tx))
+                    for item in statement.value.items
+                )
+                ranking = self.plan.priority(point[1], point[2], items, statement.origin)
+            tx.allocations.append((point[1], point[2], ranking))
             return
-        name = self.target(statement.target, scope, statement.origin)
+        name = self.target(statement.target, scope, statement.origin, tx)
         run.occurrences.writable(name, statement.origin)  # an assignment always writes
         if statement.op == '=':
             tx.balances.pop(name, None)
@@ -644,8 +672,8 @@ class Moment:
         (`Occurrences.writable`)."""
         run, origin, plan = self.run, statement.origin, self.plan
         node = run.occurrences.node(statement.amount, scope, origin)
-        source = self.target(statement.source, scope, origin)
-        destination = self.target(statement.destination, scope, origin)
+        source = self.target(statement.source, scope, origin, tx)
+        destination = self.target(statement.destination, scope, origin, tx)
         amount = (
             self.stage_balance(source, tx)
             if self.stock_read(node, tx) == source
@@ -726,6 +754,17 @@ class Moment:
                 node = written.node if isinstance(written, Defined) else None
             elif found.kind == FORMULA and name not in self.run.frozen:
                 node = found.node
+            elif name in self.plan.dynamic and self.plan.dynamic[name].op == 'at':
+                dynamic = self.plan.dynamic[name]
+                point = occurrence_at(
+                    self.plan.members(dynamic.source),
+                    dynamic.key,
+                    lambda n: self.run.value(n, tx=tx),
+                    self.plan.units,
+                    self.run.now,
+                    dynamic.spelled,
+                )
+                node = nodes.ref(self.plan.project(point, dynamic.steps))
             else:
                 break
         return None
@@ -824,10 +863,10 @@ class Moment:
             )
             for end in (source, destination):
                 run.occurrences.met(end)
-        for store, side, allocation, scope, origin in tx.allocations:
+        for store, side, ranking in tx.allocations:
             # The endpoint shares its flows by its new rule once its set settles again.
-            self.plan.allocate(store, side, allocation, scope, origin)
-            self.plan.log.append(('allocate', store, side, origin, self.plan.owner_of(scope)))
+            self.plan.allocate(store, side, ranking)
+            self.plan.log.append(('allocate', store, side, ranking))
             run.changed.add(store)
         for name, value in tx.writes.items():
             run.write(name, value, tx.balances.get(name))

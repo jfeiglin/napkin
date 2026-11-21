@@ -192,11 +192,15 @@ class Vector:
             return [bound for _, bound in self.formulas[name].binding if bound != 't']
         if kind == 'dynamic':
             dynamic = plan.dynamic[name]
-            return (
+            reads = (
                 [plan.project(member, dynamic.steps) for member in self._entries[name]]
                 if dynamic.steps
                 else []
             )
+            if dynamic.key is not None:
+                reads.extend(sorted(nodes.names(dynamic.key) - {'t'}))
+                reads.extend(f'{member[1]}.started' for member in self._entries[name])
+            return reads
         if kind == 'reduction':
             reduction = plan.reductions[name]
             return [] if reduction.names is None else [reduction.names[k] for k in self._kept(name)]
@@ -307,7 +311,12 @@ class Vector:
         if kind == 'dynamic':
             dynamic = plan.dynamic[name]
             return dynamic_value(
-                dynamic, self._entries[name], lambda m: plan.project(m, dynamic.steps), evaluation.read, t
+                dynamic,
+                self._entries[name],
+                lambda m: plan.project(m, dynamic.steps),
+                evaluation.read,
+                t,
+                plan.units,
             )
         if kind == 'reduction':
             reduction, entries = plan.reductions[name], self._kept(name)

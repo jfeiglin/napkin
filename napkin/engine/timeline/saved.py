@@ -673,8 +673,8 @@ def restore(run, data):
     for saved in parts['log']:
         kind, entry = saved[0], saved
         if kind == 'occurrence':
-            _, member, event, number, args, started = entry
-            found = plan.occurrence(member, event, number, tuple(args), started)
+            _, member, event, number, args, started, references = entry
+            found = plan.occurrence(member, event, number, tuple(args), started, references)
             made[found.id] = found
         elif kind in ('node', 'resolve'):
             _, k, owner, origin = entry
@@ -690,8 +690,8 @@ def restore(run, data):
             plan.define(name, node, t, start)
             entry = ('define', name, source, t, start)
         elif kind == 'allocate':
-            _, store, side, origin, owner = entry
-            plan.allocate(store, side, plan.statement(origin).value, _scope(plan, owner), origin)
+            _, store, side, ranking = entry
+            plan.allocate(store, side, ranking)
         elif kind == 'present':
             run._present(entry[1], entry[2])
         elif kind == 'moving':

@@ -132,6 +132,7 @@ from ...core.comparisons import SelectedScale
 from ...core.errors import ExpressionError
 from ...expressions import UnitSystem, evaluate
 from ...program import parts as p
+from ...program.check import Resolver, Scope
 from ...program.config import ConfigurationError, Quantity
 from ...program.record import Key
 from ...program.refs import (
@@ -159,7 +160,18 @@ from ...program.refs import (
 )
 from ..continuous.walk import walked
 from ..errors import SimulationError
-from .collections import Dynamic, Ends, Entries, Keyed, Reduction, aggregate_node, kept, node_of, selected
+from .collections import (
+    Dynamic,
+    Ends,
+    Entries,
+    Keyed,
+    Reduction,
+    aggregate_node,
+    kept,
+    node_of,
+    occurrence_at,
+    selected,
+)
 from .pools import Keys, pools_of
 
 # The kinds of the values of a plan.
@@ -486,6 +498,7 @@ class Occurrence:
     stores: tuple
     flows: tuple
     formulas: tuple
+    references: tuple = ()
 
 
 class Plan:
@@ -547,6 +560,7 @@ class Plan:
         # allocations that commits give, the flows that join and leave, the stores that start to move.
         self.log = []
         self._refuse_parts()
+        self._occurrence_settings = _occurrence_settings(program)
         self.dynamic = {}  # engine name -> `Dynamic`: a read of a collection that changes in a run
         self.events = {}  # (member id, event name) -> (template, row, member, Event)
         self.occurrences = {}  # (member id, event name) -> the ids of its occurrences, in order
@@ -636,11 +650,22 @@ class Plan:
                 return unit, value.node
             elif value.kind == DYNAMIC and self.dynamic[name].op == 'at':
                 projection = self.dynamic[name]
-                members = self.occurrences[projection.source[1:]]
-                owner = members[-1] if live and members else latest(members) if latest else None
-                if owner is not None:
-                    target = self.project(('occurrence', owner), projection.steps)
-                    return unit, nodes.ref(target)
+                if projection.key is None:
+                    members = self.occurrences[projection.source[1:]]
+                    owner = members[-1] if live and members else latest(members) if latest else None
+                    if owner is not None:
+                        return unit, nodes.ref(self.project(('occurrence', owner), projection.steps))
+
+                def choose(read):
+                    members = self.members_at(projection.source, read)
+                    point = occurrence_at(members, projection.key, read, self.units, None, projection.spelled)
+                    return nodes.ref(self.project(point, projection.steps))
+
+                names = tuple(self.project(m, projection.steps) for m in self.members(projection.source))
+                controls = self.dynamic_reads(name) - set(names)
+                if projection.key is not None:
+                    controls.update(nodes.names(projection.key))
+                return unit, SelectedScale(choose, controls, names)
             elif value.kind == DYNAMIC and self.dynamic[name].op in ('sum', 'min', 'max'):
                 dynamic = self.dynamic[name]
 
@@ -1318,9 +1343,13 @@ class Plan:
     def _ranking(self, store, side, allocation, scope, origin):
         """The items of a `priority(...)`, which name connections: ('one', connection) or ('keyed',
         ((key, connection), ...)), where a key is the engine name of a value or a creation number."""
+        points = ((path, self.resolve(path, scope, origin)) for path in allocation.items)
+        self.rankings[store, side] = self.priority(store, side, points, origin)
+
+    def priority(self, store, side, points, origin):
+        """Rank concrete directed connections, including a stage's keyed occurrence selections."""
         items = []
-        for path in allocation.items:
-            point = self.resolve(path, scope, origin)
+        for path, point in points:
             if point[0] == 'flow':
                 items.append(('one', point[1]))
             elif point[0] == 'many' and all(each[0] == 'flow' for each in point[1].points):
@@ -1329,6 +1358,7 @@ class Plan:
             else:
                 raise Outside(f'{origin}: priority({spelled(path)}), which names no flow (a type error)')
         mine = set(self.ends[(store, side)].flows)
+        mine.update(self.end_flows.get((store, side), ()))
         for item in items:
             named = [item[1]] if item[0] == 'one' else [flow for _, flow in item[1]]
             for flow in named:
@@ -1338,14 +1368,14 @@ class Plan:
                         f'{origin}: priority(...) at {store}.{side} names {flow}, which is not a flow of '
                         f'that endpoint{"; name its leg of that direction" if whole else ""}'
                     )
-        self.rankings[(store, side)] = tuple(items)
+        return tuple(items)
 
-    def allocate(self, store, side, allocation, scope, origin):
-        """A stage gives an endpoint a new allocation: its priority items, or `proportional()`."""
-        if isinstance(allocation, p.Priority):
-            self._ranking(store, side, allocation, scope, origin)
-        else:
+    def allocate(self, store, side, ranking):
+        """Install an endpoint's resolved priority, or restore proportional sharing."""
+        if ranking is None:
             self.rankings.pop((store, side), None)
+        else:
+            self.rankings[(store, side)] = ranking
 
     # ---- definitions that commits give ----------------------------------------------------------
 
@@ -1553,7 +1583,7 @@ class Plan:
             key, trigger.origin, member.id, event.name, test, tuple(captures), reset, trigger.body, inner
         )
 
-    def occurrence(self, member, event_name, index, args, started):
+    def occurrence(self, member, event_name, index, args, started, references=(), read_entry=None):
         """The values and flows of a new occurrence of an event on a member (`Occurrence`), the
         `index`-th start of that event on it: its parameters take the arguments (an entity's id for
         an entity parameter), `started` the time of its start, `done` false and `active` true."""
@@ -1585,9 +1615,10 @@ class Plan:
             self._add(Value(name_of(key), key, kind, nodes.const(value), '', field != 'started'))
             initial.append(name_of(key))
         self.frames[occ] = scope  # a reference of its own locals may name it
+        references = dict(references)
         for part in event.locals:
             if isinstance(part, p.Value) and isinstance(part.type, p.OccurrenceType):
-                frame.names[part.name] = self._referred(part, scope, occ)
+                frame.names[part.name] = self._referred(part, scope, occ, started, references, read_entry)
                 continue
             if isinstance(part, p.Value) and part.kind == p.COLLECTION:
                 # A named collection is the collection that its init names, in this scope (`_named`).
@@ -1604,7 +1635,11 @@ class Plan:
             if isinstance(part, p.Flow):
                 self._declare_flow(part, scope)
                 flows.append(name_of(Key(occ, (part.name,))))
+        settings = self._occurrence_settings.get(id(event), ())
         self._open_capacities(event, [scope], local=True)
+        for field, _ in settings:
+            if field[-1] not in SIDES:
+                self._open_capacity(name_of(Key(occ, field)))
         for name in flows:
             if name in self.flows:
                 for connection in self.flows[name].connections:
@@ -1640,6 +1675,13 @@ class Plan:
                             store, part, scope, side, getattr(part, side) or p.Endpoint(), met[side]
                         )
         self._name_ends(event, [scope], local=True)
+        for field, property_name in settings:
+            if field[-1] in SIDES:
+                store, side = name_of(Key(occ, field[:-1])), field[-1]
+                self.end_of(store, side, event.origin)
+                self._set_ends.add((store, side))
+                if property_name == 'capacity':
+                    self._open_end_capacity(store, side)
         self._copied()
         makers, self._declared = self._declared[first:], self._declared[:first]
         for make in makers:
@@ -1678,9 +1720,19 @@ class Plan:
                 (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
         self.occurrences[(member, event_name)].append(occ)
         flows = tuple(name for name in flows if name in self.flows)
-        return Occurrence(occ, member, event, scope, tuple(initial), tuple(stores), flows, tuple(formulas))
+        return Occurrence(
+            occ,
+            member,
+            event,
+            scope,
+            tuple(initial),
+            tuple(stores),
+            flows,
+            tuple(formulas),
+            tuple(references.items()),
+        )
 
-    def _referred(self, value, scope, occ):
+    def _referred(self, value, scope, occ, t, references, read_entry):
         """The occurrence that a reference to one (`parts.OccurrenceType`) names from the entry of its
         own occurrence `occ` on, which it keeps after later starts (spec, "A finished occurrence is a
         stable record"): of `e.occurrences.at(t)`, the newest that has started then, the one that
@@ -1691,15 +1743,25 @@ class Plan:
             key = path.start.key
             source = self.resolve(path.start.source, scope, origin)
             timed = isinstance(key.node, nodes.Ref) and isinstance(key.read(key.node.name), Time)
-            if source[0] != 'dynamic' or source[1][0] != 'occurrences' or source[2] or not timed:
+            if source[0] != 'dynamic' or source[1][0] != 'occurrences' or source[2]:
                 raise Outside(f'{origin}: {value.name} refers to no occurrence of an event at the time t')
             _, member, event = source[1]
-            made = [*self.occurrences[(member, event)]]
+            made = [('occurrence', item) for item in self.occurrences[(member, event)]]
             if occ.rpartition('#')[0] == f'{member}.{event}':
-                made.append(occ)
-            if not made:
-                raise SimulationError(f'{origin}: {spelled(path)}: no occurrence has started')
-            return ('occurrence', made[-1])
+                made.append(('occurrence', occ))
+            selector = None if timed else self.node(key, scope, origin)
+            if value.name in references:
+                return ('occurrence', references[value.name])
+
+            try:
+                point = occurrence_at(
+                    made, selector, lambda name: read_entry(name, scope), self.units, t, spelled(path)
+                )
+            except ExpressionError as problem:
+                raise SimulationError(f'{origin}: {problem}') from problem
+            if not timed:
+                references[value.name] = point[1]
+            return point
         found = self.resolve(path, scope, origin)
         if found[0] != 'occurrence':
             raise Outside(f'{origin}: {value.name} refers to no occurrence (a type error)')
@@ -1713,7 +1775,9 @@ class Plan:
                 continue
             head, number = entry.owner.rsplit('#', 1)
             member, event = head.rsplit('.', 1)
-            made = self.occurrence(member, event, int(number), entry.detail('args'), entry.t)
+            made = self.occurrence(
+                member, event, int(number), entry.detail('args'), entry.t, entry.detail('references') or ()
+            )
             for flow in made.flows:
                 for connection in self.flows[flow].connections:
                     for side, store in zip(SIDES, (connection.source, connection.sink)):
@@ -2238,9 +2302,12 @@ class Plan:
         if found is None:
             source = self.resolve(lookup.source, scope, origin, item)
             if source[0] == 'dynamic':
-                if source[1][0] != 'occurrences' or source[2] or not by_time:
-                    raise Outside(f'{origin}: {spelled(path)}: occurrences are read at the time t only')
-                return self._dynamic(path, 'at', source[1], path.steps, scope, item)
+                if source[1][0] != 'occurrences' or source[2]:
+                    raise Outside(
+                        f'{origin}: {spelled(path)}: the lookup requires a collection of occurrences'
+                    )
+                selector = None if by_time else self.node(lookup.key, scope, origin, item)
+                return self._dynamic(path, 'at', source[1], path.steps, scope, item, selector=selector)
             entries = self._many(lookup.source, scope, origin, item)
             points = entries.points
             for step in path.steps:
@@ -2263,14 +2330,14 @@ class Plan:
         self._add(Value(name, None, LOOKUP, None, unit, boolean))
         return name
 
-    def _dynamic(self, read, op, source, steps, scope, item, keep=None):
+    def _dynamic(self, read, op, source, steps, scope, item, keep=None, selector=None):
         """The engine name of a read of a collection whose members change in a run, which the plan
         holds in `dynamic`; `keep` is the test of a where over its flows (`_ends`)."""
         key, name = self._derived_name(read, scope, item)
         if key in self._derived:
             return name
         self._derived[key] = name
-        self.dynamic[name] = Dynamic(name, op, source, tuple(steps), spelled(read), keep)
+        self.dynamic[name] = Dynamic(name, op, source, tuple(steps), spelled(read), keep, selector)
         boolean = op in ('any', 'all') or (op == 'at' and self._projects_boolean(source, steps))
         self._add(Value(name, None, DYNAMIC, None, '', boolean))
         return name
@@ -2380,6 +2447,8 @@ class Plan:
         ever had projects, and the fields that say when each is a member."""
         dynamic = self.dynamic[name]
         found = set(dynamic.keep.reads()) if dynamic.keep is not None else set()
+        if dynamic.key is not None:
+            found.update(nodes.names(dynamic.key) - {'t'})
         for point in self.members_ever(dynamic.source):
             if dynamic.steps:
                 found.add(self.project(point, dynamic.steps))
@@ -2600,8 +2669,11 @@ class Plan:
             dynamic = self.dynamic[name]
             if not dynamic.steps:
                 continue
-            for point in self.members(dynamic.source):
-                inner = self.expanded(self.project(point, dynamic.steps))
+            consulted = [self.project(point, dynamic.steps) for point in self.members(dynamic.source)]
+            if dynamic.key is not None:
+                parts.append(self.expansion(dynamic.key))
+            for consulted_name in consulted:
+                inner = self.expanded(consulted_name)
                 parts.append(inner)
                 pending += [leaf for leaf in inner.leaves if leaf in self.dynamic]
         return Expanded.union(parts)
@@ -2923,6 +2995,41 @@ def _program_statements(program):
     for body in bodies:
         for statement in _statements(body):
             yield statement.origin, statement
+
+
+def _occurrence_settings(program):
+    """Settings written through occurrence references. Declare a slot before installing the
+    owner's flows. Each executing statement chooses which instance to write."""
+    found, resolver = {}, None
+    bodies = [(program.setup, Scope())]
+    for template in program.templates:
+        for event in template.events:
+            bodies.extend(
+                (step.body, Scope(template, event)) for step in event.steps if isinstance(step, p.After)
+            )
+            bodies.extend((trigger.body, Scope(template, trigger=trigger)) for trigger in event.triggers)
+    for body, scope in bodies:
+        for statement in _statements(body):
+            if not isinstance(statement, p.Assign):
+                continue
+            path = statement.target
+            if len(path.steps) < 2 or path.steps[-1] not in ('capacity', 'request', 'allocation'):
+                continue
+            resolver = resolver or Resolver(program)
+            owner = resolver.resolve(Path(path.start, path.steps[:-1]), scope, statement.origin)
+            if owner is None or not isinstance(owner.owner, p.Event):
+                continue
+            if owner.kind == 'flow' and path.steps[-1] == 'capacity' and owner.part is not None:
+                field = (owner.part.name,) if owner.of is None else (owner.of.part.name, owner.part.name)
+            elif owner.kind == 'endpoint':
+                field = (owner.part.name, owner.name)
+            else:
+                continue
+            slots = found.setdefault(id(owner.owner), [])
+            setting = (field, path.steps[-1])
+            if setting not in slots:
+                slots.append(setting)
+    return found
 
 
 def _set_capacities(part):

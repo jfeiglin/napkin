@@ -826,7 +826,9 @@ class Recorder:
                 return known(readers[read](t))
 
             members = plan.members_at(dynamic.source, value)
-            return dynamic_value(dynamic, members, lambda each: plan.project(each, dynamic.steps), value, t)
+            return dynamic_value(
+                dynamic, members, lambda each: plan.project(each, dynamic.steps), value, t, plan.units
+            )
 
         return self.formula(name, histories, end, sorted(plan.dynamic_reads(name)), point=point)
 
@@ -1720,7 +1722,9 @@ class Reader:
         self._ready(sorted(plan.dynamic_reads(name)), t)
         try:
             members = plan.members_at(dynamic.source, read)
-            return dynamic_value(dynamic, members, lambda each: plan.project(each, dynamic.steps), read, t)
+            return dynamic_value(
+                dynamic, members, lambda each: plan.project(each, dynamic.steps), read, t, plan.units
+            )
         except FAILURES as problem:
             return Unavailable(str(problem))
 

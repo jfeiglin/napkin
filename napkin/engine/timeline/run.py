@@ -687,7 +687,9 @@ class Run:
         members = plan.members(dynamic.source)
         if dynamic.keep is None and dynamic.steps and dynamic.op not in ('at', 'latest'):
             self._ask((plan.project(point, dynamic.steps) for point in members), tx, known)
-        return dynamic_value(dynamic, members, lambda point: plan.project(point, dynamic.steps), read, t)
+        return dynamic_value(
+            dynamic, members, lambda point: plan.project(point, dynamic.steps), read, t, plan.units
+        )
 
     def _ask(self, names, tx, known):
         """Raise `Pending` for the derived names among `names` that the read in progress has not

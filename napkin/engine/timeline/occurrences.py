@@ -135,14 +135,40 @@ class Occurrences:
         t = run.now
         found = self.of_event.setdefault((member, event), [])
         self._limits(member, event, found)
-        made = plan.occurrence(member, event, len(found), args, t)
-        plan.log.append(('occurrence', member, event, len(found), tuple(args), t))
+        early = {}
+
+        def read_entry(name, scope):
+            # The reference is bound while the plan names the new occurrence's parts. Its key
+            # may read a value captured earlier at this very entry. Evaluate that initializer once.
+            owner = scope[3].owner
+            if name in early:
+                return early[name]
+            if not name.startswith(owner + '.'):
+                return run.value(name)
+            declared = plan.values.get(name)
+            if declared is not None and isinstance(declared.node, nodes.Const):
+                return declared.node.value  # a parameter or built-in of this entry
+            parts = plan.events[member, event][3].locals
+            part = next((local for local in parts if f'{owner}.{local.name}' == name), None)
+            if not isinstance(part, p.Value) or not isinstance(
+                part.type, (p.Number, p.Bool, p.EnumType, p.Text)
+            ):
+                return run.value(name)
+            expression = part.init.expr if part.kind == p.FORMULA else part.init
+            node = plan.node(expression, scope, part.origin)
+            number = lazily(node, lambda n: read_entry(n, scope), plan.units, t)
+            if part.kind != p.FORMULA:
+                early[name] = number
+            return number
+
+        made = plan.occurrence(member, event, len(found), args, t, read_entry=read_entry)
+        plan.log.append(('occurrence', member, event, len(found), tuple(args), t, made.references))
         self.made += 1
         live = Live(made, self.made, t)
         self.live[made.id] = live
         found.append(live)
         for name in made.initial:
-            self._enter(name, made)
+            self._enter(name, made, early)
         for flow in made.flows:
             for connection in plan.flows[flow].connections:
                 for end in (connection.source, connection.sink):
@@ -153,14 +179,17 @@ class Occurrences:
                         if self.frozen(end) is not None:
                             self.watched().add(end)
             run.flow_joins(flow)
-        run.recorder.entry(t, 'start', made.event.origin, made.id, args=tuple(args))
+        details = {'args': tuple(args)}
+        if made.references:
+            details['references'] = made.references
+        run.recorder.entry(t, 'start', made.event.origin, made.id, **details)
         run.changed.add(('occurrences', member, event))
         if run.moment.phase == 'conditions':
             run.moment.again = True
         self.reach(live, 0)
         return live
 
-    def _enter(self, name, made):
+    def _enter(self, name, made, early):
         """One value of an occurrence takes its value at the entry, in written order: each of its
         initial values (`plan.Occurrence.initial`), which hold no `formula(...)` local, a retained
         calculation that is read where something reads it after the entry, so that it may name a local
@@ -174,7 +203,7 @@ class Occurrences:
         if value.kind == DESCRIBED:  # the `.mean` or the `.std` of a distribution of the occurrence
             run.recorder.add(name, run.now, run.chance.described(name), 0.0)
             return
-        number = run.initial(value.node)
+        number = early[name] if name in early else run.initial(value.node)
         if not value.boolean and isinstance(number, int | float) and not isinstance(number, bool):
             number = float(number)
         if value.scale is not None:

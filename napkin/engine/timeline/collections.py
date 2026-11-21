@@ -186,13 +186,26 @@ class Dynamic:
     steps: tuple[str, ...]
     spelled: str
     keep: Ends | None = None
+    key: nodes.Node | None = None  # None for the current time on an occurrence lookup
 
     def selected(self, members, value):
         """The members retained by the authored filter at this read."""
         return members if self.keep is None else [m for m in members if self.keep.keeps(m, value)]
 
 
-def dynamic_value(dynamic, members, project, value, t):
+def occurrence_at(members, key, read, units, t, spelled):
+    """The last started occurrence whose start is at or before the authored key."""
+    if key is None and members:
+        return members[-1]
+    if key is not None:
+        at = float(lazily(key, read, units, t))
+        for member in reversed(members):
+            if float(known(read(f'{member[1]}.started'))) <= at:
+                return member
+    raise ExpressionError(f'{spelled}: no occurrence has started at or before the requested time')
+
+
+def dynamic_value(dynamic, members, project, value, t, units):
     """The value of a dynamic read at time t from its members at t (their points, in order), the
     engine name that each projects (`project(point)`) and the values of engine names."""
     members = dynamic.selected(members, value)
@@ -202,9 +215,7 @@ def dynamic_value(dynamic, members, project, value, t):
             raise ExpressionError(f'{dynamic.spelled}: the event has not started')
         return float(known(value(f'{members[-1][1]}.started')))
     if op == 'at':
-        if not members:
-            raise ExpressionError(f'{dynamic.spelled}: no occurrence has started')
-        return known(value(project(members[-1])))
+        return known(value(project(occurrence_at(members, dynamic.key, value, units, t, dynamic.spelled))))
     if not dynamic.steps:
         return combined(op, [None] * len(members), dynamic.spelled)
     return combined(op, [known(value(project(member))) for member in members], dynamic.spelled)
