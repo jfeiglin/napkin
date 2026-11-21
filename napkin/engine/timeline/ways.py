@@ -330,6 +330,9 @@ class Ways:
             self.levels.pop(key, None)
             self.grouped.discard(key)
             self.followers.discard(key)
+        for stock in values:
+            self.run.stock_state.ends.pop((stock, 'inflow'), None)
+            self.run.stock_state.ends.pop((stock, 'outflow'), None)
         self.instances = [instance for instance in self.instances if instance.alive]
         return values
 

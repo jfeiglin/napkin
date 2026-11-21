@@ -46,6 +46,7 @@ The data of each part is a tuple of (name, value) fields: numbers, texts, tuples
 from __future__ import annotations
 
 import heapq
+import math
 from copy import copy, deepcopy
 from dataclasses import fields, is_dataclass
 
@@ -229,6 +230,9 @@ def at_stop(run):
         if live is preview:
             continue
         before = dict(_instance(live)[2])
+        if before['arrival_rates'] is not None:
+            end, left = before['arrival_rates']
+            preview.arrival_rates = end, dict(left)
         delta = tuple((name, value) for name, value in _instance(preview)[2] if before[name] != value)
         if delta:
             deltas.append((k, delta))
@@ -474,7 +478,14 @@ def _instance(instance):
                 ),
             ),
         )
+    incoming = getattr(instance, 'arrival_rates', None)
+    if instance.resting is not None and getattr(instance, 'pending', None) is not None:
+        end = instance.run.now
+        if instance.amounts.through < end:
+            left = instance.incoming_rates(math.nextafter(end, -math.inf))
+            incoming = end, {name: left(name) for name in instance.resting.incident}
     fields += (
+        ('arrival_rates', None if incoming is None else (incoming[0], _pairs(incoming[1]))),
         (
             'resting_rates',
             None
@@ -852,6 +863,9 @@ def _restore_ways(run, found):
 def _made(run, kind, keys, data):
     instance = _made_fields(run, kind, keys, data)
     instance.donor = data.get('donor')
+    if data.get('arrival_rates') is not None:
+        t, rates = data['arrival_rates']
+        instance.arrival_rates = t, dict(rates)
     if data.get('resting'):
         rests = instance.resting = RestingAmounts()
         rests.rows = dict(data['resting'])

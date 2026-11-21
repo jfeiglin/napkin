@@ -13,6 +13,7 @@ and after an edit and a resume. The named cases give the rates and levels worked
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
@@ -259,6 +260,39 @@ def test_a_moment_s_own_changes_and_every_reader_agree_with_the_oracle(seed):
 @pytest.mark.parametrize('seed', range(200))
 def test_an_edit_at_a_stop_before_the_read_agrees_in_place_and_resumed(seed):
     compare(seed, edit=True)
+
+
+@pytest.mark.parametrize(('method', 'seed'), [('component', 1218), ('sparse', 1218), ('sparse', 424)])
+def test_a_retiring_group_closes_its_own_legs_before_an_occurrence_joins(method, seed, monkeypatch):
+    # These stops add ops.deliver#0.pipe at a capped endpoint. A correction on the
+    # incoming group can use only the legs it carried before the join.
+    connect = Plan.connect
+
+    def force(plan, *args, **kwargs):
+        return [
+            replace(group, way=method) if group.way == 'sparse' else group
+            for group in connect(plan, *args, **kwargs)
+        ]
+
+    monkeypatch.setattr(Plan, 'connect', force)
+    compare(seed)
+    compare(seed, edit=True)
+
+
+def test_an_opening_checkpoint_keeps_the_incoming_rates_that_justify_its_balance():
+    # The accepted left rates are all zero when ops.look stops at 2 h. Re-evaluating
+    # the field at its old step start would invent a proportional outgoing correction.
+    program, _, edit = network(2120)
+    config = Configuration(Request(HORIZON))
+    machine = Run(Plan.of(program, config), [Breakpoint(LOOK)])
+    stopped = machine.run()
+    assert isinstance(stopped, Checkpoint) and stopped.stop.t == 2
+    crumb = machine.stock_balance('s1.water', 2)
+    assert 0 < crumb < Fraction(1, 10**15)
+    edited = machine.edit(*edit)
+    restored = Run.restored(Plan.of(program, config), loads(dumps(edited)))
+    assert restored.stock_balance('s1.water', 2) == crumb
+    assert restored.resume() == machine.resume()
 
 
 @pytest.mark.deep

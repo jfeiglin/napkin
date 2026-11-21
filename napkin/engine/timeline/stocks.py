@@ -30,6 +30,11 @@ class Stocks:
         self.balances = {}  # name -> (exact balance, signed incidence already posted, time)
         self.ends = {}  # incoming generation membership during a stage's membership edits
 
+    def incident(self, store, side):
+        """The concrete legs of the incoming installation until its last stock is released."""
+        names = self.ends.get((store, side))
+        return self.run.plan.incident(store, side) if names is None else names
+
     def point(self, store, t, amounts=None):
         """The physical balance and cumulative signed incidence of its installed generation.
         Read both directions from that generation even if a stage already changed membership."""
@@ -46,10 +51,7 @@ class Stocks:
             return balance, cursor
         gross = 0
         for side, sign in (('inflow', 1), ('outflow', -1)):
-            names = self.ends.get((store, side))
-            if names is None:
-                names = self.run.plan.incident(store, side)
-            for name in names:
+            for name in self.incident(store, side):
                 if amounts is None:
                     amount = way.transferred(name, t)
                 else:
@@ -256,8 +258,8 @@ class Stocks:
         """A face flag can keep its allocation while hard transfers move its balance.
         Test the proportional correction of the incident rates before treating it as stationary."""
         store = way.stores[row]
-        incoming = self.run.plan.incident(store, 'inflow')
-        outgoing = self.run.plan.incident(store, 'outflow')
+        incoming = self.incident(store, 'inflow')
+        outgoing = self.incident(store, 'outflow')
 
         if (
             len(incoming) == len(outgoing) == 1
@@ -345,7 +347,7 @@ class Stocks:
             capacity = plan.ends[store, side].capacity
             if self._over_capacity(
                 installed or run.ways.instance_of(store),
-                plan.incident(store, side),
+                self.incident(store, side),
                 capacity,
                 change,
                 t,
@@ -399,13 +401,17 @@ class Stocks:
         def speed(connection):
             nonlocal rates
             if rates is None:
-                rates = run.ways.instance_of(name).incoming_rates(earlier)
+                way = run.ways.instance_of(name)
+                kept = getattr(way, 'arrival_rates', None)
+                rates = (
+                    kept[1].__getitem__
+                    if resting and kept is not None and kept[0] == t
+                    else way.incoming_rates(earlier)
+                )
             return max(0, rates(connection))
 
         def incidence(side):
-            connections = self.ends.get((name, side))
-            if connections is None:
-                connections = run.plan.incident(name, side)
+            connections = self.incident(name, side)
             return [
                 leg
                 for leg in connections
@@ -455,8 +461,6 @@ class Stocks:
         self.run.post_stock(store, t, amounts)
         balance = self.balances[store][0]
         self.balances[store] = balance, 0, t
-        for side in ('inflow', 'outflow'):
-            self.ends.pop((store, side), None)
         return float(balance)
 
     def replace(self, store, value, balance):
@@ -715,7 +719,7 @@ class RestingAmounts:
                 for s, (bound, _, _) in rows.items()
             }
             adjustments = _incidence_effects(way.run.plan, columns, residuals)
-            if not way.run.stock_state._flow_limits(adjustments, t):
+            if not way.run.stock_state._flow_limits(adjustments, t, installed=way):
                 for n, delta in adjustments.items():
                     self.cache[n] += delta
         return self.cache.get(name, 0)

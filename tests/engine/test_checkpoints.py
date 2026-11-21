@@ -423,6 +423,8 @@ def test_a_component_that_rests_on_its_bound_at_a_stop_is_restored_on_it(tmp_pat
     made = Run(Plan.of(case.program, case.configuration), case.breakpoints)
     stop = made.run()
     assert isinstance(stop, Checkpoint) and stop.stop.t == pytest.approx(math.log(2), abs=1e-9)
+    remaining = made.stock_balance('tank.water', stop.stop.t)
+    assert 0 <= remaining <= made.comparison_band('tank.water', float(remaining), 0)
     held = bounds_of(made)
     assert held == [(True, frozenset({(0, 'min')}), frozenset(), frozenset())], held
     again = Run.restored(Plan.of(case.program, case.configuration), loads(dumps(stop)))
@@ -431,7 +433,17 @@ def test_a_component_that_rests_on_its_bound_at_a_stop_is_restored_on_it(tmp_pat
     assert made.resume() == again.resume() == straight
     assert in_a_fresh_process(case.program, [stop], tmp_path) == [straight]
     found = read(straight, case.program, ['tank.seen', 'tank.late', 'tank.at', 'tank.water'], [2])
-    assert [reading.values[0] for reading in found] == [0, 0, pytest.approx(math.log(2), abs=1e-9), 0]
+    assert [reading.values[0] for reading in found] == [
+        0,
+        0,
+        pytest.approx(math.log(2), abs=1e-9),
+        float(remaining),
+    ]
+    assert made.stock_balance('tank.water', 2) == again.stock_balance('tank.water', 2) == remaining
+    if remaining:
+        (decision,) = [entry for entry in straight.entries('settle') if entry.detail('placements')]
+        assert decision.detail('placements') == (('tank.water', float(remaining), 0.0),)
+        assert 'tank.drain.capacity' in decision.detail('reason')
 
 
 def starts(record, part):
