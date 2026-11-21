@@ -797,13 +797,19 @@ class Sparse(MovingTransfers, Way):
 
         self.moves = moves
         surfaces = integrate.surfaces_of(nodes_of([*names, *defined]), formulas, moves)
-        self.region = Region(
-            surfaces, key_surfaces(plan, plan.expansion_of(names).leaves, moves) if defined else {}
-        )
+        self.region = Region(surfaces, key_surfaces(plan, plan.expansion_of(names).leaves, moves))
         self.surfaces = self.region.surfaces
         self.deciding = integrate.flow_switches(
             ((name, nodes_of(plan.settings_of(plan.flows[name]))) for name in self.flows), formulas, moves
         )
+        if self.region.lookups:
+            self.lookup_flows = {}
+            for flow in self.flows:
+                fields = plan.settings_reads(plan.flows[flow])
+                for name in fields.leaves & self.region.lookups.keys():
+                    self.lookup_flows.setdefault(name, []).append(flow)
+                    for pair in self.region.lookups[name]:
+                        self.deciding.setdefault(pair, []).append(flow)
         self.labels = {}
         if not stores:
             from .triggers import _affine
@@ -854,6 +860,8 @@ class Sparse(MovingTransfers, Way):
         that it holds through the segment, to within the crossing tolerance; or None. Here the
         observation is the selected row identity, including filters and ranking. A numeric key
         surface exposed by a moving segment is located with the other operands in `_turns`."""
+        if name in self.region.lookups:
+            return None  # numeric eligibility and ranking comparisons own its switches
         held = self.selection[name]
         if select(end, solution(end)) == held:
             return None
@@ -1033,6 +1041,10 @@ class Sparse(MovingTransfers, Way):
         """Install the same branches in the vector field and in its switch operands."""
         self.vector.choose(signs)
         self.region.set(signs, {})
+        if signs and self.region.lookups:
+            rows = self.region.selected_rows(self.run, signs, self._side(self.t, self.y))
+            for name, row in rows.items():
+                self.selection[name] = self.plan.keyed[name].names.index(row)
 
     def _sides(self, clocks):
         """Select the branch of every rate at the segment start. A located contact uses its
@@ -1104,6 +1116,9 @@ class Sparse(MovingTransfers, Way):
         if self.outputs is not None and self.selected:
             return
         self.choose({})
+        if self.run.consumed:
+            self.contact_clocks.update(self.run.consumed_in(self.surfaces, self.t))
+            self.contacted = tuple(dict.fromkeys((*self.contacted, *self.contact_clocks)))
         self.sides, self.clock = (), None
         self._select()
         # The clock switches before the new segment decides which stores stay on their bounds.
@@ -1117,12 +1132,28 @@ class Sparse(MovingTransfers, Way):
         self.clock, self.next_clock, _ = clocks
         self._flags()
         self._sides(clocks)
+        if self.region.lookups:
+            rows, ranks = self.region.rank_members(
+                self.run,
+                self.signs,
+                self.t,
+                self.y,
+                self._side,
+                self.field,
+                self.place,
+                self.moves,
+                self.contacted,
+            )
+            self.signs.update(ranks)
+            for name, row in rows.items():
+                self.selection[name] = self.plan.keyed[name].names.index(row)
+            self.rank_switches = {
+                pair: {flow for name in names for flow in self.lookup_flows.get(name, ())}
+                for pair, names in self.region.rank_owners.items()
+            }
         if self.signs and any(mask.any() for mask in self.faces.flags(self.y)):
             self._flags()  # compute bound release with the actual outgoing branches installed
         if self.outputs is not None:
-            rows = self.region.selected_rows(self.run, self.signs, self._side(self.t, self.y))
-            for name, row in rows.items():
-                self.selection[name] = self.plan.keyed[name].names.index(row)
             self.held_rates = {name for name in self.recorded if self._holds(name)}
             self.selected = True
 
@@ -1473,6 +1504,9 @@ class Sparse(MovingTransfers, Way):
                     yield at, self.stores[owner], kind
                 elif kind == 'switch' and owner in self.labels:
                     yield at, self.recorded[0], self.labels[owner][2]
+                elif kind == 'switch' and self.region.lookups and owner in self.rank_switches:
+                    for flow in self.rank_switches[owner]:
+                        yield at, flow, kind
                 elif kind == 'switch':
                     for flow in self.deciding.get(owner, ()):
                         yield at, flow, kind

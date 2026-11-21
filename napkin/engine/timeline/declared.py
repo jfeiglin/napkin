@@ -1569,6 +1569,20 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
             contacted=contacted,
             consumed=contacted,
         )
+        if region.lookups:
+            rows, ranks = region.rank_members(
+                self.run,
+                region.signs,
+                t,
+                self.y,
+                self._side,
+                self._derivative,
+                self.place,
+                self.run.triggers.moving_reads,
+                contacted,
+            )
+            region.set(region.signs | ranks, rows)
+            self._cache.clear()
 
     def answers_at(self, t, incoming, flows):
         """Publish every result of one trial answer, including the requests carried by its legs."""

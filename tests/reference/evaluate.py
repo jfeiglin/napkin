@@ -189,10 +189,22 @@ class Coll:
     """A collection: (key, member, value) for each member, in creation order.
     `value` is the member, or what a projection of a field gave for it."""
 
-    __slots__ = ('items',)
+    __slots__ = ('items', 'key_field')
 
-    def __init__(self, items):
+    def __init__(self, items, key_field=None):
         self.items = tuple(items)
+        self.key_field = key_field
+
+
+@dataclass
+class Departure:
+    """A grouped comparison and the outgoing side to read while the incoming crumb remains."""
+
+    at: Fraction
+    through: Fraction
+    gap: Fraction
+    side: int
+    curve: Poly | None = None
 
 
 class _Boundary:
@@ -313,7 +325,7 @@ class Ev:
 
     def num(self, e):
         """The value of an expression that must be a number."""
-        v = e if not isinstance(e, E) else self.val(e)
+        v = self.val(e) if isinstance(e, E) else self.deref(e)
         if isinstance(v, (bool, str)) or not isinstance(v, (Fraction, Poly, Lin, int)):
             raise RunFailed(f'{show(e)} must be a number, and is {v!r}')
         return v
@@ -489,7 +501,7 @@ class Ev:
             scope = Scope(self.scope.this, self.scope.occ, {**self.scope.extra, ITEM: item[1]})
             if self.fork(scope).truth(test):
                 kept.append(item)
-        return Coll(kept)
+        return Coll(kept, c.key_field)
 
     def attr(self, obj, name):
         """The field, flow, event, solver or setting called `name` of what `obj` names."""
@@ -501,7 +513,7 @@ class Ev:
         if isinstance(obj, Res):
             obj = self.result(obj.var)
         if isinstance(obj, Coll):
-            return Coll((k, m, self.attr(v, name)) for k, m, v in obj.items)
+            return Coll(((k, m, self.attr(v, name)) for k, m, v in obj.items), obj.key_field)
         if isinstance(obj, Ent):
             c = Cell(obj, name)
             if c in view.cells:
@@ -581,18 +593,48 @@ class Ev:
             return x if self.sign(x) > 0 else Fraction(0)
         return max(x, Fraction(0))
 
+    def contact_key(self, operands):
+        return self.scope.this, self.scope.occ, self.scope.extra.get(ITEM), *operands
+
+    def outgoing(self, d, operands):
+        if self.mode != 'germ' or not self.run.departures or operands is None:
+            return None
+        kept = self.run.departures.get(self.contact_key(operands))
+        if kept is None:
+            return None
+        initial = d(0) if isinstance(d, Poly) else d
+        if kept.at != self.view.t or not initial:
+            return None
+        if initial != kept.gap:
+            # A stage or checkpoint edit changed an operand before re-sharing.
+            return None
+        if isinstance(d, Poly):
+            kept.curve = d
+            return (d - initial).sign_after() or kept.side
+        return kept.side
+
     def sign(self, d, operands=None):
         """The sign of a difference. For a moving value: the sign just after the moment, and the
         first time at which it can change is noted as a stop."""
         d = plain(d)
+        outgoing = self.outgoing(d, operands)
         if not isinstance(d, Poly):
-            return (d > 0) - (d < 0)
+            return outgoing if outgoing is not None else (d > 0) - (d < 0)
         root = d.first_root()
+        if (
+            outgoing is not None
+            and isinstance(root, Fraction)
+            and self.view.t + root <= self.run.departures[self.contact_key(operands)].through
+            and d.sign_after() != outgoing
+        ):
+            # The group already consumed the first physical crossing. Locate any later root.
+            following = d(Poly([root, 1])).first_root()
+            root = None if following is None else root + following
         if root is not None:
             self.shared.stops.append(root)
             if operands is not None:
-                self.shared.contacts.append((root, self.scope, operands))
-        return d.sign_after()
+                self.shared.contacts.append((root, self.scope, operands, d))
+        return outgoing if outgoing is not None else d.sign_after()
 
     # --- operators -------------------------------------------------------------------------------
 
@@ -631,7 +673,13 @@ class Ev:
 
     def operand(self, expression, member=None):
         """Own scale and unit size of a compared value, independently of the engine."""
-        kind, args = expression._k, expression._a
+        if isinstance(expression, Cell | Res):
+            member = expression
+            kind, args = 'member', ()
+        elif isinstance(expression, E):
+            kind, args = expression._k, expression._a
+        else:
+            return Fraction(0), Fraction(1), {}
         if kind == 'const':
             return Fraction(0), expression._unit_size, {}
         if member is not None or kind in ('attr', 'name'):
@@ -762,7 +810,9 @@ class Ev:
         else:
             a = x(0) if isinstance(x, Poly) else x
             b = y(0) if isinstance(y, Poly) else y
-            s = 0 if abs(d) <= self.band(*texts, a, b) else self.sign(d)
+            s = self.outgoing(d, texts)
+            if s is None:
+                s = 0 if abs(d) <= self.band(*texts, a, b) else self.sign(d)
         return {'==': s == 0, '!=': s != 0, '<=': s <= 0, '>=': s >= 0, '<': s < 0, '>': s > 0}[sym]
 
     def logic(self, sym, a, b):
@@ -903,15 +953,23 @@ class Ev:
                     self.compare(args[1]._a[0], self.deref(self.attr(m, name)), rhs, (args[0], args[2]))
                     for _, m, _ in c.items
                 ]
-            return Coll(i for i, k in zip(c.items, keep) if k)
+            return Coll((i for i, k in zip(c.items, keep) if k), c.key_field)
         if method == 'by':
-            return Coll((self.num(self.deref(self.attr(m, args[0]._a[0]))), m, v) for _, m, v in c.items)
+            field = args[0]._a[0]
+            return Coll(((self.num(self.attr(m, field)), m, v) for _, m, v in c.items), field)
         if method == 'at':
             x = self.num(args[0])
             found = None
             for item in c.items:  # the greatest key at or below x; of equal keys the later-created member
                 gap = poly(x) - item[0] if isinstance(x, Poly) else x - item[0]
-                if self.sign(gap) >= 0 and (found is None or item[0] >= found[0]):
+                key = self.attr(item[1], c.key_field) if c.key_field else item[0]
+                if self.sign(gap, (args[0], key)) < 0:
+                    continue
+                if found is None:
+                    found = item
+                    continue
+                previous = self.attr(found[1], c.key_field) if c.key_field else found[0]
+                if self.sign(item[0] - found[0], (key, previous)) >= 0:
                     found = item
             if found is None:
                 at = x(0) if isinstance(x, Poly) else x

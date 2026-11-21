@@ -1,7 +1,7 @@
 """The branches and keyed rows of a smooth segment. The arithmetic on them still moves."""
 
 from ...core import expr as nodes
-from ..continuous.integrate import branch_expression
+from ..continuous.integrate import branch_expression, departing_branches
 
 
 class Region:
@@ -24,6 +24,45 @@ class Region:
                 rows[name] = run.plan.keyed[name].names[chosen]
         return rows
 
+    def rank_members(self, run, signs, t, y, side_at, rates, places, moving, contacted):
+        """Keep the winner of each eligible pair, in creation order. These at most N-1
+        comparisons certify the largest key until an eligibility or ranking switch.
+        A located equality uses the same outgoing derivative as other physical operands."""
+        operand = side_at(t, y)
+        rows, ranks = {}, {}
+        self.rank_owners = {}
+        for name, pairs in self.lookups.items():
+            eligible = (k for k in run.kept_of(name) if signs.get(pairs[k], -1) >= 0)
+            winner = next(eligible, None)
+            if winner is None:
+                continue
+            for challenger in eligible:
+                a, b = pairs[winner][1], pairs[challenger][1]
+                if a != b and (moving(a) or moving(b)):
+                    pair = a, b
+                    direction = departing_branches(
+                        (pair,),
+                        t,
+                        y,
+                        side_at,
+                        rates,
+                        places,
+                        moving,
+                        (pair,) if pair in contacted or run.consumed_in((pair,), t) else (),
+                        run.plan.units.comparisons,
+                    ).get(pair)
+                    if direction is None:
+                        continue
+                    ranks[pair] = direction
+                    self.rank_owners.setdefault(pair, []).append(name)
+                else:
+                    left, right = operand(a), operand(b)
+                    direction = int(left > right) - int(left < right)
+                if direction <= 0:
+                    winner = challenger
+            rows[name] = run.plan.keyed[name].names[winner]
+        return rows, ranks
+
     def set(self, signs, rows):
         """Install the active branches and invalidate expressions selected for the previous segment."""
         self.signs, self.rows = signs, rows
@@ -45,5 +84,6 @@ def key_surfaces(plan, names, moving):
     return {
         name: [(keyed.key, nodes.ref(k) if isinstance(k, str) else nodes.const(k)) for k in keyed.keys]
         for name in names
-        if (keyed := plan.keyed.get(name)) is not None and moving(keyed.key)
+        if (keyed := plan.keyed.get(name)) is not None
+        and (moving(keyed.key) or any(isinstance(k, str) and moving(nodes.ref(k)) for k in keyed.keys))
     }

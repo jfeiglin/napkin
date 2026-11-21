@@ -44,6 +44,8 @@ The original inventory follows production calls at `e0662f2`. Accounting entries
 
 ### Reads, occurrence identity and evidence
 
+For a moving keyed lookup, `region.key_surfaces` supplies the moving query or member keys and the comparisons that can change the winning eligible row. Sparse and MovingDeclared locate the crossings on their own trajectories. The reference evaluator retains the member’s key field through filter and projection, and uses the incoming and outgoing choices on the appropriate sides of a contact. Tests cover one key crossing a fixed query and two eligible members exchanging rank, with and without a filter. [Moving-key cross-method cases](../../../tests/engine/test_moving_key_contact.py)
+
 | Decision | Code that supplies or repeats the decision | Direct coverage |
 | --- | --- | --- |
 | What dependency does a calculation need? | `Plan.expanded`, `Plan.dynamic_reads` and `Connected.reads` influence invalidation. `Recorder.wanted` selects history; `program.proofs.Proofs.reads` enumerates possible dependencies. `timeline.reads.lazily`, `Reader._evaluate`, `_derived` and `_dynamic` collect fields actually consulted at a time. For a `.where(...).by(...).at(...)` lookup, membership predicates and keys supply evidence as well as the selected payload. | **Existing:** `test_port_read_sets.py::test_observed_fields_are_planned_retained_and_credited` observes successful underlying reads and checks them against the planner, recording, proof and exercised citations. |

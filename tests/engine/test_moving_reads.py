@@ -76,7 +76,8 @@ def tiers(b):
     return tier
 
 
-def test_a_rate_keyed_by_a_moving_store_steps_where_the_store_crosses_a_key():
+@pytest.mark.parametrize('anchored', [False, True], ids=['free-running', 'stages-at-keys'])
+def test_a_rate_keyed_by_a_moving_store_steps_where_the_store_crosses_a_key(anchored):
     """The tank drains 1 L/h from 10 L; a charge fills at the rate of the tier of its water: 3 L/h
     to 2 h (8 L is in the top tier), 2 L/h to 5 h, then 1 L/h: 6, 12 and 15 L at hours 2, 5 and 8."""
     b = Builder(UNITS)
@@ -88,12 +89,29 @@ def test_a_rate_keyed_by_a_moving_store_steps_where_the_store_crosses_a_key():
         flow('out', this.water, SINK, request=q(1, 'L/h')),
         flow('charge', SOURCE, this.cost, request=formula(tier.instances.by('level').at(this.water).rate)),
     )
+    if anchored:
+        clock = b.entity('observer', event('clock', after(q(2, 'h')), after(q(3, 'h'))))
+        b.setup(start(clock.clock))
     program = b.finish()
     record = run_for(program, 8)
     times = [1, 2, 3, 5, 6, 8]
     assert values(record, program, 'tank.cost', times) == pytest.approx([3, 6, 8, 12, 13, 15])
     rates = values(record, program, 'tank.charge.actual_rate', [1.5, 2, 2.5, 5, 5.5])
-    assert rates == pytest.approx([3, 3, 2, 2, 1])
+    assert rates == pytest.approx([3, 2, 2, 1, 1])
+    # A point lookup uses the key at the reported level. In the exact trajectory, the
+    # descending stock is still on the higher key when sharing has installed the lower rate.
+    oracle, error = run_of(program, Configuration(Request(8)))
+    assert error is None
+    for name, expected in [('water', [8, 5]), ('charge.request', [3, 2]), ('charge.actual_rate', [2, 1])]:
+        key = Key('tank', tuple(name.split('.')))
+        assert [value_at(oracle, program, key, at) for at in (2, 5)] == expected
+    levels = values(record, program, 'tank.water', [2, 5])
+    requests = values(record, program, 'tank.charge.request', [2, 5])
+    if anchored:
+        assert levels == [8, 5]
+        assert requests == [3, 2]
+    else:
+        assert requests == [3 if level >= 8 else 2 if level >= 5 else 1 for level in levels]
 
 
 def test_a_key_that_a_stage_writes_changes_the_rates_that_read_it():

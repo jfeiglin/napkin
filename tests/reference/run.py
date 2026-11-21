@@ -59,6 +59,7 @@ from .evaluate import (
     Bound,
     Cell,
     Coll,
+    Departure,
     End,
     Ent,
     Ev,
@@ -190,6 +191,7 @@ class Run:
         self.moving, self.stops = [], []
         self.contacts, self.bound_contacts, self.contact_levels = [], [], {}
         self.contact_targets = {}
+        self.departures = {}
         self.flow_numbers, self.occ_numbers = itertools.count(1), itertools.count(1)
         self.sites = _sites(model)
         self.error = self.paused = None
@@ -562,7 +564,7 @@ class Run:
                 self.contact_levels[cell] = bound, root
                 self.contact_targets.setdefault(cell, set()).add(bound)
         grouped = bool(self.contact_levels)
-        for root, scope, pair, condition in self.contacts:
+        for root, scope, pair, difference, condition in self.contacts:
             if isinstance(root, Irrational) or abs(root - delta) > self.config.crossing:
                 continue
             at_root = view.copy()
@@ -578,6 +580,11 @@ class Run:
             if not cells or 't' in cells:
                 continue
             grouped = True
+            if condition is None and delta != root:
+                side = difference(Poly([root, 1])).sign_after()
+                self.departures[ev.contact_key(pair)] = Departure(
+                    moment, moment + self.config.crossing, difference(delta), side
+                )
             if len(cells) == 1:
                 (cell,) = cells
                 level = at_root.cells[cell]
@@ -876,6 +883,16 @@ class Run:
                 self._in_range(cell, view.cells[cell])
         for var, p in view.rates.items():
             view.results[var] = p(tau)
+        # An unrelated stage can arrive after the canonical moment but before the
+        # original numerical root. Carry the chosen comparison side through its physical gap.
+        for key, kept in tuple(self.departures.items()):
+            if kept.at == nxt:
+                continue
+            if kept.at == view.t and nxt <= kept.through and kept.curve is not None:
+                kept.at, kept.gap = nxt, kept.curve(tau)
+                kept.curve = None
+            else:
+                del self.departures[key]
         view.t, view.levels, view.rates = nxt, {}, {}
         if failure is not None:
             raise failure[1]
