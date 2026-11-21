@@ -477,6 +477,29 @@ def campaign(args):
 
 def summary(args):
     folder = Path(args.out).resolve() / args.phase
+    if args.baseline_guard_run_seconds is not None:
+        baseline = args.baseline_guard_run_seconds
+        if args.phase != 'guard' or (args.rows and args.rows != ['events']):
+            raise ValueError('an external Run.run clock applies only to the full event guard')
+        if not math.isfinite(baseline) or baseline <= 0:
+            raise ValueError('baseline Run.run seconds must be finite and positive')
+        if (folder / 'events.1.B.json').exists():
+            raise ValueError('the guard already contains a paired baseline sample')
+        candidate = read(folder / 'events.1.F.json')
+        if (candidate['phase'], candidate['row'], candidate['argv']) != (
+            'guard',
+            'events',
+            ['30000', '48', '12'],
+        ):
+            raise ValueError('candidate did not run the full event guard')
+        [elapsed] = candidate['guard_run_only_seconds']
+        ratio = elapsed / baseline
+        print(
+            f'events Run.run F/B {ratio:.6f}',
+            'pass' if ratio <= 1.10 else 'FAIL',
+            f'baseline {baseline:.6f} s, candidate {elapsed:.6f} s, candidate peak {candidate["peak_rss_bytes"] / 2**20:.1f} MiB',
+        )
+        return int(ratio > 1.10)
     pairs = 1 if args.phase == 'guard' else 3
     failed = False
     for row in args.rows or PHASES[args.phase]:
@@ -560,6 +583,12 @@ def main():
         if action == 'campaign':
             cmd.add_argument('--revision', action='append', required=True, metavar='B=PATH')
             cmd.add_argument('--mode', choices=('timing', 'diagnostics'), default='timing')
+        if action == 'summary':
+            cmd.add_argument(
+                '--baseline-guard-run-seconds',
+                type=float,
+                help='use a previously measured Run.run clock for the 30,000-place guard baseline',
+            )
     args = parser.parse_args()
     return {'worker': worker, 'summary': summary, 'campaign': campaign}[args.action](args)
 
