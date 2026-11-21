@@ -1,0 +1,35 @@
+{
+  "phase": "guard",
+  "row": "held-pipes",
+  "status": "censored_inside_Run.run",
+  "sha": "6202824d6d567c34ac46da7b018e66a9c28588b3",
+  "harness_commit": "0f0fcb2a933fdf71a0458a101a4377e1ccb0f44a",
+  "harness_sha256": "23c9f60eb10400f078d42fae6bc69e496dfc917cfb2acf3eea05fdd904da7b6d",
+  "argv": [
+    "30000",
+    "--full-record-only"
+  ],
+  "root": "/Users/jakefeiglin/Documents/ChatGPT/napkin_local/.work/engine-finalized-baseline",
+  "napkin": "/Users/jakefeiglin/Documents/ChatGPT/napkin_local/.work/engine-finalized-baseline/napkin/__init__.py",
+  "source": "/Users/jakefeiglin/Documents/ChatGPT/napkin_local/.work/engine-finalized-held-protocol/scratch/rewrite/b1/s1-engine/bench.py",
+  "measurement_sha256": "cfd52673ae0aa7e59d3bc2554ca76aaf1a3cfa51587a3dbd2ac4411aab08b7ea",
+  "host": "Mac",
+  "python": "3.13.16 (main, Oct  1 2026, 20:54:04) [Clang 22.1.3 ]",
+  "blas_env": {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "BLIS_NUM_THREADS": "1"
+  },
+  "cache": "off",
+  "time_utc": "2026-11-21T21:03:31.946805+00:00",
+  "inner_timer_seconds": 75,
+  "observed_inside_run_seconds": 75.00391945801675,
+  "certified_run_record_lower_seconds": 75,
+  "completed_run_record_seconds": null,
+  "observations": null,
+  "warmup_runs": 0,
+  "outer_timeout_seconds": 175
+}
