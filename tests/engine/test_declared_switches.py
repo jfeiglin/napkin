@@ -1,6 +1,7 @@
 """A moving declared solver follows one branch until its stores reach the switch."""
 
 import math
+from fractions import Fraction
 
 import pytest
 
@@ -35,10 +36,13 @@ from napkin.program.build import (
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.config import Configuration, Numerics, Request
 from napkin.program.record import Key
+from tests.reference.from_program import run_of, value_at
 
 
 @pytest.mark.parametrize('source', ['constraint', 'capacity', 'keyed store'])
-@pytest.mark.parametrize(('filtered', 'fraction'), [(False, 0), (True, 0), (False, -0.5), (False, 0.5)])
+@pytest.mark.parametrize(
+    ('filtered', 'fraction'), [(False, 0), (True, 0), (False, -0.5), (False, -0.025), (False, 0.5)]
+)
 def test_a_moving_solver_drains_at_the_incoming_rate_until_the_tank_reaches_two_litres(
     source, filtered, fraction
 ):
@@ -83,17 +87,56 @@ def test_a_moving_solver_drains_at_the_incoming_rate_until_the_tank_reaches_two_
     assert isinstance(work.ways.instance_of('tank.water'), MovingDeclared)
     paused = Run(Plan.of(model, cfg), [Breakpoint('tank.note_rates.step[0]')])
     stop = paused.run()
+    expected_stock = 4 - 2 * stage_time
+    stage = Fraction(str(stage_time))
+    oracle, problem = run_of(model, cfg)
     assert isinstance(stop, Checkpoint), stop
+    assert problem is None
+    # Outside the tank's band, the stage observes the side actually reached.
+    # The constraint or capacity drops at the independent root at exactly 1 h.
+    separate = abs(fraction) == 0.5
+    if separate and stage < 1:
+        first, second, exact = 2, 2, 4 - 2 * stage
+    elif separate:
+        first, second, exact = 1, 1, 3 - stage
+    else:
+        first, second, exact = 2, 1, 4 - 2 * stage if fraction < 0 else 2
+    final = 1 if separate else exact - (2 - stage)
+    assert [value_at(oracle, model, key, stage) for key in keys] == [first, second, exact]
+    assert value_at(oracle, model, keys[2], 2) == final
+    if fraction == -0.025:
+        # The same hard rule blocks an early landing, but this time the stock is on the
+        # threshold for sharing. Keep precisely the amount its incoming transfer left.
+        edit = [(Key('tank', ('note',)), 1)]
+        restored, error = run_of(model, cfg, [('tank.note_rates.step[0]', None, edit)])
+        assert error is None
+        assert [value_at(restored, model, key, stage) for key in keys] == [2, 1, exact]
+        assert value_at(restored, model, keys[2], 2) == exact - (2 - stage)
+        changed, error = run_of(model, cfg, [('tank.note_rates.step[0]', None, [(keys[2], 3)])])
+        assert error is None
+        assert [value_at(changed, model, key, stage) for key in keys] == [2, 2, 3]
+        gross = paused.ways.instance_of('tank.drain').transferred('tank.drain', stage_time)
+        retained = float(4 - gross)
+        assert stop.state.value('tank.water') == retained
+        assert retained == pytest.approx(expected_stock, abs=4e-15, rel=0)
+        assert 0 < retained - 2 <= paused.comparison_band('tank.water', retained, 2)
     edited = paused.edit(Key('tank', ('note',)), 1)
     for record in (straight, paused.resume(), resume(model, loads(dumps(edited)))):
         assert record.failure is None
         before, afterward, water = read(record, model, names, [stage_time, 2])
         contacts = record.entries('contact', 'tank.drain' if source == 'capacity' else 'tank.share')
-        assert len(contacts) == 1 and contacts[0].t == stage_time
-        assert contacts[0].detail('located') == pytest.approx(1, abs=2e-12)
-        assert before.values[0] == pytest.approx(2)
-        assert afterward.values[0] == pytest.approx(1)
-        assert water.values == pytest.approx((2, 1))
+        if separate:
+            assert not [e for e in contacts if e.t == stage_time]
+            probes = [1 - 2e-9, 1 + 2e-9]
+            rates = read(record, model, ['tank.drain.actual_rate'], probes)[0].values
+            assert rates == pytest.approx([2, 1], rel=0, abs=1e-13)
+        else:
+            assert len(contacts) == 1 and contacts[0].t == stage_time
+            assert contacts[0].detail('located') == pytest.approx(1, abs=2e-12)
+        assert before.values[0] == first and afterward.values[0] == second
+        assert water.values == pytest.approx((float(exact), float(final)), abs=1e-14, rel=0)
+        if fraction == -0.025:
+            assert water.values[0] == retained
 
 
 def test_rebuilding_a_moving_solver_keeps_a_clock_switch_that_the_previous_moment_grouped():

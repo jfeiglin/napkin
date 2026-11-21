@@ -2002,7 +2002,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
 
     def incoming_level(self, name, t):
         if self.pending is not None and self.pending.start < t:
-            return float(self._held(self.pending.solution(t))[self.place[name]])
+            return float(self.pending.solution(t)[self.place[name]])
         return self.level_at(name, t)
 
     def level_at(self, name, t):

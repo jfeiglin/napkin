@@ -376,8 +376,8 @@ These override the text of this plan below, wherever the two differ. The owner's
     independently compared quantities use the larger floor. This amendment is language 0.2.1. An interval is reversed only
     when its lower end exceeds its upper end by more than their band. Inverted hard bounds within
     the band admit one point, their midpoint. Authored evidence stays exact.
-    At a located trigger or switch crossing, the clock groups contacts using the crossing
-    tolerance in hours (change 27). A comparison has its own physical band. A stage that
+    For a stock crossing, the clock applies the time tolerance in hours and the stock’s
+    comparison band in its physical unit before grouping the contact (amended change 27). A stage that
     authors a nonzero move writes. Computed transfers at a frozen store accumulate in each
     direction since retirement against that store's conservation allowance.
 

@@ -155,6 +155,7 @@ class Clock:
     """The one rule for when something is due (see the module)."""
 
     def __init__(self, plan):
+        self.separate = None  # a stock contact that must precede a nearby timed stage
         self.crossing = plan.numerics.crossing
         self.units = _ExactUnits(
             {
@@ -193,7 +194,7 @@ class Clock:
     def due(self, at, t, opening=True):
         """Whether a time is due at the moment of time t: at most the time tolerance after it when the
         moment begins (`opening`), else at t."""
-        return at <= self.apart(t) if opening else at <= t
+        return at <= self.apart(t) if opening and self.separate != t else at <= t
 
     def within(self, at, t):
         """Whether a located contact is in the closed time window around the independent moment t."""

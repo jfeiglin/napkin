@@ -225,19 +225,10 @@ yard.launch.start()
     target = Fraction(threshold)
     outside = target > 1 + Fraction(1, 10**9)
     retained = min(target, 1)
-    separate = 2 if outside else Fraction('1.9999999999')
-    actions = [] if outside else ['yard.watch.when[0]', 'yard.other.when[0]']
-    if outside:
-        expected = (('yard.old#0.saved', 'outflow', leg),)
-        assert error is not None and error.violations == expected
-        assert record.failure is not None and record.failure.detail('violations') == expected
-        ((stock, side, pipe, attempted, allowance),) = record.failure.detail('attempts')
-        assert (stock, side, pipe) == expected[0] and allowance == 1
-        assert attempted == pytest.approx(float(target - 1), rel=0, abs=1e-15)
-        assert error.attempts == ((*expected[0], target - 1, 1),)
-        assert 'allowance' in str(error) and 'allowance' in record.failure.detail('message')
-    else:
-        assert error is None and record.failure is None
+    separate = Fraction('1.9999999999')
+    actions = [] if outside else ['yard.watch.when[0]']
+    actions += ['yard.other.when[0]']
+    assert error is None and record.failure is None
     assert next(iter(oracle.transferred.values())) == retained
     assert sum(run.occurrences.transferred[('yard.old#0.saved', 'outflow')]) == retained
     if outside:
@@ -250,6 +241,19 @@ yard.launch.start()
         assert record.history(key).at(1) == float(amount)
     assert [e.part for e in record.entries('fire') if e.t == 1] == actions
     assert [e.label for e in oracle.trace if e.kind == 'fire' and e.t == 1] == actions
+    if outside:
+        # With time to continue, the outgoing physical leg really exhausts the frozen allowance.
+        config = replace(model.configuration, request=replace(model.configuration.request, horizon=1.1))
+        continued, problem = run_of(model.program, config)
+        longer = Run(Plan.of(model.program, config)).run()
+        assert longer.failure is not None and problem is not None
+        assert longer.end == pytest.approx(float(continued.view.t), abs=2e-15, rel=0)
+        assert continued.view.t == 1
+        assert (
+            longer.failure.detail('violations')
+            == problem.violations
+            == (('yard.old#0.saved', 'outflow', leg),)
+        )
 
 
 @pytest.mark.parametrize('method', ['family', 'lines', 'component', 'sparse', 'declared', 'moving_declared'])
@@ -293,27 +297,34 @@ yard.clock.start()
     record = run.run()
     assert record.end == oracle.view.t == 1
     expected = tuple(sorted((('yard.a', 3, 3), ('yard.a' if same else 'yard.b', 3 if same else 1, second))))
-    (oracle_tie,) = [e for e in oracle.trace if e.kind == 'near-tie' and e.label == 'stock placement']
-    assert tuple(oracle_tie.placements) == expected
-    (tie,) = [e for e in record.entries('settle') if e.part == 'stock placement']
-    public = tuple((name, float(actual), float(target)) for name, actual, target in expected)
-    assert tuple(tuple(p) for p in tie.detail('placements')) == public
-    assert tie.t == oracle_tie.t == 1 and tie.detail('near')
+    assert problem is None and record.failure is None
+    reference_ties = [e for e in oracle.trace if e.kind == 'near-tie' and e.label == 'stock placement']
+    ties = [e for e in record.entries('settle') if e.part == 'stock placement']
     if within:
-        assert problem is None and record.failure is None
+        (oracle_tie,), (tie,) = reference_ties, ties
+        assert tuple(oracle_tie.placements) == expected
+        public = tuple((name, float(actual), float(target)) for name, actual, target in expected)
+        assert tuple(tie.detail('placements')) == public
+        assert tie.t == oracle_tie.t == 1 and tie.detail('near')
     else:
-        assert tuple(tuple(p) for p in record.failure.detail('placements')) == public
-        assert tuple(problem.placements) == expected
-        assert all(
-            name in record.failure.detail('message') and name in str(problem) for name, _, _ in expected
-        )
-        assert not [entry for entry in record.entries('fire') if entry.t == 1]
-    for name, amount in [('a', 3), ('b', 1), ('separate', Fraction('1.9999999999') if within else 2)]:
+        assert not reference_ties and not ties
+        firings = [
+            (1 - late, 'yard.watchb.when[0]'),
+            (1, 'yard.watcha.when[0]'),
+            (1, 'yard.watchother.when[0]'),
+        ]
+        assert [(e.t, e.label) for e in oracle.trace if e.kind == 'fire'] == firings
+        events = record.entries('fire')
+        assert [e.part for e in events] == [label for _, label in firings]
+        assert [e.t for e in events] == pytest.approx([float(t) for t, _ in firings], abs=1e-14, rel=0)
+    for name, amount in [('a', 3), ('b', 1), ('separate', Fraction('1.9999999999'))]:
         key = Key('yard', (name,))
         assert value_at(oracle, model.program, key, 1) == amount
         assert float(run.stock_balance('yard.' + name, 1)) == float(amount)
         assert record.history(key).at(1) == float(amount)
-    assert run.ways.instance_of('yard.ab').transferred('yard.ab', 1) == 1
+    if within:
+        assert run.ways.instance_of('yard.ab').transferred('yard.ab', 1) == 1
+    assert sum(row[6] for row in oracle.ledger if row[0] == 'flow' and row[3] == 'yard.ab') == 1
 
 
 @pytest.mark.parametrize('method', ['lines', 'component', 'sparse', 'declared', 'moving_declared'])
@@ -360,7 +371,7 @@ yard.clock.start()
     oracle, error = run_of(model.program, model.configuration)
     run = Run(Plan.of(model.program, model.configuration), (Breakpoint('yard.clock.step[0]'),))
     stop = run.run()
-    separate = Fraction('1.9999999999') if within else 2
+    separate = Fraction('1.9999999999')
     through, steady, additional = (
         run.ways.instance_of(name).transferred(name, 1)
         for name in ('yard.through', 'yard.steady', 'yard.additional')
@@ -371,20 +382,15 @@ yard.clock.start()
     assert run.stock_balance('yard.basin', 1) == (2 if upper else 0) + sign * through
     assert run.stock_balance('yard.other', 1) == initial + sign * (steady - through)
     assert run.stock_balance('yard.separate', 1) == additional
-    if within:
-        assert isinstance(stop, Checkpoint)
-        record = run.resume()
-        assert error is None and record.failure is None
-    else:
-        record = stop
-        assert error is not None and record.failure is not None
-        assert 'yard.other' in str(error) and 'yard.other' in record.failure.detail('message')
+    assert isinstance(stop, Checkpoint)
+    record = run.resume()
+    assert error is None and record.failure is None
     assert record.end == oracle.view.t == 1
     for name, expected in [('basin', 1), ('other', initial), ('separate', separate)]:
         key = Key('yard', (name,))
         assert value_at(oracle, model.program, key, 1) == expected
         assert record.history(key).at(1) == pytest.approx(float(expected), rel=0, abs=2e-15)
-    actions = ['yard.watch.when[0]', 'yard.separate_watch.when[0]'] if within else []
+    actions = (['yard.watch.when[0]'] if within else []) + ['yard.separate_watch.when[0]']
     assert [e.part for e in record.entries('fire') if e.t == 1] == actions
     assert [e.label for e in oracle.trace if e.kind == 'fire' and e.t == 1] == actions
 

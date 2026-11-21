@@ -164,6 +164,18 @@ class Way:
 
         return measured
 
+    def separate_contacts(self, t, through):
+        """Located bounds and thresholds outside their physical comparison bands at t."""
+        for at, name, kind in self.timing_events(through):
+            if at != t and self.run.clock.within(at, t) and kind in ('lower bound', 'upper bound'):
+                target = self.run.bounds[name][kind == 'upper bound']
+                actual = self.incoming_level(name, t)
+                if abs(actual - target) > self.run.comparison_band(name, actual, target):
+                    yield at
+        for located, pair in self.crossed_operands(t, through):
+            if located != t and not self.run.triggers.anchor(None, *pair, t, located):
+                yield located
+
     def contacts_at(self, t, through):
         for event in self.timing_events(through):
             if self.run.clock.within(event[0], t):

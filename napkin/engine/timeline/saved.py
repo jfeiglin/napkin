@@ -223,6 +223,7 @@ def at_stop(run):
             memo[id(way)] = way  # a line with no due bound has no cut
     ways.instances = [deepcopy(way, memo) for way in run.ways.instances]
     ways.sets = {key: (connected, memo[id(way)]) for key, (connected, way) in run.ways.sets.items()}
+    projected.arrival_limits = {memo[id(way)]: end for way, end in run.arrival_limits.items()}
     projected.finish_arrival()
     deltas = []
     levels = {}
@@ -237,7 +238,7 @@ def at_stop(run):
         if delta:
             deltas.append((k, delta))
         if isinstance(live, Sparse | ComponentWay | MovingDeclared):
-            levels.update((name, live.level_at(name, run.now)) for name in live.stores)
+            levels.update((name, live.accepted_level(name, run.now)) for name in live.stores)
     return recorder, (tuple(deltas), tuple(sorted(projected.moved - run.moved)), _pairs(levels))
 
 
@@ -279,6 +280,7 @@ def save(run, recorder, arrival):
                 ('arrival', arrival),
                 ('contacts', run.contacts),
                 ('consumed', _pairs(run.consumed)),
+                ('separate', run.clock.separate),
                 ('bounds_at_arrival', _pairs(run.bound_at)),
                 ('changed', tuple(sorted(run.changed, key=repr))),  # a set, in one order
                 ('moved', tuple(sorted(run.moved))),
@@ -770,6 +772,7 @@ def _run(run, found):
         run.opening_levels = dict(run.saved_arrival[2])
     run.contacts, run.bound_at = tuple(found['contacts']), dict(found['bounds_at_arrival'])
     run.consumed = dict(found.get('consumed', ()))
+    run.clock.separate = found.get('separate')
     run.changed, run.moved = set(found['changed']), set(found['moved'])
     run.joined, run.left = list(found['joined']), list(found['left'])
     run.waiting = [_connected(data) for data in found['waiting']]

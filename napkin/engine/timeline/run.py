@@ -175,6 +175,8 @@ class Run:
         self.cut_at_resume = []
         self.opening_levels = {}
         self.contacts = ()
+        self.arrival_limits = {}
+        self.arrival_through = 0.0
         self.consumed = {}  # resolved operands -> (located time, canonical moment) of grouped switches
         self.bound_at = {}
         self.changed, self.moved = set(), set()
@@ -1014,7 +1016,7 @@ class Run:
         """Moment after moment to the horizon, which is a moment too: the first moment at which it is
         due (`moment.Clock`)."""
         horizon = self.plan.horizon
-        while not self.clock.due(horizon, self.now):
+        while self.now < horizon:
             moment = self.next_moment()
             self.recorder.check_budget(moment[0], before=True)
             self.moment.at(*moment)
@@ -1093,7 +1095,11 @@ class Run:
                 # A flow at a store of a finished occurrence carries no rate up to the event.
                 self.occurrences.carried(self.now, at)
                 self.now = self.accepted = at
-                faces = Placements(bound_values(self.bounds, instance.contacts_at(at, self.clock.apart(at))))
+                through = self.clock.apart(at)
+                apart = min(instance.separate_contacts(at, through), default=math.inf)
+                if apart <= through:
+                    through = math.nextafter(apart, -math.inf)
+                faces = Placements(bound_values(self.bounds, instance.contacts_at(at, through)))
                 faces.include(levels)
                 if faces:
                     levels = self.stock_state.place(faces, at)
@@ -1114,19 +1120,38 @@ class Run:
                     self.ways.publish(instance, at, flows=flows)
                 self.triggers.predict(changed)
                 continue
+            proposed = moment
+            while True:
+                threshold = self.clock.apart(moment)
+                if moment < proposed:
+                    # An independent clock sits at the proposed later moment. After
+                    # separating an earlier stock, leave that clock and its stage there.
+                    threshold = min(threshold, math.nextafter(proposed, -math.inf))
+                cutoffs = {}
+                earlier = [at for at in self.triggers.separate_contacts(moment, threshold) if at < moment]
+                if independent:
+                    for way in self.ways.instances:
+                        way.lookahead(moment, threshold)
+                        first = min(way.separate_contacts(moment, threshold), default=math.inf)
+                        if first < moment:
+                            earlier.append(first)
+                        elif first <= threshold:
+                            cutoffs[way] = math.nextafter(first, -math.inf)
+                if not earlier:
+                    break
+                moment, independent = min(earlier), True
+            self.clock.separate = moment if moment < proposed else None
+            self.arrival_through = threshold
+            self.arrival_limits = cutoffs
             self.occurrences.carried(self.now, moment)
             self.now = moment
-            threshold = self.clock.apart(moment)
-            if independent:
-                for way in self.ways.instances:
-                    way.lookahead(moment, threshold)
             self.contacts = tuple(
                 sorted(
                     {
                         event
                         for way in self.ways.instances
                         if independent
-                        for event in way.contacts_at(moment, threshold)
+                        for event in way.contacts_at(moment, cutoffs.get(way, threshold))
                     }
                 )
             )
@@ -1137,7 +1162,7 @@ class Run:
                 self.consumed = {pair: times for pair, times in self.consumed.items() if max(times) >= moment}
             if self.contacts or not independent:
                 for way in self.ways.instances:
-                    for located, pair in way.crossed_operands(moment, threshold):
+                    for located, pair in way.crossed_operands(moment, cutoffs.get(way, threshold)):
                         self.triggers.anchor(levels, *pair, moment, located)
                         self.consumed[tuple(map(nodes.text, pair))] = located, moment
             self.accepted = moment
@@ -1186,9 +1211,9 @@ class Run:
             self.opening_levels.clear()
             return
         t = self.now
-        through = self.clock.apart(t) if self.contacts else t
+        through = self.arrival_through if self.contacts else t
         for way in self.ways.cut_order():
-            self.moved.update(way.arrive(t, through))
+            self.moved.update(way.arrive(t, self.arrival_limits.get(way, through)))
         self.moved.update(self.ways.switched(t))
         self.now = t
 

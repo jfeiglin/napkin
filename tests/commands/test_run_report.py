@@ -408,33 +408,37 @@ yard.clock.start()
         UNITS,
     )
     result = napkin(capsys, 'run', model, '--json', '--at', '1h', '--value', 'yard.a')
-    assert result.code == int(outside), result.err
+    assert result.code == 0, result.err
     doc = result.doc
     assert doc['values']['yard.a']['values'] == [3]
-    assert bool(doc['stopped']) == outside
+    assert not doc['stopped']
 
     artifact = loads(load_scenario(model).artifact().data())
     (model / 'model.scn').unlink()
     config = Configuration(Request(1))
-    found = report(
-        run(artifact.program, config), artifact.program, config, ['yard.a'], [1], table=artifact.table
-    )
+    record = run(artifact.program, config)
+    found = report(record, artifact.program, config, ['yard.a'], [1], table=artifact.table)
     assert found.end == 1 and found.stopped == doc['stopped']
     assert found.values[0].values == (3,)
-    actual = 3 if same_end else 1
-    expected = {('yard.a', 3, 3), (other, actual, target)} if outside else set()
-    assert set(found.placements) == expected
-    assert {(item['stock'], item['actual'], item['target']) for item in doc['placements']} == expected
+    assert not found.placements and not doc['placements']
 
     public = {tie.comparison: tie for tie in found.near_ties if tie.kind == 'settle'}
     cli = {row['comparison']: row for row in doc['near_ties'] if row['kind'] == 'settle'}
-    second = f'{other} == {target:.17g}'
-    assert set(public) == set(cli) == {'yard.a == 3', second}
-    for comparison, relation in [('yard.a == 3', 'within'), (second, 'outside' if outside else 'within')]:
-        tie = public[comparison]
-        assert tie.message == cli[comparison]['message']
-        assert f'{relation} the tolerance' in tie.message
-        assert (abs(tie.difference) > tie.tolerance) == (relation == 'outside')
+    assert set(public) == set(cli)
+    if outside:
+        # The earlier actual contact consumes its own trigger. Neither crossing
+        # participates in a simultaneous incompatible placement at the clock.
+        assert [entry.t for entry in record.entries('fire', 'yard.second.when[0]')] == pytest.approx(
+            [1 - gap], rel=0, abs=2e-12
+        )
+        assert [entry.t for entry in record.entries('fire', 'yard.first.when[0]')] == [1]
+        assert not public
+    else:
+        assert set(public) == {'yard.a == 3', f'{other} == {target:.17g}'}
+        for comparison, tie in public.items():
+            assert tie.message == cli[comparison]['message']
+            assert 'within the tolerance' in tie.message
+            assert abs(tie.difference) <= tie.tolerance
 
 
 @pytest.mark.parametrize('checks, omitted', [('zedcba', '1 more source'), ('zfedcba', '2 more sources')])

@@ -160,19 +160,21 @@ def test_a_multistore_contact_preserves_both_inventories(speed):
     assert value_at(oracle, program, Key('pair', ('b',)), Fraction(3, speed)) == 6
 
 
-def test_a_grouped_multistore_contact_reports_an_unattainable_residual():
-    # At the scheduled moment 5 ns after the crossing, the sum has risen another 0.003 L.
-    # No location there can satisfy the 1e-8 L band and both stores' arriving trajectories.
+def test_a_fast_multistore_contact_fires_at_its_own_time_before_the_clock():
+    # By the tick, the sum would have risen another 0.003 L. Both inventories
+    # therefore reach the threshold at its own crossing, before the scheduled stage.
     speed = 200_000
-    at = 3 / speed
-    program = sum_model(speed, at + 5e-9)
-    record = run(program, Configuration(Request(2 * at)))
-    assert record.failure is not None
-    message = record.failure.detail('message')
-    assert 'pair.a' in message and 'pair.b' in message and 'residual' in message and 'band' in message
-    _, failure = run_of(program, Configuration(Request(2 * at)))
-    assert failure is not None
-    assert all(word in str(failure) for word in ('pair.a', 'pair.b', 'residual', 'band'))
+    at = Fraction(3, speed)
+    program = sum_model(speed, at + Fraction(5, 10**9))
+    config = Configuration(Request(float(2 * at)))
+    record = run(program, config)
+    assert record.failure is None
+    (fire,) = record.entries('fire')
+    assert fire.t == pytest.approx(float(at), abs=1e-13, rel=0)
+    assert observed(record, program, 'pair.arrival', [float(2 * at)]) == pytest.approx([10])
+    oracle, failure = run_of(program, config)
+    assert failure is None
+    assert value_at(oracle, program, Key('pair', ('arrival',)), 2 * at) == 10
 
 
 @pytest.mark.parametrize('upper', [1, 1_000_000_000])
@@ -212,8 +214,8 @@ def test_grouping_a_multistore_contact_inside_its_band_keeps_each_inventory():
 
 
 def test_an_invertible_single_store_switch_places_its_store_on_the_threshold():
-    # A tank on the positive branch of water squared, filled at 25 L/h. Group the
-    # physical root at 0.004 h with a clock 5e-9 h later. The inverse level is 0.7 L.
+    # A tank on the positive branch of water squared stops filling at 0.7 L,
+    # so its later clock reads exactly that inverse level.
     at = Fraction(1, 250) + Fraction(5, 10**9)
     b = Builder(UNITS)
     b.entity(
@@ -240,9 +242,8 @@ def test_an_invertible_single_store_switch_places_its_store_on_the_threshold():
     assert value_at(oracle, program, Key('tank', ('seen',)), Fraction(1)) == Fraction(7, 10)
 
 
-def test_a_grouped_bound_and_trigger_with_incompatible_levels_name_the_store():
-    # The tank reaches 0.99 L at 9.9e-8 h, then its 1 L bound at the scheduled
-    # moment 1e-7 h. An inventory cannot occupy those two levels at that moment.
+def test_a_threshold_before_a_different_stock_bound_has_its_own_moment():
+    # The tank reaches 0.99 L at 9.9e-8 h and its 1 L bound at the 1e-7 h clock.
     b = Builder(UNITS)
     b.entity(
         'tank',
@@ -259,15 +260,17 @@ def test_a_grouped_bound_and_trigger_with_incompatible_levels_name_the_store():
     program = b.finish()
     configuration = Configuration(Request(2e-7))
     record = run(program, configuration)
-    assert record.failure is not None
-    assert 'incompatible crossing levels of tank.water' in record.failure.detail('message')
-    _, failure = run_of(program, configuration)
-    assert failure is not None
-    assert 'incompatible crossing levels of tank.water' in str(failure)
+    assert record.failure is None
+    (fire,) = record.entries('fire')
+    assert fire.t == pytest.approx(9.9e-8, abs=1e-14, rel=0)
+    assert observed(record, program, 'tank.water', [1e-7, 2e-7]) == pytest.approx([1, 1], rel=0, abs=1e-12)
+    oracle, failure = run_of(program, configuration)
+    assert failure is None
+    assert value_at(oracle, program, Key('tank', ('water',)), Fraction(1, 10**7)) == 1
 
 
 @pytest.mark.parametrize('function', ['abs', 'min', 'max', 'clip'])
-def test_a_piecewise_arithmetic_rate_anchors_its_switch_at_the_grouped_moment(function):
+def test_a_piecewise_arithmetic_rate_switches_before_a_clock_outside_the_stock_band(function):
     at = Fraction(1, 250) + Fraction(5, 10**9)
     limit = q(0.7, 'L')
     args = {
@@ -291,7 +294,10 @@ def test_a_piecewise_arithmetic_rate_anchors_its_switch_at_the_grouped_moment(fu
     configuration = Configuration(Request(0.008))
     engine = run(program, configuration)
     assert engine.failure is None
-    assert observed(engine, program, 'tank.seen', [0.008]) == (0.7,)
+    expected = Fraction(3, 5) + 25 * at
+    assert observed(engine, program, 'tank.seen', [0.008]) == pytest.approx(
+        [float(expected)], abs=1e-12, rel=0
+    )
     oracle, failure = run_of(program, configuration)
     assert failure is None
-    assert value_at(oracle, program, Key('tank', ('seen',)), Fraction(1, 125)) == Fraction(7, 10)
+    assert value_at(oracle, program, Key('tank', ('seen',)), Fraction(1, 125)) == expected

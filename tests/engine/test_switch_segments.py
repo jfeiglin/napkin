@@ -44,6 +44,7 @@ from napkin.program.config import Configuration, Numerics, Request
 from napkin.program.record import Key
 from tests.engine.test_clock_moments import LOOK, UNITS, network, rate
 from tests.engine.test_round_rate_reads import check
+from tests.reference.from_program import run_of, value_at
 
 
 def tank(level, condition, first, second, *, upper=None, drain=0, pump_at=None, observation=2):
@@ -259,10 +260,21 @@ def test_a_located_switch_belongs_to_the_scheduled_moment_only_inside_its_time_b
     assert type(instance).__name__ == way
     record = run(program, config)
     assert record.failure is None
+    oracle, error = run_of(program, config)
+    assert error is None
     observed = read(record, program, ['tank.incoming', 'tank.outgoing'], [1])
-    assert [item.values[0] for item in observed] == [3 if gap < -1 else 1, 1 if gap > 1 else 3]
-    contacts = [(entry.t, entry.part, entry.detail('located')) for entry in record.entries('contact')]
-    assert contacts == ([(1, 'tank.fill', pytest.approx(located, abs=2e-14))] if abs(gap) <= 1 else [])
+    grouped = abs(gap) <= 1 and (guard == 'clock' or gap == 0)
+    incoming = 3 if gap < 0 and not grouped else 1
+    outgoing = 1 if gap > 0 and not grouped else 3
+    assert [item.values[0] for item in observed] == [incoming, outgoing]
+    assert [value_at(oracle, program, Key('tank', (name,)), 1) for name in ('incoming', 'outgoing')] == [
+        incoming,
+        outgoing,
+    ]
+    contacts = [
+        (entry.t, entry.part, entry.detail('located')) for entry in record.entries('contact') if entry.t == 1
+    ]
+    assert contacts == ([(1, 'tank.fill', pytest.approx(located, abs=2e-14))] if grouped else [])
 
 
 @pytest.mark.parametrize('gap', [F(-1, 10**10), F(1, 10**10)], ids=['early', 'late'])
@@ -522,7 +534,8 @@ def test_a_falling_request_reaches_zero_without_spending_negative_water(capped):
 
 
 @pytest.mark.parametrize('gap', [-0.5, 0.5])
-def test_an_authored_clock_groups_a_bound_in_an_independent_set_without_a_stage(gap):
+@pytest.mark.parametrize('scale', [1, 10000])
+def test_an_authored_clock_groups_a_bound_in_an_independent_set_without_a_stage(gap, scale):
     crossing = 2**-16
     limit = 1 + crossing * gap
     builder = Builder(UNITS)
@@ -533,34 +546,42 @@ def test_an_authored_clock_groups_a_bound_in_an_independent_set_without_a_stage(
     )
     builder.entity(
         'bounded',
-        value('water', 'L', 0, lower=0, upper=limit),
+        value('water', 'L', 0, lower=0, upper=limit, scale=scale),
         flow('fill', SOURCE, this.water, request=rate(1)),
     )
     program = builder.finish()
-    record = run(program, Configuration(Request(2), numerics=Numerics(crossing=crossing)))
-    assert record.failure is None
-    (bound,) = record.entries('contact', 'bounded.water')
-    assert bound.t == 1 and bound.detail('located') == pytest.approx(limit)
-    for row, expected in zip(
+    config = Configuration(Request(2), numerics=Numerics(crossing=crossing))
+    record = run(program, config)
+    oracle, error = run_of(program, config)
+    assert error is None and record.failure is None
+    grouped = scale == 10000
+    observed = [(e.t, e.detail('located')) for e in record.entries('contact', 'bounded.water') if e.t == 1]
+    assert observed == ([(1, pytest.approx(limit))] if grouped else [])
+    for owner, row, expected in zip(
+        ('bounded', 'clocked'),
         read(record, program, ['bounded.water', 'clocked.water'], [1, 2]),
-        ((limit, limit), (1, 3)),
+        ((limit if grouped else min(1, limit), limit), (1, 3)),
         strict=True,
     ):
         assert row.values == pytest.approx(expected, abs=1e-12, rel=0)
+        assert [value_at(oracle, program, Key(owner, ('water',)), at) for at in (1, 2)] == [
+            F(str(v)) for v in expected
+        ]
 
 
-@pytest.mark.parametrize('pipe_cap', [False, True], ids=['soft-placed', 'hard-cap-outside-band'])
+@pytest.mark.parametrize('pipe_cap', [False, True], ids=['soft-request', 'hard-cap'])
 @pytest.mark.parametrize('capped', [False, True])
-def test_a_clock_switch_and_an_independent_bound_both_reach_the_same_stage(capped, pipe_cap):
+@pytest.mark.parametrize('scale', [1, 10000])
+def test_a_clock_switch_and_an_independent_bound_both_reach_the_same_stage(capped, pipe_cap, scale):
     """The fill of the supply switches at 1 h. Its pipe, delivering a steady litre per hour,
-    fills a second tank half a time tolerance later. Both contacts belong to the 1 h round."""
+    fills a second tank half a time tolerance later. Its own scale determines whether it groups."""
     crossing = 2**-16
     upper = 1 + crossing / 2
     builder = Builder(UNITS)
     builder.entity(
         'plant',
         value('supply', 'L', 3, lower=0, inflow=endpoint(capacity=rate(10)) if capped else None),
-        value('tank', 'L', 0, lower=0, upper=upper),
+        value('tank', 'L', 0, lower=0, upper=upper, scale=scale),
         value('level', 'L', -1),
         value('again', 'L/h', -1),
         flow(
@@ -582,18 +603,20 @@ def test_a_clock_switch_and_an_independent_bound_both_reach_the_same_stage(cappe
     config = Configuration(Request(2), numerics=Numerics(crossing=crossing))
     work = Run(Plan.of(program, config))
     record = work.run()
-    if pipe_cap:
-        assert upper - 1 > work.comparison_band('plant.tank', 1, upper)
-        assert record.end == 1 and record.failure is not None
-        assert 'plant.pipe' in record.failure.detail('message')
-        accepted = work.ways.instance_of('plant.pipe').transferred('plant.pipe', 1)
-        assert work.stock_balance('plant.tank', 1) == accepted
-        assert float(accepted) == pytest.approx(1, abs=8 * math.ulp(1), rel=0)
-        assert not [e for e in record.entries('commit') if e.t == 1]
-        return
     assert record.failure is None
-    assert [v.values[0] for v in read(record, program, ['plant.level', 'plant.again'], [1])] == [upper, 0]
-    assert {entry.part for entry in record.entries('contact')} == {'plant.fill', 'plant.tank'}
+    grouped = upper - 1 <= work.comparison_band('plant.tank', 1, upper)
+    assert grouped == (scale == 10000)
+    expected_level = upper if grouped and not pipe_cap else 1
+    stage_level, stage_rate = read(record, program, ['plant.level', 'plant.again'], [1])
+    assert stage_level.values[0] == pytest.approx(expected_level, rel=0, abs=4e-15)
+    assert stage_rate.values[0] == int(not grouped)
+    expected = {'plant.fill', 'plant.tank'} if grouped else {'plant.fill'}
+    assert {entry.part for entry in record.entries('contact') if entry.t == 1} == expected
+    if not grouped:
+        middle = (1 + upper) / 2
+        level, rate_row = read(record, program, ['plant.tank', 'plant.pipe.actual_rate'], [middle, 2])
+        assert level.values == pytest.approx([middle, upper], abs=8e-15, rel=0)
+        assert rate_row.values == (1, 0)
 
 
 @pytest.mark.parametrize('capped', [False, True])
@@ -611,7 +634,8 @@ def test_an_authored_negative_request_on_the_new_side_still_fails(capped):
     assert 'tank.fill' in record.failure.detail('message')
 
 
-def test_an_internal_solver_endpoint_cannot_hide_a_bound_in_the_rest_of_the_time_band(monkeypatch):
+@pytest.mark.parametrize('scale', [1, 100000000])
+def test_an_internal_solver_endpoint_cannot_hide_a_bound_in_the_rest_of_the_time_band(monkeypatch, scale):
     """The stage at 1 h precedes the upper bound by 3/64 h, inside its 1/16 h band. Set
     Radau's first step to 1 + 1/64 h: this ordinary numerical endpoint precedes the actual bound."""
     radau = sparse.Radau
@@ -625,7 +649,7 @@ def test_an_internal_solver_endpoint_cannot_hide_a_bound_in_the_rest_of_the_time
     builder = Builder(UNITS)
     builder.entity(
         'tank',
-        value('water', 'L', 0, lower=0, upper=upper, inflow=endpoint(capacity=rate(10))),
+        value('water', 'L', 0, lower=0, upper=upper, scale=scale, inflow=endpoint(capacity=rate(10))),
         value('seen', 'L', -1),
         value('outgoing', 'L/h', -1),
         flow('fill', SOURCE, this.water, request=formula(rate(1) + t * q(0, 'L/h/h'))),
@@ -639,9 +663,12 @@ def test_an_internal_solver_endpoint_cannot_hide_a_bound_in_the_rest_of_the_time
     program = builder.finish()
     record = run(program, Configuration(Request(2), numerics=Numerics(crossing=1 / 16)))
     assert record.failure is None
-    assert [v.values[0] for v in read(record, program, ['tank.seen', 'tank.outgoing'], [1])] == [upper, 0]
-    (contact,) = record.entries('contact')
-    assert (contact.t, contact.part, contact.detail('located')) == (1, 'tank.water', pytest.approx(upper))
+    grouped = scale == 100000000
+    seen, outgoing = read(record, program, ['tank.seen', 'tank.outgoing'], [1])
+    assert seen.values[0] == pytest.approx(upper if grouped else 1, abs=3e-15, rel=0)
+    assert outgoing.values[0] == int(not grouped)
+    contacts = [(e.t, e.part, e.detail('located')) for e in record.entries('contact')]
+    assert contacts == ([(1, 'tank.water', pytest.approx(upper))] if grouped else [])
 
 
 def test_a_switch_at_an_accepted_step_end_is_consumed_by_the_following_step():

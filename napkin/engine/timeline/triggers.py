@@ -601,6 +601,13 @@ class Triggers:
                         crossing = self._continued_root(left, right, moving, until)
                         if crossing is not None:
                             root, physical = crossing, True
+            if root is not None and physical and not self.holds(node, root):
+                # At a steep physical crossing adjacent clock floats can straddle
+                # the entire amount band. Use the earliest representable time at
+                # which the complete inclusive guard observes its outgoing state.
+                after = math.nextafter(root, math.inf)
+                if self.holds(node, after):
+                    root = after
             if root is not None and root <= earliest:
                 if root < earliest:
                     witnesses.clear()
@@ -632,6 +639,17 @@ class Triggers:
             return None
         return crossing_time(gap, end, through, accepted=(first, last))
 
+    def separate_contacts(self, t, through):
+        """Witnesses inside the time window whose stock cannot join this moment."""
+        if self.next_contact() <= through:
+            for at, _, pairs in self.witnesses.values():
+                if (
+                    at != t
+                    and self.run.clock.within(at, t)
+                    and any(not self.anchor(None, *pair, t, at) for pair in pairs)
+                ):
+                    yield at
+
     def levels_at(self, t, levels):
         """Physical crossings on the incoming state that can actually fire a watched condition.
         An arm of a false conjunction, a mere near approach and a rearming pass move no stock."""
@@ -645,16 +663,18 @@ class Triggers:
             if not self.holds(test, at):
                 continue
             for left, right in pairs:
-                self.anchor(levels, left, right, t, at)
+                if at == t or self.anchor(None, left, right, t, at):
+                    self.anchor(levels, left, right, t, at)
         return levels
 
     def anchor(self, levels, left, right, t, located):
         """The single-store level implied by a contact, or verification of a multi-store contact.
         Affine aliases give the same correction as the underlying store. For several stores the
-        only admissible state is the one their flows reached on the incoming trajectory."""
+        only admissible state is the one their flows reached on the incoming trajectory.
+        With no destination dict, test whether this crossing can join a different time."""
         moving = self.moving_reads(left, right)
         if not moving or not moving <= self.run.plan.moving:
-            return
+            return True
         tx = Tx('')
         tx.writes = {name: self.run.ways.instance_of(name).incoming_level(name, t) for name in moving}
 
@@ -669,7 +689,7 @@ class Triggers:
                     name, 0.0
                 )
                 if not slope:
-                    return
+                    return True
                 value = tx.writes[name] - (a - b) / slope
             else:
                 # Invert on the branch containing the physical root, even if the canonical
@@ -681,10 +701,15 @@ class Triggers:
                     return side(left) - side(right)
 
                 value = _inverse_level(at_root, self.run.bounds[name], residual)
+            if levels is None:
+                actual = self.run.ways.instance_of(name).incoming_level(name, t)
+                return abs(value - actual) <= self.run.comparison_band(name, value, actual)
             levels.add(name, value)
             tx.writes[name] = value
             a, b = side(left), side(right)
         gap, band = self.plan.units.comparisons.gap_band(left, right, a, b, side)
+        if levels is None:
+            return not against('ne', gap, band)
         if against('ne', gap, band):
             raise SimulationError(
                 f'the crossing of {nodes.notation(left)} and {nodes.notation(right)} at {t:g} h '

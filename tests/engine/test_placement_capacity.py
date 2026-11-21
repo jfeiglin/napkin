@@ -74,17 +74,9 @@ yard.clock.start()
     for name, actual in balances.items():
         assert run.stock_balance('yard.' + name, 1) == actual
     outside = gap > Fraction('0.000000001')
-    if outside:
-        record = stop
-        assert record.failure is not None and error is not None
-        assert tuple(error.placements) == (('yard.tank', 1, target),)
-        assert tuple(record.failure.detail('placements')) == (
-            ('yard.tank', float(balances['tank']), float(target)),
-        )
-    else:
-        assert isinstance(stop, Checkpoint)
-        record = run.resume()
-        assert record.failure is None and error is None
+    assert isinstance(stop, Checkpoint)
+    record = run.resume()
+    assert record.failure is None and error is None
     assert record.end == oracle.view.t == 1
     assert [entry.t for entry in record.entries('fire')] == ([] if outside else [1])
     assert [entry.t for entry in oracle.trace if entry.kind == 'fire'] == ([] if outside else [1])
@@ -96,8 +88,11 @@ yard.clock.start()
 
 
 @pytest.mark.parametrize('method', ['family', 'lines', 'component', 'sparse', 'declared', 'moving_declared'])
-def test_all_simultaneous_refused_targets_are_reported_in_stock_order(method, monkeypatch):
-    text = """scenario "Two independent hard caps and one cutoff"
+@pytest.mark.parametrize(
+    'target', [Fraction('1.0000000001'), Fraction('1.000000005')], ids=['within', 'outside']
+)
+def test_simultaneous_capped_targets_are_reported_only_within_their_own_band(method, target, monkeypatch):
+    text = f"""scenario "Two independent hard caps and one cutoff"
     horizon 1 h
 yard:
     z: L = 0 L
@@ -109,11 +104,11 @@ yard:
         request = 1 L/h
         capacity = 1 L/h
     watch_z = event():
-        when this.z >= 1.000000005 L:
+        when this.z >= {float(target)} L:
             this.watch_z.start()
         after 0 h
     watch_a = event():
-        when this.a >= 1.000000005 L:
+        when this.a >= {float(target)} L:
             this.watch_a.start()
         after 0 h
     clock = event():
@@ -125,9 +120,8 @@ yard.clock.start()
     run = Run(Plan.of(model.program, model.configuration))
     record = run.run()
     assert record.end == oracle.view.t == 1
-    assert record.failure is not None and error is not None
+    assert record.failure is None and error is None
     names = ('yard.a', 'yard.z')
-    target = Fraction('1.000000005')
     expected = []
     for stock in names:
         leg = stock + '_pipe'
@@ -135,7 +129,17 @@ yard.clock.start()
         assert run.stock_balance(stock, 1) == total
         assert float(total) == pytest.approx(1, abs=2e-15, rel=0)
         expected.append((stock, float(total), float(target)))
-    assert tuple(error.placements) == tuple((name, 1, target) for name in names)
-    assert tuple(record.failure.detail('placements')) == tuple(expected)
-    assert not record.entries('fire')
-    assert not [e for e in oracle.trace if e.kind == 'fire']
+    if target - 1 <= Fraction(1, 10**9):
+        assert [e.part for e in record.entries('fire')] == ['yard.watch_z.when[0]', 'yard.watch_a.when[0]']
+        assert [e.label for e in oracle.trace if e.kind == 'fire'] == [
+            'yard.watch_z.when[0]',
+            'yard.watch_a.when[0]',
+        ]
+        ties = [e for e in record.entries('settle') if e.part == 'stock placement']
+        assert [tuple(p) for e in ties for p in e.detail('placements')] == expected
+        assert [p for e in oracle.trace if e.kind == 'near-tie' for p in e.placements] == [
+            (name, 1, target) for name in names
+        ]
+    else:
+        assert not record.entries('fire') and not [e for e in oracle.trace if e.kind == 'fire']
+        assert not [e for e in record.entries('settle') if e.part == 'stock placement']

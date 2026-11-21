@@ -46,7 +46,7 @@ UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 WAYS = ['family', 'lines', 'component', 'sparse', 'declared', 'moving']
 
 
-def fill(gap, way='family'):
+def fill(gap, way='family', scale=None):
     upper = 1 + gap
     builder = Builder(UNITS)
     if way in ('sparse', 'component'):
@@ -57,7 +57,9 @@ def fill(gap, way='family'):
     pipes = [flow('fill', SOURCE, this.water, request=amount)]
     if way == 'lines':
         pipes.append(flow('extra', this.water, SINK, request=q(0, 'L/h'), capacity=q(0, 'L/h')))
-    tank = builder.entity('tank', value('water', 'L', 0, lower=0, upper=upper, **settings), *pipes)
+    tank = builder.entity(
+        'tank', value('water', 'L', 0, lower=0, upper=upper, scale=scale, **settings), *pipes
+    )
     if way in ('declared', 'moving'):
         limits = [constraint(local.use.actual_rate <= q(1, 'L/h'))]
         if way == 'moving':
@@ -103,23 +105,12 @@ def test_a_bound_on_either_side_of_a_scheduled_stage(fraction, way):
     assert ('moving' if connected.way == 'declared' and connected.moves else connected.way) == way
     oracle, failure = run_of(program, config)
     capped = way in ('declared', 'moving')
-    if capped and fraction == 0.5:
-        # Extra delivery would breach the hard 1 L/h solver constraint. The missing
-        # 5e-9 L is outside the tank's own comparison band, before the opening stage.
-        assert failure is not None and record.failure is not None
-        assert record.end == oracle.view.t == 1
-        accepted = made.ways.instance_of('tank.fill').transferred('tank.fill', 1)
-        assert made.stock_balance('tank.water', 1) == accepted
-        assert float(accepted) == pytest.approx(1, rel=0, abs=8 * math.ulp(1))
-        assert value_at(oracle, program, Key('tank', ('water',)), 1) == 1
-        assert not [e for e in record.entries('commit') if e.t == 1]
-        return
     assert record.failure is None and failure is None
-    grouped = abs(fraction) <= 1
+    grouped = abs(fraction) <= 1 and abs(gap) <= made.comparison_band('tank.water', 1, 1 + gap)
     observed = [
         r.values[0] for r in read(record, program, ['reader.level', 'reader.incoming', 'reader.shared'], [1])
     ]
-    direct = 1 if fraction > 1 or (capped and fraction > 0) else 1 + gap
+    direct = 1 + gap if gap < 0 or (grouped and not capped) else 1
     if grouped and capped and gap > 0:
         # The posted numerical prefix can differ from the analytical litre by a few ulps.
         assert observed[0] == read(record, program, ['tank.water'], [1])[0].values[0]
@@ -128,14 +119,19 @@ def test_a_bound_on_either_side_of_a_scheduled_stage(fraction, way):
         assert observed[0] == direct
     else:
         assert observed[0] == pytest.approx(direct, abs=config.numerics.atol_factor, rel=0)
-    assert observed[1:] == [float(fraction >= -1), float(fraction > 1)]
+    assert observed[1:] == [float(grouped or gap > 0), float(not grouped and gap > 0)]
     # This gauge is independent of the grouped bound. It follows its exact line on every path.
     assert value_at(oracle, program, Key('reader', ('level',)), 1) == pytest.approx(direct, rel=0, abs=1e-15)
     key = Key('gauge', ('water',))
     for at, observed_gauge in zip((1, 2), read(record, program, [key], [1, 2])[0].values, strict=True):
         assert observed_gauge == value_at(oracle, program, key, Fraction(at)) == 3 * at
-    ties = record.entries('contact')
+    contacts = record.entries('contact')
+    ties = [entry for entry in contacts if entry.t == 1]
     assert len(ties) == int(grouped)
+    if not grouped:
+        for entry in contacts:
+            assert entry.t == entry.detail('located')
+            assert entry.t == pytest.approx(1 + gap, abs=3e-15, rel=0)
     if grouped:
         (entry,) = ties
         assert (entry.t, entry.round, entry.part, entry.owner) == (1, 1, 'tank.water', 'tank')
@@ -175,25 +171,29 @@ def test_a_bound_grouped_with_an_edit_keeps_the_edit_and_timing_entry(way):
         assert entry.t == 1 and entry.part == 'tank.water'
 
 
+@pytest.mark.parametrize('scale', [1, 100])
 @pytest.mark.parametrize('direction', [-1, 1])
-def test_the_closed_ends_of_the_timing_window_report_an_exact_line_contact(direction):
+def test_the_closed_ends_of_the_timing_window_report_an_exact_line_contact(direction, scale):
     config = Configuration(Request(2))
     gap = direction * config.numerics.crossing
     edge = 1 + gap
-    record = Run(Plan.of(fill(gap), config)).run()
-    (entry,) = record.entries('contact')
-    assert (entry.t, entry.detail('located')) == (1, edge)
-    made = Run(Plan.of(fill(gap), config))
+    made = Run(Plan.of(fill(gap, scale=scale), config))
+    record = made.run()
+    assert record.failure is None
+    assert [(e.t, e.detail('located')) for e in record.entries('contact') if e.t == 1] == (
+        [(1, edge)] if scale == 100 else []
+    )
     assert made.clock.within(edge, 1)
     assert not made.clock.within(math.nextafter(edge, direction * math.inf), 1)
 
 
-def test_a_family_fill_meets_its_upper_bound_in_the_horizon_moments_time_band():
+@pytest.mark.parametrize('scale', [1, 10])
+def test_a_family_fill_meets_its_upper_bound_in_the_horizon_moments_time_band(scale):
     """At 1 L/h the line reaches its 1.000000005 L bound half a tolerance after 1 h."""
     config = Configuration(Request(1))
     tolerance = config.numerics.crossing
     upper = 1 + tolerance / 2
-    program = fill(tolerance / 2, 'family')
+    program = fill(tolerance / 2, 'family', scale)
     work = Run(Plan.of(program, config))
     record = work.run()
     assert record.failure is None
@@ -206,7 +206,12 @@ def test_a_family_fill_meets_its_upper_bound_in_the_horizon_moments_time_band():
         'tank.fill.actual_rate',
         'gauge.water',
     ]
-    assert [r.values[0] for r in read(record, program, paths, [1])] == [upper, upper, 1, 0, 0, 3]
+    observed = [r.values[0] for r in read(record, program, paths, [1])]
+    if scale == 1:
+        assert observed == [1, 1, 1, 1, 1, 3]
+        assert not record.entries('contact')
+        return
+    assert observed == [upper, upper, 1, 0, 0, 3]
     (entry,) = record.entries('contact')
     assert (entry.t, entry.round, entry.part, entry.owner, entry.detail('located')) == (
         1,

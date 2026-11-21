@@ -548,22 +548,46 @@ class Run:
             )
         self.contact_levels = {}
         self.contact_targets = {}
-        if known:
-            moment = min(known)
-            if moment - first <= self.config.crossing and self._grouped(moment):
-                return moment
+        moment = min(known) if known else None
+        if moment is None or moment - first > self.config.crossing:
+            # An authored clock switch is itself a known instant even without a scheduled stage.
+            # Only inspect roots in this window; unrelated expressions need not be evaluated.
+            if not any(
+                isinstance(root, Fraction) and first < t + root <= first + self.config.crossing
+                for root in self.stops
+            ):
+                return first
+            clock_roots = []
+            for root, scope, pair, _, _ in self.contacts:
+                if isinstance(root, Irrational) or abs(t + root - first) > self.config.crossing:
+                    continue
+                ev = Ev(self, self.view, scope)
+                cells = ev.shared.contact_reads = set()
+                ev.num(pair[0])
+                ev.num(pair[1])
+                if cells == {'t'}:
+                    clock_roots.append(t + root)
+            moment = min(clock_roots, default=None)
+        if moment is not None and self._grouped(moment):
+            return moment
         return first
 
     def _grouped(self, moment):
-        """A physical comparison and a scheduled instant in one window share the scheduled time.
-        A single store takes its exact rational level at the root. A sum keeps the incoming
-        trajectory and must satisfy the comparison band there."""
+        """Group only contacts inside the time window and each moving stock's own band.
+        An earlier ineligible root must be visited before reconsidering the scheduled instant."""
         view, delta = self.view, moment - self.view.t
+        levels, targets, departures = {}, {}, {}
+        grouped = False
         for root, cell, bound in self.bound_contacts:
-            if not isinstance(root, Irrational) and abs(root - delta) <= self.config.crossing:
-                self.contact_levels[cell] = bound, root
-                self.contact_targets.setdefault(cell, set()).add(bound)
-        grouped = bool(self.contact_levels)
+            if isinstance(root, Irrational) or abs(root - delta) > self.config.crossing:
+                continue
+            if not self.on_stock_target(cell, view.levels[cell](delta), bound):
+                if root < delta:
+                    return False  # the earlier contact has its own moment
+                continue
+            grouped = True
+            levels[cell] = bound, root
+            targets.setdefault(cell, set()).add(bound)
         for root, scope, pair, difference, condition in self.contacts:
             if isinstance(root, Irrational) or abs(root - delta) > self.config.crossing:
                 continue
@@ -577,31 +601,39 @@ class Run:
             cells = ev.shared.contact_reads = set()
             ev.num(pair[0])
             ev.num(pair[1])
-            if not cells or 't' in cells:
+            if not cells:
                 continue
+            fits = all(
+                self.on_stock_target(cell, view.levels[cell](delta), at_root.cells[cell])
+                for cell in cells
+                if cell in view.levels
+            )
+            if not fits:
+                if root < delta:
+                    return False
+                continue
+            if len(cells) == 1 and 't' not in cells:
+                (cell,) = cells
+                level = at_root.cells[cell]
+                targets.setdefault(cell, set()).add(level)
+                levels.setdefault(cell, (level, root))
+            elif len(cells) > 1:
+                at_root.t = moment
+                at_root.cells.update((c, p(delta)) for c, p in view.levels.items())
+                at_root.results.update((v, p(delta)) for v, p in view.rates.items())
+                a, b = ev.num(pair[0]), ev.num(pair[1])
+                if abs(a - b) > ev.band(*pair, a, b):
+                    if root < delta:
+                        return False
+                    continue
             grouped = True
             if condition is None and delta != root:
                 side = difference(Poly([root, 1])).sign_after()
-                self.departures[ev.contact_key(pair)] = Departure(
+                departures[ev.contact_key(pair)] = Departure(
                     moment, moment + self.config.crossing, difference(delta), side
                 )
-            if len(cells) == 1:
-                (cell,) = cells
-                level = at_root.cells[cell]
-                self.contact_targets.setdefault(cell, set()).add(level)
-                self.contact_levels.setdefault(cell, (level, root))
-                continue
-            at_root.t = moment
-            at_root.cells.update((c, p(delta)) for c, p in view.levels.items())
-            at_root.results.update((v, p(delta)) for v, p in view.rates.items())
-            a, b = ev.num(pair[0]), ev.num(pair[1])
-            band = ev.band(*pair, a, b)
-            if abs(a - b) > band:
-                names = ', '.join(sorted(label(c) for c in cells))
-                raise RunFailed(
-                    f'the crossing of {names} at {moment} h cannot be certified: '
-                    f'residual {a - b} exceeds the comparison band {band}'
-                )
+        self.contact_levels, self.contact_targets = levels, targets
+        self.departures.update(departures)
         return grouped
 
     def _placements(self, tau):
