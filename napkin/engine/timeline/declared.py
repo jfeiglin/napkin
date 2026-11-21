@@ -909,11 +909,12 @@ class DeclaredWay(Way):
                 changed.append(name)
         return changed
 
-    def _solve(self, t):
-        """Solve the problem at time t, from the stores' values on their lines; gives the names of
-        the rates and the results whose values changed."""
+    def _solve(self, t, forced):
+        """Solve from the incoming levels and start the lines on the faces the solution retained."""
         values = self.y + self.slope * (t - self.since)
-        return self._publish(t, *self._settled(t, values <= self.lower, values >= self.upper))
+        answer, low, high = self._settled(t, values <= self.lower, values >= self.upper)
+        changed = self._publish(t, *answer)
+        return self._lines(t, low, high, forced), changed
 
     def _settled(self, t, low, high):
         """The answer at time t with the stores flagged on their bounds (`low`, `high`) where it holds
@@ -928,17 +929,18 @@ class DeclaredWay(Way):
         The solver keeps the problem that it settled on and its answer (`Ways.last`), which serve
         again, unsolved, where the problem is that one, as formed or with the bounds released that
         the kept answer moves off. A solve that runs is traced once, as one of the run's. Gives
-        (flows, results)."""
+        the answer (flows, results) and the lower and upper faces retained by that answer."""
         ways, sid = self.run.ways, self.declared.id
         problem, arrays, signature = self._formed(t, low, high)
         last = ways.last.get(sid)
         # A kept answer of other unknowns (a flow joined or left since) answers no problem here.
         if last is not None and len(last[1]) == len(arrays.keys):
+            answer = self._values(arrays, last[1])
+            leaving = self._moved(answer[0], low ^ high, low, inward=True)
             if last[0] == signature:
-                return self._values(arrays, last[1])
-            leaving = self._moved(self._values(arrays, last[1])[0], low ^ high, low, inward=True)
+                return answer, low & ~leaving, high & ~leaving
             if leaving.any() and self._formed(t, low & ~leaving, high & ~leaving)[2] == last[0]:
-                return self._values(arrays, last[1])
+                return answer, low & ~leaving, high & ~leaving
         x = self._solved(t, problem, arrays)
         flows, results = self._values(arrays, x)
         for _ in range(len(self.stores)):
@@ -955,7 +957,7 @@ class DeclaredWay(Way):
             signature, x, (flows, results) = again[2], found, moved
         ways.last[sid] = (signature, x)
         self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
-        return flows, results
+        return (flows, results), low, high
 
     def _no_answer(self, s, lower):
         """What a store says that no answer of the solver holds just after the moment at its bound."""
@@ -969,6 +971,8 @@ class DeclaredWay(Way):
         """The flags of the stores of `stores` (each on its lower bound where `low` holds, else on its
         upper) that the values of the flows move off their bound (`inward`) or past it, by more than
         `NEAR` of what flows through them."""
+        if not stores.any():
+            return stores
         inflow, outflow = self._through(flows)
         off = np.where(low, 1.0, -1.0) * (inflow - outflow)
         margin = NEAR * (inflow + outflow)
@@ -987,7 +991,7 @@ class DeclaredWay(Way):
         outflow = np.array([rate[net.ends[OUT].of(s)].sum() for s in range(len(self.stores))])
         return inflow, outflow
 
-    def _lines(self, t, forced=()):
+    def _lines(self, t, held_low, held_high, forced):
         """Start again the line of each store whose rate changed (or that is `forced`: the indices of
         stores that were put on a bound), from its value at t; gives the stores whose lines changed."""
         net = self.net
@@ -1009,6 +1013,10 @@ class DeclaredWay(Way):
                     raise SimulationError(
                         f'{store}: the solver {self.declared.id} moves it past its bound at {t:g} h'
                     )
+                slope = 0.0
+            elif held_low[s] or held_high[s]:
+                # The solved incidence holds this face. Summing the rounded legs can leave
+                # a tiny inward drift even in the absence of a physical departure.
                 slope = 0.0
             if (low or high) and slope == 0 and inflow and outflow:
                 changed_faces[s] = OUT if low else IN
@@ -1036,8 +1044,7 @@ class DeclaredWay(Way):
 
     def begin(self):
         """Solve at the start of the instance, and start each store's line."""
-        self._solve(self.t0)
-        self._lines(self.t0, forced=range(len(self.stores)))
+        self._solve(self.t0, forced=range(len(self.stores)))
 
     def retire(self, key):
         """The set leaves its instance: nothing of it moves from now on."""
@@ -1105,8 +1112,8 @@ class DeclaredWay(Way):
         met = [self.place[name] for name in put_lines(self, reach, reach)]
         if levels:
             met.extend(continued_lines(self, levels, reach))
-        changed = self._solve(reach)
-        return self._lines(reach, forced=met), changed, True
+        stores, changed = self._solve(reach, forced=met)
+        return stores, changed, True
 
     def snap(self, t=None, through=None):
         """The next lines reach their bounds at the time of a moment: the stores are put on them, and
