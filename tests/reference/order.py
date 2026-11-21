@@ -17,8 +17,10 @@ sharing of a declared solver.
 """
 
 from fractions import Fraction
+from functools import lru_cache
 from itertools import combinations
 
+import numpy as np
 from scipy.optimize import linprog
 
 from .errors import Diagnostic, Infeasible, NotCovered
@@ -178,27 +180,43 @@ def _lp(variables, rows, cost):
         row = [0.0] * len(names)
         for v, x in r.lin.c.items():
             row[index[v]] = float(x)
-        (eq if r.op == '==' else ub).append(row)
+        (eq if r.op == '==' else ub).append(tuple(row))
         (beq if r.op == '==' else bub).append(-float(r.lin.k))
     c = [0.0] * len(names)
     for v, x in cost.c.items():
         c[index[v]] = float(x)
+    solve = _cached_optimum if (len(names) + 1) * (len(rows) + 1) <= 512 else _float_optimum
+    status, value, point = solve(tuple(c), tuple(ub), tuple(bub), tuple(eq), tuple(beq))
+    if status == 'optimal':
+        return status, value + float(cost.k), np.array(point)
+    return status, None, None
+
+
+def _float_optimum(c, ub, bub, eq, beq):
+    """Solve one ordered numerical LP. Every variable here is free and the method is always HiGHS."""
     res = linprog(
         c,
         A_ub=ub or None,
         b_ub=bub or None,
         A_eq=eq or None,
         b_eq=beq or None,
-        bounds=[(None, None)] * len(names),
+        bounds=[(None, None)] * len(c),
         method='highs',
     )
     if res.status == 0:
-        return 'optimal', res.fun + float(cost.k), res.x
+        return 'optimal', res.fun, tuple(res.x)
     if res.status == 2:
         raise Infeasible('the hard conditions of the solve have no answer')
     if res.status == 3:
         return 'unbounded', None, None
     raise NotCovered(f'the linear program did not finish: {res.message}')
+
+
+# Independent models often present the very same numerical LP after their own
+# names, units and locks have been resolved. Only the small arrays passed to
+# SciPy and its immutable numerical answer are shared. The rational ranks,
+# affine objective offset and choice of the next rows still run for each call.
+_cached_optimum = lru_cache(maxsize=2048)(_float_optimum)
 
 
 def _rational_lp(variables, rows, cost):
