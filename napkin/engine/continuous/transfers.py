@@ -309,7 +309,7 @@ class MovingAmounts:
     def clock_legs(self, names, places, plan):
         for row, name in enumerate(names):
             flow = plan.flows.get(name)
-            if flow is None or flow.kind != 'directed':
+            if flow is None or flow.kind != 'directed' or name in plan.solved_flows:
                 continue
             polynomial = direct_clock_primitive(flow, plan)
             if polynomial is not None:

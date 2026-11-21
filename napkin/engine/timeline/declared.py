@@ -106,6 +106,7 @@ from ...core import expr as nodes
 from ...core import ops
 from ...core.errors import ExpressionError
 from ..continuous import dense, integrate
+from ..continuous.transfers import HeldAmounts, MovingAmounts
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
@@ -819,6 +820,10 @@ class DeclaredWay(Way):
         stores = list(connected.stores)
         self.net, connections, self.recorded = network_of(run, [connected], stores)
         self.former = Former(run, connected, self.net, connections)
+        self.leg_rows = {c.name: k for k, c in enumerate(connections)}
+        if self.lines:
+            self.amounts = HeldAmounts(t, len(connections))
+            self.carried = np.zeros(len(connections))
         self.stores, self.flows = stores, list(self.net.flows)
         self.place = {name: s for s, name in enumerate(stores)}
         self.row = {name: f for f, name in enumerate(self.flows)}
@@ -969,11 +974,15 @@ class DeclaredWay(Way):
         margin = NEAR * (inflow + outflow)
         return stores & (off > margin if inward else off < -margin)
 
+    def physical_rates(self, flows, requests=None):
+        """The nonnegative rate on each directed connection in an actual allocation."""
+        requests = self.former.requests if requests is None else requests
+        return self.net.carried(flows, _Asked(requests))
+
     def _through(self, flows, requests=None):
         """(what flows into each store, what flows out of it) from the values of the flows."""
         net = self.net
-        requests = self.former.requests if requests is None else requests
-        rate = net.carried(flows, _Asked(requests)) if len(self.flows) else np.zeros(0)
+        rate = self.physical_rates(flows, requests)
         inflow = np.array([rate[net.ends[IN].of(s)].sum() for s in range(len(self.stores))])
         outflow = np.array([rate[net.ends[OUT].of(s)].sum() for s in range(len(self.stores))])
         return inflow, outflow
@@ -982,7 +991,10 @@ class DeclaredWay(Way):
         """Start again the line of each store whose rate changed (or that is `forced`: the indices of
         stores that were put on a bound), from its value at t; gives the stores whose lines changed."""
         net = self.net
-        rate = net.carried(self.value, _Asked(self.former.requests)) if len(self.flows) else np.zeros(0)
+        rate = self.physical_rates(self.value)
+        for row in np.flatnonzero(self.carried != rate):
+            self.amounts.change(row, t, self.carried[row])
+        self.carried = rate
         changed = []
         for s, store in enumerate(self.stores):
             inflow = float(rate[net.ends[IN].of(s)].sum())
@@ -1024,6 +1036,12 @@ class DeclaredWay(Way):
         self.alive = False
         self.due = []
 
+    def transferred(self, name, t):
+        if t > self.run.now:
+            raise ValueError('transfer requested outside the accepted interval')
+        row = self.leg_rows[name]
+        return self.amounts.amount(row, t, self.carried[row])
+
     def level_at(self, name, t):
         """The value of a store on its line at time t, or of a result."""
         s = self.place.get(name)
@@ -1059,7 +1077,7 @@ class DeclaredWay(Way):
         values.update(results)
         if self.net.plain:
             return values
-        carried = self.net.carried(flows, _Asked(requests))
+        carried = self.physical_rates(flows, requests)
         values.update(
             (f'{c.name}.actual_rate', float(rate))
             for c, rate in zip(self.former.connections, carried, strict=True)
@@ -1149,6 +1167,10 @@ class MovingDeclared(DeclaredWay):
         # Radau already scales its relative term with the current inventory. The absolute
         # floor belongs to the unit and must be the same when this instance is restored.
         self.atol = np.array([run.amount_tolerance(name) for name in self.stores])
+        self.amounts = MovingAmounts(len(self.leg_rows), t, None)
+        self.amounts.clock_legs(self.leg_rows, self.place, self.plan)
+        leg_scales = self.amounts.tolerances(run, (f'{name}.actual_rate' for name in self.leg_rows))
+        self.step_atol = np.concatenate((self.atol, leg_scales))
         self.rtol = numerics.rtol
         settings = {
             flow: list(map(nodes.ref, self.plan.settings_of(self.plan.flows[flow]))) for flow in self.flows
@@ -1254,7 +1276,7 @@ class MovingDeclared(DeclaredWay):
         """A state within the stores' bounds, with each store held on a bound at its bound: what the
         problem reads at a trial state, which the integrator may put a tolerance past a bound that a
         store reaches in the step (the step then ends there, `_event`)."""
-        y = np.minimum(np.maximum(np.array(y, dtype=float), self.lower), self.upper)
+        y = np.minimum(np.maximum(np.asarray(y[: len(self.stores)], dtype=float), self.lower), self.upper)
         y[self.low] = self.lower[self.low]
         y[self.high] = self.upper[self.high]
         return y
@@ -1289,21 +1311,29 @@ class MovingDeclared(DeclaredWay):
         rate[self.low | self.high] = 0.0  # a held store stays on its bound through the segment
         return rate
 
+    def _integrated_rates(self, t, y):
+        """Advance gross physical legs with their store derivatives using the same trial solve.
+        Only the accepted dense prefix is consumed. The leg coordinates never enter the LP."""
+        flows, _, net, requests = self._at(t, y)
+        rate = net.copy()
+        rate[self.low | self.high] = 0.0
+        return np.concatenate((rate, self.physical_rates(flows, requests)))
+
     def _jacobian(self, t, y):
         """Difference the held LP field on a feasible side of each trial coordinate."""
-        base = self._derivative(t, y)
-        jacobian = np.empty((len(y), len(y)))
-        for k, level in enumerate(y):
+        base = self._integrated_rates(t, y)
+        jacobian = np.zeros((len(y), len(y)))
+        for k, level in enumerate(y[: len(self.stores)]):
             step = math.sqrt(np.finfo(float).eps) * max(1, abs(level))
             trial = y.copy()
             trial[k] += step
             try:
-                rate = self._derivative(t, trial)
+                rate = self._integrated_rates(t, trial)
             except (SimulationError, ExpressionError, ArithmeticError):
                 # A perturbation can make the continued LP infeasible just beyond a switch.
                 step = -step
                 trial[k] = level + step
-                rate = self._derivative(t, trial)
+                rate = self._integrated_rates(t, trial)
                 self.failed = None
             jacobian[:, k] = (rate - base) / step
         return jacobian
@@ -1353,7 +1383,8 @@ class MovingDeclared(DeclaredWay):
         answered, where the segment ends (a plain one, which the run commits); its next segment then
         fails at once, and the run stops there, with the record to then."""
         numerics = self.plan.numerics
-        window, now, y = until, self.time, self.y.copy()
+        window, now = until, self.time
+        y = np.concatenate((self.y, np.zeros(len(self.leg_rows))))
         times, outputs, event, plain, solver = [now], [], None, False, None
         while True:
             self.run.now, self.failed = now, None
@@ -1361,13 +1392,13 @@ class MovingDeclared(DeclaredWay):
                 # Radau evaluates the rates where it starts, and once more to choose its first step.
                 if solver is None:
                     solver = Radau(
-                        self._derivative,
+                        self._integrated_rates,
                         now,
                         y,
                         until,
-                        jac=self._jacobian if self.region.surfaces else None,
+                        jac=self._jacobian,
                         rtol=self.rtol,
-                        atol=self.atol,
+                        atol=self.step_atol,
                         max_step=numerics.max_step,
                     )
                 message = solver.step()
@@ -1384,7 +1415,13 @@ class MovingDeclared(DeclaredWay):
                     # A continued LP bound may become infeasible beyond its switch. Shorten the
                     # retry to the estimated edge. Only an accepted dense trajectory locates it.
                     edges = self._crossings(
-                        lambda at: y + (trial - y) * ((at - now) / (failed_at - now)), now, limit
+                        lambda at: (
+                            y[: len(self.stores)]
+                            + (trial[: len(self.stores)] - y[: len(self.stores)])
+                            * ((at - now) / (failed_at - now))
+                        ),
+                        now,
+                        limit,
                     )
                     until = min((at for at, _, _ in edges if at < until), default=now + 0.5 * (limit - now))
                     continue
@@ -1494,6 +1531,9 @@ class MovingDeclared(DeclaredWay):
     def _commit(self, end):
         """Apply the incoming prefix, then bring the stores to the moment."""
         self.incoming_history(end)
+        if end > self.amounts.through:
+            self.amounts.select_clocks(self.low.__getitem__, self.high.__getitem__)
+            self.amounts.accept(self.amounts.through, end, self.pending.solution(end)[len(self.stores) :])
         self.y = self._state(end)
         self.time = end
         self.pending = self.prefix = None
@@ -1591,6 +1631,19 @@ class MovingDeclared(DeclaredWay):
         flows, results, _, self.former.requests = answer
         self.value[:] = flows
         self.results.update(results)
+
+    def transferred(self, name, t):
+        row = self.leg_rows[name]
+        if t == self.amounts.through:
+            return self.amounts.amount(row)
+        arrival = getattr(self, 'arrival_amounts', None)
+        if arrival is not None and t == arrival.through:
+            return arrival.amount(row)
+        if self.pending is None or not self.amounts.through < t <= min(self.pending.end, self.run.now):
+            raise ValueError('transfer requested outside the accepted interval')
+        leg = self.amounts.clocks.get(row)
+        mode = leg.selection(self.low.__getitem__, self.high.__getitem__) if leg is not None else None
+        return self.amounts.prefix(row, t, mode, lambda: self.pending.solution(t)[len(self.stores) + row])
 
     def incoming_level(self, name, t):
         if self.pending is not None and self.pending.start < t:

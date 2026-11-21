@@ -423,7 +423,16 @@ def _instance(instance):
             if not (instance.dead[row] if kind == 'family' else instance.dead_flows[instance.net.of[row]])
         )
         fields += (('closed_amounts', closed),)
-    elif kind in ('sparse', 'component'):
+    elif kind == 'declared':
+        fields += (
+            (
+                'closed_amounts',
+                tuple(
+                    (instance.net.connections[row], t, amount) for row, t, amount in instance.amounts.closed()
+                ),
+            ),
+        )
+    elif kind in ('sparse', 'component', 'moving'):
         amounts = instance.amounts
         fields += (
             (
@@ -773,7 +782,7 @@ def _restore_ways(run, found):
             ways.moving_solvers[instance.key] = None
         if k in deltas:
             projected = _made(run, kind, keys, dict((*data, *deltas[k])))
-            if isinstance(instance, Sparse | ComponentWay):
+            if isinstance(instance, Sparse | ComponentWay | MovingDeclared):
                 instance.arrival_amounts = projected.amounts
             run.cut_at_resume.append((k, keys, projected))
     ways.references = dict(found['references'])
@@ -954,6 +963,8 @@ def _made_fields(run, kind, keys, data):
         instance.due = [tuple(entry) for entry in data['due']]
         heapq.heapify(instance.due)
         instance.alive = data['alive']
+        if kind == 'declared':
+            instance.carried = instance.physical_rates(instance.value)
         if kind == 'moving':
             instance.time = data['time']
             signs = {(a, b): sign for a, b, sign in data['signs']}
