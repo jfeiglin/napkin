@@ -413,6 +413,37 @@ def _lines_of(instance, stores):
 
 
 def _instance(instance):
+    """Include the accepted physical transfers of the live rows in the checkpoint."""
+    kind, keys, fields = _instance_fields(instance)
+    if kind in ('lines', 'family'):
+        names = instance.flows if kind == 'family' else instance.net.connections
+        closed = tuple(
+            (names[row], *values)
+            for row, values in instance.amounts.closed.items()
+            if not (instance.dead[row] if kind == 'family' else instance.dead_flows[instance.net.of[row]])
+        )
+        fields += (('closed_amounts', closed),)
+    elif kind in ('sparse', 'component'):
+        amounts = instance.amounts
+        fields += (
+            (
+                'accepted_amounts',
+                (
+                    amounts.through,
+                    amounts.exact,
+                    np.asarray(amounts.total).tolist()
+                    if amounts.single is not None
+                    else _array(amounts.total),
+                    np.asarray(amounts.remainder).tolist()
+                    if amounts.single is not None
+                    else _array(amounts.remainder),
+                ),
+            ),
+        )
+    return kind, keys, fields
+
+
+def _instance_fields(instance):
     """An instance of a way as data: its kind, its live sets' ids, and its fields."""
     if isinstance(instance, Family):
         rows = [k for k in range(len(instance.flows)) if not instance.dead[k]]
@@ -737,6 +768,8 @@ def _restore_ways(run, found):
             ways.moving_solvers[instance.key] = None
         if k in deltas:
             projected = _made(run, kind, keys, dict((*data, *deltas[k])))
+            if isinstance(instance, Sparse | ComponentWay):
+                instance.arrival_amounts = projected.amounts
             run.cut_at_resume.append((k, keys, projected))
     ways.references = dict(found['references'])
     ways.last = {solver: (digest, np.array(x, dtype=float)) for solver, digest, x in found['last']}
@@ -766,6 +799,23 @@ def _restore_ways(run, found):
 
 
 def _made(run, kind, keys, data):
+    instance = _made_fields(run, kind, keys, data)
+    if 'closed_amounts' in data:
+        rows = instance.row if kind == 'family' else instance.leg_rows
+        instance.amounts.closed = {
+            rows[name]: (start, amount) for name, start, amount in data['closed_amounts'] if name in rows
+        }
+    if 'accepted_amounts' in data:
+        amounts = instance.amounts
+        amounts.through, amounts.exact, total, remainder = data['accepted_amounts']
+        if amounts.single is not None:
+            amounts.total, amounts.remainder = total, remainder
+        else:
+            amounts.total, amounts.remainder = np.array(total), np.array(remainder)
+    return instance
+
+
+def _made_fields(run, kind, keys, data):
     """An instance of a way made again from its data (`_instance`), without its begin."""
     if kind == 'family':
         sets = [_connected(each) for each in data['sets']]

@@ -9,17 +9,18 @@ polynomial only to the accepted time. Solver/Jacobian trials never post.
 
 from __future__ import annotations
 
-import math
 from fractions import Fraction
 
 import numpy as np
 from numpy.polynomial import Polynomial
 from numpy.polynomial.polynomial import polyval
+from scipy.integrate import quad_vec
 from scipy.integrate._ivp.radau import C
 
 from ...core import expr as nodes
 from ...core.literals import Literals, node_parts
 from ...core.units import rational
+from ..errors import SimulationError
 from .walk import walked
 
 
@@ -86,6 +87,16 @@ def direct_clock_primitive(flow, plan):
     return None
 
 
+def clock_primitives(flows, plan):
+    rates = []
+    for name in flows:
+        primitive = direct_clock_primitive(plan.flows[name], plan)
+        if primitive is None:
+            return None
+        rates.append(primitive)
+    return rates
+
+
 class HeldAmounts:
     """Only a change of a held leg's rate closes its previous rectangle."""
 
@@ -111,6 +122,7 @@ class CollocationRates:
 
     def __init__(self, solver, read_rates):
         self.samples = {}
+        self.previous = None
         original = solver.fun
 
         def evaluate(t, y):
@@ -123,6 +135,10 @@ class CollocationRates:
     def finish(self, step):
         first, second = step.t_old + step.h * C[:2]
         step.leg_rates = self.samples[first], self.samples[second], self.samples[step.t]
+        step.prior_rates = None
+        if self.previous is not None and self.previous[0] == step.t_old:
+            step.prior_rates = self.previous[1:]
+        self.previous = step.t, step.h, step.leg_rates
         self.samples.clear()
 
 
@@ -143,12 +159,60 @@ def radau_amount(step, end, single):
     return step.h * (weights[0] * a + weights[1] * b + weights[2] * c)
 
 
+def checked_amount(step, end, rate_at, rtol, absolute_rates):
+    """Control the error of physical rates hidden in a store's net derivative.
+
+    Six existing nodes on adjacent accepted Radau steps integrate a fifth-degree
+    interpolant. Compare against the present step's third-order dense integral
+    (fifth order for a complete step). On the first step check its omitted start.
+    Refine the actual allocated rates on the accepted trajectory where the two
+    estimates disagree. A tiny leg has its own error budget even beside a large leg.
+    """
+    amount = radau_amount(step, end, None)
+    if end == step.t_old:
+        return amount
+    x = (end - step.t_old) / step.h
+    if step.prior_rates is None or not 0.125 <= step.prior_rates[0] / step.h <= 8:
+        # A restart, or two disparate step sizes, cannot support an accurate
+        # two-step interpolant. Check the omitted node on this step alone.
+        estimated = (
+            step.h * x * (rate_at(step.t_old) - sum(w * r for w, r in zip(_WEIGHTS[0], step.leg_rates)))
+        )
+    else:
+        previous_h, previous = step.prior_rates
+        nodes = np.concatenate(((C - 1) * (previous_h / step.h), C))
+        powers = np.arange(1, 7)
+        weights = np.linalg.solve(np.vander(nodes, increasing=True).T, x**powers / powers)
+        higher = step.h * sum(weight * rate for weight, rate in zip(weights, (*previous, *step.leg_rates)))
+        estimated = higher - amount
+    tolerance = np.maximum(absolute_rates * (end - step.t_old) + rtol * np.abs(amount), np.finfo(float).tiny)
+    if np.all(np.abs(estimated) <= tolerance) and np.all(amount >= -tolerance):
+        return np.maximum(amount, 0)
+    # Normalize each connection separately so a weak circulation never inherits
+    # the numerical budget of a much larger inter-store transfer.
+    result, _, info = quad_vec(
+        lambda t: rate_at(t) / tolerance,
+        step.t_old,
+        end,
+        epsabs=0.5,
+        epsrel=0,
+        norm='max',
+        quadrature='gk15',
+        full_output=True,
+    )
+    if not info.success and info.status != 2:
+        raise SimulationError('Cannot certify the transferred amounts on the accepted interval')
+    return np.maximum(result * tolerance, 0)
+
+
 class MovingAmounts:
     """Accumulate only the local batch whose interval the timeline accepts."""
 
     def __init__(self, rows, start, single):
         self.single = single
         self.primitive = None
+        self.clock_rates = None
+        self.absolute_rates = None
         self.exact = Fraction(0)
         self.through = start
         self.total = 0.0 if single is not None else np.zeros(rows)
@@ -156,6 +220,17 @@ class MovingAmounts:
 
     def polynomial_amount(self, start, end):
         return polyval(rational(end), self.primitive) - polyval(rational(start), self.primitive)
+
+    def tolerances(self, run, names):
+        if self.absolute_rates is None:
+            self.absolute_rates = np.array(
+                [run.plan.numerics.atol_factor * run.own_scale(name) for name in names]
+            )
+        return self.absolute_rates
+
+    def clock_amounts(self, start, end):
+        left, right = rational(start), rational(end)
+        return np.array([float(polyval(right, poly) - polyval(left, poly)) for poly in self.clock_rates])
 
     def accept(self, start, end, amount):
         if start != self.through or end < start:
@@ -180,4 +255,4 @@ class MovingAmounts:
             new = total + corrected
             remainder = (new - total) - corrected
             total = new
-        return math.fsum((total, -remainder))
+        return Fraction.from_float(float(total)) - Fraction.from_float(float(remainder))

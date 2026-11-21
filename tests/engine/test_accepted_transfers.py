@@ -63,3 +63,62 @@ def test_event_cut_preserves_each_accepted_leg(method, cycle, monkeypatch):
             assert observed[t][1] == pytest.approx([float(volume)] * 2, abs=1e-12, rel=0)
         else:
             assert observed[t][1] == [volume]
+
+
+@pytest.mark.parametrize('method', [ComponentWay, Sparse])
+@pytest.mark.parametrize('power', [True, False], ids=['polynomial', 'reciprocal'])
+def test_hidden_circulation_survives_a_serialized_mid_stage_stop(method, power, monkeypatch):
+    import math
+
+    from napkin.program.checkpoint import Breakpoint, dumps, loads
+
+    monkeypatch.setattr(plan, 'LIMIT', 0 if method is Sparse else 150)
+    rate = '(t / (1 h)) ** 6' if power else '1 / (1 + t / (1 h))'
+    source = f"""plant:
+    a: L = 100 L
+    b: L = 100 L
+    pace = formula(1 L/h * ({rate}))
+    flow there: this.a -> this.b
+        request = formula(this.pace)
+    flow back: this.b -> this.a
+        request = formula(this.pace)
+    pause = event():
+        after 0.5 h:
+            this.count = 1
+    count = 0
+plant.pause.start()
+"""
+    program = compile_text(source, UNITS).program
+    config = Configuration(Request(1))
+    straight = Run(Plan.of(program, config))
+    assert straight.run().failure is None
+    machine = Run(Plan.of(program, config), (Breakpoint('plant.pause.step[0]'),))
+    checkpoint = machine.run()
+    restored = Run.restored(Plan.of(program, config), loads(dumps(checkpoint)))
+    names = ['plant.there', 'plant.back']
+    for name in names:
+        expected = 0.5**7 / 7 if power else math.log1p(0.5)
+        assert restored.ways.instance_of(name).transferred(name, 0.5) == pytest.approx(expected, abs=2e-12)
+    assert restored.resume().failure is None
+    for name in names:
+        whole = straight.ways.instance_of(name).transferred(name, 1)
+        resumed = restored.ways.instance_of(name).transferred(name, 1)
+        assert resumed == whole
+        assert whole == pytest.approx(1 / 7 if power else math.log(2), abs=2e-12)
+
+
+def test_a_signed_route_posts_both_physical_legs_when_it_reverses():
+    from napkin.program.build import Builder, formula, q, route, t, value
+
+    builder = Builder(UNITS)
+    a = builder.entity('a', value('water', 'L', 10))
+    b = builder.entity('b', value('water', 'L', 10))
+    builder.entity('ferry', route('link', a.water, b.water, request=formula(q(3, 'L/h') - q(1, 'L/h/h') * t)))
+    program = builder.finish()
+    run = Run(Plan.of(program, Configuration(Request(6))))
+    assert run.run().failure is None
+    way = run.ways.instance_of('ferry.link')
+    assert isinstance(way, Sparse)
+    assert [
+        float(way.transferred(f'ferry.link.{side}', 6)) for side in ('forward', 'backward')
+    ] == pytest.approx([4.5, 4.5], abs=1e-9)

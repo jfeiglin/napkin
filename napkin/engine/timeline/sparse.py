@@ -53,12 +53,19 @@ from ...core import arrays
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ..continuous import dense, integrate
-from ..continuous.transfers import CollocationRates, MovingAmounts, direct_clock_primitive, radau_amount
+from ..continuous.transfers import (
+    CollocationRates,
+    MovingAmounts,
+    checked_amount,
+    clock_primitives,
+    direct_clock_primitive,
+    radau_amount,
+)
 from ..errors import SimulationError
 from .collections import combined, dynamic_value, looked_up, selected
 from .contacts import put_bounds
 from .lines import asked_of
-from .network import ROUNDOFF, SIDES, Asked, Instant, network_of
+from .network import OUT, ROUNDOFF, SIDES, Asked, Instant, network_of
 from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE, Pending, _renamed
 from .reads import Reads, lazily
 from .record import fitted
@@ -551,6 +558,53 @@ def _plain(value):
     return value if isinstance(value, bool | str) else float(value)
 
 
+def identifiable_network(net, connections, plan):
+    """In an acyclic network with a fixed split at each source, every leg is
+    determined by stock increments. In topological order the known gross inflow
+    minus the store's change gives its gross outflow, split in the same fixed
+    proportions. Radau's existing stage integrals therefore inherit stock error
+    control. The caller excludes capacities/rankings and a receiving upper face.
+    """
+    if np.any(net.source < 0) or net.classes:
+        return False
+    interior = net.sink >= 0
+    source, sink = net.source[interior], net.sink[interior]
+    if np.any(source == sink):
+        return False
+    if np.any(source > sink):
+        count = net.counts.shape[1]
+        graph = sp.csr_array((np.ones(len(source)), (source, sink)), shape=(count, count))
+        if (
+            sp.csgraph.connected_components(graph, directed=True, connection='strong', return_labels=False)
+            != count
+        ):
+            return False
+
+    def constant(node):
+        if isinstance(node, nodes.Const):
+            return True
+        return (
+            isinstance(node, nodes.Ref)
+            and node.name in plan.values
+            and plan.values[node.name].kind in ('input', 'parameter')
+        )
+
+    shapes = {}
+    for k in np.flatnonzero(net.counts[OUT, net.source] > 1).tolist():
+        node = plan.values[connections[k].request].node
+        if node is None:
+            return False
+        if isinstance(node, nodes.Binary) and node.op == 'mul':
+            if constant(node.left):
+                node = node.right
+            elif constant(node.right):
+                node = node.left
+        source = connections[k].source
+        if shapes.setdefault(source, node) != node:
+            return False
+    return True
+
+
 class Sparse(Way):
     """Connected sets on the sparse integrator from the time `t` on (see the module), a way of a run
     (`ways.py`): one set, or the sets of `sets` in the order of their levels (`levels`), where the
@@ -583,6 +637,7 @@ class Sparse(Way):
         self.stepped = frozenset(name for connected in sets for name in connected.stepped)
         self.capped = [k for k, connection in enumerate(connections) if connection.capacity is not None]
         self.end_settings = []  # (side, store, which)
+        configured_ends = False
         names = [connection.request for connection in connections]
         names += [connections[k].capacity for k in self.capped]
         # The level of each setting: of its connection's set, or of its endpoint's store's set.
@@ -590,6 +645,7 @@ class Sparse(Way):
         level_of += [level_of[k] for k in self.capped]
         for (store, side), end in plan.ends.items():
             if store in place:
+                configured_ends = configured_ends or plan.settled(end)
                 for which in ('request', 'capacity'):
                     if getattr(end, which) is not None:
                         self.end_settings.append((SIDES.index(side), place[store], which))
@@ -632,6 +688,15 @@ class Sparse(Way):
         self.size = len(names)
         if self.amounts.single is not None and self.net.plain:
             self.amounts.primitive = direct_clock_primitive(plan.flows[self.flows[0]], plan)
+        elif self.net.plain and self.stores:
+            self.amounts.clock_rates = clock_primitives(self.flows, plan)
+        self.identifiable = (
+            self.amounts.single is None
+            and self.net.plain
+            and self.stores
+            and not (self.capped or configured_ends or self.amounts.clock_rates)
+            and identifiable_network(self.net, connections, plan)
+        )
         # Each level: the places of its settings, their values, and the rates that it gives.
         self.levels = []
         if max(levels) > 0:
@@ -1266,7 +1331,31 @@ class Sparse(Way):
             if (source >= 0 and self.lower_flags[source]) or (sink >= 0 and self.upper_flags[sink]):
                 return 0
             return self.amounts.polynomial_amount(start, end)
-        return radau_amount(solution, end, self.amounts.single)
+        if self.amounts.single is not None:
+            return radau_amount(solution, end, self.amounts.single)
+        if self.amounts.clock_rates and not self.lower_flags.any() and not self.upper_flags.any():
+            return self.amounts.clock_amounts(start, end)
+
+        if self.identifiable and not self.upper_flags.any():
+            return radau_amount(solution, end, None)
+
+        def rate_at(t):
+            return self.values(t, solution(t))[1]
+
+        evaluations = self.evaluations
+        previous = self.current.copy() if self.levels else None
+        try:
+            return checked_amount(
+                solution,
+                end,
+                rate_at,
+                self.plan.numerics.rtol,
+                self.amounts.tolerances(self.run, (f'{name}.actual_rate' for name in self.net.connections)),
+            )
+        finally:
+            self.evaluations = evaluations
+            if previous is not None:
+                self.current.update(previous)
 
     def _accept(self, solution, start, end):
         if self.stores and start < end:
@@ -1277,6 +1366,9 @@ class Sparse(Way):
         row = self.leg_rows[name]
         if t == self.amounts.through:
             return self.amounts.amount(row)
+        arrival = getattr(self, 'arrival_amounts', None)
+        if arrival is not None and t == arrival.through:
+            return arrival.amount(row)
         if self.pending is None or not self.amounts.through < t <= min(self.pending[1], self.run.now):
             raise ValueError('transfer requested outside the accepted interval')
         prefix = self._transfer_amount(self.pending[2], self.pending[0], t)

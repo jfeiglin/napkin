@@ -66,7 +66,14 @@ from ..continuous.kernels import Affine, MatrixExponential
 from ..continuous.segment import advance
 from ..continuous.system import Context, solver_step
 from ..continuous.system import Run as State
-from ..continuous.transfers import MovingAmounts, _clock_polynomial, direct_clock_primitive, radau_amount
+from ..continuous.transfers import (
+    MovingAmounts,
+    _clock_polynomial,
+    checked_amount,
+    clock_primitives,
+    direct_clock_primitive,
+    radau_amount,
+)
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import node_of
@@ -577,6 +584,7 @@ class ComponentWay(Way):
             self.amounts.primitive = direct_clock_primitive(plan.flows[self.flows[0]], plan)
 
         if single is None:
+            self.amounts.clock_rates = clock_primitives(self.flows, plan)
             self.component.field.leg_rates = lambda: self.component.field.delivered
         self._stepped(float(t))
 
@@ -649,12 +657,27 @@ class ComponentWay(Way):
             ) in bounds:
                 return Fraction(0)
             return self.amounts.polynomial_amount(segment.start, through)
+        if self.amounts.clock_rates and not self.component.state.active_bounds:
+            return self.amounts.clock_amounts(segment.start, through)
         solution = segment.solution
         if segment.numerical is not None:
             total = 0.0
             for k, step in enumerate(solution.interpolants):
                 end = through if k == len(solution.interpolants) - 1 else min(solution.ts[k + 1], through)
-                total = total + radau_amount(step, end, single)
+                if single is not None:
+                    total = total + radau_amount(step, end, single)
+                else:
+
+                    def rate_at(t):
+                        return self.component.delivered(segment, [t])[0]
+
+                    total = total + checked_amount(
+                        step,
+                        end,
+                        rate_at,
+                        self.run.plan.numerics.rtol,
+                        self.amounts.tolerances(self.run, self.rates),
+                    )
                 if end >= through:
                     break
             return total
@@ -671,6 +694,9 @@ class ComponentWay(Way):
         row = self.flow_place[name]
         if t == self.amounts.through:
             return self.amounts.amount(row)
+        arrival = getattr(self, 'arrival_amounts', None)
+        if arrival is not None and t == arrival.through:
+            return arrival.amount(row)
         if self.pending is None or not self.amounts.through < t <= min(self.pending.end, self.run.now):
             raise ValueError('transfer requested outside the accepted interval')
         prefix = self._transfer_amount(self.pending, t)
