@@ -55,3 +55,9 @@ PYTHONPATH=. NAPKIN_STORE=off python -m pytest -m deep -q \
 ```
 
 The earlier audit reported all 44 retained cases passing on `5d9409b`. The linked 31-case bundle covers the newer findings. The earlier repair report identifies the auditor as the holder of the original bundle, and the prior audit names an external `/workspace/napkin-audit-6f297e5` directory for its 27-case predecessor. Searches across the local repository's reachable Git history, ignored worktrees and audit archives, and the remote audit branch listings found the reports and reconstruction tests. The owner waived the candidate rerun of these 44. The reported count of 44 is a historical observation from the audited baseline. [Auditor's 44-case result](readiness-5d9409b.md) · [Earlier repair report](readiness-fixes-8e422da.md) · [External bundle instructions](readiness-6f297e5.md)
+
+
+## Compiled evidence and cache identity
+
+- `tests/program/test_artifact.py` now requires format 4 (previously 3) and language 0.2.3 (previously 0.2.2). Scoped evidence adds a field to the wire format. The language change identifies the corrected comparisons. Loading a file with either older header must produce the existing recompile diagnostic.
+- `tests/test_api.py::test_the_run_store_reads_the_same_engine_files_as_before_the_api` now includes `engine/continuous/transfers.py`. Its accepted-prefix arithmetic affects the physical record and changes to the file must invalidate a cached run.
