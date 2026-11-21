@@ -3490,20 +3490,21 @@ class Resolver:
         An input and a link are fixed (`fixed_write`), a readonly value is assigned by no statement
         (`readonly_write`), and what the run computes neither (`result_write`)."""
         self.through_end(node.target, scope)
+        base = self.path(node.target.base, scope) if isinstance(node.target, n.Member) else None
+        if base is not None and isinstance(base.type, EndOf) and node.target.name == 'allocation':
+            if node.op != '=':
+                self.fail('assign_value', 'an allocation takes =', node)
+            target = Read(base.start, (*base.steps, 'allocation'), base.type)
+            return DeclaredAssign(path, target, '=', self.allocation(node.value, scope), node.line)
         target = self.path(node.target, scope)
         spelled = '.'.join(target.steps) or getattr(node.target, 'name', '')
         if isinstance(target.type, Many):
             self.fail('collection', f'{spelled} is a projection: a statement assigns one value', node)
-        base = self.path(node.target.base, scope) if isinstance(node.target, n.Member) else None
         inner = None if base is None else base.type
         name = getattr(node.target, 'name', '')
         if isinstance(inner, (FlowOf, RouteOf, LegsOf, EndOf, Occ)) and not target.part:
             if name in RESULTS or (isinstance(inner, FlowOf) and inner.view):
                 self.fail('result_write', f'the run computes {spelled}: no statement assigns it', node)
-            if isinstance(inner, EndOf) and name == 'allocation':
-                if node.op != '=':
-                    self.fail('assign_value', 'an allocation takes =', node)
-                return DeclaredAssign(path, target, '=', self.allocation(node.value, scope), node.line)
             if node.op != '=' and isinstance(node.value, n.Formula):
                 self.fail('assign_value', f'{spelled} takes a formula with =', node)
             item = n.Property((name,), node.value, line=node.line, column=node.column)
