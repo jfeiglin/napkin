@@ -121,7 +121,7 @@ def monte_carlo(
     cancel=None,
 ):
     """The Monte Carlo study of a run (see the module): `paths` and `times` are the caller's, `model` the
-    declared model whose labels the report shows (None for a program built by hand), and `jobs`,
+    source or artifact evidence table (or a declared model), and `jobs`,
     `progress` and `cancel` are those of `study.run_all`. A path that the program does not have is a
     KeyError, and a time outside [0, horizon] or a number of jobs that is no whole number from 1 a
     ValueError, before any run starts."""

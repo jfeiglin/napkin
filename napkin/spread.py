@@ -58,7 +58,7 @@ def spread(
         paths,
         times,
         settings,
-        table=model.table,
+        model=model.table,
         jobs=jobs,
         progress=progress,
         cancel=cancel,
