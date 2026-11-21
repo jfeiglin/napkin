@@ -20,7 +20,7 @@ program equal to the one saved, with the same bytes, so the engine runs it to th
 The file is a header of two lines, then two sections, each a line with its size and its bytes:
 
     napkin program 3               the name of the format and its version
-    language 0.2.1                 the version of the language of the program
+    language 0.2.2                 the version of the language of the program
     program <size> <sha256>        the program's canonical bytes, and their digest
     <the program's bytes>
     table <size>                   the side table's canonical bytes
@@ -56,7 +56,7 @@ FORMAT = b'napkin program'
 FORMAT_VERSION = 3
 # The version of the language: what a program means. A model's identity changes with it, never with
 # the version of the package.
-LANGUAGE_VERSION = '0.2.1'
+LANGUAGE_VERSION = '0.2.2'
 
 # The kind of each part of a program that has an origin, by its record.
 KINDS = {
