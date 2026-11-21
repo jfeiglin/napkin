@@ -1,6 +1,6 @@
 # Measuring engine port readiness
 
-The independent-pipes timing command runs the 30,000 rows, full recording, and the three analytical checks. Its `--full-record-only` switch omits the separate untimed simulation with two selected values. Invoking the original `bench.py 30000` still exercises both recordings.
+Independent held pipes use 1,200 rows for the three final pairs and 30,000 rows for a separate single-run guard at 1.05. Both use the full recording manifest. Each completed run checks four paths against the closed form at 6, 30 and 48 h: total stock, live drawing rate, critical stock, and the stock of place 42. The full guard writes all twelve readings, the history and piece counts, process peak RSS, and SHA-256 checksums of its script and raw output. The historical script also ran an untimed selective recording. The common harness's `--full-record-only` option omits that separate simulation.
 
 Use one checkout for the benchmark scripts and a clean pinned worktree for each engine. `B` is the audited baseline, `A` is allocation only, `P` is the settlement prototype, and `F` is the final candidate. Run the benchmark on its own, with the same Python executable, power settings and machine throughout. Keep the output directory outside the engine package.
 
@@ -27,9 +27,20 @@ python scratch/rewrite/audit/port_benchmark.py campaign --phase prototype --mode
 python scratch/rewrite/audit/port_benchmark.py summary --phase prototype --out RESULTS
 ```
 
-Use `--phase final --revision B=BASELINE --revision F=FINAL` for final timings and diagnostics. The full event guard uses `--phase guard`, measures each revision once, and has no second diagnostic run. `--rows component-tanks sparse-tanks` limits an invocation to those rows. Invoke the same command to resume after interruption. Each completed child writes its own sample, with its engine location and SHA, harness checksum, raw output, clock, numeric results, process peak RSS in bytes and thread settings. Separate output directories preserve earlier prototypes.
+Use `--phase final --revision B=BASELINE --revision F=FINAL` for final timings and diagnostics. The full guards use `--phase guard --rows events` or `--phase guard --rows held-pipes` and have one timing per revision. `--rows component-tanks sparse-tanks` limits an invocation to those rows. Invoke the same command to resume after interruption. Each completed child writes its own sample, with its engine location and SHA, harness checksum, raw output, clock, numeric results, process peak RSS in bytes and thread settings. Separate output directories preserve earlier prototypes.
 
 The audited baseline's earlier full event execution recorded `Run.run` separately. Its 7,498.460 seconds cover the same method call as the fresh candidate's `guard_run_only_seconds`. Reuse that single execution with `campaign --phase guard --revision F=FINAL --out RESULTS` and `summary --phase guard --out RESULTS --baseline-guard-run-seconds 7498.460`. Retain the baseline's separate observed peak of 8.840 GiB and its 482,500 starts and 84 L horizon stock alongside the candidate JSON. Both runs check the horizon observation. The historical outer clock included another planning pass.
+
+The original full 30,000-pipe baseline at `6202824` finished planning and was still executing the first `Run.run` when stopped at **12,653 s of process elapsed time**. It produced no completed full run-and-record clock, analytical output or peak RSS. The historical guard is censored. To retain the completed final result and the cutoff, run these two commands. The summary exits 2 and labels this individual 1.05 gate unverified. The clock cannot support a measured F/B ratio. A separate completed baseline would use the ordinary guard summary without a cutoff.
+
+```sh
+python scratch/rewrite/audit/port_benchmark.py campaign --phase guard --rows held-pipes \
+    --out RESULTS --revision F=FINAL
+python scratch/rewrite/audit/port_benchmark.py summary --phase guard --rows held-pipes \
+    --out RESULTS --held-baseline-cutoff-seconds 12653
+```
+
+For the 1,200-pipe pairs, each revision first runs a one-execution calibration. Use the larger of the two repeat counts required for a 1.5-second batch, fixed across B/F, F/B, B/F. Each fresh run gets its own plan and run state. Sum only the intervals from immediately before `Run(plan).run()` through its returned full record. Program construction, planning, reading and analytical checks are outside those intervals. A batch below one second invalidates the paired result. Every benchmark child has a wall-clock cutoff of 2 h 55 min and reports an incomplete measurement on timeout.
 
 Each ordinary row has three paired timings in alternating revision order. Tanks use identical fresh-run batch sizes across revisions, calibrated on the baseline to about 1.5 seconds. The gate compares the median *paired* ratio of run-plus-record time for each row to 1.05. The declared-solver report also enforces its historical build-plus-plan-plus-run gate. The event guard permits 1.10. Each network checks its three sampled levels across revisions. The common event script uses its prepared plan once and checks the expected starts and final inventory. Historical event logs with other clock boundaries must be identified separately.
 

@@ -72,7 +72,7 @@ Paths below are relative to scratch/rewrite/b1. Run each individual workload aga
 |---|---|---|---|
 | Moving tanks, 12 independent exponential fills | s1-engine/bench_moving_tanks.py | --tanks 12 --hours 12 --method component (repeat with sparse) | same |
 | Moving tanks, same 12 fill curves supplied by positive linear compartments | s1-engine/bench_moving_tanks.py | --tanks 12 --hours 12 --compartment --method component (repeat with sparse) | same |
-| Independent held pipes | s1-engine/bench.py | — | 30000 --full-record-only |
+| Independent held pipes | s1-engine/bench.py | — | 1200 --full-record-only, three paired batches. Separately 30000 --full-record-only once per revision, limit 1.05. The full baseline was stopped at 12,653 s process elapsed before its first full record completed. |
 | Held local network | s2-engine/bench.py | held 3000 3500 48 | held 30000 35000 48 |
 | Moving local network | s2-engine/bench.py | moving 3000 3500 48 | moving 30000 35000 48 |
 | Event-heavy | s4a-engine/bench.py | 1200 48 12 | 1200 48 12; separately 30000 48 12 once on each revision, limit 1.10 |

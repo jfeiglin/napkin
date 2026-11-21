@@ -22,6 +22,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
+SAMPLE_TIMEOUT_SECONDS = 2 * 3600 + 55 * 60
+
 THREAD_ENV = dict.fromkeys(
     (
         'OPENBLAS_NUM_THREADS',
@@ -56,7 +58,7 @@ def workload(row, phase):
             '12',
         ]
     if row == 'held-pipes':
-        return 's1-engine/bench.py', ['30000', '--full-record-only']
+        return 's1-engine/bench.py', ['30000' if phase == 'guard' else '1200', '--full-record-only']
     if row == 'declared':
         return 's5-engine/bench.py', ['3000', '3500', '1500']
     raise ValueError(f'unknown workload {row}')
@@ -74,7 +76,7 @@ PHASES = {
     ]
 }
 PHASES['final'] = [*PHASES['prototype'], 'held-pipes', 'declared']
-PHASES['guard'] = ['events']
+PHASES['guard'] = ['events', 'held-pipes']
 
 
 def git(root, *args):
@@ -280,7 +282,7 @@ def worker(args):
     with ExitStack() as stack:
         counters = instrument(stack, args.row) if args.diagnostic else None
         run_only = []
-        if args.phase == 'guard':
+        if args.phase == 'guard' and args.row == 'events':
             from napkin.engine.timeline import Run
 
             original = Run.run
@@ -294,10 +296,14 @@ def worker(args):
             stack.enter_context(patch.object(Run, 'run', guard_clock))
         output = io.StringIO()
         with redirect_stdout(output):
-            runpy.run_path(str(path), run_name='__main__')
-    if counters and args.row == 'component-compartment-tanks':
-        if counters['by_method']['component'].get('accepted_steps', 0):
-            raise AssertionError('the positive linear tank group lost its closed-form solution')
+            for _ in range(args.repeat if args.row == 'held-pipes' else 1):
+                runpy.run_path(str(path), run_name='__main__')
+    if (
+        counters
+        and args.row == 'component-compartment-tanks'
+        and counters['by_method']['component'].get('accepted_steps', 0)
+    ):
+        raise AssertionError('the positive linear tank group lost its closed-form solution')
     log = output.getvalue()
 
     def seconds(expression, required=True):
@@ -307,6 +313,11 @@ def worker(args):
         return float(match[1]) if match else None
 
     elapsed = seconds(r'(?:run\+record|run with its record|run and record)')
+    if args.row == 'held-pipes':
+        clocks = re.findall(r'run with its record ([\d.]+) s', log)
+        if len(clocks) != args.repeat:
+            raise ValueError('expected one held-pipe run-and-record clock per fresh run')
+        elapsed = sum(map(float, clocks))
     if args.row == 'declared' and not all(
         token in log
         for token in (
@@ -319,6 +330,15 @@ def worker(args):
         raise AssertionError(log)
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == 'darwin' else 1024)
     samples = {}
+    if args.row == 'held-pipes':
+        observed = [
+            json.loads(line.removeprefix('observations '))
+            for line in log.splitlines()
+            if line.startswith('observations ')
+        ]
+        if len(observed) != args.repeat or any(item != observed[0] for item in observed):
+            raise ValueError('missing or inconsistent held-pipe analytical observations')
+        samples = observed[0]
     if args.row.endswith('-network'):
         for path_name, numbers in re.findall(r'^\s+(places\.\S+) (\[[^\]]+\])$', log, re.MULTILINE):
             samples[path_name] = ast.literal_eval(numbers)
@@ -348,6 +368,7 @@ def worker(args):
         'counters': counters,
         'guard_run_only_seconds': run_only,
         'output': log,
+        'output_sha256': hashlib.sha256(log.encode()).hexdigest(),
         'host': platform.node(),
         'python': sys.version,
         'numpy': numpy.__version__,
@@ -413,7 +434,20 @@ def take(path, args, row, tag, root, sha, repeat, diagnostic=False):
         'PYTHONPATH': str(root),
         'PYTHONDONTWRITEBYTECODE': '1',
     }
-    process = subprocess.run(cmd, cwd=root, env=environment, text=True, capture_output=True, check=False)
+    try:
+        process = subprocess.run(
+            cmd,
+            cwd=root,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=SAMPLE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        message = f'{path.name}: stopped after {SAMPLE_TIMEOUT_SECONDS} s without a completed sample'
+        path.with_suffix('.failure.txt').write_text(message + '\n')
+        raise RuntimeError(message) from error
     if process.returncode:
         path.with_suffix('.failure.txt').write_text(process.stdout + process.stderr)
         raise RuntimeError(f'{path.name}: worker exited {process.returncode}: {process.stderr[-900:]}')
@@ -440,7 +474,7 @@ def campaign(args):
     if any(r not in PHASES[args.phase] for r in rows):
         raise ValueError(f'{rows} do not belong to {args.phase}')
     if args.phase == 'guard' and args.mode == 'diagnostics':
-        raise ValueError('do not repeat the full event workload for counters')
+        raise ValueError('do not repeat the full guard workloads for counters')
     folder = Path(args.out).resolve() / args.phase
     folder.mkdir(parents=True, exist_ok=True)
     args.harness = str(Path(args.harness).resolve())
@@ -477,18 +511,13 @@ def campaign(args):
                     )
                 continue
             repeat = 1
-            if row.endswith('tanks'):
-                if 'B' not in revisions:
-                    raise ValueError('calibrated tank batches require pinned B')
-                pilot = take(
-                    folder / f'{row}.B.calibration.json',
-                    args,
-                    row,
-                    'B',
-                    *revisions['B'],
-                    1,
-                )
-                repeat = max(1, math.ceil(1.5 / pilot['batch_seconds']))
+            if row.endswith('tanks') or (row == 'held-pipes' and args.phase == 'final'):
+                calibration_tags = names if row == 'held-pipes' else ['B']
+                if 'B' not in revisions or (row == 'held-pipes' and names != ['B', 'F']):
+                    raise ValueError('calibrated timings require their pinned baseline and paired engines')
+                for tag in calibration_tags:
+                    pilot = take(folder / f'{row}.{tag}.calibration.json', args, row, tag, *revisions[tag], 1)
+                    repeat = max(repeat, math.ceil(1.5 / pilot['batch_seconds']))
             for pair in range(1, (1 if args.phase == 'guard' else 3) + 1):
                 for tag in names if pair % 2 else reversed(names):
                     take(
@@ -501,8 +530,46 @@ def campaign(args):
                     )
 
 
+def check_held_sample(sample, phase):
+    required = {'total', 'drawing', 'critical_stock', 'places.p00042.stock'}
+    values = sample['observations']
+    if (
+        (sample['phase'], sample['row'], sample['argv'])
+        != (
+            phase,
+            'held-pipes',
+            workload('held-pipes', phase)[1],
+        )
+        or set(values) != required
+        or any(len(row) != 3 for row in values.values())
+    ):
+        raise ValueError('expected four checked paths at three times for this held-pipe workload')
+    if sample['output_sha256'] != hashlib.sha256(sample['output'].encode()).hexdigest():
+        raise ValueError('held-pipe output checksum mismatch')
+    if phase == 'guard' and sample['repeat'] != 1:
+        raise ValueError('the full held-pipe guard requires one execution')
+
+
 def summary(args):
     folder = Path(args.out).resolve() / args.phase
+    if args.held_baseline_cutoff_seconds is not None:
+        if (
+            args.phase != 'guard'
+            or args.rows != ['held-pipes']
+            or args.baseline_guard_run_seconds is not None
+        ):
+            raise ValueError('a censored baseline applies only to --phase guard --rows held-pipes')
+        cutoff = args.held_baseline_cutoff_seconds
+        if not math.isfinite(cutoff) or cutoff <= 0 or (folder / 'held-pipes.1.B.json').exists():
+            raise ValueError('expected a positive elapsed cutoff and no completed baseline sample')
+        sample = read(folder / 'held-pipes.1.F.json')
+        check_held_sample(sample, 'guard')
+        print(
+            f'held-pipes INCOMPLETE: B stopped at {cutoff:g} s elapsed without a run-and-record clock; '
+            f'F {sample["run_record_seconds"]:.6f} s, peak {sample["peak_rss_bytes"] / 2**20:.1f} MiB; '
+            'F/B ratio unavailable; 1.05 gate unverified'
+        )
+        return 2
     if args.baseline_guard_run_seconds is not None:
         baseline = args.baseline_guard_run_seconds
         if args.phase != 'guard' or (args.rows and args.rows != ['events']):
@@ -541,6 +608,12 @@ def summary(args):
             left, right = tagged[numerator], tagged[denominator]
             if set(left) != set(range(1, pairs + 1)) or set(right) != set(left):
                 raise ValueError(f'incomplete {row} {numerator}/{denominator}')
+            if row == 'held-pipes':
+                for sample in [*left.values(), *right.values()]:
+                    check_held_sample(sample, args.phase)
+                repeats = {sample['repeat'] for sample in [*left.values(), *right.values()]}
+                if len(repeats) != 1:
+                    raise ValueError('held pipes require one shared repeat count across all three pairs')
             for i, candidate in left.items():
                 lhs, rhs = candidate.get('observations', {}), right[i].get('observations', {})
                 if lhs.keys() != rhs.keys() or any(
@@ -571,7 +644,7 @@ def summary(args):
                     )
 
                 ratio = statistics.median(metric(left[i]) / metric(right[i]) for i in left)
-                limit = 1.10 if args.phase == 'guard' else 1.05
+                limit = 1.10 if (args.phase, row) == ('guard', 'events') else 1.05
                 status = 'diagnostic' if denominator == 'A' else 'pass' if ratio <= limit else 'FAIL'
                 failed |= status == 'FAIL'
                 print(
@@ -610,6 +683,11 @@ def main():
             cmd.add_argument('--revision', action='append', required=True, metavar='B=PATH')
             cmd.add_argument('--mode', choices=('timing', 'diagnostics'), default='timing')
         if action == 'summary':
+            cmd.add_argument(
+                '--held-baseline-cutoff-seconds',
+                type=float,
+                help='elapsed time of a censored full 30,000-pipe baseline without its run-and-record clock',
+            )
             cmd.add_argument(
                 '--baseline-guard-run-seconds',
                 type=float,

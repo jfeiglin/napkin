@@ -12,6 +12,7 @@ factor.
 """
 
 import argparse
+import json
 import time
 
 import numpy as np
@@ -80,16 +81,23 @@ def main():
     ran = time.perf_counter()
     assert record.failure is None, record.failure
     times = [6.0, 30.0, 48.0]
-    readings = read(record, made, ['total', 'drawing', 'critical_stock', 'places.p00042.stock'], times)
+    paths = ['total', 'drawing', 'critical_stock', 'places.p00042.stock']
+    readings = read(record, made, paths, times)
     done = time.perf_counter()
     for k, at in enumerate(times):
-        stocks = np.maximum(0.0, initials - bases * integral(at))
-        assert abs(readings[0].values[k] - stocks.sum()) <= 1e-9 * stocks.sum(), (at, readings[0].values[k], stocks.sum())
-        assert abs(readings[2].values[k] - stocks[::10].sum()) <= 1e-9 * stocks[::10].sum()
+        # Inputs have exactly three and two decimal places. Classify a pipe that has
+        # just emptied at this hour as closed before checking the reported flow rate.
+        remaining = np.rint(initials * 1000) - np.rint(bases * 1000) * integral(at)
+        stocks = np.maximum(0, remaining) / 1000
+        factor = FACTORS[np.searchsorted(HOURS, at, side='right') - 1]
+        expected = (stocks.sum(), bases[remaining > 0].sum() * factor, stocks[::10].sum(), stocks[42])
+        for path, reading, target in zip(paths, readings, expected, strict=True):
+            assert np.isclose(reading.values[k], target, rtol=1e-9, atol=1e-9), (at, path, reading.values[k], target)
     pieces = sum(len(history.pieces) for history in record.histories)
     print(f'rows {args.rows}: build {built - start:.9f} s, plan {planned - built:.9f} s, run with its record {ran - planned:.9f} s, '
           f'read 4 paths at 3 times {done - ran:.9f} s; {len(record.histories)} histories, {pieces} pieces')
     print('total at 6, 30, 48 h:', readings[0].values, 'drawing:', readings[1].values)
+    print('observations', json.dumps({path: reading.values for path, reading in zip(paths, readings, strict=True)}))
     if not args.full_record_only:
         narrow = Configuration(Request(48, everything=False, keys=(Key('', ('total',)), Key('places.p00042', ('stock',)))))
         again = time.perf_counter()
