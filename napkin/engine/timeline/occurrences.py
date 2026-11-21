@@ -54,6 +54,7 @@ from functools import lru_cache
 from itertools import pairwise
 
 from numpy.polynomial.legendre import leggauss
+from numpy.polynomial.polynomial import polyval
 from scipy.integrate import quad
 from scipy.optimize import brentq
 
@@ -432,8 +433,8 @@ class Occurrences:
                 # transfers cannot disappear when joined to a much larger accumulated amount.
                 exact, measured = self.transferred.get(key, (0, 0))
                 rates, curves, breaks = [], [], {start, end}
-                origin = rational(start)
-                initial = slope = 0
+                primitives = []
+                held = 0
                 for connection in connections:
                     name = f'{connection}.actual_rate'
                     parent = _flow_of(self.plan, connection)
@@ -442,21 +443,22 @@ class Occurrences:
                         continue
                     rates.append(name)
                     if not run.ways.moving(run.ways.set_of[parent]) or run.ways.held_rate(name):
-                        initial += rational(abs(run.value(name, start)))
+                        held += rational(abs(run.value(name, start)))
                         continue
-                    line = getattr(way, 'exact_rate_line', None)
-                    line = line(name, origin) if line else None
-                    if line is None:
+                    integrate = getattr(way, 'exact_rate_integral', None)
+                    primitive = integrate(name) if integrate else None
+                    if primitive is None:
                         curves.append(name)
                         breaks.update(getattr(way, 'breaks', lambda a, b: ())(start, end))
                     else:
-                        initial += line[0]
-                        slope += line[1]
+                        primitives.append(primitive)
 
                 def volume(a, b):
                     left, right = rational(a), rational(b)
-                    # Integrate the line at its exact midpoint. Adjacent intervals telescope.
-                    fixed = (right - left) * (initial + slope * ((left + right) / 2 - origin))
+                    # Adjacent differences of an exact primitive telescope through any cut.
+                    fixed = (right - left) * held + sum(
+                        polyval(right, p) - polyval(left, p) for p in primitives
+                    )
                     if not curves or a == b:
                         return fixed, 0
                     return fixed, _integral(
@@ -478,7 +480,7 @@ class Occurrences:
                         left = max(0, allowance - exact - measured)
                         at = (
                             brentq(lambda t: float(sum(volume(a, t)) - left), a, b, xtol=1e-14)
-                            if curves or slope
+                            if curves or primitives
                             else a + (b - a) * float(left / fixed)
                         )
                         largest = max(rates, key=lambda name: abs(run.value(name, at)))

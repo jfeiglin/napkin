@@ -1,5 +1,6 @@
 """A single transfer debits and credits one amount, even across large changes of inventory."""
 
+import math
 from fractions import Fraction
 
 import pytest
@@ -116,8 +117,10 @@ def test_exactly_the_retired_stocks_allowance_can_pass_at_the_horizon(rate, scal
         assert record.failure is not None and record.failure.t == pytest.approx(float(at), abs=1e-9)
 
 
-@pytest.mark.parametrize('split', [None, '1', '4.6'])
-@pytest.mark.parametrize('mean', ['0.019999999999999995', '0.02', '0.02000000000000022'])
+@pytest.mark.parametrize('split', [None, '1', '1.2', '4.6', '4.7'])
+@pytest.mark.parametrize(
+    'mean', [repr(math.nextafter(0.02, 0)), '0.02', repr(math.nextafter(0.02, 1)), '0.02000000000000022']
+)
 def test_a_curved_retired_flow_compares_its_total_once(mean, split):
     # Integrating 3*r*(elapsed/5)^2 over five hours gives 5*r.
     request = f'formula(3 * {mean} L/h * ((t - 1 h) / (5 h)) ** 2)'

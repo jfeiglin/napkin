@@ -48,11 +48,14 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass, replace
+from fractions import Fraction
 
 import numpy as np
+from numpy.polynomial import Polynomial
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
+from ...core.literals import Literals, node_parts
 from ...expressions import evaluate, names_in
 from ..allocation import Allocation
 from ..continuous import dense
@@ -68,6 +71,45 @@ from ..errors import SimulationError
 from .collections import node_of
 from .contacts import put_bounds
 from .way import Way
+
+
+def _clock_polynomial(node, values, literals):
+    """Coefficients of a polynomial in t, in canonical units. Fold constant subexpressions with
+    the literal evaluator. Stop expanding at degree 47, the precision of the 24-point Gauss rule
+    used for the remaining rates; high powers can otherwise expand exponentially."""
+    if isinstance(node, nodes.Ref) and isinstance(values.get(node.name), Polynomial):
+        return values[node.name]
+    op, args, data = node_parts(node)
+    if op in ('add', 'sub', 'mul', 'div', 'pow', 'sum', 'q', 'neg', 'pos') and args:
+        terms = []
+        for arg in args:
+            term = yield _clock_polynomial(arg, values, literals)
+            if term is None:
+                return None
+            terms.append(term)
+        first = terms[0]
+        if op in ('sum', 'add'):
+            return sum(terms)
+        if op == 'sub':
+            return first - terms[1]
+        if op == 'mul':
+            return first * terms[1] if first.degree() + terms[1].degree() <= 47 else None
+        if op == 'q':
+            return first * literals.scale(data)
+        if op in ('neg', 'pos'):
+            return -first if op == 'neg' else first
+        if terms[1].degree() == 0:
+            scalar = terms[1].coef[0]
+            if op == 'div' and scalar:
+                return first / scalar
+            if op == 'pow' and scalar.denominator == 1 and scalar >= 0 and first.degree() * scalar <= 47:
+                if scalar > 1024:
+                    return None
+                if not first.degree() or not scalar:
+                    return Polynomial([Fraction(first.coef[0]) ** int(scalar)])
+                return first ** int(scalar)
+    constant = literals.value(node)
+    return Polynomial([constant]) if isinstance(constant, Fraction) else None
 
 
 @dataclass(frozen=True)
@@ -802,14 +844,10 @@ class ComponentWay(Way):
         finally:
             state.evaluations = evaluations
 
-    def exact_rate_line(self, name, start):
-        """An unrestricted flow affine in the clock, as a rate and slope in exact canonical units.
-        The selected field supplies its expressions and captured inputs. On a bound that can
-        restrict this connection the actual allocation must be read from the trajectory instead."""
-        from fractions import Fraction
-
-        from .triggers import _affine
-
+    def exact_rate_integral(self, name):
+        """The rational antiderivative of an unrestricted polynomial in time. The selected field
+        supplies its branches and captured quantities. A connection that a bound can restrict
+        must instead be measured from the allocation's actual rate."""
         component = self.component
         flow = component.system.flows[name.rsplit('.', 1)[0]]
         bounds = component.state.active_bounds
@@ -817,23 +855,31 @@ class ComponentWay(Way):
             return None
         field = component.field
         node = field.expression(flow.rate)
-        if self.run.triggers.moving_reads(node) - {'t'} or not _affine(node, {'t'}, self.run.plan):
+        if self.run.triggers.moving_reads(node) - {'t'}:
             return None
-        formulas = [(key, field.expression(expr)) for key, expr in field._formulas_for([node])]
+        values = {**self.captured[0], **component.state.store, 't': Polynomial([Fraction(0), Fraction(1)])}
 
-        def rate(at):
-            values = {**self.captured[0], **component.state.store}
-            for key, definition in formulas:
-                values[key] = self.run.clock.value(definition, values.__getitem__, at)
-            return self.run.clock.value(node, values.__getitem__, at)
+        def parts(part):
+            if isinstance(part, nodes.Ref):
+                given = values.get(part.name)
+                if isinstance(given, Polynomial) and given.degree() == 0:
+                    given = given.coef[0]
+                if (
+                    isinstance(given, (int, float, Fraction))
+                    and not isinstance(given, bool)
+                    and math.isfinite(given)
+                ):
+                    return 'number', (), (given, '')
+            return node_parts(part)
 
-        try:
-            first, second = rate(start), rate(start + 1)
-        except (ExpressionError, ArithmeticError, LookupError):
-            return None
-        if not all(isinstance(x, (int, Fraction)) for x in (first, second)):
-            return None
-        return first, second - first
+        units = self.run.plan.units
+        literals = Literals(parts, units.exact_scale, units.comparisons.factor)
+        for key, definition in field._formulas_for([node]):
+            values[key] = walked(_clock_polynomial(field.expression(definition), values, literals))
+        rate = walked(_clock_polynomial(node, values, literals))
+        if rate is not None:
+            return (Fraction(0), *(Fraction(c) / (k + 1) for k, c in enumerate(rate.coef)))
+        return None
 
     def linear(self, store):
         """The line of a store through the next segment, or None on a curve."""
