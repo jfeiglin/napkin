@@ -110,6 +110,7 @@ from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
 from .family import Family
+from .lines import Lines
 from .plan import (
     BUILTINS,
     CHANGED,
@@ -397,7 +398,8 @@ class Recorder:
         An alias copies its input. A sum of lines has at most one new piece per input
         piece time, even when a member is projected twice. Count every path from a raw
         value to a retained history. The largest such count bounds the growth from any
-        later raw line. Compaction can only reduce the count. Other formulas may split
+        later raw line. An addition of held physical rates stays constant between their
+        changes. Compaction can only reduce the count. Other formulas may split
         between input pieces, so their budget needs the ordinary committed histories.
         """
         plan = self.plan
@@ -405,7 +407,7 @@ class Recorder:
             plan.events
             or plan.defined
             or self.transfers
-            or not all(isinstance(way, Family) for way in self.run.ways.instances)
+            or not all(isinstance(way, (Family, Lines)) for way in self.run.ways.instances)
         ):
             return math.inf, 0
         uses, numeric = defaultdict(int), set()
@@ -429,6 +431,25 @@ class Recorder:
                 uses[source] += count
                 if name in numeric:
                     numeric.add(source)
+            elif value.kind == FORMULA and isinstance(value.node, nodes.Binary) and name not in numeric:
+                # An endpoint can add several held actual rates. Each is a raw zero-slope
+                # history, so formula() takes its held branch between consecutive changes.
+                # A consumer that requires a numeric sum can need the ordinary overflow checks.
+                pending = [value.node]
+                while pending:
+                    node = pending.pop()
+                    if isinstance(node, nodes.Binary) and node.op == 'add':
+                        pending.extend((node.left, node.right))
+                    elif (
+                        isinstance(node, nodes.Ref)
+                        and node.name not in self._derived
+                        and node.name in plan.values
+                        and plan.values[node.name].kind == RATE
+                    ):
+                        uses[node.name] += count
+                        numeric.add(node.name)
+                    else:
+                        return math.inf, 0
             elif value.kind == REDUCE:
                 reduction = plan.reductions[name]
                 upper += count  # the constant result of an empty collection or member count

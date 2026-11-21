@@ -7,6 +7,7 @@ import pytest
 
 from napkin.engine.timeline import Plan, Run
 from napkin.engine.timeline.family import Family
+from napkin.engine.timeline.lines import Lines
 from napkin.engine.timeline.record import Recorder
 from napkin.engine.timeline.saved import at_stop
 from napkin.program.build import (
@@ -196,3 +197,48 @@ def test_a_safe_early_bound_can_precede_a_later_budget_failure():
     assert actual.failure is not None
     assert steps[0] == 1 and steps[0] not in visits
     assert actual.end in visits
+
+
+@pytest.mark.parametrize('keys', [(), (Key('plant', ('alias',)),)])
+def test_summed_held_connections_keep_the_same_budget_failure_and_checkpoint_projection(keys):
+    b = Builder({'L': {'volume': 1}, 'h': {'time': 1}})
+    b.entity(
+        'plant',
+        value('left', 'L', 4, lower=0),
+        value('right', 'L', 3, lower=0),
+        value('tank', 'L', 0, lower=0, upper=2),
+        flow('a', this.left, this.tank, request=q(2, 'L/h')),
+        flow('b', this.right, this.tank, request=q(1, 'L/h')),
+        flow('out', this.tank, SINK, request=q(1, 'L/h')),
+        value('combined', 'L/h', formula(this.a.actual_rate + this.b.actual_rate)),
+        value('alias', 'L/h', formula(this.combined)),
+    )
+    program = b.finish()
+    check = Recorder.check_budget
+
+    def observe(pieces, horizon, exact):
+        config = Configuration(Request(horizon, everything=not keys, keys=keys, pieces=pieces))
+        engine = Run(Plan.of(program, config))
+        prefixes = []
+
+        def budget(recorder, end, **options):
+            check(recorder, end, **options)
+            if options.get('internal'):
+                stopped, _ = at_stop(engine)
+                prefixes.append((end, stopped.record(end, ongoing=True)))
+
+        with patch.object(Recorder, 'check_budget', budget):
+            if exact:
+                with patch.object(Recorder, '_held_piece_bound', return_value=(math.inf, 0)):
+                    result = engine.run()
+            else:
+                result = engine.run()
+        assert all(isinstance(way, Lines) for way in engine.ways.instances)
+        return result, prefixes, engine.recorder
+
+    complete, prefix, recorder = observe(100_000, 6, False)
+    assert complete.failure is None and len(prefix) >= 2
+    assert math.isfinite(recorder._held_upper)
+    total = sum(len(history.pieces) for history in complete.histories)
+    for horizon, pieces in [(0, 1), (0, 100_000), (6, 1), (6, total - 1), (6, total), (6, total + 1)]:
+        assert observe(pieces, horizon, False)[:2] == observe(pieces, horizon, True)[:2]
