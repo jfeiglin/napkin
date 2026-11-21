@@ -48,18 +48,15 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass, replace
-from fractions import Fraction
 
 import numpy as np
-from numpy.polynomial import Polynomial
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
-from ...core.literals import Literals, node_parts
 from ...expressions import evaluate, names_in
 from ..allocation import Allocation
 from ..continuous import dense
-from ..continuous.bounds import check_bounds, correct_boundary_roundoff, refresh_bounds
+from ..continuous.bounds import check_bounds, project_bound_roundoff, refresh_bounds
 from ..continuous.fields import Field
 from ..continuous.integrate import flow_switches, starting_sides, switching_surfaces
 from ..continuous.kernels import Affine, MatrixExponential
@@ -68,7 +65,6 @@ from ..continuous.system import Context, solver_step
 from ..continuous.system import Run as State
 from ..continuous.transfers import (
     MovingAmounts,
-    _clock_polynomial,
     checked_amount,
     radau_amount,
 )
@@ -365,19 +361,19 @@ class Component:
         """The next segment, from the present time and state as far as the horizon at most. A store
         that reaches its face within the roundoff of the time is settled there first: that gives a
         segment of no length, whose last state has the face settled."""
-        s, state, field, diagnostics = self.system, self.state, self.field, self.context.diagnostics
+        s, state, field = self.system, self.state, self.field
         self.settle()
         start = state.time
         found = advance(s, state, field, self, self.context, horizon)
         first = state.y.copy()
         if found.rounded:
-            correct_boundary_roundoff(s, diagnostics, start, state.y, found.rounded)
+            project_bound_roundoff(s, start, state.y, found.rounded)
             check_bounds(s, state.y)
-            reached = tuple(sorted(found.rounded))
+            reached = tuple(sorted(found.rounded.items()))
             return Segment(start, start, None, first, state.y.copy(), reached=reached)
         solution, numerical = found.solution, found.numerical
         last = np.array(solution(found.end) if numerical is None else numerical.y[:, -1], dtype=float)
-        correct_boundary_roundoff(s, diagnostics, found.end, last, found.targets, solution)
+        project_bound_roundoff(s, found.end, last, found.targets, solution)
         if numerical is not None:
             if found.end <= start:
                 raise SimulationError('Integration made no progress at a boundary')
@@ -387,7 +383,7 @@ class Component:
                 check_bounds(s, numerical.y[:, k])
         self.put_switches(last, found.end, numerical, found.end)
         check_bounds(s, last)
-        reached = tuple(sorted(found.targets or ()))
+        reached = tuple(sorted((found.targets or {}).items()))
         return Segment(start, found.end, solution, first, last, numerical, reached)
 
     def put_switches(self, y, t, numerical, through):
@@ -570,7 +566,7 @@ class ComponentWay(Way):
         self.component.state.contacted = tuple(self.component.state.contact_clocks)
         self.place = {name: k for k, name in enumerate(stores)}
         self.rates = [f'{flow}.actual_rate' for flow in system.flow_ids]
-        self.flow_place = {flow: k for k, flow in enumerate(system.flow_ids)}
+        self.flow_place = self.leg_rows = {flow: k for k, flow in enumerate(system.flow_ids)}
         single = None
         if len(system.flow_ids) == 1:
             flow = system.flows[system.flow_ids[0]]
@@ -675,7 +671,7 @@ class ComponentWay(Way):
             return solution.leg_rates * duration
         return solution.amounts(duration, single)
 
-    def transferred(self, name, t):
+    def _transferred(self, name, t):
         """Cumulative accepted amount of this physical connection since installation."""
         row = self.flow_place[name]
         if t == self.amounts.through:
@@ -683,7 +679,9 @@ class ComponentWay(Way):
         arrival = getattr(self, 'arrival_amounts', None)
         if arrival is not None and t == arrival.through:
             return arrival.amount(row)
-        if self.pending is None or not self.amounts.through < t <= min(self.pending.end, self.run.now):
+        if self.pending is None or not self.amounts.through < t <= min(
+            self.run.clock.apart(self.pending.end), self.run.now
+        ):
             raise ValueError('transfer requested outside the accepted interval')
 
         def interval():
@@ -724,8 +722,8 @@ class ComponentWay(Way):
             return
         system = component.system
         if segment.numerical is None:
-            for i in segment.reached:
-                kind = 'lower bound' if segment.last[i] == system.lower[i] else 'upper bound'
+            for i, bound in segment.reached:
+                kind = 'lower bound' if bound == system.lower[i] else 'upper bound'
                 yield segment.end, self.stores[i], kind
             return
         for at, root in segment.numerical.contacts:
@@ -881,43 +879,6 @@ class ComponentWay(Way):
             return float(field.delivered[k])
         finally:
             state.evaluations = evaluations
-
-    def exact_rate_integral(self, name):
-        """The rational antiderivative of an unrestricted polynomial in time. The selected field
-        supplies its branches and captured quantities. A connection that a bound can restrict
-        must instead be measured from the allocation's actual rate."""
-        component = self.component
-        flow = component.system.flows[name.rsplit('.', 1)[0]]
-        bounds = component.state.active_bounds
-        if (self.place.get(flow.source), 'min') in bounds or (self.place.get(flow.target), 'max') in bounds:
-            return None
-        field = component.field
-        node = field.expression(flow.rate)
-        if self.run.triggers.moving_reads(node) - {'t'}:
-            return None
-        values = {**self.captured[0], **component.state.store, 't': Polynomial([Fraction(0), Fraction(1)])}
-
-        def parts(part):
-            if isinstance(part, nodes.Ref):
-                given = values.get(part.name)
-                if isinstance(given, Polynomial) and given.degree() == 0:
-                    given = given.coef[0]
-                if (
-                    isinstance(given, (int, float, Fraction))
-                    and not isinstance(given, bool)
-                    and math.isfinite(given)
-                ):
-                    return 'number', (), (given, '')
-            return node_parts(part)
-
-        units = self.run.plan.units
-        literals = Literals(parts, units.exact_scale, units.comparisons.factor)
-        for key, definition in field._formulas_for([node]):
-            values[key] = walked(_clock_polynomial(field.expression(definition), values, literals))
-        rate = walked(_clock_polynomial(node, values, literals))
-        if rate is not None:
-            return (Fraction(0), *(Fraction(c) / (k + 1) for k, c in enumerate(rate.coef)))
-        return None
 
     def linear(self, store):
         """The line of a store through the next segment, or None on a curve."""

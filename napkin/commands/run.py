@@ -531,6 +531,9 @@ def document(model, entry, args, configuration, times, found, stopped):
             for tie in found.near_ties
         ],
         'stopped': found.stopped,
+        'violations': [
+            {'stock': stock, 'direction': side, 'leg': leg} for stock, side, leg in found.violations
+        ],
         'diagnostics': [common.problem_json(item) for item in stopped],
         'warnings': [common.problem_json(item) for item in model.reports],
     }

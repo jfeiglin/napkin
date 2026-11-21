@@ -51,7 +51,7 @@ from statistics import NormalDist
 from typing import NamedTuple
 
 from . import network
-from .errors import Diagnostic, NotCovered, Paused, RunFailed
+from .errors import Diagnostic, FrozenTransfer, NotCovered, Paused, RunFailed
 from .evaluate import (
     SINK,
     SOURCE,
@@ -93,6 +93,29 @@ class Entry(NamedTuple):
     step: object = None
     round: int = 0
     origin: str = ''
+
+
+def _allowance_root(volume, remaining, lo, hi):
+    """A rational point or enclosing interval for the first excess of a positive amount."""
+    if not remaining:
+        return lo, lo
+    residual = volume - (volume(lo) + remaining)
+    if len(residual.c) <= 3:
+        root = residual(Poly([lo, 1])).first_root()
+        if isinstance(root, Fraction):
+            return lo + root, lo + root
+    # Higher degrees can have an irrational root. Keep both bounds so a nearby
+    # crossing-window edge cannot accidentally select or omit a violation.
+    while hi - lo > Fraction(1, 10**18):
+        middle = (lo + hi) / 2
+        sign = residual(middle)
+        if not sign:
+            return middle, middle
+        if sign > 0:
+            hi = middle
+        else:
+            lo = middle
+    return lo, hi
 
 
 class Tx:
@@ -572,7 +595,7 @@ class Run:
         tau = nxt - view.t
         failure = self._frozen_transfer(tau)
         if failure is not None:
-            tau, message = failure
+            tau, problem = failure
             nxt = view.t + tau
         for src, dst, p, name in self.moving:
             self.ledger.append(('flow', view.t, nxt, name, src, dst, p.integral()(tau)))
@@ -583,7 +606,7 @@ class Run:
             view.results[var] = p(tau)
         view.t, view.levels, view.rates = nxt, {}, {}
         if failure is not None:
-            raise RunFailed(message)
+            raise problem
 
     def _moment(self, setup=False):
         t = self.view.t
@@ -638,56 +661,66 @@ class Run:
             for cell, sign in ((dst, 1), (src, -1)):
                 owner = _holder(cell.owner) if cell is not None else None
                 if isinstance(owner, Occ) and not self.view.cells[Cell(owner, 'active')]:
-                    groups.setdefault(cell, []).append((rate * sign, name))
-        first = None
+                    groups.setdefault(cell, []).append((rate * sign, name, sign))
+        if not groups:
+            return None
+        routes = {f.label for f in self.view.live if f.kind == 'reversible'}
+        order = {c.label: c.number for f in self.view.live for c in network.connections(f)}
+        windows, segments = [], []
+        running = self.transferred.copy()
         for cell, flows in groups.items():
             cuts = {Fraction(0), tau}
-            for rate, name in flows:
+            for rate, _, _ in flows:
                 past = Fraction(0)
                 while not rate.constant:
                     root = rate(Poly([past, 1])).first_root()
-                    if root is None or float(root) >= float(tau - past):
+                    if root is None or root >= tau - past:
                         break
                     if isinstance(root, Irrational):
-                        raise NotCovered(f'{name}: a frozen transfer changes direction at an irrational time')
+                        raise NotCovered(
+                            f'{label(cell)}: a frozen transfer changes direction at an irrational time'
+                        )
                     past += root
                     cuts.add(past)
             allowance = self.config.atol_factor * self.own_scales[cell]
             for lo, hi in itertools.pairwise(sorted(cuts)):
-                for sign, side in ((1, 'into'), (-1, 'out of')):
-                    carrying = [(p * sign, name) for p, name in flows if p((lo + hi) / 2) * sign > 0]
+                for sign, side in ((-1, 'outflow'), (1, 'inflow')):
+                    carrying = []
+                    for p, name, orientation in flows:
+                        if p((lo + hi) / 2) * sign > 0:
+                            directed = name
+                            if name in routes:
+                                leg = 'forward' if orientation == sign else 'backward'
+                                directed = f'{name}.{leg}'
+                            carrying.append((p * sign, directed))
                     if not carrying:
                         continue
                     volume = sum((p.integral() for p, _ in carrying), Poly([0]))
                     key = cell, side
-                    previous = self.transferred.get(key, Fraction(0))
-                    amount = volume(hi) - volume(lo)
-                    self.transferred[key] = previous + amount
-                    if self.transferred[key] <= allowance:
-                        continue
-                    if previous > allowance:
-                        continue  # an earlier piece of this window already located the failure
-                    remaining = allowance - previous
-                    if len(volume.c) == 2:
-                        at = lo + remaining / volume.c[1]
-                    else:
-                        low, high = lo, hi
-                        while high - low > Fraction(1, 10**13):
-                            at = (low + high) / 2
-                            if volume(at) - volume(lo) > remaining:
-                                high = at
-                            else:
-                                low = at
-                        at = high
-                    if first is None or at < first[0]:
-                        _, name = max(carrying, key=lambda item: item[0](at))
-                        first = (
-                            at,
-                            f'the flow {name} carries a rate {side} {label(cell)} at t = '
-                            f'{self.view.t + at} h: {label(cell)} belongs to the finished '
-                            f'occurrence {_holder(cell.owner).label}, which is frozen',
-                        )
-        return first
+                    previous = running.get(key, Fraction(0))
+                    running[key] = previous + volume(hi) - volume(lo)
+                    segments.append((key, volume, lo, hi))
+                    if previous <= allowance < running[key]:
+                        left, right = _allowance_root(volume, allowance - previous, lo, hi)
+                        names = [(label(cell), side, name) for _, name in carrying]
+                        windows.append((left, right, names))
+        if not windows:
+            self.transferred = running
+            return None
+        first_lower = min(left for left, _, _ in windows)
+        first_upper = min(right for _, right, _ in windows)
+        violations = []
+        for left, right, names in windows:
+            if right <= first_lower + self.config.crossing:
+                violations.extend(names)
+            elif left <= first_upper + self.config.crossing:
+                raise NotCovered('a frozen crossing cannot be separated from the edge of its time group')
+        violations.sort(key=lambda item: (item[0], item[1] != 'outflow', order[item[2]]))
+        for key, volume, lo, hi in segments:
+            if first_upper > lo:
+                amount = volume(min(first_upper, hi)) - volume(lo)
+                self.transferred[key] = self.transferred.get(key, 0) + amount
+        return first_upper, FrozenTransfer(self.view.t + first_upper, violations)
 
     def _settle_and_check(self):
         self.phase = 'settle'

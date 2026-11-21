@@ -1354,7 +1354,10 @@ class Sparse(Way):
                 self.amounts.select_clocks(self.lower_flags.__getitem__, self.upper_flags.__getitem__)
             self.amounts.accept(start, end, self._transfer_amount(solution, start, end))
 
-    def transferred(self, name, t):
+    def _clock_bounds(self):
+        return self.lower_flags.__getitem__, self.upper_flags.__getitem__
+
+    def _transferred(self, name, t):
         """Cumulative accepted amount of this physical connection since installation."""
         row = self.leg_rows[name]
         if t == self.amounts.through:
@@ -1362,7 +1365,9 @@ class Sparse(Way):
         arrival = getattr(self, 'arrival_amounts', None)
         if arrival is not None and t == arrival.through:
             return arrival.amount(row)
-        if self.pending is None or not self.amounts.through < t <= min(self.pending[1], self.run.now):
+        if self.pending is None or not self.amounts.through < t <= min(
+            self.run.clock.apart(self.pending[1]), self.run.now
+        ):
             raise ValueError('transfer requested outside the accepted interval')
 
         def interval():

@@ -1,4 +1,4 @@
-"""State checks, balanced roundoff corrections, the bounds a state rests on and stock faces."""
+"""State checks, numerical face projection, the bounds a state rests on and stock faces."""
 
 from __future__ import annotations
 
@@ -101,11 +101,10 @@ def check_conditions(system, env, at):
             )
 
 
-def correct_boundary_roundoff(system, diagnostics, at, state, exact_targets=None, solution=None):
-    """Settle tiny root-location roundoff on bounds, each with an explicit balancing leg, and
-    record it."""
+def project_bound_roundoff(system, at, state, exact_targets=None, solution=None):
+    """Put trial coordinates on their located faces after checking the size of the correction."""
     s = system
-    lower, upper, atol, index = s.lower, s.upper, s.atol, s.index
+    lower, upper, atol = s.lower, s.upper, s.atol
     for i, name in enumerate(s.state_ids):
         target = (exact_targets or {}).get(i)
         if target is None:
@@ -124,81 +123,9 @@ def correct_boundary_roundoff(system, diagnostics, at, state, exact_targets=None
             low, high = sorted(float(solution(np.nextafter(at, side))[i]) for side in (-np.inf, np.inf))
             if not (low <= state[i] <= high and low <= target <= high):
                 raise SimulationError(f'Material state-bound violation for {name}')
-        partners = []
-        has_external_leg = False
-        for flow in s.flows.values():
-            if name == flow.source:
-                if flow.target:
-                    partners.append(flow.target)
-                else:
-                    has_external_leg = True
-            if name == flow.target:
-                if flow.source:
-                    partners.append(flow.source)
-                else:
-                    has_external_leg = True
-        # A correction that would lower a nondecreasing ledger goes to another leg if there is one.
-        partners.sort(key=lambda p: bool(delta > 0 and s.monotone[index[p]]))
-        # Prefer a leg that stays strictly inside its bounds, then the external ledger,
-        # and only then a leg that stays within tolerance; otherwise corrections ping-pong.
-        partner = next(
-            (
-                p
-                for p in partners
-                if lower[index[p]] + atol[index[p]]
-                < state[index[p]] - delta
-                < upper[index[p]] - atol[index[p]]
-            ),
-            None,
-        )
-        # Several coordinates can reach zero together. Route roundoff to an
-        # interior ledger through the conservative material component so a
-        # correction cannot recreate stock on another exact zero face.
-        if partner is None and name in s.proven_faces:
-            visited, pending = {name}, list(partners)
-            while pending and partner is None:
-                candidate = pending.pop(0)
-                if candidate in visited:
-                    continue
-                visited.add(candidate)
-                k = index[candidate]
-                if lower[k] + atol[k] < state[k] - delta < upper[k] - atol[k]:
-                    partner = candidate
-                    break
-                for flow in s.flows.values():
-                    if flow.source == candidate and flow.target:
-                        pending.append(flow.target)
-                    if flow.target == candidate and flow.source:
-                        pending.append(flow.source)
-        if partner is None and not has_external_leg:
-            partner = next(
-                (
-                    p
-                    for p in partners
-                    if lower[index[p]] - atol[index[p]]
-                    <= state[index[p]] - delta
-                    <= upper[index[p]] + atol[index[p]]
-                ),
-                None,
-            )
-        if partner is None and not has_external_leg and s.quantities[name].kind == 'stock':
-            raise SimulationError(f'Cannot balance root correction for stock {name}')
+        # This is a numerical trial coordinate. Only the timeline knows the accepted
+        # cutoff and the physical incidence of all the faces reaching it together.
         state[i] = target
-        if partner is not None:
-            state[index[partner]] -= delta
-        diagnostics.append(
-            {
-                'code': 'boundary_roundoff',
-                'severity': 'info',
-                't': at,
-                'message': f'Balanced root-location roundoff at {name}',
-                'state': name,
-                'delta': delta,
-                'balancing_state': partner,
-                'balancing_delta': -delta,
-                'external_ledger': partner is None,
-            }
-        )
     return state
 
 

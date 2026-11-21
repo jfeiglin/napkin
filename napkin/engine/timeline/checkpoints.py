@@ -216,28 +216,23 @@ class Breaks:
         run = self.run
         name, value = self.checked(edit)
         old = run.value(name, tx=tx)
+        delta = run.stock_state.external(name, value, tx)
         details = {'breakpoint': stop.breakpoint.at, 'target': name, 'old': old, 'new': value}
         if tx is not None:
             tx.writes[name] = value
-            tx.move_roundoff.pop(name, None)
-            tx.edits.append((stop.at, stop.owner, details))
+            tx.balances.pop(name, None)
+            tx.edits.append((stop.at, stop.owner, details, delta))
             return
         run.recorder.entry(run.now, 'edit', stop.at, stop.owner, **details)
-        self.transferred(details)
+        self.transferred(name, delta)
         run.write(name, value)
-        run.move_roundoff.pop(name, None)
         run.occurrences.met(name)
 
-    def transferred(self, details):
-        """An edit of a store (a stored number that a flow meets) that commits is a transfer from or
-        to outside in its books (`Recorder.external`)."""
-        run, name = self.run, details['target']
-        old, new = details['old'], details['new']
-        if isinstance(new, bool) or not isinstance(new, int | float) or new == old:
-            return
-        stores = {end for c in run.plan.connections.values() for end in (c.source, c.sink) if end is not None}
-        if name in stores:
-            run.recorder.external(name, run.now, float(new) - float(old), run.changed_start(name))
+    def transferred(self, name, delta):
+        """Record the committed difference from the physical balance immediately before the edit."""
+        if delta:
+            run = self.run
+            run.recorder.external(name, run.now, float(delta), run.changed_start(name))
 
     def checked(self, edit):
         """(the engine name, the new value in canonical units) of an edit, once the engine's rules
@@ -264,7 +259,7 @@ class Breaks:
                 f'{name}: an edit changes a stored value, and this is a parameter or a built-in field of '
                 'its occurrence, which its start gives'
             )
-        current = _present(run, name)
+        current = run.present(name)
         if isinstance(current, bool) or isinstance(value, bool):
             if not (isinstance(current, bool) and isinstance(value, bool)):
                 raise CheckpointError(f'{name} holds {current!r}, and an edit gives it {value!r}')
@@ -311,7 +306,7 @@ class Breaks:
         values = []
         for name, value in plan.values.items():
             if value.kind in STARTS:
-                values.append((name, _present(run, name)))
+                values.append((name, run.present(name)))
         values += [(name, run.env[name]) for name in plan.draws if name in run.env]
         values += [(name, run.chance.distribution(name)) for name in plan.distributions]
         occurrences = tuple(
@@ -367,20 +362,6 @@ def pause_entry(stop):
         stop.owner,
         (('breakpoint', stop.breakpoint.at), ('hit', stop.hit), ('next', stop.next)),
     )
-
-
-def _present(run, name):
-    """The value now of a value that the start evaluates: a store of a set on its line or curve, one
-    that a commit of this round wrote, or what the run holds."""
-    if name in run.written:
-        return run.written[name]
-    if name in run.bound_at:
-        return run.bound_at[name]
-    if name in run.opening_levels:
-        return run.opening_levels[name]
-    if name in run.ways.set_of:
-        return run.ways.value(name, run.now)
-    return run.env.get(name)
 
 
 def _fixed(plan, name):

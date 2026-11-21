@@ -16,6 +16,66 @@ import pytest
 from tests.commands.call import UNITS, napkin, package
 from tests.language.test_solvers import network
 
+
+def test_frozen_stock_failure_keeps_every_leg_in_python_and_json(tmp_path, capsys):
+    from napkin.engine import run
+    from napkin.engine.report import report
+    from napkin.model.compile import load_scenario
+
+    # Eight legs cross together. Declare inflows first and use non-alphabetic names.
+    legs = [('inflow', 'job.batch', 'this.water'), ('outflow', 'this.water', 'job.batch')]
+    flows, opens, expected = [], [], []
+    for direction, sink, source in legs:
+        for suffix in ('z', 'w', 'k', 'a'):
+            name = direction + '_' + suffix
+            flows.append(f'        flow {name}: {source} -> {sink}\n            request = 0 L/h')
+            opens.append(f'            {name}.request = 0.025 L/h')
+            expected.append(('tank.retire#0.batch', direction, 'tank.watch#0.' + name))
+    model = package(
+        tmp_path / 'frozen',
+        '\n'.join(
+            [
+                'scenario "Frozen stock"',
+                '    horizon 3 h',
+                'tank:',
+                '    water: L = 10 L',
+                '    retire = event():',
+                '        batch: L = 0 L in [0,] scale 1000000000 L',
+                '        after 1 h',
+                '    watch = event():',
+                '        job = this.retire.occurrences.at(t)',
+                *flows,
+                '        after 1 h:',
+                *opens,
+                '        after 3 h',
+                'tank.retire.start()',
+                'tank.watch.start()',
+            ]
+        )
+        + '\n',
+        UNITS,
+    )
+    expected = tuple(expected[4:] + expected[:4])
+    compiled = load_scenario(model)
+    record = run(compiled.program, compiled.configuration)
+    found = report(record, compiled.program, compiled.configuration, ['tank.water'], [0])
+    assert found.end == pytest.approx(2)
+    assert found.violations == expected
+    args = ('run', model, '--value', 'tank.water', '--at', '0h')
+    result = napkin(capsys, *args, '--json')
+    assert result.code == 1
+    assert result.doc['violations'] == [
+        {'stock': stock, 'direction': direction, 'leg': leg} for stock, direction, leg in expected
+    ]
+    result = napkin(capsys, *args)
+    assert result.code == 1
+    for _, _, leg in expected[:5]:
+        assert leg in result.err
+    for _, _, leg in expected[5:]:
+        assert leg not in result.err
+    assert '3 more' in result.err
+
+
 # The tank of the spec, with the clinic's pace an input that two options and two runs set.
 PACED = """\
 scenario "Paced tank"

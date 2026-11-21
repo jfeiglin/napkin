@@ -15,8 +15,9 @@ from functools import lru_cache
 
 import numpy as np
 from numpy.polynomial import Polynomial
+from numpy.polynomial.legendre import leggauss
 from numpy.polynomial.polynomial import polyval
-from scipy.integrate import quad_vec
+from scipy.integrate import quad, quad_vec
 from scipy.integrate._ivp.radau import C
 
 from ...core import expr as nodes
@@ -89,6 +90,30 @@ def direct_clock_primitive(flow, plan):
     return None
 
 
+@lru_cache(maxsize=1)
+def _gauss_rule():
+    """Positive Gauss weights on [0, 1], normalized to sum exactly to one."""
+    points, weights = leggauss(24)
+    denominator = sum(map(rational, weights))
+    return [((1 + rational(x)) / 2, rational(w) / denominator) for x, w in zip(points, weights)]
+
+
+def certified_amount(rate, a, b, label):
+    """Measure a curved rate on QUADPACK's accepted subintervals, accumulating all weights and
+    durations before rounding. Neither the numerical error estimate nor the number of intervals
+    increases the physical allowance."""
+    answer = quad(rate, a, b, epsabs=0, epsrel=1e-13, full_output=True)
+    if len(answer) > 3:
+        raise SimulationError(f'{label}: {answer[3]}')
+    parts = answer[2]
+    total = Fraction(0)
+    for lo, hi in zip(parts['alist'][: parts['last']], parts['blist'][: parts['last']]):
+        start = rational(lo)
+        duration = rational(hi) - start
+        total += duration * sum(w * rational(rate(float(start + x * duration))) for x, w in _gauss_rule())
+    return total
+
+
 class ClockLeg:
     """The cumulative amount for a pipe whose uncapped request has an exact primitive.
 
@@ -104,6 +129,17 @@ class ClockLeg:
         self.source, self.sink = source, sink
         self.feeds_source, self.drains_sink = feeds_source, drains_sink
         self.mode, self.start, self.closed, self.origin = self.REQUEST, start, 0, 0
+
+    @classmethod
+    def of(cls, polynomial, start, flow, places, plan):
+        return cls(
+            polynomial,
+            start,
+            places.get(flow.source),
+            places.get(flow.sink),
+            bool(flow.source and plan.incident(flow.source, 'inflow')),
+            bool(flow.sink and plan.incident(flow.sink, 'outflow')),
+        )
 
     def selection(self, lower, upper):
         source, sink = self.source, self.sink
@@ -313,14 +349,7 @@ class MovingAmounts:
                 continue
             polynomial = direct_clock_primitive(flow, plan)
             if polynomial is not None:
-                self.clocks[row] = ClockLeg(
-                    polynomial,
-                    self.through,
-                    places.get(flow.source),
-                    places.get(flow.sink),
-                    bool(flow.source and plan.incident(flow.source, 'inflow')),
-                    bool(flow.sink and plan.incident(flow.sink, 'outflow')),
-                )
+                self.clocks[row] = ClockLeg.of(polynomial, self.through, flow, places, plan)
         self.all_clock = bool(self.clocks) and len(self.clocks) == len(names)
 
     def select_clocks(self, lower, upper):

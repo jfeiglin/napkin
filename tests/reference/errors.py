@@ -11,6 +11,24 @@ class RunFailed(Exception):
     the time."""
 
 
+class FrozenTransfer(RunFailed):
+    """All the directed legs contributing to the first group of frozen allowance violations."""
+
+    def __init__(self, time, violations):
+        self.violations = tuple(violations)
+        messages = []
+        for store, side, connection in self.violations[:5]:
+            way = 'into' if side == 'inflow' else 'out of'
+            owner = store.rsplit('.', 1)[0]
+            messages.append(
+                f'the flow {connection} carries a rate {way} {store} at t = {time} h: '
+                f'{store} belongs to the finished occurrence {owner}, which is frozen'
+            )
+        if len(self.violations) > 5:
+            messages.append(f'{len(self.violations) - 5} more')
+        super().__init__('. '.join(messages))
+
+
 class Diagnostic(RunFailed):
     """A model that the language refuses. A compiler would report it before the run."""
 

@@ -108,7 +108,7 @@ from ...program import parts as p
 from ...program.refs import Distribution, Formula
 from ..continuous.walk import walked
 from ..errors import SimulationError
-from .plan import BACKWARD, FORMULA, FORWARD
+from .plan import BACKWARD, FORMULA, FORWARD, STATE
 from .reads import Reads, lazily
 
 _SETUP = 'setup'  # what a stop in the setup holds
@@ -222,7 +222,7 @@ class Tx:
         self.origin = ''
         self.writes = {}
         self.moves = []  # (source, destination, amount, origin)
-        self.move_roundoff = {}  # signed impulse residuals, until commit
+        self.balances = {}  # exact physical balances written by moves in this stage
         self.starts = []  # (member, event, arguments)
         self.allocations = []  # (store, side, allocation, scope, origin) of each new allocation
         # A value that the stage gives a definition -> the statement that gives it its last: a
@@ -256,6 +256,11 @@ class _Savepoint:
         names = set(tx.writes)
         for name in tx.writes:
             names.update(plan.described_of.get(name, ()))
+        self.stock_edits = [
+            (mapping, {name: mapping[name] for name in tx.writes if name in mapping})
+            for mapping in (run.stock_state.balances, run.env, run.written)
+        ]
+        self.names = tuple(tx.writes)
         self.pieces = {name: _length(recorder.pieces, name) for name in names}
         self.changes = {name: _length(run.changes, name) for name in tx.writes}
         self.defined = {
@@ -263,7 +268,7 @@ class _Savepoint:
             for name in tx.writes
             if name in plan.values
         }
-        stores = {details['target'] for _, _, details in tx.edits}
+        stores = {details['target'] for _, _, details, _ in tx.edits}
         self.transfers = {
             store: None if store not in recorder.transfers else len(recorder.transfers[store][1])
             for store in stores
@@ -272,6 +277,10 @@ class _Savepoint:
     def discard(self):
         """Take back what the commit changed of the record."""
         run, recorder, plan = self.run, self.run.recorder, self.run.plan
+        for mapping, previous in self.stock_edits:
+            for name in self.names:
+                mapping.pop(name, None)
+            mapping.update(previous)
         del recorder.trace[self.trace :]
         _cut(recorder.pieces, self.pieces)
         _cut(run.changes, self.changes)
@@ -595,7 +604,8 @@ class Moment:
             return
         name = self.target(statement.target, scope, statement.origin)
         run.occurrences.writable(name, statement.origin)  # an assignment always writes
-        tx.move_roundoff.pop(name, None)
+        if statement.op == '=':
+            tx.balances.pop(name, None)
         if isinstance(statement.value, Distribution):
             # A new distribution for the draws to come; what was drawn stays as it is.
             tx.writes[name] = statement.value
@@ -608,9 +618,17 @@ class Moment:
             return
         value = self.truth(statement.value, scope, statement.origin, tx)
         if statement.op != '=':
-            current = run.value(name, tx=tx)
-            value = current + value if statement.op == '+=' else current - value
+            if name in run.plan.moving or name in run.stock_state.balances or name in tx.balances:
+                amount = rational(value)
+                total = self.stage_balance(name, tx) + (amount if statement.op == '+=' else -amount)
+                value = float(total)
+                tx.balances[name] = total
+            else:
+                current = run.value(name, tx=tx)
+                value = current + value if statement.op == '+=' else current - value
         tx.writes[name] = self.checked(name, value, statement.origin)
+        if name in tx.balances and tx.writes[name] != value:
+            tx.balances[name] = rational(tx.writes[name])
         found = self.plan.values.get(name)  # none for a distribution-valued value
         if name in tx.defined or (found is not None and found.kind == FORMULA):
             # A request or a capacity that was a formula now holds the number (spec: "A scalar
@@ -626,9 +644,13 @@ class Moment:
         (`Occurrences.writable`)."""
         run, origin, plan = self.run, statement.origin, self.plan
         node = run.occurrences.node(statement.amount, scope, origin)
-        amount = self.move_amount(node, tx)
         source = self.target(statement.source, scope, origin)
         destination = self.target(statement.destination, scope, origin)
+        amount = (
+            self.stage_balance(source, tx)
+            if self.stock_read(node, tx) == source
+            else self.move_amount(node, tx)
+        )
         if (
             isinstance(amount, bool)
             or not isinstance(amount, int | float | Fraction)
@@ -646,15 +668,14 @@ class Moment:
         if source == destination or requested == 0:
             tx.moves.append((source, destination, amount, origin))
             return
-        supply = float(run.value(source, tx=tx))
-        receiving = float(run.value(destination, tx=tx))
+        supply = self.stage_balance(source, tx)
+        receiving = self.stage_balance(destination, tx)
         lower = run.bounds.get(source, (-math.inf, math.inf))[0]
         upper = run.bounds.get(destination, (-math.inf, math.inf))[1]
         applied = requested
         endpoints = []
         for name, initial, edge, sign in ((source, supply, lower, -1), (destination, receiving, upper, 1)):
-            history = tx.move_roundoff if name in tx.writes else run.move_roundoff
-            balance = rational(initial) + history.get(name, 0)
+            balance = initial
             space = sign * (rational(edge) - balance) if math.isfinite(edge) else math.inf
             endpoints.append((name, balance, space, sign))
             low, high = run.bounds.get(name, (-math.inf, math.inf))
@@ -680,13 +701,34 @@ class Moment:
             new_balance = balance + sign * applied
             inventory = float(new_balance)
             tx.writes[name] = inventory
-            residual = new_balance - rational(inventory)
-            if residual:
-                tx.move_roundoff[name] = residual
-            else:
-                tx.move_roundoff.pop(name, None)
+            tx.balances[name] = new_balance
 
         tx.moves.append((source, destination, float(applied), origin))
+
+    def stage_balance(self, store, tx):
+        if store in tx.writes:
+            return tx.balances[store] if store in tx.balances else rational(tx.writes[store])
+        return self.run.stock_balance(store, self.run.now)
+
+    def stock_read(self, node, tx):
+        """Follow only identity reads, using definitions as they stand at this statement."""
+        visited = set()
+        while isinstance(node, nodes.Ref) and node.name not in visited:
+            name = node.name
+            visited.add(name)
+            found = self.plan.values.get(name)
+            if found is None:
+                break
+            if found.kind == STATE:
+                return name
+            if name in tx.writes:
+                written = tx.writes[name]
+                node = written.node if isinstance(written, Defined) else None
+            elif found.kind == FORMULA and name not in self.run.frozen:
+                node = found.node
+            else:
+                break
+        return None
 
     def move_amount(self, node, tx):
         """Take a rational share of the authored quantities before booking it to either store.
@@ -769,15 +811,12 @@ class Moment:
         except Exception:
             saved.discard()
             raise
-        for name in tx.writes:
-            self.run.move_roundoff.pop(name, None)
-        self.run.move_roundoff.update(tx.move_roundoff)
 
     def _publish(self, tx):
         run = self.run
-        for part, owner, details in tx.edits:  # an edit at a stop in the stage (`checkpoints.py`)
+        for part, owner, details, delta in tx.edits:  # an edit at a stop in the stage (`checkpoints.py`)
             run.recorder.entry(run.now, 'edit', part, owner, **details)
-            run.breaks.transferred(details)
+            run.breaks.transferred(details['target'], delta)
             run.occurrences.met(details['target'])
         for source, destination, amount, origin in tx.moves:
             run.recorder.entry(
@@ -791,7 +830,7 @@ class Moment:
             self.plan.log.append(('allocate', store, side, origin, self.plan.owner_of(scope)))
             run.changed.add(store)
         for name, value in tx.writes.items():
-            run.write(name, value)
+            run.write(name, value, tx.balances.get(name))
         for member, event, args in tx.starts:
             run.occurrences.register(member, event, args)
 
@@ -804,6 +843,7 @@ class Moment:
         self.phase = 'settle'
         run.finish_arrival()
         joined, left = list(run.joined), set(run.left)
+        joining = set(joined)
         names = run.changed_names()
         touched = ways.touched_by(names | set(run.written))
         ends = set()
@@ -817,15 +857,17 @@ class Moment:
             run.contacts, run.bound_at = (), {}
             run.settled()
             return set()
-        moving_before = set(ways.set_of)
+        moving_before = ways.set_of
         while True:
             # The sets in the order of their ids, so that the region is the same whatever the order in
             # which a set of ids was made (a restored run makes its sets of ids afresh, `saved.py`).
             region = [f for key in sorted(touched) for f in ways.sets[key][0].flows if f not in left]
-            region += [f for f in joined if f not in left and f not in region]
-            region += [
-                f for connected in waiting for f in connected.flows if f not in left and f not in region
-            ]
+            additions = (*joined, *(f for connected in waiting for f in connected.flows))
+            seen = set(region)
+            for flow in additions:
+                if flow not in left and flow not in seen:
+                    region.append(flow)
+                    seen.add(flow)
             solvers = {ways.sets[key][0].solver for key in touched} | {c.solver for c in waiting}
             solvers.discard(None)
             region_ends = set()
@@ -868,7 +910,7 @@ class Moment:
         for flow in left:
             run.flow_left(flow)
         for flow in region:
-            if flow in joined:
+            if flow in joining:
                 run.tolerate(plan.flows[flow])
         run.settled()
         ways.build(made, values, t)

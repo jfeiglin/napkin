@@ -296,9 +296,9 @@ class Recorder:
         if kind == 'start':
             self._schema = None
 
-    def failure(self, t, message):
+    def failure(self, t, message, **details):
         """The entry of the failure that stopped a run at time t."""
-        return Entry(t, self.round, 'failure', '', '', (('message', message),))
+        return Entry(t, self.round, 'failure', '', '', (('message', message), *details.items()))
 
     def external(self, store, t, amount, start):
         """An edit at a stop moved `amount` into a store from outside (a withdrawal is negative): its
@@ -709,6 +709,8 @@ class Recorder:
         )
         made = Record(manifest, tuple(held), trace, failure)
         if not ongoing:
+            if self.run is not None and (pause is not None or (failure is None and end == self.plan.horizon)):
+                made = self.run.stock_state.project(made)
             made = _finished(made)
         # At a provisional end the recorded outgoing slopes still count. At a true end
         # they become held points, as do the retained pieces when the budget ends a run.

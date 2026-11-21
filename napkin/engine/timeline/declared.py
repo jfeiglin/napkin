@@ -1036,7 +1036,7 @@ class DeclaredWay(Way):
         self.alive = False
         self.due = []
 
-    def transferred(self, name, t):
+    def _transferred(self, name, t):
         if t > self.run.now:
             raise ValueError('transfer requested outside the accepted interval')
         row = self.leg_rows[name]
@@ -1568,7 +1568,7 @@ class MovingDeclared(DeclaredWay):
         if segment.plain:
             return list(self.stores), sorted(set(self.recorded) | set(self.connected.results)), False
         if segment.event:
-            self._put_contacts(segment.event, segment.end)
+            self._put_contacts(segment.event, self.run.clock.apart(segment.end))
         contacted = {pair: at for at, pair, kind in segment.event or () if kind == 'switch'}
         changed = self._settle(segment.end, contacted)
         return list(self.stores), sorted(set(changed) | set(self.recorded)), bool(segment.event)
@@ -1632,14 +1632,19 @@ class MovingDeclared(DeclaredWay):
         self.value[:] = flows
         self.results.update(results)
 
-    def transferred(self, name, t):
+    def _clock_bounds(self):
+        return self.low.__getitem__, self.high.__getitem__
+
+    def _transferred(self, name, t):
         row = self.leg_rows[name]
         if t == self.amounts.through:
             return self.amounts.amount(row)
         arrival = getattr(self, 'arrival_amounts', None)
         if arrival is not None and t == arrival.through:
             return arrival.amount(row)
-        if self.pending is None or not self.amounts.through < t <= min(self.pending.end, self.run.now):
+        if self.pending is None or not self.amounts.through < t <= min(
+            self.run.clock.apart(self.pending.end), self.run.now
+        ):
             raise ValueError('transfer requested outside the accepted interval')
         leg = self.amounts.clocks.get(row)
         mode = leg.selection(self.low.__getitem__, self.high.__getitem__) if leg is not None else None

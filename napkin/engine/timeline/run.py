@@ -91,6 +91,7 @@ from .plan import (
 from .reads import lazily
 from .record import HistoryFull, Recorder, remember
 from .saved import restore
+from .stocks import Stocks
 from .triggers import Triggers
 from .ways import Ways
 
@@ -149,14 +150,15 @@ class Run:
         self.recorder = Recorder(plan, {}, {})
         self.recorder.run = self
         remember(plan)
-        self.now = 0.0  # the time that the run has reached, for a failure
+        self.now = 0.0  # also carries the time of a numerical trial for diagnostics
+        self.accepted = 0.0  # the physical cutoff chosen by the timeline
         self.env = {'t': 0.0}  # the values of the start, and later each value held between moments
         # The kept entries, the keyed reads by the time and the indexes of keys of the collections
         # (by name, and by the tuples that the reads of one collection share); the keys known.
         self._kept, self._stepped, self._indexes, self._known = {}, {}, {}, {}
         self.started = False  # once true, `value_of` reads the present
         self.written = {}  # a store of a set that a commit of this moment wrote, and its value
-        self.move_roundoff = {}  # store -> signed amount lost when its last impulse balance was published
+        self.stock_state = Stocks(self)
         self.frozen = {}  # a formula of a finished occurrence -> its value or `Unavailable` (D7)
         self.limit = plan.horizon  # the next moment that the run knows (`next_moment`)
         # Whether the last moment is the horizon and nothing else, which a longer run does not have
@@ -552,6 +554,10 @@ class Run:
             return t
         if name in self.written:
             return self.written[name]
+        if kind == STATE and t == self.now == self.accepted and name in self.ways.set_of:
+            way = self.ways.instance_of(name)
+            if getattr(way, 'trial', None) is None and self.moment.phase != 'settle':
+                return float(self.stock_balance(name, t))
         if t == self.now and name in self.bound_at:
             return self.bound_at[name]
         if t == self.now and name in self.opening_levels:
@@ -722,7 +728,21 @@ class Run:
 
     # ---- what a moment changes ---------------------------------------------------------------------
 
-    def write(self, name, value):
+    def stock_balance(self, store, t):
+        return self.stock_state.stock_balance(store, t)
+
+    def post_stock(self, store, t):
+        return self.stock_state.post_stock(store, t)
+
+    def present(self, name):
+        """The published value of a stage or checkpoint, including a stock's accepted prefix."""
+        if name in self.written:
+            return self.written[name]
+        if name in self.ways.set_of or name in self.stock_state.balances:
+            return float(self.stock_balance(name, self.now))
+        return self.env.get(name)
+
+    def write(self, name, value, balance=None):
         """A commit writes a value: a store of a set waits for the settling, any other value holds
         it from now on. A definition (`Defined`), and a number in place of a request's or a
         capacity's formula, changes what the value is from now on (`define`)."""
@@ -732,8 +752,10 @@ class Run:
             self.define(name, value.node if isinstance(value, Defined) else None)
             if isinstance(value, Defined):
                 return
+        if name in self.ways.set_of or name in self.stock_state.balances or balance is not None:
+            old_balance = self.stock_state.replace(name, value, balance)
         if name in self.ways.set_of:
-            old = self.value(name)
+            old = float(old_balance)
             self.written[name] = value
         else:
             old = self.env.get(name, _MISSING)
@@ -798,6 +820,8 @@ class Run:
                 if store is None:
                     continue
                 present = plan.end_flows.setdefault((store, side), [])
+                if store in self.ways.set_of and (store, side) not in self.stock_state.ends:
+                    self.stock_state.ends[store, side] = tuple(present)
                 if joins:
                     present.append(connection.name)
                     plan.end_history.setdefault((store, side), []).append(connection.name)
@@ -969,7 +993,8 @@ class Run:
         except (SimulationError, ExpressionError, ArithmeticError) as problem:
             if self.arriving and self.moment.phase == 'stages':
                 self.finish_arrival()
-            return self.recorder.record(self.now, self.recorder.failure(self.now, str(problem)))
+            details = {'violations': problem.violations} if hasattr(problem, 'violations') else {}
+            return self.recorder.record(self.now, self.recorder.failure(self.now, str(problem), **details))
         return self.recorder.record(self.plan.horizon)
 
     def loop(self):
@@ -1054,13 +1079,10 @@ class Run:
             ):
                 # A flow at a store of a finished occurrence carries no rate up to the event.
                 self.occurrences.carried(self.now, at)
-                self.now = at
-                if self.move_roundoff:
-                    # An exact threshold or bound replaces the incoming balance.
-                    for name in (
-                        levels.keys() | bound_values(self.bounds, instance.contacts_at(at, at)).keys()
-                    ):
-                        self.move_roundoff.pop(name, None)
+                self.now = self.accepted = at
+                faces = bound_values(self.bounds, instance.contacts_at(at, self.clock.apart(at)))
+                if faces:
+                    self.stock_state.faces(faces, at)
                 stores, rates, jumped = instance.step(levels) if levels else instance.step()
                 self.recorder.check_budget(at, internal=True)
                 changed = set(stores) | set(rates)
@@ -1079,7 +1101,7 @@ class Run:
                 self.triggers.predict(changed)
                 continue
             self.occurrences.carried(self.now, moment)
-            self.now = moment
+            self.now = self.accepted = moment
             threshold = self.clock.apart(moment)
             if independent:
                 for way in self.ways.instances:
@@ -1096,6 +1118,8 @@ class Run:
             )
             self.ways.opening(moment)
             self.bound_at = bound_values(self.bounds, self.contacts)
+            if self.bound_at:
+                self.stock_state.faces(self.bound_at, moment)
             levels = self.triggers.levels_at(moment, dict(self.bound_at))
             if self.consumed:
                 self.consumed = {pair: times for pair, times in self.consumed.items() if max(times) >= moment}
@@ -1105,8 +1129,6 @@ class Run:
                         self.triggers.anchor(levels, *pair, moment, located)
                         self.consumed[tuple(map(nodes.text, pair))] = located, moment
             self.bound_at.update(levels)
-            for name in self.bound_at:
-                self.move_roundoff.pop(name, None)
             self.moved.update(levels)
             self.arriving = True
             self.bare = (

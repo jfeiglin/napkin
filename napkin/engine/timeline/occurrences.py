@@ -50,12 +50,9 @@ import heapq
 import math
 from dataclasses import dataclass, field
 from fractions import Fraction
-from functools import lru_cache
+from functools import cache
 from itertools import pairwise
 
-from numpy.polynomial.legendre import leggauss
-from numpy.polynomial.polynomial import polyval
-from scipy.integrate import quad
 from scipy.optimize import brentq
 
 from ...core import expr as nodes
@@ -73,30 +70,6 @@ def _flow_of(plan, connection):
     """The flow of a connection: a directed flow is its own, a leg of a route or of a flow with legs
     is named after its flow."""
     return connection if connection in plan.flows else connection.rsplit('.', 1)[0]
-
-
-@lru_cache(maxsize=1)
-def _gauss_rule():
-    """Positive Gauss weights on [0, 1], normalized to sum exactly to one."""
-    points, weights = leggauss(24)
-    denominator = sum(map(rational, weights))
-    return [((1 + rational(x)) / 2, rational(w) / denominator) for x, w in zip(points, weights)]
-
-
-def _integral(rate, a, b, label):
-    """Measure a curved rate on QUADPACK's accepted subintervals, accumulating all weights and
-    durations before rounding. Neither the numerical error estimate nor the number of intervals
-    increases the physical allowance."""
-    answer = quad(rate, a, b, epsabs=0, epsrel=1e-13, full_output=True)
-    if len(answer) > 3:
-        raise SimulationError(f'{label}: {answer[3]}')
-    parts = answer[2]
-    total = Fraction(0)
-    for lo, hi in zip(parts['alist'][: parts['last']], parts['blist'][: parts['last']]):
-        start = rational(lo)
-        duration = rational(hi) - start
-        total += duration * sum(w * rational(rate(float(start + x * duration))) for x, w in _gauss_rule())
-    return total
 
 
 @dataclass(eq=False)
@@ -418,91 +391,97 @@ class Occurrences:
         if end <= start or not self.watched():
             return
         run = self.run
-        first = None
-        updates = {}
+        crossings, watched, windows = [], {}, {}
         for store in sorted(self.watched()):
             present = False
             allowance = rational(self.plan.numerics.atol_factor) * rational(run.own_scale(store))
             for side in SIDES:
-                connections = self.plan.incident(store, side)
-                if not connections:
+                shares = []
+                for connection in self.plan.incident(store, side):
+                    way = run.ways.instance_of(_flow_of(self.plan, connection))
+                    if way is None:
+                        continue
+                    if connection not in watched:
+                        watched[connection] = way, cache(way.watch_leg(connection, start))
+                    shares.append(connection)
+                if not shares:
                     continue
                 present = True
                 key = store, side
-                # Keep the running sum exact over the measured segment contributions, so tiny
-                # transfers cannot disappear when joined to a much larger accumulated amount.
+                # Segment edges are chosen on the incoming trajectories. A cut never samples a
+                # replacement occurrence or any allocation installed by the next stage.
+                edges = sorted(
+                    {
+                        start,
+                        end,
+                        *(
+                            at
+                            for c in shares
+                            for at in getattr(watched[c][0], 'breaks', lambda a, b: ())(start, end)
+                        ),
+                    }
+                )
                 exact, measured = self.transferred.get(key, (0, 0))
-                rates, curves, breaks = [], [], {start, end}
-                primitives = []
-                held = 0
-                for connection in connections:
-                    name = f'{connection}.actual_rate'
-                    parent = _flow_of(self.plan, connection)
-                    way = run.ways.instance_of(parent)
-                    if way is None:
-                        continue
-                    rates.append(name)
-                    if not run.ways.moving(run.ways.set_of[parent]) or run.ways.held_rate(name):
-                        held += rational(abs(run.value(name, start)))
-                        continue
-                    integrate = getattr(way, 'exact_rate_integral', None)
-                    primitive = integrate(name) if integrate else None
-                    if primitive is None:
-                        curves.append(name)
-                        breaks.update(getattr(way, 'breaks', lambda a, b: ())(start, end))
-                    else:
-                        primitives.append(primitive)
-
-                def volume(a, b):
-                    left, right = rational(a), rational(b)
-                    # Adjacent differences of an exact primitive telescope through any cut.
-                    fixed = (right - left) * held + sum(
-                        polyval(right, p) - polyval(left, p) for p in primitives
-                    )
-                    if not curves or a == b:
-                        return fixed, 0
-                    return fixed, _integral(
-                        lambda t: math.fsum(abs(run.value(name, t)) for name in curves),
-                        a,
-                        b,
-                        f'{store}: cannot certify the frozen {side} amount',
-                    )
-
-                for a, b in pairwise(sorted(breaks)) if rates else ():
-                    fixed, curved = volume(a, b)
-                    # One comparison of the cumulative measured amount at its final precision.
-                    # Quadrature error estimates govern integration and never buy more inventory.
+                for a, b in pairwise(edges):
+                    portions = [watched[c][1](a, b) for c in shares]
+                    fixed, curved = map(sum, zip(*portions))
                     remaining = allowance - exact - fixed
-                    exceeds = (
-                        float(measured + curved) > float(remaining) if measured or curved else remaining < 0
-                    )
-                    if exceeds:
+                    if float(measured + curved) > float(remaining) if measured or curved else remaining < 0:
                         left = max(0, allowance - exact - measured)
-                        at = (
-                            brentq(lambda t: float(sum(volume(a, t)) - left), a, b, xtol=1e-14)
-                            if curves or primitives
-                            else a + (b - a) * float(left / fixed)
-                        )
-                        largest = max(rates, key=lambda name: abs(run.value(name, at)))
-                        if first is None or at < first[0]:
-                            first = (at, store, side, largest, run.value(largest, at))
+
+                        def excess(t):
+                            return float(sum(sum(watched[c][1](a, t)) for c in shares) - left)
+
+                        if not left:
+                            at = a
+                        elif excess(b) <= 0:
+                            at = b
+                        else:
+                            at = brentq(excess, a, b, xtol=1e-14)
+                        # A leg that starts at zero can still cause this crossing. A permanently
+                        # idle leg has no positive measure anywhere on the offending smooth span.
+                        contributors = [c for c, part in zip(shares, portions) if sum(part) > 0]
+                        crossings.append((at, store, side, contributors))
                         break
                     exact += fixed
                     measured += curved
-                updates[key] = exact, measured
+                windows[key] = exact, measured
             if not present:
                 self.watched().discard(store)
-        if first is None:
-            self.transferred.update(updates)
+        cutoff = min((item[0] for item in crossings), default=end)
+        for connection, (way, interval) in watched.items():
+            # Register one physical prefix even when both endpoints are frozen.
+            amount = sum(
+                sum(interval(a, b))
+                for a, b in pairwise([start, *getattr(way, 'breaks', lambda a, b: ())(start, cutoff), cutoff])
+            )
+            way.certify(connection, start, cutoff, amount)
+        if not crossings:
+            self.transferred.update(windows)
             return
-        at, store, side, name, amount = first
-        run.ways.cut(at)
-        run.now = at
-        connection = name.rsplit('.', 1)[0]
-        unit = self.plan.values[name].unit
-        shown = in_unit(self.plan.units, amount, unit)
-        way = 'out of' if side == 'outflow' else 'into'
-        self.writable(store, f'the flow {connection} carries {shown} {way} {store} at t = {at:g} h')
+        violations = tuple(
+            (store, side, c)
+            for at, store, side, contributors in crossings
+            if run.clock.within(at, cutoff)
+            for c in contributors
+        )
+        messages = []
+        for store, side, connection in violations[:5]:
+            rate = f'{connection}.actual_rate'
+            amount = in_unit(self.plan.units, run.value(rate, cutoff), self.plan.values[rate].unit)
+            direction = 'out of' if side == 'outflow' else 'into'
+            owner = self.frozen(store)
+            messages.append(
+                f'the flow {connection} carries {amount} {direction} {store} at t = {cutoff:g} h: '
+                f'{store} belongs to the finished occurrence {owner}, which is frozen'
+            )
+        if len(violations) > 5:
+            messages.append(f'{len(violations) - 5} more violations')
+        run.ways.cut(cutoff)
+        run.now = cutoff
+        problem = SimulationError('; '.join(messages))
+        problem.violations = violations
+        raise problem
 
     def waiting(self):
         """The occurrences that wait at a gate, in the order in which they were made."""

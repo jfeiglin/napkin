@@ -242,7 +242,7 @@ class Allocation:
             return requested, balanced_faces
         adjustable = ()
         if np.any(a @ requested - b > 1e-12):
-            self.check_policies(a, requested)
+            self.check_policies(a, b, requested)
             # Inputs not touching a constrained stock are physical supplies;
             # their rates cannot be reduced to make allocation appear feasible.
             adjustable = adjustable_rows
@@ -254,15 +254,18 @@ class Allocation:
             requested = self.linear_program(a, b, requested, adjustable, unconstrained)
         return requested, balanced_faces
 
-    def check_policies(self, a, requested):
+    def check_policies(self, a, b, requested):
         """Flows that compete for one bound row share one explicit allocation group. The answer
         depends only on the rows and on which flows request anything, so a check that passed is
         not repeated."""
         s = self.system
-        key = (id(a), (requested > 0).tobytes())
+        active = requested > 0
+        supply = (b > 0) | ((a < 0) & active).any(axis=1)
+        key = (id(a), active.tobytes(), supply.tobytes())
         if key in self._checked:
             return
-        for row in a[((a > 0) & (requested > 0)).sum(axis=1) > 1]:
+        # With no incoming resource, every competing delivery has the unique rate zero.
+        for row in a[supply & (((a > 0) & active).sum(axis=1) > 1)]:
             contenders = np.nonzero((row > 0) & (requested > 0))[0]
             if len(contenders) > 1:
                 policies = {s.flows[s.flow_ids[j]].allocation for j in contenders}
@@ -482,7 +485,7 @@ class Allocation:
                 continue
             entries = rows[r]
             gid = s.flows[s.flow_ids[units[entries[0]][0]]].allocation
-            priority = len(entries) > 1 and s.groups[gid].policy == 'priority'
+            priority = len(entries) > 1 and gid in s.groups and s.groups[gid].policy == 'priority'
             if priority:
                 rank = [s.flow_index[name] for name in s.groups[gid].order]
                 entries = sorted(entries, key=lambda k: rank.index(units[k][0]))

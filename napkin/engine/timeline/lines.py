@@ -343,7 +343,7 @@ class Lines(Way):
 
     # ---- the interface of a way (`ways.py`) ------------------------------------------------------
 
-    def transferred(self, name, t):
+    def _transferred(self, name, t):
         if t > self.run.now:
             raise ValueError('transfer requested outside the accepted interval')
         row = self.leg_rows[name]

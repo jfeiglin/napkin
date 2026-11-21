@@ -308,9 +308,10 @@ class Ways:
         the order of the sets' ids (a set of ids has no order of its own)."""
         values = {}
         for key in sorted(ids):
-            connected, instance = self.sets.pop(key)
+            connected, instance = self.sets[key]
             for store in connected.stores:
-                values[store] = instance.level_at(store, t)
+                values[store] = self.run.stock_state.release_stock(store, t)
+            del self.sets[key]
             instance.retire(key)
             self.sampled.pop(key, None)
             self.moving_solvers.pop(key, None)

@@ -56,6 +56,7 @@ from scipy.optimize._highspy import _core as highs
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...program.refs import Expr, Path
+from ..continuous.transfers import ClockLeg
 from ..errors import SimulationError
 from ..solve.kept import Kept
 from ..solve.solver import Budget, Solver
@@ -185,6 +186,10 @@ def at_stop(run):
     if not run.arriving or run.saved_arrival is not None:
         return run.recorder, run.saved_arrival
     projected = copy(run)
+    projected.stock_state = copy(run.stock_state)
+    projected.stock_state.run = projected
+    projected.stock_state.balances = dict(run.stock_state.balances)
+    projected.stock_state.ends = dict(run.stock_state.ends)
     projected.recorder = recorder = copy(run.recorder)
     recorder.run = projected
     recorder._private = set()
@@ -263,7 +268,8 @@ def save(run, recorder, arrival):
                 ('frozen', _pairs(run.frozen)),
                 ('changes', tuple((name, tuple(times)) for name, times in run.changes.items())),
                 ('written', _pairs(run.written)),
-                ('move_roundoff', _pairs(run.move_roundoff)),
+                ('stocks', _pairs(run.stock_state.balances)),
+                ('incoming_ends', _pairs(run.stock_state.ends)),
                 ('published', _pairs(run.published)),
                 ('arrival', arrival),
                 ('contacts', run.contacts),
@@ -438,7 +444,19 @@ def _instance(instance):
             (
                 'clock_amounts',
                 tuple(
-                    (row, leg.mode, leg.start, leg.closed, leg.origin) for row, leg in amounts.clocks.items()
+                    (
+                        row,
+                        leg.mode,
+                        leg.start,
+                        leg.closed,
+                        leg.origin,
+                        leg.polynomial,
+                        leg.source,
+                        leg.sink,
+                        leg.feeds_source,
+                        leg.drains_sink,
+                    )
+                    for row, leg in amounts.clocks.items()
                 ),
             ),
             (
@@ -454,6 +472,10 @@ def _instance(instance):
                 ),
             ),
         )
+    fields += (
+        ('certified', _pairs(getattr(instance, 'certified', {}))),
+        ('adjustments', _pairs(getattr(instance, 'adjustments', {}))),
+    )
     return kind, keys, fields
 
 
@@ -705,6 +727,7 @@ def restore(run, data):
 
 def _run(run, found):
     run.now, run.limit = found['now'], found['limit']
+    run.accepted = run.now
     run.env = {'t': run.now, **dict(found['env'])}
     run.bounds = {name: tuple(bounds) for name, bounds in found['bounds']}
     run.scales, run.sizes = dict(found['scales']), dict(found['sizes'])
@@ -714,7 +737,8 @@ def _run(run, found):
     run.frozen = dict(found['frozen'])
     run.changes = {name: list(times) for name, times in found['changes']}
     run.written = dict(found['written'])
-    run.move_roundoff = dict(found.get('move_roundoff', ()))
+    run.stock_state.balances = dict(found['stocks'])
+    run.stock_state.ends = dict(found['incoming_ends'])
     run.published = dict(found['published'])
     run.saved_arrival = found['arrival']
     if run.saved_arrival is not None:
@@ -814,6 +838,10 @@ def _restore_ways(run, found):
 
 def _made(run, kind, keys, data):
     instance = _made_fields(run, kind, keys, data)
+    if data.get('adjustments'):
+        instance.adjustments = dict(data['adjustments'])
+    if data.get('certified'):
+        instance.certified = dict(data['certified'])
     if 'closed_amounts' in data:
         rows = instance.row if kind == 'family' else instance.leg_rows
         for name, t, amount in data['closed_amounts']:
@@ -821,9 +849,11 @@ def _made(run, kind, keys, data):
                 instance.amounts.restore(rows[name], t, amount)
     if 'accepted_amounts' in data:
         amounts = instance.amounts
-        for row, mode, start, closed, origin in data.get('clock_amounts', ()):
-            leg = amounts.clocks[row]
+        amounts.clocks = {}
+        for row, mode, start, closed, origin, polynomial, *ends in data['clock_amounts']:
+            leg = amounts.clocks[row] = ClockLeg(tuple(polynomial), start, *ends)
             leg.mode, leg.start, leg.closed, leg.origin = mode, start, closed, origin
+        amounts.all_clock = bool(amounts.clocks) and len(amounts.clocks) == len(instance.leg_rows)
         amounts.through, total, remainder = data['accepted_amounts']
         if amounts.single is not None:
             amounts.total, amounts.remainder = total, remainder

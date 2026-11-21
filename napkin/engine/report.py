@@ -159,7 +159,8 @@ class NearTie:
 class Report:
     """The report of one run: its times, its values in the order of the paths, its near-ties, the
     time to which the record reaches, why it stopped there (None for a run to its horizon), and each
-    record that a trail cites, (name, kind, text)."""
+    record that a trail cites, (name, kind, text). A frozen-stock failure also supplies every
+    contributing (stock, direction, leg) at the first violation, in diagnostic order."""
 
     times: tuple[float, ...]
     values: tuple[Reported, ...]
@@ -167,6 +168,7 @@ class Report:
     end: float
     stopped: str | None = None
     records: tuple[tuple[str, str, str], ...] = ()
+    violations: tuple[tuple[str, str, str], ...] = ()
 
 
 def report(record, program, configuration, paths, times, lags=None, model=None, options=(), *, table=None):
@@ -222,7 +224,10 @@ def report(record, program, configuration, paths, times, lags=None, model=None, 
             read_at = list(times)
         title = _title(model, key.owner)
         reported.append(Reported(path, unit, label, values, lag, note, trail.of(key, read_at), title))
-    return Report(times, tuple(reported), _near_ties(record, model), end, stopped, trail.records())
+    violations = record.failure.detail('violations') if record.failure is not None else None
+    return Report(
+        times, tuple(reported), _near_ties(record, model), end, stopped, trail.records(), violations or ()
+    )
 
 
 def _kind(program, proofs, key):
