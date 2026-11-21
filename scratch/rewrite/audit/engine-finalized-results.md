@@ -6,6 +6,21 @@ The audited baseline and the verified remote Claude tip at branching were both `
 
 [Responsibilities and workload specifications](engine-finalized-simple.md) · [Accounting write sites](accounting-write-sites.md) · [Changed expectations](comparison-expectations-0.2.3.md) · [Paired timing commands](port-benchmark.md)
 
+## Release candidate checks
+
+Porting is on hold. Candidate `e027caa` passed all 31 audit cases, 242 CLI/artifact tests, 24 independent reservoir checks, the paired piano and reservoir migrations and both checker rejection controls. The audit report includes each case and the underlying migration readings. [Public checks and migration data](engine-finalized-public-checks.md)
+
+The 30,000-pipe candidate completed its full record in 24.019215 s and peaked at 1,511.9 MiB. All twelve physical readings at 6, 30 and 48 h matched the analytical values, with 330,012 histories and 933,955 pieces. The 30,000-pipe baseline was stopped. Its ratio is unavailable.
+
+| Candidate | Declared solver baseline / candidate run-and-record pairs, seconds | Median run-and-record ratio | Median build + plan + run ratio | Baseline / candidate peak MiB |
+|---|---|---:|---:|---:|
+| `e027caa` | 10.505619 / 10.936673, 9.815588 / 10.600330, 9.662884 / 10.206901 | 1.056300 | 1.059701 | 742.7 / 752.5 |
+| `08d3353` | 10.051769 / 11.229520, 9.433569 / 10.012055, 9.482748 / 9.926159 | 1.061322 | 1.054384 | 743.5 / 758.0 |
+
+Both candidates exceeded the 1.05 solver limit and produced the expected power readings. The long event guard on `e027caa` was stopped once that candidate failed the shorter gate.
+
+The four-worker regular run at `e027caa` passed 11,190 tests. One macOS skip requires Linux `/proc`. The remaining test, declared-solver seed 96, repeatedly settled at 8/3 h until its worker was stopped. The 300 scheduled port comparisons passed with zero truncated pairs. A separate bounded check of all 1,000 random solver cases found the same repeated contact in seeds 188 and 853 and a rejected placement in seed 875. The development run does not satisfy the 180-second full-suite gate.
+
 ## Allocation and evidence
 
 Each row gives the actual rate in L/h at 0.49 and 0.51 h, then the delivered volume in L at 1 and 2 h. Both valve forms were compared with the reference interpreter.
