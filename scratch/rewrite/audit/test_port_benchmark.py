@@ -9,7 +9,8 @@ import pytest
 from scratch.rewrite.audit import port_benchmark as bench
 
 
-def test_calibration_uses_both_engines_and_keeps_one_repeat_count(tmp_path, monkeypatch):
+@pytest.mark.parametrize('row', ['held-pipes', 'component-tanks', 'sparse-compartment-tanks'])
+def test_calibration_uses_both_engines_and_keeps_one_repeat_count(tmp_path, monkeypatch, row):
     samples = []
     monkeypatch.setattr(bench, 'identity', lambda path: path.name)
 
@@ -22,21 +23,24 @@ def test_calibration_uses_both_engines_and_keeps_one_repeat_count(tmp_path, monk
         Namespace(
             out=tmp_path,
             phase='final',
-            rows=['held-pipes'],
+            rows=[row],
+            worker_script=Path(bench.__file__),
             mode='timing',
             revision=['B=B', 'F=F'],
             harness=Path(bench.__file__).resolve().parents[3],
         )
     )
+    schedule = bench.read(tmp_path / 'final' / f'{row}.schedule.json')
+    assert schedule['worker_sha256'] == bench.file_digest(Path(bench.__file__))
     assert samples == [
-        ('held-pipes.B.calibration.json', 1),
-        ('held-pipes.F.calibration.json', 1),
-        ('held-pipes.1.B.json', 4),
-        ('held-pipes.1.F.json', 4),
-        ('held-pipes.2.F.json', 4),
-        ('held-pipes.2.B.json', 4),
-        ('held-pipes.3.B.json', 4),
-        ('held-pipes.3.F.json', 4),
+        (f'{row}.B.calibration.json', 1),
+        (f'{row}.F.calibration.json', 1),
+        (f'{row}.1.B.json', 4),
+        (f'{row}.1.F.json', 4),
+        (f'{row}.2.F.json', 4),
+        (f'{row}.2.B.json', 4),
+        (f'{row}.3.B.json', 4),
+        (f'{row}.3.F.json', 4),
     ]
 
 

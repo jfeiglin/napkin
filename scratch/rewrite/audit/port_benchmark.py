@@ -410,7 +410,7 @@ def take(path, args, row, tag, root, sha, repeat, diagnostic=False):
     cmd = [
         sys.executable,
         '-B',
-        __file__,
+        str(getattr(args, 'worker_script', None) or __file__),
         'worker',
         '--root',
         str(root),
@@ -470,6 +470,8 @@ def campaign(args):
             raise ValueError(f'invalid/duplicate revision {tag}')
         revisions[tag] = root, identity(root)
     names = [tag for tag in ('B', 'A', 'P', 'F') if tag in revisions]
+    if getattr(args, 'worker_script', None):
+        args.worker_script = Path(args.worker_script).resolve(strict=True)
     rows = args.rows or PHASES[args.phase]
     if any(r not in PHASES[args.phase] for r in rows):
         raise ValueError(f'{rows} do not belong to {args.phase}')
@@ -494,6 +496,8 @@ def campaign(args):
                     'python': sys.version,
                     'blas_env': THREAD_ENV,
                 }
+                if getattr(args, 'worker_script', None):
+                    schedule['worker_sha256'] = file_digest(args.worker_script)
                 if path.exists() and read(path) != schedule:
                     raise ValueError(f'schedule or harness changed; use another output folder for {row}')
                 if not path.exists():
@@ -512,8 +516,8 @@ def campaign(args):
                 continue
             repeat = 1
             if row.endswith('tanks') or (row == 'held-pipes' and args.phase == 'final'):
-                calibration_tags = names if row == 'held-pipes' else ['B']
-                if 'B' not in revisions or (row == 'held-pipes' and names != ['B', 'F']):
+                calibration_tags = names if args.phase == 'final' else ['B']
+                if 'B' not in revisions or (args.phase == 'final' and names != ['B', 'F']):
                     raise ValueError('calibrated timings require their pinned baseline and paired engines')
                 for tag in calibration_tags:
                     pilot = take(folder / f'{row}.{tag}.calibration.json', args, row, tag, *revisions[tag], 1)
@@ -611,9 +615,10 @@ def summary(args):
             if row == 'held-pipes':
                 for sample in [*left.values(), *right.values()]:
                     check_held_sample(sample, args.phase)
+            if row == 'held-pipes' or row.endswith('-tanks'):
                 repeats = {sample['repeat'] for sample in [*left.values(), *right.values()]}
                 if len(repeats) != 1:
-                    raise ValueError('held pipes require one shared repeat count across all three pairs')
+                    raise ValueError(f'{row} requires one shared repeat count across all pairs')
             for i, candidate in left.items():
                 lhs, rhs = candidate.get('observations', {}), right[i].get('observations', {})
                 if lhs.keys() != rhs.keys() or any(
@@ -682,6 +687,9 @@ def main():
         if action == 'campaign':
             cmd.add_argument('--revision', action='append', required=True, metavar='B=PATH')
             cmd.add_argument('--mode', choices=('timing', 'diagnostics'), default='timing')
+            cmd.add_argument(
+                '--worker-script', type=Path, help='launch all workers using this frozen benchmark driver'
+            )
         if action == 'summary':
             cmd.add_argument(
                 '--held-baseline-cutoff-seconds',
