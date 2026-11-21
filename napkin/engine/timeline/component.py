@@ -55,7 +55,7 @@ from ...core.errors import ExpressionError
 from ...expressions import names_in
 from ..allocation import Allocation, StockFaces
 from ..continuous import dense
-from ..continuous.bounds import check_bounds, check_contact_error, refresh_bounds
+from ..continuous.bounds import check_bounds, refresh_bounds
 from ..continuous.fields import Field
 from ..continuous.integrate import flow_switches, starting_sides, switching_surfaces
 from ..continuous.kernels import Affine, MatrixExponential
@@ -367,13 +367,12 @@ class Component:
         found = advance(s, state, field, self, self.context, horizon)
         first = state.y.copy()
         if found.rounded:
-            last = check_contact_error(s, start, first.copy(), found.rounded)
-            check_bounds(s, last)
+            last = first.copy()
+            check_bounds(s, last, at=start, targets=found.rounded)
             reached = tuple(sorted(found.rounded.items()))
             return Segment(start, start, None, first, last, reached=reached)
         solution, numerical = found.solution, found.numerical
         last = np.array(solution(found.end) if numerical is None else numerical.y[:, -1], dtype=float)
-        check_contact_error(s, found.end, last, found.targets, solution)
         if numerical is not None:
             if found.end <= start:
                 raise SimulationError('Integration made no progress at a boundary')
@@ -381,7 +380,7 @@ class Component:
             # outside its bounds.
             for k in range(len(numerical.t) - 1):
                 check_bounds(s, numerical.y[:, k])
-        check_bounds(s, last)
+        check_bounds(s, last, at=found.end, targets=found.targets, solution=solution)
         reached = tuple(sorted((found.targets or {}).items()))
         return Segment(start, found.end, solution, first, last, numerical, reached)
 

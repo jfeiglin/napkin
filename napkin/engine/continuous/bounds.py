@@ -52,13 +52,24 @@ def check_values(system, env):
     return lambda source: evaluate(source, env, s.units)
 
 
-def check_bounds(system, state):
-    """Every quantity of a state is a number inside its bounds, with their slack."""
+def check_bounds(system, state, *, at=None, targets=None, solution=None):
+    """Check the recorded trajectory without changing it. A located target may
+    bracket a face between adjacent representable times even beyond its level tolerance."""
     s = system
     if np.any(~np.isfinite(state)):
         raise SimulationError('Nonfinite continuous state')
     low, high = state_limits(s)
     outside = (state < low) | (state > high)
+    for i, target in (targets or {}).items():
+        slack = s.ledger_slack[i] if target == s.lower[i] else s.atol[i]
+        if abs(float(target - state[i])) <= slack:
+            continue
+        if solution is not None:
+            before, after = sorted(float(solution(np.nextafter(at, side))[i]) for side in (-np.inf, np.inf))
+            if before <= state[i] <= after and before <= target <= after:
+                outside[i] = False
+                continue
+        raise SimulationError(f'Material state-bound violation for {s.state_ids[i]}')
     if outside.any():
         violations = [s.state_ids[i] for i in np.flatnonzero(outside)]
         raise SimulationError(f'State bounds violated: {violations}')
@@ -99,31 +110,6 @@ def check_conditions(system, env, at):
                     }
                 ],
             )
-
-
-def check_contact_error(system, at, state, exact_targets=None, solution=None):
-    """Check a locator’s numerical error without changing the trajectory or any transfer."""
-    s = system
-    lower, upper, atol = s.lower, s.upper, s.atol
-    for i, name in enumerate(s.state_ids):
-        target = (exact_targets or {}).get(i)
-        if target is None:
-            target = lower[i] if state[i] < lower[i] else upper[i] if state[i] > upper[i] else None
-        if target is None:
-            continue
-        delta = float(target - state[i])
-        if delta == 0:
-            continue
-        limit = s.ledger_slack[i] if target == lower[i] else atol[i]
-        if abs(delta) > limit:
-            # A proved crossing can fall between two adjacent floating-point timestamps.
-            # The same incoming curve must bracket both the bound and this reported level.
-            if solution is None or i not in (exact_targets or {}):
-                raise SimulationError(f'Material state-bound violation for {name}')
-            low, high = sorted(float(solution(np.nextafter(at, side))[i]) for side in (-np.inf, np.inf))
-            if not (low <= state[i] <= high and low <= target <= high):
-                raise SimulationError(f'Material state-bound violation for {name}')
-    return state
 
 
 def refresh_bounds(system, run, field):
