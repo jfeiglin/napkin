@@ -831,7 +831,7 @@ class Proofs:
             if isinstance(statement, p.Assign):
                 if isinstance(statement.value, Formula):
                     for key, _ in self._ends(statement.target, at):
-                        found.defines.setdefault(key, []).append((statement.origin, event))
+                        found.defines.setdefault(key, []).append((statement.origin, event, stage))
                 elif not setup and not isinstance(
                     statement.value, (p.Priority, p.Proportional, Distribution, Path)
                 ):
@@ -976,7 +976,7 @@ class Proofs:
     def formula_init(self, point):
         """The expression of a formula of one member, or _Fall when a stage can give it another."""
         _, owner, part, at = point
-        for origin, event in self.index().defines.get((owner, part.name), ()):
+        for origin, event, _ in self.index().defines.get((owner, part.name), ()):
             if self.blocked(event) is None:
                 raise _Fall(f'{origin} can give {part.origin} a new definition')
         own = at.member.value(part.name) if at.member is not None and at.event is None else None
@@ -1337,6 +1337,7 @@ class Proofs:
             expression(value.lower, at)
             expression(value.upper, at)
             certain(writer.part for writer in index.writers.get((owner, value.name), ()))
+            certain(stage for _, _, stage in index.defines.get((owner, value.name), ()))
         elif part.kind == 'flow' and part in index.flows:
             writer = index.flows[part]
             expression(writer.value.request, writer.at)
@@ -1430,7 +1431,7 @@ class Proofs:
 @dataclass(eq=False)
 class _Index:
     """What the proofs find once in a program: the writers of each stored number by its key; the
-    definitions that stages and the setup give each formula, as (origin, event); the parts that
+    definitions that stages and the setup give each formula, as (origin, event, stage); the parts that
     start each event on each receiver; the stages that assign a setting of each flow (its request or
     its capacity); and each flow, stage, trigger and solver by its part."""
 

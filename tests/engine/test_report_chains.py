@@ -18,12 +18,14 @@ what the chain counts, nothing changes the nodes' litres, and the stage adds a f
 from __future__ import annotations
 
 import sys
+from collections import Counter
 from contextlib import contextmanager
 
 import pytest
 
 from napkin.engine.report import Lag, report
 from napkin.engine.timeline import Plan, Run, read
+from napkin.engine.timeline.record import Reader
 from napkin.program.build import (
     SOURCE,
     Builder,
@@ -168,6 +170,25 @@ def keyed(n):
     for k in range(1, n):
         b.member(node, f'n{k}', v=formula(node.instances.at(k - 1).v + 1))
     return b.finish(), Key(f'n{n - 1}', ('v',))
+
+
+def test_child_evidence_is_consulted_a_bounded_number_of_times_per_name_and_time(monkeypatch):
+    program, end = children(64)
+    configuration = Configuration(Request(2))
+    record = Run(Plan.of(program, configuration)).run()
+    calls = Counter()
+    original = Reader.evidence_pair
+
+    def count(reader, name, at):
+        calls[name, at] += 1
+        return original(reader, name, at)
+
+    monkeypatch.setattr(Reader, 'evidence_pair', count)
+    path = str(end)
+    (answer,) = report(record, program, configuration, [path], [2], {path: LAG}).values
+    assert answer.values == (pytest.approx(64),)
+    assert len(answer.trail) == 128
+    assert sum(calls.values()) <= 4 * len(calls)
 
 
 @pytest.mark.parametrize('narrow', [False, True], ids=['everything', 'the end'])

@@ -60,6 +60,7 @@ report claims nothing that the record does not show.
 from __future__ import annotations
 
 import math
+from bisect import bisect_right
 from dataclasses import dataclass
 from decimal import Decimal
 from itertools import pairwise
@@ -393,6 +394,67 @@ def _near_ties(record, model=None):
     return tuple(found)
 
 
+def _merged_ranges(ranges):
+    """Combine overlapping or adjacent inclusive index ranges."""
+    merged = []
+    for lo, hi in sorted(ranges):
+        if merged and lo <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(hi, merged[-1][1]))
+        else:
+            merged.append((lo, hi))
+    return merged
+
+
+class _Consultations:
+    """Index the name/time pairs actually reached by this report value's evaluations.
+
+    Number each read after its dependencies. A chain or an unshared subtree occupies one
+    consecutive range. Shared dependencies may add other ranges. Matching a proof edge
+    then tests only the occurrences and times of the names that edge could mean.
+    """
+
+    def __init__(self, reader, roots):
+        self.names = {}
+        self.below = {}
+        numbers, visiting = {}, set()
+        pending = [(pair, None) for pair in roots]
+        while pending:
+            pair, children = pending.pop()
+            if pair in numbers:
+                continue
+            if children is None:
+                if pair in visiting:
+                    # An unavailable cyclic formula can leave an incomplete consultation
+                    # trace. The original visited-set walk handles that exceptional graph.
+                    self.below = None
+                    return
+                visiting.add(pair)
+                children = tuple(reader.evidence_pair(name, pair[1]) for name in reader.reads(*pair))
+                pending.append((pair, children))
+                pending.extend((child, None) for child in children if child not in numbers)
+                continue
+            visiting.remove(pair)
+            spans = []
+            for child in children:
+                spans.extend(self.below[child])
+                spans.append((numbers[child], numbers[child]))
+            self.below[pair] = _merged_ranges(spans)
+            number = numbers[pair] = len(numbers)
+            self.names.setdefault(pair[0], []).append((number, pair))
+
+    def span(self, roots):
+        return _merged_ranges(span for root in roots for span in self.below[root])
+
+    def hits(self, names, spans):
+        hits = set()
+        for name in names:
+            for number, pair in self.names[name]:
+                index = bisect_right(spans, number, key=lambda span: span[0]) - 1
+                if index >= 0 and number <= spans[index][1]:
+                    hits.add(pair)
+        return hits
+
+
 class _Trail:
     """The evidence trails of the values of one record (see the module). `reader` read the values,
     and keeps what each evaluation read."""
@@ -404,8 +466,15 @@ class _Trail:
         self._ran = {}  # what each flow's settings read in the run, as the record shows it (`ran`)
         self.cited = {}
         self.entries = {}
-        for entry in record.trace:
+        self.definers, self.finished = {}, {}
+        for index, entry in enumerate(record.trace):
             self.entries.setdefault((entry.kind, entry.part), []).append(entry)
+            position = (entry.t, index)
+            if entry.kind == 'finish':
+                self.finished[entry.owner] = position
+            elif entry.kind in ('commit', 'fire'):
+                for name, _ in entry.detail('defines') or ():
+                    self.definers.setdefault(name, []).append((position, entry))
         # The histories of the actual rates of the flows that the record holds, by their owner
         # (`tank.receive#` for every occurrence of an event on a receiver) and their steps.
         self.rates = {}
@@ -471,6 +540,7 @@ class _Trail:
             # was evaluated): it read nothing through it.
             why = 'it was not read at the reported times: the report holds no value of the value there'
             return {found.start}, maybe, dict.fromkeys(found.edges.get(found.start, ()), why), applied
+        consulted = _Consultations(self.reader, pairs)
         another = 'it was not read at the reported times: the evaluation took another branch'
         pending = [(found.start, True, pairs)]
         while pending:
@@ -495,15 +565,25 @@ class _Trail:
                     else:
                         unread[case] = another
             elif inner:
-                read = self.read(inner)
-                names = {name for name, _ in read}
+                if consulted.below is None:
+                    read = self.read(inner)
+                    names = {name for name, _ in read}
+                else:
+                    spans = consulted.span(inner)
+                    names = consulted.names
                 for other in edges:
-                    hit = self.names_of(other, names)
-                    if hit is None:
-                        pending.append((other, False, frozenset()))
-                    elif hit:
-                        # What the part read, at the times at which this value's evaluations read it.
-                        again = frozenset(pair for pair in read if pair[0] in hit and pair in evaluated)
+                    candidates = self.names_of(other, names)
+                    if candidates is None:
+                        written = self.defined_by(other, inner)
+                        pending.append((other, certain and bool(written), written))
+                        continue
+                    hits = (
+                        {pair for pair in read if pair[0] in candidates}
+                        if consulted.below is None
+                        else consulted.hits(candidates, spans)
+                    )
+                    if hits:
+                        again = frozenset(pair for pair in hits if pair in evaluated)
                         pending.append((other, certain, again))
                     else:
                         unread[other] = another
@@ -524,6 +604,27 @@ class _Trail:
                         )
         maybe -= sure
         return sure, maybe, {part: why for part, why in unread.items() if part not in sure | maybe}, applied
+
+    def defined_by(self, part, evaluations):
+        """Evaluations whose active formula definition this stage or trigger committed.
+
+        A finished occurrence supplies the trace position of its last evaluation. Later
+        rounds at that same time can replace a formula for live readers.
+        """
+        if part.kind not in ('stage', 'trigger') or not self.definers:
+            return frozenset()
+        found = []
+        for name, at in evaluations:
+            history = self.definers.get(name)
+            if history is None:
+                continue
+            through = self.finished[at] if isinstance(at, str) else (at, len(self.record.trace))
+            index = bisect_right(history, through, key=lambda item: item[0]) - 1
+            if index >= 0:
+                entry = history[index][1]
+                if entry.part == part.origin and _runs(entry, part):
+                    found.append((name, at))
+        return frozenset(found)
 
     def read(self, pairs):
         """Each (engine name, time) that the reader read in evaluating `pairs`, each an (engine name,
@@ -616,7 +717,8 @@ class _Trail:
             name = part.origin.rsplit('.', 1)[-1]
             if owner.endswith('#'):
                 return {each for each in read if _field(each, owner) == name}
-            return {each for each in read if each == (f'{owner}.{name}' if owner else name)}
+            concrete = f'{owner}.{name}' if owner else name
+            return {concrete} if concrete in read else set()
         if part.kind in ('flow', 'event', 'solver'):
             template = self.program.member(owner)[0]
             steps = part.origin[len(template.name) + 1 :].split('.')
