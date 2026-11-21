@@ -297,6 +297,7 @@ class Ev:
             contact_reads=None,
             strict=False,
             positive=True,
+            rearming=False,
             busy=[],
             may_draw=may_draw,
             defer=defer,
@@ -423,8 +424,11 @@ class Ev:
                 self.run.pull(fraction)
         elif self.run.settling:
             self.run.pull(var)
-        if self.mode == 'germ' and var in self.view.rates:
-            return plain(self.view.rates[var])
+        if var in self.view.rates:
+            if self.shared.contact_reads is not None and not self.view.rates[var].constant:
+                self.shared.contact_reads.add(var)
+            if self.mode == 'germ':
+                return plain(self.view.rates[var])
         if var in self.view.results:
             return self.view.results[var]
         if var[0] in ('rate', 'frac'):
@@ -807,6 +811,14 @@ class Ev:
                 )
         if isinstance(d, Poly):
             s = self.sign(d, texts)  # locate the physical root and use its outgoing sign
+            if self.shared.rearming and d.c[0]:
+                # At an independent moment strictly inside the band, the comparison
+                # stays equal immediately afterwards. Its nonzero physical gap
+                # alone cannot rearm a trigger before the actual crossing.
+                a = x.c[0] if isinstance(x, Poly) else x
+                b = y.c[0] if isinstance(y, Poly) else y
+                if abs(d.c[0]) < self.band(*texts, a, b):
+                    s = 0
         else:
             a = x(0) if isinstance(x, Poly) else x
             b = y(0) if isinstance(y, Poly) else y

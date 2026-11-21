@@ -612,7 +612,7 @@ class Run:
                 if root < delta:
                     return False
                 continue
-            if len(cells) == 1 and 't' not in cells:
+            if len(cells) == 1 and isinstance(next(iter(cells)), Cell):
                 (cell,) = cells
                 level = at_root.cells[cell]
                 targets.setdefault(cell, set()).add(level)
@@ -1529,9 +1529,11 @@ class Run:
         )
 
     def _after(self, condition, scope):
-        """The truth of a condition just after this instant."""
+        """The outgoing truth of a default reset, including its comparison band."""
         network.motion(self)
-        return Ev(self, self.view, scope, mode='germ').truth(condition)
+        ev = Ev(self, self.view, scope, mode='germ')
+        ev.shared.rearming = True
+        return ev.truth(condition)
 
     def _fire(self, trig):
         """One firing: its captures, its body, then a `reset after` duration, captured now. The

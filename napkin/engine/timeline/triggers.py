@@ -621,9 +621,10 @@ class Triggers:
         of a physical switch. Certify its crossing in the incoming time band before
         treating the comparison as a mere near approach."""
         run = self.run
-        if not moving <= run.plan.moving:
+        stocks = moving if 't' not in moving else moving - {'t'}
+        if not stocks or not stocks <= run.plan.moving:
             return None
-        ways = {name: run.ways.instance_of(name) for name in moving}
+        ways = {name: run.ways.instance_of(name) for name in stocks}
         through = run.clock.apart(end)
         if not any(
             end in getattr(way, 'cap_turns', ()) or any(way.contacts_at(end, through))
@@ -675,11 +676,21 @@ class Triggers:
         Affine aliases give the same correction as the underlying store. For several stores the
         only admissible state is the one their flows reached on the incoming trajectory.
         With no destination dict, test whether this crossing can join a different time."""
-        moving = self.moving_reads(left, right)
-        if not moving or not moving <= self.run.plan.moving:
+        # Locating a rate can use its defining stock or clock expression. Reading
+        # the resulting rate does not give a trigger ownership of that inventory.
+        moving = self.moving_reads(left, right, through_rates=False)
+        stocks = moving if moving <= self.plan.moving else moving & self.plan.moving
+        if not stocks:
             return True
         tx = Tx('')
-        tx.writes = {name: self.run.ways.instance_of(name).incoming_level(name, t) for name in moving}
+        tx.writes = {name: self.run.ways.instance_of(name).incoming_level(name, t) for name in stocks}
+        if len(moving) > 1 and levels is None and located != t:
+            # Two fast stocks can nearly cancel in a comparison. A clock or
+            # another moving operand cannot widen either stock's own band.
+            for name, actual in tx.writes.items():
+                target = self.run.ways.instance_of(name).incoming_level(name, located)
+                if abs(actual - target) > self.run.comparison_band(name, actual, target):
+                    return False
 
         def side(node):
             return lazily(node, lambda name: self.run.value(name, t, tx), self.plan.units, t)

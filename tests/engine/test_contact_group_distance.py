@@ -1,6 +1,7 @@
 """A clock can group a located stock contact only while that stock is also within its own band."""
 
 from dataclasses import replace
+from fractions import Fraction
 
 import pytest
 
@@ -16,6 +17,14 @@ CEILING = '(2 - t / (1 h)) * (1 L/h)'
 # At 1 L/h that shifts a located time by the same number of hours. This
 # tolerance keeps the checks strictly on their own side of the 5e-9 h gap.
 KINK_ERROR = 1.5e-9
+METHODS = {
+    'family': 'Family',
+    'lines': 'Lines',
+    'component': 'ComponentWay',
+    'sparse': 'Sparse',
+    'declared': 'DeclaredWay',
+    'moving_declared': 'MovingDeclared',
+}
 
 
 def gauge(method, target, horizon, *, mixed=False, empty=False, empty_at='0.5', ceiling='pipe', close=False):
@@ -77,19 +86,24 @@ def force(method, monkeypatch):
 
     def groups(plan, *args, **kwargs):
         found = connect(plan, *args, **kwargs)
-        if method == 'moving_declared':
-            return [replace(group, moves=True) if group.way == 'declared' else group for group in found]
-        return [replace(group, way=method) for group in found]
+        if method in ('declared', 'moving_declared'):
+            return [
+                replace(group, moves=method == 'moving_declared') if group.way == 'declared' else group
+                for group in found
+            ]
+        return [replace(group, way=method) if group.stores else group for group in found]
 
     monkeypatch.setattr(Plan, 'connect', groups)
 
 
-def results(case, restore, *, breakpoint='yard.clock.step[0]', stop_at=1):
+def results(case, restore, *, breakpoint='yard.clock.step[0]', stop_at=1, method=None):
     def plan():
         return Plan.of(case.program, case.configuration)
 
     run = Run(plan(), (Breakpoint(breakpoint),) if restore else ())
     record = run.run()
+    if method:
+        assert type(run.ways.instance_of('yard.fill')).__name__ == METHODS[method]
     if restore:
         assert isinstance(record, Checkpoint) and record.stop.t == stop_at
         data = dumps(record)
@@ -263,3 +277,140 @@ def test_a_stage_that_closes_the_pipe_cancels_only_its_later_contact(method, mon
             assert times(record, 'watch') == pytest.approx(expected, abs=KINK_ERROR, rel=0)
             (seen,) = read(record, case.program, ['yard.seen'], [1.1])
             assert seen.values == pytest.approx([1], abs=KINK_ERROR, rel=0)
+
+
+def mixed_model(source, method):
+    if method in ('declared', 'moving_declared'):
+        source += """owner:
+    share = solver:
+        inputs:
+            pipe = yard.fill
+        solve_for:
+            pipe.actual_rate
+"""
+    return compile_text(source, UNITS)
+
+
+@pytest.mark.parametrize('method', METHODS)
+@pytest.mark.parametrize(
+    'threshold,second_stock,reset,expected',
+    [
+        ('0.999999995', False, '', '0.999999995'),
+        ('1.000000005', False, '', '1.000000005'),
+        ('0.9999999999', False, '', '1'),
+        ('0.999999995', True, '', '0.999999995'),
+        ('1.000000005', True, '', '1'),
+        ('1.000000005', True, 'reset when false', '1'),
+    ],
+    ids=['clock-early', 'clock-late', 'clock-in-band', 'stock-early', 'stock-banded-visit', 'stock-once'],
+)
+def test_each_moving_stock_qualifies_at_a_nearby_stage(
+    method, threshold, second_stock, reset, expected, monkeypatch
+):
+    from tests.reference.from_program import run_of
+
+    # In the two-stock case the gap changes at only 1 L/h, yet each stock
+    # travels about 5e-6 L across the time gap, outside its own 1e-6 L band.
+    rate = 1000 if second_stock else 2
+    rhs = 'this.second' if second_stock else 't * (1 L/h)'
+    reset_clause = f'\n            {reset}' if reset else ''
+    source = f"""scenario "A stock crossing another moving operand"
+    horizon 1.1 h
+yard:
+    stock: L = 0 L scale 1 L
+    marked: h = -1 h
+    seen: h = -1 h
+    flow fill: SOURCE -> this.stock
+        request = {rate} L/h
+        capacity = {rate} L/h
+    watch = event():
+        when this.stock >= {threshold} L + {rhs}:
+            this.watch.start(){reset_clause}
+        after 0 h:
+            this.marked = t
+    clock = event():
+        after 1 h:
+            this.seen = this.marked
+"""
+    if second_stock:
+        source += """    second: L = 0 L scale 1 L
+    flow other: SOURCE -> this.second
+        request = 999 L/h
+        capacity = 999 L/h
+"""
+    source += 'yard.clock.start()\n'
+    force(method, monkeypatch)
+    case = mixed_model(source, method)
+    empty = mixed_model(
+        source.replace(
+            'yard.clock.start()',
+            """    extra = event():
+        after 0.5 h
+yard.extra.start()
+yard.clock.start()""",
+        ),
+        method,
+    )
+    for cut, resume in ((False, False), (True, False), (True, True)):
+        chosen = empty if cut else case
+        record = results(chosen, resume, method=method)
+        assert times(record, 'watch') == pytest.approx([float(expected)], rel=0, abs=3e-12)
+        seen, stock = read(record, chosen.program, ['yard.seen', 'yard.stock'], [1])
+        assert seen.values == pytest.approx(
+            [float(expected) if float(expected) < 1 else -1], rel=0, abs=3e-12
+        )
+        assert stock.values == pytest.approx([rate], rel=0, abs=3e-12)
+    oracle, error = run_of(case.program, case.configuration)
+    assert error is None and oracle.view.t == Fraction('1.1')
+    assert [e.t for e in oracle.trace if e.kind == 'fire'] == [Fraction(expected)]
+
+
+@pytest.mark.parametrize('method', METHODS)
+@pytest.mark.parametrize('read_stock', [True, False], ids=['stock-and-rate', 'rate-only'])
+def test_a_measured_rate_is_a_threshold_operand_but_cannot_place_its_input_stock(
+    method, read_stock, monkeypatch
+):
+    from tests.reference.from_program import run_of, value_at
+
+    force(method, monkeypatch)
+    # A SOURCE -> SINK meter exposes an exact rate expression to the locator.
+    # The first guard reads the inventory and a clock-driven meter. The second
+    # sees only the meter output, even though locating it uses the inventory.
+    meter = 't * (1 L/h/h)' if read_stock else 'this.stock / (1 h)'
+    guard = (
+        'this.stock >= 0.999999995 L + this.meter.actual_rate * (1 h)'
+        if read_stock
+        else 'this.meter.actual_rate >= 2.0000000001 L/h'
+    )
+    source = f"""scenario "A threshold expressed with an actual rate"
+    horizon 1.1 h
+yard:
+    stock: L = 0 L
+    flow fill: SOURCE -> this.stock
+        request = 2 L/h
+        capacity = 2 L/h
+    flow meter: SOURCE -> SINK
+        request = 0 L/h
+    install = event():
+        after 0 h:
+            this.meter.request = formula({meter})
+    watch = event():
+        when {guard}:
+            this.watch.start()
+        after 0 h
+    clock = event():
+        after 1 h
+yard.install.start()
+yard.clock.start()
+"""
+    model = mixed_model(source, method)
+    expected = Fraction('0.999999995' if read_stock else '1')
+    oracle, error = run_of(model.program, model.configuration)
+    assert error is None, error
+    assert [row.t for row in oracle.trace if row.kind == 'fire'] == [expected]
+    assert value_at(oracle, model.program, Key('yard', ('stock',)), 1) == 2
+    for restore in (False, True):
+        result = results(model, restore, method=method)
+        assert times(result, 'watch') == pytest.approx([float(expected)], rel=0, abs=3e-12)
+        (stock,) = read(result, model.program, ['yard.stock'], [1])
+        assert stock.values == pytest.approx([2], rel=0, abs=3e-13)
