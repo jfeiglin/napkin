@@ -337,3 +337,29 @@ def test_a_node_of_any_height_has_its_values_over_arrays_at_a_recursion_limit_of
         assert arrays.values(guarded, env, UNITS, COUNT).tolist() == [True, True, False, False, True, True]
         with pytest.raises(ExpressionError):
             arrays.values(unguarded, env, UNITS, COUNT)
+
+
+def test_scalar_and_array_rows_make_the_same_near_band_choices_in_mixed_units():
+    from napkin.core.evaluation import checked_value
+    from napkin.core.units import UnitSystem
+
+    rng = random.Random(6202824)
+    units = UnitSystem({'h': {'dimensions': {'time': 1}}, 'day': {'dimensions': {'time': 1}, 'scale': 24}})
+    seen = set()
+    for seed in range(64):
+        threshold = rng.choice([0, 12, 24, 48])
+        band = units.comparisons.factor * max(1, threshold)
+        hours = np.array([threshold + band * offset for offset in (-2, -1, -0.5, 0, 0.5, 1, 2)])
+        flags = np.array([bool(rng.getrandbits(1)) for _ in hours])
+        limit = rng.choice([f"q({threshold}, 'h')", f"q({threshold / 24}, 'day')"])
+        shifted = rng.choice(["level + q(0, 'day')", "max(level, q(-1, 'h'))", "min(level, q(3, 'day'))"])
+        relation = rng.choice(['>', '<', '>=', '<=', '==', '!='])
+        expression = expr.read(f'(({shifted}) {relation} {limit}) if flag else (level == {limit})')
+        rows = arrays.values(expression, {'level': hours, 'flag': flags}, units, len(hours))
+        expected = [
+            checked_value(expression, {'level': float(h), 'flag': bool(f)}, units)
+            for h, f in zip(hours, flags)
+        ]
+        assert rows.tolist() == expected, (seed, expr.text(expression), hours, flags, rows, expected)
+        seen.update(expected)
+    assert seen == {True, False}
