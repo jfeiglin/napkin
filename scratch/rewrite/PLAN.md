@@ -371,6 +371,16 @@ These override the text of this plan below, wherever the two differ. The owner's
     solver-certified idle route publishes zero. No guard takes its tolerance from the size inferred
     for integration from bounds and connected stores.
 
+    **Owner rulings, 2026-11-21.** At a located empty or full contact, correct the residual on the
+    draining or filling pipes, respectively, in proportion to their rates immediately before the
+    contact. Use declaration order if none was flowing. Land the stock exactly on its bound and
+    apply the matching amount at the other end of each corrected physical leg.
+
+    Group frozen-stock allowance violations at the first failure moment within the crossing
+    tolerance. List every contributing leg by stock name, outflow before inflow, then declaration
+    order. Name the first five in the text and count the rest. Retain the entire ordered list in
+    JSON and Python and compare it against the independent interpreter.
+
 ### If the session is cut off
 
 Everything that matters is in the repository, pushed. The working memory of an agent is not: it
