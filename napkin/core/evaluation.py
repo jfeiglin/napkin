@@ -153,7 +153,11 @@ def _known(compute, *values):
 
 def from_environment(name):
     """The code that reads a name from the environment `E`; its value is not checked yet."""
-    return f'(E[{name!r}] if {name!r} in E else _missing({name!r}))', False
+    return _environment_read(repr(name))
+
+
+def _environment_read(key):
+    return f'(E[{key}] if {key} in E else _missing({key}))', False
 
 
 class _Writer:
@@ -626,10 +630,10 @@ def _parts(node):
     return cut
 
 
-def function_text(node, *, operands=None):
+def function_text(node, *, operands=None, read=from_environment):
     """The Python text of `function(node)`: an expression, or, for a node that is deeper than
     `SPLIT`, the definition of the function `_function` (`_Writer.split`)."""
-    writer = _Writer(from_environment, {}, None, fold=False, operands=operands)
+    writer = _Writer(read, {}, None, fold=False, operands=operands)
     lines = writer.split(node)
     code = writer.code(node)[0]
     if not lines:
@@ -645,14 +649,24 @@ def function(node):
         if found is not None:
             _FUNCTIONS.move_to_end(node)
             return found
-        operands = []
-        text = function_text(node, operands=operands)
-        scope = dict(RUNTIME, _operands=operands)
+        # Rows with the same operations can share code. Close over this row's concrete
+        # names and comparison operands; each call still reads its own environment and registry.
+        operands, names = [], {}
+
+        def bind(name):
+            slot = names.setdefault(name, f'_name{len(names)}')
+            return _environment_read(slot)
+
+        text = function_text(node, operands=operands, read=bind)
+        parameters = ', '.join(('_operands', *names.values()))
         if text.startswith('lambda'):
-            found = eval(compile(text, '<expression>', 'eval'), scope)
+            body = f'    return {text}'
         else:
-            exec(compile(text, '<expression>', 'exec'), scope)
-            found = scope['_function']
+            body = '\n'.join('    ' + line for line in text.splitlines()) + '\n    return _function'
+        text = f'def _bind({parameters}):\n{body}'
+        scope = {}
+        exec(_compiled(text, '<expression>'), RUNTIME, scope)
+        found = scope['_bind'](operands, *names)
         _FUNCTIONS[node] = found
         while len(_FUNCTIONS) > LIMIT:
             _FUNCTIONS.popitem(last=False)
@@ -744,21 +758,22 @@ def program_text(
     return '\n'.join(lines)
 
 
-# The code of the last programs, by their text: a run makes the program of a structure again for each
-# of its segments, and each sample of a study makes those of its run.
+# Scalar binding functions and straight-line programs share a bounded cache of compiled text.
+# The code contains no environment, unit registry, row bindings or comparison operands.
 PROGRAMS = 256
 _CODE = OrderedDict()
 
 
-def _compiled(text):
+def _compiled(text, filename='<model>'):
+    key = (text, filename)
     with _LOCK:
-        found = _CODE.get(text)
+        found = _CODE.get(key)
         if found is not None:
-            _CODE.move_to_end(text)
+            _CODE.move_to_end(key)
             return found
-    found = compile(text, '<model>', 'exec')
+    found = compile(text, filename, 'exec')
     with _LOCK:
-        _CODE[text] = found
+        _CODE[key] = found
         while len(_CODE) > PROGRAMS:
             _CODE.popitem(last=False)
     return found

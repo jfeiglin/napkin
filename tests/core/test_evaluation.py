@@ -175,6 +175,51 @@ def test_the_functions_of_the_last_nodes_are_kept_and_no_more(monkeypatch):
     assert evaluation.value(nodes[0], {'kept.x': 1}, UNITS) == 1
 
 
+def test_scalar_code_reuse_keeps_bindings_operands_units_and_lazy_failures_separate(monkeypatch):
+    from collections import OrderedDict
+
+    import numpy as np
+
+    from napkin.core import arrays
+    from napkin.core.units import UnitSystem
+
+    monkeypatch.setattr(evaluation, '_CODE', OrderedDict())
+    monkeypatch.setattr(evaluation, '_FUNCTIONS', OrderedDict())
+    monkeypatch.setattr(evaluation, 'PROGRAMS', 2)
+    shape = "(q(2, 'cup') if row.level > 0 else (row.offset + 1e16) - 1e16) if row.on else row.missing"
+    cases = []
+    for owner, cup, floor, offset in [('north', 2, 1, 0.25), ('south', 3, 1e-5, 0.75)]:
+        node = expr.read(shape.replace('row.', owner + '.'))
+        units = UnitSystem({'cup': {'dimensions': {'volume': 1}, 'scale': cup}})
+        fields = {owner + '.level': (1, floor), owner + '.offset': (1, expr.const(offset))}
+        units.comparisons.named = lambda name, fields=fields: fields.get(name, (1, 1))
+        env = {owner + '.level': 1e-10, owner + '.offset': offset, owner + '.on': True}
+        cases.append((owner, node, evaluation.function(node), units, env))
+    assert cases[0][2].__code__ is cases[1][2].__code__
+
+    for k in range(8):
+        evaluation.function(expr.read(f'other.x * {k}'))
+    assert len(evaluation._CODE) == 2
+    for (owner, node, scalar, units, env), expected in zip(cases, (0.25, 6), strict=True):
+        assert scalar(env, units) == expected
+        columns = {name: np.array([value, value]) for name, value in env.items()}
+        assert arrays.values(node, columns, units, 2).tolist() == [expected, expected]
+        # A shared function still uses its own environment key on the branch that fails.
+        blocked = {**env, owner + '.on': False}
+        with pytest.raises(ExpressionError, match=rf"Missing value for '{owner}\.missing'"):
+            scalar(blocked, units)
+        # The identical code can run under a different unit policy at the next call.
+        changed = UnitSystem({'cup': {'dimensions': {'volume': 1}, 'scale': 5}})
+        assert scalar({**env, owner + '.level': 2}, changed) == 10
+        different_literal = expr.read(
+            shape.replace('row.', owner + '.').replace("q(2, 'cup')", "q(3, 'cup')")
+        )
+        assert evaluation.checked_value(different_literal, {**env, owner + '.level': 2}, changed) == 15
+        dividing = expr.read(f'1 / {owner}.zero')
+        with pytest.raises(ExpressionError, match=rf'{owner}\.zero.*division by zero'):
+            evaluation.checked_value(dividing, {owner + '.zero': 0}, units)
+
+
 def test_this_consumer_has_a_handler_for_each_operation():
     assert set(evaluation.TABLE) == set(ops.OPERATIONS)
     assert set(evaluation.COMPARISONS) == set(expr.COMPARE.values())

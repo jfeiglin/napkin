@@ -212,6 +212,49 @@ def test_sparse_template_filters_each_member_at_its_own_scale(through_choice):
     assert [series.values[0] for series in read(record, program, names, [0])] == [1, 7, 1, 7]
 
 
+def test_two_declared_solvers_keep_their_concrete_rows_comparison_scales():
+    from napkin.program.build import (
+        SOURCE,
+        constraint,
+        flow,
+        given,
+        ifelse,
+        input_,
+        local,
+        maximize,
+        solve_for,
+        solver,
+    )
+
+    b = Builder(UNITS)
+    cell = b.template(
+        'Cell',
+        input_('resolution', 'L', 1),
+        value('signal', 'L', 5e-11, scale=this.resolution),
+        value('limit', 'L/h', formula(ifelse(this.signal == q(0, 'L'), q(1, 'L/h'), q(7, 'L/h')))),
+        value('water', 'L', 0),
+        flow('fill', SOURCE, this.water, request=q(10, 'L/h')),
+        solver(
+            'dispatch',
+            given('pipe', this.fill),
+            given('limit', this.limit),
+            solve_for(local.pipe.actual_rate),
+            constraint(local.pipe.actual_rate <= local.limit),
+            maximize(local.pipe.actual_rate),
+        ),
+    )
+    b.table('cells', cell, [{'resolution': 1}, {'resolution': 0.001}])
+    program, config = b.finish(), Configuration(Request(1))
+    record = run(program, config)
+    oracle, failure = run_of(program, config)
+    assert record.failure is None and failure is None
+    for i, expected in enumerate((1, 7)):
+        keys = [Key(f'cells[{i}]', steps) for steps in [('limit',), ('fill', 'actual_rate'), ('water',)]]
+        for result, key in zip(read(record, program, keys, [1]), keys, strict=True):
+            assert result.values == (expected,)
+            assert value_at(oracle, program, key, 1) == expected
+
+
 def test_an_inclusive_guard_does_not_prove_a_roundoff_value_nonnegative():
     """x = -1e-11 holds x >= 0 but has no real square root."""
     from napkin.core import expr, intervals
