@@ -836,6 +836,19 @@ class _Checker(Resolver):
                 if part.kind in (p.INPUT, p.LINK):
                     self.fail('kind', part.origin, f'the local {part.name!r} is no input or link')
                 self.value(part, scope, None)
+                # Plain endpoint settings take their values just after the store's initializer.
+                self.local_order(
+                    event,
+                    index + 1,
+                    part,
+                    [
+                        setting
+                        for end in (part.inflow, part.outflow)
+                        if end is not None
+                        for setting in (end.capacity, end.request)
+                        if isinstance(setting, Expr)
+                    ],
+                )
                 plain = [s for s in (part.init, part.lower, part.upper) if isinstance(s, (Expr, Path))]
             self.local_order(event, index, part, plain)
         for step in event.steps:

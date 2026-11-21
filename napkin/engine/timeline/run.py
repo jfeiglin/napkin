@@ -695,6 +695,12 @@ class Run:
         """The value now of a name that holds between moments (an input, a parameter of a set)."""
         return self.value(name)
 
+    def initial(self, node):
+        """Capture a literal directly (including an omitted capacity's no-limit value), or evaluate
+        its expression in the current scope."""
+        found = _literal(node, self.plan.units)
+        return self.truth(node) if found is None else found
+
     def truth(self, node, tx=None):
         """The value of a node over engine names now, through a stage's own writes. Each name is read
         when the evaluation asks for it, so a branch that is not taken executes no draw (`reads.py`)."""

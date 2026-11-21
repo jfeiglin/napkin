@@ -173,7 +173,7 @@ class Occurrences:
         if value.kind == DESCRIBED:  # the `.mean` or the `.std` of a distribution of the occurrence
             run.recorder.add(name, run.now, run.chance.described(name), 0.0)
             return
-        number = run.truth(value.node)
+        number = run.initial(value.node)
         if not value.boolean and isinstance(number, int | float) and not isinstance(number, bool):
             number = float(number)
         if value.scale is not None:

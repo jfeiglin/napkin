@@ -3219,11 +3219,12 @@ class Resolver:
             found = Const(found.value, rate)
         return found
 
-    def endpoints(self, value, owner, node):
+    def declared_value(self, path, owner, node):
         """A value with the settings of its outflow and its inflow, written under it: only a stored
         number has them. Each setting is resolved after the value, so that it may read the store (a
         request that fills a tank to a level). A setting with a problem is reported, or deferred,
         and leaves the value as it is."""
+        value = self.value(path)
         if not node.properties:
             return value
         if not _stored(value):
@@ -3234,7 +3235,7 @@ class Resolver:
                 node.properties[0].line,
             )
             return value
-        scope, sides = Scope(owner), {}
+        scope, sides = self.scope_of(owner), {}
         for item in node.properties:
             key = '.'.join(item.path)
             side = item.path[0]
@@ -3374,7 +3375,11 @@ class Resolver:
         locals_ = []
         for index, item in enumerate(node.locals):
             own = f'{path}.{item.name}'
-            found = self.flow(own, path, item) if isinstance(item, n.Flow) else self.value(own)
+            found = (
+                self.flow(own, path, item)
+                if isinstance(item, n.Flow)
+                else self.declared_value(own, path, item)
+            )
             self.local_order(node, index, found, item)
             locals_.append(found)
         scope = self.scopes[path]
@@ -4286,7 +4291,7 @@ class Resolver:
         """A declared part of an entity, a template or the top level, or None after a problem."""
         try:
             if isinstance(node, n.Declaration):
-                return self.endpoints(self.value(path), owner, node)
+                return self.declared_value(path, owner, node)
             if isinstance(node, n.Flow):
                 return self.flow(path, owner, node)
             if isinstance(node, n.Assert):
