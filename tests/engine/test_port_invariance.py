@@ -106,15 +106,9 @@ def oracle_view(case, program):
     stages = defaultdict(list)
     for entry in oracle.trace:
         kind = {'done': 'finish', 'stage': 'commit'}.get(entry.kind, entry.kind)
-        tie = None
-        if entry.origin == GUARD and kind in ('commit', 'skip'):
-            water = values[entry.t]['delivered']
-            band = oracle.config.rtol * max(1, abs(water), abs(case.guard_level))
-            if abs(water - case.guard_level) <= band:
-                tie = (water - case.guard_level, band)
         # The interpreter labels a firing with receiver.event.when[k]; the engine carries the receiver separately.
         owner = entry.label.rsplit('.', 2)[0] if kind == 'fire' else entry.label
-        stage = stage_entry(kind, owner, entry.origin, entry.round, tie)
+        stage = stage_entry(kind, owner, entry.origin, entry.round)
         if stage:
             stages[entry.t].append(stage)
     moves = defaultdict(lambda: defaultdict(int))
@@ -197,6 +191,12 @@ def numeric(actual, expected, scale, multiplier, where):
     assert abs(actual - expected) <= multiplier * tolerance, (where, actual, expected, multiplier * tolerance)
 
 
+def compare_amounts(ours, theirs, multiplier, where):
+    assert ours.keys() == theirs.keys(), (where, ours, theirs)
+    for leg, expected in theirs.items():
+        numeric(ours[leg], expected, 1, multiplier, (*where, leg))
+
+
 def compare(result, reference, seed, transform):
     crossing = CONFIG.numerics.crossing
     cutoff = min(result.outcome[0], reference.outcome[0])
@@ -214,6 +214,7 @@ def compare(result, reference, seed, transform):
             at,
             crossing,
         )
+        committed = set()
         for actual, expected in zip_longest(result.stages.get(ours_at, ()), reference.stages.get(at, ())):
             if (
                 actual
@@ -223,6 +224,11 @@ def compare(result, reference, seed, transform):
                 and actual.ran != expected.ran
                 and (actual.tie or expected.tie)
             ):
+                # A decision may diverge only on recorded evidence at this point. Earlier
+                # stages at the very same time have already committed their transfers.
+                ours = {k: v for k, v in result.moves.get(ours_at, {}).items() if k[0] in committed}
+                theirs = {k: v for k, v in reference.moves.get(at, {}).items() if k[0] in committed}
+                compare_amounts(ours, theirs, 2, (*where, 'earlier stage moves'))
                 return (*where, actual.origin, actual.ran, expected.ran, actual.tie, expected.tie)
             assert actual and expected and replace(actual, tie=None) == replace(expected, tie=None), (
                 where,
@@ -230,11 +236,11 @@ def compare(result, reference, seed, transform):
                 actual,
                 expected,
             )
+            if actual.kind == 'commit' or actual.ran:
+                committed.add(actual.origin)
         for attr in ('moves', 'flows'):
             ours, theirs = getattr(result, attr).get(ours_at, {}), getattr(reference, attr).get(at, {})
-            assert ours.keys() == theirs.keys(), (where, attr, ours, theirs)
-            for leg, expected in theirs.items():
-                numeric(ours[leg], expected, 1, 10 if attr == 'flows' else 2, (*where, attr, leg))
+            compare_amounts(ours, theirs, 10 if attr == 'flows' else 2, (*where, attr))
         for name, expected in reference.values.get(at, {}).items():
             actual = result.values[ours_at][name]
             if READS[name] is None or (name in ('bulk', 'work#0.batch') and at >= 1):
@@ -289,3 +295,20 @@ def test_port_transform(seed, record_property):
 @pytest.mark.parametrize('seed', range(2000))
 def test_all_port_transforms(seed, record_property):
     check_seed(seed, TRANSFORMS, record_property)
+
+
+def test_only_a_flagged_decision_can_end_a_pair_and_prior_moves_still_count():
+    prior = Stage('commit', 'plant.pay#0', 'plant.pay.step[0]', 1)
+    guard = Stage('decision', 'plant.observe#0', GUARD, 2, True)
+    error = {'delivered': 999}
+    leg = (prior.origin, 'plant.cash', 'plant.paid')
+    earlier = {1: {leg: 4}}
+    expected = View({2: {'delivered': 0}}, {1: [prior, guard]}, earlier, {}, (2, 'finished'))
+    actual = View({2: error}, {1: [prior, replace(guard, ran=False)]}, earlier, {}, (2, 'finished'))
+    with pytest.raises(AssertionError, match='event order'):
+        compare(actual, expected, 1, 'control')
+    actual.stages[1][-1] = replace(guard, ran=False, tie=('threshold', 0, 1e-9))
+    assert compare(actual, expected, 1, 'control')[:4] == (1, 'control', 1, GUARD)
+    actual.moves = {1: {leg: 3}}
+    with pytest.raises(AssertionError, match='earlier stage moves'):
+        compare(actual, expected, 1, 'control')
