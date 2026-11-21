@@ -170,8 +170,8 @@ def main():
     ran = time.perf_counter()
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == 'darwin' else 1024)
     print(f'places {sizes[0]}, routes {net["routes"]}, sources {sizes[2]}')
-    print(f'build {built - clock:.1f} s, plan {planned - built:.1f} s, run and record {ran - planned:.1f} s')
-    print(', '.join(f'{name} {seconds:.1f} s ({calls})' for name, (seconds, calls) in SPENT.items()))
+    print(f'build {built - clock:.9f} s, plan {planned - built:.9f} s, run and record {ran - planned:.9f} s')
+    print(', '.join(f'{name} {seconds:.9f} s ({calls})' for name, (seconds, calls) in SPENT.items()))
     print(f'peak resident memory {peak / 1e9:.2f} GB; failure: {record.failure}')
     solves = [(entry.t, entry.round) for entry in record.entries('solve', 'operator.dispatch')]
     print(f'solves (t, round): {solves}')

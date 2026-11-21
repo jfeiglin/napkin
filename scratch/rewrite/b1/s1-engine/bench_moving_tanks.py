@@ -49,7 +49,7 @@ def main():
                     expected = -(100 + i) * math.expm1(-t / (4 + i))
                     assert math.isclose(observed, expected, rel_tol=1e-8, abs_tol=1e-10), (i, t, observed, expected)
     print(f'{options.method}: {options.tanks} tanks, {options.hours:g} h, {options.repeat} runs, '
-          f'run+record {elapsed:.6f} s, mean {elapsed/options.repeat:.6f} s')
+          f'run+record {elapsed:.9f} s, mean {elapsed/options.repeat:.9f} s')
 
 
 if __name__ == '__main__':

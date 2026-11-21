@@ -89,9 +89,9 @@ def main():
     small = run(made, narrow)
     after = time.perf_counter()
     assert small.failure is None
-    print(f'rows {ROWS}: build {built - start:.2f} s, plan {planned - built:.2f} s, run with its record {ran - planned:.2f} s, '
-          f'read 4 paths at 3 times {done - ran:.2f} s; {len(record.histories)} histories, {pieces} pieces')
-    print(f'the same with a record of two values: plan and run {after - again:.2f} s')
+    print(f'rows {ROWS}: build {built - start:.9f} s, plan {planned - built:.9f} s, run with its record {ran - planned:.9f} s, '
+          f'read 4 paths at 3 times {done - ran:.9f} s; {len(record.histories)} histories, {pieces} pieces')
+    print(f'the same with a record of two values: plan and run {after - again:.9f} s')
     print('total at 6, 30, 48 h:', readings[0].values, 'drawing:', readings[1].values)
 
 

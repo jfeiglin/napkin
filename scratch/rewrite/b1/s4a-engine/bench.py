@@ -16,8 +16,8 @@ from __future__ import annotations
 import sys
 import time
 
-from napkin.engine import read, run
-from napkin.engine.timeline import Plan
+from napkin.engine import read
+from napkin.engine.timeline import Plan, Run
 from napkin.program.build import SINK, Builder, after, event, flow, input_, q, reset_after, start, t, this, value, when
 from napkin.program.config import Configuration, Request
 
@@ -47,15 +47,15 @@ def main(places=30000, hours=48, phases=12):
     configuration = Configuration(Request(hours))
     plan = Plan.of(program, configuration)
     planned = time.perf_counter()
-    del plan
-    record = run(program, configuration)
+    record = Run(plan).run()
     ran = time.perf_counter()
     assert record.failure is None, record.failure
     starts = len(record.entries('start'))
     first = read(record, program, ['places.p000000.stock'], [float(hours)])[0].values[0]
     expected = 100 - len([k for k in range(10**6) if 3 * k <= hours - 1])  # phase 0: one litre a start
-    print(f'{places} places, {phases} phases, {hours} h: build {built - begun:.1f} s, plan {planned - built:.1f} s, '
-          f'run+record {ran - planned:.1f} s; {starts} starts; p0 stock {first:g} L (by hand {expected} L)')
+    assert first == expected, (first, expected)
+    print(f'{places} places, {phases} phases, {hours} h: build {built - begun:.9f} s, plan {planned - built:.9f} s, '
+          f'run+record {ran - planned:.9f} s; {starts} starts; p0 stock {first:g} L (by hand {expected} L)')
 
 
 if __name__ == '__main__':

@@ -124,7 +124,7 @@ def main():
         {way: (len(sizes), max(sizes)) for way, sizes in ways.items()},
     )
     print(
-        f'  build {built - began:.2f} s, plan {planned - built:.2f} s, run+record {ran - planned:.2f} s, read {done - ran:.3f} s'
+        f'  build {built - began:.9f} s, plan {planned - built:.9f} s, run+record {ran - planned:.9f} s, read {done - ran:.9f} s'
     )
     for way in runner.ways.instances:
         if isinstance(way, Lines):
