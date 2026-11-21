@@ -83,9 +83,9 @@ def run_held(program, keys, pieces, *, exact, horizon=5):
     seen = []
     original = Family.step
 
-    def step(family):
+    def step(family, levels=()):
         seen.append(family.peek())
-        return original(family)
+        return original(family, levels)
 
     request = Request(horizon, everything=not keys, keys=keys, pieces=pieces)
     engine = Run(Plan.of(program, Configuration(request)))
