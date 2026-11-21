@@ -1,10 +1,18 @@
 # Public execution and migration checks
 
-Candidate `e027caa7f65c57cf11da6606e5af31c57239d854` passed the public CLI, artifact-only and migration checks against legacy `8488047dbb7eafee1f5582cf59839c6bea0cf8cd`. The migration harness exported both commits and ran each engine in its own process. The piano and reservoir translations used here match the audited `6202824` baseline.
+Candidate `fc9a9ed7fc9c6086f2ac38b27379f2cd14e71864` passed the public CLI, artifact-only and migration checks against legacy `8488047dbb7eafee1f5582cf59839c6bea0cf8cd`. The migration harness exported both commits and ran each engine in its own process. The piano and reservoir translations used here match the audited `6202824` baseline.
 
 ## Current audit and valve results
 
 All 31 audit cases passed. Both the day/hour literal and large-offset guard ran in their named and inline forms. Six additional comparisons forced both valve forms through Component, Sparse and the moving declared solver against the reference interpreter. Each went from 0 to 1 L/h across the opening and delivered 0.5 L at 1 h and 1.5 L at 2 h within the test tolerance. [Audit case results](engine-finalized-audit-cases.csv) · [Valve comparisons](../../../tests/engine/test_valve_allocation.py)
+
+The two valve forms gave identical readings within each method. The opening rates and terminal balances below are the values returned by the engine.
+
+| Valve forms | Method | Rate at 0.49 h (L/h) | Rate at 0.51 h (L/h) | Delivered at 1 h (L) | Delivered at 2 h (L) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Explicit pipe capacity and inline `min` | Component and Sparse | 0 | 1 | 0.49999999999999956 | 1.4999999999999984 |
+| Explicit pipe capacity and inline `min` | Moving declared solver | 0 | 1 | 0.4999999999999999 | 1.4999999999999996 |
+| Explicit pipe capacity and inline `min` | Exact reference | 0 | 1 | 0.5 | 1.5 |
 
 The direct CLI returned the following readings from the audited capacity-valve scenario. It exited 0 with a warning about one value lacking an evidence record.
 
@@ -24,6 +32,8 @@ Public piano compilation and execution both exited 0 with empty diagnostics. The
 ## Migration comparisons
 
 The median checker accepted both models, including their intermediate readings and terminal outcomes. Piano used `examples/piano_tuners/model.scn` in both versions. Reservoir used legacy `examples/reservoir/model.scn` and candidate `scratch/rewrite/a5/translated/now/examples/reservoir/model.scn`. Each numerical comparison uses the larger of an absolute tolerance of 1e-8 in the stated unit and a relative tolerance of 1e-6. [Checker](../a5/check.py) · [Paired comparison harness](../a5/paired_migrations.py)
+
+With the default reservoir inputs, the public CLI reported water fractions of 0.60, 0.66, 0.70, 0.625, 0.55, 0.49 and 0.40 at 0, 24, 40, 60, 80, 96 and 120 h. Cumulative spill reached 0.50 by 120 h, and risk duration stayed at zero throughout. These values are rounded for display.
 
 | Comparison | Coverage | Maximum absolute legacy–candidate difference |
 | --- | --- | --- |
@@ -51,5 +61,7 @@ python -m napkin run scratch/rewrite/audit/cases-5d9409b/valve --at 0.499h,0.501
     --value plant.tap.request,plant.tap.capacity,plant.tap.actual_rate,plant.water --json
 python -m napkin compile examples/piano_tuners --json
 python -m napkin run examples/piano_tuners --value tunings_done --at 0h,4380h,8760h --json
-python scratch/rewrite/a5/paired_migrations.py --candidate e027caa7f65c57cf11da6606e5af31c57239d854
+python -m napkin run scratch/rewrite/a5/translated/now/examples/reservoir --at 0h,24h,40h,60h,80h,96h,120h \
+    --value reservoir.water,reservoir.spilled,reservoir.risk_time --json
+python scratch/rewrite/a5/paired_migrations.py --candidate fc9a9ed7fc9c6086f2ac38b27379f2cd14e71864
 ```
