@@ -330,3 +330,19 @@ def test_a_move_computed_from_a_level_inherits_the_levels_tolerance():
         compare_amounts({literal: 1 + 6 * tolerance}, {literal: 1}, 'moves', ('literal move',))
     with pytest.raises(AssertionError, match='stock move'):
         compare_amounts({stock: 1 + 12 * tolerance}, {stock: 1}, 'moves', ('stock move',))
+
+
+@pytest.mark.parametrize('cap', [False, True])
+@pytest.mark.parametrize('named', [False, True])
+def test_unit_respellings_keep_every_generated_named_values_own_scale(cap, named):
+    case = replace(Case.of(0), hard_cap=cap)
+    config = Configuration(Request(0.125))
+    versions = []
+    for small_unit in (False, True):
+        spelling = Spelling(small_unit=small_unit, named=named)
+        for program in (text_program(case, spelling).program, builder_program(case, spelling)):
+            run = Run(Plan.of(program, config))
+            assert run.run().failure is None
+            versions.append({name: run.own_scale(name) for name in run.plan.values})
+    for observed in versions[1:]:
+        assert observed == versions[0]

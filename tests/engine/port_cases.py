@@ -72,7 +72,7 @@ def text_program(case, spelling):
     after, before = (case.low, case.high) if case.falling else (case.high, case.low)
     jump = f'({rate(after)} if t > {float(case.opening)} h else {rate(before)})'
     if spelling.named:
-        demand = f'    demand = formula({jump})\n'
+        demand = f'    demand: formula(L/h) = formula({jump})\n'
         jump = 'this.demand'
     else:
         demand = ''
@@ -86,12 +86,14 @@ def text_program(case, spelling):
         'scenario "Port corpus"',
         f'    horizon {HORIZON} h',
         'plant:',
-        f'    delivered: {unit} = {quantity(0)} in [0,] scale {scale}',
+        # A flow's implicit endpoint fields use its store's declared unit per hour.
+        # Keep that unit while rewriting its initial value and expressions in mL.
+        f'    delivered: L = {quantity(0)} in [0,] scale {scale}',
     ]
     lines.extend(
         [
             f'    projected = formula(this.delivered / (4 h)) scale {rate(F(1, 4))}',
-            f'    basin: {unit} = {quantity(case.large)} in [0,] scale {scale}',
+            f'    basin: L = {quantity(case.large)} in [0,] scale {scale}',
             f'    refund: {unit} = {quantity(0)} in [0,] scale {scale}',
             f'    parked: {unit} = {quantity(0)} in [0,] scale {scale}',
             f'    cash: {unit} = {quantity(2)} in [0,] scale {scale}',
@@ -120,7 +122,8 @@ def text_program(case, spelling):
         lines.append(demand.rstrip())
     lines.extend(['    flow tap: SOURCE -> this.delivered', f'        request = formula({request})'])
     if case.hard_cap:
-        lines.append(f'        capacity = {rate(case.ceiling)}')
+        # An explicit literal rate also determines the flow's declared unit.
+        lines.append(f'        capacity = {case.ceiling} L/h')
     lines.extend(
         [
             '    flow ramp: SOURCE -> this.basin',
@@ -162,15 +165,15 @@ def builder_program(case, spelling):
     def rate(number):
         return b.q(number * factor, f'{unit}/h')
 
-    def stock(name, initial=0, **options):
-        return b.value(name, unit, amount(initial), lower=amount(0), scale=amount(1), **options)
+    def stock(name, initial=0, *, declared_unit=unit):
+        return b.value(name, declared_unit, amount(initial), lower=amount(0), scale=amount(1))
 
     builder = b.Builder(UNITS)
     after, before = (case.low, case.high) if case.falling else (case.high, case.low)
     jump = b.ifelse(b.t > b.q(case.opening, 'h'), rate(after), rate(before))
     fields = []
     if spelling.named:
-        fields.append(b.value('demand', f'{unit}/h', b.formula(jump)))
+        fields.append(b.value('demand', 'L/h', b.formula(jump)))
         jump = b.this.demand
     request = b.call('max', rate(0), jump)
     if not case.hard_cap:
@@ -189,7 +192,7 @@ def builder_program(case, spelling):
         fields.append(b.event('idle', b.after(b.q(F(7, 8), 'h'))))
     plant = builder.entity(
         'plant',
-        stock('delivered'),
+        stock('delivered', declared_unit='L'),
         b.value('marked', b.BOOL, False),
         b.event('signal', b.after(b.q(0, 'h')), b.when(b.t >= b.q(F(5, 4), 'h'), b.start(b.this.signal))),
         b.event(
@@ -203,7 +206,7 @@ def builder_program(case, spelling):
         stock('paid'),
         stock('saved'),
         *fields,
-        stock('basin', case.large),
+        stock('basin', case.large, declared_unit='L'),
         stock('refund'),
         stock('parked'),
         b.value('projected', f'{unit}/h', b.formula(b.this.delivered / b.q(4, 'h')), scale=rate(F(1, 4))),
@@ -221,7 +224,7 @@ def builder_program(case, spelling):
             b.SOURCE,
             b.this.delivered,
             request=b.formula(request),
-            capacity=rate(case.ceiling) if case.hard_cap else None,
+            capacity=b.q(case.ceiling, 'L/h') if case.hard_cap else None,
         ),
         b.event(
             'work',

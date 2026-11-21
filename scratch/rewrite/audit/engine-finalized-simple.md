@@ -15,7 +15,7 @@ The remote Claude tip and the audited baseline were both `6202824d6d567c34ac46da
 
 Held intervals accrue rate times elapsed time. Moving intervals use the method's cumulative transferred amount through the accepted endpoint. Materialize a store only for a stage read/write, rate change, group rebuild, occurrence finish, checkpoint or run end. A moment concerning one store must have work proportional to the affected stores. Preserve gross legs for frozen-stock rules. The accounting handoff must identify every retired posting path, its replacement, and the tests that exercise reads, rollback, resume and empty moments.
 
-One engine owner holds `continuous/{integrate,fields}.py`, `engine/allocation.py`, `timeline/{lines,family,component,sparse,declared,run,ways,moment,occurrences,checkpoints,saved}.py` and the run-state writer. Engine stage writes follow accounting. Land allocation on the topic branch before prototyping settlement. If the specification leaves a result open, park that case, collect questions for the owner and continue independent items.
+One engine owner holds `engine/allocation.py`, `engine/continuous/{fields,integrate,kernels,segment,transfers}.py`, `engine/timeline/{component,declared,family,lines,sparse,run,ways,moment,occurrences,checkpoints,saved}.py`, the stage-target changes in `engine/timeline/plan.py`, and the run-state writer. The recorder owns retained histories and their piece budget. Engine stage writes follow accounting. Land allocation on the topic branch before prototyping settlement. If the specification leaves a result open, park that case, collect questions for the owner and continue independent items.
 
 ## Cross-method rules
 

@@ -44,6 +44,8 @@ The independent scalar walk previously gave every literal a unit-sized floor. It
 
 The unit-respelling generator now specifies the same physical scale for each named numeric value in both texts, including the squared unit for the square. At 5e-10 L the guard comparing an input with zero reads True with either the default litre scale or an explicit 1000 mL scale. Deliberately giving it the default 1 mL scale yields False. [Unit controls](../../../tests/model/test_units.py)
 
+In the port corpus, respelling both receiving stores as mL also changed the implicit scales of `tap.request`, `ramp.actual_rate`, and their generated inflow fields from 1 L/h to 1 mL/h. The unit transform now respells the move-only stock declarations and all stock initializers, while keeping receiving store declarations in L and explicit pipe capacity literals in L/h. A control compares the canonical scale of every concrete named field across litres, millilitres, text and the builder, including both valve forms and named demands. The expected physical readings are the same. [Generated unit control](../../../tests/engine/test_port_invariance.py)
+
 ## Verification
 
 On `2cc0d0a`, the deep selector below passed 74 tests in 3.96 s with 2,223 cases deselected. It exercised 60 event-local settings seeds (12 through 71), ten relation cases covering five magnitudes on the engine and reference interpreter, and four powers. Other selected directories contributed regular coverage.
