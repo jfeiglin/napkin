@@ -12,7 +12,13 @@ from dataclasses import replace
 from ...core import expr as nodes
 from ...core.units import rational
 from ...program.record import History, Piece
-from ..continuous.transfers import ZERO_AMOUNT, held_elapsed
+from ..continuous.transfers import (
+    ZERO_AMOUNT,
+    certified_amount,
+    clock_primitive,
+    held_elapsed,
+    polynomial_amount,
+)
 from ..errors import SimulationError
 from .moment import quantity, span
 from .plan import DIRECT, FORMULA, LEG, name_of
@@ -349,14 +355,30 @@ class Stocks:
     def _over_capacity(self, way, names, capacity, change, t, rates):
         if change <= 0:
             return False
+        if rates is not None:
+            limit = self.run.value(capacity, t)
+            return math.isfinite(limit) and sum(
+                rational(rates[way.leg_rows[n]]) for n in names
+            ) + change > rational(limit)
+        if self.run.triggers.moving_reads(nodes.ref(capacity)):
+            start = way.amounts.through
+            if start >= t:
+                return True  # the already closed prefix supplies no time for another transfer
+            primitive = clock_primitive(nodes.ref(capacity), self.run.plan)
+            if primitive is None:
+                allowed = certified_amount(
+                    lambda at: self.run.value(capacity, min(at, math.nextafter(t, start))),
+                    start,
+                    t,
+                    f'{capacity}: cannot certify the accepted capacity',
+                )
+            else:
+                allowed = polynomial_amount(primitive, start, t)
+            carried = sum(way.raw_transferred(n, t) - way.raw_transferred(n, start) for n in names)
+            return carried + change > allowed
         limit = self.run.value(capacity, t)
         if not math.isfinite(limit):
             return False
-        if rates is not None:
-            return sum(rational(rates[way.leg_rows[n]]) for n in names) + change > rational(limit)
-        if self.run.triggers.moving_reads(nodes.ref(capacity)):
-            rates_at = way.incoming_rates(math.nextafter(t, -math.inf))
-            return sum(rates_at(n) for n in names) >= limit
         opening = way.t0 if hasattr(way, 't0') else way.amounts.start
         return sum(way.raw_transferred(n, t) for n in names) + change > rational(limit) * held_elapsed(
             opening, t

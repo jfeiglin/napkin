@@ -93,6 +93,7 @@ published.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import heapq
 import math
@@ -109,7 +110,13 @@ from ...core.units import rational
 from .. import departure
 from ..allocation import StockFaces
 from ..continuous import dense, integrate
-from ..continuous.transfers import HeldAmounts, MovingAmounts
+from ..continuous.transfers import (
+    HeldAmounts,
+    MovingAmounts,
+    certified_amount,
+    clock_primitive,
+    polynomial_amount,
+)
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
@@ -150,6 +157,10 @@ NEAR = 1e-6
 
 class Unsupported(SimulationError):
     """A form that the constraint language of a solver does not have."""
+
+
+class _ChangingRow(Exception):
+    """A bound on a proposed change cannot be isolated on the accepted interval."""
 
 
 class Affine:
@@ -1094,6 +1105,14 @@ class DeclaredWay(Way):
         for key, terms, lower, upper in former.rows:
             if key[0] != 'relation':
                 continue
+            if not rates and not self.lines and any(j in columns for j in terms):
+                origin = key[1]
+                source = dict(self.declared.constraints)[origin]
+                dependency = self.plan.field_inputs(self.plan.expansion(source))
+                if dependency.time or not dependency.leaves.isdisjoint(self.place):
+                    if not self._moving_relation(key, source, columns, terms, t):
+                        return origin
+                    continue
             delta = sum(rational(coef) * columns[j] for j, coef in terms.items() if j in columns)
             if not delta:
                 continue
@@ -1131,6 +1150,78 @@ class DeclaredWay(Way):
             ):
                 return key[1]
         return None
+
+    def _moving_relation(self, key, node, changes, terms, end):
+        """Integrate a hard row over the same accepted interval as the proposed leg
+        posting. Solve the row for an affected flow and integrate its actual limit.
+        A second changed flow contributes its mean adjustment over that prefix."""
+        start = self.amounts.through
+        if start >= end:
+            return False
+        changed = [j for j in terms if changes.get(j)]
+        if not changed:
+            return True
+        pivot = max(changed, key=lambda j: abs(terms[j]))
+        variables = self.former.problem_.keys
+        if variables[pivot][0] != 'flow':
+            return False
+        flow = self.row[variables[pivot][1]]
+        if self.net.kinds[flow] == LEGS:
+            return False  # proportional legs already require their common fraction
+        duration = rational(end) - rational(start)
+        # The independent reader uses the same active expression branches and column
+        # numbering as the incoming solve. Its symbolic caches never touch that solve.
+        reader = copy.copy(self.former)
+        sign = 1 if terms[pivot] > 0 else -1
+        equality = self.former.rows and any(
+            item == key and lower == upper for item, _, lower, upper in self.former.rows
+        )
+
+        def bound(at):
+            reader.t, reader._names = at, {}
+            reader.convex, reader.parts, reader.pending = set(), {}, []
+            found = [item for item in _relations(reader.value(node), key[1]) if item[2] == key[2:-1]]
+            if len(found) <= key[-1]:
+                raise _ChangingRow
+            affine, _, _ = found[key[-1]]
+            coefficient = affine.terms.get(pivot, 0.0)
+            if coefficient * sign <= 0 or any(j < 0 for j in affine.terms):
+                raise _ChangingRow
+            other = -affine.constant
+            if len(affine.terms) > 1:
+                flows, results, *_ = self._at(at, self._state(at))
+                for j, factor in affine.terms.items():
+                    if j != pivot:
+                        kind, name = variables[j][:2]
+                        value = flows[self.row[name]] if kind == 'flow' else results[name]
+                        other -= factor * (value + float(changes.get(j, 0) / duration))
+            return other / coefficient
+
+        primitive = None
+        if isinstance(node, nodes.Compare) and len(node.operands) == 2:
+            for subject, threshold in (node.operands, node.operands[::-1]):
+                if isinstance(subject, nodes.Ref) and reader.cols.get(subject.name) == pivot:
+                    primitive = clock_primitive(threshold, self.plan)
+                    break
+        if primitive is None:
+            try:
+                limit = certified_amount(
+                    bound, start, end, f'{key[1]}: cannot certify the integrated hard relation'
+                )
+            except _ChangingRow:
+                return False
+        else:
+            limit = polynomial_amount(primitive, start, end)
+        actual = sum(
+            (
+                self.raw_transferred(self.net.connections[c], end)
+                - self.raw_transferred(self.net.connections[c], start)
+            )
+            * (-1 if self.net.roles[c] == BACKWARD else 1)
+            for c in self.net.conns.of(flow)
+        )
+        proposed = actual + changes[pivot]
+        return proposed == limit if equality else sign * proposed <= sign * limit
 
     def _physical_face_net(self, s, rates):
         """Return the physical drift when leveling the books would break a hard flow rule."""

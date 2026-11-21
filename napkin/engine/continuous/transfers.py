@@ -77,17 +77,30 @@ def direct_clock_primitive(flow, plan):
     ends = ((flow.source, 'outflow'), (flow.sink, 'inflow'))
     if any(key in plan.ends and plan.settled(plan.ends[key]) for key in ends):
         return None
+    return clock_primitive(nodes.ref(flow.request), plan, expression)
+
+
+def clock_primitive(node, plan, expression=None):
+    """An exact antiderivative for a named polynomial in the model's clock."""
+    if expression is None:
+        expression = plan.expansion(node)
+        if not expression.time or expression.leaves or expression.stepped:
+            return None
     literals = Literals(node_parts, plan.units.exact_scale, plan.units.comparisons.factor)
     values = {'t': Polynomial([Fraction(0), Fraction(1)])}
     for name in plan.ordered(expression.formulas):
-        node = plan.values[name].node
-        values[name] = walked(_clock_polynomial(node, values, literals))
+        definition = plan.values[name].node
+        values[name] = walked(_clock_polynomial(definition, values, literals))
         if values[name] is None:
             return None
-    poly = values.get(flow.request)
+    poly = walked(_clock_polynomial(node, values, literals))
     if poly is not None:
         return (Fraction(0), *(Fraction(c) / (k + 1) for k, c in enumerate(poly.coef)))
     return None
+
+
+def polynomial_amount(primitive, a, b):
+    return polyval(rational(b), primitive) - polyval(rational(a), primitive) if a != b else 0
 
 
 @lru_cache(maxsize=1)
@@ -152,7 +165,7 @@ class ClockLeg:
         return self.REQUEST
 
     def integral(self, a, b):
-        return polyval(rational(b), self.polynomial) - polyval(rational(a), self.polynomial) if a != b else 0
+        return polynomial_amount(self.polynomial, a, b)
 
     def amount(self, t, numerical):
         if self.mode == self.ALLOCATED:
