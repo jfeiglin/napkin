@@ -53,6 +53,11 @@ On the moving network the second prototype performed the same number of allocati
 
 The third prototype was published at `51d14cd`, isolated timing build `ee8a22c`. Both held methods retain one pending rectangle per changed row. At its first rate change a row stores the two endpoints and the rate. Only the next change, read or checkpoint needs the subtotal. A checksum over 2,000 rows and three changes per row took 35.4 ms for the second prototype and 11.9 ms for the third, including reading every total. Forty local controls passed. The physical cutover requires the workload timings as well.
 
+| Third prototype workload | Baseline seconds, in pair order | Prototype seconds, in pair order | Allocation / baseline | Prototype / baseline | Baseline / prototype peak MiB |
+|---|---|---|---:|---:|---:|
+| Held network, 3,000 places / 3,500 routes / 48 h | 6.4627, 6.6871, 6.6020 | 6.4318, 6.5533, 6.4237 | 1.0028 | 0.9800 | 290.9 / 293.4 |
+| 12 finite-supply tanks, Component (19 runs per batch) | 0.075406, 0.075167, 0.075138 | 0.077306, 0.073972, 0.076668 | 0.9935 | 1.0204 | 90.0 / 89.7 |
+
 The original 12-tank benchmark reaches its analytical exponential curve using Radau on both methods. A second benchmark uses the same capacity and time constants with each fill drawn from a finite supply. The baseline Component kernel then took zero Radau steps and 80.6 ms, and Sparse took 1,224 steps and 2.274 s. Both produced 95.0212931632 L in the first tank. Both models are included in the paired campaign.
 
 The full baseline event guard measured 7,498.460 s inside `Run.run()`, with a process peak of 8.840 GiB. All 482,500 starts completed by 48 h and the first stock held the hand-calculated 84 L. The script's older 7,500.0 s aggregate clock included a second planning pass. The full-sized candidate uses the matching run-only clock. The repeated event comparisons use 1,200 places.
@@ -66,3 +71,5 @@ The median piano and reservoir examples passed on `31b07b0` against `8488047`. W
 The owner waived rerunning the 44 cases retained by the earlier auditor. Their earlier result is historical. The current 31-case bundle is available in this checkout and remains part of the gate. The interim integration run at `9a984c6` passed 23 of those 31. Three refunds, the whole-stock retirement and four first-capacity writes through occurrence selections failed at that revision.
 
 At interim integration commit `9a984c6`, the regular suite excluding the new port corpus had 10,559 passes, 24 failures and one skip. The corresponding deep run had 23,729 passes and 14 failures, all at the study API's evidence-table call site. The 14 affected deep cases passed on the subsequent integrated branch. Final suite counts must come from the completed engine revision.
+
+All 2,000 seed models compiled and finished under the independent interpreter, with every intermediate reading, two integrated transfer windows and the original 1.25 h firing exercised. The corpus contained 491 opening and 492 closing formula caps, and 520 opening and 497 closing explicit caps. This check establishes eligibility independently of the engine comparison results.

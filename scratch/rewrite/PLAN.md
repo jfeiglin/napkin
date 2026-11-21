@@ -4,6 +4,8 @@
 
 Each session starts by reading this file and `spec.md`, and ends by updating this list.
 
+The current engine refactor starts from `6202824` on `engine_finalized_simple`. Its handoff follows a transfer from the authored request through allocation, interval acceptance, physical posting and recorded evidence. The handoff includes the duplicate-rule register, each benchmark script and size, the regular and deep corpus rules, and the order of the settlement and port-readiness gates. [Engine responsibilities and gates](audit/engine-finalized-simple.md) · [Measured results](audit/engine-finalized-results.md)
+
 - [x] Step 0: the spec and the plan in `scratch/rewrite/`, the environment, the base worktree
 - [x] A1 notation and types (`a1/FINDINGS.md`, 32 rulings)
 - [x] A2 reference semantics (`a2/FINDINGS.md`, 23 rulings; 96 tests)

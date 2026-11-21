@@ -57,7 +57,7 @@ def workload(row, phase):
             '12',
         ]
     if row == 'held-pipes':
-        return 's1-engine/bench.py', ['30000']
+        return 's1-engine/bench.py', ['30000', '--full-record-only']
     if row == 'declared':
         return 's5-engine/bench.py', ['3000', '3500', '1500']
     raise ValueError(f'unknown workload {row}')

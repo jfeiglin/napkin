@@ -1,5 +1,7 @@
 # Measuring engine port readiness
 
+The independent-pipes timing command runs the 30,000 rows, full recording, and the three analytical checks. Its `--full-record-only` switch omits the separate untimed simulation with two selected values. Invoking the original `bench.py 30000` still exercises both recordings.
+
 Use one checkout for the benchmark scripts and a clean pinned worktree for each engine. `B` is the audited baseline, `A` is allocation only, `P` is the settlement prototype, and `F` is the final candidate. Run the benchmark on its own, with the same Python executable, power settings and machine throughout. Keep the output directory outside the engine package.
 
 ```sh

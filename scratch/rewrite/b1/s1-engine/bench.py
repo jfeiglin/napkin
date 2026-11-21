@@ -11,7 +11,7 @@ factor.
     cd /home/user/napkin && OPENBLAS_NUM_THREADS=1 .venv/bin/python scratch/rewrite/b1/s1-engine/bench.py [rows]
 """
 
-import sys
+import argparse
 import time
 
 import numpy as np
@@ -22,7 +22,6 @@ from napkin.program.build import BOOL, Builder, count, flow, formula, fsum, inpu
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
 
-ROWS = int(sys.argv[1]) if len(sys.argv) > 1 else 30_000
 HOURS = (0, 12, 24, 36)
 FACTORS = (1, 0.5, 1.5, 1)
 
@@ -67,8 +66,12 @@ def integral(at):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('rows', type=int, nargs='?', default=30_000)
+    parser.add_argument('--full-record-only', action='store_true', help='skip the separate selective-record run')
+    args = parser.parse_args()
     start = time.perf_counter()
-    made, bases, initials = program(ROWS)
+    made, bases, initials = program(args.rows)
     built = time.perf_counter()
     configuration = Configuration(Request(48))
     plan = Plan.of(made, configuration)
@@ -84,15 +87,16 @@ def main():
         assert abs(readings[0].values[k] - stocks.sum()) <= 1e-9 * stocks.sum(), (at, readings[0].values[k], stocks.sum())
         assert abs(readings[2].values[k] - stocks[::10].sum()) <= 1e-9 * stocks[::10].sum()
     pieces = sum(len(history.pieces) for history in record.histories)
-    narrow = Configuration(Request(48, everything=False, keys=(Key('', ('total',)), Key('places.p00042', ('stock',)))))
-    again = time.perf_counter()
-    small = run(made, narrow)
-    after = time.perf_counter()
-    assert small.failure is None
-    print(f'rows {ROWS}: build {built - start:.9f} s, plan {planned - built:.9f} s, run with its record {ran - planned:.9f} s, '
+    print(f'rows {args.rows}: build {built - start:.9f} s, plan {planned - built:.9f} s, run with its record {ran - planned:.9f} s, '
           f'read 4 paths at 3 times {done - ran:.9f} s; {len(record.histories)} histories, {pieces} pieces')
-    print(f'the same with a record of two values: plan and run {after - again:.9f} s')
     print('total at 6, 30, 48 h:', readings[0].values, 'drawing:', readings[1].values)
+    if not args.full_record_only:
+        narrow = Configuration(Request(48, everything=False, keys=(Key('', ('total',)), Key('places.p00042', ('stock',)))))
+        again = time.perf_counter()
+        small = run(made, narrow)
+        after = time.perf_counter()
+        assert small.failure is None
+        print(f'the same with a record of two values: plan and run {after - again:.9f} s')
 
 
 if __name__ == '__main__':
