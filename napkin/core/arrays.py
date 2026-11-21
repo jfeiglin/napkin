@@ -208,9 +208,10 @@ class _Pass:
         bound = self.bound_names((node,))
         if not bound:
             if isinstance(rounded, np.ndarray) and policy.named is not None:
-                exact = policy.literal_value(node)
-                if exact is not None:
-                    return np.full(rounded.shape, float(exact))
+                replacement = policy.rounded_literal(node)
+                if replacement is not None:
+                    return np.full(rounded.shape, replacement)
+                return rounded
             return policy.literal_sum(node, rounded)
         values = self.literal_rows((node,), bound, places, Comparisons.literal_value)
         if not values:

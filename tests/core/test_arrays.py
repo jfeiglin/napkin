@@ -449,6 +449,26 @@ def test_bound_columns_reuse_concrete_literal_chains_only_for_selected_rows_in_t
         assert len(reads) <= 3 * count
 
 
+@pytest.mark.parametrize('use_array', [False, True], ids=['scalar', 'array'])
+def test_exact_sum_rounding_tracks_a_change_between_formulas_and_captured_numbers(use_array):
+    from napkin.core.evaluation import checked_value
+    from napkin.core.units import UnitSystem
+
+    units = UnitSystem({})
+    definitions = {'a': expr.const(0.1), 'b': expr.const(0.2)}
+    units.comparisons.named = lambda name: (1.0, definitions[name])
+    node = expr.read('a + b')
+    for captured in (False, True, False):
+        definitions['a'] = 1.0 if captured else expr.const(0.1)
+        units.comparisons.floors.clear()
+        for a in (0.1, 0.4) if captured else (0.1,):
+            if use_array:
+                result = arrays.values(node, {'a': np.array([a]), 'b': np.array([0.2])}, units, 1)[0]
+            else:
+                result = checked_value(node, {'a': a, 'b': 0.2}, units)
+            assert result == (a + 0.2 if captured else 0.3)
+
+
 def test_general_array_bindings_may_use_template_names_inside_a_retained_definition():
     from napkin.core.units import UnitSystem
 

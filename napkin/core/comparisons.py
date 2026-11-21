@@ -368,14 +368,25 @@ class Comparisons:
         literals = Literals(parts, self.units.exact_scale if self.units is not None else None, self.factor)
         return literals.value(node, known)
 
+    def rounded_literal(self, node):
+        """The once-rounded value when all selected operands are authored literals."""
+        key = node, self.factor
+        try:
+            return self.floors[key]
+        except KeyError:
+            # A solver can evaluate this sum thousands of times against different
+            # stock levels. Only a change of definition or policy can make it literal.
+            exact = self.literal_value(node) if self.named is not None or not expr.names(node) else None
+            replacement = float(exact) if isinstance(exact, Fraction) else None
+            self.floors[key] = replacement
+            return replacement
+
     def literal_sum(self, node, rounded):
-        """Round a sum or difference of authored literals once. A named formula
-        must expose the same small residual that its inline guard compares."""
-        if isinstance(rounded, float) and math.isfinite(rounded) and (self.named or not expr.names(node)):
-            exact = self.literal_value(node)
-            if isinstance(exact, Fraction):
-                return float(exact)
-        return rounded
+        """A named formula must expose the same small residual that its inline guard compares."""
+        if not isinstance(rounded, float) or not math.isfinite(rounded):
+            return rounded
+        replacement = self.rounded_literal(node)
+        return rounded if replacement is None else replacement
 
     def literal_gap(self, left, right, *, bindings=False):
         """Exact gap and relative band of two literal operands. A vectorized template
