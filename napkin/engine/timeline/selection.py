@@ -405,7 +405,7 @@ def size_of(rows, upper, tiers, prefs, target):
     return found if found > 0.0 else 1.0
 
 
-def select(rows, lower, upper, tiers, prefs, target, units=None, own_scales=1.0):
+def select(rows, lower, upper, tiers, prefs, target, units=None, own_scales=1.0, measure=None):
     """The unknowns of one coupled part: `rows` (`Rows`, in the units of the rates), the bounds of
     each unknown (-inf and inf for none), the tiers of claims in order (each a list of (a,
     request)), the preferred routes in order (each (a, amount)) and the target of each unknown
@@ -466,7 +466,10 @@ def select(rows, lower, upper, tiers, prefs, target, units=None, own_scales=1.0)
         snapped[near] = bound[near]
     claims = [claim for tier in tiers for claim in tier] + list(prefs)
     candidates = (_exact(final, lower, upper, snapped, target), snapped)
-    return _kept(final, lower, upper, target, claims, found, candidates, own_scales)
+    selected = _kept(final, lower, upper, target, claims, found, candidates, own_scales)
+    if measure is not None:
+        measure(found, selected)
+    return selected
 
 
 def _kept(rows, lower, upper, target, claims, answer, candidates, own_scales=1.0):

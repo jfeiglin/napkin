@@ -36,10 +36,7 @@ def bound_values(bounds, events):
 
 def put_bounds(way, state, events):
     """Snap just the due stores and return their names for the sharing that follows."""
-    found = bound_values(way.run.bounds, events)
-    for name, number in found.items():
-        state[way.place[name]] = number
-    return list(found)
+    return way.run.stock_state.install(way, state, bound_values(way.run.bounds, events))
 
 
 def continued_lines(way, levels, t):

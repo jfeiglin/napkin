@@ -17,8 +17,8 @@ import math
 
 import pytest
 
-from napkin.dynamics import input_threshold, state_threshold, threshold
-from napkin.engine import read
+from napkin.dynamics import configured, input_threshold, state_threshold, threshold
+from napkin.engine import read, run
 from tests.dynamics.models import CENTRE, cusp, drain, fold
 
 LAM = 3.0
@@ -81,10 +81,27 @@ def test_a_threshold_needs_two_classes_at_its_ends():
         threshold(lambda v: v, lambda v: 'same', 0.0, 1.0, tol=1e-3)
 
 
+def test_the_fold_at_its_empty_bound_serves_the_soft_outlet_from_the_inlet():
+    program, configuration = fold(-5.0, horizon=10)
+    record = run(program, configuration)
+    assert record.failure is None and record.end == 10
+    # From y = 1, y' = -5 - y² reaches y = -10 (zero stock) before 1 h.
+    # The outlet then requests 500 people/h. The uncapped inlet can serve it.
+    stock, requested, inlet, outlet = read(
+        record,
+        program,
+        ['tank.x', 'tank.change_in.request', 'tank.change_in.actual_rate', 'tank.change_out.actual_rate'],
+        [1, 10],
+    )
+    assert stock.values == (0, 0)
+    assert requested.values == (395, 395)
+    assert inlet.values == outlet.values == (500, 500)
+
+
 def test_a_run_that_fails_stops_the_search():
-    # Below the fold the level falls without a rest: at mu = -5, y' = -5 - y^2 takes it from y = 1 to
-    # zero people (y = -10), its lower bound, at (atan(1 / sqrt 5) + atan(10 / sqrt 5)) / sqrt 5 = 0.79 h,
-    # where its outflow asks more than it holds and the run stops with a failure.
     program, configuration = fold(1.0, horizon=10)
-    with pytest.raises(ValueError, match='fails'):
+    # At mu = -5 the inlet requests 95 - y². It becomes negative while the stock
+    # still holds people, before the empty bound can constrain allocation.
+    configuration = configured(program, configuration, {'tank.offset': 100})
+    with pytest.raises(ValueError, match=r'tank\.mu = -5\.0 fails: Negative flow rates:.*tank\.change_in'):
         input_threshold(program, configuration, 'tank.mu', -5.0, 1.0, end(program, 10), tol=1e-3)

@@ -336,6 +336,7 @@ class MovingAmounts:
 
     def __init__(self, rows, start, single):
         self.single = single
+        self.start = start
         self.clocks = {}
         self.all_clock = False
         self.absolute_rates = None

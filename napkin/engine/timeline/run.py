@@ -64,6 +64,7 @@ from ...expressions import evaluate
 from ...program.checkpoint import CheckpointError
 from ...program.config import ConfigurationError
 from ...program.record import Unavailable
+from ..allocation import StockFaces
 from ..continuous.system import run_settings, step_cap
 from ..continuous.walk import walked
 from ..errors import SimulationError
@@ -460,7 +461,7 @@ class Run:
         return self.plan.numerics.atol_factor * max(self.own_scale(name), max(map(abs, amounts), default=0.0))
 
     def comparison_band(self, name, a, b):
-        return self.plan.units.comparisons.factor * max(self.own_scale(name), abs(a), abs(b))
+        return StockFaces.band(self.plan.units.comparisons.factor, self.own_scale(name), a, b)
 
     def admitted(self, name, low, high, value):
         """An input or parameter is inside its declared range up to the comparison band."""
@@ -1095,7 +1096,7 @@ class Run:
                 faces = Placements(bound_values(self.bounds, instance.contacts_at(at, self.clock.apart(at))))
                 faces.include(levels)
                 if faces:
-                    levels.update(self.stock_state.faces(faces, at))
+                    levels = self.stock_state.place(faces, at)
                 stores, rates, jumped = instance.step(levels) if levels else instance.step()
                 self.recorder.check_budget(at, internal=True)
                 changed = set(stores) | set(rates)
@@ -1141,8 +1142,11 @@ class Run:
                         self.consumed[tuple(map(nodes.text, pair))] = located, moment
             self.accepted = moment
             if levels:
-                retained = self.stock_state.faces(levels, moment)
-                self.bound_at = {name: target for name, target in levels.items() if name not in retained}
+                decided = self.stock_state.place(levels, moment)
+                self.bound_at = {name: decided[name] for name in self.stock_state.changed}
+                self.opening_levels.update(
+                    (name, level) for name, level in decided.items() if name not in self.bound_at
+                )
                 self.moved.update(self.bound_at)
             self.arriving = True
             self.bare = (

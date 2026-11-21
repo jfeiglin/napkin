@@ -95,6 +95,9 @@ class Entry(NamedTuple):
     round: int = 0
     origin: str = ''
     placements: tuple = ()
+    reason: str = ''
+    violations: tuple = ()
+    attempts: tuple = ()
 
 
 def _allowance_root(volume, remaining, lo, hi):
@@ -276,8 +279,8 @@ class Run:
         self._in_range(cell, v, admission=admission)
         return v
 
-    def on_allocation_bound(self, cell, level, bound):
-        """Classify this stock for sharing without changing its exact inventory."""
+    def on_stock_target(self, cell, level, bound):
+        """Classify a stock at a bound or threshold without changing its exact inventory."""
         if bound is None:
             return False
         if level == bound:
@@ -600,7 +603,7 @@ class Run:
         residual = {cell: target - levels[cell](tau) for cell, (target, _) in self.contact_levels.items()}
         pending = [c for c, delta in residual.items() if delta or len(self.contact_targets[c]) > 1]
         if not pending:
-            return self.moving, {}, {}
+            return self.moving, {}
         rates = {name: poly for _, _, poly, name in self.moving}
         legs = sorted(
             (
@@ -635,15 +638,26 @@ class Run:
                 direction = -1 if target == lower else 1 if target == upper else 0
                 if not direction and cell not in self.contact_levels:
                     # A resting neighbor keeps its accepted level, including its residual.
-                    direction = -1 if self.on_allocation_bound(cell, target, lower) else 1
+                    direction = -1 if self.on_stock_target(cell, target, lower) else 1
             speeds = [sign * poly(root) for sign, (_, _, poly, _) in zip(signs, moving)]
             weights = [abs(speed) if speed * direction > 0 else 0 for speed in speeds]
             if not any(weights):
-                eligible = [i for i, sign in enumerate(signs) if sign * direction > 0]
-                if not eligible:
-                    eligible = [i for i, sign in enumerate(signs) if sign]
-                if eligible:
-                    weights[eligible[0]] = 1
+                # A pipe can approach zero exactly at contact. The first nonzero
+                # incoming polynomial term gives its limiting proportional share.
+                terms = [
+                    poly(Poly([root, -1])) * (sign * direction)
+                    for sign, (_, _, poly, _) in zip(signs, moving)
+                ]
+                positive = []
+                for i, term in enumerate(terms):
+                    if term.sign_after() > 0:
+                        power = next(k for k, coefficient in enumerate(term.c) if coefficient)
+                        positive.append((i, power, term.c[power]))
+                if positive:
+                    order = min(k for _, k, _ in positive)
+                    for i, k, v in positive:
+                        if k == order:
+                            weights[i] = v
             total = sum(weights)
             distributions.append(
                 [Fraction(weight * sign, total or 1) for weight, sign in zip(weights, signs)]
@@ -659,34 +673,42 @@ class Run:
                     if other not in placements:
                         level = self.view.cells[other]
                         if other in levels or not any(
-                            self.on_allocation_bound(other, level, edge)
+                            self.on_stock_target(other, level, edge)
                             for edge in self.view.bounds.get(other, ())
                         ):
                             continue
                         placements[other], residual[other] = (level, tau), 0
                     pending.append(other)
-        factors = self._placement_factors(tau, placements, incidence, distributions, residual)
-        amounts, changes = {}, Counter()
-        for (src, dst, _, name), weights in zip(moving, zip(*distributions)):
-            adjustment = sum(w * factor for w, factor in zip(weights, factors))
-            if adjustment:
-                amounts[name] = adjustment
-                if src is not None:
-                    changes[src] -= adjustment
-                if dst is not None:
-                    changes[dst] += adjustment
-        return moving, amounts, changes
+        amounts = self._placement_amounts(tau, moving, placements, incidence, distributions, residual)
+        return moving, amounts
 
-    def _placement_factors(self, tau, placements, incidence, distributions, residual):
+    def _placement_amounts(self, tau, moving, placements, incidence, distributions, residual):
         """Solve each set of constraints that acts on shared legs independently."""
         cells = list(incidence)
+        touched = [{leg[3] for leg, weight in zip(moving, weights) if weight} for weights in distributions]
+        candidates = set().union(*touched)
+        problems, shared = network.placement_problems(self, candidates)
+        stock_legs = {}
+        for src, dst, _, name in moving:
+            if name not in candidates:
+                continue
+            for end in (src, dst):
+                if end is None:
+                    continue
+                owner = _holder(end.owner)
+                frozen = isinstance(owner, Occ) and not self.view.cells[Cell(owner, 'active')]
+                if frozen or any(x is not None for x in self.view.bounds.get(end, ())):
+                    stock_legs.setdefault(end, set()).add(name)
+        shared.extend(legs for legs in stock_legs.values() if len(legs) > 1)
         adjacent = [set() for _ in cells]
         for j, weights in enumerate(distributions):
             for i, cell in enumerate(cells):
-                if i != j and any(w and s for w, s in zip(weights, incidence[cell])):
+                linked = any(w and s for w, s in zip(weights, incidence[cell]))
+                if i != j and (linked or any(legs & touched[i] and legs & touched[j] for legs in shared)):
                     adjacent[i].add(j)
                     adjacent[j].add(i)
-        factors = [0] * len(cells)
+        accepted = Counter()
+        ties = []
         remaining = set(range(len(cells)))
         while remaining:
             pending = [min(remaining)]
@@ -705,21 +727,75 @@ class Run:
                 row = [sum(s * w for s, w in zip(incidence[cell], distributions[j])) for j in group]
                 for level in self.contact_targets.get(cell, {target}):
                     equations.append((row, level - actual))
-                    readings.append((label(cell), actual, level, self.own_scales[cell]))
+                    readings.append((cell, actual, level))
             solution = solve_affine(equations, len(group))
+            corrections = {}
+            error = None
             if solution is not None:
-                for i, coefficient in zip(group, solution[0]):
-                    factors[i] = coefficient
-                continue
-            details = tuple(sorted((name, actual, target) for name, actual, target, _ in readings))
-            at = self.view.t + tau
-            self.trace.append(Entry('near-tie', at, 'stock placement', placements=details))
-            factor = max(self.config.rtol, self.config.atol_factor)
-            if any(abs(a - b) > factor * max(scale, abs(a), abs(b)) for _, a, b, scale in readings):
-                raise PlacementConflict(at, details)
-        return factors
+                for k, (_, _, _, name) in enumerate(moving):
+                    amount = sum(
+                        distributions[i][k] * coefficient for i, coefficient in zip(group, solution[0])
+                    )
+                    if amount:
+                        corrections[name] = amount
+                error = self._placement_rule(tau, moving, corrections, problems)
+                if error is None:
+                    accepted.update(corrections)
+                    continue
+            details = tuple(sorted((label(cell), actual, target) for cell, actual, target in readings))
+            missed = any(not self.on_stock_target(cell, a, b) for cell, a, b in readings)
+            ties.append((details, missed, error))
+        at = self.view.t + tau
+        for details, _, reason in sorted(ties, key=lambda item: item[0]):
+            self.trace.append(
+                Entry(
+                    'near-tie',
+                    at,
+                    'stock placement',
+                    placements=details,
+                    reason=str(reason or ''),
+                    violations=getattr(reason, 'violations', ()),
+                    attempts=getattr(reason, 'attempts', ()),
+                )
+            )
+        if any(missed for _, missed, _ in ties):
+            details = tuple(sorted(row for rows, _, _ in ties for row in rows))
+            reasons = tuple(sorted({str(reason) for _, _, reason in ties if reason}))
+            conflict = PlacementConflict(at, details, reasons)
+            frozen = [reason for _, _, reason in ties if isinstance(reason, FrozenTransfer)]
+            if frozen:
+                gross = self._frozen_error(
+                    tau,
+                    {v for reason in frozen for v in reason.violations},
+                    [a for reason in frozen for a in reason.attempts],
+                )
+                conflict.violations, conflict.attempts = gross.violations, gross.attempts
+            raise conflict
+        return accepted
 
-    def _frozen_placement(self, tau, moving, corrections):
+    def _placement_rule(self, tau, moving, corrections, problems):
+        """A preferred landing is legal only if its actual transfers obey all hard rules."""
+        view = self.view
+        changes = Counter()
+        for src, dst, _, name in moving:
+            if name in corrections:
+                changes[src] -= corrections[name]
+                changes[dst] += corrections[name]
+        for cell, difference in changes.items():
+            if cell is None or not difference:
+                continue
+            lower, upper = view.bounds.get(cell, (None, None))
+            start = view.levels[cell](tau) if cell in view.levels else view.cells[cell]
+            proposed = start + difference
+            if (lower is not None and proposed < lower) or (upper is not None and proposed > upper):
+                return RunFailed(
+                    f'placement at {view.t + tau} h would put {label(cell)} at {proposed}, '
+                    f'outside its range [{lower}, {upper}]'
+                )
+        failure = network.check_placement(self, problems, tau, moving, corrections)
+        return failure or self._frozen_placement(tau, moving, corrections, post=False)
+
+    def _frozen_placement(self, tau, moving, corrections, *, post):
         """Check one simultaneous placement against the gross books of its frozen endpoints."""
         if not corrections:
             return None
@@ -752,8 +828,9 @@ class Run:
         ]
         if violations:
             return self._frozen_error(tau, [row[:3] for row in violations], violations)
-        for key, delta in changes.items():
-            self.transferred[key] = self.transferred.get(key, 0) + delta
+        if post:
+            for key, delta in changes.items():
+                self.transferred[key] = self.transferred.get(key, 0) + delta
         return None
 
     def _frozen_error(self, tau, violations, attempts=()):
@@ -772,47 +849,31 @@ class Run:
         if failure is not None:
             tau, problem = failure
             nxt = view.t + tau
-        moving, corrections, changes = self.moving, {}, {}
+        moving, corrections = self.moving, {}
         if self.contact_levels and failure is None:
             try:
-                moving, corrections, changes = self._placements(tau)
-                for cell, difference in changes.items():
-                    if difference:
-                        lower, upper = view.bounds.get(cell, (None, None))
-                        start = view.levels[cell](tau) if cell in view.levels else view.cells[cell]
-                        proposed = start + difference
-                        if (lower is not None and proposed < lower) or (
-                            upper is not None and proposed > upper
-                        ):
-                            room = start - lower if difference < 0 else upper - start
-                            legs = [
-                                f'{name} by {abs(corrections[name])}'
-                                for src, dst, _, name in moving
-                                if name in corrections
-                                and (int(dst == cell) - int(src == cell)) * corrections[name] * difference > 0
-                            ]
-                            raise RunFailed(
-                                f'placement at {nxt} h would put {label(cell)} at {proposed}, '
-                                f'outside its range [{lower}, {upper}]; {", ".join(legs)}, available {room}'
-                            )
-                problem = self._frozen_placement(tau, moving, corrections)
+                moving, corrections = self._placements(tau)
+                problem = self._frozen_placement(tau, moving, corrections, post=True)
             except RunFailed as rejected:
                 problem = rejected
             if problem is not None:
                 failure = tau, problem
-                moving, corrections, changes = self.moving, {}, {}
+                moving, corrections = self.moving, {}
+
+        changes = Counter()
         for src, dst, p, name in moving:
-            if p.c != (0,) or name in corrections:
-                self.ledger.append(
-                    ('flow', view.t, nxt, name, src, dst, p.integral()(tau) + corrections.get(name, 0))
-                )
-        for cell, p in view.levels.items():
-            view.cells[cell] = p(tau) + changes.get(cell, 0)
+            if p.c == (0,) and name not in corrections:
+                continue
+            amount = p.integral()(tau) + corrections.get(name, 0)
+            self.ledger.append(('flow', view.t, nxt, name, src, dst, amount))
+            if src is not None:
+                changes[src] -= amount
+            if dst is not None:
+                changes[dst] += amount
+        for cell, change in changes.items():
+            view.cells[cell] += change
             if failure is None:
                 self._in_range(cell, view.cells[cell])
-        for cell in changes.keys() - view.levels.keys():
-            view.cells[cell] += changes[cell]
-            self._in_range(cell, view.cells[cell])
         for var, p in view.rates.items():
             view.results[var] = p(tau)
         view.t, view.levels, view.rates = nxt, {}, {}

@@ -56,6 +56,7 @@ CLOSURE = (
     'engine/continuous/system.py',
     'engine/continuous/transfers.py',
     'engine/continuous/walk.py',
+    'engine/departure.py',
     'engine/errors.py',
     'engine/solve/__init__.py',
     'engine/solve/distance.py',

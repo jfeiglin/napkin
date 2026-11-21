@@ -59,6 +59,33 @@ class StockFaces:
             math.isfinite(bound) and bound - value <= self.factor * max(self.high_floor[i], abs(value))
         )
 
+    def trial(self, values):
+        """Extend the field to an integrator trial outside its physical domain."""
+        return np.clip(values, self.lower, self.upper)
+
+    @staticmethod
+    def band(factor, scale, value, target):
+        return factor * max(scale, abs(value), abs(target))
+
+    def contact(self, row, value, slope, at, name):
+        """The next physically distinct bound on a held line. A sub-band outward
+        residual already at its face can reach a material breach, never that same root again."""
+        if slope == 0.0:
+            return math.inf
+        lower = slope < 0
+        target = self.lower[row] if lower else self.upper[row]
+        if not math.isfinite(target):
+            return math.inf
+        distance = (target - value) / slope
+        if distance <= 0:
+            floor = self.low_floor[row] if lower else self.high_floor[row]
+            band = self.factor * max(floor, abs(value))
+            if abs(value - target) > band:
+                raise SimulationError(f'{name}: the accepted transfers move it past its bound at {at:g} h')
+            beyond = math.nextafter(target + (-band if lower else band), -math.inf if lower else math.inf)
+            distance = (beyond - value) / slope
+        return max(math.nextafter(at, math.inf), at + distance)
+
     def flags(self, values, rows=slice(None)):
         magnitude = np.abs(values)
         low = np.isfinite(self.lower[rows]) & (
@@ -275,7 +302,11 @@ class Allocation:
                 raise SimulationError('Derivative points outside an active state bound')
             return requested, balanced_faces
         adjustable = ()
-        if np.any(a @ requested - b > 1e-12):
+        excess = a @ requested - b
+        outward = excess > 0
+        if np.any(outward) and np.any(
+            excess[outward] > 32 * np.finfo(float).eps * (np.abs(a[outward]) @ requested + np.abs(b[outward]))
+        ):
             self.check_policies(a, b, requested)
             # Inputs not touching a constrained stock are physical supplies;
             # their rates cannot be reduced to make allocation appear feasible.
@@ -284,7 +315,7 @@ class Allocation:
             if separable is not None:
                 requested = separable
                 adjustable = ()
-        if adjustable and np.any(a @ requested - b > 1e-12):
+        if adjustable:
             requested = self.linear_program(a, b, requested, adjustable, unconstrained)
         return requested, balanced_faces
 

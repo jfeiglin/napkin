@@ -52,6 +52,7 @@ from scipy.integrate import Radau
 from ...core import arrays
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
+from .. import departure
 from ..allocation import StockFaces
 from ..continuous import dense, integrate
 from ..continuous.transfers import (
@@ -64,12 +65,12 @@ from ..errors import SimulationError
 from .collections import combined, dynamic_value, looked_up, selected
 from .contacts import put_bounds
 from .lines import asked_of
-from .network import OUT, ROUNDOFF, SIDES, Asked, Instant, network_of
+from .network import IN, OUT, SIDES, Asked, Instant, network_of
 from .plan import DYNAMIC, FORMULA, LOOKUP, REDUCE, Pending, _renamed
 from .reads import Reads, lazily
 from .record import fitted
 from .region import Region, key_surfaces
-from .way import Way
+from .way import MovingTransfers, Way
 
 _MISSING = object()
 
@@ -613,7 +614,7 @@ def identifiable_network(net, connections, plan):
     return True
 
 
-class Sparse(Way):
+class Sparse(MovingTransfers, Way):
     """Connected sets on the sparse integrator from the time `t` on (see the module), a way of a run
     (`ways.py`): one set, or the sets of `sets` in the order of their levels (`levels`), where the
     settings of a set read the rates of a set of an earlier level that move, so that they integrate
@@ -688,6 +689,7 @@ class Sparse(Way):
             {name for name in formulas if plan._is_rate(name)} | set(defined),
         )
         self.outputs = vector.compiled(defined) if defined else None
+        self.measured = None
         self.held_rates = set()
         self.selected = False
 
@@ -841,7 +843,7 @@ class Sparse(Way):
 
     def _select(self):
         """At the start of a segment: each keyed read that moves holds the entry that it selects."""
-        y = np.minimum(np.maximum(self.y, self.lower), self.upper)
+        y = self.faces.trial(self.y)
         self.selection.clear()
         self.selection.update(dict.fromkeys(self.stepped, self.t))
         for name, select in self.switching:
@@ -953,7 +955,9 @@ class Sparse(Way):
             return values, values
         if not self.levels:
             asked = self.asked(t, trial)
-            values = Instant(self.net, asked, self.lower_flags, self.upper_flags).values()
+            instant = Instant(self.net, asked, self.lower_flags, self.upper_flags)
+            values = instant.values()
+            self.measured = instant if instant.rate_errors else None
             return values, self.net.carried(values, asked)
         # Level by level: the sets share no store, so the local sharing of a level is its own, and
         # the settings of the next read the rates that it gave (the later ones ask nothing yet).
@@ -961,13 +965,15 @@ class Sparse(Way):
         for at, settings, gives in self.levels:
             found[at] = settings(t, trial)
             asked = self._asked(found, t, trial)
-            values = Instant(self.net, asked, self.lower_flags, self.upper_flags).values()
+            instant = Instant(self.net, asked, self.lower_flags, self.upper_flags)
+            values = instant.values()
+            self.measured = instant if instant.rate_errors else None
             for k, name in gives:
                 if name in self.current:
                     self.current[name] = float(values[k])
         return values, self.net.carried(values, asked)
 
-    def field(self, t, y):
+    def field(self, t, y, *, allocation=False):
         carried = self.values(t, y)[1]
         self.last_carried = carried
         change = self.incidence @ carried
@@ -975,7 +981,28 @@ class Sparse(Way):
         if held.any():
             # On a held face, proportional shares can sum a last bit above the inflow.
             # Use the same flow-balance roundoff as Lines; an interior level keeps its headroom.
-            change[held & (np.abs(change) <= ROUNDOFF * (self.traffic @ np.abs(carried)))] = 0.0
+            gross = self.traffic @ np.abs(carried)
+            if self.measured is not None:
+                candidates = np.flatnonzero(held & (gross > 0) & (np.abs(change) <= 1e-7 * gross))
+                for i in candidates.tolist():
+                    change[i] = self.measured.face_rate(
+                        i,
+                        carried[self.net.ends[IN].of(i)],
+                        carried[self.net.ends[OUT].of(i)],
+                        change[i],
+                        gross[i],
+                    )
+            raw = change.copy()
+            change = departure.rates(
+                change,
+                gross,
+                held,
+                lambda i: (carried[self.net.ends[IN].of(i)], carried[self.net.ends[OUT].of(i)]),
+            )
+            if not allocation:
+                one_face = self.lower_flags ^ self.upper_flags
+                for row in np.flatnonzero((change == 0) & (raw != 0) & one_face).tolist():
+                    change[row] = self.run.stock_state.physical_face_net(self, row, carried)
         return change
 
     def _held(self, t, y):
@@ -984,9 +1011,7 @@ class Sparse(Way):
         A switch that the state crosses at the
         start of the step is read on its far side while the state is within its tolerance, as the
         time is (`_sides`)."""
-        trial = np.minimum(np.maximum(y, self.lower), self.upper)
-        held = self.lower_flags | self.upper_flags
-        trial[held] = self.held_levels[held]
+        trial = self.faces.trial(y)
         for i, low, high, number in self.sides if not self.vector.branches else ():
             if low <= trial[i] <= high:
                 trial[i] = number
@@ -1123,7 +1148,7 @@ class Sparse(Way):
         net, count = self.net, len(self.stores)
         instant = Instant(
             net,
-            self.asked(self.t, np.minimum(np.maximum(self.y, self.lower), self.upper)),
+            self.asked(self.t, self.faces.trial(self.y)),
             self.lower_flags,
             self.upper_flags,
         )
@@ -1147,15 +1172,17 @@ class Sparse(Way):
 
     def _flags(self):
         """The flags of a new segment: a store on a bound is held there while its sharing keeps it."""
-        y, lower, upper = self.y, self.lower, self.upper
+        y = self.y
         at_lower, at_upper = self.faces.flags(y)
-        np.clip(y, lower, upper, out=y)
         self.held_levels = y
         self.lower_flags, self.upper_flags = at_lower, at_upper
         for _ in range(len(y) + 1):
-            change = self.field(self.t, y)
+            change = self.field(self.t, y, allocation=True)
             leaving = (self.lower_flags & (change > 0)) | (self.upper_flags & (change < 0))
             if not leaving.any():
+                if self.measured is not None:
+                    for i, data in self.measured.uncertain.items():
+                        departure.record_tie(self.recorder, self.t, self.stores[i], *data)
                 break
             self.lower_flags &= ~leaving
             self.upper_flags &= ~leaving
@@ -1340,7 +1367,6 @@ class Sparse(Way):
         if events:
             end = min(at for at, _, _ in events)
             y = solution(end)
-            self._on_contacts(end, y)
         if ended and end <= self.first:
             raise SimulationError(self._failed(end, 'Integration made no progress'))
         self.pending = (start, end, solution, np.array(y, dtype=float), ended)
@@ -1382,30 +1408,12 @@ class Sparse(Way):
     def _clock_bounds(self):
         return self.lower_flags.__getitem__, self.upper_flags.__getitem__
 
-    def _transferred(self, name, t):
-        """Cumulative accepted amount of this physical connection since installation."""
-        row = self.leg_rows[name]
-        if t == self.amounts.through:
-            return self.amounts.amount(row)
-        arrival = getattr(self, 'arrival_amounts', None)
-        if arrival is not None and t == arrival.through:
-            return arrival.amount(row)
-        if self.pending is None or not self.amounts.through < t <= min(
-            self.run.clock.apart(self.pending[1]), self.run.now
-        ):
-            raise ValueError('transfer requested outside the accepted interval')
+    def _pending_end(self):
+        return self.pending[1]
 
-        def interval():
-            prefix = self._transfer_amount(self.pending[2], self.pending[0], t)
-            return prefix if self.amounts.single is not None else prefix[row]
-
-        leg = self.amounts.clocks.get(row)
-        mode = (
-            leg.selection(self.lower_flags.__getitem__, self.upper_flags.__getitem__)
-            if leg is not None
-            else None
-        )
-        return self.amounts.prefix(row, t, mode, interval)
+    def _pending_amount(self, row, t):
+        prefix = self._transfer_amount(self.pending[2], self.pending[0], t)
+        return prefix if self.amounts.single is not None else prefix[row]
 
     def step(self, levels=()):
         """Commit the next step: the stores and the rates of the set move through it."""
@@ -1459,21 +1467,12 @@ class Sparse(Way):
                 elif kind == 'key':
                     yield at, owner, 'switch'
 
-    def crossed_operands(self, t, through):
+    def detected_switches(self):
         if self.pending is not None:
-            yield from (
-                (at, pair)
-                for at, pair, kind in self.contacts
-                if kind == 'switch' and at <= through and self.run.clock.within(at, t)
-            )
+            yield from ((at, pair) for at, pair, kind in self.contacts if kind == 'switch')
 
     def _on_contacts(self, through, y):
         met = put_bounds(self, y, self._events(through))
-        for at, owner, kind in self.contacts:
-            if at <= through and kind == 'switch':
-                for here, other in (owner, owner[::-1]):
-                    if isinstance(here, nodes.Ref) and here.name in self.place and not self.moves(other):
-                        y[self.place[here.name]] = self._side(at, y)(other)
         return met
 
     def snap(self, t=None, through=None):

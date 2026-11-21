@@ -1,5 +1,6 @@
 """A stock's physical balance and its eligibility for bound allocation are distinct."""
 
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from napkin.engine.timeline import Plan, Run, read
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 from napkin.program.record import Key
+from tests.engine.test_local_sharing_rule import compare
 from tests.engine.test_threshold_transfer_placement import use_method
 from tests.reference.from_program import run_of, value_at
 
@@ -181,3 +183,42 @@ yard:
     assert inlet.values == pytest.approx(rates, abs=1e-15)
     assert outlet.values == pytest.approx(rates, abs=1e-15)
     assert run.stock_balance('yard.a', 1) == Fraction('0.001')
+
+
+@pytest.mark.parametrize('method', SINGLE)
+@pytest.mark.parametrize('upper', [False, True], ids=['lower', 'upper'])
+def test_a_small_one_way_rate_still_obeys_a_stocks_physical_face(method, upper, monkeypatch):
+    stock = '0.999' if upper else '0.001'
+    ends = 'SOURCE -> this.a' if upper else 'this.a -> SINK'
+    source = f"""scenario "Tiny withdrawal or deposit"
+    horizon 1 h
+yard:
+    a: L = {stock} L in [0, 1 L] scale 10000000 L
+    flow pipe: {ends}
+        request = 1e-13 L/h
+        capacity = 1e-13 L/h
+"""
+    model = use_method(source, method, monkeypatch, 'pipe')
+    run = Run(Plan.of(model.program, model.configuration))
+    record = run.run()
+    assert record.failure is None, record.failure
+    (rate,) = read(record, model.program, ['yard.pipe.actual_rate'], [0, 0.5, 1])
+    assert rate.values == (0, 0, 0)
+    assert run.stock_balance('yard.a', 1) == Fraction(stock)
+    oracle, error = run_of(model.program, model.configuration)
+    assert error is None, error
+    assert value_at(oracle, model.program, Key('yard', ('pipe', 'actual_rate')), 1) == 0
+
+
+@pytest.mark.parametrize('method', ['lines', 'sparse'])
+def test_a_full_stock_with_proportional_legs_moves_past_a_rounding_residual(method, monkeypatch):
+    # Seed 1150 has a junction, two reversible routes and a two-leg flow. The
+    # last-bit excess at the full 8 L store once scheduled 1.5 h indefinitely.
+    connect = Plan.connect
+
+    def force(plan, *args, **kwargs):
+        return [replace(group, way=method) for group in connect(plan, *args, **kwargs)]
+
+    monkeypatch.setattr(Plan, 'connect', force)
+    compare(1150)
+    compare(1150, edit=True)

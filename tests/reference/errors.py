@@ -41,11 +41,14 @@ class FrozenTransfer(RunFailed):
 class PlacementConflict(RunFailed):
     """The accepted trajectory misses a target of an incompatible placement group."""
 
-    def __init__(self, time, placements):
+    def __init__(self, time, placements, reasons=()):
         self.placements = placements
+        self.reasons = reasons
         details = ', '.join(f'{name} at {actual} with target {target}' for name, actual, target in placements)
         names = ', '.join(dict.fromkeys(name for name, _, _ in placements))
-        super().__init__(f'incompatible crossing levels of {names} at {time} h: {details}')
+        super().__init__(
+            '. '.join((f'incompatible crossing levels of {names} at {time} h: {details}', *reasons))
+        )
 
 
 class Diagnostic(RunFailed):

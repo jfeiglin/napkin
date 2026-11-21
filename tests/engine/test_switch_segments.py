@@ -549,8 +549,9 @@ def test_an_authored_clock_groups_a_bound_in_an_independent_set_without_a_stage(
         assert row.values == pytest.approx(expected, abs=1e-12, rel=0)
 
 
+@pytest.mark.parametrize('pipe_cap', [False, True], ids=['soft-placed', 'hard-cap-outside-band'])
 @pytest.mark.parametrize('capped', [False, True])
-def test_a_clock_switch_and_an_independent_bound_both_reach_the_same_stage(capped):
+def test_a_clock_switch_and_an_independent_bound_both_reach_the_same_stage(capped, pipe_cap):
     """The fill of the supply switches at 1 h. Its pipe, delivering a steady litre per hour,
     fills a second tank half a time tolerance later. Both contacts belong to the 1 h round."""
     crossing = 2**-16
@@ -569,7 +570,7 @@ def test_a_clock_switch_and_an_independent_bound_both_reach_the_same_stage(cappe
             request=formula(ifelse(t < q(1, 'h'), rate(3), rate(4))),
             capacity=formula(ifelse(t < q(1, 'h'), rate(3), rate(4))),
         ),
-        flow('pipe', this.supply, this.tank, request=rate(1), capacity=rate(1)),
+        flow('pipe', this.supply, this.tank, request=rate(1), capacity=rate(1) if pipe_cap else None),
         event(
             'look',
             after(q(1, 'h'), assign(this.level, this.tank)),
@@ -578,7 +579,18 @@ def test_a_clock_switch_and_an_independent_bound_both_reach_the_same_stage(cappe
     )
     builder.setup(start(named('plant').look))
     program = builder.finish()
-    record = run(program, Configuration(Request(2), numerics=Numerics(crossing=crossing)))
+    config = Configuration(Request(2), numerics=Numerics(crossing=crossing))
+    work = Run(Plan.of(program, config))
+    record = work.run()
+    if pipe_cap:
+        assert upper - 1 > work.comparison_band('plant.tank', 1, upper)
+        assert record.end == 1 and record.failure is not None
+        assert 'plant.pipe' in record.failure.detail('message')
+        accepted = work.ways.instance_of('plant.pipe').transferred('plant.pipe', 1)
+        assert work.stock_balance('plant.tank', 1) == accepted
+        assert float(accepted) == pytest.approx(1, abs=8 * math.ulp(1), rel=0)
+        assert not [e for e in record.entries('commit') if e.t == 1]
+        return
     assert record.failure is None
     assert [v.values[0] for v in read(record, program, ['plant.level', 'plant.again'], [1])] == [upper, 0]
     assert {entry.part for entry in record.entries('contact')} == {'plant.fill', 'plant.tank'}

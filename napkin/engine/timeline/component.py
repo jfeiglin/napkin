@@ -51,12 +51,11 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from ...core import expr as nodes
 from ...core.errors import ExpressionError
-from ...expressions import evaluate, names_in
+from ...expressions import names_in
 from ..allocation import Allocation, StockFaces
 from ..continuous import dense
-from ..continuous.bounds import check_bounds, project_bound_roundoff, refresh_bounds
+from ..continuous.bounds import check_bounds, check_contact_error, refresh_bounds
 from ..continuous.fields import Field
 from ..continuous.integrate import flow_switches, starting_sides, switching_surfaces
 from ..continuous.kernels import Affine, MatrixExponential
@@ -73,7 +72,7 @@ from ..errors import SimulationError
 from .collections import node_of
 from .contacts import put_bounds
 from .network import paired_rates
-from .way import Way
+from .way import MovingTransfers, Way
 
 
 @dataclass(frozen=True)
@@ -368,13 +367,13 @@ class Component:
         found = advance(s, state, field, self, self.context, horizon)
         first = state.y.copy()
         if found.rounded:
-            project_bound_roundoff(s, start, state.y, found.rounded)
-            check_bounds(s, state.y)
+            last = check_contact_error(s, start, first.copy(), found.rounded)
+            check_bounds(s, last)
             reached = tuple(sorted(found.rounded.items()))
-            return Segment(start, start, None, first, state.y.copy(), reached=reached)
+            return Segment(start, start, None, first, last, reached=reached)
         solution, numerical = found.solution, found.numerical
         last = np.array(solution(found.end) if numerical is None else numerical.y[:, -1], dtype=float)
-        project_bound_roundoff(s, found.end, last, found.targets, solution)
+        check_contact_error(s, found.end, last, found.targets, solution)
         if numerical is not None:
             if found.end <= start:
                 raise SimulationError('Integration made no progress at a boundary')
@@ -382,27 +381,9 @@ class Component:
             # outside its bounds.
             for k in range(len(numerical.t) - 1):
                 check_bounds(s, numerical.y[:, k])
-        self.put_switches(last, found.end, numerical, found.end)
         check_bounds(s, last)
         reached = tuple(sorted((found.targets or {}).items()))
         return Segment(start, found.end, solution, first, last, numerical, reached)
-
-    def put_switches(self, y, t, numerical, through):
-        """Put a store that crossed an authored fixed level exactly on that level."""
-        if numerical is None:
-            return
-        s = self.system
-        env = self.field.environment(t, y)
-        for at, root in numerical.contacts:
-            if root.kind != 'surface' or at > through:
-                continue
-            for here, other in (root.data, root.data[::-1]):
-                if (
-                    isinstance(here, nodes.Ref)
-                    and here.name in s.index
-                    and not s.expanded_names(other) & (s.evolving | {'t'})
-                ):
-                    y[s.index[here.name]] = float(evaluate(other, env, s.units))
 
     def settle(self):
         """The state at the start of a segment, or at a moment before one: the bounds that it rests
@@ -463,7 +444,7 @@ class Component:
         )
 
 
-class ComponentWay(Way):
+class ComponentWay(MovingTransfers, Way):
     """One connected set on the continuous engine, as a way of a run (`ways.py`), from the time `t`
     on. Its segments come one after the other: each is made when the run first asks for its next
     event (`peek`), as far as the next moment that the run knows (`run.limit`), and committed when
@@ -570,6 +551,9 @@ class ComponentWay(Way):
         self.place = {name: k for k, name in enumerate(stores)}
         self.rates = [f'{flow}.actual_rate' for flow in system.flow_ids]
         self.flow_place = self.leg_rows = {flow: k for k, flow in enumerate(system.flow_ids)}
+        self.component.field.physical_face_net = lambda row, rates: run.stock_state.physical_face_net(
+            self, row, rates
+        )
         single = None
         if len(system.flow_ids) == 1:
             flow = system.flows[system.flow_ids[0]]
@@ -722,26 +706,9 @@ class ComponentWay(Way):
             return solution.leg_rates * duration
         return solution.amounts(duration, single)
 
-    def _transferred(self, name, t):
-        """Cumulative accepted amount of this physical connection since installation."""
-        row = self.flow_place[name]
-        if t == self.amounts.through:
-            return self.amounts.amount(row)
-        arrival = getattr(self, 'arrival_amounts', None)
-        if arrival is not None and t == arrival.through:
-            return arrival.amount(row)
-        if self.pending is None or not self.amounts.through < t <= min(
-            self.run.clock.apart(self.pending.end), self.run.now
-        ):
-            raise ValueError('transfer requested outside the accepted interval')
-
-        def interval():
-            prefix = self._transfer_amount(self.pending, t)
-            return prefix if self.amounts.single is not None else prefix[row]
-
-        leg = self.amounts.clocks.get(row)
-        mode = leg.selection(*self._clock_bounds()) if leg is not None else None
-        return self.amounts.prefix(row, t, mode, interval)
+    def _pending_amount(self, row, t):
+        prefix = self._transfer_amount(self.pending, t)
+        return prefix if self.amounts.single is not None else prefix[row]
 
     def _resting(self):
         bounds = self.component.state.active_bounds
@@ -800,12 +767,10 @@ class ComponentWay(Way):
                 for flow in component.deciding().get(root.data, ()):
                     yield at, flow, 'switch'
 
-    def crossed_operands(self, t, through):
+    def detected_switches(self):
         if self.pending is not None and self.pending.numerical is not None:
             yield from (
-                (at, root.data)
-                for at, root in self.pending.numerical.contacts
-                if root.kind == 'surface' and at <= through and self.run.clock.within(at, t)
+                (at, root.data) for at, root in self.pending.numerical.contacts if root.kind == 'surface'
             )
 
     def snap(self, t=None, through=None):
@@ -817,7 +782,7 @@ class ComponentWay(Way):
         met = put_bounds(self, last, events)
         # At a near contact the moment's exact time takes the states reached by its switching
         # field. An independently due stage may replace any of these states before the re-share.
-        self.component.put_switches(last, at, segment.numerical, segment.end if through is None else through)
+        self.run.stock_state.install(self, last, self.run.bound_at.keys() & self.place.keys())
         self.pending = replace(
             segment,
             end=at,

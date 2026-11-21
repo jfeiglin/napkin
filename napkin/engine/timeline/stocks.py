@@ -15,7 +15,7 @@ from ...program.record import History, Piece
 from ..continuous.transfers import ZERO_AMOUNT, held_elapsed
 from ..errors import SimulationError
 from .moment import quantity, span
-from .plan import FORMULA, name_of
+from .plan import DIRECT, FORMULA, LEG, name_of
 
 
 class Stocks:
@@ -67,6 +67,24 @@ class Stocks:
         balance, cursor = self.point(store, t, amounts)
         self.balances[store] = balance, cursor, t
         return True
+
+    def place(self, levels, t):
+        """The sole decision on located targets, shared by the timeline and all methods."""
+        retained = self.faces(levels, t)
+        decided = {name: retained.get(name, value) for name, value in levels.items()}
+        self.coordinates = t, decided
+        self.changed = levels.keys() - retained.keys()
+        return decided
+
+    def install(self, way, state, names):
+        """Rebase a numerical trajectory on the stock ledger's accepted placement."""
+        now = self.run.now
+        at, coordinates = getattr(self, 'coordinates', (None, {}))
+        levels = coordinates if now == at else self.run.bound_at
+        for name in names:
+            if name in levels:
+                state[way.place[name]] = levels[name]
+        return list(names)
 
     def faces(self, levels, t):
         """Apply a roundoff correction at a located physical face through an incident leg.
@@ -122,46 +140,76 @@ class Stocks:
                         resting.add(end)
                     if end not in columns:
                         todo.append(end)
-        retained = {}
-        if len(columns) == 1 and not others and all(columns.values()):
-            effects = _incidence_effects(run.plan, columns, residuals)
-        else:
-            effects = {}
-            for group in _connected_placements(run.plan, columns):
-                local = {name: columns[name] for name in group}
-                changes = _incidence_effects(run.plan, local, {n: residuals[n] for n in group})
-                achieved = dict.fromkeys(group, 0)
-                for name, amount in changes.items():
-                    leg = run.plan.connections[name]
-                    if leg.source in achieved:
-                        achieved[leg.source] -= amount
-                    if leg.sink in achieved:
-                        achieved[leg.sink] += amount
-                if all(n not in others and achieved[n] == residuals[n] for n in group):
-                    effects.update(changes)
-                    continue
-                entries = []
-                near = []
-                outside = False
-                for name in sorted(group):
-                    actual = retained[name] = float(rational(levels[name]) - residuals[name])
-                    for level in (levels[name], *others.get(name, ())):
-                        target = float(level)
-                        band = run.comparison_band(name, actual, target)
-                        gap = actual - target
-                        entries.append((name, actual, target))
-                        near.append((name, f'{name} == {target:.17g}', gap, band))
-                        outside |= abs(gap) > band
-                run.recorder.entry(
-                    t, 'settle', 'stock placement', near=tuple(near), placements=tuple(entries)
+        retained, accepted, gross = {}, {}, {}
+        groups = (tuple(columns),) if len(columns) == 1 else _connected_placements(run, columns)
+        refusals = []
+        for group in groups:
+            local = {name: columns[name] for name in group}
+            effects = _incidence_effects(run.plan, local, {n: residuals[n] for n in group})
+            achieved = dict.fromkeys(group, 0)
+            for name, amount in effects.items():
+                leg = run.plan.connections[name]
+                if leg.source in achieved:
+                    achieved[leg.source] -= amount
+                if leg.sink in achieved:
+                    achieved[leg.sink] += amount
+            compatible = all(n not in others and achieved[n] == residuals[n] for n in group)
+            problem = None
+            if compatible:
+                problem = self._feasibility(effects, t, levels, residuals)
+                if problem is None:
+                    updates, problem = run.occurrences.placement(effects, t)
+                    if problem is None:
+                        accepted.update(effects)
+                        gross.update(updates)
+                        continue
+            entries, near = [], []
+            outside = False
+            for name in sorted(group):
+                actual = retained[name] = float(rational(levels[name]) - residuals[name])
+                for level in (levels[name], *others.get(name, ())):
+                    target = float(level)
+                    band = run.comparison_band(name, actual, target)
+                    gap = actual - target
+                    entries.append((name, actual, target))
+                    near.append((name, f'{name} == {target:.17g}', gap, band))
+                    outside |= abs(gap) > band
+            details = dict(near=tuple(near), placements=tuple(entries))
+            if problem is not None:
+                details['reason'] = str(problem)
+                for key in ('attempts', 'violations'):
+                    if hasattr(problem, key):
+                        details[key] = getattr(problem, key)
+            refusals.append((tuple(entries), details, problem, outside))
+        refusals.sort(key=lambda item: item[0])
+        for _, details, _, _ in refusals:
+            run.recorder.entry(t, 'settle', 'stock placement', **details)
+        if any(outside for _, _, _, outside in refusals):
+            readings = tuple(sorted(row for entries, *_ in refusals for row in entries))
+            reasons = sorted({str(problem) for _, _, problem, _ in refusals if problem})
+            targets = ', '.join(f'{n} targets {v:.17g} from {a:.17g}' for n, a, v in readings)
+            names = ', '.join(sorted({name for name, _, _ in readings}))
+            problem = SimulationError(
+                f'incompatible crossing levels of {names} at {t:g} h: {targets}'
+                + ('. ' + '. '.join(reasons) if reasons else '')
+            )
+            problem.placements = readings
+            attempts = [entry for _, details, _, _ in refusals for entry in details.get('attempts', ())]
+            if attempts:
+                problem.attempts = tuple(
+                    sorted(attempts, key=lambda v: (v[0], v[1] == 'inflow', run.plan.number(v[2])))
                 )
-                if outside:
-                    targets = ', '.join(f'{n} targets {v:.17g} from {a:.17g}' for n, a, v in entries)
-                    failure = SimulationError(
-                        f'incompatible crossing levels of {", ".join(sorted(group))} at {t:g} h: {targets}'
-                    )
-                    failure.placements = tuple(entries)
-                    raise failure
+                problem.violations = tuple(v[:3] for v in problem.attempts)
+            raise problem
+        run.occurrences.transferred.update(gross)
+        for connection, delta in accepted.items():
+            if delta:
+                leg = run.plan.connections[connection]
+                self.adjust(run.ways.instance_of(leg.source or leg.sink), connection, delta, t)
+        return retained
+
+    def _feasibility(self, effects, t, levels, residuals):
+        run = self.run
         # Both ends of each proposed transfer share the same amount. Check the
         # combined change at each finite bound before any physical or gross post.
         net = {}
@@ -195,13 +243,124 @@ class Stocks:
                     f'{quantity(run.plan, store, float(available))} available'
                 )
                 problem.placements = ((store, float(before), float(after)),)
-                raise problem
-        run.occurrences.placed(effects, t)
-        for connection, delta in effects.items():
-            if delta:
-                leg = run.plan.connections[connection]
-                self.adjust(run.ways.instance_of(leg.source or leg.sink), connection, delta, t)
-        return retained
+                return problem
+        return self._flow_limits(effects, t)
+
+    def physical_face_net(self, way, row, rates):
+        """A face flag can keep its allocation while hard transfers move its balance.
+        Test the proportional correction of the incident rates before treating it as stationary."""
+        store = way.stores[row]
+        incoming = self.run.plan.incident(store, 'inflow')
+        outgoing = self.run.plan.incident(store, 'outflow')
+
+        def value(name):
+            return rational(rates[way.leg_rows[name]])
+
+        inward, outward = sum(map(value, incoming)), sum(map(value, outgoing))
+        delta = inward - outward
+        if not delta:
+            return 0.0
+        # The release threshold describes allocation, never a physical loss of
+        # traffic. Only rounding of an actually balanced allocation can be leveled.
+        if abs(delta) > (inward + outward) * 32 * math.ulp(1.0):
+            return float(delta)
+        faces = getattr(way, 'faces', None)
+        if faces is None:
+            faces, level = way.component.system.faces, way.component.state.y[row]
+        else:
+            level = way.y[row]
+        low = faces.at_lower(row, level)
+        active = outgoing if low else incoming
+        speeds = {name: value(name) for name in active if rates[way.leg_rows[name]] > 0}
+        total = sum(speeds.values())
+        if not total:
+            return float(delta)
+        adjustments = {name: (delta if low else -delta) * speed / total for name, speed in speeds.items()}
+        return float(delta) if not self.admits_rates(way, adjustments, rates) else 0.0
+
+    def admits_rates(self, way, changes, rates):
+        return self._flow_limits(changes, self.run.now, installed=way, rates=rates) is None
+
+    def _flow_limits(self, effects, t, *, installed=None, rates=None):
+        """Use the same hard rows for an incidence-rate refinement and a located
+        physical posting. A rate uses one unit of time; a posting uses accepted amounts."""
+        run, plan = self.run, self.run.plan
+        ends, solvers, groups, capped = {}, {}, {}, {}
+        for name, delta in effects.items():
+            if not delta:
+                continue
+            c = plan.connections[name]
+            way = installed or run.ways.instance_of(c.source or c.sink)
+            if getattr(way, 'declared', None) is not None and way.declared.constraints:
+                solvers.setdefault(way, {})[name] = delta
+            if c.role == LEG:
+                groups[name.rsplit('.', 1)[0]] = way
+            if c.capacity is not None:
+                capped.setdefault((way, c.capacity), []).append((name, delta))
+            if delta < 0:
+                before = (
+                    rational(rates[way.leg_rows[name]]) if rates is not None else way.raw_transferred(name, t)
+                )
+                if before < -delta:
+                    return SimulationError(f'the placement on {name} at {t:g} h exceeds its accepted amount')
+            for store, side in ((c.source, 'outflow'), (c.sink, 'inflow')):
+                endpoint = plan.ends.get((store, side))
+                if endpoint is not None and endpoint.capacity is not None:
+                    ends[store, side] = ends.get((store, side), 0) + delta
+        for flow in groups:
+            fraction = None
+            for leg in plan.flows[flow].connections:
+                change = effects.get(leg.name, 0)
+                request = run.value(leg.request, t)
+                if not request:
+                    if change:
+                        return SimulationError(f'the placement at {t:g} h would change closed leg {leg.name}')
+                    continue
+                part = change / rational(request)
+                if fraction is not None and part != fraction:
+                    return SimulationError(
+                        f'the placement at {t:g} h would split the served fraction of {flow}'
+                    )
+                fraction = part
+        for (way, capacity), changes in capped.items():
+            names = [n for n, _ in changes]
+            first = plan.connections[names[0]]
+            if first.role not in (DIRECT, LEG):
+                names = [leg.name for leg in plan.flows[first.name.rsplit('.', 1)[0]].connections]
+            if self._over_capacity(way, names, capacity, sum(v for _, v in changes), t, rates):
+                return SimulationError(f'the placement on {", ".join(names)} at {t:g} h exceeds {capacity}')
+        for (store, side), change in ends.items():
+            capacity = plan.ends[store, side].capacity
+            if self._over_capacity(
+                installed or run.ways.instance_of(store),
+                plan.incident(store, side),
+                capacity,
+                change,
+                t,
+                rates,
+            ):
+                return SimulationError(f'the placement at {t:g} h exceeds {capacity}')
+        for way, changes in solvers.items():
+            conflict = way.placement_relation(changes, t, rates=rates is not None)
+            if conflict is not None:
+                return SimulationError(f'the placement at {t:g} h would violate {conflict}')
+        return None
+
+    def _over_capacity(self, way, names, capacity, change, t, rates):
+        if change <= 0:
+            return False
+        limit = self.run.value(capacity, t)
+        if not math.isfinite(limit):
+            return False
+        if rates is not None:
+            return sum(rational(rates[way.leg_rows[n]]) for n in names) + change > rational(limit)
+        if self.run.triggers.moving_reads(nodes.ref(capacity)):
+            rates_at = way.incoming_rates(math.nextafter(t, -math.inf))
+            return sum(rates_at(n) for n in names) >= limit
+        opening = way.t0 if hasattr(way, 't0') else way.amounts.start
+        return sum(way.raw_transferred(n, t) for n in names) + change > rational(limit) * held_elapsed(
+            opening, t
+        )
 
     def face_shares(self, name, bound, t, resting=False):
         run = self.run
@@ -243,24 +402,15 @@ class Stocks:
             inflow, outflow = incidence('inflow'), incidence('outflow')
             net = sum(map(speed, inflow)) - sum(map(speed, outflow))
             if net == 0:
-                ordered = sorted(
-                    [(leg, 1) for leg in inflow] + [(leg, -1) for leg in outflow],
-                    key=lambda item: run.plan.number(item[0]),
-                )
-                return ordered[:1]
+                return ()
             side = 'inflow' if net > 0 else 'outflow'
         sign = -1 if side == 'outflow' else 1
         legs = incidence(side)
-        if not legs:
-            legs = incidence('inflow' if sign < 0 else 'outflow')
-            return ((legs[0], -sign),) if legs else ()
         if len(legs) == 1:
-            return ((legs[0], sign),)
+            return ((legs[0], sign),) if speed(legs[0]) > 0 else ()
         weights = [rational(speed(leg)) for leg in legs]
         total = sum(weights)
-        if total:
-            return [(c, sign * weight / total) for c, weight in zip(legs, weights) if weight]
-        return ((legs[0], sign),)
+        return [(c, sign * w / total) for c, w in zip(legs, weights) if w] if total else ()
 
     def adjust(self, way, connection, adjustment, t):
         """Post one physical correction through its two endpoints, including any open cursor."""
@@ -420,6 +570,13 @@ class RestingRates:
             updated = _incidence_effects(
                 way.run.plan, columns, {way.stores[s]: r for s, r in residuals.items()}
             )
+        if any(
+            abs(delta) > 32 * math.ulp(1.0) * sum(speeds[n] for n in rows[s])
+            for s, delta in residuals.items()
+        ):
+            updated.clear()
+        if updated and not way.run.stock_state.admits_rates(way, updated, rate):
+            updated.clear()
         for n in connections:
             old = self.offsets.get(n)
             new = updated.get(n, 0)
@@ -513,7 +670,7 @@ class RestingAmounts:
             # An exact smooth solution can leave a face with zero initial slope:
             # the next compartment of a filling chain starts with zero inflow.
             # Its actual trajectory decides whether this prefix still rests.
-            if way.resting_value(s, t) is None:
+            if way.accepted_level(s, t) != self.rows[s][0]:
                 continue
             rows[s] = self.rows[s]
             for leg, _ in self.rows[s][2]:
@@ -529,8 +686,10 @@ class RestingAmounts:
                 s: way.run.stock_state.face_shares(s, bound, t, resting=True)
                 for s, (bound, _, _) in rows.items()
             }
-            for n, delta in _incidence_effects(way.run.plan, columns, residuals).items():
-                self.cache[n] += delta
+            adjustments = _incidence_effects(way.run.plan, columns, residuals)
+            if not way.run.stock_state._flow_limits(adjustments, t):
+                for n, delta in adjustments.items():
+                    self.cache[n] += delta
         return self.cache.get(name, 0)
 
 
@@ -553,16 +712,37 @@ def _incidence_effects(plan, columns, residuals):
     return effects
 
 
-def _connected_placements(plan, columns):
-    """Only targets connected by a proposed physical correction constrain each other."""
+def _connected_placements(run, columns):
+    """Targets are coupled by a leg, a finite stock, a capped endpoint, a
+    common served fraction or a shared hard relation in their incoming solve."""
+    plan = run.plan
     neighbors = {stock: set() for stock in columns}
+    first = {}
     for stock, shares in columns.items():
         for name, _ in shares:
             leg = plan.connections[name]
-            for other in (leg.source, leg.sink):
+            way = run.ways.instance_of(stock)
+            groups = [('leg', name)]
+            for other, side in ((leg.source, 'outflow'), (leg.sink, 'inflow')):
                 if other in columns and other != stock:
                     neighbors[stock].add(other)
                     neighbors[other].add(stock)
+                if other is None:
+                    continue
+                if other in run.occurrences.watched() or any(map(math.isfinite, run.bounds[other])):
+                    groups.append(('stock', other))
+                endpoint = plan.ends.get((other, side))
+                if endpoint is not None and endpoint.capacity is not None:
+                    groups.append(('capacity', endpoint.capacity))
+            if leg.role != DIRECT:
+                groups.append(('flow', name.rsplit('.', 1)[0]))
+            if getattr(way, 'declared', None) is not None and way.declared.constraints:
+                groups.extend(way.placement_rows(name))
+            for key in groups:
+                neighbor = first.setdefault(key, stock)
+                if stock != neighbor:
+                    neighbors[neighbor].add(stock)
+                    neighbors[stock].add(neighbor)
     seen = set()
     for start in columns:
         if start in seen:

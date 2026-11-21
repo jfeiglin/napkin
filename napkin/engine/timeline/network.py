@@ -89,6 +89,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .. import departure
 from ..errors import SimulationError
 from . import plan as plans
 from .pools import Csr
@@ -102,9 +103,6 @@ DIRECT, FORWARD, BACKWARD, LEG = 0, 1, 2, 3  # the roles of a connection
 # its served fraction (one over it overflows), and only underflow makes one, such as the request of
 # a rate that decays toward zero over a long run (9 e^-t L/h at 708 h). Nor does it size a part.
 TINY = float(np.finfo(float).tiny)
-# A store's net rate within this part of what flows in and out is the roundoff of its flows: it holds
-# the store where it is.
-ROUNDOFF = 1e-12
 
 
 @dataclass(frozen=True)
@@ -189,20 +187,35 @@ def water(requests, capacities, available):
         pending = np.setdiff1d(pending, capped)
 
 
-def carrying(net, asked):
+def carrying(net, request, capacity, end_capacity):
     """Whether each connection can carry flow at the instant: its capacity and the capacity of each
     endpoint that it meets are above zero, and a leg asks something (it carries its request times
     its flow's fraction). The structure of sharing is that of these connections, found again at each
     instant (re-audit row 05): the depths and the rings of local sharing, the priority classes and
     layers (`Network.ranking`), and the clusters of the order of the claims (`claim_order`). A closed
     valve passes neither supply nor room, closes no ring and takes no place in a priority."""
-    found = np.asarray(asked.capacity, dtype=float) > 0
-    for side, ends in ((OUT, net.source), (IN, net.sink)):
-        met = np.flatnonzero(ends >= 0)
-        found[met] &= asked.end_capacity[side][ends[met]] > 0
+    found = np.asarray(capacity, dtype=float) > 0
+    if end_capacity is not None:
+        for side, ends in ((OUT, net.source), (IN, net.sink)):
+            met = np.flatnonzero(ends >= 0)
+            found[met] &= end_capacity[side][ends[met]] > 0
     legs = np.flatnonzero(net.roles == LEG)
-    found[legs] &= asked.request[legs] > 0
+    found[legs] &= request[legs] > 0
     return found
+
+
+def physical_capacities(net, capacity, rows, lower, upper):
+    """A directed pipe cannot draw from a lower face without an inlet or fill an upper
+    face without an outlet. Those incidence rows imply an exact zero upper bound,
+    independent of the rate's units or the solver's feasibility tolerance."""
+    limits = capacity[rows]
+    if not len(net.stores):
+        return limits
+    source, sink = net.source[rows], net.sink[rows]
+    closed = ((source >= 0) & lower[source] & (net.counts[IN][source] == 0)) | (
+        (sink >= 0) & upper[sink] & (net.counts[OUT][sink] == 0)
+    )
+    return np.where((net.roles[rows] == DIRECT) & closed, 0.0, limits)
 
 
 def _through(connections, carries):
@@ -671,8 +684,12 @@ class Instant:
         for side in (OUT, IN):
             claimed[net.store_sets[asked.end_request[side] > 0]] = True
         self.claimed = claimed  # the connected sets that have a claim
+        self.rate_errors = {}  # numerical differences on legs refined by the general solver
+        self.uncertain = {}  # unresolved stock departures at this instant
         self.selected = 0  # the parts that the selection order solved, not a closed form
-        self.carries = carrying(net, asked)  # the connections that can carry flow at the instant
+        self.carries = carrying(
+            net, asked.request, asked.capacity, asked.end_capacity
+        )  # the connections that can carry flow at the instant
         self.layer = net.layers(self.carries)  # the priority layer of each flow among them
         self._full = None  # the value of each flow, for the nets of a part's stores (`_nets`)
 
@@ -855,12 +872,25 @@ class Instant:
             stores = [s for s in sorted(ends) if self.lower[s] != self.upper[s] and self.couples(s)]
         found = []
         for s in stores:
-            inflow = float(net.carried(full, self.asked, net.ends[IN].of(s)).sum())
-            outflow = float(net.carried(full, self.asked, net.ends[OUT].of(s)).sum())
-            change = inflow - outflow
-            found.append((s, 0.0 if abs(change) <= ROUNDOFF * (inflow + outflow) else change))
+            incoming = net.carried(full, self.asked, net.ends[IN].of(s))
+            outgoing = net.carried(full, self.asked, net.ends[OUT].of(s))
+            inflow, outflow = float(incoming.sum()), float(outgoing.sum())
+            found.append((s, self.face_rate(s, incoming, outgoing, inflow - outflow, inflow + outflow)))
         full[part] = 0.0
         return found
+
+    def face_rate(self, s, incoming, outgoing, net, traffic):
+        """Use the general solver's refinement error only where the stock has measured legs."""
+        self.uncertain.pop(s, None)
+        if self.rate_errors and traffic and abs(net) <= 1e-7 * traffic and self.lower[s] != self.upper[s]:
+            legs = (*self.net.ends[IN].of(s), *self.net.ends[OUT].of(s))
+            error = sum(self.rate_errors.get(c, 0) for c in legs)
+            if error:
+                rate, unresolved = departure.refined(incoming, outgoing, error)
+                if unresolved:
+                    self.uncertain[s] = net, traffic, error
+                return rate
+        return departure.rate(net, traffic, lambda: (incoming, outgoing))
 
     def rates(self):
         """The rate of every connection."""
@@ -1046,6 +1076,7 @@ class Instant:
         low, high, target = np.zeros(n), np.full(n, math.inf), np.zeros(n)
         units = np.ones(n)
         rates = [k for k, f in enumerate(part) if net.kinds[f] != LEGS]
+        ceilings = physical_capacities(net, asked.capacity, [mine[f][0] for f in part], lower, upper)
         for f in part:
             k, cs = place[f], mine[f]
             kind = int(net.kinds[f])
@@ -1057,7 +1088,7 @@ class Instant:
 
             if kind == DIRECTED:
                 c = cs[0]
-                high[k], target[k] = asked.capacity[c], request[c]
+                high[k], target[k] = ceilings[k], request[c]
                 if request[c] > TINY:
                     claim(one, float(request[c]))
             elif kind == ROUTE:
@@ -1088,6 +1119,16 @@ class Instant:
         places = claim_order(net, lower, upper, self.carries, [claim for claim, _, _ in claims])
         for place, (_, a, wanted) in zip(places, claims):
             tiers.setdefault(place, []).append((a, wanted))
+
+        def measure(raw, refined):
+            for k, flow in enumerate(part):
+                for c in mine[flow]:
+                    self.rate_errors.pop(c, None)
+                    if refined[k] in (low[k], high[k], target[k]):
+                        continue
+                    uncertainty = max(abs(refined[k] - raw[k]), math.ulp(float(refined[k])))
+                    self.rate_errors[c] = uncertainty * (request[c] if net.roles[c] == LEG else 1.0)
+
         try:
             return select(
                 rows,
@@ -1098,6 +1139,7 @@ class Instant:
                 target,
                 units,
                 net.own_scales[list(part)],
+                measure,
             )
         except SimulationError as problem:
             raise SimulationError(

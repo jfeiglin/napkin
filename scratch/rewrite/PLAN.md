@@ -361,43 +361,40 @@ These override the text of this plan below, wherever the two differ. The owner's
     independently compared quantities use the larger floor. This amendment is language 0.2.1. An interval is reversed only
     when its lower end exceeds its upper end by more than their band. Inverted hard bounds within
     the band admit one point, their midpoint. Authored evidence stays exact.
-    At a located trigger or switch crossing, place a single store exactly on its threshold,
-    including an alias or invertible single-store formula. For several stores refine the root on
-    their incoming trajectory until the comparison's residual is within its own band, or fail by
-    name. The flows alone determine those inventories. The crossing tolerance in hours groups
-    contacts with a moment (change 27), and a decision within tolerance is reported (change 10).
-    In change 24 b, a nonzero authored move always writes. For computed rates, check the cumulative
-    amount in each direction since retirement against the store's own conservation allowance. A
-    solver-certified idle route publishes zero. No guard takes its tolerance from the size inferred
-    for integration from bounds and connected stores.
+    At a located trigger or switch crossing, the clock groups contacts using the crossing
+    tolerance in hours (change 27). A comparison has its own physical band. A stage that
+    authors a nonzero move writes. Computed transfers at a frozen store accumulate in each
+    direction since retirement against that store's conservation allowance.
 
-    **Owner rulings, 2026-11-21.** Whenever a located contact places a stock exactly on a bound
-    or threshold, post the signed difference between the incoming trajectory and that placement
-    to the legs moving the stock toward the value. Weight those legs by their rates immediately
-    before contact. If none is flowing toward it, use declaration order. A cut before the crossing
-    can require additional transfer, and a cut after the crossing can require returning transfer.
-    Apply the same signed correction at the two endpoints of each physical leg.
+    **Owner’s ruling on physical balances, placement and status, 2026-11-21.** This principle
+    supersedes the separate rulings for residuals at bounds, thresholds and frozen lots.
 
-    A placement correction is atomic. If any part would violate a rule, reject all its
-    adjustments, keep the state and transfers accepted up to that instant, and fail there.
-    For a frozen allowance, report the stock, physical leg, attempted amount and allowance.
-
-    If grouped exact targets require different amounts on a shared physical leg, keep the
-    clock group and report a near-tie. Leave the conflicting legs at their incoming trajectory
-    amounts at the group's time. Check each affected stock against its own comparison band
-    for each target. Continue if all pass, including independent compatible placements. If
-    any misses its band, fail by name and report the conflicting targets. This extends the
-    several-store comparison rule above. These are the owner's 2026-11-21 rulings.
-
-    **Owner ruling on allocation at a bound, 2026-11-21.** At an allocation decision, a
-    stock whose balance is within its own comparison band of a finite bound is on that
-    bound for sharing. At a lower bound, outgoing flows may use the incoming supply. At
-    an upper bound, incoming flows may use the room made by outgoing flows. The physical
-    balance keeps its residual. This applies to every numerical method and the reference
-    interpreter, including when a grouped contact keeps the incoming leg amounts. A drain
-    through a full stock must advance past its empty contact and retain the residual in
-    the donor's books. The rule also applies when allocating from a newly installed
-    group or a restored checkpoint.
+    1. The books always balance. Post each accepted transfer equally at both ends. A stock
+       balance changes through posted transfers. Reading, grouping events or locating a
+       numerical crossing cannot move material.
+    2. Exact placement is a preference. When the flows can put a stock exactly on a bound
+       or threshold, post the signed correction to the legs moving it toward that value,
+       in proportion to their rates just before contact. If none approached the value,
+       keep the amounts the legs carried. Apply a connected placement together. Preserve an author’s hard equations,
+       frozen allowances, capacities and other stocks’ limits. If the correction would
+       violate one of them, retain the amounts the trajectories delivered. Independent,
+       feasible placements in the same clock group can still commit.
+    3. The band decides status for comparisons, triggers and sharing. An inventory inside
+       its own comparison band of a bound or threshold counts as being on it regardless of
+       the residual on its books. A stock on a bound is released only when the net flow away
+       from it strictly exceeds 10⁻¹² times gross incoming plus outgoing traffic. Equality
+       retains the bound. Every method refines a numerically uncertain decision, and holds
+       and records a near-tie when it still cannot decide. An inlet fixed at 1 L/h and an
+       outlet fixed at 0.999999999999 L/h post 2 L and 1.999999999998 L over two hours.
+       The initially empty stock holds the 0.000000000002 L difference and retains its
+       bound status while its balance remains within its band.
+    4. Fail only when a hard rule is broken by more than its applicable band. If a proposed
+       placement would exceed a frozen allowance while the stock remains within its band,
+       skip the placement, keep the accepted prefix and continue. A failed certification
+       outside the band names the stock, targets and breached rule.
+    5. Report all tied decisions in a fixed order. Keep every affected stock, leg, direction
+       and target in the structured record. Questions that this principle does not decide
+       are collected for the owner while independent work continues.
 
     Group frozen-stock allowance violations at the first failure moment within the crossing
     tolerance. List every contributing leg by stock name, outflow before inflow, then declaration

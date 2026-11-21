@@ -179,7 +179,7 @@ def structure(run):
             (cell, which)
             for cell in cells
             for which, bound in zip(('lo', 'hi'), view.bounds.get(cell, (None, None)), strict=True)
-            if run.on_allocation_bound(cell, view.cells[cell], bound)
+            if run.on_stock_target(cell, view.cells[cell], bound)
         )
         comps.append(Component(vs, flows, mine, frozenset(label(v) for v in vs), faces))
     comps.sort(key=lambda c: min(sorted(c.key)))
@@ -370,9 +370,75 @@ def _moved(problem, answer, bounds, inward):
     for cell, which in bounds:
         rate = problem['nets'][cell].at(answer)
         off = rate if which == 'lo' else -rate  # positive when the store moves off its bound
-        if (off > 0) if inward else (off < 0):
+        change = off if inward else -off
+        if change <= 0:
+            continue
+        gross = sum(side.at(answer) for side in problem['traffic'][cell])
+        # Compare the exact rational rates without an absolute rate floor.
+        if change * 10**12 > gross:
             found.add((cell, which))
     return found
+
+
+def placement_problems(run, candidates):
+    """Incoming hard rows and affected component legs for a candidate physical correction."""
+    problems = []
+    shared = []
+    for comp in run.components:
+        relevant = {
+            var_of(flow): {leg.label for leg in (flow.legs.values() if flow.kind == 'legs' else (flow,))}
+            & candidates
+            for flow in comp.flows
+        }
+        if not any(relevant.values()):
+            continue
+        problem = _after(run, comp)
+        problems.append((comp, problem, set.union(*relevant.values())))
+        shared.extend(legs for legs in relevant.values() if len(legs) > 1)
+        for row in problem['rows']:
+            variables = set(row.lin.c)
+            for part in row.lin.parts:
+                variables.update(part.c)
+            legs = set().union(*(relevant.get(v, ()) for v in variables))
+            if len(legs) > 1:
+                shared.append(legs)
+    return problems, shared
+
+
+def check_placement(run, problems, duration, moving, corrections):
+    """Check the proposed mean leg rates against the hard rows of the incoming solve.
+
+    The exact interpreter supports held constraint coefficients. Its directed requests
+    can also move as polynomials. Their accepted integrals give the mean of each leg.
+    """
+    accepted = {name: poly.integral()(duration) for _, _, poly, name in moving}
+    for comp, problem, candidates in problems:
+        affected = candidates & corrections.keys()
+        if not affected:
+            continue
+        answer = run.view.results.copy()
+        for flow in comp.flows:
+            if flow.kind == 'legs':
+                fractions = set()
+                for leg in flow.legs.values():
+                    amount = accepted.get(leg.label, 0) + corrections.get(leg.label, 0)
+                    request = problem['leg_request'][leg]
+                    if request:
+                        fractions.add(amount / (duration * request))
+                    elif amount:
+                        return RunFailed(f'placement would put flow through closed leg {leg.label}')
+                if len(fractions) > 1:
+                    return RunFailed(f'placement would split the common served fraction of {flow.label}')
+                answer[var_of(flow)] = next(iter(fractions), Fraction(0))
+            else:
+                amount = accepted.get(flow.label, 0) + corrections.get(flow.label, 0)
+                answer[var_of(flow)] = amount / duration
+        if any(not row.holds(answer) for row in problem['rows']):
+            return RunFailed(
+                f'placement at {run.view.t + duration} h would break a hard flow condition on '
+                + ', '.join(sorted(affected))
+            )
+    return None
 
 
 # --- one calculation as a problem ----------------------------------------------------------------------
@@ -485,6 +551,7 @@ def assemble(run, comp, ev, follow=None):
     leg_request = {}
     at_store = {}
     nets = {}  # the net rate of each store, inflow less outflow
+    traffic = {}  # the two gross rates at stocks where allocation can decide a departure
     shut = (
         set()
     )  # the connections that cannot carry flow at this instant: a capacity of zero, a leg that asks nothing
@@ -596,6 +663,8 @@ def assemble(run, comp, ev, follow=None):
             end = End(cell, side)
             here = sides[side]
             total = sum((term(c, f) for c, f in here), Lin())
+            if (cell, 'lo') in comp.faces or (cell, 'hi') in comp.faces:
+                traffic.setdefault(cell, []).append(total)
             cap = setting(owner_ev, end, 'capacity')
             req = setting(owner_ev, end, 'request') or Fraction(0)
             if cap is not None:
@@ -709,6 +778,7 @@ def assemble(run, comp, ev, follow=None):
         'signature': signature,
         'leg_request': leg_request,
         'nets': nets,
+        'traffic': traffic,
     }
 
 

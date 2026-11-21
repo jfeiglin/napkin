@@ -30,6 +30,10 @@ LOOSE = 1e-7  # a row whose slack is never below this binds nowhere
 LIMIT = 50_000  # the most sets of active rows that the least-distance rank will try
 
 
+class _UnresolvedRank(Exception):
+    """The floating optimum could not distinguish the next exact sharing tier."""
+
+
 class Lin:
     """k + sum(c[v] * v) + sum(max(0, part)): affine in the unknowns, plus positive parts.
 
@@ -302,9 +306,9 @@ def _maxmin(variables, rows, claims, lp):
                 rows.append(Rel(served - level * r, '=='))
                 levels.append(level)
         if len(still) == len(open_):
-            raise NotCovered(
-                'fair sharing made no progress: the float tolerance is too coarse for this problem'
-            )
+            if lp is _lp:
+                raise _UnresolvedRank()
+            raise NotCovered('fair sharing made no progress under rational projection')
         open_ = still
     return rows, levels
 
@@ -446,7 +450,7 @@ def select(variables, rows, objectives=(), tiers=(), prefs=(), groups=()):
 
     try:
         return ranked(_lp)
-    except Infeasible:
+    except (Infeasible, _UnresolvedRank):
         # A nearly fulfilled request can snap to 100% and contradict a hard
         # capacity. Recompute the ranks from the original authored constraints.
         _rational_lp(variables, rows, Lin())

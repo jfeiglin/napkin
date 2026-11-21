@@ -101,8 +101,8 @@ def check_conditions(system, env, at):
             )
 
 
-def project_bound_roundoff(system, at, state, exact_targets=None, solution=None):
-    """Put trial coordinates on their located faces after checking the size of the correction."""
+def check_contact_error(system, at, state, exact_targets=None, solution=None):
+    """Check a locator’s numerical error without changing the trajectory or any transfer."""
     s = system
     lower, upper, atol = s.lower, s.upper, s.atol
     for i, name in enumerate(s.state_ids):
@@ -123,9 +123,6 @@ def project_bound_roundoff(system, at, state, exact_targets=None, solution=None)
             low, high = sorted(float(solution(np.nextafter(at, side))[i]) for side in (-np.inf, np.inf))
             if not (low <= state[i] <= high and low <= target <= high):
                 raise SimulationError(f'Material state-bound violation for {name}')
-        # This is a numerical trial coordinate. Only the timeline knows the accepted
-        # cutoff and the physical incidence of all the faces reaching it together.
-        state[i] = target
     return state
 
 
@@ -137,9 +134,9 @@ def refresh_bounds(system, run, field):
     run.active_bounds.update((i, 'min') for i in np.flatnonzero(low).tolist())
     run.active_bounds.update((i, 'max') for i in np.flatnonzero(high).tolist())
     if run.active_bounds:
-        derivative = field.rates(run.time, run.y)
+        derivative = field.rates(run.time, run.y, allocation=True)
         for i, bound in list(run.active_bounds):
-            if (bound == 'min' and derivative[i] > 1e-14) or (bound == 'max' and derivative[i] < -1e-14):
+            if (bound == 'min' and derivative[i] > 0) or (bound == 'max' and derivative[i] < 0):
                 run.active_bounds.remove((i, bound))
 
 

@@ -40,12 +40,13 @@ import math
 
 import numpy as np
 
+from .. import departure
 from ..allocation import StockFaces
 from ..continuous.transfers import HeldAmounts
 from ..errors import SimulationError
 from .contacts import continued_lines, put_lines
 from .family import Columns, due_through
-from .network import BACKWARD, FORWARD, IN, OUT, ROUNDOFF, SIDES, Asked, Instant, network_of
+from .network import BACKWARD, FORWARD, IN, OUT, SIDES, Asked, Instant, network_of
 from .way import Way
 
 
@@ -215,16 +216,19 @@ class Lines(Way):
         net, instant = self.net, self.instant
         changed_faces = {}
         for s in sorted(set(stores) | set(forced)):
-            inflow = float(self.rate[net.ends[IN].of(s)].sum())
-            outflow = float(self.rate[net.ends[OUT].of(s)].sum())
+            incoming, outgoing = self.rate[net.ends[IN].of(s)], self.rate[net.ends[OUT].of(s)]
+            inflow, outflow = float(incoming.sum()), float(outgoing.sum())
             slope = inflow - outflow
             value = self._value(s, t)
             low, high = self.faces.at_lower(s, value), self.faces.at_upper(s, value)
             if low or high:
                 # A store at its bound, held or released (`Instant.settle`): a rate within the
                 # roundoff of its flows holds it there.
-                if abs(slope) <= ROUNDOFF * (inflow + outflow):
-                    slope = 0.0
+                physical = slope
+                slope = instant.face_rate(s, incoming, outgoing, slope, inflow + outflow)
+                on_face = slope == 0
+                if s in instant.uncertain:
+                    departure.record_tie(self.recorder, t, self.stores[s], *instant.uncertain[s])
                 if (low and slope < 0) or (high and slope > 0):
                     raise SimulationError(
                         f'{self.stores[s]}: local sharing moves it past its bound at {t:g} h'
@@ -233,7 +237,9 @@ class Lines(Way):
                     # Held by the closed form of groups (`_downstream`), which a release would not
                     # change: it leaves all the same, and its part is solved again at the next moment.
                     self.stale.add(s)
-            if (low or high) and slope == 0 and inflow and outflow:
+                if on_face and physical and inflow and outflow and not (low and high):
+                    slope = self.run.stock_state.physical_face_net(self, s, self.rate)
+            if (low or high) and on_face and inflow and outflow:
                 changed_faces[s] = OUT if low else IN
             elif self.resting_rates is not None and s in self.resting_rates.sides:
                 changed_faces[s] = None
@@ -244,11 +250,7 @@ class Lines(Way):
             self.y[s], self.since[s], self.slope[s] = value, t, slope
             self.version[s] += 1
             self.recorder.add(self.stores[s], t, float(value), float(slope))
-            reach = math.inf
-            if slope < 0 and math.isfinite(self.lower[s]):
-                reach = t + (value - self.lower[s]) / -slope
-            elif slope > 0 and math.isfinite(self.upper[s]):
-                reach = t + (self.upper[s] - value) / slope
+            reach = self.faces.contact(s, value, slope, t, self.stores[s])
             if reach <= self.run.clock.apart(self.plan.horizon):
                 heapq.heappush(self.due, (reach, s, int(self.version[s])))
         self.balance_rates(changed_faces, self.rate, t)

@@ -91,7 +91,7 @@ def fill(gap, way='family'):
     return builder.finish()
 
 
-@pytest.mark.parametrize('fraction', [-2, -0.5, 0, 0.5, 2])
+@pytest.mark.parametrize('fraction', [-2, -0.5, 0, 0.05, 0.5, 2])
 @pytest.mark.parametrize('way', WAYS)
 def test_a_bound_on_either_side_of_a_scheduled_stage(fraction, way):
     tolerance = Numerics().crossing
@@ -101,20 +101,36 @@ def test_a_bound_on_either_side_of_a_scheduled_stage(fraction, way):
     record = made.run()
     connected = made.ways.sets[made.ways.set_of['tank.water']][0]
     assert ('moving' if connected.way == 'declared' and connected.moves else connected.way) == way
-    assert record.failure is None
+    oracle, failure = run_of(program, config)
+    capped = way in ('declared', 'moving')
+    if capped and fraction == 0.5:
+        # Extra delivery would breach the hard 1 L/h solver constraint. The missing
+        # 5e-9 L is outside the tank's own comparison band, before the opening stage.
+        assert failure is not None and record.failure is not None
+        assert record.end == oracle.view.t == 1
+        accepted = made.ways.instance_of('tank.fill').transferred('tank.fill', 1)
+        assert made.stock_balance('tank.water', 1) == accepted
+        assert float(accepted) == pytest.approx(1, rel=0, abs=8 * math.ulp(1))
+        assert value_at(oracle, program, Key('tank', ('water',)), 1) == 1
+        assert not [e for e in record.entries('commit') if e.t == 1]
+        return
+    assert record.failure is None and failure is None
     grouped = abs(fraction) <= 1
     observed = [
         r.values[0] for r in read(record, program, ['reader.level', 'reader.incoming', 'reader.shared'], [1])
     ]
-    direct = 1 + gap if fraction <= 1 else 1
-    if grouped:
+    direct = 1 if fraction > 1 or (capped and fraction > 0) else 1 + gap
+    if grouped and capped and gap > 0:
+        # The posted numerical prefix can differ from the analytical litre by a few ulps.
+        assert observed[0] == read(record, program, ['tank.water'], [1])[0].values[0]
+        assert observed[0] == pytest.approx(direct, rel=0, abs=8 * math.ulp(1))
+    elif grouped:
         assert observed[0] == direct
     else:
         assert observed[0] == pytest.approx(direct, abs=config.numerics.atol_factor, rel=0)
     assert observed[1:] == [float(fraction >= -1), float(fraction > 1)]
     # This gauge is independent of the grouped bound. It follows its exact line on every path.
-    oracle, failure = run_of(program, config)
-    assert failure is None
+    assert value_at(oracle, program, Key('reader', ('level',)), 1) == pytest.approx(direct, rel=0, abs=1e-15)
     key = Key('gauge', ('water',))
     for at, observed_gauge in zip((1, 2), read(record, program, [key], [1, 2])[0].values, strict=True):
         assert observed_gauge == value_at(oracle, program, key, Fraction(at)) == 3 * at
@@ -127,19 +143,27 @@ def test_a_bound_on_either_side_of_a_scheduled_stage(fraction, way):
         assert abs(located - (1 + gap)) <= tolerance
         ((_, _, difference, band),) = entry.detail('near')
         assert (difference, band) == (located - 1, tolerance)
-        (tie,) = report(record, program, config, ['gauge.water'], [1]).near_ties
+        notes = report(record, program, config, ['gauge.water'], [1]).near_ties
+        (tie,) = [note for note in notes if note.kind == 'contact']
         assert tie.difference == difference and tie.tolerance == band
         assert f'difference {difference:+.3g} h, tolerance {band:.3g} h' in tie.message
 
 
 @pytest.mark.parametrize('way', WAYS)
 def test_a_bound_grouped_with_an_edit_keeps_the_edit_and_timing_entry(way):
-    program, config = fill(Numerics().crossing / 2, way), Configuration(Request(2))
+    gap = Numerics().crossing / 20
+    program, config = fill(gap, way), Configuration(Request(2))
     made = Run(Plan.of(program, config), (Breakpoint('reader.look.step[0]'),))
     stop = made.run()
     assert isinstance(stop, Checkpoint)
     assert made.arriving  # the paused round still owns the incoming segment
-    assert stop.state.value('tank.water') == 1 + Numerics().crossing / 2
+    if way in ('declared', 'moving'):
+        accepted = made.ways.instance_of('tank.fill').transferred('tank.fill', 1)
+        assert made.stock_balance('tank.water', 1) == accepted
+        assert stop.state.value('tank.water') == float(accepted)
+        assert float(accepted) == pytest.approx(1, rel=0, abs=8 * math.ulp(1))
+    else:
+        assert stop.state.value('tank.water') == 1 + gap
     edited = made.edit(Key('tank', ('water',)), 0.25)
     restored = Run.restored(Plan.of(program, config), loads(dumps(edited)))
     assert restored.arriving

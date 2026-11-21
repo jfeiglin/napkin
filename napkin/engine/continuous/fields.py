@@ -8,6 +8,7 @@ import math
 import numpy as np
 
 from ...expressions import ExpressionError, compile_program, evaluate, names_in
+from .. import departure
 from ..allocation import Allocation
 from ..errors import SimulationError
 from .integrate import branch_expression
@@ -31,6 +32,7 @@ class Field:
         self.context = context  # the formulas, the diagnostics and the settings (`system.Context`)
         self.leg_rates = None
         self.paired_requests = None
+        self.physical_face_net = None
         self.branches = {}
         self._expressions = {}
         self._program = None
@@ -166,9 +168,9 @@ class Field:
             found = self._faces[key] = (zero, right, np.nextafter(self.system.lower[right], np.inf))
         return found
 
-    def rates(self, at, state, *, trial=False):
+    def rates(self, at, state, *, trial=False, allocation=False):
         s, run = self.system, self.run
-        lower, upper, index, flows, groups = s.lower, s.upper, s.index, s.flows, s.groups
+        lower, index, flows, groups = s.lower, s.index, s.flows, s.groups
         diagnostics = self.context.diagnostics
         run.evaluations += 1
         if run.evaluations > s.cfg.max_evaluations:
@@ -176,7 +178,7 @@ class Field:
         # Integrators evaluate rejected internal stages outside the physical
         # domain. Extend the vector field using boundary values for those trial
         # stages only; stored/accepted states are never clipped and are checked.
-        trial_state = np.minimum(np.maximum(state, lower), upper)
+        trial_state = s.faces.trial(state)
         # Event-only coordinates remain constant throughout a continuous
         # segment. Jacobian probes obey the same discrete mode as solver stages.
         trial_state[s.discrete_rows] = run.y[s.discrete_rows]
@@ -257,6 +259,25 @@ class Field:
         derivative, self.delivered = self.allocation.allocated(
             state, base, requested, capacities, run.active_bounds, run.zero_faces, bound_key
         )
+        if run.active_bounds:
+            held = np.zeros(len(state), dtype=bool)
+            for row, _ in run.active_bounds:
+                held[row] = True
+            traffic = s.abs_flow_matrix @ np.abs(self.delivered) + np.abs(base)
+
+            def terms(i):
+                incoming, outgoing = [], []
+                for sign, side in ((1, incoming), (-1, outgoing)):
+                    side.extend(self.delivered[s.flow_matrix[i] == sign])
+                    if sign * base[i] > 0:
+                        side.append(sign * base[i])
+                return incoming, outgoing
+
+            physical = derivative
+            derivative = departure.rates(derivative, traffic, held, terms)
+            if self.physical_face_net is not None and not allocation:
+                for row in np.flatnonzero(held & (derivative == 0) & (physical != 0)).tolist():
+                    derivative[row] = self.physical_face_net(row, self.delivered)
         if not extended and np.any(derivative[s.monotone] < 0):
             name = next(name for i, name in enumerate(s.state_ids) if s.monotone[i] and derivative[i] < 0)
             raise SimulationError(f'Nondecreasing state {name} has a negative rate')

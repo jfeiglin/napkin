@@ -496,10 +496,10 @@ class Occurrences:
         )
         self._violation(cutoff, violations)
 
-    def placed(self, effects, t):
-        """Settle all instantaneous placement differences against frozen gross allowances together."""
+    def placement(self, effects, t):
+        """Preview simultaneous gross changes. The stock ledger commits successful updates."""
         if not self.watched():
-            return
+            return {}, None
         totals = {}
         contributors = {}
         for name, delta in effects.items():
@@ -527,10 +527,10 @@ class Occurrences:
                     for name in sorted(contributors.get(key, ()), key=self.plan.number)
                 )
         if attempts:
-            self._violation(t, tuple(item[:3] for item in attempts), tuple(attempts))
-        self.transferred.update(updated)
+            return {}, self._failure(t, tuple(item[:3] for item in attempts), tuple(attempts))
+        return updated, None
 
-    def _violation(self, cutoff, violations, attempts=()):
+    def _failure(self, cutoff, violations, attempts=()):
         run = self.run
         messages = []
         for i, (store, side, connection) in enumerate(violations[:5]):
@@ -552,12 +552,16 @@ class Occurrences:
             )
         if len(violations) > 5:
             messages.append(f'{len(violations) - 5} more violations')
-        run.ways.cut(cutoff)
-        run.now = cutoff
         problem = SimulationError('; '.join(messages))
         problem.violations = violations
         if attempts:
             problem.attempts = attempts
+        return problem
+
+    def _violation(self, cutoff, violations):
+        problem = self._failure(cutoff, violations)
+        self.run.ways.cut(cutoff)
+        self.run.now = cutoff
         raise problem
 
     def waiting(self):

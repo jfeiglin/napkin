@@ -41,7 +41,19 @@ def test_a_declared_face_with_balanced_through_flow_keeps_its_stock(moving):
     for run in (machine, restored):
         record = run.resume()
         assert record.failure is None
-        assert run.stock_balance('t0.water', 6) == run.stock_balance('t1.water', 6) == 0
+        assert run.stock_balance('t0.water', 6) == 0
+        residue = run.stock_balance('t1.water', 6)
+        if moving:
+            # Taking the last fraction through the capped outlet would exceed its
+            # integrated capacity. The accepted stock stays in its own comparison band.
+            (placement,) = [entry for entry in record.entries('settle') if entry.detail('placements')]
+            assert 't1.f0.capacity' in placement.detail('reason')
+            (_, observed, target) = next(p for p in placement.detail('placements') if p[0] == 't1.water')
+            assert target == 0 and 0 < float(residue) == observed <= run.comparison_band(
+                't1.water', observed, 0
+            )
+        else:
+            assert residue == 0
         for key, row in zip(keys, read(record, model, keys, list(map(float, times))), strict=True):
             # A located rate can change on either side of its rounded crossing clock.
             for i in (0, 2) if 'actual_rate' in key.steps else range(3):
@@ -93,3 +105,52 @@ yard.change.start()
     assert calls[0] and calls[1.5] == 0
     if not moving:
         assert calls[1] == 0  # the held solver can reuse its released problem at the empty face
+
+
+def test_an_unresolved_numerical_departure_is_refined_and_reported_once(moving, monkeypatch):
+    source = """scenario "A ranked answer on the edge of physical departure"
+    horizon 1 h
+yard:
+    a: L = 0 L in [0, 5 L]
+    flow fill: SOURCE -> this.a
+        request = 0.75 L/h
+    flow drain: this.a -> SINK
+        request = 0.75 L/h
+    owner = solver:
+        inputs:
+            inlet = this.fill
+            outlet = this.drain
+        solve_for:
+            inlet.actual_rate
+            outlet.actual_rate
+        constraints:
+            3 * inlet.actual_rate <= 1.5000000000015 L/h
+            7 * outlet.actual_rate <= 3.4999999999965 L/h
+"""
+    checked = []
+    refine = DeclaredWay._refined_answer
+
+    def measured(self, arrays, requests):
+        rates = refine(self, arrays, requests)
+        checked.append(tuple(rates))
+        return rates
+
+    monkeypatch.setattr(DeclaredWay, '_refined_answer', measured)
+    model = compile_text(source, {'L': {'volume': 1}, 'h': {'time': 1}})
+    machine = Run(Plan.of(model.program, model.configuration))
+    record = machine.run()
+    assert record.failure is None, record.failure
+    assert checked
+    way = machine.ways.instance_of('yard.a')
+    assert way.resting_value('yard.a', 1) is not None
+    assert machine.stock_balance('yard.a', 1) == (
+        way.transferred('yard.fill', 1) - way.transferred('yard.drain', 1)
+    )
+    ((entry, detail),) = record.near_ties()
+    assert (entry.t, entry.kind, entry.part) == (0, 'settle', 'yard.a')
+    assert detail[:2] == ('yard.a', 'stock departure')
+    net, gross, threshold, uncertainty = entry.detail('departure')
+    assert gross == pytest.approx(1, abs=1e-12)
+    assert threshold == 1e-12 * gross
+    assert 0 < abs(net - threshold) <= uncertainty
+    assert machine.recorder.record(record.end).near_ties() == record.near_ties()

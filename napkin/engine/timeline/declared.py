@@ -100,11 +100,13 @@ import math
 import numpy as np
 import scipy.sparse as sp
 from scipy.integrate import OdeSolution, Radau
-from scipy.sparse.linalg import splu
+from scipy.sparse.linalg import lsmr, splu
 
 from ...core import expr as nodes
 from ...core import ops
 from ...core.errors import ExpressionError
+from ...core.units import rational
+from .. import departure
 from ..allocation import StockFaces
 from ..continuous import dense, integrate
 from ..continuous.transfers import HeldAmounts, MovingAmounts
@@ -117,6 +119,7 @@ from .family import Columns, due_through
 from .lines import asked_of
 from .network import (
     BACKWARD,
+    DIRECT,
     FORWARD,
     IN,
     LEG,
@@ -125,17 +128,18 @@ from .network import (
     ROUTE,
     SIDES,
     Claim,
+    carrying,
     claim_order,
     network_of,
     paired_rates,
+    physical_capacities,
 )
 from .plan import DYNAMIC, FORMULA, LOOKUP, RATE, REDUCE
 from .reads import lazily
 from .record import fitted
 from .region import Region, key_surfaces
-from .way import Way
+from .way import MovingTransfers, Way
 
-SLACK = 1e-6  # a store at its bound holds there when its answer moves it out by less than this part
 MOVING = 20  # the most stores of a declared solver's set whose problem moves between moments
 ANSWER = 1e-7  # the precision of an answer of the solve library, relative to its size
 # An answer this near a bound or a row's side, relative to their size, holds it exactly: the
@@ -239,6 +243,7 @@ class Former:
         bounds; the request of each connection is `requests`."""
         plan, net, declared = self.plan, self.net, self.declared
         self.t, self.problem_, self.cols, self.convex, self.parts = t, Problem(), {}, set(), {}
+        self.hard_incidence = None
         self._names = {}  # what each name that reads an unknown gives at this instant (`_name`)
         self.pending, self.rows = [], []  # positive parts (key, Affine), rows (key, terms, lower, upper)
         problem = self.problem_
@@ -256,14 +261,18 @@ class Former:
         self.requests = requests
         ends = self._ends(t)
         # The connections that can carry flow at t: the structure that the order of the claims reads.
-        carries = capacity > 0
+        end_capacity = None
         for (side, s), (_, cap) in ends.items():
             if cap is not None and not cap > 0:
-                carries[net.ends[side].of(s)] = False
-        legs = net.roles == LEG
-        carries[legs] &= requests[legs] > 0
+                if end_capacity is None:
+                    end_capacity = np.full((2, len(net.stores)), math.inf)
+                end_capacity[side, s] = cap
+        carries = carrying(net, requests, capacity, end_capacity)
         layer = net.layers(carries)  # the priority layers among the connections that can carry flow
         classes = net.ranking(carries)
+
+        # Preserve the authored carrying eligibility used to rank claims.
+        capacity = physical_capacities(net, capacity, slice(None), lower, upper)
 
         def claim(f, connections):
             """A flow's claim as the order reads it (`network.Claim`)."""
@@ -973,13 +982,195 @@ class DeclaredWay(Way):
     def _moved(self, flows, stores, low, inward):
         """The flags of the stores of `stores` (each on its lower bound where `low` holds, else on its
         upper) that the values of the flows move off their bound (`inward`) or past it, by more than
-        `NEAR` of what flows through them."""
+        the common departure margin on total traffic."""
         if not stores.any():
             return stores
-        inflow, outflow = self._through(flows)
-        off = np.where(low, 1.0, -1.0) * (inflow - outflow)
-        margin = NEAR * (inflow + outflow)
-        return stores & (off > margin if inward else off < -margin)
+        net = self._face_rates(flows, stores, publish=True)
+        off = np.where(low, net, -net)
+        return stores & (off > 0 if inward else off < 0)
+
+    def _face_rates(self, flows, held, requests=None, *, publish=False):
+        """The signed rate allowed to take each stock away from a held face."""
+        requests = self.former.requests if requests is None else requests
+        carried = self.physical_rates(flows, requests)
+        inward, outward = self._totals(carried)
+        delta, traffic = inward - outward, inward + outward
+        ends = self.net.ends
+
+        def terms(i):
+            return carried[ends[IN].of(i)], carried[ends[OUT].of(i)]
+
+        result = departure.rates(delta, traffic, held, terms)
+        # Only a small difference of opposing measured legs needs a second solve.
+        # A value taken directly from an authored request or hard bound is known.
+        candidates = held & (self.lower != self.upper) & (traffic > 0) & (np.abs(delta) <= ANSWER * traffic)
+        compared = None
+        for i in np.flatnonzero(candidates).tolist():
+            legs = np.concatenate((ends[IN].of(i), ends[OUT].of(i)))
+            if (self.net.roles[legs] == DIRECT).all() and np.array_equal(carried[legs], requests[legs]):
+                continue
+            arrays = self.former.problem_.arrays()
+            positions = [self.former.cols[self.recorded[self.net.of[c]]] for c in legs]
+            if (
+                all(
+                    self.net.roles[c] == DIRECT
+                    and carried[c] in (arrays.target[j], arrays.lower[j], arrays.upper[j])
+                    for c, j in zip(legs, positions)
+                )
+                or _paired_answer(arrays) is not None
+            ):
+                continue
+            if compared is None:
+                compared = self._refined_answer(arrays, requests)
+            incoming, outgoing = terms(i)
+            # Disagreement between the installed solve and the independent, polished
+            # solve measures the local error. Each measured coordinate still rounds once.
+            error = (
+                sum(max(abs(carried[c] - compared[c]), math.ulp(float(carried[c]))) for c in legs)
+                if compared is not None
+                else float(traffic[i])
+            )
+            result[i], unresolved = departure.refined(incoming, outgoing, error)
+            if unresolved and publish:
+                departure.record_tie(
+                    self.recorder, self.former.t, self.stores[i], delta[i], traffic[i], error
+                )
+        return result
+
+    def placement_rows(self, name):
+        """Hard relation identities shared by proposed changes on this physical leg."""
+        former = self.former
+        if not hasattr(former, 'cols'):
+            former.problem(self.run.now, *self.faces.flags(self.y))
+        rows = getattr(former, 'hard_incidence', None)
+        if rows is None:
+            rows = former.hard_incidence = {}
+
+            def columns(terms):
+                for j in terms:
+                    if j >= 0:
+                        yield j
+                    else:
+                        yield from columns(former.pending[-j - 1][1].terms)
+
+            for key, terms, _, _ in former.rows:
+                if key[0] == 'relation':
+                    for j in set(columns(terms)):
+                        rows.setdefault(j, []).append(('relation', self.declared.id, key))
+        f = self.net.of[self.leg_rows[name]]
+        return rows.get(former.cols[former._flow_name(int(f))], ())
+
+    def placement_relation(self, changes, t, *, rates=False):
+        """Check the proposed physical incidence against the declared hard rows. An
+        equality permits only changes in its null space. Inequalities have the slack
+        of the accepted interval; a moving row is checked on its incoming allocation."""
+        if not self.declared.constraints:
+            return None
+        former, net = self.former, self.net
+        if not hasattr(former, 'cols'):
+            former.problem(t, *self.faces.flags(self.y))
+        columns = {}
+        for name, delta in changes.items():
+            c = self.leg_rows[name]
+            f = net.of[c]
+            column = former.cols[former._flow_name(int(f))]
+            role = net.roles[c]
+            if role == LEG:
+                fraction = None
+                for other in net.conns.of(f):
+                    request = former.requests[other]
+                    value = changes.get(net.connections[other], 0)
+                    if not request:
+                        if value:
+                            return self.flows[f]
+                        continue
+                    part = value / rational(request)
+                    if fraction is not None and part != fraction:
+                        return self.flows[f]
+                    fraction = part
+                columns[column] = fraction or 0
+            else:
+                columns[column] = columns.get(column, 0) + (delta if role != BACKWARD else -delta)
+        for key, terms, lower, upper in former.rows:
+            if key[0] != 'relation':
+                continue
+            delta = sum(rational(coef) * columns[j] for j, coef in terms.items() if j in columns)
+            if not delta:
+                continue
+            if lower == upper:
+                return key[1]
+            if (delta < 0 and not math.isfinite(lower)) or (delta > 0 and not math.isfinite(upper)):
+                continue
+            arrays = former.problem_.arrays()
+            duration = 1 if rates else rational(t) - rational(self.t0)
+            value = 0
+            for j, coefficient in terms.items():
+                kind, name = arrays.keys[j][:2]
+                if kind == 'flow':
+                    f = self.row[name]
+                    if rates:
+                        amount = rational(self.value[f]) * duration
+                    elif net.kinds[f] == LEGS:
+                        # A served fraction is dimensionless. Only the held relation
+                        # supports multiplying it by a definite elapsed time.
+                        amount = rational(self.value[f]) * duration
+                    else:
+                        legs = net.conns.of(f)
+                        amount = sum(
+                            self.raw_transferred(net.connections[c], t)
+                            * (-1 if net.roles[c] == BACKWARD else 1)
+                            for c in legs
+                        )
+                elif kind == 'value' and name in self.results:
+                    amount = rational(self.results[name]) * duration
+                else:
+                    return key[1]
+                value += rational(coefficient) * amount
+            if (delta > 0 and value + delta > rational(upper) * duration) or (
+                delta < 0 and value + delta < rational(lower) * duration
+            ):
+                return key[1]
+        return None
+
+    def _physical_face_net(self, s, rates):
+        """Return the physical drift when leveling the books would break a hard flow rule."""
+        return self.run.stock_state.physical_face_net(self, s, rates)
+
+    def _refined_answer(self, arrays, requests):
+        """Recheck a cancellation-sensitive rate with a fresh basis and the published rank polish."""
+        signature = _signature(arrays)
+        cached = getattr(self, '_departure_check', None)
+        if cached is None or cached[0] != signature:
+            budget = self.plan.configuration.budgets
+            try:
+                found = Solver(Budget(budget.fair_programs, budget.newton_steps, budget.qp_iterations)).solve(
+                    self.former.problem_
+                )
+            except SolveFailure:
+                rates = None
+            else:
+                x = published(arrays, found)
+                value = arrays.A @ x
+                error = ANSWER * (abs(arrays.A) @ np.abs(x))
+                equal = arrays.row_lower == arrays.row_upper
+                authored = np.array([key[0] == 'relation' for key in arrays.row_keys], dtype=bool)
+                low = authored & (np.abs(value - arrays.row_lower) <= error)
+                high = authored & (np.abs(value - arrays.row_upper) <= error)
+                active = equal | low | high
+                if active.any():
+                    # Refine the equalities and near-active authored constraints. A
+                    # candidate is usable only if it also preserves every ranked optimum.
+                    hard = arrays.A[active]
+                    target = np.where(equal | high, arrays.row_upper, arrays.row_lower)
+                    residual = target[active] - hard @ x
+                    correction = lsmr(hard, residual, atol=np.finfo(float).eps, btol=np.finfo(float).eps)[0]
+                    candidate = x + correction
+                    if found.admits(candidate):
+                        x = candidate
+                flows, _ = self._values(arrays, x)
+                rates = self.physical_rates(flows, requests)
+            self._departure_check = signature, rates
+        return self._departure_check[1]
 
     def physical_rates(self, flows, requests=None):
         """The nonnegative rate on each directed connection in an actual allocation."""
@@ -988,8 +1179,10 @@ class DeclaredWay(Way):
 
     def _through(self, flows, requests=None):
         """(what flows into each store, what flows out of it) from the values of the flows."""
+        return self._totals(self.physical_rates(flows, requests))
+
+    def _totals(self, rate):
         net = self.net
-        rate = self.physical_rates(flows, requests)
         inflow = np.array([rate[net.ends[IN].of(s)].sum() for s in range(len(self.stores))])
         outflow = np.array([rate[net.ends[OUT].of(s)].sum() for s in range(len(self.stores))])
         return inflow, outflow
@@ -1010,18 +1203,19 @@ class DeclaredWay(Way):
             slope = inflow - outflow
             value = float(self.y[s] + self.slope[s] * (t - self.since[s]))
             low, high = self.faces.at_lower(s, value), self.faces.at_upper(s, value)
-            if (low and slope < 0) or (high and slope > 0):
-                # A store at its bound: an answer within the solver's tolerance holds it there.
-                if abs(slope) > SLACK * (inflow + outflow):
-                    raise SimulationError(
-                        f'{store}: the solver {self.declared.id} moves it past its bound at {t:g} h'
-                    )
+            if held_low[s] and held_high[s]:
+                # The hard incidence row of a zero-width stock is an equality.
                 slope = 0.0
-            elif held_low[s] or held_high[s]:
-                # The solved incidence holds this face. Summing the rounded legs can leave
-                # a tiny inward drift even in the absence of a physical departure.
-                slope = 0.0
-            if (low or high) and slope == 0 and inflow and outflow:
+            elif slope and (held_low[s] or held_high[s]):
+                if (low and slope < 0) or (high and slope > 0):
+                    selected = np.zeros(len(self.stores), dtype=bool)
+                    selected[s] = True
+                    if self._face_rates(self.value, selected, publish=True)[s]:
+                        raise SimulationError(
+                            f'{store}: the solver {self.declared.id} moves it past its bound at {t:g} h'
+                        )
+                slope = self._physical_face_net(s, rate)
+            if (held_low[s] or held_high[s]) and inflow and outflow:
                 changed_faces[s] = OUT if low else IN
             elif self.resting_rates is not None and s in self.resting_rates.sides:
                 changed_faces[s] = None
@@ -1033,11 +1227,7 @@ class DeclaredWay(Way):
             self.version[s] += 1
             self.recorder.add(store, t, value, slope)
             changed.append(store)
-            reach = math.inf
-            if slope < 0 and math.isfinite(self.lower[s]):
-                reach = t + (value - self.lower[s]) / -slope
-            elif slope > 0 and math.isfinite(self.upper[s]):
-                reach = t + (self.upper[s] - value) / slope
+            reach = self.faces.contact(s, value, slope, t, self.stores[s])
             if reach <= self.run.clock.apart(self.plan.horizon):
                 heapq.heappush(self.due, (reach, s, int(self.version[s])))
         self.balance_rates(changed_faces, rate, t)
@@ -1140,7 +1330,7 @@ class Segment:
         self.plain = plain
 
 
-class MovingDeclared(DeclaredWay):
+class MovingDeclared(MovingTransfers, DeclaredWay):
     """A declared solver's set whose problem reads what moves between moments: a store of the set,
     through a request, a capacity, a relation or a domain, or the time. Its rates follow the state, as
     every rate that reads a moving quantity does (spec, "A rate can follow a moving quantity"; D3):
@@ -1305,10 +1495,7 @@ class MovingDeclared(DeclaredWay):
         """A state within the stores' bounds, preserving the accepted coordinates of held stores: what the
         problem reads at a trial state, which the integrator may put a tolerance past a bound that a
         store reaches in the step (the step then ends there, `_event`)."""
-        y = np.minimum(np.maximum(np.asarray(y[: len(self.stores)], dtype=float), self.lower), self.upper)
-        held = self.low | self.high
-        y[held] = self.y[held]
-        return y
+        return self.faces.trial(np.asarray(y[: len(self.stores)], dtype=float))
 
     def _net(self, flows):
         """The rate of change of each store from the values of the flows."""
@@ -1336,17 +1523,22 @@ class MovingDeclared(DeclaredWay):
         return found
 
     def _derivative(self, t, y):
-        rate = self._at(t, y)[2].copy()
-        rate[self.low | self.high] = 0.0  # a held store stays on its bound through the segment
+        flows, _, net, requests = self._at(t, y)
+        return self._physical_net(net, self.physical_rates(flows, requests))
+
+    def _physical_net(self, net, carried):
+        rate = net.copy()
+        rate[self.low & self.high] = 0.0
+        for s in np.flatnonzero((self.low ^ self.high) & (rate != 0)).tolist():
+            rate[s] = self._physical_face_net(s, carried)
         return rate
 
     def _integrated_rates(self, t, y):
         """Advance gross physical legs with their store derivatives using the same trial solve.
         Only the accepted dense prefix is consumed. The leg coordinates never enter the LP."""
         flows, _, net, requests = self._at(t, y)
-        rate = net.copy()
-        rate[self.low | self.high] = 0.0
-        return np.concatenate((rate, self.physical_rates(flows, requests)))
+        carried = self.physical_rates(flows, requests)
+        return np.concatenate((self._physical_net(net, carried), carried))
 
     def _jacobian(self, t, y):
         """Difference the held LP field on a feasible side of each trial coordinate."""
@@ -1383,19 +1575,18 @@ class MovingDeclared(DeclaredWay):
             self.trial = self._held(self.y)
             try:
                 flows, results = self.answer(t, self.low, self.high)
+                held = self.low | self.high
+                rate = self._face_rates(flows, held if released is None else held | released, publish=True)
             finally:
                 self.trial = None
-            inflow, outflow = self._through(flows)
-            rate = inflow - outflow
-            slack = NEAR * (inflow + outflow)
             if released is not None:
                 # A store released here that the answer free moves back past its bound: no answer
                 # holds just after t.
-                back = released & ((was_low & (rate < -slack)) | (~was_low & (rate > slack)))
+                back = released & ((was_low & (rate < 0)) | (~was_low & (rate > 0)))
                 if back.any():
                     s = int(np.flatnonzero(back)[0])
                     raise SimulationError(self._no_answer(s, bool(was_low[s])))
-            leaving = (self.low & (rate > slack)) | (self.high & (rate < -slack))
+            leaving = (self.low & (rate > 0)) | (self.high & (rate < 0))
             if not leaving.any():
                 break
             released, was_low = leaving, self.low.copy()
@@ -1493,9 +1684,27 @@ class MovingDeclared(DeclaredWay):
                 kind = 'release'
 
                 def gap(t, s=s):
-                    flows, _, rates, requests = self._at(t, solution(t))
-                    inflow, outflow = self._through(flows, requests)
-                    return (rates[s] if self.low[s] else -rates[s]) - NEAR * (inflow[s] + outflow[s])
+                    y = solution(t)
+                    flows, _, raw, requests = self._at(t, y)
+                    carried = self.physical_rates(flows, requests)
+                    traffic = float(
+                        carried[self.net.ends[IN].of(s)].sum() + carried[self.net.ends[OUT].of(s)].sum()
+                    )
+                    direction = 1 if self.low[s] else -1
+                    gap = direction * raw[s] - departure.FACTOR * traffic
+                    if gap < -departure.SUM_ERROR * traffic or abs(raw[s]) > ANSWER * traffic or traffic == 0:
+                        return gap
+                    mask = np.zeros(len(self.stores), dtype=bool)
+                    mask[s] = True
+                    self.trial = self._held(y)
+                    try:
+                        self._formed(t, self.low, self.high)
+                        rate = self._face_rates(flows, mask, requests)[s]
+                    finally:
+                        self.trial = None
+                    return (
+                        max(math.ulp(traffic), gap) if direction * rate > 0 else min(-math.ulp(traffic), gap)
+                    )
 
                 if gap(end) <= 0:
                     continue
@@ -1542,7 +1751,13 @@ class MovingDeclared(DeclaredWay):
         def states(times):
             return np.array([self._state(at) for at in np.asarray(times).tolist()])
 
-        yield from zip(self.stores, fitted(states, start, end, self.atol))
+        if self.held_problem:
+            rates = self._derivative(start, self.y)
+            for store, rate in zip(self.stores, rates):
+                opening = self.run.stock_balance(store, start)
+                yield store, [(start, float(opening), float(rate))]
+        else:
+            yield from zip(self.stores, fitted(states, start, end, self.atol))
         names = [*self.recorded, *self.connected.results]
 
         def answers(times):
@@ -1617,13 +1832,9 @@ class MovingDeclared(DeclaredWay):
         changed = self._settle(segment.end, contacted, departing)
         return list(self.stores), sorted(set(changed) | set(self.recorded)), bool(segment.event)
 
-    def crossed_operands(self, t, through):
+    def detected_switches(self):
         if self.pending is not None:
-            yield from (
-                (at, pair)
-                for at, pair, kind in self.pending.event or ()
-                if kind == 'switch' and at <= through and self.run.clock.within(at, t)
-            )
+            yield from ((at, pair) for at, pair, kind in self.pending.event or () if kind == 'switch')
 
     def _put_contacts(self, events, through):
         due = [event for event in events if event[0] <= through]
@@ -1679,20 +1890,8 @@ class MovingDeclared(DeclaredWay):
     def _clock_bounds(self):
         return self.low.__getitem__, self.high.__getitem__
 
-    def _transferred(self, name, t):
-        row = self.leg_rows[name]
-        if t == self.amounts.through:
-            return self.amounts.amount(row)
-        arrival = getattr(self, 'arrival_amounts', None)
-        if arrival is not None and t == arrival.through:
-            return arrival.amount(row)
-        if self.pending is None or not self.amounts.through < t <= min(
-            self.run.clock.apart(self.pending.end), self.run.now
-        ):
-            raise ValueError('transfer requested outside the accepted interval')
-        leg = self.amounts.clocks.get(row)
-        mode = leg.selection(self.low.__getitem__, self.high.__getitem__) if leg is not None else None
-        return self.amounts.prefix(row, t, mode, lambda: self.pending.solution(t)[len(self.stores) + row])
+    def _pending_amount(self, row, t):
+        return self.pending.solution(t)[len(self.stores) + row]
 
     def incoming_level(self, name, t):
         if self.pending is not None and self.pending.start < t:
@@ -1733,7 +1932,7 @@ class MovingDeclared(DeclaredWay):
         that holds the piece, which the run reads as it is, and a store held on a bound at its bound."""
         rows = np.array([self.place[name] for name in weights], dtype=np.int64)
         w = np.array(list(weights.values()), dtype=float)
-        still = (self.low | self.high)[rows]
+        still = np.zeros(len(rows), dtype=bool)
         segment = self.pending
         if segment is None or end <= segment.start:
             return dense.held(self._held(self.y)[rows], w)
@@ -1771,11 +1970,21 @@ def published(arrays, found):
     checks and is no worse on any rank (`solve.Answer.admits`: each kept optimum and each objective
     against the answer's, each claim's served fraction against its fair level and the answer's,
     every row and bound), and a candidate that fails is dropped."""
+    # A singleton authored equality fixes that unknown independently of any rank
+    # or active face. Restore its specified value before testing the polished vector.
+    fixed = {}
+    for i, key in enumerate(arrays.row_keys):
+        if key[0] == 'relation' and arrays.row_lower[i] == arrays.row_upper[i]:
+            row = arrays.A[i : i + 1].tocoo()
+            if len(row.col) == 1:
+                fixed[row.col[0]] = float(rational(arrays.row_upper[i]) / rational(row.data[0]))
     pair = _paired_answer(arrays)
     if pair is not None and found.admits(pair):
         return pair
     for answer in (polished(arrays, found.x, found.levels), found.x):
         candidate = np.clip(answer, arrays.lower, arrays.upper)
+        for column, value in fixed.items():
+            candidate[column] = value
         if found.admits(candidate):
             return candidate
     return found.x

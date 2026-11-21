@@ -6,6 +6,28 @@ from ..continuous.transfers import ClockLeg, HeldAmounts, certified_amount, held
 from .stocks import RestingAmounts, RestingRates
 
 
+class MovingTransfers:
+    """Read one directed connection's accepted prefix using the installed method's dense output."""
+
+    def _pending_end(self):
+        return self.pending.end
+
+    def _transferred(self, name, t):
+        row = self.leg_rows[name]
+        if t == self.amounts.through:
+            return self.amounts.amount(row)
+        arrival = getattr(self, 'arrival_amounts', None)
+        if arrival is not None and t == arrival.through:
+            return arrival.amount(row)
+        if self.pending is None or not self.amounts.through < t <= min(
+            self.run.clock.apart(self._pending_end()), self.run.now
+        ):
+            raise ValueError('transfer requested outside the accepted interval')
+        leg = self.amounts.clocks.get(row)
+        mode = leg.selection(*self._clock_bounds()) if leg is not None else None
+        return self.amounts.prefix(row, t, mode, lambda: self._pending_amount(row, t))
+
+
 class Way:
     """An engine supplies its answers on its installed trajectory and the contacts it located."""
 
@@ -49,8 +71,7 @@ class Way:
                 return float(self.y[self.place[name]])
         if self.resting is not None and name in self.resting.rows:
             bound = self.resting.rows[name][0]
-            if self.accepted_level(name, t) == bound:
-                return bound
+            return bound
         return None
 
     def set_resting(self, levels, t):
@@ -145,6 +166,13 @@ class Way:
 
     def crossed_operands(self, t, through):
         """Operands of physical switches located in the moment's closed time window."""
+        return (
+            (at, pair)
+            for at, pair in self.detected_switches()
+            if at <= through and self.run.clock.within(at, t)
+        )
+
+    def detected_switches(self):
         return ()
 
     def incoming_level(self, name, t):

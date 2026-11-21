@@ -66,6 +66,7 @@ The earlier audit reported all 44 retained cases passing on `5d9409b`. The linke
 - `tests/program/test_artifact.py` now requires format 4 (previously 3) and language 0.2.3 (previously 0.2.2). Scoped evidence adds a field to the wire format. The language change identifies the corrected comparisons. Loading a file with either older header must produce the existing recompile diagnostic.
 - `tests/test_api.py::test_the_run_store_reads_the_same_engine_files_as_before_the_api` now includes `engine/continuous/transfers.py`. Its accepted-prefix arithmetic affects the physical record and changes to the file must invalidate a cached run.
 - The same cache-closure assertion adds `engine/timeline/stocks.py` at the accounting cutover. `store.closure()` discovers the imported authoritative stock writer. Changing a debit, credit or cutoff in that file must invalidate cached records.
+- The closure also gains `engine/departure.py` when the four shared rules land. A change to the traffic-relative release threshold or its refinement can change a tank’s trajectory, so it invalidates cached runs.
 
 ## Allocation at a stock bound
 
@@ -79,3 +80,11 @@ The owner ruled that allocation treats a stock within its comparison band of a f
 The renamed test retains both setups and adds both at 2 × 10⁻⁷ L of remaining room. Those outside-band cases keep the 0.0002 L/h rate. All four check the physical inventory at the stage. The adjacent guard-switch test retains its original time and rate expectations. [Reallocation and switch cases](../../../tests/engine/test_switch_segments.py)
 
 In `test_a_rate_that_is_more_than_roundoff_stays_a_rate`, the stock is 10⁻⁹ L below a 100 L upper bound, inside its 10⁻⁷ L comparison band. The old expectation kept a positive subtraction residual of 2 × 10⁷ × machine epsilon (about 4.44 × 10⁻⁹ L/h). The required stock derivative is zero on this active upper face. Controls retain the small derivative at 99.5 L and on inactive faces. [Bound-balance controls](../../../tests/engine/test_bound_balance.py)
+
+The basin-search fixture formerly expected the fold at `tank.mu = −5` and an offset of 500 people/h to fail when its tank emptied. At zero people the inlet requests 395 people/h and the outlet requests 500 people/h. Both are soft claims. With no capacity on the inlet, the empty tank passes through 500 people/h on both legs at 1 and 10 h, keeping zero inventory. A separate search with a 100 people/h offset still propagates a genuine failure. Its inlet request becomes negative while the tank contains about 0.253 people. [Fold and failure-propagation tests](../../../tests/dynamics/test_basins.py)
+
+## Placement on a stock bound or threshold
+
+The removal inventory lists each changed fixture, its former expectation, the newly required physical amount or status and its retained outside-band or hard-constraint control. [Placement expectation ledger](accounting-write-sites.md#expectation-changes-from-the-stock-placement-ruling)
+
+Declared-solver seed 875 formerly required both draining stocks to end exactly empty. At the 3.1804395604395603 h contact, MovingDeclared would have to exceed `t1.f0.capacity` to post the last 2.801439037153323 × 10⁻¹⁷ L. Its books retain the positive, in-band residual at `t1.water`. The record identifies the cap and zero target. The held declared method reaches zero exactly. Both methods still empty `t0.water`, preserve the live and serialized checkpoint histories, and agree with the independent oracle at all three sampling times. [Seed 875 and its controls](../../../tests/engine/test_declared_stock_faces.py)

@@ -442,6 +442,7 @@ def _instance(instance):
     elif kind in ('sparse', 'component', 'moving'):
         amounts = instance.amounts
         fields += (
+            ('amount_origin', amounts.start),
             (
                 'clock_amounts',
                 tuple(
@@ -878,6 +879,7 @@ def _made(run, kind, keys, data):
             leg = amounts.clocks[row] = ClockLeg(tuple(polynomial), start, *ends)
             leg.mode, leg.start, leg.closed, leg.origin = mode, start, closed, origin
         amounts.all_clock = bool(amounts.clocks) and len(amounts.clocks) == len(instance.leg_rows)
+        amounts.start = data.get('amount_origin', amounts.start)
         amounts.through, total, remainder = data['accepted_amounts']
         if amounts.single is not None:
             amounts.total, amounts.remainder = total, remainder

@@ -128,7 +128,9 @@ def test_consumed_contacts_have_the_same_departure_in_each_engine(case, gap, pat
             assert delta == e.detail('located') - e.t
             assert delta == pytest.approx(raw - float(at), abs=1e-12, rel=0)
         if bound:
-            expected = [1, 0, float(1 + gap)] if path == 'straight' else [1, 1, 0.5]
+            # A hard 1 L/h upper rate leaves the positive in-band remainder on the books.
+            level = 1 if gap > 0 and way in ('declared', 'moving') else float(1 + gap)
+            expected = [1, 0, level] if path == 'straight' else [1, 1, 0.5]
         else:
             drain = 1 if path == 'straight' else F(3, 2)
             # A single located stock threshold is exact at the canonical moment. Without it,
@@ -136,8 +138,13 @@ def test_consumed_contacts_have_the_same_departure_in_each_engine(case, gap, pat
             level = 2 if simultaneous else 1 + at
             expected = [2, drain, level - drain / 4]
         if bound or simultaneous:
-            anchored = 2 if simultaneous else (float(1 + gap) if path == 'straight' else 0.25)
-            assert read(record, program, ['tank.water'], [float(at)])[0].values == (anchored,)
+            anchored = 2 if simultaneous else (level if path == 'straight' else 0.25)
+            observed = read(record, program, ['tank.water'], [float(at)])[0].values
+            if bound and path == 'straight' and gap > 0 and way in ('declared', 'moving'):
+                assert observed == pytest.approx((anchored,), rel=0, abs=8 * math.ulp(1))
+                assert observed == read(record, program, ['reader.level'], [float(at)])[0].values
+            else:
+                assert observed == (anchored,)
         rows = read(record, program, [f'{who}.incoming', f'{who}.shared', 'tank.water'], [float(horizon)])
         incoming, outgoing, stock = (r.values[0] for r in rows)
         assert (incoming, outgoing) == tuple(expected[:2]), (way, path)
