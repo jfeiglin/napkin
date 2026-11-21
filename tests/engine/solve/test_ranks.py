@@ -258,3 +258,66 @@ def test_the_published_answer_keeps_the_distance_and_no_farther_answer_is_admitt
 @pytest.mark.parametrize('size', [1, Fraction(1, 10**7)], ids=['litres', 'tiny'])
 def test_more_published_answers_keep_the_distance(monkeypatch, seed, size):
     every_rank(monkeypatch, seed, size)
+
+
+def test_independent_feasible_targets_serve_every_tier_and_keep_their_end_checks():
+    p = Problem()
+    a = p.unknown('first', 0, 12, FLOW, target=4, scale=0.5)
+    b = p.unknown('second', 0, 12, FLOW, target=6, scale=2)
+    idle = p.unknown('idle', 0, 12, FLOW, target=0, scale=3)
+    scaled = p.unknown('scaled', 0, 12, FLOW, target=0.7, scale=0.3)
+    p.claim({scaled: 1}, 0.7, tier=1)
+    p.claim({b: 1}, 5, tier=0)
+    p.claim({a: 1}, 4, tier=1)
+    p.claim({a: 1}, 2, tier=1)
+    solver = Solver()
+    result = solver.solve(p)
+    assert result.work.programs == 0
+    assert tuple(result.levels) == (1, 1, 1, 1)
+    # Dividing 0.7 by its scale 0.3 and multiplying back would give 0.7000000000000001.
+    assert tuple(result.x) == (4, 6, 0, 0.7)
+    assert result.admits(result.x)
+    assert not result.admits(np.array([4, 6, 1e-10, 0.7]))
+
+    # A further rank must go through the solver even on the same already-installed columns.
+    p.maximize({idle: 1})
+    ranked_result = solver.solve(p)
+    assert ranked_result.work.programs > 0
+    assert tuple(ranked_result.x) == pytest.approx((4, 6, 12, 0.7), abs=1e-6)
+    assert ranked_result.optima == pytest.approx((-12,), abs=1e-6)
+
+    # A renewed instance still returns values and fair levels in the new problem's order.
+    solver.renew()
+    reordered = Problem()
+    second = reordered.unknown('second', 0, 12, FLOW, target=9, scale=2)
+    first = reordered.unknown('first', 0, 12, FLOW, target=3, scale=0.5)
+    reordered.claim({first: 1}, 3, tier=1)
+    reordered.claim({second: 1}, 5, tier=0)
+    installed = solver.solve(reordered)
+    assert list(installed.keys) == ['second', 'first']
+    assert tuple(installed.x) == (9, 3)
+    assert tuple(installed.levels) == (1, 1)
+    assert installed.work.programs == 0
+
+
+@pytest.mark.parametrize(
+    'coefficients, wanted, cap, expected, level',
+    [
+        ((1, 0), 6, 5, (5, 4), 5 / 6),  # more than the target, limited by the capacity
+        ((1, 0), 1, 2, (2, 4), 1),  # the target is outside its own bounds
+        ((0.5, 0), 3, 10, (6, 4), 1),  # a half-unit coefficient changes the required delivery
+        ((1, 1), 10, 10, (5, 5), 1),  # an aggregate claim couples the two targets
+    ],
+)
+def test_a_target_certificate_yields_to_caps_and_nontrivial_claims(
+    coefficients, wanted, cap, expected, level
+):
+    p = Problem()
+    a = p.unknown('a', 0, cap, FLOW, target=4)
+    b = p.unknown('b', 0, 10, FLOW, target=4)
+    p.claim({a: coefficients[0], b: coefficients[1]}, wanted)
+    found = Solver().solve(p)
+    assert found.work.programs > 0
+    assert tuple(found.x) == pytest.approx(expected, rel=0, abs=2e-6)
+    assert tuple(found.levels) == pytest.approx((level,))
+    assert found.admits(found.x)

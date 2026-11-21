@@ -139,6 +139,8 @@ class Solver:
         _check_hard(arrays)
         w = self._follow(Scaled(arrays))
         kept, work = self._kept, Work()
+        if not arrays.m and _fully_served_targets(arrays, w):
+            return _answer(arrays, w, arrays.target.copy(), (), np.ones(len(arrays.request)), work)
         start, renewed = kept.iterations, kept.renewals
         face = ranked.Face(w)
         try:
@@ -149,7 +151,7 @@ class Solver:
             self._restore(w)
             work.iterations = kept.iterations - start
             work.renewals = kept.renewals - renewed
-        return _answer(arrays, w, xi, optima, levels, work)
+        return _answer(arrays, w, arrays.positive_parts(w.author(xi)), optima, levels, work)
 
     def _follow(self, w):
         """Make the kept instance hold the program of `w`; gives `w` in the instance's order."""
@@ -211,6 +213,24 @@ class Solver:
         kept.set_cost(np.zeros(kept.n))
 
 
+def _fully_served_targets(arrays, w):
+    """A row-free problem of independent flows can attain every fair tier and zero distance
+    at its targets. Test each unit-coefficient claim in author units before rounding its scale."""
+    claims = arrays.F
+    return (
+        not arrays.objectives
+        and not arrays.positive
+        and np.all(arrays.kind == FLOW)
+        and np.isfinite(w.F.data).all()
+        and np.isfinite(w.target).all()
+        and np.all(arrays.lower <= arrays.target)
+        and np.all(arrays.target <= arrays.upper)
+        and np.all(np.diff(claims.indptr) == 1)
+        and np.all(claims.data == 1)
+        and np.all(arrays.target[claims.indices] >= arrays.request)
+    )
+
+
 def _check_hard(arrays):
     """The contradictions that need no program: a crossed interval, and an empty row that fails."""
     crossed = np.flatnonzero(arrays.lower > arrays.upper)
@@ -236,9 +256,8 @@ def _check_hard(arrays):
         )
 
 
-def _answer(arrays, w, xi, optima, levels, work):
+def _answer(arrays, w, x, optima, levels, work):
     """The checked answer in author units and in the order of the problem."""
-    x = arrays.positive_parts(w.author(xi))
     checks = _end_checks(arrays, w, optima, levels)
     failure = checks(x)
     if failure is not None:
