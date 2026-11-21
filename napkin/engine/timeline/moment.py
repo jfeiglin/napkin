@@ -101,14 +101,15 @@ from fractions import Fraction
 from ...core import expr as nodes
 from ...core.comparisons import against, recorded_number
 from ...core.errors import ExpressionError
+from ...core.literals import Literals, node_parts
 from ...core.units import rational
-from ...expressions import UnitSystem
+from ...expressions import UnitSystem, evaluate
 from ...program import parts as p
 from ...program.refs import Distribution, Formula
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .plan import BACKWARD, FORMULA, FORWARD
-from .reads import lazily
+from .reads import Reads, lazily
 
 _SETUP = 'setup'  # what a stop in the setup holds
 
@@ -624,29 +625,31 @@ class Moment:
         an amount at a store of a finished occurrence writes it, and fails; a move of nothing goes on
         (`Occurrences.writable`)."""
         run, origin, plan = self.run, statement.origin, self.plan
-        amount = self.truth(statement.amount, scope, origin, tx)
+        node = run.occurrences.node(statement.amount, scope, origin)
+        amount = self.move_amount(node, tx)
         source = self.target(statement.source, scope, origin)
         destination = self.target(statement.destination, scope, origin)
         if (
             isinstance(amount, bool)
-            or not isinstance(amount, int | float)
+            or not isinstance(amount, int | float | Fraction)
             or not math.isfinite(amount)
             or amount < 0
         ):
+            shown = float(amount) if isinstance(amount, Fraction) else amount
             raise SimulationError(
-                f'{origin}: a move takes a finite amount from 0, not {quantity(plan, source, amount)}'
+                f'{origin}: a move takes a finite amount from 0, not {quantity(plan, source, shown)}'
             )
+        requested = rational(amount)
         amount = float(amount)
         for end in (source, destination):
-            run.occurrences.writable(end, origin, amount)
-        if source == destination or amount == 0:
+            run.occurrences.writable(end, origin, requested)
+        if source == destination or requested == 0:
             tx.moves.append((source, destination, amount, origin))
             return
         supply = float(run.value(source, tx=tx))
         receiving = float(run.value(destination, tx=tx))
         lower = run.bounds.get(source, (-math.inf, math.inf))[0]
         upper = run.bounds.get(destination, (-math.inf, math.inf))[1]
-        requested = rational(amount)
         applied = requested
         endpoints = []
         for name, initial, edge, sign in ((source, supply, lower, -1), (destination, receiving, upper, 1)):
@@ -684,6 +687,25 @@ class Moment:
                 tx.move_roundoff.pop(name, None)
 
         tx.moves.append((source, destination, float(applied), origin))
+
+    def move_amount(self, node, tx):
+        """Take a rational share of the authored quantities before booking it to either store.
+        Reads and comparisons use the stage's usual values, including its selected branches.
+        An irrational result uses the ordinary numerical evaluator with the same cached reads."""
+        run, units = self.run, self.plan.units
+        reads = Reads(nodes.names(node), lambda name: run.value(name, tx=tx), run.now)
+
+        def parts(part):
+            op, args, data = node_parts(part)
+            if isinstance(part, nodes.Ref) or op in ('compare', 'within', 'not', 'and', 'or'):
+                found = evaluate(part, reads, units)
+                if isinstance(found, int | float) and not isinstance(found, bool):
+                    return 'number', (), (found, '')
+                return 'literal', (), found
+            return op, args, data
+
+        exact = Literals(parts, units.exact_scale, units.comparisons.factor).value(node)
+        return evaluate(node, reads, units) if exact is None else exact
 
     def queue(self, statement, tx, scope):
         """`.start(...)`: the arguments are evaluated at the caller, left to right, once; on a

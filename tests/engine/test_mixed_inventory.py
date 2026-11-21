@@ -8,9 +8,22 @@ import pytest
 from napkin.engine import read, run
 from napkin.engine.timeline import Plan, Run, resume
 from napkin.model.compile import compile_text
-from napkin.program.build import SOURCE, Builder, after, assign, event, flow, move, q, start, this, value
+from napkin.program.build import (
+    SOURCE,
+    Builder,
+    after,
+    assign,
+    event,
+    flow,
+    ifelse,
+    move,
+    q,
+    start,
+    this,
+    value,
+)
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
-from napkin.program.config import Configuration, Request
+from napkin.program.config import Configuration, Numerics, Request
 from tests.engine.test_round_rate_reads import SETTING, check, model
 from tests.program.examples import UNITS
 from tests.reference.from_program import run_of
@@ -62,6 +75,27 @@ def test_repeated_small_deposits_pay_the_refund_and_leave_no_extra_inventory(dep
     tank, refund = read(record, program, ['yard.tank', 'yard.refund'], [3])
     assert tank.values == (0,)
     assert refund.values == pytest.approx((deposit * count,), abs=1e-14, rel=0)
+
+
+def test_ten_authored_tenths_pay_a_whole_lot_using_the_stages_selected_branch():
+    """A 0.14 L lot split into ten 0.014 L transfers leaves exactly zero.
+    At the requested precision the two flags compare equal, so no transfer reads 1/0."""
+    b = Builder(UNITS)
+    share = ifelse(this.flag > 1, this.lot / 0, this.lot * 0.1)
+    yard = b.entity(
+        'yard',
+        value('lot', 'L', 0.14),
+        value('cash', 'L', 0.14, lower=0),
+        value('paid', 'L', 0),
+        value('flag', '', 1.00000001),
+        event('pay', after(q(1, 'h'), *(move(share, this.cash, this.paid) for _ in range(10)))),
+    )
+    b.setup(start(yard.pay))
+    program = b.finish()
+    record = run(program, Configuration(Request(1), numerics=Numerics(rtol=1e-6)))
+    assert record.failure is None, record.failure
+    assert [row.values for row in read(record, program, ['yard.cash', 'yard.paid'], [1])] == [(0,), (0.14,)]
+    assert [entry.detail('amount') for entry in record.entries('move')] == [0.014] * 10
 
 
 def frozen_flow(request, scale, split):
