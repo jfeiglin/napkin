@@ -22,6 +22,8 @@ import numpy as np
 
 from napkin.engine import read
 from napkin.engine.timeline import Plan, Run
+from napkin.engine.timeline.lines import Lines
+from napkin.engine.timeline.sparse import Sparse
 from napkin.program.build import Builder, flow, formula, input_, link, named, q, this, value
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
@@ -124,14 +126,12 @@ def main():
     print(
         f'  build {built - began:.2f} s, plan {planned - built:.2f} s, run+record {ran - planned:.2f} s, read {done - ran:.3f} s'
     )
-    if runner.lines is not None and len(runner.lines):
-        lines = runner.lines
-        empty = int(np.sum(lines.y[: len(lines.stores)] <= 0))
-        print(
-            f'  lines: {len(lines.stores)} stores, {int(lines.version.sum())} line starts, {empty} stores at zero at the end'
-        )
-    for one in runner.sparse:
-        print(f'  sparse: {len(one.stores)} stores, {one.evaluations} evaluations')
+    for way in runner.ways.instances:
+        if isinstance(way, Lines):
+            empty = sum(way.level_at(store, horizon) <= 0 for store in way.stores)
+            print(f'  lines: {len(way.stores)} stores, {way.version.sum()} line starts, {empty} stores at zero')
+        elif isinstance(way, Sparse):
+            print(f'  sparse: {len(way.stores)} stores, {way.evaluations} evaluations')
     for reading in found:
         print('  ', reading.path, [round(v, 6) for v in reading.values])
 

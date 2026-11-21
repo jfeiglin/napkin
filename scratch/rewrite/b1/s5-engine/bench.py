@@ -15,10 +15,11 @@ a second solve. The run goes to 48 h. Prints the time of each part.
 import resource
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, '/home/user/napkin/scratch/rewrite/a3')
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'a3'))
 from network import network  # A3's synthetic network
 
 from napkin.engine import read
@@ -167,7 +168,7 @@ def main():
     engine = Run(plan)
     record = engine.run()
     ran = time.perf_counter()
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == 'darwin' else 1024)
     print(f'places {sizes[0]}, routes {net["routes"]}, sources {sizes[2]}')
     print(f'build {built - clock:.1f} s, plan {planned - built:.1f} s, run and record {ran - planned:.1f} s')
     print(', '.join(f'{name} {seconds:.1f} s ({calls})' for name, (seconds, calls) in SPENT.items()))
