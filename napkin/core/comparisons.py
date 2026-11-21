@@ -334,13 +334,13 @@ class Comparisons:
     def literal_value(self, node):
         """An operand fixed entirely by authored literals, including a retained formula
         with no scale of its own. The binding cache is cleared when definitions change."""
-        from .literals import Literals, node_parts
-
         bound = bool(expr.names(node))
         cache = self.floors if bound else self.literal_gaps
         key = node, self.factor
         if key in cache:
             return cache[key]
+
+        from .literals import Literals, node_parts
 
         def parts(n):
             if isinstance(n, expr.Ref) and self.named is not None:
@@ -357,7 +357,7 @@ class Comparisons:
     def literal_sum(self, node, rounded):
         """Round a sum or difference of authored literals once. A named formula
         must expose the same small residual that its inline guard compares."""
-        if isinstance(rounded, float):
+        if isinstance(rounded, float) and math.isfinite(rounded) and (self.named or not expr.names(node)):
             exact = self.literal_value(node)
             if isinstance(exact, Fraction):
                 return float(exact)

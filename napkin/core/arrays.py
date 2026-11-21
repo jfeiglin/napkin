@@ -160,16 +160,15 @@ class _Pass:
     def band(self, left, right, a, b, places):
         policy = self.registry.comparisons
         if self.bindings and policy.named is not None:
-            names = sorted(expr.names(left) | expr.names(right))
-            key = (left, right, tuple((n, self.bindings[n]) for n in names))
+            key = (left, right, self.bound_names((left, right)))
             floors = policy.floors.get(key)
-            if floors is None:
+            if floors is None and places is None:
                 try:
                     floors = np.array([self.row_policy(i).band_floor(left, right) for i in range(self.count)])
                 except UnresolvedScale:
                     floors = _OPEN
                 policy.floors[key] = floors
-            if floors is _OPEN:
+            if floors is None or floors is _OPEN:
                 floor = [self.row_floor(left, right, i) for i in self.places(places)]
             else:
                 floor = floors if places is None else floors[places]
@@ -180,12 +179,52 @@ class _Pass:
                 floor = [self.row_floor(left, right, i) for i in self.places(places)]
         return np.maximum(floor, policy.factor * np.maximum(np.abs(a), np.abs(b)))
 
+    def bound_names(self, nodes):
+        if not self.bindings or self.registry.comparisons.named is None:
+            return ()
+        names = sorted(frozenset().union(*(expr.names(node) for node in nodes)))
+        return tuple((name, self.bindings[name]) for name in names if name in self.bindings)
+
+    def literal_rows(self, nodes, bound, places, evaluate):
+        """Exact values or gaps of a template expression on rows that take this branch."""
+        policy = self.registry.comparisons
+        key = 'literal rows', nodes, policy.factor, bound
+        if key not in policy.floors:
+            policy.floors[key] = set(), {}
+        checked, values = policy.floors[key]
+        if checked is not None:
+            for i in range(self.count) if places is None else places:
+                if i not in checked:
+                    found = evaluate(self.row_policy(i), *nodes)
+                    if found is not None:
+                        values[i] = found
+                    checked.add(i)
+            if len(checked) == self.count:
+                policy.floors[key] = None, values
+        return values
+
+    def literal_sum(self, node, rounded, places):
+        policy = self.registry.comparisons
+        bound = self.bound_names((node,))
+        if not bound:
+            if isinstance(rounded, np.ndarray) and policy.named is not None:
+                exact = policy.literal_value(node)
+                if exact is not None:
+                    return np.full(rounded.shape, float(exact))
+            return policy.literal_sum(node, rounded)
+        values = self.literal_rows((node,), bound, places, Comparisons.literal_value)
+        if not values:
+            return rounded
+        indices = self.places(places)
+        result = np.broadcast_to(rounded, len(indices)).astype(float, copy=True)
+        for j, i in enumerate(indices):
+            if i in values:
+                result[j] = float(values[i])
+        return result
+
     def ordered(self, op, left, right, a, b, places):
         policy = self.registry.comparisons
-        bound = ()
-        if self.bindings and policy.named is not None:
-            names = sorted(expr.names(left) | expr.names(right))
-            bound = tuple((name, self.bindings[name]) for name in names if name in self.bindings)
+        bound = self.bound_names((left, right))
         exact = policy.literal_gap(left, right, bindings=bool(bound))
         if exact is not None:
             return against(op, *exact)
@@ -206,14 +245,7 @@ class _Pass:
         if bound:
             # Template expressions share syntax; different rows may name different
             # exact formulas. Keep their rational gaps across evaluations.
-            key = 'literal rows', left, right, policy.factor, bound
-            if key not in policy.floors:
-                policy.floors[key] = {
-                    i: pair
-                    for i in range(self.count)
-                    if (pair := self.row_policy(i).literal_gap(left, right)) is not None
-                }
-            pairs = policy.floors[key]
+            pairs = self.literal_rows((left, right), bound, places, Comparisons.literal_gap)
             if pairs:
                 indices = self.places(places)
                 result = np.broadcast_to(result, len(indices)).copy()
@@ -293,15 +325,14 @@ def _arithmetic(compute):
         if not isinstance(left, np.ndarray) and not isinstance(right, np.ndarray):
             try:
                 result = _checked(compute(left, right))
-                if node.op in ('add', 'sub') and not expr.names(node):
-                    return run.registry.comparisons.literal_sum(node, result)
-                return result
             except (ZeroDivisionError, OverflowError, ValueError, TypeError) as exc:
                 raise ExpressionError(str(exc)) from exc
-        with np.errstate(all='ignore'):
-            return _checked(
-                np.asarray(compute(np.asarray(left, dtype=float), np.asarray(right, dtype=float)))
-            )
+        else:
+            with np.errstate(all='ignore'):
+                result = _checked(
+                    np.asarray(compute(np.asarray(left, dtype=float), np.asarray(right, dtype=float)))
+                )
+        return run.literal_sum(node, result, chosen) if node.op in ('add', 'sub') else result
 
     return handler
 

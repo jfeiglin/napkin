@@ -282,13 +282,16 @@ class _Writer:
                 return f'_raise({f"Invalid argument count for {node.function}"!r})', UNKNOWN
             return handler(self, node)
         code, known = TABLE[ops.operation_of(node)](self, node)
-        if isinstance(node, expr.Binary) and node.op in ('add', 'sub') and not expr.names(node):
+        if isinstance(node, expr.Binary) and node.op in ('add', 'sub'):
             if known is not UNKNOWN and self.units is not None:
                 return _literal(self.units.comparisons.literal_sum(node, known))
             if known is UNKNOWN:
                 index = len(self.operands)
                 self.operands.append(node)
-                return f'R.comparisons.literal_sum(_operands[{index}], {code})', UNKNOWN
+                rounded = f'R.comparisons.literal_sum(_operands[{index}], {code})'
+                if code in self.loose:
+                    self.loose.add(rounded)
+                return rounded, UNKNOWN
         return code, known
 
 

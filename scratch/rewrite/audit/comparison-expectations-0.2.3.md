@@ -11,6 +11,8 @@ In `test_naming_a_formula_preserves_the_guard`, each expected Boolean applies in
 | `(0.100000024 h + 0 day) - 0.1 h` | False | True | The exact gap is 0.000000024 h. Its band against zero is 2.4e-17 h. |
 | `1000000000.00000005 h - 1000000000 h` | True | True | The exact gap is 0.00000005 h. Its band against zero is 5e-17 h. The named reading also retains that gap. |
 
+A further regression names just the first operand of the large subtraction and compares the residual with a declared input of 1e-8 h. The engine previously read zero and returned False in this form. Both spellings now read 5e-8 h and return True, in agreement with the reference interpreter. A vectorized case binds each row to a different named operand and checks that only rows taking the branch resolve its operands. [Literal operand tests](../../../tests/language/test_folded_comparisons.py)
+
 The following six rows of `test_a_mixed_unit_initializer_keeps_its_value_in_a_singleton_range` select the 10 h initializer when their operand exceeds zero. Each row checks the compiled singleton range, the run, and the reference interpreter. [Initializer tests](../../../tests/language/test_folded_comparisons.py)
 
 | Operand | Previous initializer | 0.2.3 initializer | Arithmetic |

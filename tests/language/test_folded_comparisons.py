@@ -107,6 +107,33 @@ def test_array_and_scalar_guards_use_each_rows_exact_operand():
     found = arrays.values(test, {'cell': np.array([1e9, 1e9])}, units, 2, {'cell': ('above', 'equal')})
     assert found.tolist() == [True, False]
 
+    residual = expr.read(f'cell - {threshold}')
+    found = arrays.values(residual, {'cell': np.array([1e9, 1e9])}, units, 2, {'cell': ('above', 'equal')})
+    assert found.tolist() == [5e-8, 0.0]
+    selected = {'cell': np.array([1e9, 1e9]), 'gate': np.array([True, False])}
+    bindings = {'cell': ('above', 'unavailable')}
+    for guarded, values in [
+        (f'(cell - {threshold}) if gate else 0', [5e-8, 0.0]),
+        (f'gate and cell - {threshold} > 0', [True, False]),
+    ]:
+        assert arrays.values(expr.read(guarded), selected, units, 2, bindings).tolist() == values
+
+
+@pytest.mark.parametrize('operand', ['authored', '1000000000.00000005 h'])
+def test_naming_one_operand_keeps_the_residual_against_a_declared_threshold(operand):
+    model = compile_text(
+        'scenario "Named operand"\n    horizon 1 h\n'
+        'input threshold: h = 0.00000001 h\nauthored = formula(1000000000.00000005 h)\n'
+        f'gap = formula({operand} - 1000000000 h)\ngreater = formula(gap > threshold)\n',
+        UNITS,
+    )
+    record = run(model.program, model.configuration)
+    oracle, failure = run_of(model.program, model.configuration)
+    assert record.failure is None and failure is None
+    for name, expected in [('gap', 5e-8), ('greater', True)]:
+        assert read(record, model.program, [name], [1])[0].values == (expected,)
+        assert float(value_at(oracle, model.program, Key('', (name,)), 1)) == expected
+
 
 @pytest.mark.parametrize(
     ('threshold', 'greater'),
