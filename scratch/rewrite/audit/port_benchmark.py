@@ -38,7 +38,7 @@ THREAD_ENV = dict.fromkeys(
 
 def workload(row, phase):
     places, routes = (3000, 3500) if phase == 'prototype' else (30000, 35000)
-    if row in ('component-tanks', 'sparse-tanks'):
+    if row.endswith('-tanks'):
         return 's1-engine/bench_moving_tanks.py', [
             '--tanks',
             '12',
@@ -46,6 +46,7 @@ def workload(row, phase):
             '12',
             '--method',
             row.split('-')[0],
+            *(['--compartment'] if row.endswith('-compartment-tanks') else []),
         ]
     if row in ('held-network', 'moving-network'):
         return 's2-engine/bench.py', [row.split('-')[0], str(places), str(routes), '48']
@@ -66,6 +67,8 @@ PHASES = {
     'prototype': [
         'component-tanks',
         'sparse-tanks',
+        'component-compartment-tanks',
+        'sparse-compartment-tanks',
         'held-network',
         'moving-network',
         'events',
@@ -104,7 +107,7 @@ def engine_method():
 
 def primitives(machine, row):
     """A sampled accepted leg and its dedicated sink measure the same transfer independently."""
-    if row not in ('component-tanks', 'sparse-tanks', 'moving-network'):
+    if not row.endswith('-tanks') and row != 'moving-network':
         return {}
     if row.endswith('tanks'):
         selected = [(f'tank{i}.fill', f'tank{i}.water') for i in range(12)]
@@ -266,6 +269,9 @@ def worker(args):
         output = io.StringIO()
         with redirect_stdout(output):
             runpy.run_path(str(path), run_name='__main__')
+    if counters and args.row == 'component-compartment-tanks':
+        if counters['by_method']['component'].get('accepted_steps', 0):
+            raise AssertionError('the positive linear tank group lost its closed-form solution')
     log = output.getvalue()
 
     def seconds(expression, required=True):

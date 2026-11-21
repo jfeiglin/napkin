@@ -11,14 +11,18 @@ from napkin.program.build import SOURCE, Builder, flow, formula, q, this, value
 from napkin.program.config import Configuration, Request
 
 
-def program(count):
+def program(count, compartment):
     builder = Builder({'L': {'volume': 1}, 'h': {'time': 1}})
     for i in range(count):
-        builder.entity(
-            f'tank{i}',
-            value('water', 'L', 0, lower=0),
-            flow('fill', SOURCE, this.water, request=formula((q(100 + i, 'L') - this.water) / q(4 + i, 'h'))),
-        )
+        target = q(100 + i, 'L')
+        duration = q(4 + i, 'h')
+        stocks = [value('water', 'L', 0, lower=0)]
+        if compartment:
+            stocks.append(value('supply', 'L', target, lower=0))
+            source, request = this.supply, this.supply / duration
+        else:
+            source, request = SOURCE, (target - this.water) / duration
+        builder.entity(f'tank{i}', *stocks, flow('fill', source, this.water, request=formula(request)))
     return builder.finish()
 
 
@@ -27,11 +31,12 @@ def main():
     args.add_argument('--tanks', type=int, default=12)
     args.add_argument('--hours', type=float, default=12)
     args.add_argument('--method', choices=('component', 'sparse'), required=True)
+    args.add_argument('--compartment', action='store_true', help='fill each tank from an exponentially draining supply')
     args.add_argument('--repeat', type=int, default=1, help='fresh runs with identical inputs')
     options = args.parse_args()
     if options.tanks < 1 or options.hours <= 0 or options.repeat < 1:
         args.error('tanks, hours and repeat must be positive')
-    model = program(options.tanks)
+    model = program(options.tanks, options.compartment)
     config = Configuration(Request(options.hours))
     times = [options.hours * f for f in (0.25, 0.5, 1)]
     paths = [f'tank{i}.water' for i in range(options.tanks)]

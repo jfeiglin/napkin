@@ -37,6 +37,7 @@ Paths below are relative to scratch/rewrite/b1. Run each individual workload aga
 | Workload | Script | Prototype arguments | Final arguments |
 |---|---|---|---|
 | Moving tanks, 12 independent exponential fills | s1-engine/bench_moving_tanks.py | --tanks 12 --hours 12 --method component (repeat with sparse) | same |
+| Moving tanks, same 12 fill curves supplied by positive linear compartments | s1-engine/bench_moving_tanks.py | --tanks 12 --hours 12 --compartment --method component (repeat with sparse) | same |
 | Independent held pipes | s1-engine/bench.py | — | 30000 |
 | Held local network | s2-engine/bench.py | held 3000 3500 48 | held 30000 35000 48 |
 | Moving local network | s2-engine/bench.py | moving 3000 3500 48 | moving 30000 35000 48 |

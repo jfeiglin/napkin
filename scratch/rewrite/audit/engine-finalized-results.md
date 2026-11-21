@@ -47,8 +47,15 @@ The corrected prototype (`d9e6e94`) missed the held-network gate. These are per-
 | 12 tanks, Component | 1.2161, 1.1968, 1.2137 | 1.2840, 1.2184, 1.2600 | 1.0169 | 1.0382 | 121.8 / 120.1 |
 | 12 tanks, Sparse | 2.1470, 2.1120, 2.1497 | 2.1169, 2.1724, 2.2000 | 1.0042 | 1.0234 | 116.1 / 112.3 |
 | Held network, 3,000 places / 3,500 routes / 48 h | 6.7846, 5.8007, 6.3713 | 7.2931, 6.0574, 6.8220 | 1.0100 | **1.0707** | 305.7 / 309.9 |
+| Moving network, 3,000 places / 3,500 routes / 48 h | 31.9474, 31.0112, 31.1998 | 32.3740, 32.7707, 32.0266 | 1.0005 | 1.0265 | 381.1 / 399.1 |
 
-The physical accounting cutover remains gated on a passing revision for all prototype workloads.
+On the moving network the second prototype performed the same number of allocations and Radau steps as the baseline. It accumulated 4,460,992 directed amounts in Sparse and 275 in Component. Three sampled outflows matched their independent receiving balances. On the 12 tanks both methods made 30,390 allocation evaluations and took 1,205 accepted Radau steps with zero rejections. Component closed 12 cumulative batches and Sparse 1,205. The largest difference between a measured leg and its receiving stock was 1.28e-13 L.
+
+The third prototype was published at `51d14cd`, isolated timing build `ee8a22c`. Both held methods retain one pending rectangle per changed row. At its first rate change a row stores the two endpoints and the rate. Only the next change, read or checkpoint needs the subtotal. A checksum over 2,000 rows and three changes per row took 35.4 ms for the second prototype and 11.9 ms for the third, including reading every total. Forty local controls passed. The physical cutover requires the workload timings as well.
+
+The original 12-tank benchmark reaches its analytical exponential curve using Radau on both methods. A second benchmark uses the same capacity and time constants with each fill drawn from a finite supply. The baseline Component kernel then took zero Radau steps and 80.6 ms, and Sparse took 1,224 steps and 2.274 s. Both produced 95.0212931632 L in the first tank. Both models are included in the paired campaign.
+
+The full baseline event guard measured 7,498.460 s inside `Run.run()`, with a process peak of 8.840 GiB. All 482,500 starts completed by 48 h and the first stock held the hand-calculated 84 L. The script's older 7,500.0 s aggregate clock included a second planning pass. The full-sized candidate uses the matching run-only clock. The repeated event comparisons use 1,200 places.
 
 ## Migration
 
@@ -57,3 +64,5 @@ The median piano and reservoir examples passed on `31b07b0` against `8488047`. W
 ## Audit coverage
 
 The owner waived rerunning the 44 cases retained by the earlier auditor. Their earlier result is historical. The current 31-case bundle is available in this checkout and remains part of the gate. The interim integration run at `9a984c6` passed 23 of those 31. Three refunds, the whole-stock retirement and four first-capacity writes through occurrence selections failed at that revision.
+
+At interim integration commit `9a984c6`, the regular suite excluding the new port corpus had 10,559 passes, 24 failures and one skip. The corresponding deep run had 23,729 passes and 14 failures, all at the study API's evidence-table call site. The 14 affected deep cases passed on the subsequent integrated branch. Final suite counts must come from the completed engine revision.
