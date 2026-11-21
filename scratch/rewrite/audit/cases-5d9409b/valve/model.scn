@@ -1,0 +1,7 @@
+scenario "Valve opens"
+    horizon 2 h
+plant:
+    water: L = 0 L
+    flow tap: SOURCE -> this.water
+        capacity = 1 L/h
+        request = formula(2 L/h if t > 0.5 h else 0 L/h)
