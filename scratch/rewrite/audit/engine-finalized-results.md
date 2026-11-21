@@ -123,3 +123,9 @@ These are single measurements on `6202824`. The formal comparisons use alternati
 | `s5-engine/bench.py 3000 3500 1500` | 0.202 s | 1.194 s | 9.210 s | 742.97 | Served power 3,163.7587 W at 0 h and 3,083.5128 W at 48 h. |
 
 At `adeab28` the full-only 30,000-pipe run took 26.921 s. Its 330,012 histories occupied 933,955 pieces and the process peaked at 1,443.16 MiB. The total stock at 6, 30 and 48 h was 777,172.59, 302,565.772 and 134,151.7 L.
+
+The 30,000-pipe baseline process on `6202824` was stopped after 3 h 30 min 53 s of observed process elapsed time. Planning had finished and the first full record was still computing. This gives neither a completed run-plus-record time nor a peak RSS or paired ratio. The repeated comparison uses 1,200 pipes for three alternating baseline/candidate pairs, with a separate full-size candidate run. The 26.921 s result above belongs to the earlier candidate.
+
+## Held-network recorder
+
+At 3,000 places the held network spent most of its time recounting the same history pieces. The profiler counted 1,610 full counts across 1,609 moments. Commit `8f1b34e` uses a conservative bound on the number of new pieces until the next exact count for eligible held rows and step-held sums. The development run needed seven exact counts and retained the same 57,696 histories and 81,206 pieces. Eleven budget tests cover full and selective recording, tight limits and the boundary between a successful run and a budget failure. Commit `8dd1c25` compares both sides of a serialized checkpoint with eager counting.
