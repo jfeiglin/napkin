@@ -159,7 +159,7 @@ class _Moving:
             instance.component.field.choose({})
             owner.switches, owner.clock = (), None
         else:
-            instance.vector.choose({})
+            instance.choose({})
             instance.sides, instance.clock = (), None
         try:
             if self.component:

@@ -1178,6 +1178,7 @@ class MovingDeclared(DeclaredWay):
         )
         defined = self.former.region.defined if self.former.region is not None else ()
         self.region = Region(surfaces, lookups, defined)
+        self.switch_layers = integrate.switch_layers(self.region.surfaces, formulas)
         if defined:
             self.former.region = self.region
         self.switch_origins = integrate.flow_switches(settings.items(), formulas, moving)
@@ -1220,6 +1221,7 @@ class MovingDeclared(DeclaredWay):
 
         integrate.far_sides(
             region.surfaces,
+            self.switch_layers,
             t,
             self.y,
             self.place,

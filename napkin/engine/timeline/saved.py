@@ -874,7 +874,7 @@ def _made(run, kind, keys, data):
                 for a, b in instance.surfaces
                 if (key := (nodes.text(a), nodes.text(b))) in signs
             }
-            instance.vector.choose(instance.signs)
+            instance.choose(instance.signs)
             instance.selection.update(data['selection'])
             instance.held_rates = set(data['held_rates'])
             instance.selected = True

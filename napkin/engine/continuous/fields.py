@@ -69,6 +69,11 @@ class Field:
             context.units,
         )
 
+    def operands(self, at, state):
+        """Read switch operands, including named formulas, on the installed branches."""
+        env = self.branch_environment(at, state)
+        return lambda node: float(evaluate(self.expression(node), env, self.system.units))
+
     def compiled(self, at, state):
         """Every computed value, rate, flow rate and group capacity from one generated program of the
         run: the inputs are literals in it, and it reads the time, the store and the state directly."""

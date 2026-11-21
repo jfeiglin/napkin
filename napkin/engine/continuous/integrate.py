@@ -15,6 +15,7 @@ from ...expressions import ExpressionError, compile_program, evaluate, names_in
 from ...program.config import Numerics
 from ..errors import SimulationError
 from ..solvers import radau_rate
+from .walk import walked
 
 # The other side of the surface of `abs(x)`: the number zero.
 ZERO = nodes.read('0')
@@ -659,7 +660,9 @@ def switching_surfaces(system):
         sources += [d.expr for d in s.resolved.rates.values()] + [g.capacity for g in s.groups.values()]
         formulas = {name: found['expr'] for name, found in s.computed.items()}
         moving = s.evolving | {'t'}
-        s.analysis['switching'] = surfaces_of(sources, formulas, lambda node: s.expanded_names(node) & moving)
+        surfaces = surfaces_of(sources, formulas, lambda node: s.expanded_names(node) & moving)
+        s.analysis['switching'] = surfaces
+        s.analysis['switch_layers'] = switch_layers(surfaces, formulas)
     return s.analysis['switching']
 
 
@@ -679,28 +682,57 @@ def surfaces_of(sources, formulas, moving):
     surfaces = {}
     for expr in found:
         for node in nodes.breadth_first(expr):
-            pairs = []
-            if isinstance(node, nodes.Call):
-                args = list(node.args)
-                if node.function in ('min', 'max') and len(args) > 1:
-                    pairs = [(a, b) for k, a in enumerate(args) for b in args[k + 1 :]]
-                elif node.function == 'clip' and len(args) == 3:
-                    pairs = [(args[0], args[1]), (args[0], args[2])]
-                elif node.function == 'abs' and len(args) == 1:
-                    pairs = [(args[0], ZERO)]
-                elif nodes.membership(node) is not None:
-                    # `x in [lo, hi]` switches where x meets an end of its interval.
-                    pairs = [(args[1], args[0]), (args[0], args[2])]
-            elif isinstance(node, nodes.Compare):
-                pairs = [
-                    (left, right)
-                    for left, op, right in zip(node.operands, node.ops, node.operands[1:])
-                    if op not in ('eq', 'ne')
-                ]
-            for a, b in pairs:
+            for a, b in switch_pairs(node):
                 if moving(a) or moving(b):
                     surfaces[(a, b)] = None
     return tuple(surfaces)
+
+
+def switch_pairs(node):
+    """Operand pairs whose ordering selects a piece of this operation."""
+    if isinstance(node, nodes.Compare):
+        return [
+            (left, right)
+            for left, op, right in zip(node.operands, node.ops, node.operands[1:])
+            if op not in ('eq', 'ne')
+        ]
+    if isinstance(node, nodes.Call):
+        args = node.args
+        if node.function in ('min', 'max'):
+            return [(a, b) for k, a in enumerate(args) for b in args[k + 1 :]]
+        if node.function == 'clip' and len(args) == 3:
+            return [(args[0], args[1]), (args[0], args[2])]
+        if node.function == 'abs' and len(args) == 1:
+            return [(args[0], ZERO)]
+        if nodes.membership(node) is not None:
+            return [(args[1], args[0]), (args[0], args[2])]
+    return ()
+
+
+def switch_layers(surfaces, formulas):
+    """Group surfaces by the nested branch decisions their operands read, through named formulas.
+    The ordering belongs to the installed expressions and is reused at every contact."""
+    if len(surfaces) < 2:
+        return (surfaces,) if surfaces else ()
+    present = set(surfaces)
+    depths = {}
+
+    def depth(node):
+        if node not in depths:
+            children = node.children
+            if isinstance(node, nodes.Ref) and node.name in formulas:
+                children = (nodes.read(formulas[node.name]),)
+            value = 0
+            for child in children:
+                value = max(value, (yield depth(child)))
+            depths[node] = value + any(pair in present for pair in switch_pairs(node))
+        return depths[node]
+
+    groups = {}
+    for a, b in surfaces:
+        level = max(walked(depth(a)), walked(depth(b)))
+        groups.setdefault(level, []).append((a, b))
+    return tuple(groups[k] for k in sorted(groups))
 
 
 def flow_switches(settings, formulas, moving):
@@ -906,9 +938,7 @@ def branch_expression(source, signs):
     return changed[root]
 
 
-def switching_roots(
-    system, environment, repayment_surfaces, at, state, signs=None, contacted=(), consumed=()
-):
+def switching_roots(system, side, repayment_surfaces, at, state, signs=None, contacted=(), consumed=()):
     """End numerical segments where a piecewise rate changes branch.
 
     Every switching surface of the run (`switching_surfaces`) splits two smooth regimes;
@@ -918,8 +948,7 @@ def switching_roots(
     the surfaces already at their switch.
     """
     s = system
-    units, index = s.units, s.index
-    env = environment(at, state)
+    index = s.index
     dynamic_names = s.evolving | {'t'}
     surfaces = switching_surfaces(s)
     roots, at_switch = [], []
@@ -930,7 +959,7 @@ def switching_roots(
         roots.append(Root('repayment', 1, (index[cash], index[debt], floor)))
     for a, b in surfaces:
         try:
-            left, right = float(evaluate(a, env, units)), float(evaluate(b, env, units))
+            left, right = side(a), side(b)
         except (ExpressionError, TypeError, ValueError):
             continue  # an untaken branch outside its domain is not a live surface
         gap = left - right
@@ -963,7 +992,7 @@ def switching_roots(
             if s.expanded_names(target_expr) & dynamic_names:
                 continue
             i = index[coordinate.name]
-            value = float(evaluate(target_expr, env, units))
+            value = side(target_expr)
             if value == s.lower[i]:
                 target = (i, value)
         roots.append(Root('surface', direction, (a, b), target, start, clock))
@@ -976,20 +1005,17 @@ def starting_sides(system, run, field):
     s = system
     moving = s.evolving | {'t'}
 
-    def side_at(t, y):
-        env = field.environment(t, y)
-        return lambda node: float(evaluate(node, env, s.units))
-
     def reversal(name):
         raise SimulationError(f'chattering at {run.time:g} h: rates switch back and forth at {name}')
 
     run.switches, run.clock, _ = far_sides(
         switching_surfaces(s),
+        s.analysis['switch_layers'],
         run.time,
         run.y,
         s.index,
         (s.lower, s.upper),
-        side_at,
+        field.operands,
         lambda node: bool(s.expanded_names(node) & moving),
         field.rates,
         field.choose,
@@ -1037,6 +1063,7 @@ def clock_sides(surfaces, t, side, moving, consumed=()):
 
 def far_sides(
     surfaces,
+    layers,
     t,
     y,
     place,
@@ -1122,8 +1149,13 @@ def far_sides(
             departure[i] = beyond
     reached = set(contacted) | clock_branches.keys()
     reached.update(pair for pair, sign in branch_sides(surfaces, side).items() if not sign)
-    signs = departing_branches(surfaces, at, departure, side_at, rates, place, moving, reached, comparisons)
-    choose(signs)
+    # A jump across an enclosing min/max/if changes its winning operand without
+    # crossing its incoming root. Read each layer with all inner departures installed.
+    signs = dict(clock_branches)
+    for layer in layers:
+        found = departing_branches(layer, at, departure, side_at, rates, place, moving, reached, comparisons)
+        signs = {**signs, **found}
+        choose(signs)
     return tuple(switches), clock, signs
 
 
@@ -1205,12 +1237,12 @@ def chattering(system, field, solution, diagnostics, failed=None):
     s = system
     first, last = solution.short
     state = solution.y[:, -1]
-    env = field.environment(last, state)
+    side = field.operands(last, state)
     dynamic = s.evolving | {'t'}
     near, read = [], set()
     for a, b in switching_surfaces(s):
         try:
-            left, right = float(evaluate(a, env, s.units)), float(evaluate(b, env, s.units))
+            left, right = side(a), side(b)
         except (ExpressionError, TypeError, ValueError):
             continue
         moving = (s.expanded_names(a) | s.expanded_names(b)) & s.evolving
@@ -1275,7 +1307,14 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
     )
     start = time
     switches, at_switch = switching_roots(
-        s, field.environment, repayment_surfaces, time, y, field.branches, run.contacted, run.contact_clocks
+        s,
+        field.operands(time, y),
+        repayment_surfaces,
+        time,
+        y,
+        field.branches,
+        run.contacted,
+        run.contact_clocks,
     )
     run.right_faces.update(departing_ledgers(s, run, field, at_switch, field.environment(time, y)))
     # The certified first-depletion clock already locates these physical

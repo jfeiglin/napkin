@@ -729,7 +729,7 @@ class Sparse(Way):
                 self.labels[pair] = (moving, affine, f'switch ({nodes.text(a)}, {nodes.text(b)})')
                 self.deciding[pair] = list(self.flows)
         sided = {name for a, b in self.surfaces for name in (*nodes.names(a), *nodes.names(b))}
-        self.side_nodes = {}
+        self.switch_layers = integrate.switch_layers(self.surfaces, formulas)
         self.sided = sorted(sided - {'t'})
         self._sides_of = vector.compiled(self.sided) if self.sided else None
         self.sides, self.clock = (), None  # the far sides that the present step reads (`_sides`)
@@ -908,7 +908,12 @@ class Sparse(Way):
         """A function: the value of a side of a switch (a node of `surfaces`) at time t and state y."""
         found = dict(zip(self.sided, self._sides_of(t, y))) if self._sides_of is not None else {}
         units = self.plan.units
-        return lambda node: float(lazily(self.side_nodes.get(node, node), found.__getitem__, units, t))
+        return lambda node: float(lazily(self.region.expression(node), found.__getitem__, units, t))
+
+    def choose(self, signs):
+        """Install the same branches in the vector field and in its switch operands."""
+        self.vector.choose(signs)
+        self.region.set(signs, {})
 
     def _sides(self, clocks):
         """Select the branch of every rate at the segment start. A located contact uses its
@@ -921,6 +926,7 @@ class Sparse(Way):
 
         self.sides, self.clock, self.signs = integrate.far_sides(
             self.surfaces,
+            self.switch_layers,
             self.t,
             trial,
             self.place,
@@ -928,16 +934,13 @@ class Sparse(Way):
             self._side,
             self.moves,
             self.field,
-            self.vector.choose,
+            self.choose,
             self.plan.units.comparisons,
             held=lambda i: self.lower_flags[i] or self.upper_flags[i],
             reversal=reversal,
             contacted=self.contacted,
             clocks=clocks,
         )
-        self.side_nodes = {
-            node: integrate.branch_expression(node, self.signs) for pair in self.surfaces for node in pair
-        }
 
     def _turns(self, solution, start, end):
         """Locate every armed switch on one accepted step, using the actual dense state."""
@@ -981,8 +984,7 @@ class Sparse(Way):
         far sides of the switches that the state crosses there (`_sides`)."""
         if self.outputs is not None and self.selected:
             return
-        self.vector.choose({})
-        self.side_nodes = {}
+        self.choose({})
         self.sides, self.clock = (), None
         self._select()
         # The clock switches before the new segment decides which stores stay on their bounds.
