@@ -38,6 +38,7 @@ import numpy as np
 
 from ...core import arrays
 from ...core.errors import ExpressionError
+from ..continuous.transfers import HeldAmounts
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import combined, looked_up
@@ -217,6 +218,7 @@ class Family(Way):
     def __init__(self, run, sets, values, t=0.0, keys=None):
         plan = self.plan = run.plan
         self.t0 = float(t)
+        self.amounts = HeldAmounts(t)
         self.sets = list(sets)  # its sets, one for each row, which a checkpoint names (`saved.py`)
         self.keys = {key: k for k, key in enumerate(keys if keys is not None else range(len(sets)))}
         self.run, self.recorder, self.columns = run, run.recorder, Columns(run)
@@ -295,6 +297,8 @@ class Family(Way):
             sink >= 0 and self.y[sink] >= self.upper[sink]
         )
         rate = 0.0 if held else float(asked)
+        if t > self.t0 and rate != self.rate[k]:
+            self.amounts.change(k, t, self.rate[k])
         self.rate[k] = rate
         self.version[k] += 1
         if source >= 0:
@@ -338,9 +342,16 @@ class Family(Way):
 
     # ---- the interface of a way (`ways.py`) ------------------------------------------------------
 
+    def transferred(self, name, t):
+        if t > self.run.now:
+            raise ValueError('transfer requested outside the accepted interval')
+        row = self.row[name]
+        return self.amounts.amount(row, t, self.rate[row])
+
     def retire(self, key):
         """The set `key` leaves the family: its row has no event and no refresh from now on."""
         k = self.keys[key]
+        self.amounts.change(k, self.run.now, self.rate[k])
         self.dead[k] = True
         self.version[k] += 1
         self.alive = not self.dead.all()

@@ -15,6 +15,7 @@ from ...expressions import ExpressionError, compile_program, evaluate, names_in
 from ...program.config import Numerics
 from ..errors import SimulationError
 from ..solvers import radau_rate
+from .transfers import CollocationRates
 from .walk import walked
 
 # The other side of the surface of `abs(x)`: the number zero.
@@ -428,7 +429,9 @@ class Limit:
             self.wait, self.after = self.after, min(2 * self.after, LONGEST_WAIT)
 
 
-def radau(fun, interval, initial, roots=None, check=None, moment=Numerics.crossing, **options):
+def radau(
+    fun, interval, initial, roots=None, check=None, moment=Numerics.crossing, leg_rates=None, **options
+):
     """`solve_ivp(fun, interval, initial, method='Radau', dense_output=True, events=...)` for roots
     that each end the integration.
 
@@ -455,6 +458,7 @@ def radau(fun, interval, initial, roots=None, check=None, moment=Numerics.crossi
     """
     t0, tf = map(float, interval)
     solver = Radau(fun, t0, initial, tf, vectorized=False, **options)
+    capture = CollocationRates(solver, leg_rates) if leg_rates is not None else None
     ts, ys, interpolants = [t0], [initial], []
     if roots is not None:
         g = roots.values(t0, initial)
@@ -483,6 +487,8 @@ def radau(fun, interval, initial, roots=None, check=None, moment=Numerics.crossi
             break
         t_old, t, y = solver.t_old, solver.t, solver.y
         sol = solver.dense_output()
+        if capture is not None:
+            capture.finish(sol)
         ended = None  # (the time, the root) of the first root inside the step
         if check is not None and not t - t_old > check:
             # A step of the check interval at most is read at its end, as each step was before.
@@ -1354,6 +1360,7 @@ def numerical_segment(system, run, field, context, roots, descriptors, end, repa
             (time, end),
             y,
             roots=Roots(s, field.branch_environment, armed, field.values_program) if armed else None,
+            leg_rates=field.leg_rates,
             check=s.max_step,
             moment=s.cfg.crossing,
             rtol=s.cfg.rtol,

@@ -46,6 +46,7 @@ def advance(system, run, field, watcher, context, end):
     s, environment = system, field.environment
     roots, descriptors = segment_roots(s, run, watcher, environment)
     derivative = field.rates(run.time, run.y)
+    initial_rates = field.delivered
     rounded = rounded_faces(s, run, derivative)
     if rounded:
         return Advance(rounded=rounded)
@@ -59,7 +60,9 @@ def advance(system, run, field, watcher, context, end):
     classifier = Classifier(s, run, environment)
     try:
         exact = affine_segment(s, run, classifier, departures, derivative, descriptors, end, environment)
-        if exact is None:
+        if exact is not None:
+            exact[1].leg_rates = initial_rates
+        else:
             exact, repayment_surfaces = compartment_solution(
                 s, run, field, classifier, departures, end, descriptors
             )

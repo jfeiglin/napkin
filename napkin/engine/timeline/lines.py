@@ -40,6 +40,7 @@ import math
 
 import numpy as np
 
+from ..continuous.transfers import HeldAmounts
 from ..errors import SimulationError
 from .contacts import put_lines
 from .family import Columns, due_through
@@ -54,6 +55,7 @@ class Lines(Way):
     def __init__(self, run, sets, values, t=0.0, keys=None):
         plan = self.plan = run.plan
         self.t0 = float(t)
+        self.amounts = HeldAmounts(t)
         self.sets = list(sets)  # its sets, which a checkpoint names (`saved.py`)
         keys = list(keys if keys is not None else range(len(sets)))
         self.keys = keys
@@ -97,6 +99,9 @@ class Lines(Way):
         self.selected = False  # whether the selection order has solved a part of the sets
         self.place = place
         self.row = {name: k for k, name in enumerate(self.flows)}
+        self.leg_rows = (
+            self.row if self.net.plain else {name: k for k, name in enumerate(self.net.connections)}
+        )
         # The stores of each set, by its id, and the stores whose sets left the lines.
         self.members = {key: [place[name] for name in connected.stores] for key, connected in zip(keys, sets)}
         self.dead = np.zeros(len(stores), dtype=bool)
@@ -193,6 +198,7 @@ class Lines(Way):
             mine = np.concatenate([net.conns.of(g) for g in part]) if not net.plain else np.array(part)
             rates = net.carried(self.value, self.asked, mine)
             for c in mine[rates != self.rate[mine]].tolist():
+                self.amounts.change(c, t, self.rate[c])
                 for s in (net.source[c], net.sink[c]):
                     if s >= 0:
                         touched.add(int(s))
@@ -322,6 +328,7 @@ class Lines(Way):
                 found = {f: float(min(request[f], instant.capacity[f])) for f in outs}
             for f, rate in found.items():
                 if rate != self.value[f]:
+                    self.amounts.change(f, t, self.rate[f])
                     self.value[f] = self.rate[f] = rate
                     self.recorder.add(self.recorded[f], t, rate, 0.0)
                     touched.update(int(e) for e in (net.source[f], net.sink[f]) if e >= 0)
@@ -336,6 +343,12 @@ class Lines(Way):
 
     # ---- the interface of a way (`ways.py`) ------------------------------------------------------
 
+    def transferred(self, name, t):
+        if t > self.run.now:
+            raise ValueError('transfer requested outside the accepted interval')
+        row = self.leg_rows[name]
+        return self.amounts.amount(row, t, self.rate[row])
+
     def retire(self, key):
         """The set `key` leaves the lines: its stores have no event from now on."""
         for s in self.members.pop(key):
@@ -343,6 +356,8 @@ class Lines(Way):
             self.version[s] += 1
             self.stale.discard(s)
         for f in self.flows_of.pop(key):
+            for c in (f,) if self.net.plain else self.net.conns.of(f):
+                self.amounts.change(c, self.run.now, self.rate[c])
             self.dead_flows[f] = True
         self.alive = bool(self.members)
 

@@ -29,6 +29,7 @@ class Field:
         self.system = system
         self.run = run
         self.context = context  # the formulas, the diagnostics and the settings (`system.Context`)
+        self.leg_rates = None
         self.branches = {}
         self._expressions = {}
         self._program = None

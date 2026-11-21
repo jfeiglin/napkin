@@ -53,6 +53,7 @@ from ...core import arrays
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ..continuous import dense, integrate
+from ..continuous.transfers import CollocationRates, MovingAmounts, direct_clock_primitive, radau_amount
 from ..errors import SimulationError
 from .collections import combined, dynamic_value, looked_up, selected
 from .contacts import put_bounds
@@ -571,6 +572,14 @@ class Sparse(Way):
         place = self.place = {name: k for k, name in enumerate(stores)}
         self.net, connections, self.recorded = network_of(run, sets, stores)
         self.stores, self.flows = stores, list(self.net.flows)
+        single = None
+        if len(connections) == 1:
+            source, sink = self.net.source[0], self.net.sink[0]
+            if source != sink:
+                single = (sink, 1) if sink >= 0 else (source, -1)
+        self.amounts = MovingAmounts(len(connections), t, single)
+        self.leg_rows = {connection.name: k for k, connection in enumerate(connections)}
+        self.capture = None
         self.stepped = frozenset(name for connected in sets for name in connected.stepped)
         self.capped = [k for k, connection in enumerate(connections) if connection.capacity is not None]
         self.end_settings = []  # (side, store, which)
@@ -621,6 +630,8 @@ class Sparse(Way):
         self.setting_names = tuple(names)
         self.settings = vector.compiled(names)
         self.size = len(names)
+        if self.amounts.single is not None and self.net.plain:
+            self.amounts.primitive = direct_clock_primitive(plan.flows[self.flows[0]], plan)
         # Each level: the places of its settings, their values, and the rates that it gives.
         self.levels = []
         if max(levels) > 0:
@@ -880,6 +891,7 @@ class Sparse(Way):
 
     def field(self, t, y):
         carried = self.values(t, y)[1]
+        self.last_carried = carried
         change = self.incidence @ carried
         held = self.lower_flags | self.upper_flags
         if held.any():
@@ -1197,6 +1209,11 @@ class Sparse(Way):
                 atol=self.atol,
                 jac_sparsity=self.pattern(),
             )
+            self.capture = (
+                CollocationRates(self.solver, lambda: self.last_carried)
+                if self.amounts.single is None
+                else None
+            )
             self.first = self.t
         solver = self.solver
         self.run.now = solver.t
@@ -1209,6 +1226,8 @@ class Sparse(Way):
         start, end = solver.t_old, solver.t
         self._count(start, end)
         solution = solver.dense_output()
+        if self.capture is not None:
+            self.capture.finish(solution)
         y = solution(end)
         free = ~(self.lower_flags | self.upper_flags)
         events = []
@@ -1241,10 +1260,33 @@ class Sparse(Way):
         self.pending = (start, end, solution, np.array(y, dtype=float), ended)
         return end
 
+    def _transfer_amount(self, solution, start, end):
+        if self.amounts.primitive is not None:
+            source, sink = self.net.source[0], self.net.sink[0]
+            if (source >= 0 and self.lower_flags[source]) or (sink >= 0 and self.upper_flags[sink]):
+                return 0
+            return self.amounts.polynomial_amount(start, end)
+        return radau_amount(solution, end, self.amounts.single)
+
+    def _accept(self, solution, start, end):
+        if self.stores and start < end:
+            self.amounts.accept(start, end, self._transfer_amount(solution, start, end))
+
+    def transferred(self, name, t):
+        """Cumulative accepted amount of this physical connection since installation."""
+        row = self.leg_rows[name]
+        if t == self.amounts.through:
+            return self.amounts.amount(row)
+        if self.pending is None or not self.amounts.through < t <= min(self.pending[1], self.run.now):
+            raise ValueError('transfer requested outside the accepted interval')
+        prefix = self._transfer_amount(self.pending[2], self.pending[0], t)
+        return self.amounts.amount(row, prefix if self.amounts.single is not None else prefix[row])
+
     def step(self, levels=()):
         """Commit the next step: the stores and the rates of the set move through it."""
         start, end, solution, y, ended = self.pending
         self.pending, self._drift = None, None
+        self._accept(solution, start, end)
         self._record(solution, start, end)
         for name in levels:
             if name in self.place:
@@ -1355,6 +1397,7 @@ class Sparse(Way):
         self.pending = None
         if t <= start:
             return
+        self._accept(solution, start, t)
         self._record(solution, start, t)
         self.t, self.y = float(t), np.array(solution(t), dtype=float)
         self.contacted = ()

@@ -110,6 +110,38 @@ class MatrixExponential:
         block[:-1, -1] = constant[columns]
         return cls(start, state.copy(), constant.copy(), columns, np.searchsorted(columns, moving), block)
 
+    def amounts(self, elapsed, single):
+        """Integrate the certified affine leg rates on the same compartment trajectory."""
+        columns, block = self.columns, self.block
+        linear = block[:-1, :-1]
+        velocity = linear @ self.initial[columns] + block[:-1, -1]
+        if single is not None:
+            row, sign = single
+            k = np.searchsorted(columns, row)
+            if k == len(columns) or columns[k] != row:
+                return sign * self.slope[row] * elapsed
+            if len(velocity) == 1:
+                slope = linear[0, 0]
+                span = math.expm1(slope * elapsed) / slope if slope else elapsed
+                return sign * velocity[0] * span
+            # Integrating y' = exp(A t) v directly avoids subtracting two large inventories.
+            shifted = block.copy()
+            shifted[:-1, -1] = velocity
+            return sign * expm(shifted * elapsed)[k, -1]
+        amounts = self.initial_rates * elapsed
+        if self.leg_terms:
+            # Integrate displacement from y(0) for r(t) = r(0) + F (y(t) - y(0)).
+            # The final column of this exponential is the double integral of exp(A t) v.
+            augmented = np.zeros((len(velocity) + 2, len(velocity) + 2))
+            augmented[:-2, :-2] = linear
+            augmented[:-2, -2] = velocity
+            augmented[-2, -1] = 1
+            integrated = self.slope * (elapsed * elapsed / 2)
+            integrated[columns] = expm(augmented * elapsed)[:-2, -1]
+            for leg, terms in self.leg_terms:
+                amounts[leg] += sum(rate * integrated[k] for k, rate in terms.items())
+        return amounts
+
     def __call__(self, at):
         elapsed = at - self.start
         state = self.initial + self.slope * elapsed
@@ -614,6 +646,7 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
 
     dimension = len(state)
     matrix = np.zeros((dimension + 1, dimension + 1))
+    leg_terms = []
     nominal_constant = np.zeros(dimension)
     constrained = {s.flow_index[name] for coupling in couplings.values() for name in coupling.flows}
     constrained |= {j for j, f in enumerate(flows.values()) if f.allocation in groups}
@@ -658,6 +691,7 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
                 nominal_constant[index[endpoint]] += sign * constant
         if not coefficients:
             continue
+        leg_terms.append((j, coefficients))
         if j in constrained and name not in unconstrained:
             return None, repayment_surfaces
         source = flow.source
@@ -800,4 +834,7 @@ def compartment_solution(system, run, field, classifier, departures, end, descri
                     end = crossing
     targets = {i: target for at, i, target in exact_targets if abs(at - end) <= s.cfg.crossing}
     due = [desc for at, desc in crossings if abs(at - end) <= s.cfg.crossing]
-    return (end, MatrixExponential.of(matrix, dimension, start, state), targets, due), repayment_surfaces
+    solution = MatrixExponential.of(matrix, dimension, start, state)
+    solution.initial_rates = field.delivered
+    solution.leg_terms = leg_terms
+    return (end, solution, targets, due), repayment_surfaces

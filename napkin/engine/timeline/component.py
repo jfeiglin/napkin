@@ -66,50 +66,12 @@ from ..continuous.kernels import Affine, MatrixExponential
 from ..continuous.segment import advance
 from ..continuous.system import Context, solver_step
 from ..continuous.system import Run as State
+from ..continuous.transfers import MovingAmounts, _clock_polynomial, direct_clock_primitive, radau_amount
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import node_of
 from .contacts import put_bounds
 from .way import Way
-
-
-def _clock_polynomial(node, values, literals):
-    """Coefficients of a polynomial in t, in canonical units. Fold constant subexpressions with
-    the literal evaluator. Stop expanding at degree 47, the precision of the 24-point Gauss rule
-    used for the remaining rates; high powers can otherwise expand exponentially."""
-    if isinstance(node, nodes.Ref) and isinstance(values.get(node.name), Polynomial):
-        return values[node.name]
-    op, args, data = node_parts(node)
-    if op in ('add', 'sub', 'mul', 'div', 'pow', 'sum', 'q', 'neg', 'pos') and args:
-        terms = []
-        for arg in args:
-            term = yield _clock_polynomial(arg, values, literals)
-            if term is None:
-                return None
-            terms.append(term)
-        first = terms[0]
-        if op in ('sum', 'add'):
-            return sum(terms)
-        if op == 'sub':
-            return first - terms[1]
-        if op == 'mul':
-            return first * terms[1] if first.degree() + terms[1].degree() <= 47 else None
-        if op == 'q':
-            return first * literals.scale(data)
-        if op in ('neg', 'pos'):
-            return -first if op == 'neg' else first
-        if terms[1].degree() == 0:
-            scalar = terms[1].coef[0]
-            if op == 'div' and scalar:
-                return first / scalar
-            if op == 'pow' and scalar.denominator == 1 and scalar >= 0 and first.degree() * scalar <= 47:
-                if scalar > 1024:
-                    return None
-                if not first.degree() or not scalar:
-                    return Polynomial([Fraction(first.coef[0]) ** int(scalar)])
-                return first ** int(scalar)
-    constant = literals.value(node)
-    return Polynomial([constant]) if isinstance(constant, Fraction) else None
 
 
 @dataclass(frozen=True)
@@ -604,6 +566,18 @@ class ComponentWay(Way):
         self.place = {name: k for k, name in enumerate(stores)}
         self.rates = [f'{flow}.actual_rate' for flow in system.flow_ids]
         self.flow_place = {flow: k for k, flow in enumerate(system.flow_ids)}
+        single = None
+        if len(system.flow_ids) == 1:
+            flow = system.flows[system.flow_ids[0]]
+            end = flow.target or flow.source
+            if end and flow.source != flow.target:
+                single = system.index[end], (1 if flow.target else -1)
+        self.amounts = MovingAmounts(len(system.flow_ids), t, single)
+        if single is not None:
+            self.amounts.primitive = direct_clock_primitive(plan.flows[self.flows[0]], plan)
+
+        if single is None:
+            self.component.field.leg_rates = lambda: self.component.field.delivered
         self._stepped(float(t))
 
     def _stepped(self, t):
@@ -656,9 +630,51 @@ class ComponentWay(Way):
 
     def _commit(self, segment):
         component = self.component
+        if segment.end > segment.start:
+            amount = self._transfer_amount(segment, segment.end)
+            self.amounts.accept(segment.start, segment.end, amount)
         self._record(segment)
         component.proceed(segment)
         self._drift = None
+
+    def _transfer_amount(self, segment, through):
+        """The actual leg integrals on the accepted prefix, in canonical units."""
+        single = self.amounts.single
+        if self.amounts.primitive is not None:
+            flow = self.component.system.flows[self.flows[0]]
+            bounds = self.component.state.active_bounds
+            if (self.place.get(flow.source), 'min') in bounds or (
+                self.place.get(flow.target),
+                'max',
+            ) in bounds:
+                return Fraction(0)
+            return self.amounts.polynomial_amount(segment.start, through)
+        solution = segment.solution
+        if segment.numerical is not None:
+            total = 0.0
+            for k, step in enumerate(solution.interpolants):
+                end = through if k == len(solution.interpolants) - 1 else min(solution.ts[k + 1], through)
+                total = total + radau_amount(step, end, single)
+                if end >= through:
+                    break
+            return total
+        duration = through - segment.start
+        if isinstance(solution, Affine):
+            if single is not None:
+                row, sign = single
+                return sign * solution.slope[row] * duration
+            return solution.leg_rates * duration
+        return solution.amounts(duration, single)
+
+    def transferred(self, name, t):
+        """Cumulative accepted amount of this physical connection since installation."""
+        row = self.flow_place[name]
+        if t == self.amounts.through:
+            return self.amounts.amount(row)
+        if self.pending is None or not self.amounts.through < t <= min(self.pending.end, self.run.now):
+            raise ValueError('transfer requested outside the accepted interval')
+        prefix = self._transfer_amount(self.pending, t)
+        return self.amounts.amount(row, prefix if self.amounts.single is not None else prefix[row])
 
     def _record(self, segment):
         if segment.start == segment.end or segment.end != self.recorded_through:
