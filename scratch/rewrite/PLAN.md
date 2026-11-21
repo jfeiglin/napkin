@@ -336,6 +336,21 @@ These override the text of this plan below, wherever the two differ. The owner's
    A result-dependent delay uses the new share and a delay reached during conditions waits for
    the next re-share (spec, “Reading a result” and “Time, waiting and completion”).
 
+   **Owner’s amendment to change 27, 2026-11-21.** A stock contact joins a nearby
+   moment only when both distances qualify. Its located time must be within the crossing
+   tolerance in hours, and the stock at the proposed moment’s time must be within its
+   own comparison band of the threshold or bound. Otherwise process the contact as its
+   own moment at its located time. An earlier contact runs before the scheduled stages.
+   A later contact remains pending across those stages if their writes preserve it.
+   A run ending before that contact finishes at its horizon. An empty event, recording
+   selection, or checkpoint and resume must give the same decision. Once a contact is
+   admitted, the posting, placement and hard-constraint checks below apply.
+
+   With a 1 L/h request and a cap of `(2 − t/h) L/h`, the stock reaches 1 L at 1 h.
+   Its threshold of 1.000000005 L is 5 × 10⁻⁹ L away at the scheduled stage, outside
+   its comparison band. Keep the 1 h stage and process the later contact at its own
+   located time. A shorter run can finish at 1 h. No transfer is added at 1 h.
+
 28. **The run store reuses an identical request (owner, 2026-11-20).** Store each horizon,
    selection of recorded values and piece budget under its own key. The order of the selected keys
    can differ. The returned manifest gives them in the caller's order. An identical request that
@@ -372,7 +387,7 @@ These override the text of this plan below, wherever the two differ. The owner's
     1. The books always balance. Post each accepted transfer equally at both ends. A stock
        balance changes through posted transfers. Reading, grouping events or locating a
        numerical crossing cannot move material.
-    2. Exact placement is a preference. When the flows can put a stock exactly on a bound
+    2. After the time-and-value test in change 27, exact placement is a preference. When the flows can put a stock exactly on a bound
        or threshold, post the signed correction to the legs moving it toward that value,
        in proportion to their rates just before contact. If none approached the value,
        keep the amounts the legs carried. Apply a connected placement together. Preserve an author’s hard equations,
@@ -390,8 +405,10 @@ These override the text of this plan below, wherever the two differ. The owner's
        bound status while its balance remains within its band.
     4. Fail only when a hard rule is broken by more than its applicable band. If a proposed
        placement would exceed a frozen allowance while the stock remains within its band,
-       skip the placement, keep the accepted prefix and continue. A failed certification
-       outside the band names the stock, targets and breached rule.
+       skip the placement, keep the accepted prefix and continue. A stock outside its
+       target band at a nearby scheduled time keeps its located contact. Failure requires
+       a material breach of an applicable hard rule. Check every affected stock and each
+       shared allowance or cap before posting a connected group of corrections.
     5. Report all tied decisions in a fixed order. Keep every affected stock, leg, direction
        and target in the structured record. Questions that this principle does not decide
        are collected for the owner while independent work continues.

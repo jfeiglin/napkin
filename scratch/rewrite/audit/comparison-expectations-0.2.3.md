@@ -99,3 +99,17 @@ Two seeded tests formerly required a locally shared tank to record its initial l
 | 4, tanks 0, 4, 9, 11, 12, 13, 14 and 17 | Initial upper bound at every reading | Apply the same posted incidence. For tank 0 this gives a net of −7 × 10⁻¹⁰ people/h and a loss of 2.8 × 10⁻⁸ people over 40 h. |
 
 [Generated roundoff and tally controls](../../../tests/engine/test_roundoff_properties.py) · [Cross-method intermediate and terminal balances](../../../tests/engine/test_stock_departure_rule.py)
+
+The checkpoint test for the tank draining at `1 + water` previously required an exactly empty book at 2 h. Its located ln(2) contact retained 5/2⁵² L. The drain’s request equals its hard capacity and the remaining debit would exceed the accepted capacity. The test checks the actual retained receipt at the stop, the named refused cap when that receipt is positive, zero subsequent drainage, and identical straight, live, serialized and fresh-process histories. [Exact resume at the retained face](../../../tests/engine/test_checkpoints.py)
+
+## Time and stock distance at a contact
+
+The owner amended change 27 on 2026-11-21. A root must qualify in time and in the stock’s units before it may be placed at a nearby moment. The earlier rule tried to place any time-near target and could report a hard failure on that hypothetical correction. The amended clock processes a distant stock target at its own located time. If the horizon comes first, it ends before the contact. If an earlier stage changes the flows, the engine evaluates the future trajectory from that stage.
+
+| Earlier ruling or control | Effect of the amendment |
+|---|---|
+| Full-balance moves, aliases, the 0.05 L refund and exact hard-rate gross transfers | These use the physical leg accounts. Grouping adds no debit or credit. The initially empty stock with the two fixed rates still accrues 2 × 10⁻¹² L over two hours. |
+| Empty, full or threshold placement, proportional approach rates, and conflicting shared legs | The preference for exact placement applies to admitted targets. Each affected hard rule still constrains the proposed posts, including shared caps, frozen allowances and counterpart stocks with their own scales. Incompatible admitted targets keep the incoming transfers and identify the near-tie. |
+| Dry stock feeding a full pass-through stock, and the bound-release test | The small, in-band crumb stays on its books. Allocation holds the bound until the inward net exceeds 10⁻¹² of total traffic. The stock does not need to be posted again to decide whether a later contact can group. |
+| Frozen donor and material bounds | Inside its band, a receiver can fire with the gross amount already accepted. An outside-band receiver waits for its own contact. At a 1 h horizon the donor that has supplied its full 1 L keeps 99 L. A genuine frozen-gross crossing still fails at its physical time, with ordered contributors. |
+| Steep approach to a threshold or bound | A root a few nanoseconds from a stage can still be far away in litres. The earlier event runs first. A later, still-reachable contact fires separately. A stage at 1 h cannot borrow a future transfer by moving that contact. |
