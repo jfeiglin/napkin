@@ -109,3 +109,17 @@ All 2,000 seed models compiled and finished under the independent interpreter, w
 The first preflight of authoritative stock accounting passed 300 regular pairs in 19.89 s including six comparator controls, and all 16,000 deep transformed pairs in 266.16 s. Every compared pair reached its terminal outcome. This was a development snapshot on 2026-11-21 during implementation of checkpoint edits, bound contacts, cutoff records and stage targets. The final gates rerun both tiers on one committed candidate.
 
 The physical cutover landed in `ab95577`. The current audit bundle passed 27 of 31 on that revision. All four outstanding cases concern setting a first capacity on another occurrence. The previously failing 0.05 L refunds and full-balance retirement now pass. Sixty-five additional frozen report, physical cutoff and CLI checks passed, including the raw history of a ref-only alias. Rebuilding the measured fourth prototype from the four patches published on the topic branch reproduced Git tree `bd3e014b407f430320bb5f8c4637032733f16182`. [Production transfer trace and removed paths](accounting-write-sites.md)
+
+Stage-target commit `343ff5d` passed all 31 current audit cases and 27 related controls. The audited tank read 10, 8 and 7.5 L at hours 0, 1 and 2. A subsequent integration run of the legacy comparisons passed all 144 sampled piano readings, 24 interval rates and 252 reservoir readings. Its two negative controls both failed as required. The physical accounting follow-ups are `adeab28` and `69d9ba1`. The former keeps both sides of grouped placements in balance, preserves inlet and outlet totals on resting stocks, and restarts co-integrated producers when their reader leaves. The latter checks the incoming trajectory before treating a stock as stationary, including the third compartment in the analytical chain that starts with zero slope.
+
+## Full-size baseline pilots
+
+These are single measurements on `6202824`. The formal comparisons use alternating paired runs.
+
+| Workload and arguments | Build | Plan | Run and record | Peak MiB | Physical check |
+|---|---:|---:|---:|---:|---|
+| `s2-engine/bench.py held 30000 35000 48` | 2.121 s | 6.797 s | 847.231 s | 1,926.66 | Sampled final stocks 0, 19.415 and 213.794912 L. |
+| `s2-engine/bench.py moving 30000 35000 48` | 2.328 s | 14.199 s | 399.099 s | 2,035.63 | Sampled final stocks 0.010815, 41.963914 and 204.061494 L. |
+| `s5-engine/bench.py 3000 3500 1500` | 0.202 s | 1.194 s | 9.210 s | 742.97 | Served power 3,163.7587 W at 0 h and 3,083.5128 W at 48 h. |
+
+At `adeab28` the full-only 30,000-pipe run took 26.921 s. Its 330,012 histories occupied 933,955 pieces and the process peaked at 1,443.16 MiB. The total stock at 6, 30 and 48 h was 777,172.59, 302,565.772 and 134,151.7 L.

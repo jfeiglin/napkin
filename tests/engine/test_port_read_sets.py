@@ -93,14 +93,25 @@ def test_observed_fields_are_planned_retained_and_credited(seed):
     record = machine.resume()
     assert record.failure is None, record.failure
     reading = reads(program, cfg, key_of(program, ROOT))
+    # The published live sum also reads membership and the generated reduction. Its
+    # dependencies include the connected pipe's rate inputs while that pipe exists.
+    (collection,) = machine.plan.reads(ROOT)
+    report_plan = planned | {collection} | machine.plan.dynamic_reads(collection)
     times = [(1.25, 'middle'), (1.75, None), (0.5, 'first')]
     for at, selected in times if seed % 2 else reversed(times):
         reader = ObservedReader(record, program)
         number = reader.at(ROOT, at)
         assert number == (offers[selected] if selected else 0), (seed, at, number)
+        assert reader.consulted <= report_plan, (
+            seed,
+            at,
+            'published reading',
+            reader.consulted - report_plan,
+        )
+        missing = {name for name in reader.consulted if not machine.recorder.wanted(name)}
+        assert not missing, (seed, at, 'selective record', missing)
         leaves = reader.consulted & tags.keys()
         assert leaves <= planned, (seed, at, 'planner', leaves - planned)
-        assert all(machine.recorder.wanted(n) for n in leaves), (seed, at, 'recorder', leaves)
         # The proof admits both rows; the evidence at an instant distinguishes the selected one.
         proof_names = {f'{part.owner}.{part.origin.rsplit(".", 1)[-1]}' for part in reading.edges}
         assert leaves <= proof_names, (seed, at, 'proof', leaves - proof_names)
