@@ -281,6 +281,8 @@ class Allocation:
         """(the rates that active state bounds allow, the zero faces to balance): the requests, cut
         where a bound holds a stock."""
         s = self.system
+        if not bound_key[0]:
+            return requested, s.proven_face_set
         bounds = self.bound_arrays(bound_key)
         bound_rows, bound_is_min, bound_on_zero_face = bounds
         at_lower, at_upper = s.faces.flags(state[bound_rows], bound_rows)
