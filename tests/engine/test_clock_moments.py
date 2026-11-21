@@ -81,7 +81,7 @@ def compared(op, left, right):
     return {'lt': left < right, 'le': left <= right, 'gt': left > right, 'ge': left >= right}[op]
 
 
-def network(seed):
+def network(seed, *, empty_time=None):
     """A random program (see the module): stores `s<k>.water`, flows `f<k>.pipe`, the table
     `readings`, and the operator `ops`, whose events read the rates. Gives the program, the keys to
     compare, and an edit of a store (its key and a level within its bounds)."""
@@ -190,6 +190,9 @@ def network(seed):
             )
     b.entity('ops', *parts)
     b.setup(start(named('ops').look))
+    if empty_time is not None:
+        idle = b.entity('unrelated', event('wait', after(q(empty_time, 'h'))))
+        b.setup(start(idle.wait))
     keys = [Key(f's{s}', ('water',)) for s in ends] + [
         Key('ops', (name,)) for name in ('seen', 'again', 'noted')
     ]

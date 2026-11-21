@@ -726,38 +726,67 @@ def branch_sides(surfaces, side):
     return signs
 
 
-def departing_branches(surfaces, t, y, side_at, rates, contacted=(), comparisons=None):
+def curved_motion(t, y, h, drift, rates, side_at, place):
+    """Operand displacements on a one-sided midpoint step when the tangent gives no side."""
+    midpoint = y + (h / 2) * drift
+    # One correction propagates a change in velocity across one more store in a
+    # chain. A stationary field needs just one evaluation, regardless of its size.
+    for _ in range(len(y) + 1):
+        displacement = h * rates(t + h / 2, midpoint)
+        corrected = y + displacement / 2
+        if np.array_equal(corrected, midpoint):
+            break
+        midpoint = corrected
+    following = side_at(t + h, y + displacement)
+
+    def motion(node, initial):
+        if isinstance(node, nodes.Ref) and node.name in place:
+            # A small increment may round away in a large starting inventory.
+            return displacement[place[node.name]]
+        return following(node) - initial
+
+    return motion
+
+
+def departing_branches(surfaces, t, y, side_at, rates, place, contacted=(), comparisons=None):
     """Select the sides a segment leaves on, including comparisons between two moving expressions.
     At a contact their equal values alone cannot pick a side. Compare their values along the
-    outgoing velocity; arithmetic outside the condition continues to read the actual state."""
+    outgoing trajectory; arithmetic outside the condition continues to read the actual state."""
     if not surfaces:
         return {}
     side = side_at(t, y)
     signs = branch_sides(surfaces, side)
     ties = set(contacted) | {pair for pair, sign in signs.items() if sign == 0}
+    near = set()
     if comparisons is not None:
         for a, b in signs.keys() - ties:
             left, right = side(a), side(b)
             if comparisons.ordered('eq', a, b, left, right, side):
-                signs[a, b] = 0
-    if ties:
+                near.add((a, b))
+    if ties or near:
         # The comparison can involve large nearly equal terms. A probe that moves the state
         # by more than last-bit noise measures the relative motion of both actual operands.
         h = math.sqrt(np.finfo(float).eps) * max(1.0, abs(t))
         drift = rates(t, y)
         probe = y + h * drift
         following = side_at(t + h, probe)
-        for a, b in signs.keys() & ties:
+        motion = None
+        for a, b in signs.keys() & (ties | near):
             try:
                 left, right = side(a), side(b)
                 if comparisons is not None and comparisons.ordered('ne', a, b, left, right, side):
                     continue  # an edit can move the operands away from the located contact
                 change = (following(a) - left) - (following(b) - right)
+                if change == 0:
+                    if motion is None:
+                        motion = curved_motion(t, y, h, drift, rates, side_at, place)
+                    change = motion(a, left) - motion(b, right)
             except (ExpressionError, TypeError, ValueError, ArithmeticError, LookupError):
                 continue
-            # A stationary contact holds its equality branch, including when evaluating the
-            # exact stock threshold leaves a last-bit residual in a formula such as water².
-            signs[a, b] = int(change > 0) - int(change < 0)
+            # A moving face inside the amount band but not at a located root is
+            # still on its physical side. An unrelated cut cannot cross it.
+            if (a, b) not in near or change == 0:
+                signs[a, b] = int(change > 0) - int(change < 0)
     return signs
 
 
@@ -768,18 +797,27 @@ def branch_expression(source, signs):
     if not signs:
         return source
 
+    def comparison(node):
+        parts = []
+        for left, op, right in zip(node.operands, node.ops, node.operands[1:]):
+            sign = signs.get((left, right))
+            # With no measured departure the native comparison holds its value
+            # at rest and continues to follow the actual trial state.
+            if not sign or op in ('eq', 'ne'):
+                parts.append(nodes.compare([op], [changed[left], changed[right]]))
+            else:
+                parts.append(
+                    nodes.const({'lt': sign < 0, 'le': sign <= 0, 'gt': sign > 0, 'ge': sign >= 0}[op])
+                )
+        if len(parts) == 1:
+            return parts[0]
+        if all(isinstance(part, nodes.Const) for part in parts):
+            return nodes.const(all(part.value for part in parts))
+        return nodes.boolean('and', parts)
+
     def chosen(node):
         if isinstance(node, nodes.Compare):
-            parts = []
-            for left, op, right in zip(node.operands, node.ops, node.operands[1:]):
-                sign = signs.get((left, right))
-                if sign is None or op in ('eq', 'ne'):
-                    parts.append(nodes.compare([op], [changed[left], changed[right]]))
-                else:
-                    parts.append(
-                        nodes.const({'lt': sign < 0, 'le': sign <= 0, 'gt': sign > 0, 'ge': sign >= 0}[op])
-                    )
-            return parts[0] if len(parts) == 1 else nodes.boolean('and', parts)
+            return comparison(node)
         if isinstance(node, nodes.Call):
             args = node.args
             if node.function == 'abs' and signs.get((args[0], ZERO)):
@@ -815,11 +853,11 @@ def branch_expression(source, signs):
             within = nodes.membership(node)
             if within is not None:
                 x, low, high = args
-                if (low, x) in signs and (x, high) in signs:
+                if (low, x) in signs or (x, high) in signs:
                     # Preserve the native diagnostic for a reversed interval.
                     return nodes.if_else(
                         nodes.compare(['le'], [changed[low], changed[high]]),
-                        nodes.const(signs[low, x] <= 0 and signs[x, high] <= 0),
+                        comparison(within[0]),
                         node,
                     )
             return nodes.call(node.function, (changed[child] for child in args))
@@ -1067,7 +1105,7 @@ def far_sides(
             departure[i] = beyond
     reached = set(contacted) | clock_branches.keys()
     reached.update(pair for pair, sign in branch_sides(surfaces, side).items() if not sign)
-    signs = departing_branches(surfaces, at, departure, side_at, rates, reached, comparisons)
+    signs = departing_branches(surfaces, at, departure, side_at, rates, place, reached, comparisons)
     choose(signs)
     return tuple(switches), clock, signs
 
