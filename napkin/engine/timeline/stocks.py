@@ -12,6 +12,7 @@ from dataclasses import replace
 from ...core import expr as nodes
 from ...core.units import rational
 from ...program.record import History, Piece
+from ..continuous.transfers import held_elapsed
 from ..errors import SimulationError
 from .moment import quantity, span
 from .plan import FORMULA, name_of
@@ -410,7 +411,7 @@ class RestingRates:
             if old is not None:
                 start, adjustment = self.offsets.pop(n)
                 if t != start:
-                    way.correct(n, adjustment * (rational(t) - rational(start)))
+                    way.correct(n, adjustment * held_elapsed(start, t))
             if new:
                 self.offsets[n] = t, new
 

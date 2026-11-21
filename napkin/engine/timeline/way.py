@@ -2,7 +2,7 @@
 
 from ...core import expr as nodes
 from ...core.units import rational
-from ..continuous.transfers import ClockLeg, HeldAmounts, certified_amount
+from ..continuous.transfers import ClockLeg, HeldAmounts, certified_amount, held_elapsed
 from .stocks import RestingAmounts, RestingRates
 
 
@@ -37,7 +37,8 @@ class Way:
                 value = rational(donor[2]) - rational(level)
         if self.resting_rates is not None and (offset := self.resting_rates.offsets.get(name)) is not None:
             since, adjustment = offset
-            value += adjustment * (rational(t) - rational(since))
+            if since != t:
+                value += adjustment * held_elapsed(since, t)
         changes = getattr(self, 'adjustments', None)
         return value + changes.get(name, 0) if changes else value
 
@@ -110,7 +111,7 @@ class Way:
                 and (offset := self.resting_rates.offsets.get(name)) is not None
             ):
                 speed += offset[1]
-            return lambda a, b: ((rational(b) - rational(a)) * speed, 0)
+            return lambda a, b: (held_elapsed(a, b) * speed, 0)
         row = self.leg_rows[name]
         leg = self.amounts.clocks.get(row)
         flow = plan.flows.get(name)

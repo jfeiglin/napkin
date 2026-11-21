@@ -180,6 +180,12 @@ def _decimal_time(t):
     return Decimal(repr(float(t)))
 
 
+@lru_cache(maxsize=128, typed=True)
+def held_elapsed(start, end):
+    """Held legs in a generation use the same exact difference of accepted clock values."""
+    return rational(end) - rational(start)
+
+
 def _rectangle(start, end, rate, previous):
     if not rate or start == end:
         return previous
