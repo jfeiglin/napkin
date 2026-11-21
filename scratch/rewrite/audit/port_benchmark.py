@@ -2,16 +2,12 @@
 
 import argparse
 import ast
-from collections import Counter
-from contextlib import ExitStack, redirect_stdout
-from datetime import datetime, timezone
 import fcntl
 import hashlib
 import io
 import json
 import math
 import os
-from pathlib import Path
 import platform
 import re
 import resource
@@ -20,8 +16,11 @@ import statistics
 import subprocess
 import sys
 import time
+from collections import Counter
+from contextlib import ExitStack, redirect_stdout
+from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import patch
-
 
 THREAD_ENV = dict.fromkeys(
     (
@@ -131,9 +130,13 @@ def primitives(machine, row):
 
 def instrument(stack, row):
     import scipy.integrate._ivp.radau as radau
+
     from napkin.engine.allocation import Allocation
-    from napkin.engine.timeline.network import Instant
     from napkin.engine.timeline import Run
+    from napkin.engine.timeline.declared import DeclaredWay, Former
+    from napkin.engine.timeline.family import Family
+    from napkin.engine.timeline.lines import Lines
+    from napkin.engine.timeline.network import Instant
 
     result = {'by_method': {}, 'primitives': {}, 'solver': 'SciPy Radau'}
     active, current, sizes = False, None, None
@@ -154,6 +157,11 @@ def instrument(stack, row):
     count(Allocation, 'allocated')
     count(Instant, 'values')
     count(Instant, 'settle')
+    count(Family, '_start')
+    count(Lines, '_solve')
+    count(Lines, '_downstream')
+    count(Former, 'problem')
+    count(DeclaredWay, '_solved')
     try:
         from napkin.engine.continuous.transfers import MovingAmounts
     except ImportError:
@@ -236,9 +244,10 @@ def worker(args):
     if identity(root) != args.sha:
         raise RuntimeError(f'engine moved from {args.sha}')
     sys.path.insert(0, str(root))
-    import napkin
-    import scipy
     import numpy
+    import scipy
+
+    import napkin
 
     module = Path(napkin.__file__).resolve()
     if module.parent != root / 'napkin':
@@ -248,6 +257,8 @@ def worker(args):
     sys.argv = [str(path), *argv]
     if args.row.endswith('tanks'):
         sys.argv.extend(['--repeat', str(args.repeat)])
+    if args.row == 'declared':
+        sys.argv.append('--no-phase-times')
     if any(os.environ.get(k) != v for k, v in THREAD_ENV.items()):
         raise RuntimeError('single-thread BLAS environment not set')
     started = time.monotonic()
@@ -326,7 +337,7 @@ def worker(args):
         'python': sys.version,
         'numpy': numpy.__version__,
         'scipy': scipy.__version__,
-        'time_utc': datetime.now(timezone.utc).isoformat(),
+        'time_utc': datetime.now(UTC).isoformat(),
         'blas_env': THREAD_ENV,
     }
     print(json.dumps(result))
@@ -387,7 +398,7 @@ def take(path, args, row, tag, root, sha, repeat, diagnostic=False):
         'PYTHONPATH': str(root),
         'PYTHONDONTWRITEBYTECODE': '1',
     }
-    process = subprocess.run(cmd, cwd=root, env=environment, text=True, capture_output=True)
+    process = subprocess.run(cmd, cwd=root, env=environment, text=True, capture_output=True, check=False)
     if process.returncode:
         path.with_suffix('.failure.txt').write_text(process.stdout + process.stderr)
         raise RuntimeError(f'{path.name}: worker exited {process.returncode}: {process.stderr[-900:]}')

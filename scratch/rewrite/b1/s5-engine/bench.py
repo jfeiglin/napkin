@@ -155,10 +155,12 @@ def main():
     from napkin.engine.solve import Solver
     from napkin.engine.timeline import declared
 
-    timed(Solver, 'solve', 'solve library')
-    timed(declared.Former, 'problem', 'forming')
-    timed(declared, 'polished', 'polish')
-    sizes = [int(arg) for arg in sys.argv[1:4]] or [30000, 35000, 15000]
+    phase_times = '--no-phase-times' not in sys.argv
+    if phase_times:
+        timed(Solver, 'solve', 'solve library')
+        timed(declared.Former, 'problem', 'forming')
+        timed(declared, 'polished', 'polish')
+    sizes = [int(arg) for arg in sys.argv[1:] if arg != '--no-phase-times'] or [30000, 35000, 15000]
     clock = time.perf_counter()
     source, net = program(*sizes)
     built = time.perf_counter()
@@ -171,7 +173,8 @@ def main():
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == 'darwin' else 1024)
     print(f'places {sizes[0]}, routes {net["routes"]}, sources {sizes[2]}')
     print(f'build {built - clock:.9f} s, plan {planned - built:.9f} s, run and record {ran - planned:.9f} s')
-    print(', '.join(f'{name} {seconds:.9f} s ({calls})' for name, (seconds, calls) in SPENT.items()))
+    if phase_times:
+        print(', '.join(f'{name} {seconds:.9f} s ({calls})' for name, (seconds, calls) in SPENT.items()))
     print(f'peak resident memory {peak / 1e9:.2f} GB; failure: {record.failure}')
     solves = [(entry.t, entry.round) for entry in record.entries('solve', 'operator.dispatch')]
     print(f'solves (t, round): {solves}')
