@@ -130,22 +130,10 @@ def _datum_unit(spelling, units, registry):
     """(dimension, exact scale) of the unit of a datum: a spelling of the model's units (`L/h`,
     `person*year`), or one in the library's notation, whose products join with `-` and powers with `^`
     (`gal/person-day`); None when it names no unit."""
-    found = units.of(spelling)
-    if found is not None:
-        return found
     try:
-        factors = registry.factors(spelling)
+        return registry.parse_unit(spelling).dimensions, registry.exact_scale(spelling)
     except ExpressionError:
-        return None
-    dimension, scale = {}, Fraction(1)
-    for name, power in factors:
-        own = units.of(name)
-        if own is None:
-            return None
-        for key, value in own[0]:
-            dimension[key] = dimension.get(key, 0) + value * power
-        scale *= own[1] ** power
-    return tuple(sorted((key, value) for key, value in dimension.items() if value)), scale
+        return units.of(spelling)
 
 
 def _written(number):
@@ -204,11 +192,13 @@ def cited_data(model, library):
         at = s.exact_value(value, model.units) if isinstance(typed, s.Num) and not computed else None
         for label, claim, key in cites:
             datum = claims.get(claim, {}).get('data', {}).get(key)
-            unit = None if datum is None else _datum_unit(datum['unit'], model.units, registry)
-            if unit is None:
+            if datum is None:
                 continue
+            unit = _datum_unit(datum['unit'], model.units, registry)
             datum_written = f'{_written(datum["value"])} {datum["unit"]}'
-            if isinstance(typed, s.Dist):
+            if unit is None:
+                why = f'its unit {datum["unit"]!r} cannot be resolved'
+            elif isinstance(typed, s.Dist):
                 why = 'it is a distribution, and a datum names a number'
             elif not isinstance(typed, s.Num):
                 why = 'it is no number, and a datum names a number'

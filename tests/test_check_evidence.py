@@ -5,8 +5,11 @@ its record cites, fails the check, though the model still runs.
 Each test writes a small catalogue of its own, with packages that the tests' reserved IDs name, and
 asks the stage about it. The line of each warning is counted by hand in the texts below."""
 
+import json
 import textwrap
 
+from napkin.model.compile import load_scenario
+from napkin.model.support import cited_data
 from tests.evidence.support import datum_package
 from tools import check
 
@@ -104,3 +107,28 @@ def test_the_evidence_stage_runs_with_the_whole_check_and_not_with_test_paths_al
     assert 'Evidence' in capsys.readouterr().out.split('Stages: ')[1].splitlines()[0]
     assert check.main(['--tests', 'tests/test_check_evidence.py', '--plan']) == 0
     assert 'Evidence' not in capsys.readouterr().out.split('Stages: ')[1].splitlines()[0]
+
+
+def test_ninety_nine_hours_cannot_cite_thirty_four_gallons_per_year(tmp_path):
+    entry = datum_package(tmp_path, end='99 h', delay=(34, 'gal/yr'))
+    entry.write_text(entry.read_text().replace('open: bool = true', 'open: bool = true  @fixture'))
+    # This complete spelling is registered. "gal" and "yr" need no definitions of their own.
+    units = entry.parent / 'units.json'
+    table = json.loads(units.read_text())
+    table['gal/yr'] = {'dimensions': {'volume': 1, 'time': -1}, 'scale': 1}
+    units.write_text(json.dumps(table))
+    (message,) = check.unsupported(root=tmp_path)['SC99']
+    assert all(
+        word in message for word in ('service.end', 'C-ACTION', '34 gal/yr', '99 h is of another dimension')
+    )
+    assert check.evidence(root=tmp_path) == 1
+
+
+def test_an_unresolvable_cited_unit_names_the_value_claim_and_datum(tmp_path):
+    model = load_scenario(datum_package(tmp_path)).declared
+    library = {'claims': [{'id': 'C-ACTION', 'data': {'delay': {'value': 34, 'unit': 'unknown/yr'}}}]}
+    problems = cited_data(model, library)
+    assert any(
+        all(word in warning.message for word in ('service.end', 'C-ACTION', 'delay', 'unknown/yr'))
+        for warning in problems
+    )
