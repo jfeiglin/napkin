@@ -48,6 +48,8 @@ For a formula replaced in a stage, the proof graph retains the stage that can su
 
 On the 650-child chain, the full plain and lagged reports kept 1,300 trail parts each. A single-process cProfile run measured 9.238 s before indexing the actual reads and 0.549 s afterward. `Reader.evidence_pair` calls fell from 6,343,356 to 23,400. The index follows shared dependencies and keeps live and frozen evaluations distinct. [Bounded consultation check](../../../tests/engine/test_report_chains.py)
 
+A plan binds names inside each retained definition to concrete fields. When an array row reads one of those fields, it shares the plan's literal result until the bindings change. A row that skips the branch leaves that field unread. General evaluators can still return definitions containing row-specific aliases. On the 750-link held chain, single-process cProfile measured Family at 3.038 s before and 0.338 s after this change. Lines took 2.915 s and 0.225 s. At 5,000 links the focused tests completed in 1.48 s and 1.19 s respectively. [Bound-column and shadowing controls](../../../tests/core/test_arrays.py)
+
 ### Physical accounting and transactions
 
 | Decision | Live implementations at this revision | Coverage and remaining acceptance work |

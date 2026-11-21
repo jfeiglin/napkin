@@ -156,6 +156,17 @@ class Comparisons:
         self.units, self.factor, self.named = units, factor, named
         self.floors = {}
         self.literal_gaps = {}
+        self.concrete_definitions = False
+        self._literal_reference = None
+
+    def for_row(self, units, resolve):
+        """Resolve template names on one row. A plan binds the names inside a retained definition
+        before installing it, so its literal value is shared with all other reads of that concrete
+        name in this epoch. A general binding may use template names inside the definition too."""
+        row = Comparisons(units, self.factor, lambda name: self._binding(resolve(name)))
+        if self.concrete_definitions:
+            row._literal_reference = lambda name: self.literal_value(expr.ref(resolve(name)))
+        return row
 
     def _binding(self, name):
         return self.named(name) if self.named is not None else (1.0, 1.0)
@@ -347,6 +358,8 @@ class Comparisons:
 
         def parts(n):
             if isinstance(n, expr.Ref) and self.named is not None:
+                if self._literal_reference is not None:
+                    return 'literal', (), self._literal_reference(n.name)
                 definition = self._binding(n.name)[1]
                 if isinstance(definition, expr.Node):
                     return 'pos', (definition,), None

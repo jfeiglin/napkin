@@ -259,11 +259,10 @@ class _Pass:
         if not self.bindings or policy.named is None:
             return policy
 
-        def bound(name):
-            concrete = self.bindings[name][i] if name in self.bindings else name
-            return policy.named(concrete)
+        def concrete(name):
+            return self.bindings[name][i] if name in self.bindings else name
 
-        return Comparisons(self.registry, policy.factor, bound)
+        return policy.for_row(self.registry, concrete)
 
     def row_reader(self, i):
         """The comparison policy and scalar reader bound to this row."""

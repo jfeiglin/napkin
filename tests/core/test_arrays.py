@@ -403,3 +403,64 @@ def test_folding_a_chain_reuses_subtrees_until_its_named_binding_changes(use_arr
         exact = units.comparisons.literal_value(expr.ref(names[-1]))
         assert exact == (None if literal_root is None else literal_root + count - 1)
         assert len(reads) <= 2 * count
+
+
+def test_bound_columns_reuse_concrete_literal_chains_only_for_selected_rows_in_the_epoch():
+    from napkin.core.units import UnitSystem
+
+    count = 60
+    units = UnitSystem({})
+    policy = units.comparisons
+    policy.concrete_definitions = True
+    roots = ('alpha', 'beta')
+    definitions = {
+        f'{root}.y{k}': expr.binary('add', expr.ref(f'{root}.y{k - 1}'), expr.const(1))
+        for root in roots
+        for k in range(1, count)
+    }
+    definitions['beta.y0'] = expr.const(7)
+    reads = []
+
+    def named(name):
+        assert name.startswith(('alpha.', 'beta.')), f'unselected column {name}'
+        reads.append(name)
+        return 1.0, definitions.get(name, 1.0)
+
+    policy.named = named
+    for initial in (None, 2, 4):
+        if initial is not None:
+            definitions['alpha.y0'] = expr.const(initial)
+            policy.floors.clear()
+        reads.clear()
+        for k in reversed(range(count)):
+            slot = f'this.y{k}'
+            columns = {slot: (f'alpha.y{k}', 'unselected', f'beta.y{k}')}
+            difference = expr.binary('sub', expr.ref(slot), expr.const(k))
+            huge = expr.const(10000000000000000)
+            rounded = expr.binary('sub', expr.binary('add', difference, huge), huge)
+            guarded = expr.if_else(expr.ref('enabled'), rounded, expr.const(-1))
+            row = 3 if initial is None else initial
+            env = {'enabled': np.array([True, False, True]), slot: np.array([row + k, 99, 7 + k])}
+            expected = 4 if initial is None else initial  # binary float rounds (3 + 1e16) - 1e16 to 4
+            assert arrays.values(guarded, env, units, 3, columns).tolist() == [expected, -1, 7]
+        assert policy.literal_value(expr.ref(f'alpha.y{count - 1}')) == (
+            None if initial is None else initial + count - 1
+        )
+        assert len(reads) <= 3 * count
+
+
+def test_general_array_bindings_may_use_template_names_inside_a_retained_definition():
+    from napkin.core.units import UnitSystem
+
+    units = UnitSystem({})
+    definitions = {
+        'left.outer': expr.ref('inner'),
+        'right.outer': expr.ref('inner'),
+        'left.inner': expr.const(1),
+        'right.inner': expr.const(3),
+    }
+    units.comparisons.named = lambda name: (1.0, definitions[name])
+    bindings = {'outer': ('left.outer', 'right.outer'), 'inner': ('left.inner', 'right.inner')}
+    expression = expr.read('(outer + 10000000000000000) - 10000000000000000')
+    env = {'outer': np.array([1.0, 3.0])}
+    assert arrays.values(expression, env, units, 2, bindings).tolist() == [1.0, 3.0]

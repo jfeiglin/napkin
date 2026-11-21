@@ -518,6 +518,7 @@ class Plan:
         self.frozen_scales = {}
         self.units.comparisons.factor = max(self.numerics.rtol, self.numerics.atol_factor)
         self.units.comparisons.named = lambda name: self.comparison_quantity(name, self.comparison_scales)
+        self.units.comparisons.concrete_definitions = True
         self.pools = pools_of(program)
         self.values, self.draws, self.flows, self.distributions = {}, {}, {}, {}
         self.changed = {}  # the engine name of a CHANGED value -> the stored value that it follows
