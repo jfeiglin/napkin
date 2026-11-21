@@ -3,6 +3,28 @@
 import heapq
 
 
+class Placements(dict):
+    """Located stock targets, retaining distinct simultaneous targets of the same stock."""
+
+    def __init__(self, levels=()):
+        super().__init__(levels)
+        self.others = {}
+
+    def add(self, name, target):
+        if name not in self:
+            self[name] = target
+        elif self[name] != target:
+            others = self.others.setdefault(name, [])
+            if target not in others:
+                others.append(target)
+
+    def include(self, levels):
+        for name, target in levels.items():
+            self.add(name, target)
+            for other in levels.others.get(name, ()):
+                self.add(name, other)
+
+
 def bound_values(bounds, events):
     """The exact faces of stores whose located contacts are due at this instant."""
     return {
@@ -18,6 +40,17 @@ def put_bounds(way, state, events):
     for name, number in found.items():
         state[way.place[name]] = number
     return list(found)
+
+
+def continued_lines(way, levels, t):
+    """Restart just the held lines whose grouped placement kept the incoming level."""
+    rows = []
+    for name in levels:
+        if name in way.place:
+            row = way.place[name]
+            way.y[row], way.since[row] = levels[name], t
+            rows.append(row)
+    return rows
 
 
 def put_lines(way, t=None, through=None, invalidate=True):

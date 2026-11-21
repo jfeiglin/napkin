@@ -12,6 +12,8 @@ from dataclasses import replace
 from ...core import expr as nodes
 from ...core.units import rational
 from ...program.record import History, Piece
+from ..errors import SimulationError
+from .moment import quantity, span
 from .plan import FORMULA, name_of
 
 
@@ -84,14 +86,15 @@ class Stocks:
             for name, bound in levels.items()
             if name not in run.written and name in run.ways.set_of
         }
-        if not any(residuals.values()):
-            return
+        others = getattr(levels, 'others', {})
+        if not any(residuals.values()) and not others:
+            return {}
         # Each face suggests a distribution on its incident physical legs. If both ends of one
         # leg reach a face together, solve their incidence equations before applying either
         # correction. Otherwise one rounded contact could reopen the face just closed.
         levels = dict(levels)
         columns = {}
-        todo = [name for name, delta in residuals.items() if delta]
+        todo = [name for name, delta in residuals.items() if delta or name in others]
         while todo:
             name = todo.pop()
             if name in columns:
@@ -110,11 +113,86 @@ class Stocks:
                         residuals[end] = rational(rest) - self.stock_balance(end, t)
                     if end not in columns:
                         todo.append(end)
-        effects = _incidence_effects(run.plan, columns, residuals)
+        retained = {}
+        if len(columns) == 1 and not others and all(columns.values()):
+            effects = _incidence_effects(run.plan, columns, residuals)
+        else:
+            effects = {}
+            for group in _connected_placements(run.plan, columns):
+                local = {name: columns[name] for name in group}
+                changes = _incidence_effects(run.plan, local, {n: residuals[n] for n in group})
+                achieved = dict.fromkeys(group, 0)
+                for name, amount in changes.items():
+                    leg = run.plan.connections[name]
+                    if leg.source in achieved:
+                        achieved[leg.source] -= amount
+                    if leg.sink in achieved:
+                        achieved[leg.sink] += amount
+                if all(n not in others and achieved[n] == residuals[n] for n in group):
+                    effects.update(changes)
+                    continue
+                entries = []
+                near = []
+                outside = False
+                for name in sorted(group):
+                    actual = retained[name] = float(rational(levels[name]) - residuals[name])
+                    for level in (levels[name], *others.get(name, ())):
+                        target = float(level)
+                        band = run.comparison_band(name, actual, target)
+                        gap = actual - target
+                        entries.append((name, actual, target))
+                        near.append((name, f'{name} == {target:.17g}', gap, band))
+                        outside |= abs(gap) > band
+                run.recorder.entry(
+                    t, 'settle', 'stock placement', near=tuple(near), placements=tuple(entries)
+                )
+                if outside:
+                    targets = ', '.join(f'{n} targets {v:.17g} from {a:.17g}' for n, a, v in entries)
+                    failure = SimulationError(
+                        f'incompatible crossing levels of {", ".join(sorted(group))} at {t:g} h: {targets}'
+                    )
+                    failure.placements = tuple(entries)
+                    raise failure
+        # Both ends of each proposed transfer share the same amount. Check the
+        # combined change at each finite bound before any physical or gross post.
+        net = {}
+        for connection, delta in effects.items():
+            if delta:
+                leg = run.plan.connections[connection]
+                for end, change in ((leg.source, -delta), (leg.sink, delta)):
+                    if end is not None:
+                        net[end] = net.get(end, 0) + change
+        for store, change in net.items():
+            lower, upper = run.bounds[store]
+            if not change or not math.isfinite(lower if change < 0 else upper):
+                continue
+            before = (
+                rational(levels[store]) - residuals[store]
+                if store in residuals
+                else self.stock_balance(store, t)
+            )
+            after = before + change
+            if (change < 0 and after < rational(lower)) or (change > 0 and after > rational(upper)):
+                available = before - rational(lower) if change < 0 else rational(upper) - before
+                affected = [
+                    name
+                    for name, delta in effects.items()
+                    if delta and store in (run.plan.connections[name].source, run.plan.connections[name].sink)
+                ]
+                problem = SimulationError(
+                    f'the placement on {", ".join(affected)} at {t:g} h would change {store} '
+                    f'by {quantity(run.plan, store, float(change))} to {quantity(run.plan, store, float(after))}, '
+                    f'outside its range {span(run.plan, store, lower, upper)}; '
+                    f'{quantity(run.plan, store, float(available))} available'
+                )
+                problem.placements = ((store, float(before), float(after)),)
+                raise problem
+        run.occurrences.placed(effects, t)
         for connection, delta in effects.items():
             if delta:
                 leg = run.plan.connections[connection]
                 self.adjust(run.ways.instance_of(leg.source or leg.sink), connection, delta, t)
+        return retained
 
     def face_shares(self, name, bound, t):
         run = self.run
@@ -451,3 +529,27 @@ def _incidence_effects(plan, columns, residuals):
         for name, weight in columns[store]:
             effects[name] = effects.get(name, 0) + factor * weight
     return effects
+
+
+def _connected_placements(plan, columns):
+    """Only targets connected by a proposed physical correction constrain each other."""
+    neighbors = {stock: set() for stock in columns}
+    for stock, shares in columns.items():
+        for name, _ in shares:
+            leg = plan.connections[name]
+            for other in (leg.source, leg.sink):
+                if other in columns and other != stock:
+                    neighbors[stock].add(other)
+                    neighbors[other].add(stock)
+    seen = set()
+    for start in columns:
+        if start in seen:
+            continue
+        group, pending = [], [start]
+        while pending:
+            stock = pending.pop()
+            if stock not in seen:
+                seen.add(stock)
+                group.append(stock)
+                pending.extend(neighbors[stock])
+        yield group

@@ -70,7 +70,7 @@ from ..errors import SimulationError
 from .chance import Chance
 from .checkpoints import Breaks, Stopped
 from .collections import dynamic_value, index_of, kept, looked_up, reduced
-from .contacts import bound_values
+from .contacts import Placements, bound_values
 from .moment import Clock, Defined, Moment, quantity, span
 from .occurrences import Occurrences
 from .plan import (
@@ -995,7 +995,17 @@ class Run:
         except (SimulationError, ExpressionError, ArithmeticError) as problem:
             if self.arriving and self.moment.phase == 'stages':
                 self.finish_arrival()
-            details = {'violations': problem.violations} if hasattr(problem, 'violations') else {}
+            details = {
+                field: getattr(problem, field)
+                for field in ('violations', 'attempts', 'placements')
+                if hasattr(problem, field)
+            }
+            if 'attempts' in details or 'placements' in details:
+                # An inadmissible placement rejects the entire batch. Publish
+                # the accepted incoming balances and keep any outgoing stage unrun.
+                self.bound_at.clear()
+                self.accepted = self.now
+                self.ways.cut(self.now)
             return self.recorder.record(self.now, self.recorder.failure(self.now, str(problem), **details))
         return self.recorder.record(self.plan.horizon)
 
@@ -1064,7 +1074,7 @@ class Run:
                 coalesced = self.ways.coalesced_clock(at, instance)
                 if coalesced is not None:
                     moment = coalesced
-            levels = {}
+            levels = Placements()
             if at < moment and independent and not self.clock.within(at, moment):
                 # An internal switch settles its own stores. A correction to a supplier
                 # requires all of its readers to re-share at this event.
@@ -1082,10 +1092,10 @@ class Run:
                 # A flow at a store of a finished occurrence carries no rate up to the event.
                 self.occurrences.carried(self.now, at)
                 self.now = self.accepted = at
-                faces = bound_values(self.bounds, instance.contacts_at(at, self.clock.apart(at)))
-                faces.update(levels)
+                faces = Placements(bound_values(self.bounds, instance.contacts_at(at, self.clock.apart(at))))
+                faces.include(levels)
                 if faces:
-                    self.stock_state.faces(faces, at)
+                    levels.update(self.stock_state.faces(faces, at))
                 stores, rates, jumped = instance.step(levels) if levels else instance.step()
                 self.recorder.check_budget(at, internal=True)
                 changed = set(stores) | set(rates)
@@ -1121,7 +1131,7 @@ class Run:
             )
             self.ways.opening(moment)
             self.bound_at = bound_values(self.bounds, self.contacts)
-            levels = self.triggers.levels_at(moment, dict(self.bound_at))
+            levels = self.triggers.levels_at(moment, Placements(self.bound_at))
             if self.consumed:
                 self.consumed = {pair: times for pair, times in self.consumed.items() if max(times) >= moment}
             if self.contacts or not independent:
@@ -1129,11 +1139,11 @@ class Run:
                     for located, pair in way.crossed_operands(moment, threshold):
                         self.triggers.anchor(levels, *pair, moment, located)
                         self.consumed[tuple(map(nodes.text, pair))] = located, moment
-            self.bound_at.update(levels)
             self.accepted = moment
-            if self.bound_at:
-                self.stock_state.faces(self.bound_at, moment)
-            self.moved.update(levels)
+            if levels:
+                retained = self.stock_state.faces(levels, moment)
+                self.bound_at = {name: target for name, target in levels.items() if name not in retained}
+                self.moved.update(self.bound_at)
             self.arriving = True
             self.bare = (
                 moment == self.plan.horizon

@@ -342,15 +342,39 @@ class MovingAmounts:
             )
         return self.absolute_rates
 
-    def clock_legs(self, names, places, plan):
+    def clock_legs(self, names, places, plan, values):
         for row, name in enumerate(names):
             flow = plan.flows.get(name)
             if flow is None or flow.kind != 'directed' or name in plan.solved_flows:
                 continue
             polynomial = direct_clock_primitive(flow, plan)
+            if polynomial is None and flow.capacity is None and flow.request in values:
+                ends = (flow.source, 'outflow'), (flow.sink, 'inflow')
+                if plan.values[flow.request].kind == 'capture' and not any(
+                    key in plan.ends and plan.settled(plan.ends[key]) for key in ends
+                ):
+                    polynomial = (0, rational(values[flow.request]))
             if polynomial is not None:
                 self.clocks[row] = ClockLeg.of(polynomial, self.through, flow, places, plan)
         self.all_clock = bool(self.clocks) and len(self.clocks) == len(names)
+
+    def held_solution(self, rates, t):
+        """The installed solver has a fixed problem between bound changes. Use its
+        actual delivered rates, including every binding capacity and declared relation."""
+        for row, rate in enumerate(rates):
+            polynomial = (0, rational(rate))
+            previous = self.clocks.get(row)
+            if (
+                previous is not None
+                and previous.source is None
+                and previous.sink is None
+                and previous.polynomial == polynomial
+            ):
+                continue
+            total = self.amount(row)
+            leg = self.clocks[row] = ClockLeg(polynomial, t, None, None, False, False)
+            leg.closed = total
+        self.all_clock = bool(self.clocks)
 
     def select_clocks(self, lower, upper):
         for row, leg in self.clocks.items():

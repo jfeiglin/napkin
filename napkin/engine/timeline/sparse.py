@@ -694,7 +694,7 @@ class Sparse(Way):
         self.settings = vector.compiled(names)
         self.size = len(names)
         if self.stores:
-            self.amounts.clock_legs(self.net.connections, place, plan)
+            self.amounts.clock_legs(self.net.connections, place, plan, run.env)
         self.single_donor(values)
         self.identifiable = (
             self.amounts.single is None

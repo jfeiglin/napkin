@@ -42,7 +42,7 @@ from ..continuous.transfers import HeldAmounts
 from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import combined, looked_up
-from .contacts import put_bounds
+from .contacts import continued_lines, put_bounds
 from .plan import FORMULA, LOOKUP, REDUCE, Pending
 from .reads import Reads, lazily
 from .way import Way
@@ -382,7 +382,7 @@ class Family(Way):
             heapq.heappop(due)
         return due[0][0] if due else math.inf
 
-    def step(self):
+    def step(self, levels=()):
         """The next row that reaches its bound: the store is put on its bound, and the flow stops
         there. Gives the stores and the rates that change."""
         reach, k, _, bounded = heapq.heappop(self.due)
@@ -390,6 +390,8 @@ class Family(Way):
             if end >= 0:
                 self.y[end], self.since[end] = self._value(end, reach), reach
         put_bounds(self, self.y, self._bounds(reach, k, bounded))
+        if levels:
+            continued_lines(self, levels, reach)
         self._start(k, reach)
         stores = [self.stores[end] for end in (self.source[k], self.sink[k]) if end >= 0]
         return stores, [f'{self.flows[k]}.actual_rate'], True

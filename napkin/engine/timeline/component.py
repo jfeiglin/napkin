@@ -574,7 +574,7 @@ class ComponentWay(Way):
             if end and flow.source != flow.target:
                 single = system.index[end], (1 if flow.target else -1)
         self.amounts = MovingAmounts(len(system.flow_ids), t, single)
-        self.amounts.clock_legs(system.flow_ids, self.place, plan)
+        self.amounts.clock_legs(system.flow_ids, self.place, plan, run.env)
         self.single_donor(values)
         if single is None:
             self.component.field.leg_rates = lambda: self.component.field.delivered

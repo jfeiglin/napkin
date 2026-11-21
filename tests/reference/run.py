@@ -51,7 +51,7 @@ from statistics import NormalDist
 from typing import NamedTuple
 
 from . import network
-from .errors import Diagnostic, FrozenTransfer, NotCovered, Paused, RunFailed
+from .errors import Diagnostic, FrozenTransfer, NotCovered, Paused, PlacementConflict, RunFailed
 from .evaluate import (
     SINK,
     SOURCE,
@@ -94,6 +94,7 @@ class Entry(NamedTuple):
     step: object = None
     round: int = 0
     origin: str = ''
+    placements: tuple = ()
 
 
 def _allowance_root(volume, remaining, lo, hi):
@@ -185,6 +186,7 @@ class Run:
         self.components, self.component_of, self.solved_cells, self.settling = [], {}, set(), None
         self.moving, self.stops = [], []
         self.contacts, self.bound_contacts, self.contact_levels = [], [], {}
+        self.contact_targets = {}
         self.flow_numbers, self.occ_numbers = itertools.count(1), itertools.count(1)
         self.sites = _sites(model)
         self.error = self.paused = None
@@ -529,6 +531,7 @@ class Run:
                 f'the next moment after t = {t} h is a contact at an irrational time (about {float(first):.6g} h)'
             )
         self.contact_levels = {}
+        self.contact_targets = {}
         if known:
             moment = min(known)
             if moment - first <= self.config.crossing and self._grouped(moment):
@@ -543,6 +546,7 @@ class Run:
         for root, cell, bound in self.bound_contacts:
             if not isinstance(root, Irrational) and abs(root - delta) <= self.config.crossing:
                 self.contact_levels[cell] = bound, root
+                self.contact_targets.setdefault(cell, set()).add(bound)
         grouped = bool(self.contact_levels)
         for root, scope, pair, condition in self.contacts:
             if isinstance(root, Irrational) or abs(root - delta) > self.config.crossing:
@@ -563,15 +567,8 @@ class Run:
             if len(cells) == 1:
                 (cell,) = cells
                 level = at_root.cells[cell]
-                existing, placement = self.contact_levels.get(cell, (None, root))
-                if existing is not None:
-                    band = max(self.config.rtol, self.config.atol_factor) * max(
-                        self.own_scales[cell], abs(existing), abs(level)
-                    )
-                    if abs(existing - level) > band:
-                        raise RunFailed(f'incompatible crossing levels of {label(cell)} at {moment} h')
-                    level = existing
-                self.contact_levels[cell] = level, placement
+                self.contact_targets.setdefault(cell, set()).add(level)
+                self.contact_levels.setdefault(cell, (level, root))
                 continue
             at_root.t = moment
             at_root.cells.update((c, p(delta)) for c, p in view.levels.items())
@@ -590,7 +587,8 @@ class Run:
         """Directed corrections for all single-store placements, using the incoming polynomials."""
         levels = self.view.levels
         residual = {cell: target - levels[cell](tau) for cell, (target, _) in self.contact_levels.items()}
-        if not any(residual.values()):
+        pending = [c for c, delta in residual.items() if delta or len(self.contact_targets[c]) > 1]
+        if not pending:
             return self.moving, {}, {}
         rates = {name: poly for _, _, poly, name in self.moving}
         legs = sorted(
@@ -606,7 +604,6 @@ class Run:
         placements = dict(self.contact_levels)
         incidence = {}
         distributions = []
-        pending = [cell for cell, difference in residual.items() if difference]
         while pending:
             cell = pending.pop()
             if cell in incidence:
@@ -631,9 +628,12 @@ class Run:
                 eligible = [i for i, sign in enumerate(signs) if sign * direction > 0]
                 if not eligible:
                     eligible = [i for i, sign in enumerate(signs) if sign]
-                weights[eligible[0]] = 1
+                if eligible:
+                    weights[eligible[0]] = 1
             total = sum(weights)
-            distributions.append([Fraction(weight * sign, total) for weight, sign in zip(weights, signs)])
+            distributions.append(
+                [Fraction(weight * sign, total or 1) for weight, sign in zip(weights, signs)]
+            )
             # The reference omits constant levels from its polynomial table. Follow only
             # adjusted legs to discover an exactly placed or stationary endpoint they can reopen.
             for weight, (src, dst, _, _) in zip(weights, moving):
@@ -648,17 +648,10 @@ class Run:
                             continue
                         placements[other], residual[other] = (level, tau), 0
                     pending.append(other)
-        # A correction to a leg with two placed endpoints also moves the other endpoint.
-        equations = [
-            ([sum(s * w for s, w in zip(signs, shares)) for shares in distributions], residual[cell])
-            for cell, signs in incidence.items()
-        ]
-        solution = solve_affine(equations, len(distributions))
-        if solution is None:
-            raise RunFailed('incompatible crossing levels of ' + ', '.join(map(label, residual)))
+        factors = self._placement_factors(tau, placements, incidence, distributions, residual)
         amounts, changes = {}, Counter()
         for (src, dst, _, name), weights in zip(moving, zip(*distributions)):
-            adjustment = sum(w * factor for w, factor in zip(weights, solution[0]))
+            adjustment = sum(w * factor for w, factor in zip(weights, factors))
             if adjustment:
                 amounts[name] = adjustment
                 if src is not None:
@@ -667,10 +660,92 @@ class Run:
                     changes[dst] += adjustment
         return moving, amounts, changes
 
-    def _frozen_error(self, tau, violations):
+    def _placement_factors(self, tau, placements, incidence, distributions, residual):
+        """Solve each set of constraints that acts on shared legs independently."""
+        cells = list(incidence)
+        adjacent = [set() for _ in cells]
+        for j, weights in enumerate(distributions):
+            for i, cell in enumerate(cells):
+                if i != j and any(w and s for w, s in zip(weights, incidence[cell])):
+                    adjacent[i].add(j)
+                    adjacent[j].add(i)
+        factors = [0] * len(cells)
+        remaining = set(range(len(cells)))
+        while remaining:
+            pending = [min(remaining)]
+            group = []
+            while pending:
+                i = pending.pop()
+                if i in remaining:
+                    remaining.remove(i)
+                    group.append(i)
+                    pending.extend(adjacent[i] & remaining)
+            equations, readings = [], []
+            for i in group:
+                cell = cells[i]
+                target = placements[cell][0]
+                actual = target - residual[cell]
+                row = [sum(s * w for s, w in zip(incidence[cell], distributions[j])) for j in group]
+                for level in self.contact_targets.get(cell, {target}):
+                    equations.append((row, level - actual))
+                    readings.append((label(cell), actual, level, self.own_scales[cell]))
+            solution = solve_affine(equations, len(group))
+            if solution is not None:
+                for i, coefficient in zip(group, solution[0]):
+                    factors[i] = coefficient
+                continue
+            details = tuple(sorted((name, actual, target) for name, actual, target, _ in readings))
+            at = self.view.t + tau
+            self.trace.append(Entry('near-tie', at, 'stock placement', placements=details))
+            factor = max(self.config.rtol, self.config.atol_factor)
+            if any(abs(a - b) > factor * max(scale, abs(a), abs(b)) for _, a, b, scale in readings):
+                raise PlacementConflict(at, details)
+        return factors
+
+    def _frozen_placement(self, tau, moving, corrections):
+        """Check one simultaneous placement against the gross books of its frozen endpoints."""
+        if not corrections:
+            return None
+        routes = {flow.label for flow in self.view.live if flow.kind == 'reversible'}
+        changes, additions = Counter(), {}
+        for src, dst, rate, name in moving:
+            if name not in corrections:
+                continue
+            orientation = 1
+            leg = name
+            if name in routes:
+                incoming = rate(Poly([tau, -1])).sign_after()
+                orientation = -1 if incoming < 0 else 1
+                leg += '.forward' if orientation == 1 else '.backward'
+            gross = orientation * corrections[name]
+            for cell, sign in ((src, -orientation), (dst, orientation)):
+                owner = _holder(cell.owner) if cell is not None else None
+                if not isinstance(owner, Occ) or self.view.cells[Cell(owner, 'active')]:
+                    continue
+                side = 'inflow' if sign > 0 else 'outflow'
+                key = cell, side
+                changes[key] += gross
+                if gross > 0:
+                    additions.setdefault(key, []).append((label(cell), side, leg, gross))
+        violations = [
+            (*item, self.config.atol_factor * self.own_scales[key[0]])
+            for key, delta in changes.items()
+            if self.transferred.get(key, 0) + delta > self.config.atol_factor * self.own_scales[key[0]]
+            for item in additions.get(key, ())
+        ]
+        if violations:
+            return self._frozen_error(tau, [row[:3] for row in violations], violations)
+        for key, delta in changes.items():
+            self.transferred[key] = self.transferred.get(key, 0) + delta
+        return None
+
+    def _frozen_error(self, tau, violations, attempts=()):
         order = {c.label: c.number for f in self.view.live for c in network.connections(f)}
         names = sorted(violations, key=lambda v: (v[0], v[1] != 'outflow', order[v[2]]))
-        return FrozenTransfer(self.view.t + tau, names)
+        attempted = {row[:3]: row for row in attempts}
+        return FrozenTransfer(
+            self.view.t + tau, names, [attempted[name] for name in names if name in attempted]
+        )
 
     def _advance(self, nxt):
         """Move every store exactly to the time `nxt`, and account for what each flow carried."""
@@ -680,9 +755,35 @@ class Run:
         if failure is not None:
             tau, problem = failure
             nxt = view.t + tau
-        moving, corrections, changes = (
-            self._placements(tau) if self.contact_levels and failure is None else (self.moving, {}, {})
-        )
+        moving, corrections, changes = self.moving, {}, {}
+        if self.contact_levels and failure is None:
+            try:
+                moving, corrections, changes = self._placements(tau)
+                for cell, difference in changes.items():
+                    if difference:
+                        lower, upper = view.bounds.get(cell, (None, None))
+                        start = view.levels[cell](tau) if cell in view.levels else view.cells[cell]
+                        proposed = start + difference
+                        if (lower is not None and proposed < lower) or (
+                            upper is not None and proposed > upper
+                        ):
+                            room = start - lower if difference < 0 else upper - start
+                            legs = [
+                                f'{name} by {abs(corrections[name])}'
+                                for src, dst, _, name in moving
+                                if name in corrections
+                                and (int(dst == cell) - int(src == cell)) * corrections[name] * difference > 0
+                            ]
+                            raise RunFailed(
+                                f'placement at {nxt} h would put {label(cell)} at {proposed}, '
+                                f'outside its range [{lower}, {upper}]; {", ".join(legs)}, available {room}'
+                            )
+                problem = self._frozen_placement(tau, moving, corrections)
+            except RunFailed as rejected:
+                problem = rejected
+            if problem is not None:
+                failure = tau, problem
+                moving, corrections, changes = self.moving, {}, {}
         for src, dst, p, name in moving:
             if p.c != (0,) or name in corrections:
                 self.ledger.append(
@@ -690,7 +791,8 @@ class Run:
                 )
         for cell, p in view.levels.items():
             view.cells[cell] = p(tau) + changes.get(cell, 0)
-            self._in_range(cell, view.cells[cell])
+            if failure is None:
+                self._in_range(cell, view.cells[cell])
         for cell in changes.keys() - view.levels.keys():
             view.cells[cell] += changes[cell]
             self._in_range(cell, view.cells[cell])
@@ -698,7 +800,7 @@ class Run:
             view.results[var] = p(tau)
         view.t, view.levels, view.rates = nxt, {}, {}
         if failure is not None:
-            raise problem
+            raise failure[1]
 
     def _moment(self, setup=False):
         t = self.view.t

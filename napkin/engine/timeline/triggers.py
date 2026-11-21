@@ -681,15 +681,7 @@ class Triggers:
                     return side(left) - side(right)
 
                 value = _inverse_level(at_root, self.run.bounds[name], residual)
-            if name in levels:
-                old = levels[name]
-                store = nodes.ref(name)
-                if self.plan.units.comparisons.ordered('ne', store, store, old, value):
-                    raise SimulationError(
-                        f'incompatible crossing levels of {name} at {t:g} h: {old:g} and {value:g}'
-                    )
-                value = old
-            levels[name] = value
+            levels.add(name, value)
             tx.writes[name] = value
             a, b = side(left), side(right)
         gap, band = self.plan.units.comparisons.gap_band(left, right, a, b, side)

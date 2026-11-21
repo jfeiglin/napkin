@@ -494,8 +494,54 @@ class Occurrences:
             if run.clock.within(at, cutoff)
             for c in contributors
         )
+        self._violation(cutoff, violations)
+
+    def placed(self, effects, t):
+        """Settle all instantaneous placement differences against frozen gross allowances together."""
+        if not self.watched():
+            return
+        totals = {}
+        contributors = {}
+        for name, delta in effects.items():
+            if not delta:
+                continue
+            leg = self.plan.connections[name]
+            for store, side in ((leg.source, 'outflow'), (leg.sink, 'inflow')):
+                if store not in self.watched():
+                    continue
+                key = store, side
+                totals[key] = totals.get(key, 0) + delta
+                if delta > 0:
+                    contributors.setdefault(key, []).append(name)
+        attempts, updated = [], {}
+        for store, side in sorted(totals, key=lambda key: (key[0], SIDES.index(key[1]))):
+            key = store, side
+            exact, measured = self.transferred.get(key, (0, 0))
+            exact += totals[key]
+            updated[key] = exact, measured
+            allowance = rational(self.plan.numerics.atol_factor) * rational(self.run.own_scale(store))
+            remaining = allowance - exact
+            if float(measured) > float(remaining) if measured else remaining < 0:
+                attempts.extend(
+                    (store, side, name, float(effects[name]), float(allowance))
+                    for name in sorted(contributors.get(key, ()), key=self.plan.number)
+                )
+        if attempts:
+            self._violation(t, tuple(item[:3] for item in attempts), tuple(attempts))
+        self.transferred.update(updated)
+
+    def _violation(self, cutoff, violations, attempts=()):
+        run = self.run
         messages = []
-        for store, side, connection in violations[:5]:
+        for i, (store, side, connection) in enumerate(violations[:5]):
+            if attempts:
+                _, _, _, correction, allowance = attempts[i]
+                messages.append(
+                    f'the placement on {connection} would add {quantity(self.plan, store, correction)} '
+                    f'to the {side} of frozen stock {store} at t = {cutoff:g} h, exceeding '
+                    f'its allowance of {quantity(self.plan, store, allowance)}'
+                )
+                continue
             rate = f'{connection}.actual_rate'
             amount = in_unit(self.plan.units, run.value(rate, cutoff), self.plan.values[rate].unit)
             direction = 'out of' if side == 'outflow' else 'into'
@@ -510,6 +556,8 @@ class Occurrences:
         run.now = cutoff
         problem = SimulationError('; '.join(messages))
         problem.violations = violations
+        if attempts:
+            problem.attempts = attempts
         raise problem
 
     def waiting(self):

@@ -111,7 +111,7 @@ from ..continuous.walk import walked
 from ..errors import SimulationError
 from ..solve import FLOW, OTHER, Budget, Problem, SolveFailure, Solver
 from .collections import selected
-from .contacts import put_bounds, put_lines
+from .contacts import continued_lines, put_bounds, put_lines
 from .family import Columns, due_through
 from .lines import asked_of
 from .network import (
@@ -1097,12 +1097,14 @@ class DeclaredWay(Way):
         """The flow values, carried leg rates and results of the current sharing."""
         return self._published(self.value, self.results, self.former.requests)
 
-    def step(self):
+    def step(self, levels=()):
         """The next lines that reach their bounds: the stores are put on them, and the problem is
         solved again. Gives the stores whose lines and the rates and results whose values change."""
         reach = self.peek()
         self.run.now = reach
         met = [self.place[name] for name in put_lines(self, reach, reach)]
+        if levels:
+            met.extend(continued_lines(self, levels, reach))
         changed = self._solve(reach)
         return self._lines(reach, forced=met), changed, True
 
@@ -1176,7 +1178,7 @@ class MovingDeclared(DeclaredWay):
         # floor belongs to the unit and must be the same when this instance is restored.
         self.atol = np.array([run.amount_tolerance(name) for name in self.stores])
         self.amounts = MovingAmounts(len(self.leg_rows), t, None)
-        self.amounts.clock_legs(self.leg_rows, self.place, self.plan)
+        self.amounts.clock_legs(self.leg_rows, self.place, self.plan, run.env)
         self.single_donor(values)
         leg_scales = self.amounts.tolerances(run, (f'{name}.actual_rate' for name in self.leg_rows))
         self.step_atol = np.concatenate((self.atol, leg_scales))
@@ -1189,6 +1191,14 @@ class MovingDeclared(DeclaredWay):
         dependencies = self.plan.field_inputs(
             self.plan.expansion_of({name for node in sources for name in nodes.names(node)})
         )
+        self.held_problem = not (
+            dependencies.time
+            or dependencies.stepped
+            or connected.rates
+            or not dependencies.leaves.isdisjoint(self.plan.moving)
+        )
+        if self.held_problem:
+            self.donor = None
         formulas = {
             name: value.node
             for name in dependencies.formulas | {node.name for node in fields}
@@ -1379,6 +1389,8 @@ class MovingDeclared(DeclaredWay):
             self.low, self.high = self.low & ~leaving, self.high & ~leaving
         self.recorder.entry(t, 'solve', self.declared.origin, self.declared.member)
         changed = self._publish(t, flows, results)
+        if self.held_problem:
+            self.amounts.held_solution(self.physical_rates(flows), t)
         self.set_resting(
             {
                 self.stores[s]: self.lower[s] if self.low[s] else self.upper[s]
@@ -1579,14 +1591,14 @@ class MovingDeclared(DeclaredWay):
         event ended the segment (a plain segment, which ends before a failure, has none)."""
         segment = self.pending
         self._commit(segment.end)
+        self.run.now = segment.end
+        if segment.event:
+            self._put_contacts(segment.event, self.run.clock.apart(segment.end))
         for name in levels:
             if name in self.place:
                 self.y[self.place[name]] = levels[name]
-        self.run.now = segment.end
         if segment.plain:
             return list(self.stores), sorted(set(self.recorded) | set(self.connected.results)), False
-        if segment.event:
-            self._put_contacts(segment.event, self.run.clock.apart(segment.end))
         contacted = {pair: at for at, pair, kind in segment.event or () if kind == 'switch'}
         changed = self._settle(segment.end, contacted)
         return list(self.stores), sorted(set(changed) | set(self.recorded)), bool(segment.event)

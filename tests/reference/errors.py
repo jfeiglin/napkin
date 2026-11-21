@@ -14,12 +14,21 @@ class RunFailed(Exception):
 class FrozenTransfer(RunFailed):
     """All the directed legs contributing to the first group of frozen allowance violations."""
 
-    def __init__(self, time, violations):
+    def __init__(self, time, violations, attempts=()):
         self.violations = tuple(violations)
+        self.attempts = tuple(attempts)
+        amounts = {row[:3]: row[3:] for row in attempts}
         messages = []
         for store, side, connection in self.violations[:5]:
             way = 'into' if side == 'inflow' else 'out of'
             owner = store.rsplit('.', 1)[0]
+            if (store, side, connection) in amounts:
+                quantity, allowance = amounts[store, side, connection]
+                messages.append(
+                    f'{connection} would correct {store} {side} by {quantity} at t = {time} h '
+                    f'with a frozen allowance of {allowance}'
+                )
+                continue
             messages.append(
                 f'the flow {connection} carries a rate {way} {store} at t = {time} h: '
                 f'{store} belongs to the finished occurrence {owner}, which is frozen'
@@ -27,6 +36,16 @@ class FrozenTransfer(RunFailed):
         if len(self.violations) > 5:
             messages.append(f'{len(self.violations) - 5} more')
         super().__init__('. '.join(messages))
+
+
+class PlacementConflict(RunFailed):
+    """The accepted trajectory misses a target of an incompatible placement group."""
+
+    def __init__(self, time, placements):
+        self.placements = placements
+        details = ', '.join(f'{name} at {actual} with target {target}' for name, actual, target in placements)
+        names = ', '.join(dict.fromkeys(name for name, _, _ in placements))
+        super().__init__(f'incompatible crossing levels of {names} at {time} h: {details}')
 
 
 class Diagnostic(RunFailed):

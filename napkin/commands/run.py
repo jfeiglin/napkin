@@ -534,6 +534,13 @@ def document(model, entry, args, configuration, times, found, stopped):
         'violations': [
             {'stock': stock, 'direction': side, 'leg': leg} for stock, side, leg in found.violations
         ],
+        'attempts': [
+            {'stock': stock, 'direction': side, 'leg': leg, 'correction': correction, 'allowance': allowance}
+            for stock, side, leg, correction, allowance in found.attempts
+        ],
+        'placements': [
+            {'stock': stock, 'actual': actual, 'target': target} for stock, actual, target in found.placements
+        ],
         'diagnostics': [common.problem_json(item) for item in stopped],
         'warnings': [common.problem_json(item) for item in model.reports],
     }

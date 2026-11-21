@@ -371,6 +371,72 @@ def test_a_near_tie_of_the_run_is_listed_under_the_table(tmp_path, capsys):
     assert tie['difference'] == (0.1 + 0.2) - 0.3
 
 
+@pytest.mark.parametrize('same_end', [False, True], ids=['two-ends', 'same-end'])
+@pytest.mark.parametrize('outside', [False, True], ids=['within-band', 'outside-band'])
+def test_a_grouped_placement_reports_each_targets_own_band(tmp_path, capsys, same_end, outside):
+    from napkin.engine import run
+    from napkin.engine.report import report
+    from napkin.model.compile import load_scenario
+    from napkin.program.artifact import loads
+    from napkin.program.config import Configuration, Request
+
+    gap = 5e-9 if outside else 1e-10
+    target = 3 + gap if same_end else 1 - gap
+    other = 'yard.a' if same_end else 'yard.b'
+    guard = f'this.a <= {target} L' if same_end else f'this.b >= {target} L'
+    model = package(
+        tmp_path / 'pipe',
+        f"""scenario "Two targets on a closed pipe"
+    horizon 1 h
+yard:
+    a: L = 4 L
+    b: L = 0 L
+    flow pipe: this.a -> this.b
+        request = 1 L/h
+    first = event():
+        when this.a <= 3 L:
+            this.first.start()
+        after 0 h
+    second = event():
+        when {guard}:
+            this.second.start()
+        after 0 h
+    clock = event():
+        after 1 h
+yard.clock.start()
+""",
+        UNITS,
+    )
+    result = napkin(capsys, 'run', model, '--json', '--at', '1h', '--value', 'yard.a')
+    assert result.code == int(outside), result.err
+    doc = result.doc
+    assert doc['values']['yard.a']['values'] == [3]
+    assert bool(doc['stopped']) == outside
+
+    artifact = loads(load_scenario(model).artifact().data())
+    (model / 'model.scn').unlink()
+    config = Configuration(Request(1))
+    found = report(
+        run(artifact.program, config), artifact.program, config, ['yard.a'], [1], table=artifact.table
+    )
+    assert found.end == 1 and found.stopped == doc['stopped']
+    assert found.values[0].values == (3,)
+    actual = 3 if same_end else 1
+    expected = {('yard.a', 3, 3), (other, actual, target)} if outside else set()
+    assert set(found.placements) == expected
+    assert {(item['stock'], item['actual'], item['target']) for item in doc['placements']} == expected
+
+    public = {tie.comparison: tie for tie in found.near_ties if tie.kind == 'settle'}
+    cli = {row['comparison']: row for row in doc['near_ties'] if row['kind'] == 'settle'}
+    second = f'{other} == {target:.17g}'
+    assert set(public) == set(cli) == {'yard.a == 3', second}
+    for comparison, relation in [('yard.a == 3', 'within'), (second, 'outside' if outside else 'within')]:
+        tie = public[comparison]
+        assert tie.message == cli[comparison]['message']
+        assert f'{relation} the tolerance' in tie.message
+        assert (abs(tie.difference) > tie.tolerance) == (relation == 'outside')
+
+
 @pytest.mark.parametrize('checks, omitted', [('zedcba', '1 more source'), ('zfedcba', '2 more sources')])
 def test_the_text_counts_five_near_tie_sources_and_the_json_keeps_every_entry(
     tmp_path, capsys, checks, omitted

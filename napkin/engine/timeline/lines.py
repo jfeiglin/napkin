@@ -42,7 +42,7 @@ import numpy as np
 
 from ..continuous.transfers import HeldAmounts
 from ..errors import SimulationError
-from .contacts import put_lines
+from .contacts import continued_lines, put_lines
 from .family import Columns, due_through
 from .network import BACKWARD, FORWARD, IN, OUT, ROUNDOFF, SIDES, Asked, Instant, network_of
 from .way import Way
@@ -400,7 +400,7 @@ class Lines(Way):
             heapq.heappop(due)
         return due[0][0] if due else math.inf
 
-    def step(self):
+    def step(self, levels=()):
         """The next line that reaches its bound: the store is put on its bound, and the parts of its
         flows are solved again. Gives the stores whose lines and the rates whose values change."""
         reach = self.peek()
@@ -409,7 +409,7 @@ class Lines(Way):
         self.run.now = reach
         before = self.value.copy()
         versions = self.version.copy()
-        self._moment(reach, (), forced=(s,))
+        self._moment(reach, (), forced=(s, *continued_lines(self, levels, reach)) if levels else (s,))
         stores = [self.stores[k] for k in np.flatnonzero(self.version != versions).tolist()]
         rates = [self.recorded[g] for g in np.flatnonzero(self.value != before).tolist()]
         return stores, rates, True

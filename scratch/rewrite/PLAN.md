@@ -378,6 +378,17 @@ These override the text of this plan below, wherever the two differ. The owner's
     can require additional transfer, and a cut after the crossing can require returning transfer.
     Apply the same signed correction at the two endpoints of each physical leg.
 
+    A placement correction is atomic. If any part would violate a rule, reject all its
+    adjustments, keep the state and transfers accepted up to that instant, and fail there.
+    For a frozen allowance, report the stock, physical leg, attempted amount and allowance.
+
+    If grouped exact targets require different amounts on a shared physical leg, keep the
+    clock group and report a near-tie. Leave the conflicting legs at their incoming trajectory
+    amounts at the group's time. Check each affected stock against its own comparison band
+    for each target. Continue if all pass, including independent compatible placements. If
+    any misses its band, fail by name and report the conflicting targets. This extends the
+    several-store comparison rule above. These are the owner's 2026-11-21 rulings.
+
     Group frozen-stock allowance violations at the first failure moment within the crossing
     tolerance. List every contributing leg by stock name, outflow before inflow, then declaration
     order. Name the first five in the text and count the rest. Retain the entire ordered list in

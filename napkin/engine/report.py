@@ -170,6 +170,8 @@ class Report:
     stopped: str | None = None
     records: tuple[tuple[str, str, str], ...] = ()
     violations: tuple[tuple[str, str, str], ...] = ()
+    attempts: tuple[tuple[str, str, str, float, float], ...] = ()
+    placements: tuple[tuple[str, float, float], ...] = ()
 
 
 def report(record, program, configuration, paths, times, lags=None, model=None, options=(), *, table=None):
@@ -225,9 +227,20 @@ def report(record, program, configuration, paths, times, lags=None, model=None, 
             read_at = list(times)
         title = _title(model, key.owner)
         reported.append(Reported(path, unit, label, values, lag, note, trail.of(key, read_at), title))
-    violations = record.failure.detail('violations') if record.failure is not None else None
+
+    def failure_details(key):
+        return (record.failure.detail(key) or ()) if record.failure is not None else ()
+
     return Report(
-        times, tuple(reported), _near_ties(record, model), end, stopped, trail.records(), violations or ()
+        times,
+        tuple(reported),
+        _near_ties(record, model),
+        end,
+        stopped,
+        trail.records(),
+        failure_details('violations'),
+        failure_details('attempts'),
+        failure_details('placements'),
     )
 
 
@@ -370,13 +383,16 @@ def _near_ties(record, model=None):
     for entry, (origin, comparison, difference, tolerance) in record.near_ties():
         gap = Decimal(difference) if isinstance(difference, str) else difference
         band = Decimal(tolerance) if isinstance(tolerance, str) else tolerance
+        placement = entry.kind == 'settle' and entry.part == 'stock placement'
+        relation = 'outside' if placement and abs(gap) > band else 'within'
         difference_text = (
             f'located at {entry.detail("located"):.17g} h, difference {difference:+.3g} h, '
             f'tolerance {tolerance:.3g} h'
             if entry.kind == 'contact'
-            else f'its sides differ by {gap:.3g}, within the tolerance {band:.3g} of what it reads'
+            else f'its sides differ by {gap:.3g}, {relation} the tolerance {band:.3g} of what it reads'
         )
-        message = f'{origin} at {float(entry.t):g} h: {_NEAR[entry.kind]}: {comparison} ({difference_text})'
+        reason = 'the grouped placements kept the incoming stock levels' if placement else _NEAR[entry.kind]
+        message = f'{origin} at {float(entry.t):g} h: {reason}: {comparison} ({difference_text})'
         title = _title(model, entry.owner)
         found.append(
             NearTie(

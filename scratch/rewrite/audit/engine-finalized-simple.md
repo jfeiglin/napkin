@@ -17,6 +17,8 @@ Held intervals accrue rate times elapsed time. Moving intervals use the method's
 
 When a located contact places a single store on a bound or a threshold, the incoming direction determines which legs receive the signed placement correction. Weight them by their pre-contact rates and use declaration order if none is flowing toward the value. A late cut can reduce a leg’s previously computed transfer. Both endpoints account for the correction. [Owner ruling](../spec.md#state-owned-by-an-invocation)
 
+Run state validates each complete placement before changing any ledger. On failure the accepted prefix remains available and all proposed adjustments are rejected. A frozen rejection names the attempted amount and allowance for the contributing stock and leg. Conflicting exact targets on a shared leg keep the timeline group intact and generate a near-tie. Run state leaves those legs on their trajectory and checks each stock’s own comparison band. A miss names all conflicting targets. [Owner rulings](../PLAN.md#changes-after-g0)
+
 One engine owner holds `engine/allocation.py`, `engine/continuous/{fields,integrate,kernels,segment,transfers}.py`, `engine/timeline/{component,declared,family,lines,sparse,run,ways,moment,occurrences,checkpoints,saved}.py`, the stage-target changes in `engine/timeline/plan.py`, and the run-state writer. The recorder owns retained histories and their piece budget. Engine stage writes follow accounting. Land allocation on the topic branch before prototyping settlement. If the specification leaves a result open, park that case, collect questions for the owner and continue independent items.
 
 ## Cross-method rules

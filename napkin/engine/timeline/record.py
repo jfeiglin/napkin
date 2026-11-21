@@ -709,7 +709,10 @@ class Recorder:
         )
         made = Record(manifest, tuple(held), trace, failure)
         if not ongoing:
-            if self.run is not None and (pause is not None or (failure is None and end == self.plan.horizon)):
+            rejected = failure is not None and (failure.detail('attempts') or failure.detail('placements'))
+            if self.run is not None and (
+                pause is not None or rejected or (failure is None and end == self.plan.horizon)
+            ):
                 made = self.run.stock_state.project(made)
             made = _finished(made)
         # At a provisional end the recorded outgoing slopes still count. At a true end
