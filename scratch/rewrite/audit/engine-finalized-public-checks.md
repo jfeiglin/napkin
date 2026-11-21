@@ -1,6 +1,6 @@
 # Public execution and migration checks
 
-Candidate `fc9a9ed7fc9c6086f2ac38b27379f2cd14e71864` passed the public CLI, artifact-only and migration checks against legacy `8488047dbb7eafee1f5582cf59839c6bea0cf8cd`. The migration harness exported both commits and ran each engine in its own process. The piano and reservoir translations used here match the audited `6202824` baseline.
+Candidate `caecf1003c980821a235f264bd10c23d052734e1` passed the public CLI, artifact-only and migration checks against legacy `8488047dbb7eafee1f5582cf59839c6bea0cf8cd`. The migration harness exported both commits and ran each engine in its own process. The piano and reservoir translations used here match the audited `6202824` baseline.
 
 ## Current audit and valve results
 
@@ -40,7 +40,7 @@ With the default reservoir inputs, the public CLI reported water fractions of 0.
 | Piano, 12 distinct legacy productivity draws (seeds 0–11) | At 0, 4380 and 8760 h, 144 comparisons of productivity, due, completed and published totals. Another 24 compare the candidate's actual rate to the legacy balance change over each half-year. | 2.274e-13 tunings/tuner/year in productivity, 6.821e-13 tunings due, 9.095e-13 tunings completed or published, 1.110e-16 tunings/h in realized rate |
 | Reservoir, 12 input configurations | At 0, 24, 40, 60, 80, 96 and 120 h, 252 comparisons of water, cumulative spill and risk duration. Inflow was 0.03 or 0.06 fraction/day, spillway was 0.06 or 0.15 fraction/day and risk threshold was 0.6, 0.7 or 0.8 fraction. | 3.331e-16 fraction for water, 7.216e-16 fraction for spill, 5.544e-8 h for risk duration |
 
-The compressed CSV retains all 432 rows with the exact exported readings, including the realized productivity or reservoir inputs, time, unit and analytical expectation. All 252 reservoir rows and 168 piano rows have direct legacy comparisons. The other 12 rows are the candidate's initial piano rates, checked against the analytical rate before the first legacy interval-rate reading. [Paired and analytical readings](engine-finalized-migration-readings.csv.gz)
+The compressed CSV retains all 432 rows with the exact exported readings, including the realized productivity or reservoir inputs, time, unit and analytical expectation. All 252 reservoir rows and 168 piano rows have direct legacy comparisons. The other 12 rows are the candidate's initial piano rates, checked against the analytical rate before the first legacy interval-rate reading. The compressed observations from this run were byte-identical to those from `fc9a9ed`, with SHA-256 `c0861524444e258a9ea171cdbd6176629e951a4b3b6ebafdc85ba89ada718f26`. [Paired and analytical readings](engine-finalized-migration-readings.csv.gz)
 
 Every paired run reached its horizon. Each version also agreed with the analytical solution for each paired input. The candidate's maximum deviations for reservoir water, spill and risk duration were 4.441e-16 fraction, 7.355e-16 fraction and 8.527e-14 h. An independent 24-case suite passed using the candidate sampler's own 12 piano draws and the full analytical reservoir sweep. [Independent analytical tests](../a5/test_port_readiness.py)
 
@@ -63,5 +63,5 @@ python -m napkin compile examples/piano_tuners --json
 python -m napkin run examples/piano_tuners --value tunings_done --at 0h,4380h,8760h --json
 python -m napkin run scratch/rewrite/a5/translated/now/examples/reservoir --at 0h,24h,40h,60h,80h,96h,120h \
     --value reservoir.water,reservoir.spilled,reservoir.risk_time --json
-python scratch/rewrite/a5/paired_migrations.py --candidate fc9a9ed7fc9c6086f2ac38b27379f2cd14e71864
+python scratch/rewrite/a5/paired_migrations.py --candidate caecf1003c980821a235f264bd10c23d052734e1
 ```
