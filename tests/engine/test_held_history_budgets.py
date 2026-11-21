@@ -15,6 +15,7 @@ from napkin.program.build import (
     SINK,
     Builder,
     after,
+    assign,
     event,
     flow,
     formula,
@@ -213,13 +214,24 @@ def test_summed_held_connections_keep_the_same_budget_failure_and_checkpoint_pro
         value('combined', 'L/h', formula(this.a.actual_rate + this.b.actual_rate)),
         value('alias', 'L/h', formula(this.combined)),
     )
+    b.setup(assign(named('plant').left, q(4, 'L')))
     program = b.finish()
     check = Recorder.check_budget
 
-    def observe(pieces, horizon, exact):
+    def observe(pieces, horizon, exact, restore=False):
         config = Configuration(Request(horizon, everything=not keys, keys=keys, pieces=pieces))
-        engine = Run(Plan.of(program, config))
+        engine = Run(Plan.of(program, config), (Breakpoint('setup[0]'),) if restore else ())
         prefixes = []
+
+        def execute():
+            nonlocal engine
+            result = engine.run()
+            if restore:
+                assert isinstance(result, Checkpoint)
+                prefixes.append((result.stop.t, result.record))
+                engine = Run.restored(Plan.of(program, config), loads(dumps(result)))
+                return engine.resume()
+            return result
 
         def budget(recorder, end, **options):
             check(recorder, end, **options)
@@ -230,9 +242,9 @@ def test_summed_held_connections_keep_the_same_budget_failure_and_checkpoint_pro
         with patch.object(Recorder, 'check_budget', budget):
             if exact:
                 with patch.object(Recorder, '_held_piece_bound', return_value=(math.inf, 0)):
-                    result = engine.run()
+                    result = execute()
             else:
-                result = engine.run()
+                result = execute()
         assert all(isinstance(way, Lines) for way in engine.ways.instances)
         return result, prefixes, engine.recorder
 
@@ -242,3 +254,5 @@ def test_summed_held_connections_keep_the_same_budget_failure_and_checkpoint_pro
     total = sum(len(history.pieces) for history in complete.histories)
     for horizon, pieces in [(0, 1), (0, 100_000), (6, 1), (6, total - 1), (6, total), (6, total + 1)]:
         assert observe(pieces, horizon, False)[:2] == observe(pieces, horizon, True)[:2]
+    for limit in (total - 1, 100_000):
+        assert observe(limit, 6, False, restore=True)[:2] == observe(limit, 6, True, restore=True)[:2]
