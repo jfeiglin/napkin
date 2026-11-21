@@ -1,5 +1,6 @@
 """Separate directed amounts must keep a store exactly on a face during balanced service."""
 
+import math
 from dataclasses import replace
 from fractions import Fraction
 
@@ -7,6 +8,52 @@ import pytest
 
 from napkin.engine.timeline import Plan, Run
 from napkin.model.compile import compile_text
+
+
+@pytest.mark.parametrize('method', ['component', 'sparse', 'moving_declared'])
+def test_a_stock_leaves_its_face_when_a_stationary_start_has_a_curved_future(method, monkeypatch):
+    # All stocks downstream of a start empty. The last tank has zero initial
+    # derivative and positive curvature, so its actual inflow cannot be cancelled.
+    source = """scenario "Three equal tanks in series"
+    horizon 1 h
+p:
+    a: L = 1 L in [0 L,]
+    b: L = 0 L in [0 L,]
+    c: L = 0 L in [0 L,]
+    flow ab: this.a -> this.b
+        request = formula(this.a / 1 h)
+    flow bc: this.b -> this.c
+        request = formula(this.b / 1 h)
+    flow out: this.c -> SINK
+        request = formula(this.c / 1 h)
+"""
+    if method == 'moving_declared':
+        source += """owner:
+    choose = solver:
+        inputs:
+            pipe = p.ab
+        solve_for:
+            pipe.actual_rate
+"""
+    else:
+        connect = Plan.connect
+        monkeypatch.setattr(
+            Plan,
+            'connect',
+            lambda plan, *args, **kw: [replace(group, way=method) for group in connect(plan, *args, **kw)],
+        )
+    model = compile_text(source, {'L': {'volume': 1}, 'h': {'time': 1}})
+    run = Run(Plan.of(model.program, model.configuration))
+    record = run.run()
+    assert record.failure is None, record.failure
+    way = run.ways.instance_of('p.ab')
+    assert (
+        type(way).__name__
+        == {'component': 'ComponentWay', 'sparse': 'Sparse', 'moving_declared': 'MovingDeclared'}[method]
+    )
+    delivered = way.transferred('p.bc', 1) - way.transferred('p.out', 1)
+    assert run.stock_balance('p.c', 1) == delivered
+    assert float(delivered) == pytest.approx(math.exp(-1) / 2, rel=1e-7)
 
 
 @pytest.mark.parametrize('method', ['lines', 'sparse', 'declared', 'moving_declared'])

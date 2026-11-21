@@ -120,6 +120,13 @@ class Stocks:
         run = self.run
         lower, upper = run.bounds[name]
         earlier = math.nextafter(t, -math.inf) if t else t
+        rates = None
+
+        def speed(connection):
+            nonlocal rates
+            if rates is None:
+                rates = run.ways.instance_of(name).incoming_rates(earlier)
+            return max(0, rates(connection))
 
         def incidence(side):
             connections = self.ends.get((name, side))
@@ -138,9 +145,6 @@ class Stocks:
         else:
             # The direction comes from the incoming trajectory, even when the moment
             # coalesces with a crossing just before or after its mathematical root.
-            def speed(c):
-                return max(0, run.value(f'{c}.actual_rate', earlier))
-
             inflow, outflow = incidence('inflow'), incidence('outflow')
             net = sum(map(speed, inflow)) - sum(map(speed, outflow))
             if net == 0:
@@ -157,10 +161,10 @@ class Stocks:
             return ((legs[0], -sign),) if legs else ()
         if len(legs) == 1:
             return ((legs[0], sign),)
-        rates = [rational(max(0, run.value(f'{leg}.actual_rate', earlier))) for leg in legs]
-        total = sum(rates)
+        weights = [rational(speed(leg)) for leg in legs]
+        total = sum(weights)
         if total:
-            return [(c, sign * weight / total) for c, weight in zip(legs, rates) if weight]
+            return [(c, sign * weight / total) for c, weight in zip(legs, weights) if weight]
         return ((legs[0], sign),)
 
     def adjust(self, way, connection, adjustment, t):
@@ -404,10 +408,16 @@ class RestingAmounts:
             self.time = t
         if name in self.cache:
             return self.cache[name]
-        todo, rows, raw = list(self.incident[name]), {}, {}
+        todo, rows, raw, checked = list(self.incident[name]), {}, {}, set()
         while todo:
             s = todo.pop()
-            if s in rows:
+            if s in checked:
+                continue
+            checked.add(s)
+            # An exact smooth solution can leave a face with zero initial slope:
+            # the next compartment of a filling chain starts with zero inflow.
+            # Its actual trajectory decides whether this prefix still rests.
+            if way.resting_value(s, t) is None:
                 continue
             rows[s] = self.rows[s]
             for leg, _ in self.rows[s][2]:
@@ -422,7 +432,7 @@ class RestingAmounts:
             columns = {s: way.run.stock_state.face_shares(s, bound, t) for s, (bound, _, _) in rows.items()}
             for n, delta in _incidence_effects(way.run.plan, columns, residuals).items():
                 self.cache[n] += delta
-        return self.cache[name]
+        return self.cache.get(name, 0)
 
 
 def _incidence_effects(plan, columns, residuals):

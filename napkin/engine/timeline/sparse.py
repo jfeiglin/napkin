@@ -1526,6 +1526,20 @@ class Sparse(Way):
             return float(self.pending[2](t)[self.place[store]])
         return self.level_at(store, t)
 
+    def incoming_rates(self, t):
+        # An incoming read must not call _start: it can be part of closing the
+        # old face constraints while the outgoing branch is being selected.
+        y = self.y if self.pending is None or t <= self.pending[0] else self.pending[2](t)
+        evaluated = self.evaluations
+        previous = self.current.copy() if self.levels else None
+        try:
+            carried = self.values(t, y)[1]
+        finally:
+            self.evaluations = evaluated
+            if previous is not None:
+                self.current.update(previous)
+        return lambda name: float(carried[self.leg_rows[name]])
+
     def level_at(self, store, t):
         """The value of a store at time t: at the present time, inside the next step, or, before that
         step is made (at a moment), along the store's present rate (`drift`)."""

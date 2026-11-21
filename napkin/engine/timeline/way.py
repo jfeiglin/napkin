@@ -32,8 +32,7 @@ class Way:
         if donor is not None and name == donor[0]:
             # When almost all of a single pipe's source has left, its remaining stock
             # is better conditioned than subtracting an integral nearly as large as its start.
-            opening = self.run.opening_levels if t == self.run.now else {}
-            level = opening[donor[1]] if donor[1] in opening else self.incoming_level(donor[1], t)
+            level = self.accepted_level(donor[1], t)
             if 0 <= level < donor[2] / 2:
                 value = rational(donor[2]) - rational(level)
         if self.resting_rates is not None and (offset := self.resting_rates.offsets.get(name)) is not None:
@@ -48,7 +47,9 @@ class Way:
             if side is not None:
                 return self.run.bounds[name][side]
         if self.resting is not None and name in self.resting.rows:
-            return self.resting.rows[name][0]
+            bound = self.resting.rows[name][0]
+            if self.accepted_level(name, t) == bound:
+                return bound
         return None
 
     def set_resting(self, levels, t):
@@ -148,6 +149,14 @@ class Way:
     def incoming_level(self, name, t):
         """The incoming trajectory, including its continuation to a coalesced moment."""
         return self.level_at(name, t)
+
+    def accepted_level(self, name, t):
+        opening = self.run.opening_levels if t == self.run.now else {}
+        return opening[name] if name in opening else self.incoming_level(name, t)
+
+    def incoming_rates(self, t):
+        """The physical directed rates on the already installed trajectory."""
+        return lambda name: self.run.value(f'{name}.actual_rate', t)
 
     def arrive(self, t, through):
         """Close the incoming segment after the stages and give the names the re-share needs."""
