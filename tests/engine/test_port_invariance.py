@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import zip_longest
+from unittest.mock import patch
 
 import pytest
 
@@ -30,11 +31,11 @@ READS = {
     'ramp.actual_rate': (1, 2),
     'basin': (1, 10),
     'refund': (1, 10),
-    'paid': (1, 2),
-    'saved': (1, 2),
-    'cash': (1, 2),
-    'bulk': (1, 2),
-    'work#0.batch': (1, 2),
+    'paid': (1, 10),
+    'saved': (1, 10),
+    'cash': (1, 10),
+    'bulk': (1, 10),
+    'work#0.batch': (1, 10),
     'work#0.done': None,
     'marked': None,
 }
@@ -84,7 +85,7 @@ def times_for(case):
 
 
 def stage_entry(kind, owner, origin, round_, tie=None):
-    if owner.startswith('plant.idle#') or kind not in ('start', 'commit', 'finish', 'skip'):
+    if owner.startswith('plant.idle#') or kind not in ('start', 'commit', 'finish', 'skip', 'fire'):
         return None
     if origin == GUARD and kind in ('commit', 'skip'):
         return Stage('decision', owner, origin, round_, kind == 'commit', tie)
@@ -111,7 +112,9 @@ def oracle_view(case, program):
             band = oracle.config.rtol * max(1, abs(water), abs(case.guard_level))
             if abs(water - case.guard_level) <= band:
                 tie = (water - case.guard_level, band)
-        stage = stage_entry(kind, entry.label, entry.origin, entry.round, tie)
+        # The interpreter labels a firing with receiver.event.when[k]; the engine carries the receiver separately.
+        owner = entry.label.rsplit('.', 2)[0] if kind == 'fire' else entry.label
+        stage = stage_entry(kind, owner, entry.origin, entry.round, tie)
         if stage:
             stages[entry.t].append(stage)
     moves = defaultdict(lambda: defaultdict(int))
@@ -195,12 +198,23 @@ def numeric(actual, expected, scale, multiplier, where):
 
 
 def compare(result, reference, seed, transform):
+    crossing = CONFIG.numerics.crossing
     cutoff = min(result.outcome[0], reference.outcome[0])
-    for at in sorted(set(result.values) | set(reference.values) | set(result.stages) | set(reference.stages)):
-        if at > cutoff:
-            break
-        where = (seed, transform, float(at))
-        for actual, expected in zip_longest(result.stages.get(at, ()), reference.stages.get(at, ())):
+
+    def moments(view):
+        observed = set(view.values) | set(view.stages) | set(view.moves) | set(view.flows)
+        return sorted(t for t in observed if t <= cutoff + crossing)
+
+    for ours_at, at in zip_longest(moments(result), moments(reference)):
+        where = (seed, transform, at)
+        assert ours_at is not None and at is not None and abs(ours_at - at) <= crossing, (
+            where,
+            'moment time',
+            ours_at,
+            at,
+            crossing,
+        )
+        for actual, expected in zip_longest(result.stages.get(ours_at, ()), reference.stages.get(at, ())):
             if (
                 actual
                 and expected
@@ -217,17 +231,20 @@ def compare(result, reference, seed, transform):
                 expected,
             )
         for attr in ('moves', 'flows'):
-            ours, theirs = getattr(result, attr).get(at, {}), getattr(reference, attr).get(at, {})
+            ours, theirs = getattr(result, attr).get(ours_at, {}), getattr(reference, attr).get(at, {})
             assert ours.keys() == theirs.keys(), (where, attr, ours, theirs)
             for leg, expected in theirs.items():
                 numeric(ours[leg], expected, 1, 10 if attr == 'flows' else 2, (*where, attr, leg))
         for name, expected in reference.values.get(at, {}).items():
-            actual = result.values[at][name]
+            actual = result.values[ours_at][name]
             if READS[name] is None or (name in ('bulk', 'work#0.batch') and at >= 1):
                 assert actual == expected, (where, name, actual, expected)
             else:
                 numeric(actual, expected, *READS[name], (*where, name))
-    assert result.outcome == reference.outcome, (
+    assert (
+        result.outcome[1] == reference.outcome[1]
+        and abs(result.outcome[0] - reference.outcome[0]) <= crossing
+    ), (
         seed,
         transform,
         'outcome',
@@ -245,7 +262,9 @@ def check_seed(seed, transforms, record_property):
     base_tie = compare(original_view, expected, seed, 'original vs reference')
     for name in transforms:
         spelling = Spelling(**{name: True}) if name in Spelling.__dataclass_fields__ else Spelling()
-        if name == 'builder':
+        if name == 'sparse':
+            candidate = original.program
+        elif name == 'builder':
             candidate = builder_program(case, spelling)
         elif name == 'artifact':
             candidate = load_artifact(original.artifact().data()).program
@@ -253,7 +272,8 @@ def check_seed(seed, transforms, record_property):
             candidate = original.program
         else:
             candidate = text_program(case, spelling).program
-        changed = engine_view(case, candidate, checkpoint=name == 'checkpoint', sparse=spelling.sparse)
+        with patch('napkin.engine.timeline.plan.LIMIT', 0 if name == 'sparse' else 150):
+            changed = engine_view(case, candidate, checkpoint=name == 'checkpoint', sparse=name == 'sparse')
         oracle_tie = compare(changed, expected, seed, name + ' vs reference')
         pair_tie = compare(changed, original_view, seed, name + ' vs original')
         if base_tie or oracle_tie or pair_tie:

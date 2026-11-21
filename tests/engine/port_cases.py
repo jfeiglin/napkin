@@ -46,7 +46,6 @@ class Spelling:
     named: bool = False
     small_unit: bool = False
     split: bool = False
-    sparse: bool = False
 
     @property
     def unit(self):
@@ -89,11 +88,9 @@ def text_program(case, spelling):
         'plant:',
         f'    delivered: {unit} = {quantity(0)} in [0,] scale {scale}',
     ]
-    if spelling.sparse:
-        lines.append(f'        inflow.capacity = {rate(100)}')
     lines.extend(
         [
-            '    projected = formula(this.delivered / (4 h))',
+            f'    projected = formula(this.delivered / (4 h)) scale {rate(F(1, 4))}',
             f'    basin: {unit} = {quantity(case.large)} in [0,] scale {scale}',
             f'    refund: {unit} = {quantity(0)} in [0,] scale {scale}',
             f'    parked: {unit} = {quantity(0)} in [0,] scale {scale}',
@@ -103,15 +100,20 @@ def text_program(case, spelling):
             f'    saved: {unit} = {quantity(0)} in [0,] scale {scale}',
         ]
     )
-    if spelling.sparse:
-        basin = next(i for i, line in enumerate(lines) if line.startswith('    basin:'))
-        lines.insert(basin + 1, f'        inflow.capacity = {rate(100)}')
     lines.extend(
         [
             '    marked = false',
             '    observe = event():',
             f'        after 1 h when this.delivered > {quantity(case.guard_level)}:',
             '            this.marked = true',
+        ]
+    )
+    lines.extend(
+        [
+            '    signal = event():',
+            '        after 0 h',
+            '        when t >= 1.25 h:',
+            '            this.signal.start()',
         ]
     )
     if demand:
@@ -187,8 +189,9 @@ def builder_program(case, spelling):
         fields.append(b.event('idle', b.after(b.q(F(7, 8), 'h'))))
     plant = builder.entity(
         'plant',
-        stock('delivered', inflow=b.endpoint(capacity=rate(100)) if spelling.sparse else None),
+        stock('delivered'),
         b.value('marked', b.BOOL, False),
+        b.event('signal', b.after(b.q(0, 'h')), b.when(b.t >= b.q(F(5, 4), 'h'), b.start(b.this.signal))),
         b.event(
             'observe',
             b.after(
@@ -200,10 +203,10 @@ def builder_program(case, spelling):
         stock('paid'),
         stock('saved'),
         *fields,
-        stock('basin', case.large, inflow=b.endpoint(capacity=rate(100)) if spelling.sparse else None),
+        stock('basin', case.large),
         stock('refund'),
         stock('parked'),
-        b.value('projected', f'{unit}/h', b.formula(b.this.delivered / b.q(4, 'h'))),
+        b.value('projected', f'{unit}/h', b.formula(b.this.delivered / b.q(4, 'h')), scale=rate(F(1, 4))),
         b.flow('ramp', b.SOURCE, b.this.basin, request=b.formula(rate(F(1, 10)) * b.t / b.q(1, 'h'))),
         b.event(
             'refund_batch',
