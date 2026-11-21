@@ -1648,15 +1648,27 @@ class Reader:
     def _derived(self, name, t, read):
         """A reduction or a keyed read at a time, from the recorded values of what it reads. Which
         entries it keeps is read from the recorded values of the fixed fields that its tests read,
-        once. What it reads for sure is found first: the tests, then the kept entries of a reduction,
+        once. Reusing the selection credits the same tested fields at each reading. What it reads
+        for sure is found first: the tests, then the kept entries of a reduction,
         or the keys of a keyed read and its key; a keyed read reads only the entry that it selects."""
         plan = self.plan
         derived = plan.reductions.get(name) or plan.keyed[name]
         try:
             if name not in self.kept:
                 self._ready([each for test in derived.tests if test is not None for each in always(test)], t)
-                self.kept[name] = kept(derived.tests, read, self.units)
-            entries = self.kept[name]
+                tested = []
+
+                def selector(other):
+                    tested.append(other)
+                    return read(other)
+
+                entries = kept(derived.tests, selector, self.units)
+                self.kept[name] = entries, tuple(dict.fromkeys(tested))
+            else:
+                entries, tested = self.kept[name]
+                self._ready(tested, t)
+                for other in tested:
+                    read(other)
             if name in plan.reductions:
                 reduction = plan.reductions[name]
                 self._ready([reduction.names[k] for k in entries] if reduction.names else (), t)

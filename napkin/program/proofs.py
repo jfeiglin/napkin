@@ -77,7 +77,7 @@ one.
 from __future__ import annotations
 
 from copy import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 
 from ..core import expr as nodes
@@ -89,6 +89,7 @@ from . import parts as p
 from .reach import _Reach, reach
 from .record import Key
 from .refs import (
+    ITEM,
     By,
     Distribution,
     Draw,
@@ -96,6 +97,7 @@ from .refs import (
     EnumValue,
     Formula,
     Instances,
+    Item,
     Literal,
     Local,
     Lookup,
@@ -251,13 +253,14 @@ def _formula(point):
 @dataclass(frozen=True, eq=False)
 class _At:
     """Where an expression is read: its template and member (none for the root), and the event,
-    trigger or solver whose bare names it reads."""
+    trigger or solver whose bare names it reads. In a predicate, item is its collection entry."""
 
     template: p.Template | None = None
     member: p.Member | None = None
     event: p.Event | None = None
     trigger: p.Trigger | None = None
     solver: p.Solver | None = None
+    item: tuple | None = None
 
     @property
     def owner(self):
@@ -266,6 +269,19 @@ class _At:
         if self.member is None:
             return ''
         return f'{self.member.id}.{self.event.name}#' if self.event is not None else self.member.id
+
+
+@dataclass(frozen=True)
+class _Selection:
+    """Reads that decide which collection entries to use, in their own scopes. A lookup needs
+    the source's keys; an ordinary projection uses only its membership."""
+
+    reads: list
+    keys: bool = False
+
+    def expression(self, expr, at, certain=True):
+        every = always(expr.node)
+        self.reads.extend((read, at, certain and name in every) for name, read in expr.reads)
 
 
 @dataclass(eq=False)
@@ -378,45 +394,60 @@ class Proofs:
         needs no recursion of Python."""
         return _walked(self._points(path, at, moving))
 
-    def _points(self, path, at, moving):
-        """The computation of `points` (`_walked`)."""
-        found = yield self._start(path.start, at, moving)
+    def _points(self, path, at, moving, selection=None):
+        """The computation of `points` (`_walked`). When building an evidence trail, keep the
+        reads that select these points as well as the projected fields."""
+        found = yield self._start(path.start, at, moving, selection)
         for step in path.steps:
             after = []
             for point, one in found:
-                stepped = yield self._step(point, step)
+                stepped = yield self._step(point, step, selection)
                 after += [(each, one and also) for each, also in stepped]
             found = after
         return found
 
-    def _start(self, start, at, moving):
+    def _start(self, start, at, moving, selection):
         if isinstance(start, This):
             return [(('member', at.template, at.member), True)]
+        if isinstance(start, Item) and at.item is not None:
+            return [(at.item, True)]
         if isinstance(start, Root):
             return [(('root',), True)]
         if isinstance(start, Named):
             template, member = self.rows[start.id]
             return [(('member', template, member), True)]
         if isinstance(start, Local):
-            return (yield self._local(start.name, at))
+            return (yield self._local(start.name, at, selection))
         if isinstance(start, Instances):
             template = self.program.template(start.template)
             return [(('member', template, member), True) for member in template.members]
         if isinstance(start, Literal):
             found = []
             for item in start.items:
-                found += yield self._points(item, at, moving)
+                found += yield self._points(item, at, moving, selection)
             return found
         if isinstance(start, By):
-            return (yield self._points(start.source, at, moving))
+            source = replace(selection, keys=False) if selection is not None and selection.keys else selection
+            found = yield self._points(start.source, at, moving, source)
+            if selection is not None and selection.keys:
+                for point, one in found:
+                    selection.reads.append((Path(ITEM, (start.key,)), replace(at, item=point), one))
+            return found
         if isinstance(start, Where):
-            found = yield self._points(start.source, at, moving)
+            found = yield self._points(start.source, at, moving, selection)
+            if selection is not None:
+                for point, one in found:
+                    selection.expression(start.test, replace(at, item=point), one)
             return [(point, False) for point, _ in found]
         if isinstance(start, Lookup):
             if not moving and not (yield self._fixed(start.key.node, dict(start.key.reads), at)):
                 return [(('other', 'a keyed read whose key moves, which can select a smaller value'), True)]
             # One member of the collection, or the newest occurrence of an event.
-            found = yield self._points(start.source, at, moving)
+            source = selection
+            if selection is not None:
+                selection.expression(start.key, at)
+                source = replace(selection, keys=True)
+            found = yield self._points(start.source, at, moving, source)
             return [
                 (
                     ('occurrence', *point[1:4]) if point[0] == 'occurrences' and point[4] is None else point,
@@ -426,13 +457,13 @@ class Proofs:
             ]
         return [(('other', 'the member of a where'), True)]
 
-    def _local(self, name, at):
+    def _local(self, name, at, selection):
         """A bare name: an input or an unknown of a solver, a capture of a trigger, or a parameter, a
         local (a named collection: its members) or a flow of an event."""
         if at.solver is not None:
             for binding in at.solver.inputs:
                 if binding.name == name:
-                    return (yield self._points(binding.source, _At(at.template, at.member), False))
+                    return (yield self._points(binding.source, _At(at.template, at.member), False, selection))
             if any(unknown.name == name for unknown in at.solver.unknowns):
                 return [(('other', f'{name}, an unknown of {at.solver.origin}'), True)]
         if at.trigger is not None and any(capture.name == name for capture in at.trigger.captures):
@@ -442,7 +473,7 @@ class Proofs:
                 if part.name != name:
                     continue
                 if isinstance(part, p.Value) and part.kind == p.COLLECTION:
-                    return (yield self._points(part.init, at, True))
+                    return (yield self._points(part.init, at, True, selection))
                 if isinstance(part, p.Value) and isinstance(part.type, p.EntityType):
                     # An entity parameter can pass any member of its template (D13).
                     template = self.program.template(part.type.template)
@@ -457,7 +488,7 @@ class Proofs:
                 return [((kind, at.owner, part, at), True)]
         return [(('other', f'the bare name {name}'), True)]
 
-    def _step(self, point, name):
+    def _step(self, point, name, selection=None):
         """The points of one step of a path from a point (`_points`)."""
         kind = point[0]
         if kind == 'root':
@@ -465,7 +496,7 @@ class Proofs:
             if part is None:
                 return [(('other', name), True)]
             if part.kind == p.COLLECTION:
-                return (yield self._points(part.init, _At(), True))
+                return (yield self._points(part.init, _At(), True, selection))
             return [(('value', '', part, _At()), True)]
         if kind == 'member':
             _, template, member = point
@@ -476,7 +507,7 @@ class Proofs:
                     target = self.program.template(part.type.template)
                     return [(('member', target, target.members[member.link(name)]), True)]
                 if part.kind == p.COLLECTION:
-                    return (yield self._points(member.value(name) or part.init, at, True))
+                    return (yield self._points(member.value(name) or part.init, at, True, selection))
                 return [(('value', member.id, part, at), True)]
             if isinstance(part, p.Flow):
                 return [(('flow', member.id, part, at), True)]
@@ -489,7 +520,7 @@ class Proofs:
             _, owner, flow, at = point
             if name in ('source', 'sink'):
                 end = getattr(flow, name)
-                return [] if isinstance(end, p.Outside) else (yield self._points(end, at, True))
+                return [] if isinstance(end, p.Outside) else (yield self._points(end, at, True, selection))
             if name in ('forward', 'backward'):
                 return [(('leg', owner, flow, at, name), True)]
             for leg in flow.legs:
@@ -500,15 +531,20 @@ class Proofs:
             _, owner, flow, at, side = point
             if name in ('source', 'sink'):
                 end = flow.source if (side == 'forward') == (name == 'source') else flow.sink
-                return (yield self._points(end, at, True))
+                return (yield self._points(end, at, True, selection))
             return [(('rate', owner, flow, name, at), True)]
         if kind == 'event':
+            if selection is not None and name == 'occurrences':
+                selection.reads.append((Path(Named(point[2].id), (point[3].name,)), _At(), True))
             return (
                 [(('occurrences', *point[1:], None), True)]
                 if name == 'occurrences'
                 else [(('other', name), True)]
             )
         if kind == 'occurrences' and point[4] is None:
+            if selection is not None and name not in p.OCCURRENCE_PROPERTIES:
+                fields = yield self._step(('occurrence', *point[1:4]), name, selection)
+                return [(field, False) for field, _ in fields]
             return [(('occurrences', *point[1:4], name), True)]
         if kind == 'occurrence':
             _, template, member, event = point
@@ -1258,10 +1294,10 @@ class Proofs:
             node = getattr(expr, 'node', None)
             every = always(node) if node is not None and not branch else frozenset()
             for name, read in getattr(expr, 'reads', ()):
-                found = self._read_parts(read, at, places)
-                edges.extend(found)
-                if name in every:
-                    surely.update(found)
+                for found, certain in self._read_parts(read, at, places):
+                    edges.append(found)
+                    if certain and name in every:
+                        surely.add(found)
 
         def certain(found):
             found = list(found)
@@ -1339,22 +1375,25 @@ class Proofs:
         return edges, {edge for edge in edges if edge not in surely}
 
     def _read_parts(self, read, at, places):
-        """The parts that one read of an expression names."""
-        if isinstance(read, Path):
-            return [
-                found
-                for point, _ in self.points(read, at, True)
-                for found in self._point_parts(point, places)
-            ]
-        if isinstance(read, Reduce):
-            return self._read_parts(read.source, at, places)
-        if isinstance(read, Since):
-            return self._read_parts(read.event, at, places)
-        if isinstance(read, Elapsed):
-            return self._read_parts(read.value, at, places)
-        if isinstance(read, Draw) and isinstance(read.source, Path):
-            return self._read_parts(read.source, at, places)
-        return []
+        """The fields a read can return and the fields that select them. Follow selectors in their
+        own scopes: a predicate reads its row, a lookup reads its cutoff in its enclosing scope."""
+        pending = [(read, at, True)]
+        while pending:
+            read, scope, certain = pending.pop()
+            if isinstance(read, Reduce | Draw):
+                read = read.source
+            elif isinstance(read, Since):
+                read = read.event
+            elif isinstance(read, Elapsed):
+                read = read.value
+            if isinstance(read, Path):
+                selection = _Selection([])
+                for point, one in _walked(self._points(read, scope, True, selection)):
+                    for part in self._point_parts(point, places):
+                        yield part, certain and one
+                pending.extend(
+                    (selector, place, certain and sure) for selector, place, sure in selection.reads
+                )
 
     def _point_parts(self, point, places):
         """The parts that a point names: a value, a flow (each leg of a flow with legs), an event or
