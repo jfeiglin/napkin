@@ -191,10 +191,17 @@ def numeric(actual, expected, scale, multiplier, where):
     assert abs(actual - expected) <= multiplier * tolerance, (where, actual, expected, multiplier * tolerance)
 
 
-def compare_amounts(ours, theirs, multiplier, where):
+def compare_amounts(ours, theirs, kind, where):
     assert ours.keys() == theirs.keys(), (where, ours, theirs)
     for leg, expected in theirs.items():
-        numeric(ours[leg], expected, 1, multiplier, (*where, leg))
+        # The model moves whole stocks on these three legs. Splitting a whole-stock
+        # move into two statements in one stage keeps the same aggregate allowance.
+        level_derived = kind == 'flows' or leg[1:] in {
+            ('plant.work#0.batch', 'plant.bulk'),
+            ('plant.bulk', 'plant.paid'),
+            ('plant.basin', 'plant.refund'),
+        }
+        numeric(ours[leg], expected, 1, 10 if level_derived else 2, (*where, leg))
 
 
 def compare(result, reference, seed, transform):
@@ -228,7 +235,7 @@ def compare(result, reference, seed, transform):
                 # stages at the very same time have already committed their transfers.
                 ours = {k: v for k, v in result.moves.get(ours_at, {}).items() if k[0] in committed}
                 theirs = {k: v for k, v in reference.moves.get(at, {}).items() if k[0] in committed}
-                compare_amounts(ours, theirs, 2, (*where, 'earlier stage moves'))
+                compare_amounts(ours, theirs, 'moves', (*where, 'earlier stage moves'))
                 return (*where, actual.origin, actual.ran, expected.ran, actual.tie, expected.tie)
             assert actual and expected and replace(actual, tie=None) == replace(expected, tie=None), (
                 where,
@@ -240,7 +247,7 @@ def compare(result, reference, seed, transform):
                 committed.add(actual.origin)
         for attr in ('moves', 'flows'):
             ours, theirs = getattr(result, attr).get(ours_at, {}), getattr(reference, attr).get(at, {})
-            compare_amounts(ours, theirs, 10 if attr == 'flows' else 2, (*where, attr))
+            compare_amounts(ours, theirs, attr, (*where, attr))
         for name, expected in reference.values.get(at, {}).items():
             actual = result.values[ours_at][name]
             if READS[name] is None or (name in ('bulk', 'work#0.batch') and at >= 1):
@@ -312,3 +319,14 @@ def test_only_a_flagged_decision_can_end_a_pair_and_prior_moves_still_count():
     actual.moves = {1: {leg: 3}}
     with pytest.raises(AssertionError, match='earlier stage moves'):
         compare(actual, expected, 1, 'control')
+
+
+def test_a_move_computed_from_a_level_inherits_the_levels_tolerance():
+    literal = ('plant.refund_batch.step[0]', 'plant.basin', 'plant.parked')
+    stock = ('plant.refund_batch.step[0]', 'plant.basin', 'plant.refund')
+    tolerance = CONFIG.numerics.atol_factor + CONFIG.numerics.rtol
+    compare_amounts({stock: 1 + 6 * tolerance}, {stock: 1}, 'moves', ('stock move',))
+    with pytest.raises(AssertionError, match='literal move'):
+        compare_amounts({literal: 1 + 6 * tolerance}, {literal: 1}, 'moves', ('literal move',))
+    with pytest.raises(AssertionError, match='stock move'):
+        compare_amounts({stock: 1 + 12 * tolerance}, {stock: 1}, 'moves', ('stock move',))
