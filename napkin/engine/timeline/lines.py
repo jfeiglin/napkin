@@ -55,7 +55,6 @@ class Lines(Way):
     def __init__(self, run, sets, values, t=0.0, keys=None):
         plan = self.plan = run.plan
         self.t0 = float(t)
-        self.amounts = HeldAmounts(t)
         self.sets = list(sets)  # its sets, which a checkpoint names (`saved.py`)
         keys = list(keys if keys is not None else range(len(sets)))
         self.keys = keys
@@ -80,6 +79,7 @@ class Lines(Way):
         self.lower = np.array([run.bounds[name][0] for name in stores])
         self.upper = np.array([run.bounds[name][1] for name in stores])
         self.value = np.zeros(len(self.flows))  # what the network gives of each flow
+        self.amounts = HeldAmounts(t, len(connections))
         self.rate = np.zeros(len(connections))  # the rate of each connection
         self.version = np.zeros(len(stores), dtype=np.int64)
         self.due = []  # (time, store, version): a line that reaches a bound
@@ -347,7 +347,7 @@ class Lines(Way):
         if t > self.run.now:
             raise ValueError('transfer requested outside the accepted interval')
         row = self.leg_rows[name]
-        return self.amounts.amount(row, t, self.rate[row])
+        return self.amounts.amount(row, t, 0 if self.dead_flows[self.net.of[row]] else self.rate[row])
 
     def retire(self, key):
         """The set `key` leaves the lines: its stores have no event from now on."""

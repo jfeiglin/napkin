@@ -218,7 +218,6 @@ class Family(Way):
     def __init__(self, run, sets, values, t=0.0, keys=None):
         plan = self.plan = run.plan
         self.t0 = float(t)
-        self.amounts = HeldAmounts(t)
         self.sets = list(sets)  # its sets, one for each row, which a checkpoint names (`saved.py`)
         self.keys = {key: k for k, key in enumerate(keys if keys is not None else range(len(sets)))}
         self.run, self.recorder, self.columns = run, run.recorder, Columns(run)
@@ -248,6 +247,7 @@ class Family(Way):
         self.stepped = frozenset(name for connected in sets for name in connected.stepped)
         self.asked = np.full(len(flows), np.nan)
         self.wanted = np.zeros(len(flows))  # the request of each flow, before its capacity
+        self.amounts = HeldAmounts(t, len(flows))
         self.rate = np.zeros(len(flows))
         self.version = np.zeros(len(flows), dtype=np.int64)
         self.due = []  # (time, row, version) of the rows whose store reaches its bound
@@ -346,7 +346,7 @@ class Family(Way):
         if t > self.run.now:
             raise ValueError('transfer requested outside the accepted interval')
         row = self.row[name]
-        return self.amounts.amount(row, t, self.rate[row])
+        return self.amounts.amount(row, t, 0 if self.dead[row] else self.rate[row])
 
     def retire(self, key):
         """The set `key` leaves the family: its row has no event and no refresh from now on."""

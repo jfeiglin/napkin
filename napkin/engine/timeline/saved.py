@@ -418,8 +418,8 @@ def _instance(instance):
     if kind in ('lines', 'family'):
         names = instance.flows if kind == 'family' else instance.net.connections
         closed = tuple(
-            (names[row], *values)
-            for row, values in instance.amounts.closed.items()
+            (names[row], t, amount)
+            for row, t, amount in instance.amounts.closed()
             if not (instance.dead[row] if kind == 'family' else instance.dead_flows[instance.net.of[row]])
         )
         fields += (('closed_amounts', closed),)
@@ -802,9 +802,9 @@ def _made(run, kind, keys, data):
     instance = _made_fields(run, kind, keys, data)
     if 'closed_amounts' in data:
         rows = instance.row if kind == 'family' else instance.leg_rows
-        instance.amounts.closed = {
-            rows[name]: (start, amount) for name, start, amount in data['closed_amounts'] if name in rows
-        }
+        for name, t, amount in data['closed_amounts']:
+            if name in rows:
+                instance.amounts.restore(rows[name], t, amount)
     if 'accepted_amounts' in data:
         amounts = instance.amounts
         amounts.through, amounts.exact, total, remainder = data['accepted_amounts']

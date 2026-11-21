@@ -122,3 +122,107 @@ def test_a_signed_route_posts_both_physical_legs_when_it_reverses():
     assert [
         float(way.transferred(f'ferry.link.{side}', 6)) for side in ('forward', 'backward')
     ] == pytest.approx([4.5, 4.5], abs=1e-9)
+
+
+@pytest.mark.parametrize('family', [True, False], ids=['family', 'lines'])
+def test_held_amounts_follow_rate_changes_through_a_checkpoint(family):
+    from napkin.engine.timeline.family import Family
+    from napkin.engine.timeline.lines import Lines
+    from napkin.program.checkpoint import Breakpoint, dumps, loads
+
+    if family:
+        # A native Family row runs until it empties, then holds a zero rate.
+        source = """tank:
+    donor: L = 0.25 L in [0,]
+    water: L = 0 L
+    flow tap: this.donor -> this.water
+        request = 0.5 L/h
+"""
+        at_pause = at_end = Fraction('0.25')
+    else:
+        # Three donors empty in succession at .25, .5 and .75 h. Local sharing
+        # changes the tap in place at each bound on the same Lines installation.
+        source = """tank:
+    a: L = 0.015625 L in [0,]
+    b: L = 0.0625 L in [0,]
+    c: L = 0.1875 L in [0,]
+    junction: L = 0 L in [0,]
+    water: L = 0 L
+    flow one: this.a -> this.junction
+        request = 0.0625 L/h
+        capacity = 0.0625 L/h
+    flow two: this.b -> this.junction
+        request = 0.125 L/h
+        capacity = 0.125 L/h
+    flow three: this.c -> this.junction
+        request = 0.25 L/h
+        capacity = 0.25 L/h
+    flow tap: this.junction -> this.water
+        request = 1 L/h
+"""
+        at_pause, at_end = Fraction('0.234375'), Fraction('0.265625')
+    source += '    pause = event():\n        after 0.625 h\ntank.pause.start()\n'
+    program = compile_text(source, UNITS).program
+    config = Configuration(Request(1))
+    machine = Run(Plan.of(program, config), (Breakpoint('tank.pause.step[0]'),))
+    checkpoint = machine.run()
+    name = 'tank.tap'
+    restored = Run.restored(Plan.of(program, config), loads(dumps(checkpoint)))
+    for run in (machine, restored):
+        way = run.ways.instance_of(name)
+        assert isinstance(way, Family if family else Lines)
+        before = tuple(way.amounts.rows)
+        assert way.transferred(name, 0.625) == way.transferred(name, 0.625) == at_pause
+        assert tuple(way.amounts.rows) == before
+        assert run.resume().failure is None
+        assert run.ways.instance_of(name).transferred(name, 1) == at_end
+
+
+def test_held_rectangles_keep_finite_decimal_extremes_in_a_bounded_row():
+    from napkin.core.units import rational
+    from napkin.engine.continuous.transfers import HeldAmounts
+
+    amounts = HeldAmounts(0, 3)
+    spans = [(5e-324, 5e-324), (0.05, 0.07), (1e150, 1e175), (2e150, 1e-300)]
+    start = expected = Fraction(0)
+    for t, rate in spans:
+        expected += (rational(t) - start) * rational(rate)
+        start = rational(t)
+        amounts.change(1, t, rate)
+        assert amounts.amount(1, t, 0) == expected
+        assert amounts.rows[0] is amounts.rows[2] is None
+    restored = HeldAmounts(0, 3)
+    for row, through, value in amounts.closed():
+        restored.restore(row, through, value)
+    assert restored.amount(1, spans[-1][0], 0) == expected
+
+
+@pytest.mark.parametrize('family', [True, False], ids=['family', 'lines'])
+def test_departed_held_connection_keeps_its_terminal_amount(family, monkeypatch):
+    from napkin.engine.timeline.family import Family
+    from napkin.engine.timeline.lines import Lines
+
+    source = """tank:
+    water: L = 0 L
+    open = event():
+        flow tap: SOURCE -> this.water
+            request = 0.05 L/h
+"""
+    if not family:
+        source += '        flow other: SOURCE -> this.water\n            request = 0.125 L/h\n'
+    source += '        after 0.25 h\ntank.open.start()\n'
+    program = compile_text(source, UNITS).program
+    method = Family if family else Lines
+    retired = []
+    retire = method.retire
+
+    def finish(way, key):
+        retired.append(way)
+        retire(way, key)
+
+    monkeypatch.setattr(method, 'retire', finish)
+    run = Run(Plan.of(program, Configuration(Request(1))))
+    assert run.run().failure is None
+    name = 'tank.open#0.tap'
+    old = next(way for way in retired if name in way.flows)
+    assert old.transferred(name, 0.25) == old.transferred(name, 1) == Fraction(1, 80)

@@ -9,7 +9,9 @@ polynomial only to the accepted time. Solver/Jacobian trials never post.
 
 from __future__ import annotations
 
+from decimal import Context, Decimal
 from fractions import Fraction
+from functools import lru_cache
 
 import numpy as np
 from numpy.polynomial import Polynomial
@@ -97,21 +99,69 @@ def clock_primitives(flows, plan):
     return rates
 
 
-class HeldAmounts:
-    """Only a change of a held leg's rate closes its previous rectangle."""
+# The canonical decimal spelling of a finite binary64 time or rate has no digit
+# below 10**-324. A nonnegative sum of held rectangles is at most max_rate * t,
+# below 10**617. Thus 1,300 decimal places of precision cover even the largest
+# total with the smallest product (10**-648) still present, without rounding.
+_HELD_CONTEXT = Context(prec=1300)
+_ZERO = Decimal(0)
 
-    def __init__(self, start):
+
+@lru_cache(maxsize=128)
+def _decimal_time(t):
+    return Decimal(repr(float(t)))
+
+
+def _rectangle(start, end, rate, previous):
+    if not rate or start == end:
+        return previous
+    duration = _HELD_CONTEXT.subtract(_decimal_time(end), _decimal_time(start))
+    return _HELD_CONTEXT.fma(Decimal(repr(float(rate))), duration, previous)
+
+
+class HeldAmounts:
+    """One pending rate rectangle per changed row; untouched rows remain empty.
+
+    Closing a row for the first time only retains the rectangle. A later change
+    folds its predecessor into that row's subtotal. A read or checkpoint also
+    evaluates the pending rectangle, without changing it. Work and storage per
+    row remain bounded over arbitrarily many changes.
+    """
+
+    def __init__(self, start, size):
         self.start = start
-        self.closed = {}
+        self.rows = [None] * size
 
     def amount(self, row, t, rate):
-        start, previous = self.closed.get(row, (self.start, 0))
+        held = self.rows[row]
+        start, subtotal = self.start, _ZERO
+        if held is not None:
+            left, start, old_rate, subtotal = held
+            subtotal = _rectangle(left, start, old_rate, subtotal)
         if t < start:
             raise ValueError('transfer requested before its current held interval')
-        return previous + (rational(t) - rational(start)) * rational(rate) if rate else previous
+        return Fraction(_rectangle(start, t, rate, subtotal))
 
     def change(self, row, t, previous_rate):
-        self.closed[row] = t, self.amount(row, t, previous_rate)
+        held = self.rows[row]
+        if held is None:
+            if t != self.start:
+                self.rows[row] = self.start, t, previous_rate, _ZERO
+            return
+        left, start, old_rate, subtotal = held
+        if t != start:
+            subtotal = _rectangle(left, start, old_rate, subtotal)
+            self.rows[row] = start, t, previous_rate, subtotal
+
+    def closed(self):
+        for row, held in enumerate(self.rows):
+            if held is not None:
+                left, right, rate, subtotal = held
+                yield row, right, Fraction(_rectangle(left, right, rate, subtotal))
+
+    def restore(self, row, t, amount):
+        subtotal = _HELD_CONTEXT.divide(Decimal(amount.numerator), Decimal(amount.denominator))
+        self.rows[row] = t, t, 0, subtotal
 
 
 class CollocationRates:
