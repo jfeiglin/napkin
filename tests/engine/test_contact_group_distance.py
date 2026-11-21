@@ -18,7 +18,7 @@ CEILING = '(2 - t / (1 h)) * (1 L/h)'
 KINK_ERROR = 1.5e-9
 
 
-def gauge(method, target, horizon, *, mixed=False, empty=False, ceiling='pipe', close=False):
+def gauge(method, target, horizon, *, mixed=False, empty=False, empty_at='0.5', ceiling='pipe', close=False):
     pipe_cap = f'\n        capacity = formula({CEILING})' if ceiling == 'pipe' else ''
     end_cap = f'\n        inflow.capacity = formula({CEILING})' if ceiling == 'endpoint' else ''
     close_pipe = '\n            this.fill.request = 0 L/h' if close else ''
@@ -54,8 +54,8 @@ yard:
             this.close_mark = t
 """
     if empty:
-        source += """    extra = event():
-        after 0.5 h
+        source += f"""    extra = event():
+        after {empty_at} h
 yard.extra.start()
 """
     source += 'yard.clock.start()\n'
@@ -84,18 +84,18 @@ def force(method, monkeypatch):
     monkeypatch.setattr(Plan, 'connect', groups)
 
 
-def results(case, restore):
+def results(case, restore, *, breakpoint='yard.clock.step[0]', stop_at=1):
     def plan():
         return Plan.of(case.program, case.configuration)
 
-    run = Run(plan(), (Breakpoint('yard.clock.step[0]'),) if restore else ())
+    run = Run(plan(), (Breakpoint(breakpoint),) if restore else ())
     record = run.run()
     if restore:
-        assert isinstance(record, Checkpoint) and record.stop.t == 1
+        assert isinstance(record, Checkpoint) and record.stop.t == stop_at
         data = dumps(record)
         fields = ['yard.stock', 'yard.fill.actual_rate']
-        forward = read(record.record, case.program, fields, [0.5, 1])
-        reverse = read(record.record, case.program, fields[::-1], [1, 0.5])
+        forward = read(record.record, case.program, fields, [0.5, stop_at])
+        reverse = read(record.record, case.program, fields[::-1], [stop_at, 0.5])
         assert [row.values for row in forward] == [row.values[::-1] for row in reverse[::-1]]
         assert dumps(record) == data
         run = Run.restored(plan(), loads(data))
@@ -128,6 +128,19 @@ def test_a_time_near_stock_contact_keeps_its_true_time_on_either_side_of_the_sta
         clock = [e for e in record.entries('commit') if e.part.startswith('yard.clock.step')]
         assert [e.t for e in clock] == [1, 1]
         assert clock[0].round < clock[1].round
+
+
+@pytest.mark.parametrize('method', ['component', 'sparse', 'moving_declared'])
+def test_a_late_checkpoint_preserves_the_stock_crossing_beyond_the_hour(method, monkeypatch):
+    force(method, monkeypatch)
+    target = '1.000000005'
+    for cut, restore in ((False, False), (True, False), (True, True)):
+        case = gauge(method, target, '1.1', empty=cut, empty_at='0.99999')
+        record = results(case, restore, breakpoint='yard.extra.step[0]', stop_at=0.99999)
+        water, seen = read(record, case.program, ['yard.stock', 'yard.seen'], [0.99999, 1])
+        assert water.values == pytest.approx([0.99999, 1], abs=KINK_ERROR, rel=0)
+        assert seen.values[-1] == pytest.approx(1, abs=KINK_ERROR, rel=0)
+        assert times(record, 'watch') == pytest.approx([float(target)], abs=KINK_ERROR, rel=0)
 
 
 @pytest.mark.parametrize('method', ['component', 'sparse', 'moving_declared'])
