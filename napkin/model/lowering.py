@@ -50,7 +50,7 @@ from fractions import Fraction
 from ..core import expr as nodes
 from ..program import build, check
 from ..program import parts as p
-from ..program.artifact import MEMBER, Evidence, Location, SideTable, kind_of, origins
+from ..program.artifact import MEMBER, Evidence, Location, ScopedEvidence, SideTable, kind_of, origins
 from ..program.check import ProgramError
 from ..program.refs import (
     ITEM,
@@ -169,7 +169,11 @@ def side_table(model, program, file=''):
             # An entity written once is its template's location; a row of a table has none.
             if isinstance(declared, s.DeclaredMember) and declared.table is None:
                 found.append(located(member.id, MEMBER, member.id, declared))
-    return SideTable(tuple(found))
+    scopes = tuple(
+        ScopedEvidence(origin, members, option, tuple(_evidence(item, records) for item in items))
+        for origin, members, option, items in model.evidence_scopes()
+    )
+    return SideTable(tuple(found), scopes)
 
 
 def _columns(tree):

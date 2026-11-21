@@ -14,7 +14,7 @@ The public Python API is the names of `_EXPORTS`:
     model = napkin.load_scenario('examples/piano_tuners')
     record = napkin.run(model.program, model.configuration)
     found = napkin.report(record, model.program, model.configuration, ['tunings_done'], [0, 8760],
-                          model=model.declared)
+                          table=model.table)
 
 - compile: `load_scenario` (a model file or package folder, with its run and edits), `load_package`
   (every model of a package);

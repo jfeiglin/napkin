@@ -67,6 +67,7 @@ from itertools import pairwise
 import numpy as np
 
 from ..program import parts as p
+from ..program.artifact import SideTable
 from ..program.proofs import Change, Part, Proofs, kind_of
 from ..program.record import Key, Unavailable
 from .timeline.plan import FORMULA, name_of
@@ -168,11 +169,18 @@ class Report:
     records: tuple[tuple[str, str, str], ...] = ()
 
 
-def report(record, program, configuration, paths, times, lags=None, model=None, options=()):
+def report(record, program, configuration, paths, times, lags=None, model=None, options=(), *, table=None):
     """The report of a run (see the module): `paths` and `times` are the caller's, `lags` maps a path
-    to its `Lag`, `model` is the declared model whose texts and evidence the report shows (None for a
-    program built by hand), and `options` the names of the model's options that the run takes, whose
+    to its `Lag`. Pass the compiler or artifact side table in `table` for labels and evidence.
+    The legacy `model` argument also accepts a declared model. `options` names the options whose
     settings a trail cites. A time outside [0, horizon] is a ValueError."""
+    if table is not None:
+        model = table
+    elif model is not None and not isinstance(model, SideTable):
+        # Older callers supply a declared model. Lower it to the same index a saved artifact uses.
+        from ..model.lowering import side_table
+
+        model = side_table(model, program)
     lags = dict(lags or {})
     times = tuple(float(t) for t in times)
     horizon = float(record.manifest.horizon)
@@ -286,8 +294,7 @@ def _origin(program, key):
 
 def _text(model, origin):
     """The first text under the declared part of an origin, or None."""
-    part = model.part(origin) if model is not None and origin else None
-    return getattr(part, 'text', None)
+    return model.label(origin) if model is not None and origin else None
 
 
 def _is_display(program, key):
@@ -705,21 +712,17 @@ class _Trail:
             return ()
         found = []
         for item in self.model.evidence(origin, member, self.options):
-            name = getattr(item, 'name', None)
-            if name is not None:
-                found.append(name)
-                self.cited[name] = None
+            if item.name:
+                found.append(item.name)
+                self.cited[item.name] = item
             else:
-                found.append(f'{item.kind}: {item.text}')
+                found.append(f'{item.kind}: {item.explanation}')
         return tuple(found)
 
     def records(self):
         """(name, kind, text) of each record of the model that a trail cites, by name."""
-        if self.model is None:
-            return ()
-        known = {item.name: item for item in self.model.records}
         return tuple(
-            (name, known[name].kind, known[name].text) for name in sorted(self.cited) if name in known
+            (name, self.cited[name].kind, self.cited[name].explanation) for name in sorted(self.cited)
         )
 
 

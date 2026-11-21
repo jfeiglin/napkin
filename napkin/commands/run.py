@@ -332,7 +332,7 @@ def reported(model, record, configuration, paths, times, lags, options=()):
         paths,
         [t for _, t in times],
         lags,
-        model=model.declared,
+        table=model.table,
         options=options,
     )
 

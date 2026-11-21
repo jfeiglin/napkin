@@ -553,7 +553,19 @@ class Proofs:
                     at = _At(template, member, event)
                     return [(('value' if isinstance(part, p.Value) else 'flow', at.owner, part, at), True)]
         if kind == 'value':
+            if selection is not None and name in ('outflow', 'inflow'):
+                return [(('endpoint', (point[1], point[2].name), name), True)]
             return [(('other', f'{point[2].origin}.{name}, a setting or a property of a value'), True)]
+        if kind == 'endpoint' and name == 'flows':
+            _, key, side = point
+            found = []
+            for writer in self.index().writers.get(key, ()):
+                if writer.kind not in ('flow', 'route'):
+                    continue
+                ends = writer.sources if side == 'outflow' else writer.sinks
+                if writer.kind == 'route' or any(end == key for end, _ in ends):
+                    found.append((('flow', writer.at.owner, writer.value, writer.at), False))
+            return found
         if kind == 'other':
             return [(point, True)]  # what follows a part that the proof does not follow
         return [(('other', f'{name} of {kind}'), True)]

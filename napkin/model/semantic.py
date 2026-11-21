@@ -1148,33 +1148,48 @@ class DeclaredModel:
         """The named run of a name, or None."""
         return next((item for item in self.runs if item.name == name), None)
 
+    def evidence_scopes(self):
+        """Each group of citations attached to specific members or option settings of a field."""
+        for member in self.members:
+            if member.table is None:
+                for given in member.values:
+                    if given.evidence:
+                        yield f'{member.template}.{given.name}', (member.path,), '', given.evidence
+        for table in self.tables:
+            for column in table.columns:
+                if column.cites:
+                    yield (
+                        f'{table.template}.{column.name}',
+                        table.members,
+                        '',
+                        tuple(n.Cite(name) for name in column.cites),
+                    )
+        for option in self.options:
+            for setting in option.settings:
+                if not setting.evidence:
+                    continue
+                if setting.instances:
+                    origin, members = f'{setting.instances}.{setting.name}', None
+                elif setting.member:
+                    owner = self.part(setting.member)
+                    template = owner.template if isinstance(owner, DeclaredMember) else setting.member
+                    origin, members = f'{template}.{setting.name}', (setting.member,)
+                else:
+                    origin, members = setting.name, ('',)
+                yield origin, members, option.name, setting.evidence
+
+    @cached_property
+    def _evidence_index(self):
+        from ..program.artifact import index_evidence
+
+        return index_evidence(self.evidence_scopes())
+
     def evidence(self, origin, member='', options=()):
-        """The records that the part of an origin rests on for one member under the options of a run,
-        in this order: the declared part's own; for a value of a template, the member's own line (a
-        member written by hand) or the column of its table (a row, as `nodes.Cite`); and each setting
-        of the options named in `options` that sets this value of this member, or of every member
-        of its template. Each is a `nodes.Cite` or a `nodes.Inline`; an evidence trail cites them."""
-        part = self.part(origin)
-        found = list(getattr(part, 'evidence', ()))
-        if not isinstance(part, DeclaredValue):
-            return tuple(found)
-        template, _, name = origin.rpartition('.')  # a value of the top level has no template
-        owner = self.part(member) if member else None
-        if isinstance(owner, DeclaredMember) and owner.template == template:
-            if owner.table is None:
-                found += [item for given in owner.values if given.name == name for item in given.evidence]
-            else:
-                table = self.part(owner.table)
-                for column in table.columns if isinstance(table, DeclaredTable) else ():
-                    if column.name == name:
-                        found += [n.Cite(cited) for cited in column.cites]
-        for option in (self.option(each) for each in options):
-            for setting in option.settings if option is not None else ():
-                if setting.name == name and (
-                    setting.member == member or (template and setting.instances == template)
-                ):
-                    found += setting.evidence
-        return tuple(found)
+        """The source citations of a field under the same scopes a compiled report uses."""
+        from ..program.artifact import scoped_items
+
+        base = getattr(self.part(origin), 'evidence', ())
+        return (*base, *scoped_items(self._evidence_index, origin, member, options))
 
     def title(self, member):
         """The title of a member (`title "DC Water"`): of an entity written once or of a member

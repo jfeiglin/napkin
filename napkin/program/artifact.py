@@ -19,8 +19,8 @@ program equal to the one saved, with the same bytes, so the engine runs it to th
 
 The file is a header of two lines, then two sections, each a line with its size and its bytes:
 
-    napkin program 3               the name of the format and its version
-    language 0.2.2                 the version of the language of the program
+    napkin program 4               the name of the format and its version
+    language 0.2.3                 the version of the language of the program
     program <size> <sha256>        the program's canonical bytes, and their digest
     <the program's bytes>
     table <size>                   the side table's canonical bytes
@@ -52,11 +52,11 @@ from . import config, parts, record, refs
 from .canonical import Malformed, decode, program_bytes, value_bytes
 
 FORMAT = b'napkin program'
-# 3: a location has its title (PLAN, change 19 after G0).
-FORMAT_VERSION = 3
+# 4 adds evidence scoped to member fields, table columns and option settings.
+FORMAT_VERSION = 4
 # The version of the language: what a program means. A model's identity changes with it, never with
 # the version of the package.
-LANGUAGE_VERSION = '0.2.2'
+LANGUAGE_VERSION = '0.2.3'
 
 # The kind of each part of a program that has an origin, by its record.
 KINDS = {
@@ -132,10 +132,54 @@ class Location:
 
 
 @dataclass(frozen=True)
+class ScopedEvidence:
+    """Evidence added to a field by its member, table column or option setting.
+
+    A missing member list applies to every member of the origin's template.
+    """
+
+    origin: str
+    members: tuple[str, ...] | None
+    option: str
+    items: tuple[Evidence, ...]
+
+
+def index_evidence(scopes):
+    """Index groups of citations without losing the order of matching option settings."""
+    found = {}
+    for pos, (origin, members, option, items) in enumerate(scopes):
+        for member in (None,) if members is None else members:
+            found.setdefault((origin, option, member), []).append((pos, items))
+    return found
+
+
+def scoped_items(index, origin, member, options):
+    for option in ('', *options):
+        own = index.get((origin, option, member), ())
+        shared = index.get((origin, option, None), ())
+        for _, items in sorted((*own, *shared)) if own and shared else own or shared:
+            yield from items
+
+
+@dataclass(frozen=True)
 class SideTable:
     """The locations of a program's parts, in the order of the program."""
 
     locations: tuple[Location, ...] = ()
+    scopes: tuple[ScopedEvidence, ...] = ()
+
+    @cached_property
+    def _evidence_index(self):
+        return index_evidence((s.origin, s.members, s.option, s.items) for s in self.scopes)
+
+    def evidence(self, origin, member='', options=()):
+        location = self._index.get(origin)
+        base = location.evidence if location else ()
+        return (*base, *scoped_items(self._evidence_index, origin, member, options))
+
+    def label(self, origin):
+        location = self._index.get(origin)
+        return location.label if location else None
 
     @cached_property
     def _index(self):

@@ -54,10 +54,12 @@ TABLE = SideTable(
 )
 
 
-def test_the_format_is_the_third_with_the_titles_of_the_side_table():
-    """A location's title is a field of the side table's records (PLAN, change 19), so the format went
-    up from 2 to 3 (the version rule of the module), and a title is kept through the file."""
-    assert FORMAT_VERSION == 3
+def test_format_four_preserves_location_titles_and_rejects_pre_index_files():
+    assert FORMAT_VERSION == 4
+    current = Artifact(grinder_refill().program, TABLE).data()
+    with pytest.raises(ArtifactError, match='compile') as error:
+        loads(current.replace(b'napkin program 4', b'napkin program 3', 1))
+    assert error.value.code == 'format_version'
     loaded = loads(Artifact(grinder_refill().program, TABLE).data()).table
     assert (loaded.title('north'), loaded.title('grinder'), loaded.title('south')) == (
         'North grinder',
@@ -228,9 +230,9 @@ def test_origins_find_each_part_of_a_program():
 
 def test_old_language_artifact_requires_recompilation():
     data = Artifact(grinder_refill().program).data()
-    old = data.replace(b'language ' + LANGUAGE_VERSION.encode() + b'\n', b'language 0.2.1\n', 1)
+    old = data.replace(b'language ' + LANGUAGE_VERSION.encode() + b'\n', b'language 0.2.2\n', 1)
     with pytest.raises(ArtifactError, match='compile') as error:
         loads(old)
     assert error.value.code == 'language_version'
-    assert LANGUAGE_VERSION == '0.2.2'
+    assert LANGUAGE_VERSION == '0.2.3'
     assert loads(data).program == grinder_refill().program
