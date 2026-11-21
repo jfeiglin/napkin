@@ -288,3 +288,48 @@ def test_a_request_that_reads_an_actual_rate_of_its_own_set_needs_a_declared_sol
     message = record.failure.detail('message')
     assert record.failure.t == 0
     assert 'clinic.delivery.actual_rate' in message and 'needs a declared solver' in message
+
+
+@pytest.mark.parametrize('selective', [False, True])
+def test_held_formula_keeps_lazy_branches_scale_selectors_and_full_history(monkeypatch, selective):
+    from napkin.engine.timeline import Plan, Run
+    from napkin.engine.timeline import record as recording
+    from napkin.program.build import ifelse, start
+
+    b = tank(
+        value('fine', 'L', 1e-8, scale=1),
+        value('coarse', 'L', 1e-8, scale=100),
+        value('choose', BOOL, False),
+        value('chosen', 'L', formula(ifelse(this.choose, this.coarse, this.fine))),
+        value('positive', BOOL, formula(this.chosen > q(0, 'L'))),
+        value('mix', 'L', formula(this.chosen + this.water)),
+        event('switch', after(q(1, 'h'), assign(this.choose, True))),
+    )
+    b.setup(start(named('tank').switch))
+    program = b.finish()
+    keys = tuple(Key('tank', (field,)) for field in ('positive', 'mix'))
+    config = Configuration(Request(2, everything=not selective, keys=keys if selective else ()))
+    actual = Run(Plan.of(program, config)).run()
+    monkeypatch.setattr(recording, '_held_formula', lambda *_: None)
+    eager = Run(Plan.of(program, config)).run()
+    assert actual == eager
+    assert actual.failure is None
+    assert at(actual, program, 'tank.positive', 0, 1, 2) == (True, False, False)
+    assert at(actual, program, 'tank.mix', 0, 1, 2) == pytest.approx((8.00000001, 5.00000001, 2.00000001))
+
+
+def test_held_formula_only_reads_the_selected_unavailable_operand():
+    from napkin.core import expr
+    from napkin.core.units import UnitSystem
+    from napkin.engine.timeline.record import _held_formula
+
+    node = expr.read('chosen if ready else absent')
+    units = UnitSystem({})
+    missing = Unavailable('the occurrence has finished')
+    fields = {'chosen': 7.0, 'absent': missing}
+    for ready, expected in [(True, 7.0), (False, missing)]:
+        histories = {
+            name: History(Key('', (name,)), (Piece(0, number),))
+            for name, number in {**fields, 'ready': ready}.items()
+        }
+        assert _held_formula(node, expr.names(node), histories, 1, False, units) == [(1, expected, 0)]

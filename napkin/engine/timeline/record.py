@@ -257,6 +257,38 @@ class Fits:
         return self.closed[key]
 
 
+class _NeedsHistory(Exception):
+    """Comparison scale selection consulted a field outside the held formula's direct reads."""
+
+
+def _held_formula(node, names, histories, start, boolean, units):
+    """One held piece when each named input already holds its last value at the start."""
+    values = {}
+    for name in names:
+        history = histories.get(name)
+        if history is None or not history.pieces:
+            return None
+        piece = history.pieces[-1]
+        if piece.t > start or piece.rate != 0 or piece.curve is not None:
+            return None
+        values[name] = piece.value
+
+    def read(name):
+        if name not in values:
+            raise _NeedsHistory
+        return values[name]
+
+    try:
+        value = evaluate(node, Reads(names, read, start), units)
+    except _NeedsHistory:
+        return None
+    except FAILURES as problem:
+        value = Unavailable(str(problem))
+    if not isinstance(value, Unavailable | str):
+        value = bool(value) if boolean else float(value)
+    return [(float(start), value, 0.0)]
+
+
 class HistoryFull(Exception):
     """The committed prefix that used up the requested history budget."""
 
@@ -878,6 +910,14 @@ class Recorder:
         plan = self.plan
         value = plan.values[name]
         node = value.node if node is None else node
+        if reads is None and compute is None and point is None and not timed and not anchors:
+            names = nodes.names(node)
+            if 't' not in names:
+                held = _held_formula(
+                    node, names, histories, start, value.boolean if boolean is None else boolean, plan.units
+                )
+                if held is not None:
+                    return held
         if timed is None:
             timed = compute is None and point is None and 't' in nodes.names(node)
         if reads is None:
