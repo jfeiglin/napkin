@@ -371,10 +371,12 @@ These override the text of this plan below, wherever the two differ. The owner's
     solver-certified idle route publishes zero. No guard takes its tolerance from the size inferred
     for integration from bounds and connected stores.
 
-    **Owner rulings, 2026-11-21.** At a located empty or full contact, correct the residual on the
-    draining or filling pipes, respectively, in proportion to their rates immediately before the
-    contact. Use declaration order if none was flowing. Land the stock exactly on its bound and
-    apply the matching amount at the other end of each corrected physical leg.
+    **Owner rulings, 2026-11-21.** Whenever a located contact places a stock exactly on a bound
+    or threshold, post the signed difference between the incoming trajectory and that placement
+    to the legs moving the stock toward the value. Weight those legs by their rates immediately
+    before contact. If none is flowing toward it, use declaration order. A cut before the crossing
+    can require additional transfer, and a cut after the crossing can require returning transfer.
+    Apply the same signed correction at the two endpoints of each physical leg.
 
     Group frozen-stock allowance violations at the first failure moment within the crossing
     tolerance. List every contributing leg by stock name, outflow before inflow, then declaration
