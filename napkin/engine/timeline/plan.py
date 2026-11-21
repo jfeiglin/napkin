@@ -2774,13 +2774,45 @@ class Plan:
                     tuple(sorted(found.stepped)),
                     way,
                     frozenset(rates),
-                    frozenset(found.leaves | found.formulas | found.stepped) - own,
+                    self._connection_reads(found, own),
                     sid,
                     results,
                     moves,
                 )
             )
         return made
+
+    def _connection_reads(self, found, own):
+        """The full dependency list, including selection fields fixed for the run.
+
+        Stepper eligibility uses the smaller numeric expansion from lookup_reads. A field
+        can be fixed and still be consulted when selecting a row. Keyed.reads supplies
+        the same conservative candidates to the planner and to selective recording.
+        """
+        names = found.leaves | found.formulas | found.stepped
+        if self.keyed:
+            pending = [name for name in names if name in self.keyed]
+            seen = set()
+            extra = set()
+            while pending:
+                name = pending.pop()
+                if name in seen:
+                    continue
+                seen.add(name)
+                keyed = self.keyed[name]
+                chosen = self._chosen(keyed)
+                if chosen is not None:
+                    continue  # the numeric expansion already includes the selected entry
+                for field in keyed.reads() - names - extra:
+                    extra.add(field)
+                    part = self.expanded(field)
+                    dependencies = part.leaves | part.formulas | part.stepped
+                    extra.update(dependencies)
+                    pending.extend(
+                        other for other in dependencies if other in self.keyed and other not in seen
+                    )
+            names |= extra
+        return names - own
 
     def setting_ends(self, name):
         """The endpoints (store, side) of the connections whose request or capacity is `name`."""

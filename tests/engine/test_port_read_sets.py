@@ -99,8 +99,7 @@ def test_observed_fields_are_planned_retained_and_credited(seed):
         number = reader.at(ROOT, at)
         assert number == (offers[selected] if selected else 0), (seed, at, number)
         leaves = reader.consulted & tags.keys()
-        mutable = {n for n in leaves if n.endswith('.offer') or n == 'plant.pick'}
-        assert mutable <= planned, (seed, at, 'planner', mutable - planned)
+        assert leaves <= planned, (seed, at, 'planner', leaves - planned)
         assert all(machine.recorder.wanted(n) for n in leaves), (seed, at, 'recorder', leaves)
         # The proof admits both rows; the evidence at an instant distinguishes the selected one.
         proof_names = {f'{part.owner}.{part.origin.rsplit(".", 1)[-1]}' for part in reading.edges}
