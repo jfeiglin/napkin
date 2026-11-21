@@ -48,6 +48,8 @@ In the port corpus, respelling both receiving stores as mL also changed the impl
 
 ## Verification
 
+The 400 generated solver unit comparisons now also compare the physical scale of every runtime name across L, mL and kL. Stock and parameter scales are explicit, and the builder fixes the flow unit that supplies implicit endpoint scales. All existing expected readings and failure times were retained. A separate new control compares a 5e-11 L/h reading against zero. With scale 1 L/h the guard stays false, and with scale 1 mL/h it becomes true. The 27 analytical split controls retain the three actual flow units. [Solver unit fixtures](../../../tests/engine/test_published_answers.py)
+
 On `2cc0d0a`, the deep selector below passed 74 tests in 3.96 s with 2,223 cases deselected. It exercised 60 event-local settings seeds (12 through 71), ten relation cases covering five magnitudes on the engine and reference interpreter, and four powers. Other selected directories contributed regular coverage.
 
 ```sh

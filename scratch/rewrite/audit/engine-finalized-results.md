@@ -62,6 +62,14 @@ The original 12-tank benchmark reaches its analytical exponential curve using Ra
 
 The full baseline event guard measured 7,498.460 s inside `Run.run()`, with a process peak of 8.840 GiB. All 482,500 starts completed by 48 h and the first stock held the hand-calculated 84 L. The script's older 7,500.0 s aggregate clock included a second planning pass. The full-sized candidate uses the matching run-only clock. The repeated event comparisons use 1,200 places.
 
+## Follow the refund through the fourth prototype
+
+At branch revision `a65b6e1` (isolated build `a65f70d`), a donor starts with 1 L and the receiving pool with 10,000,000 L. The compiler binds the delivery's request to the authored clock formula, and the allocator permits a rate rising from zero to 0.1 L/h in one hour. The timeline cuts the proposal at a half-hour event. Component and Sparse each supply precisely 1/80 L at that cut and 1/20 L at the hour. Inspecting a half-hour checkpoint twice in opposite query orders preserved the serialized checkpoint and accepted amount. The second half supplies the difference, 3/80 L.
+
+At the horizon the first stage stops the pipe and moves 10,000,000 L from the pool. The second stage asks the pool to pay the donor's 0.05 L loss. At this prototype the legacy balance path can report a deficit of 1e-9 L and reject payment. All six controls (both methods, uninterrupted, empty event and serialized resume) expose that gap before the run-state cutover. The authoritative-accounting gate requires a successful payment, pool balance zero and matching move trace.
+
+A separate frozen-store control has one incoming polynomial leg and a reciprocal-rate neighbor on the same group. The third prototype's gross integral at its 0.1 L allowance was high by 5.55e-18 L on Component and low by 3.99e-18 L on Sparse. The fourth returns exactly 1/10 L on both. It uses the actually allocated integral when a bound or pipe ceiling limits the request. Its mixed-leg, accepted-cut, resume and allocation controls passed 188 focused checks.
+
 ## Migration
 
 The median piano and reservoir examples passed on `31b07b0` against `8488047`. With matched piano draws, all 144 point readings and 24 interval rates agreed exactly. On the reservoir, all 252 readings over 12 configurations passed. The largest differences were 6.11e-16 for water, 9.44e-16 for spilled volume, and 5.54e-8 h for time at risk. The checker rejected the deliberately wrong output and the failure at the horizon. [Protocol and results](paired-migrations-31b07b0.md)
