@@ -75,4 +75,6 @@ Regular corpus: 300 deterministic seeds, one of eight transformations per seed i
 
 Exercise empty event, naming/inlining, scale-preserving units, split move in an atomic stage, text/builder, source/reloaded artifact, checkpoint/resume and another eligible method. Verify each generated case against the reference domain. Final sign-off also requires the 31 audited reproductions, CLI, artifact-only reports, piano and reservoir comparisons against 8488047, both migration checker negative controls and an inventory of changed test expectations with reasons.
 
+Use one four-worker pytest invocation for the complete regular run, retaining `--junitxml=regular.xml -o junit_family=xunit1`. Run `python scratch/rewrite/audit/port_corpus_results.py regular regular.xml --full-suite` to check elapsed suite time, failures, seed coverage and truncated comparisons. Use `deep deep.xml` for the deep corpus.
+
 The owner waived the independent rerun of the 44 auditor-held cases. [Historical evidence and expectation inventory](comparison-expectations-0.2.3.md)
