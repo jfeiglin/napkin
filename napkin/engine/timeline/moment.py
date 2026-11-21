@@ -221,7 +221,7 @@ class Tx:
         self.origin = ''
         self.writes = {}
         self.moves = []  # (source, destination, amount, origin)
-        self.move_roundoff = {}  # the last impulse inventory and its accumulated roundoff, until commit
+        self.move_roundoff = {}  # signed impulse residuals, until commit
         self.starts = []  # (member, event, arguments)
         self.allocations = []  # (store, side, allocation, scope, origin) of each new allocation
         # A value that the stage gives a definition -> the statement that gives it its last: a
@@ -646,46 +646,44 @@ class Moment:
         receiving = float(run.value(destination, tx=tx))
         lower = run.bounds.get(source, (-math.inf, math.inf))[0]
         upper = run.bounds.get(destination, (-math.inf, math.inf))[1]
-        available, room = supply - lower, upper - receiving
-        applied = amount
-        endpoints = ((source, supply, lower, available, -1), (destination, receiving, upper, room, 1))
-        errors = {}
-        for name, initial, edge, space, sign in endpoints:
+        requested = rational(amount)
+        applied = requested
+        endpoints = []
+        for name, initial, edge, sign in ((source, supply, lower, -1), (destination, receiving, upper, 1)):
             history = tx.move_roundoff if name in tx.writes else run.move_roundoff
-            previous, error = history.get(name, (None, 0.0))
-            errors[name] = error if initial == previous else 0.0
+            balance = rational(initial) + history.get(name, 0)
+            space = sign * (rational(edge) - balance) if math.isfinite(edge) else math.inf
+            endpoints.append((name, balance, space, sign))
             low, high = run.bounds.get(name, (-math.inf, math.inf))
-            after = initial + sign * amount
+            after = float(balance + sign * requested)
             # Subtraction may lose digits in positive room between nearly equal inventories.
             # At the bound itself there is exactly no room, even for an amount smaller than an ulp.
             subtraction = max(math.ulp(initial), math.ulp(edge), math.ulp(amount))
-            # A previous move may have rounded the amount or the resulting inventory. Only the
-            # error of those operations can widen this check, up to the store's own allowance.
-            slack = subtraction + min(errors[name], run.amount_tolerance(name, amount))
-            short = space < amount and (space <= 0 or amount - space > slack)
+            short = space < requested and (space <= 0 or requested - space > subtraction)
             if short or (sign > 0 and after < low) or (sign < 0 and after > high):
                 raise SimulationError(
                     f'{origin}: the move of {quantity(plan, source, amount)} from {source} to {destination} '
                     f'fails: {name} would hold {quantity(plan, name, after)}, outside its range '
                     f'{span(plan, name, low, high)}; nothing is moved'
                 )
-            if sign * (after - edge) > 0:
-                applied = min(applied, space)
+            applied = min(applied, space)
 
         # The source's near-zero remainder can join the transfer only if the destination fits it.
+        available, room = (space for _, _, space, _ in endpoints)
         left = available - applied
         if math.isfinite(available) and 0 < left <= run.amount_tolerance(source, left) and available <= room:
             applied = available
-        for name, initial, edge, space, sign in endpoints:
-            inventory = edge if applied == space else initial + sign * applied
+        for name, balance, _, sign in endpoints:
+            new_balance = balance + sign * applied
+            inventory = float(new_balance)
             tx.writes[name] = inventory
-            if inventory == edge:
-                tx.move_roundoff.pop(name, None)  # the store is exactly on its bound
+            residual = new_balance - rational(inventory)
+            if residual:
+                tx.move_roundoff[name] = residual
             else:
-                residual = math.fsum((initial, sign * applied, -inventory))
-                tx.move_roundoff[name] = inventory, errors[name] + abs(residual) + math.ulp(applied)
+                tx.move_roundoff.pop(name, None)
 
-        tx.moves.append((source, destination, applied, origin))
+        tx.moves.append((source, destination, float(applied), origin))
 
     def queue(self, statement, tx, scope):
         """`.start(...)`: the arguments are evaluated at the caller, left to right, once; on a
@@ -749,6 +747,8 @@ class Moment:
         except Exception:
             saved.discard()
             raise
+        for name in tx.writes:
+            self.run.move_roundoff.pop(name, None)
         self.run.move_roundoff.update(tx.move_roundoff)
 
     def _publish(self, tx):

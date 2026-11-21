@@ -96,7 +96,7 @@ def check(program, horizon, expected, stop=None, origin=STOP):
             assert found == pytest.approx(float(answer), abs=1e-8), (path, at)
 
 
-def model(kind, seed):
+def model(kind, seed, *, mixed_amounts=False):
     """One store of water and two claims on its outflow, with one change at 2 h."""
     rng = random.Random(seed)
     a, b = rng.randint(2, 5), rng.randint(1, 3)
@@ -126,6 +126,33 @@ def model(kind, seed):
     elif kind in ('store', 'move'):
         builder.entity('stock', value('level', 'L', a, lower=0), value('bucket', 'L', 0, lower=0))
         stock = named('stock')
+        if mixed_amounts:
+            # Deposit in a large inventory, remove the principal, then pay back the deposits.
+            rng = random.Random(seed + 0x8E422DA)
+            bulk = 10 ** rng.randint(3, 7)
+            deposit = F(rng.choice((1, 3, 7, 50)), 1000)
+            count = rng.randint(2, 12)
+            bank = builder.entity(
+                'bank',
+                value('principal', 'L', bulk, lower=0),
+                value('deposits', 'L', float(count * deposit), lower=0),
+            )
+            changes.extend(
+                [
+                    move(q(bulk, 'L'), bank.principal, stock.level),
+                    *(move(q(deposit, 'L'), bank.deposits, stock.level) for _ in range(count)),
+                    move(q(bulk, 'L'), stock.level, bank.principal),
+                    move(q(count * deposit, 'L'), stock.level, bank.deposits),
+                ]
+            )
+            extra_answers.extend(
+                (
+                    ('bank.principal', 2, bulk),
+                    ('bank.deposits', 2, count * deposit),
+                    ('stock.level', 2, 0),
+                    ('stock.bucket', 2, a),
+                )
+            )
         request = formula(stock.level * q(1, '1/h'))
         changes.append(
             assign(stock.level, q(0, 'L')) if kind == 'store' else move(q(a, 'L'), stock.level, stock.bucket)

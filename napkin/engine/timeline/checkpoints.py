@@ -225,6 +225,7 @@ class Breaks:
         run.recorder.entry(run.now, 'edit', stop.at, stop.owner, **details)
         self.transferred(details)
         run.write(name, value)
+        run.move_roundoff.pop(name, None)
         run.occurrences.met(name)
 
     def transferred(self, details):

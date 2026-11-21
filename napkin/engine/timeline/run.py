@@ -156,7 +156,7 @@ class Run:
         self._kept, self._stepped, self._indexes, self._known = {}, {}, {}, {}
         self.started = False  # once true, `value_of` reads the present
         self.written = {}  # a store of a set that a commit of this moment wrote, and its value
-        self.move_roundoff = {}  # store -> (inventory after the last move, accumulated arithmetic error)
+        self.move_roundoff = {}  # store -> signed amount lost when its last impulse balance was published
         self.frozen = {}  # a formula of a finished occurrence -> its value or `Unavailable` (D7)
         self.limit = plan.horizon  # the next moment that the run knows (`next_moment`)
         # Whether the last moment is the horizon and nothing else, which a longer run does not have
@@ -727,7 +727,6 @@ class Run:
         it from now on. A definition (`Defined`), and a number in place of a request's or a
         capacity's formula, changes what the value is from now on (`define`)."""
         plan = self.plan
-        self.move_roundoff.pop(name, None)
         found = plan.values.get(name)  # none for a distribution-valued value
         if isinstance(value, Defined) or (found is not None and found.kind == FORMULA):
             self.define(name, value.node if isinstance(value, Defined) else None)
@@ -1056,6 +1055,12 @@ class Run:
                 # A flow at a store of a finished occurrence carries no rate up to the event.
                 self.occurrences.carried(self.now, at)
                 self.now = at
+                if self.move_roundoff:
+                    # An exact threshold or bound replaces the incoming balance.
+                    for name in (
+                        levels.keys() | bound_values(self.bounds, instance.contacts_at(at, at)).keys()
+                    ):
+                        self.move_roundoff.pop(name, None)
                 stores, rates, jumped = instance.step(levels) if levels else instance.step()
                 self.recorder.check_budget(at, internal=True)
                 changed = set(stores) | set(rates)
@@ -1100,6 +1105,8 @@ class Run:
                         self.triggers.anchor(levels, *pair, moment, located)
                         self.consumed[tuple(map(nodes.text, pair))] = located, moment
             self.bound_at.update(levels)
+            for name in self.bound_at:
+                self.move_roundoff.pop(name, None)
             self.moved.update(levels)
             self.arriving = True
             self.bare = (

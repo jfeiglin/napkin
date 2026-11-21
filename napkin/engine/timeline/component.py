@@ -802,6 +802,39 @@ class ComponentWay(Way):
         finally:
             state.evaluations = evaluations
 
+    def exact_rate_line(self, name, start):
+        """An unrestricted flow affine in the clock, as a rate and slope in exact canonical units.
+        The selected field supplies its expressions and captured inputs. On a bound that can
+        restrict this connection the actual allocation must be read from the trajectory instead."""
+        from fractions import Fraction
+
+        from .triggers import _affine
+
+        component = self.component
+        flow = component.system.flows[name.rsplit('.', 1)[0]]
+        bounds = component.state.active_bounds
+        if (self.place.get(flow.source), 'min') in bounds or (self.place.get(flow.target), 'max') in bounds:
+            return None
+        field = component.field
+        node = field.expression(flow.rate)
+        if self.run.triggers.moving_reads(node) - {'t'} or not _affine(node, {'t'}, self.run.plan):
+            return None
+        formulas = [(key, field.expression(expr)) for key, expr in field._formulas_for([node])]
+
+        def rate(at):
+            values = {**self.captured[0], **component.state.store}
+            for key, definition in formulas:
+                values[key] = self.run.clock.value(definition, values.__getitem__, at)
+            return self.run.clock.value(node, values.__getitem__, at)
+
+        try:
+            first, second = rate(start), rate(start + 1)
+        except (ExpressionError, ArithmeticError, LookupError):
+            return None
+        if not all(isinstance(x, (int, Fraction)) for x in (first, second)):
+            return None
+        return first, second - first
+
     def linear(self, store):
         """The line of a store through the next segment, or None on a curve."""
         segment = self.pending

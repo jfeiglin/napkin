@@ -50,13 +50,16 @@ import heapq
 import math
 from dataclasses import dataclass, field
 from fractions import Fraction
+from functools import lru_cache
 from itertools import pairwise
 
+from numpy.polynomial.legendre import leggauss
 from scipy.integrate import quad
 from scipy.optimize import brentq
 
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
+from ...core.units import rational
 from ...program import parts as p
 from ...program.record import Unavailable
 from ..errors import SimulationError
@@ -69,6 +72,30 @@ def _flow_of(plan, connection):
     """The flow of a connection: a directed flow is its own, a leg of a route or of a flow with legs
     is named after its flow."""
     return connection if connection in plan.flows else connection.rsplit('.', 1)[0]
+
+
+@lru_cache(maxsize=1)
+def _gauss_rule():
+    """Positive Gauss weights on [0, 1], normalized to sum exactly to one."""
+    points, weights = leggauss(24)
+    denominator = sum(map(rational, weights))
+    return [((1 + rational(x)) / 2, rational(w) / denominator) for x, w in zip(points, weights)]
+
+
+def _integral(rate, a, b, label):
+    """Measure a curved rate on QUADPACK's accepted subintervals, accumulating all weights and
+    durations before rounding. Neither the numerical error estimate nor the number of intervals
+    increases the physical allowance."""
+    answer = quad(rate, a, b, epsabs=0, epsrel=1e-13, full_output=True)
+    if len(answer) > 3:
+        raise SimulationError(f'{label}: {answer[3]}')
+    parts = answer[2]
+    total = Fraction(0)
+    for lo, hi in zip(parts['alist'][: parts['last']], parts['blist'][: parts['last']]):
+        start = rational(lo)
+        duration = rational(hi) - start
+        total += duration * sum(w * rational(rate(float(start + x * duration))) for x, w in _gauss_rule())
+    return total
 
 
 @dataclass(eq=False)
@@ -394,7 +421,7 @@ class Occurrences:
         updates = {}
         for store in sorted(self.watched()):
             present = False
-            allowance = run.amount_tolerance(store)
+            allowance = rational(self.plan.numerics.atol_factor) * rational(run.own_scale(store))
             for side in SIDES:
                 connections = self.plan.incident(store, side)
                 if not connections:
@@ -403,9 +430,10 @@ class Occurrences:
                 key = store, side
                 # Keep the running sum exact over the measured segment contributions, so tiny
                 # transfers cannot disappear when joined to a much larger accumulated amount.
-                previous = self.transferred.get(key, Fraction(0))
-                rates, breaks = [], {start, end}
-                moving = False
+                exact, measured = self.transferred.get(key, (0, 0))
+                rates, curves, breaks = [], [], {start, end}
+                origin = rational(start)
+                initial = slope = 0
                 for connection in connections:
                     name = f'{connection}.actual_rate'
                     parent = _flow_of(self.plan, connection)
@@ -413,40 +441,53 @@ class Occurrences:
                     if way is None:
                         continue
                     rates.append(name)
-                    if run.ways.moving(run.ways.set_of[parent]):
-                        moving = True
+                    if not run.ways.moving(run.ways.set_of[parent]) or run.ways.held_rate(name):
+                        initial += rational(abs(run.value(name, start)))
+                        continue
+                    line = getattr(way, 'exact_rate_line', None)
+                    line = line(name, origin) if line else None
+                    if line is None:
+                        curves.append(name)
                         breaks.update(getattr(way, 'breaks', lambda a, b: ())(start, end))
-                if not rates:
-                    continue
-
-                def rate(t):
-                    return math.fsum(abs(run.value(name, t)) for name in rates)
+                    else:
+                        initial += line[0]
+                        slope += line[1]
 
                 def volume(a, b):
-                    if not moving:
-                        return rate(a) * (b - a)
-                    answer = quad(rate, a, b, epsabs=allowance * 1e-6, epsrel=1e-10, full_output=True)
-                    if len(answer) > 3:
-                        raise SimulationError(
-                            f'{store}: cannot certify the frozen {side} amount: {answer[3]}'
-                        )
-                    return answer[0]
+                    left, right = rational(a), rational(b)
+                    # Integrate the line at its exact midpoint. Adjacent intervals telescope.
+                    fixed = (right - left) * (initial + slope * ((left + right) / 2 - origin))
+                    if not curves or a == b:
+                        return fixed, 0
+                    return fixed, _integral(
+                        lambda t: math.fsum(abs(run.value(name, t)) for name in curves),
+                        a,
+                        b,
+                        f'{store}: cannot certify the frozen {side} amount',
+                    )
 
-                for a, b in pairwise(sorted(breaks)):
-                    moved = Fraction(volume(a, b))
-                    if previous + moved > allowance:
-                        remaining = float(Fraction(allowance) - previous)
+                for a, b in pairwise(sorted(breaks)) if rates else ():
+                    fixed, curved = volume(a, b)
+                    # One comparison of the cumulative measured amount at its final precision.
+                    # Quadrature error estimates govern integration and never buy more inventory.
+                    remaining = allowance - exact - fixed
+                    exceeds = (
+                        float(measured + curved) > float(remaining) if measured or curved else remaining < 0
+                    )
+                    if exceeds:
+                        left = max(0, allowance - exact - measured)
                         at = (
-                            brentq(lambda t: volume(a, t) - remaining, a, b, xtol=1e-14)
-                            if moving
-                            else a + (b - a) * remaining / float(moved)
+                            brentq(lambda t: float(sum(volume(a, t)) - left), a, b, xtol=1e-14)
+                            if curves or slope
+                            else a + (b - a) * float(left / fixed)
                         )
                         largest = max(rates, key=lambda name: abs(run.value(name, at)))
                         if first is None or at < first[0]:
                             first = (at, store, side, largest, run.value(largest, at))
                         break
-                    previous += moved
-                updates[key] = previous
+                    exact += fixed
+                    measured += curved
+                updates[key] = exact, measured
             if not present:
                 self.watched().discard(store)
         if first is None:
