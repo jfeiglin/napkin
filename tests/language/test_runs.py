@@ -506,3 +506,14 @@ def test_authored_json_decimal_is_checked_in_the_inputs_unit(tmp_path, token, ac
         with pytest.raises(LanguageError) as failed:
             model.configure(edits=edits)
         assert failed.value.codes == ['range']
+
+
+@pytest.mark.parametrize('token', ['1' + '0' * 309, '1e309', '-1' + '0' * 309, '-1e309'])
+def test_out_of_float_range_edits_have_the_same_diagnostic(tmp_path, token):
+    from napkin.commands.common import edits_of
+
+    path = tmp_path / 'edits.json'
+    path.write_text('{"set": {"plant.delay": ' + token + '}}')
+    with pytest.raises(LanguageError) as failed:
+        MODEL.configure(edits=edits_of(MODEL, path))
+    assert failed.value.codes == ['value']

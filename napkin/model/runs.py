@@ -268,7 +268,12 @@ def _value(declared, found, value):
     if isinstance(value, bool):
         raise s.Refused('value', f'{found.name} is {found.type}: it takes no true or false')
     if isinstance(value, (int, float, Decimal)):
-        if not math.isfinite(value) or not isinstance(found.type, s.Num):
+        try:
+            finite = math.isfinite(value)
+        except OverflowError:
+            # An integer token beyond the engine's numeric range, like the same decimal token.
+            finite = False
+        if not finite or not isinstance(found.type, s.Num):
             raise s.Refused(
                 'value', f'{found.name} is {found.type}: a finite number is in its unit, not {value!r}'
             )
