@@ -70,6 +70,12 @@ At the horizon the first stage stops the pipe and moves 10,000,000 L from the po
 
 A separate frozen-store control has one incoming polynomial leg and a reciprocal-rate neighbor on the same group. The third prototype's gross integral at its 0.1 L allowance was high by 5.55e-18 L on Component and low by 3.99e-18 L on Sparse. The fourth returns exactly 1/10 L on both. It uses the actually allocated integral when a bound or pipe ceiling limits the request. Its mixed-leg, accepted-cut, resume and allocation controls passed 188 focused checks.
 
+## Held-pipe recording
+
+On the pinned baseline, the history-budget check at each independent pipe exhaustion rebuilt moving collection histories. A profile at 300 and 600 places spent 2.55 and 9.55 s in this check. The optimization in `ee1e26a` counts how much eligible held-line histories, aliases and sums can grow. While that upper bound fits the piece budget the exact recount can wait. Where the bound cannot certify headroom, the recorder performs its original exact check.
+
+Across 741 separate-process comparisons with the baseline, the complete or partial history, trace, first budget-failure time and visited pipe boundaries matched. The 30,000-place optimized smoke ran and recorded in 20.510343 s, with 330,012 histories, 929,461 pieces and a process peak of 1.443 GiB. The analytically checked total stock at 6, 30 and 48 h was 777,172.59, 302,565.772 and 134,151.7 L. This smoke used the isolated tree `03c7b12`. The final paired campaign repeats the measurement on the completed candidate. [Recorder budget controls](../../../tests/engine/test_held_history_budgets.py)
+
 ## Migration
 
 The median piano and reservoir examples passed on `31b07b0` against `8488047`. With matched piano draws, all 144 point readings and 24 interval rates agreed exactly. On the reservoir, all 252 readings over 12 configurations passed. The largest differences were 6.11e-16 for water, 9.44e-16 for spilled volume, and 5.54e-8 h for time at risk. The checker rejected the deliberately wrong output and the failure at the horizon. [Protocol and results](paired-migrations-31b07b0.md)

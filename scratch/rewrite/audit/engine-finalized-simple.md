@@ -65,7 +65,7 @@ Paths below are relative to scratch/rewrite/b1. Run each individual workload aga
 | Held local network | s2-engine/bench.py | held 3000 3500 48 | held 30000 35000 48 |
 | Moving local network | s2-engine/bench.py | moving 3000 3500 48 | moving 30000 35000 48 |
 | Event-heavy | s4a-engine/bench.py | 1200 48 12 | 1200 48 12; separately 30000 48 12 once on each revision, limit 1.10 |
-| Declared solver | s5-engine/bench.py | — | 3000 3500 1500 |
+| Declared solver | s5-engine/bench.py | — | 3000 3500 1500 --no-phase-times |
 
 Production accounting requires correct Component and Sparse accepted amounts including an event cut, and passing moving, held and event prototype measurements. The final performance campaign also includes the declared solver and independent pipes.
 
