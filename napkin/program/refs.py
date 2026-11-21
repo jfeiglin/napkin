@@ -253,6 +253,31 @@ def _number(value):
     return str(value)
 
 
+def renamed(node, names):
+    """A node with some of its names replaced."""
+    if isinstance(node, nodes.Ref):
+        return nodes.ref(names.get(node.name, node.name))
+    if isinstance(node, nodes.Const):
+        return node
+
+    def each(items):
+        return [renamed(part, names) for part in items]
+
+    if isinstance(node, nodes.Unary):
+        return nodes.unary(node.op, renamed(node.operand, names))
+    if isinstance(node, nodes.Binary):
+        return nodes.binary(node.op, renamed(node.left, names), renamed(node.right, names))
+    if isinstance(node, nodes.Compare):
+        return nodes.compare(node.ops, each(node.operands))
+    if isinstance(node, nodes.BoolOp):
+        return nodes.boolean(node.op, each(node.values))
+    if isinstance(node, nodes.IfElse):
+        return nodes.if_else(*each((node.test, node.body, node.orelse)))
+    if isinstance(node, nodes.Call):
+        return nodes.call(node.function, each(node.args))
+    raise TypeError(f'no node of a program: {type(node).__name__}')
+
+
 def spelled(item):
     """A readable spelling of a read, a start or a distribution, as the language writes it. It names
     the read in a node; two reads with one spelling in one expression get a suffix (`#1`)."""

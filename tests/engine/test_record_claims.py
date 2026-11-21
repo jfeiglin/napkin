@@ -244,7 +244,7 @@ def test_a_stopped_run_asked_for_three_hours_then_one_gives_each_its_own_value()
 # ---- 09. the proofs of an edited run ---------------------------------------------------------------------
 
 
-def gated(rng):
+def gated(rng, extra=()):
     """A random gated plant: a stock pours into a tally at a random rate; a withdrawal moves 1 L out of
     the tally (or the stock) an hour after the yes/no `open` holds from 1 h, and nothing in the model
     writes `open`; a tick at 0.5 h, where a breakpoint stops the run; a random edit there: `open` on
@@ -258,6 +258,7 @@ def gated(rng):
         value('tally', 'L', 0, lower=0),
         value('spent', 'L', 0, lower=0),
         value('ticks', '', 0),
+        *extra,
         value('alias', 'L', formula(this.tally)),
         value('gap', 'L', formula(this.tally - this.stock)),
         value('double', 'L', formula(this.tally * 2)),
@@ -308,6 +309,69 @@ def test_no_proof_of_an_edited_run_is_contradicted_by_its_own_values(seed):
         for used in reported.trail:
             if used.kind == 'event' and used.why.startswith('it cannot start'):
                 assert not record.entries('start', used.origin), (seed, used)
+
+
+def test_two_spellings_of_one_input_refuse_the_lag_of_a_falling_clock():
+    """The two readings of x add to 1.5e-9 L with a band of 2e-9 L. A different member's
+    independently declared x at the same value gives the sum a band of only 1e-9 L."""
+    from napkin.model.compile import compile_text
+
+    model = compile_text(
+        """scenario "Two spellings"
+    horizon 2 h
+
+Meter:
+    input x: L = 0.75e-9 L scale 1 L
+    clock = formula(t if this.x + w.x > 0 L else -t)
+
+w: Meter
+peer: Meter
+""",
+        UNITS,
+    )
+    paths = ['w.clock', 'peer.clock']
+    result = run(model.program, model.configuration)
+    assert result.failure is None
+    raw = read(result, model.program, paths, [0, 1, 2])
+    assert [row.values for row in raw] == [(0, -1, -2), (0, 1, 2)]
+    falling, rising = report(
+        result, model.program, model.configuration, paths, [1, 2], {p: Lag(0, 1) for p in paths}
+    ).values
+    assert falling.lag is None and falling.values == (-1, -2)
+    assert 'falls as the time goes on' in falling.note
+    assert rising.lag == Lag(0, 1) and rising.values == (0.5, 1.5)
+
+
+@pytest.mark.parametrize(
+    'seed', [*range(8), *[pytest.param(k, marks=pytest.mark.deep) for k in range(8, 32)]]
+)
+def test_respell_one_read_in_the_gated_plant(seed):
+    """Replace one reading of this.signal by plant.signal without changing its identity.
+    The two identical contributions have a band of twice the declared scale times 1e-9."""
+    rng = random.Random(f'spellings {seed}')
+    scale = rng.choice([0.001, 1, 1e4, 1e7])
+    multiple = rng.choice([0.625, 0.75, 1.25, 1.5])
+    times = (1, 2)
+    expected = times if multiple > 1 else (-1, -2)
+    lag = Lag(0, 1)
+    variants = []
+    for second in (this.signal, named('plant').signal):
+        program, edit = gated(
+            random.Random(seed),
+            (
+                input_('signal', 'L', scale * multiple * 1e-9, scale=scale),
+                value('clock', 'h', formula(ifelse(this.signal + second > q(0, 'L'), t, -t))),
+            ),
+        )
+        config = Configuration(Request(4))
+        record = edited(program, config, (Breakpoint('plant.tick.step[0]'),), edit)
+        raw = read(record, program, ['plant.clock'], times)[0]
+        (shown,) = report(record, program, config, ['plant.clock'], times, {'plant.clock': lag}).values
+        assert raw.values == expected
+        assert shown.lag == (lag if multiple > 1 else None)
+        assert shown.values == ((0.5, 1.5) if multiple > 1 else expected)
+        variants.append(shown.trail)
+    assert variants[0] == variants[1]
 
 
 def test_an_edit_that_turns_on_a_withdrawal_withdraws_the_proofs_that_rest_on_its_event():

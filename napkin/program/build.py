@@ -70,6 +70,7 @@ from .refs import (
     Reduce,
     Since,
     Where,
+    renamed,
     spelled,
 )
 
@@ -328,31 +329,6 @@ def _free(name, taken):
     return f'{name}#{index}'
 
 
-def _renamed(node, names):
-    """A node with some of its names replaced."""
-    if isinstance(node, nodes.Ref):
-        return nodes.ref(names.get(node.name, node.name))
-    if isinstance(node, nodes.Const):
-        return node
-
-    def each(items):
-        return [_renamed(part, names) for part in items]
-
-    if isinstance(node, nodes.Unary):
-        return nodes.unary(node.op, _renamed(node.operand, names))
-    if isinstance(node, nodes.Binary):
-        return nodes.binary(node.op, _renamed(node.left, names), _renamed(node.right, names))
-    if isinstance(node, nodes.Compare):
-        return nodes.compare(node.ops, each(node.operands))
-    if isinstance(node, nodes.BoolOp):
-        return nodes.boolean(node.op, each(node.values))
-    if isinstance(node, nodes.IfElse):
-        return nodes.if_else(*each((node.test, node.body, node.orelse)))
-    if isinstance(node, nodes.Call):
-        return nodes.call(node.function, each(node.args))
-    raise TypeError(f'no node of a program: {type(node).__name__}')
-
-
 def _apply(make, *items):
     """The handle of an operation on handles or plain values: the union of their reads, a name that
     two different reads share renamed in the later one."""
@@ -366,7 +342,7 @@ def _apply(make, *items):
                 reads[renames[name]] = read
             else:
                 reads[name] = read
-        parts.append(_renamed(handle._node, renames) if renames else handle._node)
+        parts.append(renamed(handle._node, renames) if renames else handle._node)
     return X(make(*parts), reads)
 
 
@@ -1293,4 +1269,4 @@ def _spelled_expr(expression, origin, counter):
             final = _free(final, used.keys())
         used[final] = read
         names[name] = final
-    return Expr(_renamed(expression.node, names), tuple(sorted(used.items())))
+    return Expr(renamed(expression.node, names), tuple(sorted(used.items())))

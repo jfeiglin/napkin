@@ -107,6 +107,7 @@ from .refs import (
     This,
     Time,
     Where,
+    renamed,
     spelled,
 )
 
@@ -545,7 +546,7 @@ class Proofs:
     def constant(self, node, reads, at):
         """The value of an expression that reads only what is fixed for the run, in canonical units, or
         None: an input that is drawn has no value known before the run."""
-        environment, points = {}, {}
+        environment, points, identities, aliases = {}, {}, {}, {}
         for name in nodes.names(node):
             read = reads.get(name)
             if isinstance(read, EnumValue):
@@ -555,8 +556,14 @@ class Proofs:
             value = None if point is None else self.input_value(point)
             if value is None:
                 return None
-            environment[name] = value
-            points[name] = point
+            # One input can be reached by several paths. Its repeated contributions share
+            # a comparison scale, including inside a product or another compound expression.
+            owner, part = point[1:3]
+            bound = identities.setdefault((owner, part.name), name)
+            if name != bound:
+                aliases[name] = bound
+            environment[bound] = value
+            points[bound] = point
 
         def operand(name):
             point = points.get(name)
@@ -580,7 +587,7 @@ class Proofs:
             units = copy(units)
             units.comparisons = Comparisons(units, self.units.comparisons.factor, operand)
         try:
-            return checked_value(node, environment, units)
+            return checked_value(renamed(node, aliases) if aliases else node, environment, units)
         except (ExpressionError, ArithmeticError, ValueError, TypeError, KeyError):
             return None
 
