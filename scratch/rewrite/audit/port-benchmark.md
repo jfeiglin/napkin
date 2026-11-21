@@ -27,3 +27,7 @@ The common driver passes `--no-phase-times` to the declared solver script on bot
 ### Physical stock materializations
 
 `stock_materializations` reports calls to the production `Run.post_stock(store, t)` entry point and the number that actually advanced the store's accepted cursor. Their difference counts already-posted requests. Pure `Run.stock_balance` queries do not touch either counter. A revision that predates this stock writer reports `null` for the group. The `by_method` entries for accepted integral batches and leg amounts measure the methods' numerical work separately.
+
+### Prototype counter evidence
+
+The [fourth prototype counter samples](engine-finalized-counters.csv) include 21 executions of seven workloads on the baseline, allocation-only and fourth prototype builds. A mixed workload has a row per numerical method. Time, process peak RSS, checked-primitive count, maximum absolute amount discrepancy and the original JSON checksum describe the entire execution and repeat across its method rows. Blank primitive batch and leg counts denote an engine that predates the integral API. Timing gates use the separately measured uninstrumented runs.
