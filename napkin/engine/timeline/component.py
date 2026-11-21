@@ -70,8 +70,6 @@ from ..continuous.transfers import (
     MovingAmounts,
     _clock_polynomial,
     checked_amount,
-    clock_primitives,
-    direct_clock_primitive,
     radau_amount,
 )
 from ..continuous.walk import walked
@@ -580,11 +578,8 @@ class ComponentWay(Way):
             if end and flow.source != flow.target:
                 single = system.index[end], (1 if flow.target else -1)
         self.amounts = MovingAmounts(len(system.flow_ids), t, single)
-        if single is not None:
-            self.amounts.primitive = direct_clock_primitive(plan.flows[self.flows[0]], plan)
-
+        self.amounts.clock_legs(system.flow_ids, self.place, plan)
         if single is None:
-            self.amounts.clock_rates = clock_primitives(self.flows, plan)
             self.component.field.leg_rates = lambda: self.component.field.delivered
         self._stepped(float(t))
 
@@ -639,6 +634,8 @@ class ComponentWay(Way):
     def _commit(self, segment):
         component = self.component
         if segment.end > segment.start:
+            if self.amounts.clocks:
+                self.amounts.select_clocks(*self._clock_bounds())
             amount = self._transfer_amount(segment, segment.end)
             self.amounts.accept(segment.start, segment.end, amount)
         self._record(segment)
@@ -648,23 +645,12 @@ class ComponentWay(Way):
     def _transfer_amount(self, segment, through):
         """The actual leg integrals on the accepted prefix, in canonical units."""
         single = self.amounts.single
-        if self.amounts.primitive is not None:
-            flow = self.component.system.flows[self.flows[0]]
-            bounds = self.component.state.active_bounds
-            if (self.place.get(flow.source), 'min') in bounds or (
-                self.place.get(flow.target),
-                'max',
-            ) in bounds:
-                return Fraction(0)
-            return self.amounts.polynomial_amount(segment.start, through)
-        if self.amounts.clock_rates and not self.component.state.active_bounds:
-            return self.amounts.clock_amounts(segment.start, through)
         solution = segment.solution
         if segment.numerical is not None:
             total = 0.0
             for k, step in enumerate(solution.interpolants):
                 end = through if k == len(solution.interpolants) - 1 else min(solution.ts[k + 1], through)
-                if single is not None:
+                if single is not None or (self.amounts.all_clock and not self.component.state.active_bounds):
                     total = total + radau_amount(step, end, single)
                 else:
 
@@ -699,8 +685,18 @@ class ComponentWay(Way):
             return arrival.amount(row)
         if self.pending is None or not self.amounts.through < t <= min(self.pending.end, self.run.now):
             raise ValueError('transfer requested outside the accepted interval')
-        prefix = self._transfer_amount(self.pending, t)
-        return self.amounts.amount(row, prefix if self.amounts.single is not None else prefix[row])
+
+        def interval():
+            prefix = self._transfer_amount(self.pending, t)
+            return prefix if self.amounts.single is not None else prefix[row]
+
+        leg = self.amounts.clocks.get(row)
+        mode = leg.selection(*self._clock_bounds()) if leg is not None else None
+        return self.amounts.prefix(row, t, mode, interval)
+
+    def _clock_bounds(self):
+        bounds = self.component.state.active_bounds
+        return lambda k: (k, 'min') in bounds, lambda k: (k, 'max') in bounds
 
     def _record(self, segment):
         if segment.start == segment.end or segment.end != self.recorded_through:

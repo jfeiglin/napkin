@@ -57,8 +57,6 @@ from ..continuous.transfers import (
     CollocationRates,
     MovingAmounts,
     checked_amount,
-    clock_primitives,
-    direct_clock_primitive,
     radau_amount,
 )
 from ..errors import SimulationError
@@ -686,15 +684,13 @@ class Sparse(Way):
         self.setting_names = tuple(names)
         self.settings = vector.compiled(names)
         self.size = len(names)
-        if self.amounts.single is not None and self.net.plain:
-            self.amounts.primitive = direct_clock_primitive(plan.flows[self.flows[0]], plan)
-        elif self.net.plain and self.stores:
-            self.amounts.clock_rates = clock_primitives(self.flows, plan)
+        if self.stores:
+            self.amounts.clock_legs(self.net.connections, place, plan)
         self.identifiable = (
             self.amounts.single is None
             and self.net.plain
             and self.stores
-            and not (self.capped or configured_ends or self.amounts.clock_rates)
+            and not (self.capped or configured_ends or self.amounts.all_clock)
             and identifiable_network(self.net, connections, plan)
         )
         # Each level: the places of its settings, their values, and the rates that it gives.
@@ -1326,15 +1322,10 @@ class Sparse(Way):
         return end
 
     def _transfer_amount(self, solution, start, end):
-        if self.amounts.primitive is not None:
-            source, sink = self.net.source[0], self.net.sink[0]
-            if (source >= 0 and self.lower_flags[source]) or (sink >= 0 and self.upper_flags[sink]):
-                return 0
-            return self.amounts.polynomial_amount(start, end)
         if self.amounts.single is not None:
             return radau_amount(solution, end, self.amounts.single)
-        if self.amounts.clock_rates and not self.lower_flags.any() and not self.upper_flags.any():
-            return self.amounts.clock_amounts(start, end)
+        if self.amounts.all_clock and not self.lower_flags.any() and not self.upper_flags.any():
+            return radau_amount(solution, end, None)
 
         if self.identifiable and not self.upper_flags.any():
             return radau_amount(solution, end, None)
@@ -1359,6 +1350,8 @@ class Sparse(Way):
 
     def _accept(self, solution, start, end):
         if self.stores and start < end:
+            if self.amounts.clocks:
+                self.amounts.select_clocks(self.lower_flags.__getitem__, self.upper_flags.__getitem__)
             self.amounts.accept(start, end, self._transfer_amount(solution, start, end))
 
     def transferred(self, name, t):
@@ -1371,8 +1364,18 @@ class Sparse(Way):
             return arrival.amount(row)
         if self.pending is None or not self.amounts.through < t <= min(self.pending[1], self.run.now):
             raise ValueError('transfer requested outside the accepted interval')
-        prefix = self._transfer_amount(self.pending[2], self.pending[0], t)
-        return self.amounts.amount(row, prefix if self.amounts.single is not None else prefix[row])
+
+        def interval():
+            prefix = self._transfer_amount(self.pending[2], self.pending[0], t)
+            return prefix if self.amounts.single is not None else prefix[row]
+
+        leg = self.amounts.clocks.get(row)
+        mode = (
+            leg.selection(self.lower_flags.__getitem__, self.upper_flags.__getitem__)
+            if leg is not None
+            else None
+        )
+        return self.amounts.prefix(row, t, mode, interval)
 
     def step(self, levels=()):
         """Commit the next step: the stores and the rates of the set move through it."""

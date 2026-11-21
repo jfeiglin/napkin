@@ -66,8 +66,8 @@ def _clock_polynomial(node, values, literals):
 
 
 def direct_clock_primitive(flow, plan):
-    """An unrestricted single pipe whose request is polynomial in the clock alone.
-    The method separately checks whether a physical bound holds the pipe."""
+    """An uncapped pipe whose request is polynomial in the clock alone. A method
+    must separately certify that local sharing actually gives it this request."""
     if flow.capacity is not None:
         return None
     expression = plan.expanded(flow.request)
@@ -89,14 +89,46 @@ def direct_clock_primitive(flow, plan):
     return None
 
 
-def clock_primitives(flows, plan):
-    rates = []
-    for name in flows:
-        primitive = direct_clock_primitive(plan.flows[name], plan)
-        if primitive is None:
-            return None
-        rates.append(primitive)
-    return rates
+class ClockLeg:
+    """The cumulative amount for a pipe whose uncapped request has an exact primitive.
+
+    Only the region changes and reads of this leg evaluate its primitive. When a
+    constrained endpoint may alter the allocation, use the numerical leg's accepted
+    cumulative increments until the request is again known to be delivered.
+    """
+
+    REQUEST, STOPPED, ALLOCATED = range(3)
+
+    def __init__(self, polynomial, start, source, sink, feeds_source, drains_sink):
+        self.polynomial = polynomial
+        self.source, self.sink = source, sink
+        self.feeds_source, self.drains_sink = feeds_source, drains_sink
+        self.mode, self.start, self.closed, self.origin = self.REQUEST, start, 0, 0
+
+    def selection(self, lower, upper):
+        source, sink = self.source, self.sink
+        supply = source is not None and lower(source)
+        room = sink is not None and upper(sink)
+        if (supply and not self.feeds_source) or (room and not self.drains_sink):
+            return self.STOPPED
+        if supply or room or (self.feeds_source and upper(source)) or (self.drains_sink and lower(sink)):
+            return self.ALLOCATED
+        return self.REQUEST
+
+    def integral(self, a, b):
+        return polyval(rational(b), self.polynomial) - polyval(rational(a), self.polynomial) if a != b else 0
+
+    def amount(self, t, numerical):
+        if self.mode == self.ALLOCATED:
+            return self.closed + numerical - self.origin
+        if self.mode == self.REQUEST:
+            return self.closed + self.integral(self.start, t)
+        return self.closed
+
+    def change(self, t, mode, numerical):
+        self.closed = self.amount(t, numerical)
+        self.mode, self.start = mode, t
+        self.origin = numerical if mode == self.ALLOCATED else 0
 
 
 # The canonical decimal spelling of a finite binary64 time or rate has no digit
@@ -260,16 +292,12 @@ class MovingAmounts:
 
     def __init__(self, rows, start, single):
         self.single = single
-        self.primitive = None
-        self.clock_rates = None
+        self.clocks = {}
+        self.all_clock = False
         self.absolute_rates = None
-        self.exact = Fraction(0)
         self.through = start
         self.total = 0.0 if single is not None else np.zeros(rows)
         self.remainder = 0.0 if single is not None else np.zeros(rows)
-
-    def polynomial_amount(self, start, end):
-        return polyval(rational(end), self.primitive) - polyval(rational(start), self.primitive)
 
     def tolerances(self, run, names):
         if self.absolute_rates is None:
@@ -278,25 +306,55 @@ class MovingAmounts:
             )
         return self.absolute_rates
 
-    def clock_amounts(self, start, end):
-        left, right = rational(start), rational(end)
-        return np.array([float(polyval(right, poly) - polyval(left, poly)) for poly in self.clock_rates])
+    def clock_legs(self, names, places, plan):
+        for row, name in enumerate(names):
+            flow = plan.flows.get(name)
+            if flow is None or flow.kind != 'directed':
+                continue
+            polynomial = direct_clock_primitive(flow, plan)
+            if polynomial is not None:
+                self.clocks[row] = ClockLeg(
+                    polynomial,
+                    self.through,
+                    places.get(flow.source),
+                    places.get(flow.sink),
+                    bool(flow.source and plan.incident(flow.source, 'inflow')),
+                    bool(flow.sink and plan.incident(flow.sink, 'outflow')),
+                )
+        self.all_clock = bool(self.clocks) and len(self.clocks) == len(names)
+
+    def select_clocks(self, lower, upper):
+        for row, leg in self.clocks.items():
+            mode = leg.selection(lower, upper)
+            if leg.mode != mode:
+                leg.change(self.through, mode, self.numerical(row))
+
+    def amount(self, row):
+        leg = self.clocks.get(row)
+        if leg is not None:
+            return leg.amount(self.through, self.numerical(row) if leg.mode == leg.ALLOCATED else 0)
+        return self.numerical(row)
+
+    def prefix(self, row, end, mode, interval):
+        leg = self.clocks.get(row)
+        if leg is None:
+            return self.numerical(row, interval())
+        previous = self.amount(row)
+        if mode == leg.REQUEST:
+            return previous + leg.integral(self.through, end)
+        if mode == leg.STOPPED:
+            return previous
+        return previous + (self.numerical(row, interval()) - self.numerical(row))
 
     def accept(self, start, end, amount):
         if start != self.through or end < start:
             raise ValueError(f'cannot accept transferred amounts over [{start}, {end}] after {self.through}')
-        if self.primitive is not None:
-            self.exact += amount
-            self.through = end
-            return
         corrected = amount - self.remainder
         total = self.total + corrected
         self.remainder = (total - self.total) - corrected
         self.total, self.through = total, end
 
-    def amount(self, row, prefix=0):
-        if self.primitive is not None:
-            return self.exact + prefix
+    def numerical(self, row, prefix=0):
         total, remainder = self.total, self.remainder
         if self.single is None:
             total, remainder = total[row], remainder[row]

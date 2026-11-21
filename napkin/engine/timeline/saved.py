@@ -427,10 +427,15 @@ def _instance(instance):
         amounts = instance.amounts
         fields += (
             (
+                'clock_amounts',
+                tuple(
+                    (row, leg.mode, leg.start, leg.closed, leg.origin) for row, leg in amounts.clocks.items()
+                ),
+            ),
+            (
                 'accepted_amounts',
                 (
                     amounts.through,
-                    amounts.exact,
                     np.asarray(amounts.total).tolist()
                     if amounts.single is not None
                     else _array(amounts.total),
@@ -807,7 +812,10 @@ def _made(run, kind, keys, data):
                 instance.amounts.restore(rows[name], t, amount)
     if 'accepted_amounts' in data:
         amounts = instance.amounts
-        amounts.through, amounts.exact, total, remainder = data['accepted_amounts']
+        for row, mode, start, closed, origin in data.get('clock_amounts', ()):
+            leg = amounts.clocks[row]
+            leg.mode, leg.start, leg.closed, leg.origin = mode, start, closed, origin
+        amounts.through, total, remainder = data['accepted_amounts']
         if amounts.single is not None:
             amounts.total, amounts.remainder = total, remainder
         else:

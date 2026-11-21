@@ -226,3 +226,101 @@ def test_departed_held_connection_keeps_its_terminal_amount(family, monkeypatch)
     name = 'tank.open#0.tap'
     old = next(way for way in retired if name in way.flows)
     assert old.transferred(name, 0.25) == old.transferred(name, 1) == Fraction(1, 80)
+
+
+@pytest.mark.parametrize('method', [ComponentWay, Sparse])
+@pytest.mark.parametrize('polynomial_neighbor', [False, True], ids=['reciprocal-neighbor', 'two-polynomials'])
+def test_individual_clock_legs_preserve_exact_prefixes_in_mixed_groups(
+    method, polynomial_neighbor, monkeypatch
+):
+    from napkin.program.checkpoint import Breakpoint, dumps, loads
+
+    monkeypatch.setattr(plan, 'LIMIT', 0 if method is Sparse else 150)
+    neighbor = '0.3 L/h * t / (1 h)' if polynomial_neighbor else '1 L/h / (1 + t / (1 h))'
+    source = (
+        f"""plant:
+    buffer: L = 10 L in [0,]
+    water: L = 0 L in [0,]
+    flow supply: SOURCE -> this.buffer
+        request = formula({neighbor})
+    flow delivery: this.buffer -> this.water
+        request = formula(0.2 L/h * t / (1 h))
+"""
+        + PAUSE
+    )
+    program = compile_text(source, UNITS).program
+    config = Configuration(Request(1))
+    names = ['plant.delivery'] + (['plant.supply'] if polynomial_neighbor else [])
+    expected = {0.5: (Fraction('0.025'), Fraction('0.0375')), 1: (Fraction('0.1'), Fraction('0.15'))}
+    finish = Run.finish_arrival
+    seen = []
+
+    def observe(run):
+        if not run.arriving or run.now not in expected:
+            return finish(run)
+        way = run.ways.instance_of('plant.delivery')
+        assert type(way) is method and run.ways.instance_of('plant.supply') is way
+        time = run.now
+        if time == 0.5 and way.pending is not None:
+            proposed = way.pending[1] if method is Sparse else way.pending.end
+            assert proposed > time
+        before = tuple(way.transferred(name, time) for name in names)
+        finish(run)
+        current = run.ways.instance_of('plant.delivery')
+        after = tuple(current.transferred(name, time) for name in names)
+        assert before == after == expected[time][: len(names)]
+        seen.append(time)
+
+    monkeypatch.setattr(Run, 'finish_arrival', observe)
+    straight = Run(Plan.of(program, config)).run()
+    assert straight.failure is None and seen == [0.5, 1]
+    seen.clear()
+    stopped = Run(Plan.of(program, config), (Breakpoint('plant.pause.step[0]'),))
+    checkpoint = stopped.run()
+    restored = Run.restored(Plan.of(program, config), loads(dumps(checkpoint)))
+    for run in (stopped, restored):
+        way = run.ways.instance_of('plant.delivery')
+        assert tuple(way.transferred(name, 0.5) for name in names) == expected[0.5][: len(names)]
+        assert run.resume() == straight
+
+
+@pytest.mark.parametrize('method', [ComponentWay, Sparse])
+@pytest.mark.parametrize('limit', ['source', 'sink', 'pipe'])
+def test_clock_request_yields_to_its_actual_allocation(method, limit, monkeypatch):
+    from napkin.program.checkpoint import Breakpoint, dumps, loads
+
+    monkeypatch.setattr(plan, 'LIMIT', 0 if method is Sparse else 150)
+    # A source that empties at 1/4 h thereafter passes through the supply's cap.
+    # A full destination with no discharge holds its pipe at zero. The capped
+    # pipe carries its own cap throughout.
+    supply = '0.125 L/h' if limit != 'pipe' else 'formula(1 L/h / (1 + t / (1 h)))'
+    supply_cap = '        capacity = 0.125 L/h\n' if limit != 'pipe' else ''
+    own_cap = '        capacity = 0.125 L/h\n' if limit == 'pipe' else ''
+    initial = '0.046875 L' if limit == 'source' else '10 L'
+    high = '0.125 L' if limit == 'sink' else ''
+    water = '0.125 L' if limit == 'sink' else '0 L'
+    base = '0.125' if limit == 'sink' else '0.25'
+    model = (
+        f"""plant:
+    buffer: L = {initial} in [0,]
+    water: L = {water} in [0,{high}]
+    flow supply: SOURCE -> this.buffer
+        request = {supply}
+{supply_cap}    flow delivery: this.buffer -> this.water
+        request = formula({base} L/h + 0.5 L/h * t / (1 h))
+{own_cap}"""
+        + PAUSE
+    )
+    program = compile_text(model, UNITS).program
+    config = Configuration(Request(1))
+    stopped = Run(Plan.of(program, config), (Breakpoint('plant.pause.step[0]'),))
+    checkpoint = stopped.run()
+    restored = Run.restored(Plan.of(program, config), loads(dumps(checkpoint)))
+    name = 'plant.delivery'
+    for run in (stopped, restored):
+        way = run.ways.instance_of(name)
+        assert isinstance(way, method)
+        half, full = {'source': (0.109375, 0.171875), 'sink': (0, 0), 'pipe': (0.0625, 0.125)}[limit]
+        assert way.transferred(name, 0.5) == pytest.approx(half, abs=1e-9)
+        assert run.resume().failure is None
+        assert run.ways.instance_of(name).transferred(name, 1) == pytest.approx(full, abs=1e-9)
