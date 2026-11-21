@@ -39,6 +39,7 @@ CLOSURE = (
     'core/expr.py',
     'core/faces.py',
     'core/intervals.py',
+    'core/literals.py',
     'core/ops.py',
     'core/units.py',
     'distributions.py',

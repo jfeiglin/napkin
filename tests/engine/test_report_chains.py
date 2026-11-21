@@ -216,8 +216,7 @@ def test_a_chain_of_keyed_reads_by_constant_keys_reads_one_history_a_link(n, nar
 def test_a_chain_of_named_collections_is_lagged_and_traced_without_recursion(n, narrow):
     """The tank holds t L at t h, so the end reads 2 L at 2 h and its lag from 0.5 h to 1 h there is
     1.25 L: it never falls, since the fill only adds to the water that it counts. Its trail is the end,
-    the water and the fill, each exercised, but the fill's rate, which a record of the end alone does
-    not hold."""
+    the tank's rank and water, and the fill. A record of the end alone does not hold the fill's rate."""
     program, end = collections(n)
     path = str(end)
     configuration = Configuration(Request(2, everything=not narrow, keys=(end,) if narrow else ()))
@@ -231,6 +230,7 @@ def test_a_chain_of_named_collections_is_lagged_and_traced_without_recursion(n, 
     trail = {(used.kind, used.origin, used.owner): used.exercised for used in plain.trail}
     assert trail == {
         ('value', 'total', ''): True,
+        ('value', 'Tank.rank', 't0'): True,
         ('value', 'Tank.water', 't0'): True,
         ('flow', 'Tank.fill', 't0'): None if narrow else True,
     }
