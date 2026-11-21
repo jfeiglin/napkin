@@ -339,7 +339,8 @@ peer: Meter
     ).values
     assert falling.lag is None and falling.values == (-1, -2)
     assert 'falls as the time goes on' in falling.note
-    assert rising.lag == Lag(0, 1) and rising.values == (0.5, 1.5)
+    # A lag averages the history over its window; its last digit depends on the platform's rounding.
+    assert rising.lag == Lag(0, 1) and rising.values == pytest.approx((0.5, 1.5), rel=0, abs=1e-12)
 
 
 @pytest.mark.parametrize(
@@ -369,7 +370,7 @@ def test_respell_one_read_in_the_gated_plant(seed):
         (shown,) = report(record, program, config, ['plant.clock'], times, {'plant.clock': lag}).values
         assert raw.values == expected
         assert shown.lag == (lag if multiple > 1 else None)
-        assert shown.values == ((0.5, 1.5) if multiple > 1 else expected)
+        assert shown.values == (pytest.approx((0.5, 1.5), rel=0, abs=1e-12) if multiple > 1 else expected)
         variants.append(shown.trail)
     assert variants[0] == variants[1]
 
