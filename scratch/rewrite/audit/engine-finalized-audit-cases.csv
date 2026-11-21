@@ -1,0 +1,32 @@
+module,case,result
+scratch.rewrite.audit.cases-5d9409b.test_compiled_evidence,test_member_field_citation_survives_in_compiled_artifact,passed
+scratch.rewrite.audit.cases-5d9409b.test_flow_refund,test_refund_the_integrated_linear_rate,passed
+scratch.rewrite.audit.cases-5d9409b.test_flow_refund,test_reinstalling_the_same_rate_leaves_the_refund_feasible,passed
+scratch.rewrite.audit.cases-5d9409b.test_flow_refund,test_empty_inspection_cannot_make_a_refund_possible,passed
+scratch.rewrite.audit.cases-5d9409b.test_fractional_unit_evidence,test_a_quantity_has_the_dimension_of_its_own_unit[0.5],passed
+scratch.rewrite.audit.cases-5d9409b.test_fractional_unit_evidence,test_a_quantity_has_the_dimension_of_its_own_unit[0.1],passed
+scratch.rewrite.audit.cases-5d9409b.test_gate_capacity,test_a_pump_keeps_its_hard_cap_when_demand_switches_on,passed
+scratch.rewrite.audit.cases-5d9409b.test_gate_capacity,test_time_switched_demand_respects_either_ceiling[tap],passed
+scratch.rewrite.audit.cases-5d9409b.test_gate_capacity,test_time_switched_demand_respects_either_ceiling[inflow],passed
+scratch.rewrite.audit.cases-5d9409b.test_guards_and_edits,test_naming_a_formula_preserves_the_guard[(0.100000024 h + 0 day) - 0.1 h-True],passed
+scratch.rewrite.audit.cases-5d9409b.test_guards_and_edits,test_naming_a_formula_preserves_the_guard[1000000000.00000005 h - 1000000000 h-True],passed
+scratch.rewrite.audit.cases-5d9409b.test_guards_and_edits,test_json_input_range_is_independent_of_spelling[0.6-0.6-True],passed
+scratch.rewrite.audit.cases-5d9409b.test_guards_and_edits,test_json_input_range_is_independent_of_spelling[0.6-0.60000000000000001-False],passed
+scratch.rewrite.audit.cases-5d9409b.test_guards_and_edits,"test_json_input_range_is_independent_of_spelling[0.6-""0.60000000000000001""-False]",passed
+scratch.rewrite.audit.cases-5d9409b.test_guards_and_edits,test_json_input_range_is_independent_of_spelling[9007199254740992-9007199254740993.0-False],passed
+scratch.rewrite.audit.cases-5d9409b.test_guards_and_edits,test_json_input_range_is_independent_of_spelling[9007199254740992-9007199254740993-False],passed
+scratch.rewrite.audit.cases-5d9409b.test_indirect_capacity,test_set_capacity_of_another_running_occurrence[initially-unbounded-pipe-job],passed
+scratch.rewrite.audit.cases-5d9409b.test_indirect_capacity,test_set_capacity_of_another_running_occurrence[initially-unbounded-pipe-this.drain.occurrences.at(t)],passed
+scratch.rewrite.audit.cases-5d9409b.test_indirect_capacity,test_set_capacity_of_another_running_occurrence[initially-unbounded-stock.outflow-job],passed
+scratch.rewrite.audit.cases-5d9409b.test_indirect_capacity,test_set_capacity_of_another_running_occurrence[initially-unbounded-stock.outflow-this.drain.occurrences.at(t)],passed
+scratch.rewrite.audit.cases-5d9409b.test_indirect_capacity,test_set_capacity_of_another_running_occurrence[explicit-ceiling-pipe-job],passed
+scratch.rewrite.audit.cases-5d9409b.test_indirect_capacity,test_set_capacity_of_another_running_occurrence[explicit-ceiling-pipe-this.drain.occurrences.at(t)],passed
+scratch.rewrite.audit.cases-5d9409b.test_indirect_capacity,test_set_capacity_of_another_running_occurrence[explicit-ceiling-stock.outflow-job],passed
+scratch.rewrite.audit.cases-5d9409b.test_indirect_capacity,test_set_capacity_of_another_running_occurrence[explicit-ceiling-stock.outflow-this.drain.occurrences.at(t)],passed
+scratch.rewrite.audit.cases-5d9409b.test_live_flow_evidence,test_sources_follow_only_pipes_incident_at_the_report_time[full],passed
+scratch.rewrite.audit.cases-5d9409b.test_live_flow_evidence,test_sources_follow_only_pipes_incident_at_the_report_time[selected],passed
+scratch.rewrite.audit.cases-5d9409b.test_move_all,test_move_the_whole_batch_including_its_carried_balance,passed
+scratch.rewrite.audit.cases-5d9409b.test_stage_allocation,test_switch_endpoint_policy_in_a_stage[priority-expected0-member-store],passed
+scratch.rewrite.audit.cases-5d9409b.test_stage_allocation,test_switch_endpoint_policy_in_a_stage[priority-expected0-occurrence-store],passed
+scratch.rewrite.audit.cases-5d9409b.test_stage_allocation,test_switch_endpoint_policy_in_a_stage[proportional-expected1-member-store],passed
+scratch.rewrite.audit.cases-5d9409b.test_stage_allocation,test_switch_endpoint_policy_in_a_stage[proportional-expected1-occurrence-store],passed
