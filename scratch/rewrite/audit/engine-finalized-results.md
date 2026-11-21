@@ -70,6 +70,22 @@ At the horizon the first stage stops the pipe and moves 10,000,000 L from the po
 
 A separate frozen-store control has one incoming polynomial leg and a reciprocal-rate neighbor on the same group. The third prototype's gross integral at its 0.1 L allowance was high by 5.55e-18 L on Component and low by 3.99e-18 L on Sparse. The fourth returns exactly 1/10 L on both. It uses the actually allocated integral when a bound or pipe ceiling limits the request. Its mixed-leg, accepted-cut, resume and allocation controls passed 188 focused checks.
 
+## Production accounting gate
+
+All 63 samples for the fourth prototype passed the per-workload timing gate. The numerical settings, model arguments and fixed repeat count were identical within each paired row. All nine event samples completed 19,300 starts and held 84 L at the first store. The first baseline and allocation-only samples were carried into the fourth-prototype event campaign with their original timestamps, hashes and alternating order. The third prototype had produced no timed event sample when the candidate changed. [Raw timing samples, arguments and revisions](engine-finalized-timings.csv)
+
+| Workload | Allocation / baseline | Prototype / baseline | Prototype / allocation | Baseline / prototype peak MiB |
+|---|---:|---:|---:|---:|
+| Component, 12 finite-supply tanks | 0.999131 | 1.011007 | 1.008656 | 89.7 / 116.2 |
+| Component, 12 general fills | 1.004715 | 1.005757 | 1.001037 | 93.9 / 119.3 |
+| Sparse, 12 finite-supply tanks | 1.012420 | 1.005634 | 0.997118 | 90.5 / 116.5 |
+| Sparse, 12 general fills | 1.004340 | 1.008304 | 1.007444 | 90.4 / 118.0 |
+| Held network, 3,000 places / 3,500 routes | 1.005397 | 0.979967 | 1.005380 | 292.5 / 309.5 |
+| Moving network, 3,000 places / 3,500 routes | 1.018748 | 1.023129 | 1.004300 | 368.1 / 397.9 |
+| Events, 1,200 places / 48 h / 12 phases | 1.012905 | 1.007426 | 0.996992 | 607.1 / 628.2 |
+
+On the 3,000-place moving network every build made 153,615 Component allocations with 5,139 accepted and 13 rejected steps. Sparse made 69,345 allocation evaluations with 9,413 accepted and 148 rejected steps. The fourth prototype accumulated 275 Component leg amounts and 4,460,992 Sparse leg amounts in 9,413 Sparse vector batches. The nonzero sampled outflow measured 125.06198903199099 L against 125.06198903199093 L at its independent sink. The other two sampled legs and sinks each held zero.
+
 ## Held-pipe recording
 
 On the pinned baseline, the history-budget check at each independent pipe exhaustion rebuilt moving collection histories. A profile at 300 and 600 places spent 2.55 and 9.55 s in this check. The optimization in `ee1e26a` counts how much eligible held-line histories, aliases and sums can grow. While that upper bound fits the piece budget the exact recount can wait. Where the bound cannot certify headroom, the recorder performs its original exact check.
