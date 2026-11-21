@@ -6,9 +6,11 @@ from napkin.engine.report import report
 from napkin.engine.timeline import Plan, Run
 from napkin.engine.timeline.record import key_of
 from napkin.model.compile import compile_text
-from napkin.program.artifact import loads
+from napkin.program.artifact import Artifact, loads
+from napkin.program.build import SOURCE, Builder, assign, flow, formula, input_, named, q, this, value
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps
 from napkin.program.checkpoint import loads as load_checkpoint
+from napkin.program.config import Configuration, Request
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 
@@ -140,3 +142,35 @@ record second: source "Second reading."
             assert row.values == (amount,)
             assert {r for p in row.trail if p.exercised for r in p.records} == {citation}
             assert any(p.origin == f'plant.writer.step[{stage}]' and p.exercised for p in row.trail)
+
+
+def test_each_setup_formula_reads_its_own_source_in_the_program_and_artifact():
+    b = Builder(UNITS)
+    b.entity(
+        'plant',
+        input_('first', 'L', 1),
+        input_('second', 'L', 2),
+        input_('third', 'L', 3),
+        value('selected', 'L', formula(this.first)),
+        value('stock', 'L', 0),
+        flow('pipe', SOURCE, this.stock, request=formula(this.first / q(1, 'h'))),
+    )
+    plant = named('plant')
+    b.setup(
+        assign(plant.selected, formula(plant.second)),
+        assign(plant.pipe.request, formula(plant.third / q(1, 'h'))),
+    )
+    program = b.finish()
+    cfg = Configuration(Request(1))
+    result = Run(Plan.of(program, cfg)).run()
+    assert result.failure is None
+    for p in (program, loads(Artifact(program).data()).program):
+        values = report(result, p, cfg, ['plant.selected', 'plant.pipe.request'], [0, 1]).values
+        for row, expected, source in zip(values, [(2, 2), (3, 3)], ['second', 'third'], strict=True):
+            assert row.values == expected
+            assert {part.origin for part in row.trail if part.exercised} & {
+                'plant.first',
+                'plant.second',
+                'plant.third',
+            } == {f'plant.{source}'}
+            assert any(part.origin == 'setup' and part.exercised for part in row.trail)

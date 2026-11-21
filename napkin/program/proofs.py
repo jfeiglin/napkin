@@ -830,8 +830,14 @@ class Proofs:
                             found.settings.setdefault(flow, []).append(stage)
             if isinstance(statement, p.Assign):
                 if isinstance(statement.value, Formula):
-                    for key, _ in self._ends(statement.target, at):
-                        found.defines.setdefault(key, []).append((statement.origin, event, stage))
+                    for point, _ in self.points(statement.target, at, True):
+                        if point[0] == 'value':
+                            key = (point[1], point[2].name)
+                            found.defines.setdefault(key, []).append((statement.origin, event, stage))
+                        if setup:
+                            # Each setup definition can read different inputs, even at the same time.
+                            for part in self._point_parts(point, {}):
+                                found.setup_definitions.setdefault(part, []).append(statement.value)
                 elif not setup and not isinstance(
                     statement.value, (p.Priority, p.Proportional, Distribution, Path)
                 ):
@@ -1384,6 +1390,8 @@ class Proofs:
                 expression(item.test, at)
             for item in solver.objective:
                 expression(item.expr, at)
+        for definition in index.setup_definitions.get(part, ()):
+            expression(definition, _At(), branch=True)
         edges = [edge for edge in edges if edge != part]
         return edges, {edge for edge in edges if edge not in surely}
 
@@ -1437,6 +1445,7 @@ class _Index:
 
     writers: dict = field(default_factory=dict)
     defines: dict = field(default_factory=dict)
+    setup_definitions: dict = field(default_factory=dict)
     starters: dict = field(default_factory=dict)
     settings: dict = field(default_factory=dict)
     flows: dict = field(default_factory=dict)
