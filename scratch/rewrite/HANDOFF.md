@@ -208,7 +208,6 @@ four questions on the way. What you will meet in the catalogue:
     every digit. A history budget stops a run at the first piece that its complete record holds past
     the budget, the same fresh, cut from the store or resumed. `load_scenario` takes a package folder.
     A program compiled before language `0.2.1` is refused, by name: compile it again.
-
 16. **The audit of `8e422da`'s fixes that an author meets.** A switch whose operand leaves its
     threshold with zero speed (a level of `t²`) switches as it leaves. A store declared inside an
     event keeps its endpoint settings, and a pipe of an event that starts uncapped takes its first
