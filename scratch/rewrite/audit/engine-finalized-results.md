@@ -8,16 +8,25 @@ The audited baseline and the verified remote Claude tip at branching were both `
 
 ## Release candidate checks
 
-Porting is on hold. Candidate `e027caa` passed all 31 audit cases, 242 CLI/artifact tests, 24 independent reservoir checks, the paired piano and reservoir migrations and both checker rejection controls. The audit report includes each case and the underlying migration readings. [Public checks and migration data](engine-finalized-public-checks.md)
+Porting is on hold. At `4ed5afa` the shared departure and placement rules passed all 1,000 random solver cases and the 50 historical local-sharing cases. Its 3,000-place declared-solver benchmark passed both clocks. A separate computed-capacity check found a placement above the integrated capacity on Component and Sparse. With capacity rising from zero to 1 L/h over 1 h, the integral is 0.5 L. Both methods posted an extra 10⁻¹⁰ L to reach a nearby threshold. The long release benchmarks were parked when this was reproduced. The first repair at `2f787c1` made the rising-cap example retain 0.5 L, and tested both endpoint capacities, a declared inequality and checkpoint replay. An additional cut at 0.99999 h revealed unequal treatment of earlier unused capacity on two equivalent runs.
 
-The 30,000-pipe candidate completed its full record in 24.019215 s and peaked at 1,511.9 MiB. All twelve physical readings at 6, 30 and 48 h matched the analytical values, with 330,012 histories and 933,955 pieces. The 30,000-pipe baseline was stopped. Its ratio is unavailable.
+The full regular suite at `4ed5afa` took 175.515 s with four workers. It passed 11,419 tests, with 12 failures and one macOS skip. All 300 generated transformations passed with zero truncated pairs. Six failed tests used a recorder-budget observer that did not forward the new accepted coordinates. Updating it preserved every assertion. Three early-stage fixtures had required a placement that breached a hard cap outside the stock’s band. Two seeded cases exposed intermediate histories that remained flat while their physical balances changed, and one large-stock root had been checked twice under different numerical criteria. [Expectation changes and controls](comparison-expectations-0.2.3.md)
+
+At `beefe67` the physical-history repair passes all 58 focused stock-departure and roundoff tests. Five methods now compare interior readings against the incidence of the very same constant-rate legs through the horizon. The test at the 54.00746897494162 h depletion of a 100-million-person stock also passes. Its root falls between adjacent representable times, and the numerical check keeps that proof while the stock writer carries the accepted transfers. [Cross-method histories](../../../tests/engine/test_stock_departure_rule.py) · [Depletion and scale controls](../../../tests/engine/test_sizes.py)
+
+A capacity can have room over a full hour and still leave too little room since a certified reading. With `request = 1 L/h` and capacity falling linearly from 2 to 1 L/h, the analytical balance at 0.99999 h is 0.99999 L. Through 1 h the remaining capacity is 0.00001000005 L. Exact placement at 1.000000005 L would exceed that interval’s allowance by 0.00000000495 L. On the first repair Sparse posted that target in a direct run and reported a failure after an empty or serialized event. This is an open release blocker.
+
+Earlier candidate `e027caa` passed all 31 audit cases, 242 CLI/artifact tests, 24 independent reservoir checks, the paired piano and reservoir migrations and both checker rejection controls. The audit report includes each case and the underlying migration readings. [Public checks and migration data](engine-finalized-public-checks.md)
+
+The 30,000-pipe candidate completed its full record in 24.019215 s and peaked at 1,511.9 MiB. All twelve physical readings at 6, 30 and 48 h matched the analytical values, with 330,012 histories and 933,955 pieces. The 30,000-pipe baseline was stopped. A separate bounded measurement certifies F/B < 0.320257 for this candidate. [Full-size timing bound](held-pipe-baseline-bound.md)
 
 | Candidate | Declared solver baseline / candidate run-and-record pairs, seconds | Median run-and-record ratio | Median build + plan + run ratio | Baseline / candidate peak MiB |
 |---|---|---:|---:|---:|
 | `e027caa` | 10.505619 / 10.936673, 9.815588 / 10.600330, 9.662884 / 10.206901 | 1.056300 | 1.059701 | 742.7 / 752.5 |
 | `08d3353` | 10.051769 / 11.229520, 9.433569 / 10.012055, 9.482748 / 9.926159 | 1.061322 | 1.054384 | 743.5 / 758.0 |
+| `4ed5afa` | 8.691072 / 6.482258, 9.426436 / 6.668535, 9.378575 / 7.271729 | 0.745853 | 0.776104 | 762.3 / 668.9 |
 
-Both candidates exceeded the 1.05 solver limit and produced the expected power readings. The long event guard on `e027caa` was stopped once that candidate failed the shorter gate.
+The first two candidates exceeded the 1.05 solver limit. All three candidates produced the expected power readings. The long event guard on `e027caa` was stopped once that candidate failed the shorter gate.
 
 The four-worker regular run at `e027caa` passed 11,190 tests. One macOS skip requires Linux `/proc`. The remaining test, declared-solver seed 96, repeatedly settled at 8/3 h until its worker was stopped. The 300 scheduled port comparisons passed with zero truncated pairs. A separate bounded check of all 1,000 random solver cases found the same repeated contact in seeds 188 and 853 and a rejected placement in seed 875. The development run does not satisfy the 180-second full-suite gate.
 
