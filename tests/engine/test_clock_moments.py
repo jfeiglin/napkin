@@ -50,7 +50,7 @@ from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
 from tests.engine.test_checkpoints import in_a_fresh_process
 from tests.reference.errors import NotCovered
-from tests.reference.from_program import run_of, value_at
+from tests.reference.from_program import run_of, value_at, values_at
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 HORIZON = 4
@@ -223,7 +223,7 @@ def compare(seed, edit=False):
         oracle, failed = run_of(program, configuration, [(LOOK, None, [change])] if edit else [])
     except NotCovered:
         return
-    expected = {}
+    expected = None
     paths = ('edited in place', 'edited from a checkpoint') if edit else ('straight through',)
     for path, record in zip(paths, engine_records(program, configuration, change if edit else None)):
         message = None if record.failure is None else record.failure.detail('message')
@@ -240,13 +240,13 @@ def compare(seed, edit=False):
             assert message is None, (seed, message)
             horizon = Fraction(HORIZON)
         times = [time for time in TIMES if time < horizon]
+        if expected is None:
+            expected = values_at(oracle, program, keys, times)
         readings = read(record, program, keys, list(map(float, times)))
         for key, row in zip(keys, readings, strict=True):
-            if key not in expected:
-                expected[key] = [float(value_at(oracle, program, key, time)) for time in times]
             for time, number, target in zip(times, row.values, expected[key], strict=True):
                 # The sets whose rates move run on Radau: the values agree to its accuracy.
-                assert number == pytest.approx(target, rel=1e-7, abs=1e-7), (
+                assert number == pytest.approx(float(target), rel=1e-7, abs=1e-7), (
                     seed,
                     path,
                     str(key),

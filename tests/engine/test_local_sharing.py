@@ -38,7 +38,7 @@ from napkin.program.build import (
 from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
 from tests.reference.errors import NotCovered
-from tests.reference.from_program import run_of, value_at
+from tests.reference.from_program import run_of, value_at, values_at
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 TIMES = (0, 0.5, 1, 2, 3)
@@ -168,11 +168,11 @@ def compare(seed, routes=False):
         assert record.failure is not None, failed
         return
     assert record.failure is None, record.failure.detail('message')
-    for key in keys:
-        found = read(record, program, [key], list(TIMES))[0].values
-        for t, number in zip(TIMES, found):
-            expected = float(value_at(oracle, program, key, t))
-            assert number == pytest.approx(expected, rel=1e-7, abs=1e-7), (seed, str(key), t)
+    exact = values_at(oracle, program, keys, TIMES)
+    rows = read(record, program, keys, list(map(float, TIMES)))
+    for key, row in zip(keys, rows, strict=True):
+        for t, number, expected in zip(TIMES, row.values, exact[key], strict=True):
+            assert number == pytest.approx(float(expected), rel=1e-7, abs=1e-7), (seed, str(key), t)
 
 
 @pytest.mark.parametrize('seed', range(300))

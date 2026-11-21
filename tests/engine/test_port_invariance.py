@@ -15,7 +15,7 @@ from napkin.program.config import Configuration, Request
 from napkin.program.record import Key, Unavailable
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
 from tests.reference.evaluate import label
-from tests.reference.from_program import run_of, scale_at, value_at
+from tests.reference.from_program import run_of, scale_at, value_at, values_at
 
 CONFIG = Configuration(Request(HORIZON))
 TRANSFORMS = ('empty_event', 'named', 'small_unit', 'split', 'builder', 'artifact', 'checkpoint', 'sparse')
@@ -98,10 +98,10 @@ def oracle_view(case, program):
     assert error is None and oracle.view.t == HORIZON, error
     times = times_for(case)
     values = {at: {} for at in times}
+    expected = values_at(oracle, program, KEYS.values(), times)
     for name, key in KEYS.items():
         scale = scale_at(program, key)
-        for at in times:
-            raw = value_at(oracle, program, key, at)
+        for at, raw in zip(times, expected[key], strict=True):
             values[at][name] = raw if isinstance(raw, bool) else scale * raw
     stages = defaultdict(list)
     for entry in oracle.trace:
@@ -346,3 +346,15 @@ def test_unit_respellings_keep_every_generated_named_values_own_scale(cap, named
             versions.append({name: run.own_scale(name) for name in run.plan.values})
     for observed in versions[1:]:
         assert observed == versions[0]
+
+
+def test_batched_oracle_reads_preserve_units_occurrences_booleans_and_query_order():
+    case = Case.of(9)
+    program = text_program(case, Spelling(small_unit=True)).program
+    oracle, error = run_of(program, CONFIG)
+    assert error is None
+    keys = list(reversed(KEYS.values()))
+    times = (Fraction(2), case.opening - Fraction(1, 128), Fraction(1), Fraction(1), Fraction(0))
+    expected = {key: [value_at(oracle, program, key, t) for t in times] for key in keys}
+    assert values_at(oracle, program, keys, times) == expected
+    assert oracle.view.t == HORIZON

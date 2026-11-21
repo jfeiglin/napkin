@@ -44,7 +44,7 @@ from napkin.program.config import Configuration, Request
 from napkin.program.record import Key
 from tests.engine.test_checkpoints import in_a_fresh_process
 from tests.reference.errors import NotCovered
-from tests.reference.from_program import run_of, value_at
+from tests.reference.from_program import run_of, values_at
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 HORIZON = 4
@@ -274,6 +274,7 @@ def compare(seed, edit=False):
         oracle, failed = run_of(program, configuration, [(LOOK, None, [change])] if edit else [])
     except NotCovered:
         return
+    exact = None
     for record in engine_records(program, configuration, change if edit else None):
         message = None if record.failure is None else record.failure.detail('message')
         if message is not None and record.failure.t == 0 and any(reason in message for reason in NO_ANSWER):
@@ -292,11 +293,16 @@ def compare(seed, edit=False):
             assert message is None, (seed, message)
             horizon = Fraction(HORIZON)
         times = [time for time in TIMES if time < horizon]
-        for key in keys:
-            found = read(record, program, [key], [float(time) for time in times])[0].values
-            for time, number in zip(times, found):
-                expected = float(value_at(oracle, program, key, time))
-                assert number == pytest.approx(expected, rel=1e-9, abs=1e-9), (seed, str(key), float(time))
+        if exact is None:
+            exact = values_at(oracle, program, keys, times)
+        rows = read(record, program, keys, list(map(float, times)))
+        for key, row in zip(keys, rows, strict=True):
+            for time, number, expected in zip(times, row.values, exact[key], strict=True):
+                assert number == pytest.approx(float(expected), rel=1e-9, abs=1e-9), (
+                    seed,
+                    str(key),
+                    float(time),
+                )
 
 
 @pytest.mark.parametrize('seed', range(200))

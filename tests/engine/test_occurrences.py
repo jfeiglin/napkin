@@ -62,7 +62,7 @@ from napkin.program.config import Configuration, Limits, Request
 from napkin.program.record import Key
 from tests.program.examples import EXAMPLES, At
 from tests.reference.errors import NotCovered
-from tests.reference.from_program import run_of, traced, value_at
+from tests.reference.from_program import run_of, traced, value_at, values_at
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
 HORIZON = 8
@@ -202,11 +202,11 @@ def compare(seed):
         expected = [float(t) for t, _ in traced(oracle, 'fire', part) if t < horizon]
         assert found == pytest.approx(expected), (seed, 'fire', part)
     times = [time for time in TIMES if time < horizon]
-    for key in keys:
-        found = read(record, source, [key], [float(time) for time in times])[0].values
-        for time, number in zip(times, found):
-            expected = float(value_at(oracle, source, key, time))
-            assert number == pytest.approx(expected, rel=1e-9, abs=1e-9), (seed, str(key), float(time))
+    exact = values_at(oracle, source, keys, times)
+    rows = read(record, source, keys, list(map(float, times)))
+    for key, row in zip(keys, rows, strict=True):
+        for time, number, expected in zip(times, row.values, exact[key], strict=True):
+            assert number == pytest.approx(float(expected), rel=1e-9, abs=1e-9), (seed, str(key), float(time))
 
 
 @pytest.mark.parametrize('seed', range(300))

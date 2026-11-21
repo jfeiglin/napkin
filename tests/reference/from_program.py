@@ -581,6 +581,19 @@ def value_at(run, program, key, t):
     return value / scale_at(program, key) if isinstance(value, Fraction) else value
 
 
+def values_at(run, program, keys, times):
+    """One series per record key, in its declared unit, preserving the order of the times."""
+    columns = {key: [] for key in keys}
+    if not columns:
+        return columns
+    nodes = [_key_node(key) for key in columns]
+    scales = [scale_at(program, key) for key in columns]
+    for at in times:
+        for column, value, scale in zip(columns.values(), run.read_many(nodes, at), scales, strict=True):
+            column.append(value / scale if isinstance(value, Fraction) else value)
+    return columns
+
+
 def traced(run, kind, part):
     """The (time, round) of each entry of the trace of a kind of the record (`commit`, `finish`, ...)
     for a part that its origin names, in order."""

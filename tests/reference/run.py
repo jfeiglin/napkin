@@ -1688,9 +1688,8 @@ class Run:
 
     # --- what a caller reads -------------------------------------------------------------------------
 
-    def read(self, expr, at=None, owner=None, unit=None):
-        """The value of an expression at a time of the run, from the record, in `unit` if one is
-        given (the run itself works in canonical units). A read changes nothing."""
+    def _reading_frame(self, at):
+        """The recorded state after the last round at this time, advanced within its piece."""
         at = self.view.t if at is None else number(at)
         frames = [f for f in self.frames if f.t <= at]
         if (self.error is not None or self.paused is not None) and at == self.view.t:
@@ -1706,12 +1705,25 @@ class Run:
             for var, p in frame.rates.items():
                 frame.results[var] = p(tau)
             frame.t, frame.levels, frame.rates = at, {}, {}
+        return frame
+
+    def _read(self, expr, frame, owner, unit):
         ev = Ev(self, frame, Scope(self.ents[owner]) if owner else Scope())
         v = ev.val(lit(expr))
         size = Fraction(1) if unit is None else scale_of(unit)
         if isinstance(v, Coll):  # a projection: each member's value, read on the same frame
             return Coll((k, m, _in_unit(plain(ev.deref(x)), size)) for k, m, x in v.items)
         return _in_unit(plain(v), size)
+
+    def read(self, expr, at=None, owner=None, unit=None):
+        """The value of an expression at a recorded time, in its requested unit."""
+        frame = self._reading_frame(at)
+        return self._read(expr, frame, owner, unit)
+
+    def read_many(self, expressions, at=None):
+        """Read canonical values on one recorded frame. Each expression has its own evaluator."""
+        frame = self._reading_frame(at)
+        return [self._read(expr, frame, None, None) for expr in expressions]
 
     def report(self, expr, times, owner=None, unit=None):
         """What a report shows: the value at each time, or `Unavailable` with the reason. An invalid

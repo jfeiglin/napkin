@@ -76,7 +76,7 @@ from napkin.program.record import Key
 from tests.engine.test_claim_order import chosen
 from tests.engine.test_claim_order import network as claim_network
 from tests.reference.errors import NotCovered, RunFailed
-from tests.reference.from_program import config_of, model_of, scale_at, value_at
+from tests.reference.from_program import config_of, model_of, scale_at, value_at, values_at
 from tests.reference.run import Run as Oracle
 
 UNITS = {'h': {'time': 1}, 'L': {'volume': 1}}
@@ -309,6 +309,7 @@ def compare(seed, edit=False):
     oracle, failed, uncovered = oracle_of(program, configuration, [(LOOK, [change])] if edit else [])
     if uncovered is None and isinstance(failed, NotCovered):
         return
+    exact = None
     for record in engine_records(program, configuration, change if edit else None):
         message = None if record.failure is None else record.failure.detail('message')
         if uncovered is not None:
@@ -331,11 +332,16 @@ def compare(seed, edit=False):
             assert message is None, (seed, message)
             horizon = Fraction(HORIZON + 1)
         times = [time for time in TIMES if time < horizon]
-        for key in keys:
-            found = read(record, program, [key], [float(time) for time in times])[0].values
-            for time, number in zip(times, found):
-                expected = float(value_at(oracle, program, key, time))
-                assert number == pytest.approx(expected, rel=1e-9, abs=1e-9), (seed, str(key), float(time))
+        if exact is None:
+            exact = values_at(oracle, program, keys, times)
+        rows = read(record, program, keys, list(map(float, times)))
+        for key, row in zip(keys, rows, strict=True):
+            for time, number, expected in zip(times, row.values, exact[key], strict=True):
+                assert number == pytest.approx(float(expected), rel=1e-9, abs=1e-9), (
+                    seed,
+                    str(key),
+                    float(time),
+                )
 
 
 @pytest.mark.parametrize('seed', range(150))
