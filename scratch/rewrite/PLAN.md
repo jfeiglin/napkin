@@ -343,8 +343,14 @@ These override the text of this plan below, wherever the two differ. The owner's
    own moment at its located time. An earlier contact runs before the scheduled stages.
    A later contact remains pending across those stages if their writes preserve it.
    A run ending before that contact finishes at its horizon. An empty event, recording
-   selection, or checkpoint and resume must give the same decision. Once a contact is
-   admitted, the posting, placement and hard-constraint checks below apply.
+   selection, or checkpoint and resume must give the same decision. For a stock compared
+   with another moving operand, compare each directly watched stock at the proposed time
+   with its own incoming reading at the located time. The combined expression must also
+   qualify. A reported rate can supply a threshold. Reading it gives the comparison no
+   claim on the underlying stock. A separately scheduled stage still evaluates its
+   authored guard at that time. A firing with the default reset needs a false condition
+   before it can fire again. Once a contact is admitted, the posting, placement and
+   hard-constraint checks below apply.
 
    With a 1 L/h request and a cap of `(2 − t/h) L/h`, the stock reaches 1 L at 1 h.
    Its threshold of 1.000000005 L is 5 × 10⁻⁹ L away at the scheduled stage, outside

@@ -141,6 +141,20 @@ Three existing controls in `test_switch_segments.py` distinguish a change in the
 [Stage switches](../../../tests/engine/test_declared_switches.py) · [Bound and clock groups](../../../tests/engine/test_grouped_contacts.py) · [Transfer allowances](../../../tests/engine/test_threshold_transfer_placement.py) · [Capacity groups](../../../tests/engine/test_placement_capacity.py) · [Thresholds and sums](../../../tests/engine/test_threshold_contacts.py) · [CLI and JSON](../../../tests/commands/test_run_report.py)
 
 The external-pipe keyed test used to expect 1 L/h in the second early round. At its original 1 L gauge scale, the gauge is 5 × 10⁻⁹ L below the 2 L key, outside its 2 × 10⁻⁹ L band. The two early stage rates are 4 and 4 L/h. The 2 h contact publishes 1 L/h. A 10 L gauge scale admits the same clock offset, and the second round then reads 1 L/h. Straight, in-place, serialized and reference cases check the stage times and rates. [External pipe and gauge](../../../tests/engine/test_round_rate_reads.py)
+
 ### Moving hard-cap placement controls
 
 The headroom case in `test_a_grouped_placement_uses_the_moving_capacity_over_its_accepted_prefix` used a pipe with a 1 L/h request and a capacity falling from 2 to 1 L/h. It previously required placement at 1.0000000001 L at the 1 h stage. The last 0.00001 h of that pipe can carry only 0.00001000005 L. The original cap now has its own regression requiring the physical receipt of 1 L. The positive control uses a capacity falling from 3 to 2 L/h and still requires the exact 1.0000000001 L receipt. Both controls compare direct runs, empty events and restored checkpoints across pipe capacity, shared endpoints and declared inequalities. [Original fixture and positive control](../../../tests/engine/test_moving_placement_capacity.py) · [Retained ceiling and intermediate stock checks](../../../tests/engine/test_capacity_headroom_history.py)
+
+
+### A stock compared with another moving operand
+
+The 48 added cases on `caecf10` change no pre-existing test assertion. They distinguish a located contact from a separate stage that reads the same guard.
+
+| Case | Before the regression fix | Required observation and reason |
+|---|---|---|
+| A stock filling at 2 L/h, compared with 0.999999995 L plus a threshold growing at 1 L/h | The 1 h scheduled stage could absorb the crossing. | The firing is at 0.999999995 h, before the stage. A target offset of +5 × 10⁻⁹ h fires after the stage. An offset of −10⁻¹⁰ h lies in band and joins the stage. Each method preserves 2 L at 1 h. |
+| Two stocks filling at 1,000 and 999 L/h | Their difference could place them in one clock group even as each stock moved outside its own band. In the later-crossing example the reference also fired twice. | Each directly watched stock must qualify. An independent 1 h stage can still read the authored inclusive guard as true in its comparison band. If it stays true, the default reset cannot fire again at the later exact equality. Both runs fire once. |
+| A threshold reads another flow’s actual rate | Looking through the rate to locate the crossing could treat its supplying stock as a target for placement. | The reported rate participates in the comparison. Only a directly watched stock can receive a placement. Reading a meter alone leaves 2 L on its supplying stock at 1 h. |
+
+Direct execution, an empty stage and serialized resumption exercise each case across six methods and the exact reference. [Mixed operand and rate controls](../../../tests/engine/test_contact_group_distance.py)
