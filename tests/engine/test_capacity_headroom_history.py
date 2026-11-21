@@ -129,9 +129,27 @@ def observe(method, kind, mode, *, written=False, cap=CAP, cut=CUT, literal=Fals
     return tank, reasons, fires, case, record
 
 
-@pytest.mark.parametrize('method,kind', CASES)
 @pytest.mark.parametrize(
-    'room', tuple(CEILINGS), ids=['saturated-at-contact', 'limited-room', 'room-at-contact']
+    'room,method,kind',
+    [
+        pytest.param(
+            room,
+            method,
+            kind,
+            id=f'{label}-{method}-{kind}',
+            # The regular tier keeps the saturated pipe on all three methods and
+            # each declared hard row with both limited and sufficient headroom.
+            marks=pytest.mark.deep
+            if (room, method) == ('saturated', 'moving_declared') and kind != 'pipe'
+            else (),
+        )
+        for room, label in [
+            ('saturated', 'saturated-at-contact'),
+            ('limited', 'limited-room'),
+            ('open', 'room-at-contact'),
+        ]
+        for method, kind in CASES
+    ],
 )
 def test_a_grouped_transfer_respects_the_cap_at_contact_and_the_accepted_prefix(
     method, kind, room, monkeypatch

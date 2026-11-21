@@ -85,10 +85,29 @@ def assert_amount(record, mean, held):
 
 
 @pytest.mark.parametrize(
-    'method,held',
-    [(ComponentWay, False), (Sparse, False), (MovingDeclared, False), (Sparse, True), (MovingDeclared, True)],
+    'edge,method,held',
+    [
+        pytest.param(
+            edge,
+            method,
+            held,
+            id=f'{label}-{method.__name__}-{held}',
+            # Retain both a successful single-leg and a failed mixed-leg
+            # MovingDeclared run in regular. Sparse covers every mixed-leg edge.
+            marks=pytest.mark.deep
+            if method is MovingDeclared and (edge, held) not in {(0, False), (1, True)}
+            else (),
+        )
+        for edge, label in [(-1, 'below'), (0, 'equal'), (1, 'above')]
+        for method, held in [
+            (ComponentWay, False),
+            (Sparse, False),
+            (MovingDeclared, False),
+            (Sparse, True),
+            (MovingDeclared, True),
+        ]
+    ],
 )
-@pytest.mark.parametrize('edge', [-1, 0, 1], ids=['below', 'equal', 'above'])
 def test_numerical_leg_respects_the_exact_residual_allowance(method, held, edge, monkeypatch):
     monkeypatch.setattr(plan, 'LIMIT', 0 if method is Sparse else 150)
     limit = 0.025 if held else 0.1
