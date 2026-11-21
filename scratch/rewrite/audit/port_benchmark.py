@@ -138,8 +138,23 @@ def instrument(stack, row):
     from napkin.engine.timeline.lines import Lines
     from napkin.engine.timeline.network import Instant
 
-    result = {'by_method': {}, 'primitives': {}, 'solver': 'SciPy Radau'}
+    result = {'by_method': {}, 'primitives': {}, 'stock_materializations': None, 'solver': 'SciPy Radau'}
     active, current, sizes = False, None, None
+
+    post_stock = getattr(Run, 'post_stock', None)
+    if post_stock is not None:
+        postings = result['stock_materializations'] = {'post_stock_calls': 0, 'cursor_advances': 0}
+
+        def post(machine, store, t):
+            advanced = post_stock(machine, store, t)
+            if active:
+                if not isinstance(advanced, bool):
+                    raise AssertionError('Run.post_stock must identify whether it advanced the stock cursor')
+                postings['post_stock_calls'] += 1
+                postings['cursor_advances'] += int(advanced)
+            return advanced
+
+        stack.enter_context(patch.object(Run, 'post_stock', post))
 
     def counts(method):
         return result['by_method'].setdefault(method, Counter())

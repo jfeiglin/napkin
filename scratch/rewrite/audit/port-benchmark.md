@@ -23,3 +23,7 @@ A separate single-run diagnostic counts `Allocation.allocated`, `Instant.values`
 Held and declared allocation work also has separate counters. `Family._start` chooses a rate for one held row. `Lines._solve` handles a general batch, and `Lines._downstream` propagates a batch in the acyclic local shortcut. `Former.problem` constructs a declared problem, including when the solver can reuse its previous answer. `DeclaredWay._solved` counts actual uncached solver invocations. The JSON reports each entry independently because one operation can call another.
 
 The common driver passes `--no-phase-times` to the declared solver script on both revisions. Invoking that script directly still enables its three internal timers by default. Paired runs measure only the outer clocks. Diagnostic runs install only the counters described here.
+
+### Physical stock materializations
+
+`stock_materializations` reports calls to the production `Run.post_stock(store, t)` entry point and the number that actually advanced the store's accepted cursor. Their difference counts already-posted requests. Pure `Run.stock_balance` queries do not touch either counter. A revision that predates this stock writer reports `null` for the group. The `by_method` entries for accepted integral batches and leg amounts measure the methods' numerical work separately.
