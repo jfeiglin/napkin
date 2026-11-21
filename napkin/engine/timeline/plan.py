@@ -130,6 +130,7 @@ from dataclasses import dataclass, replace
 from ...core import expr as nodes
 from ...core.comparisons import SelectedScale
 from ...core.errors import ExpressionError
+from ...core.units import rational
 from ...expressions import UnitSystem, evaluate
 from ...program import parts as p
 from ...program.check import Resolver, Scope
@@ -1031,7 +1032,15 @@ class Plan:
             raise ConfigurationError(
                 f'{name} is in {unit or "no unit"}: {written.name or "no unit"} does not convert'
             )
-        return nodes.const(float(found.number) * float(written.scale))
+        if found.number == 0:
+            return nodes.const(float(found.number))  # preserve the sign of zero
+        try:
+            # An override and the same quantity in model text round once, after conversion.
+            scaled = float(rational(found.number) * rational(written.scale))
+        except (ValueError, OverflowError):
+            unit_name = written.name or 'no unit'
+            raise ConfigurationError(f'{name}: expected a finite quantity in {unit_name}') from None
+        return nodes.const(scaled)
 
     def _declare_flow(self, flow, scope):
         """A flow of one member: its ends, its requests and capacities, and what the run gives of it:

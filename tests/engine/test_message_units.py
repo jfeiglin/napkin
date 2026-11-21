@@ -19,8 +19,9 @@ from fractions import Fraction
 
 import pytest
 
-from napkin.engine import run
+from napkin.engine import read, run
 from napkin.engine.timeline import Plan, Run
+from napkin.model.compile import compile_text
 from napkin.program.build import (
     Builder,
     after,
@@ -37,6 +38,7 @@ from napkin.program.build import (
 )
 from napkin.program.checkpoint import Breakpoint, CheckpointError
 from napkin.program.config import Configuration, ConfigurationError, InputValue, Quantity, Request
+from napkin.program.parts import Unit
 from napkin.program.record import Key
 
 UNITS = {
@@ -145,3 +147,26 @@ def test_a_store_that_an_occurrence_leaves_unretired_writes_what_it_holds_in_its
     b.setup(start(named('job').run))
     found = message(run(b.finish(), Configuration(Request(2))))
     assert f'its store job.run#0.batch still holds 3 {unit}' in found
+
+
+def test_an_input_given_in_days_has_the_same_canonical_rate_as_its_authored_default():
+    model = compile_text(
+        """scenario "A rate in daily units"
+    horizon 2 h
+yard:
+    input rate: L/h = 0.06 L/day
+    water: L = 0 L
+    flow feed: SOURCE -> this.water
+        request = formula(this.rate)
+""",
+        UNITS,
+    )
+    by_day = model.program.unit('L/day')
+    library_unit = Unit('volume per civil day', by_day.dimension, Fraction(1, 24))
+    expected = [(0.0025, 0.0025), (0.0025, 0.0025), (0.0025, 0.005)]
+    for supplied in (None, Quantity(0.06, 'L/day'), Quantity(Fraction(3, 50), library_unit)):
+        inputs = () if supplied is None else (InputValue('yard', 'rate', supplied),)
+        record = run(model.program, Configuration(Request(2), inputs))
+        assert record.failure is None
+        keys = [Key('yard', ('rate',)), Key('yard', ('feed', 'actual_rate')), Key('yard', ('water',))]
+        assert [row.values for row in read(record, model.program, keys, [1, 2])] == expected
