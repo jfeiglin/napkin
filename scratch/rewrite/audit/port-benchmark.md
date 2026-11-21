@@ -4,6 +4,21 @@ The independent-pipes timing command runs the 30,000 rows, full recording, and t
 
 Use one checkout for the benchmark scripts and a clean pinned worktree for each engine. `B` is the audited baseline, `A` is allocation only, `P` is the settlement prototype, and `F` is the final candidate. Run the benchmark on its own, with the same Python executable, power settings and machine throughout. Keep the output directory outside the engine package.
 
+### Recreate the isolated settlement engines
+
+Start a detached worktree at the published allocation commit `5d82538`. Cherry-pick the published commits below in order. Each step has the same stable patch ID as the isolated build actually measured. Compare `git rev-parse HEAD^{tree}` with the tree in the corresponding row. This recreates each intermediate engine using only the topic branch.
+
+| Build | Published patch | Measured commit | Expected Git tree |
+|---|---|---|---|
+| P1 | `97d7ae5` | `b9834bf` | `1449334209df0238e7749e7186134b6bb9b8f9ad` |
+| P2 | `31b07b0` | `d9e6e94` | `606b85531cf688883e93ed2b536f2faaaf5cfe70` |
+| P3 | `51d14cd` | `ee8a22c` | `628c710ed73f50d80359f96062592872a0e2ad59` |
+| P4 | `a65b6e1` | `a65f70d` | `bd3e014b407f430320bb5f8c4637032733f16182` |
+
+For the 30,000-pipe recorder smoke, start at the published `a65b6e1` and apply the published `ee1e26a`. Its measured tree was `5104d5ee26185dfcfea5a9624d97b2d16eb179b2` at isolated commit `03c7b12`.
+
+### Run the comparisons
+
 ```sh
 python scratch/rewrite/audit/port_benchmark.py campaign --phase prototype --out RESULTS \
     --revision B=BASELINE --revision A=ALLOCATION --revision P=PROTOTYPE
