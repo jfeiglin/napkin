@@ -549,15 +549,20 @@ def _number(value):
     return nodes.written(value)
 
 
-def _node(item, reads):
+def _node(item, reads, comparison=False):
     if isinstance(item, s.Const):
         if isinstance(item.type, s.EnumOf):
             return _named(EnumValue(str(item.type), item.value), reads)
         if isinstance(item.value, (bool, str)):
             return nodes.const(item.value)
+        value = item.value
+        if comparison and item.exact is not None and item.exact != Fraction(str(value)):
+            # A literal just outside the closed band can round onto it. The program already
+            # represents an exact fraction as the quotient of its two integer literals.
+            value = Fraction(item.exact)
         if isinstance(item.type, s.Num) and item.type.unit:
-            return nodes.call('q', [_number(item.value), nodes.const(item.type.unit)])
-        return _number(item.value)
+            return nodes.call('q', [_number(value), nodes.const(item.type.unit)])
+        return _number(value)
     if isinstance(item, s.Read):
         return _named(TIME if item.start == ('time',) else _path(item), reads)
     if isinstance(item, s.Reduced):
@@ -570,7 +575,8 @@ def _node(item, reads):
         if item.op == 'since':
             return _named(Since(source), reads)
         return _named(Elapsed(source), reads)
-    args = [_node(arg, reads) for arg in item.args]
+    comparison = comparison or item.op == 'compare' or (item.op == 'call' and item.detail == 'within')
+    args = [_node(arg, reads, comparison) for arg in item.args]
     if item.op in OPERATIONS:
         return nodes.binary(OPERATIONS[item.op], *args)
     if item.op in ('neg', 'not'):

@@ -181,6 +181,10 @@ class _Pass:
         return np.maximum(floor, policy.factor * np.maximum(np.abs(a), np.abs(b)))
 
     def ordered(self, op, left, right, a, b, places):
+        if not expr.names(left) and not expr.names(right):
+            exact = self.registry.comparisons.literal_gap(left, right)
+            if exact is not None:
+                return against(op, *exact)
         a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
         with np.errstate(over='ignore'):
             gap = a - b

@@ -178,8 +178,9 @@ from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import cached_property
 
-from ..core.comparisons import against
+from ..core.comparisons import DEFAULT_FACTOR
 from ..core.expr import DEEPEST
+from ..core.literals import Literals
 from ..core.units import rational, scale_of
 from .language import nodes as n
 from .language import tables
@@ -2822,7 +2823,7 @@ class Resolver:
         ends = [None if end is None else self.exact(end) for end in (lower, upper)]
         if None in ends:
             return
-        if not _fold_order('>', lower, upper, *ends, self.units, floor=floor):
+        if not _literals(self.units).ordered('gt', lower, upper, *ends, floor=floor):
             return
         shown = [
             _written(end) if isinstance(end, Const) else written_as(text)
@@ -5461,140 +5462,35 @@ def folded(expression, units):
     `log1p` and `erf` where they give a whole number; a conditional, `and` and `or` fold from what
     they read, as a run reads it (the branch that a fixed test takes). None for anything else: what a
     value, a reduction, a draw or the time reads is a run's to know."""
-    if isinstance(expression, Const):
-        value = expression.value
-        if isinstance(value, bool):
-            return value
-        if isinstance(expression.type, Num):
-            if not isinstance(value, (int, float, Fraction)):
-                return None
-            number = rational(value) if expression.exact is None else Fraction(expression.exact)
-            return number * (units.of(expression.type.unit)[1] if expression.type.unit else 1)
-        return value if isinstance(value, str) else None
-    if isinstance(expression, Retain):
-        return folded(expression.body, units)
-    if not isinstance(expression, Apply):
-        return None
-    op = expression.detail if expression.op == 'call' else expression.op
-    args = expression.args
-    if op == 'if':
-        test = folded(args[0], units)
-        return folded(args[1] if test else args[2], units) if isinstance(test, bool) else None
-    if op in ('and', 'or'):
-        decides = op == 'or'  # the value of a term that decides the whole
-        for arg in args:
-            found = folded(arg, units)
-            if not isinstance(found, bool):
-                return None
-            if found == decides:
-                return decides
-        return not decides
-    if op == 'compare':
-        return _compared(expression.detail, args, units)
-    values = []
-    for arg in args:
-        found = folded(arg, units)
-        if found is None:
-            return None
-        values.append(found)
-    if op == 'not':
-        return not values[0] if isinstance(values[0], bool) else None
-    if op == 'within' and all(isinstance(each, Fraction) for each in values):
-        x, lo, hi = args
-        v, lower, upper = values
-        if _fold_order('>', lo, hi, lower, upper, units):
-            return None
-        return _fold_order('<=', lo, x, lower, v, units) and _fold_order('<=', x, hi, v, upper, units)
-    if not all(isinstance(each, Fraction) for each in values) or op not in _EXACT:
-        return None
-    return _EXACT[op](*values)
+    return _literals(units).value(expression)
 
 
 _SYMBOL = {'==': 'eq', '!=': 'ne', '<': 'lt', '<=': 'le', '>': 'gt', '>=': 'ge'}
 
 
-def _fold_order(symbol, left, right, a, b, units, floor=None):
-    """A comparison of constant numeric operands in the compiler's default band."""
-    if floor is None:
-        floor = max(units.of(each.type.unit)[1] if each.type.unit else 1 for each in (left, right))
-    band = Fraction(1, 10**9) * max(floor, abs(a), abs(b))
-    return against(_SYMBOL[symbol], a - b, band)
-
-
-def _compared(symbols, args, units):
-    """A chain of comparisons folded from the left, as a run reads it: an operand after a link that
-    fails is not read. Numbers compare in order; a yes/no, a text and a member of an enum by `==`
-    and `!=` only."""
-    left = folded(args[0], units)
-    if left is None:
-        return None
-    for symbol, before, arg in zip(symbols, args, args[1:]):
-        right = folded(arg, units)
-        if right is None:
-            return None
-        numbers = isinstance(left, Fraction) and isinstance(right, Fraction)
-        if not numbers and symbol not in ('==', '!='):
-            return None
-        holds = (
-            _fold_order(symbol, before, arg, left, right, units)
-            if numbers
-            else (left == right) == (symbol == '==')
+def _literal_parts(expression):
+    """Operation, operands, and constant data of one typed expression for the shared literal folder."""
+    if isinstance(expression, Const):
+        if isinstance(expression.type, Num) and not isinstance(expression.value, bool):
+            if not isinstance(expression.value, (int, float, Fraction)):
+                return 'unknown', (), None
+            number = expression.value if expression.exact is None else expression.exact
+            return 'number', (), (number, expression.type.unit)
+        return 'literal', (), expression.value
+    if isinstance(expression, Retain):
+        return 'pos', (expression.body,), None
+    if isinstance(expression, Apply):
+        op = expression.detail if expression.op == 'call' else expression.op
+        return (
+            op,
+            expression.args,
+            tuple(_SYMBOL[key] for key in expression.detail) if op == 'compare' else None,
         )
-        if not holds:
-            return False
-        left = right
-    return True
+    return 'unknown', (), None
 
 
-def _power(base, exponent):
-    """`base ** exponent` exactly: for a whole exponent (and a base that is not zero below zero), and
-    for an exponent of one half of a whole number, from an exact square root; None otherwise."""
-    if abs(exponent) > 1024 or (base == 0 and exponent < 0):
-        return None
-    if exponent.denominator == 1:
-        return base ** int(exponent)
-    if exponent.denominator == 2:
-        root = _root(base)
-        return None if root is None else _power(root, Fraction(exponent.numerator))
-    return None
-
-
-def _root(number):
-    """The square root of a rational number exactly, when it is the square of a rational; else None."""
-    if number < 0:
-        return None
-    top, bottom = math.isqrt(number.numerator), math.isqrt(number.denominator)
-    if top * top != number.numerator or bottom * bottom != number.denominator:
-        return None
-    return Fraction(top, bottom)
-
-
-def _clip(value, low, high):
-    """`clip` exactly; None for bounds in the wrong order, which fail where a run reads them."""
-    return None if low > high else min(max(value, low), high)
-
-
-# The operations of numbers whose result `folded` computes exactly from exact arguments: None where
-# the result is no rational number, or is no value.
-_EXACT = {
-    'neg': lambda value: -value,
-    'add': lambda a, b: a + b,
-    'sub': lambda a, b: a - b,
-    'mul': lambda a, b: a * b,
-    'div': lambda a, b: None if b == 0 else a / b,
-    'pow': _power,
-    'sum': lambda *values: sum(values, Fraction(0)),
-    'min': lambda *values: min(values),
-    'max': lambda *values: max(values),
-    'abs': abs,
-    'clip': _clip,
-    'sqrt': _root,
-    'exp': lambda value: Fraction(1) if value == 0 else None,
-    'expm1': lambda value: Fraction(0) if value == 0 else None,
-    'ln': lambda value: Fraction(0) if value == 1 else None,
-    'log1p': lambda value: Fraction(0) if value == 0 else None,
-    'erf': lambda value: Fraction(0) if value == 0 else None,
-}
+def _literals(units):
+    return Literals(_literal_parts, lambda name: units.of(name)[1], DEFAULT_FACTOR)
 
 
 def _fraction_text(number):

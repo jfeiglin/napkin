@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import MAX_EMAX, MIN_EMIN, Context, Decimal
+from fractions import Fraction
 
 from . import expr
 
@@ -69,6 +70,20 @@ def _arithmetic(op, a, b):
     return result
 
 
+def composed_floor(operation, sizes, exponent=None, arithmetic=_arithmetic):
+    """The comparison scale of an operation on its contributing operand scales, in result units.
+    The compiler supplies exact arithmetic for its constant operands."""
+    if operation == 'mul':
+        return arithmetic(operator.mul, *sizes)
+    if operation == 'div':
+        return arithmetic(operator.truediv, *sizes) if sizes[1] else 0
+    if operation == 'sqrt' and arithmetic is _arithmetic and not isinstance(sizes[0], Decimal):
+        return math.sqrt(sizes[0])
+    if operation in ('pow', 'sqrt'):
+        return arithmetic(operator.pow, sizes[0], 0.5 if operation == 'sqrt' else exponent)
+    return max(sizes, default=1)
+
+
 def _magnitude(number):
     return number.copy_abs() if isinstance(number, Decimal) else abs(number)
 
@@ -83,6 +98,11 @@ def signed_gap(a, b, gap=None):
 
 def recorded_number(value):
     """A numeric trace value outside float range is recorded in canonical decimal units."""
+    if isinstance(value, Fraction):
+        try:
+            return float(value)
+        except OverflowError:
+            return str(_WIDE.divide(Decimal(value.numerator), Decimal(value.denominator)))
     return str(value) if isinstance(value, Decimal) else value
 
 
@@ -136,6 +156,7 @@ class Comparisons:
     def __init__(self, units, factor=DEFAULT_FACTOR, named=None):
         self.units, self.factor, self.named = units, factor, named
         self.floors = {}
+        self.literal_gaps = {}
 
     def _binding(self, name):
         return self.named(name) if self.named is not None else (1.0, 1.0)
@@ -224,7 +245,9 @@ class Comparisons:
         quantities = [item for item in args if item.terms is not None]
         contributors = quantities or args
         first = contributors[0] if contributors else _Scale(1.0, 1.0)
-        unit, own = first.unit, max((arg.floor for arg in contributors), default=1.0)
+        unit = first.unit
+        sizes = [arg.floor for arg in contributors]
+        operation, exponent = None, None
         if isinstance(node, expr.Call) and node.function == 'q':
             conversion = self.units.parse_unit(node.args[1].value).scale
             return first.scaled(_arithmetic(operator.mul, unit, conversion), conversion)
@@ -232,12 +255,10 @@ class Comparisons:
             return first.scaled(unit, -1) if node.op == 'neg' else first
         if isinstance(node, expr.Binary):
             a = args[0]
+            operation = node.op
             if node.op == 'pow':
                 exponent = read(node.right)
-                unit, own = (
-                    _arithmetic(operator.pow, unit, exponent),
-                    _arithmetic(operator.pow, own, exponent),
-                )
+                unit = _arithmetic(operator.pow, unit, exponent)
                 if exponent == 1:
                     return first
             else:
@@ -249,19 +270,19 @@ class Comparisons:
                     if len(quantities) == 1:
                         literal = node.left if a.terms is None else node.right
                         return first.scaled(unit, read(literal))
-                    own = _arithmetic(operator.mul, a.floor, b.floor)
                 if node.op == 'div':
                     unit = _arithmetic(operator.truediv, a.unit, b.unit)
                     if a.terms is not None and b.terms is None:
                         return a.scaled(unit, _arithmetic(operator.truediv, 1.0, read(node.right)))
-                    numerator = abs(read(node.left)) if b.terms is not None and a.terms is None else a.floor
-                    own = _arithmetic(operator.truediv, numerator, b.floor) if b.floor else 0.0
+                    if b.terms is not None and a.terms is None:
+                        sizes = [abs(read(node.left)), b.floor]
         elif isinstance(node, expr.Call):
             if node.function == 'sum' and quantities:
                 return _sum_scales(unit, args, False)
             if node.function == 'sqrt':
                 unit = _arithmetic(operator.pow, unit, 0.5) if isinstance(unit, Decimal) else math.sqrt(unit)
-                own = _arithmetic(operator.pow, own, 0.5) if isinstance(own, Decimal) else math.sqrt(own)
+                operation = 'sqrt'
+        own = composed_floor(operation, sizes, exponent)
         return _Scale(unit, own, {node: own} if quantities else None)
 
     def floor(self, left, right, read=None):
@@ -313,8 +334,30 @@ class Comparisons:
         size = max(self.floor(left, right, read), abs(a), abs(b))
         return float(self._width(size))
 
+    def literal_gap(self, left, right):
+        """The exact gap and band for rational literal operands, once per comparison. A model
+        predicate can be exactly on the band after a conversion, a sum or a cancellation."""
+        from .literals import Literals, node_parts
+
+        key = left, right, self.factor
+        if key not in self.literal_gaps:
+            literals = Literals(
+                node_parts, self.units.exact_scale if self.units is not None else None, self.factor
+            )
+            a, b = literals.value(left), literals.value(right)
+            self.literal_gaps[key] = (
+                literals.gap_band(left, right, a, b)
+                if isinstance(a, Fraction) and isinstance(b, Fraction)
+                else None
+            )
+        return self.literal_gaps[key]
+
     def gap_band(self, left, right, a, b, read=None, gap=None):
         """The signed gap and band in the operands' units, even beyond float range."""
+        if gap is None and not expr.names(left) and not expr.names(right):
+            exact = self.literal_gap(left, right)
+            if exact is not None:
+                return exact
         size = max(self.floor(left, right, read), abs(a), abs(b))
         return signed_gap(a, b, gap), self._width(size)
 
