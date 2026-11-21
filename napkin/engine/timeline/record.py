@@ -109,6 +109,7 @@ from ...program.record import Curve, Entry, History, Key, Manifest, Piece, Recor
 from ..continuous.kernels import Affine, MatrixExponential
 from ..errors import SimulationError
 from .collections import dynamic_value, history_of, index_of, kept, known, looked_up, reduced
+from .family import Family
 from .plan import (
     BUILTINS,
     CHANGED,
@@ -201,6 +202,10 @@ def fitted(values, start, end, tolerance):
     return [sorted(pieces, key=lambda piece: piece[0]) for pieces in found]
 
 
+def _line_number(value):
+    return isinstance(value, (float, int)) and not isinstance(value, bool)
+
+
 def recorded_piece(t, value, rate):
     """A recorder piece as the public record holds it: on a line or on a curve."""
     return Piece(t, value, curve=rate) if isinstance(rate, Curve) else Piece(t, value, rate)
@@ -282,6 +287,8 @@ class Recorder:
         self._raw_positions = {}
         self._total = 0
         self._as_of = None
+        self._held_upper = None
+        self._held_growth = 0
 
     def entry(self, t, kind, part, owner='', **details):
         """One entry of the trace, in the round where the run is (`round`: 0 is the setup)."""
@@ -299,6 +306,7 @@ class Recorder:
         brought in so far, a piece at each edit. `start` is when the store started, which the run's
         savepoint keeps with the transfers (`moment._Savepoint`); the ledger reads 0 from then to its
         first edit without a piece of its own."""
+        self._held_upper, self._held_growth = math.inf, 0
         self.transfers.setdefault(store, (start, []))[1].append((t, amount))
         self._dirty.add(store)
         self._from = min(self._from, t)
@@ -370,6 +378,11 @@ class Recorder:
                 for key in registry:
                     ways.sets[key][1].incoming_history(end)
         self.fits.advance(end)
+        if internal and self._schema == (len(self.plan.values), self.plan.version):
+            if self._held_upper is None:
+                self._held_upper, self._held_growth = self._held_piece_bound()
+            if self._held_upper <= self.plan.configuration.request.pieces:
+                return
         self._advance(end)
         if self._total <= self.plan.configuration.request.pieces:
             return
@@ -378,8 +391,69 @@ class Recorder:
         if prefix.failure is not None and (not before or prefix.failure.t < end):
             raise HistoryFull(prefix)
 
+    def _held_piece_bound(self):
+        """Bound retained pieces from raw held lines, their aliases and numeric sums.
+
+        An alias copies its input. A sum of lines has at most one new piece per input
+        piece time, even when a member is projected twice. Count every path from a raw
+        value to a retained history. The largest such count bounds the growth from any
+        later raw line. Compaction can only reduce the count. Other formulas may split
+        between input pieces, so their budget needs the ordinary committed histories.
+        """
+        plan = self.plan
+        if (
+            plan.events
+            or plan.defined
+            or self.transfers
+            or not all(isinstance(way, Family) for way in self.run.ways.instances)
+        ):
+            return math.inf, 0
+        uses, numeric = defaultdict(int), set()
+        upper, growth = 0, 0
+        for name in reversed(self._order):
+            value = plan.values[name]
+            count = uses.pop(name, 0) + int(value.key is not None)
+            if not count:
+                continue
+            if name not in self._derived or name in self.formulas:
+                raw = self.pieces.get(name, ())
+                if name in numeric and (
+                    (name in self.constants and not _line_number(self.constants[name]))
+                    or any(not (_line_number(v) and _line_number(rate)) for _, v, rate in raw)
+                ):
+                    return math.inf, 0
+                upper += count * (len(raw) + int(name in self.constants))
+                growth = max(growth, count)
+            elif value.kind == FORMULA and isinstance(value.node, nodes.Ref):
+                source = value.node.name
+                uses[source] += count
+                if name in numeric:
+                    numeric.add(source)
+            elif value.kind == REDUCE:
+                reduction = plan.reductions[name]
+                upper += count  # the constant result of an empty collection or member count
+                if reduction.names is not None:
+                    if reduction.op != 'sum':
+                        return math.inf, 0
+                    try:
+                        entries = self.run.kept_of(name)
+                    except FAILURES:
+                        return math.inf, 0  # an unavailable sum can make its reader need a fit
+                    for entry in entries:
+                        source = reduction.names[entry]
+                        uses[source] += count
+                        numeric.add(source)
+            else:
+                return math.inf, 0
+        return (math.inf, 0) if uses else (upper, growth)
+
     def add(self, name, t, value, rate):
         """One piece of a value, which a run gives as it goes."""
+        if self._held_growth:
+            if _line_number(value) and _line_number(rate):
+                self._held_upper += self._held_growth
+            else:
+                self._held_upper, self._held_growth = math.inf, 0
         self.pieces.setdefault(name, []).append((t, value, rate))
         self._dirty.add(name)
         self._from = min(self._from, t)
@@ -387,6 +461,7 @@ class Recorder:
     def add_pieces(self, name, pieces):
         """Pieces of a value, which a run gives as it goes."""
         if pieces:
+            self._held_upper, self._held_growth = math.inf, 0
             self.pieces.setdefault(name, []).extend(pieces)
             self._dirty.add(name)
             self._from = min(self._from, pieces[0][0])
@@ -468,6 +543,8 @@ class Recorder:
         }
         self._total = 0
         self._as_of = None
+        self._held_upper = None
+        self._held_growth = 0
         self._dirty.update(names)
         self._dirty.update(self.transfers)
         self._schema = signature
