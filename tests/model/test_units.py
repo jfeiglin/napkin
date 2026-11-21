@@ -217,11 +217,11 @@ def checked(text, table=SPELLED):
 RESPELLED = """\
 scenario "Respelled"
     horizon {horizon}
-input x: {unit} = {a} in [{b}, {c}]
+input x: {unit} = {a} in [{b}, {c}] scale {scale}
 inside = ({a} in [{b}, {c}])
-root = sqrt({a} * {d})
-square = ({a}) ** 2
-input drawn = triangular({b}, {a}, {c}).draw()
+root = sqrt({a} * {d}) scale {scale}
+square = ({a}) ** 2 scale {square_scale}
+input drawn = triangular({b}, {a}, {c}).draw() scale {scale}
 """
 
 
@@ -242,7 +242,14 @@ def models(draw):
 
     def text():
         named = dict(zip('abcd', (written(value, draw(units)) for value in values)))
-        return RESPELLED.format(unit=draw(units), horizon=written(horizon, draw(hours)), **named)
+        base = next(name for name, size in FAMILIES[family].items() if size == 1)
+        return RESPELLED.format(
+            unit=draw(units),
+            horizon=written(horizon, draw(hours)),
+            scale=f'1 {base}',
+            square_scale=f'1 {base}*{base}',
+            **named,
+        )
 
     return text(), text()
 
@@ -310,3 +317,24 @@ def test_a_run_reads_equal_quantities_as_one_number():
     assert found['a'] == found['b'] == found['c'] == float(Fraction(12, 5))
     assert found['same'] is True and found['inside'] is True
     assert found['root'] == 24.0 and found['half'] == pytest.approx(96**0.5, rel=1e-15)
+
+
+@pytest.mark.parametrize(
+    ('unit', 'amount', 'scale', 'equals_zero'),
+    [
+        ('L', '0.0000000005', '', True),
+        ('mL', '0.0000005', ' scale 1000 mL', True),
+        ('mL', '0.0000005', '', False),
+    ],
+)
+def test_respelling_a_near_zero_value_preserves_its_guard_at_the_same_physical_scale(
+    unit, amount, scale, equals_zero
+):
+    model = compile_text(
+        f'scenario "Near zero"\n    horizon 1 h\ninput signal: {unit} = {amount} {unit}{scale}\n'
+        'close = formula(signal == 0 L)\n',
+        SPELLED,
+    )
+    record = run(model.program, model.configuration)
+    assert record.failure is None
+    assert read(record, model.program, ['close'], [0])[0].values == (equals_zero,)

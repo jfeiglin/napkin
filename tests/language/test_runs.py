@@ -480,3 +480,29 @@ def test_a_configuration_is_made_from_the_compiled_model_without_compiling_it_ag
 
     monkeypatch.setattr(compile_module, 'declare', again)
     assert {run: inputs(run, model=model) for run in RUNS} == {run: inputs(run) for run in RUNS}
+
+
+@pytest.mark.parametrize(
+    ('token', 'accepted'),
+    [
+        ('14.4', True),
+        ('"0.6 days"', True),
+        ('14.400000000000000001', False),
+        ('"0.6000000000000000001 days"', False),
+    ],
+)
+def test_authored_json_decimal_is_checked_in_the_inputs_unit(tmp_path, token, accepted):
+    from napkin.commands.common import edits_of
+
+    model = compile_text(
+        'scenario "Decimal inputs"\n    horizon 1 h\ninput cutoff: h = 0 h in [0, 0.6 days]\n', UNITS
+    )
+    path = tmp_path / 'edits.json'
+    path.write_text('{"set": {"cutoff": ' + token + '}}')
+    edits = edits_of(model, path)
+    if accepted:
+        assert model.configure(edits=edits).inputs[0].value == Quantity(14.4, 'h')
+    else:
+        with pytest.raises(LanguageError) as failed:
+            model.configure(edits=edits)
+        assert failed.value.codes == ['range']

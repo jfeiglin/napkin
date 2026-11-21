@@ -344,7 +344,10 @@ These override the text of this plan below, wherever the two differ. The owner's
 29. **Comparisons and crossings (owner, 2026-11-20).** In every evaluator and in the reference
     interpreter, two numeric operands within `max(rtol, atol_factor) × max(scale, |a|, |b|)`
     compare equal. A quantity supplies its declared scale, or the size of one declared unit. A literal
-    threshold uses the compared quantity's scale on either side. Inline and named formulas keep
+    threshold uses the compared quantity's scale on either side. The owner's language 0.2.3 ruling
+    makes an authored literal exact: it contributes zero comparison floor, regardless of its unit.
+    This also applies to literal-only expressions and formulas naming them. The relative term in
+    the band still applies. Inline and named formulas keep
     the comparison scale separate from the result unit. An explicit result scale wins. A literal
     offset leaves the scale unchanged. Add or subtract each quantity's signed contributions
     through its aliases and take the largest absolute contribution among independent quantities.

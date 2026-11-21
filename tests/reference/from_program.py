@@ -117,7 +117,7 @@ def _folded(sym, a, b):
         if sym == '*'
         else a._unit_size / b._unit_size
         if sym == '/'
-        else max(a._unit_size, b._unit_size)  # a constant sum or difference keeps both floors
+        else a._unit_size  # literal operands carry their units but contribute no comparison floor
     )
     return E(
         'const',

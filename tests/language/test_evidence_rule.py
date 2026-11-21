@@ -431,3 +431,23 @@ def test_json_evidence_preserves_the_exact_decimal(tmp_path, shared, token):
     from tools.evidence.integrate import dump
 
     assert '34.0000000000000001' in dump(parsed)
+
+
+@pytest.mark.parametrize('exponent', [0.5, 0.1])
+def test_fractional_exponents_agree_across_model_and_datum_unit_notations(tmp_path, exponent):
+    library = evidence_library()
+    library['units']['scaled'] = {'dimensions': {'time': exponent}, 'scale': 1, 'description': 'Time power.'}
+    library['assumptions'] = []
+    library['claims'] = [fixture_claim('C-ACCESS', data={'threshold': {'value': 1, 'unit': 'scaled^2'}})]
+    text = """scenario "Time power"
+    horizon 1 h
+    library "../library"
+site:
+    input x: scaled*scaled = 1 scaled*scaled @meter
+record meter: source "Measured threshold."
+    claims:
+        C-ACCESS
+            datum: threshold
+"""
+    entry = write_package(tmp_path, {'model.scn': text}, library)
+    assert data_warnings(entry) == []

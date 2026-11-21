@@ -20,7 +20,7 @@ class SourceError(ValueError):
         super().__init__(f'{path}:{line}: {message}' if line else f'{path}: {message}')
 
 
-def _evidence_number(token):
+def _exact_number(token):
     """Keep a decimal exactly, using a float only when its JSON spelling preserves the datum."""
     exact = Decimal(token)
     value = float(token)
@@ -68,7 +68,7 @@ def dump_json(value, *, sort_keys=False, indent=None, ensure_ascii=True, separat
     return write(value, 0)
 
 
-def load_json(path, *, evidence=False):
+def load_json(path, *, evidence=False, exact_numbers=False):
     """A JSON document (library, edits, package): duplicate keys and non-finite numbers rejected."""
 
     def pairs(items):
@@ -86,7 +86,7 @@ def load_json(path, *, evidence=False):
         Path(path).read_text(encoding='utf-8'),
         object_pairs_hook=pairs,
         parse_constant=bad_constant,
-        parse_float=_evidence_number if evidence else float,
+        parse_float=_exact_number if evidence or exact_numbers else float,
     )
 
 

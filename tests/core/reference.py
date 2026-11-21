@@ -59,6 +59,8 @@ def _scale(node, env):
         return _scale(node.body if walked(node.test, env) else node.orelse, env)
     if isinstance(node, expr.Binary) and node.op == 'pow':
         base, terms = _scale(node.left, env)
+        if not terms:
+            return Decimal(0), {}
         exponent = Decimal(walked(node.right, env))
         size = Decimal(0) if not base and exponent < 0 else Decimal(1) if exponent == 0 else base**exponent
         return size, terms if exponent == 1 else {node: size} if terms else {}
@@ -90,10 +92,10 @@ def _scale(node, env):
         size, terms = _scale(node.operand, env)
         return size, {n: -c for n, c in terms.items()} if node.op == 'neg' else terms
     else:
-        return Decimal(1), {}
+        return Decimal(0), {}
     contributors = [part for part in parts if part[1]]
     if not contributors:
-        return max(size for size, _ in parts), {}
+        return Decimal(0), {}
     if isinstance(node, expr.Binary) or node.function == 'sum':
         terms = {}
         for i, (_, signed) in enumerate(parts):

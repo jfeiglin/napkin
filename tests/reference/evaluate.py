@@ -633,7 +633,7 @@ class Ev:
         """Own scale and unit size of a compared value, independently of the engine."""
         kind, args = expression._k, expression._a
         if kind == 'const':
-            return expression._unit_size, expression._unit_size, {}
+            return Fraction(0), expression._unit_size, {}
         if member is not None or kind in ('attr', 'name'):
             ref = member
             if ref is None:
@@ -672,7 +672,7 @@ class Ev:
             if isinstance(formula, FormulaV):
                 evaluator = self.formula_scopes.get(ref) or self.fork(formula.scope)
                 own, _, terms = evaluator.operand(formula.expr)
-                return own, unit, terms or {ref: own}
+                return own, unit, terms
             return quantity(unit, unit)
         if kind == 'op':
             sym, a, b = args
@@ -712,7 +712,7 @@ class Ev:
                 else:
                     parts.append(self.operand(part))
             if not parts:
-                return Fraction(1), Fraction(1), {}
+                return Fraction(0), Fraction(1), {}
             if args[0] == 'sum':
                 terms = {}
                 for _, _, projection in parts:

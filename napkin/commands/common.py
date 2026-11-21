@@ -202,7 +202,7 @@ def edits_of(model, path):
     from ..model.load import SourceError, load_json
 
     try:
-        body = load_json(path)
+        body = load_json(path, exact_numbers=True)
     except SourceError as error:
         text, prefix = str(error), f'{error.path}: '
         raise Failed([problem('edits', text.removeprefix(prefix), path)]) from None

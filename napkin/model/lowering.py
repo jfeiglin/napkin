@@ -549,16 +549,16 @@ def _number(value):
     return nodes.written(value)
 
 
-def _node(item, reads, comparison=False):
+def _node(item, reads):
     if isinstance(item, s.Const):
         if isinstance(item.type, s.EnumOf):
             return _named(EnumValue(str(item.type), item.value), reads)
         if isinstance(item.value, (bool, str)):
             return nodes.const(item.value)
         value = item.value
-        if comparison and item.exact is not None and item.exact != Fraction(str(value)):
-            # A literal just outside the closed band can round onto it. The program already
-            # represents an exact fraction as the quotient of its two integer literals.
+        if item.exact is not None and item.exact != Fraction(str(value)):
+            # The caller may compare this literal through a named formula. Keep its
+            # exact authored decimal in the same quotient form as the Python builder.
             value = Fraction(item.exact)
         if isinstance(item.type, s.Num) and item.type.unit:
             return nodes.call('q', [_number(value), nodes.const(item.type.unit)])
@@ -575,8 +575,7 @@ def _node(item, reads, comparison=False):
         if item.op == 'since':
             return _named(Since(source), reads)
         return _named(Elapsed(source), reads)
-    comparison = comparison or item.op == 'compare' or (item.op == 'call' and item.detail == 'within')
-    args = [_node(arg, reads, comparison) for arg in item.args]
+    args = [_node(arg, reads) for arg in item.args]
     if item.op in OPERATIONS:
         return nodes.binary(OPERATIONS[item.op], *args)
     if item.op in ('neg', 'not'):

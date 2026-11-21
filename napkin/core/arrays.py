@@ -181,7 +181,12 @@ class _Pass:
         return np.maximum(floor, policy.factor * np.maximum(np.abs(a), np.abs(b)))
 
     def ordered(self, op, left, right, a, b, places):
-        exact = self.registry.comparisons.literal_gap(left, right)
+        policy = self.registry.comparisons
+        bound = ()
+        if self.bindings and policy.named is not None:
+            names = sorted(expr.names(left) | expr.names(right))
+            bound = tuple((name, self.bindings[name]) for name in names if name in self.bindings)
+        exact = policy.literal_gap(left, right, bindings=bool(bound))
         if exact is not None:
             return against(op, *exact)
         a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
@@ -198,6 +203,23 @@ class _Pass:
             for j in np.flatnonzero(mask):
                 policy, read = self.row_reader(indices[j])
                 result[j] = policy.ordered(op, left, right, float(av[j]), float(bv[j]), read)
+        if bound:
+            # Template expressions share syntax; different rows may name different
+            # exact formulas. Keep their rational gaps across evaluations.
+            key = 'literal rows', left, right, policy.factor, bound
+            if key not in policy.floors:
+                policy.floors[key] = {
+                    i: pair
+                    for i in range(self.count)
+                    if (pair := self.row_policy(i).literal_gap(left, right)) is not None
+                }
+            pairs = policy.floors[key]
+            if pairs:
+                indices = self.places(places)
+                result = np.broadcast_to(result, len(indices)).copy()
+                for j, i in enumerate(indices):
+                    if i in pairs:
+                        result[j] = against(op, *pairs[i])
         return result
 
     def row_policy(self, i):
@@ -270,7 +292,10 @@ def _arithmetic(compute):
         right = _number((yield node.right, chosen))
         if not isinstance(left, np.ndarray) and not isinstance(right, np.ndarray):
             try:
-                return _checked(compute(left, right))
+                result = _checked(compute(left, right))
+                if node.op in ('add', 'sub') and not expr.names(node):
+                    return run.registry.comparisons.literal_sum(node, result)
+                return result
             except (ZeroDivisionError, OverflowError, ValueError, TypeError) as exc:
                 raise ExpressionError(str(exc)) from exc
         with np.errstate(all='ignore'):

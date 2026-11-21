@@ -70,17 +70,16 @@ def _arithmetic(op, a, b):
     return result
 
 
-def composed_floor(operation, sizes, exponent=None, arithmetic=_arithmetic):
-    """The comparison scale of an operation on its contributing operand scales, in result units.
-    The compiler supplies exact arithmetic for its constant operands."""
+def composed_floor(operation, sizes, exponent=None):
+    """The comparison scale of an operation on its contributing quantity scales, in result units."""
     if operation == 'mul':
-        return arithmetic(operator.mul, *sizes)
+        return _arithmetic(operator.mul, *sizes)
     if operation == 'div':
-        return arithmetic(operator.truediv, *sizes) if sizes[1] else 0
-    if operation == 'sqrt' and arithmetic is _arithmetic and not isinstance(sizes[0], Decimal):
+        return _arithmetic(operator.truediv, *sizes) if sizes[1] else 0
+    if operation == 'sqrt' and not isinstance(sizes[0], Decimal):
         return math.sqrt(sizes[0])
     if operation in ('pow', 'sqrt'):
-        return arithmetic(operator.pow, sizes[0], 0.5 if operation == 'sqrt' else exponent)
+        return _arithmetic(operator.pow, sizes[0], 0.5 if operation == 'sqrt' else exponent)
     return max(sizes, default=1)
 
 
@@ -215,9 +214,7 @@ class Comparisons:
                         pending.append(own)
                         continue
                     basis = found[own]
-                    result = _Scale(
-                        unit, basis.floor, basis.terms if basis.terms is not None else {node: basis.floor}
-                    )
+                    result = _Scale(unit, basis.floor, basis.terms)
                 else:
                     own = Decimal(own) if isinstance(own, str) else own
                     result = _Scale(unit, own, {node: own})
@@ -244,7 +241,7 @@ class Comparisons:
     def _operation(self, node, args, read):
         quantities = [item for item in args if item.terms is not None]
         contributors = quantities or args
-        first = contributors[0] if contributors else _Scale(1.0, 1.0)
+        first = contributors[0] if contributors else _Scale(1.0, 0.0)
         unit = first.unit
         sizes = [arg.floor for arg in contributors]
         operation, exponent = None, None
@@ -282,7 +279,7 @@ class Comparisons:
             if node.function == 'sqrt':
                 unit = _arithmetic(operator.pow, unit, 0.5) if isinstance(unit, Decimal) else math.sqrt(unit)
                 operation = 'sqrt'
-        own = composed_floor(operation, sizes, exponent)
+        own = composed_floor(operation, sizes, exponent) if quantities else 0.0
         return _Scale(unit, own, {node: own} if quantities else None)
 
     def floor(self, left, right, read=None):
@@ -334,25 +331,53 @@ class Comparisons:
         size = max(self.floor(left, right, read), abs(a), abs(b))
         return float(self._width(size))
 
-    def literal_gap(self, left, right):
-        """The exact gap and band for rational literal operands, once per comparison. A model
-        predicate can be exactly on the band after a conversion, a sum or a cancellation."""
-        if isinstance(left, expr.Ref) or isinstance(right, expr.Ref):
-            return None
-        key = left, right, self.factor
-        if key not in self.literal_gaps:
-            from .literals import Literals, node_parts
+    def literal_value(self, node):
+        """An operand fixed entirely by authored literals, including a retained formula
+        with no scale of its own. The binding cache is cleared when definitions change."""
+        from .literals import Literals, node_parts
 
-            literals = Literals(
-                node_parts, self.units.exact_scale if self.units is not None else None, self.factor
+        bound = bool(expr.names(node))
+        cache = self.floors if bound else self.literal_gaps
+        key = node, self.factor
+        if key in cache:
+            return cache[key]
+
+        def parts(n):
+            if isinstance(n, expr.Ref) and self.named is not None:
+                definition = self._binding(n.name)[1]
+                if isinstance(definition, expr.Node):
+                    return 'pos', (definition,), None
+            return node_parts(n)
+
+        literals = Literals(parts, self.units.exact_scale if self.units is not None else None, self.factor)
+        found = literals.value(node)
+        cache[key] = found
+        return found
+
+    def literal_sum(self, node, rounded):
+        """Round a sum or difference of authored literals once. A named formula
+        must expose the same small residual that its inline guard compares."""
+        if isinstance(rounded, float):
+            exact = self.literal_value(node)
+            if isinstance(exact, Fraction):
+                return float(exact)
+        return rounded
+
+    def literal_gap(self, left, right, *, bindings=False):
+        """Exact gap and relative band of two literal operands. A vectorized template
+        with row-specific bindings resolves its actual operands on each row."""
+        bound = bool(expr.names(left) or expr.names(right))
+        if bound and (bindings or self.named is None):
+            return None
+        cache = self.floors if bound else self.literal_gaps
+        key = left, right, self.factor
+        if key not in cache:
+            a = self.literal_value(left)
+            b = self.literal_value(right) if isinstance(a, Fraction) else None
+            cache[key] = (
+                (a - b, Fraction(str(self.factor)) * max(abs(a), abs(b))) if isinstance(b, Fraction) else None
             )
-            a, b = literals.value(left), literals.value(right)
-            self.literal_gaps[key] = (
-                literals.gap_band(left, right, a, b)
-                if isinstance(a, Fraction) and isinstance(b, Fraction)
-                else None
-            )
-        return self.literal_gaps[key]
+        return cache[key]
 
     def gap_band(self, left, right, a, b, read=None, gap=None):
         """The signed gap and band in the operands' units, even beyond float range."""

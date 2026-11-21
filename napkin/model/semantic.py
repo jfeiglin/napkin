@@ -181,7 +181,7 @@ from functools import cached_property
 from ..core.comparisons import DEFAULT_FACTOR
 from ..core.expr import DEEPEST
 from ..core.literals import Literals
-from ..core.units import rational, scale_of
+from ..core.units import dimension_power, rational, scale_of
 from .language import nodes as n
 from .language import tables
 from .language.format import expression as written_as
@@ -203,9 +203,7 @@ class Units:
         self.base = {}
         for name, spec in self.table.items():
             dimension, scale = spec if isinstance(spec, tuple) else (spec, 1)
-            powers = (
-                (k, int(v) if float(v).is_integer() else rational(v)) for k, v in dimension.items() if v
-            )
+            powers = ((k, dimension_power(v)) for k, v in dimension.items() if v)
             self.base[name] = (tuple(sorted(powers)), scale_of(scale))
 
     def has(self, name):
@@ -2823,7 +2821,7 @@ class Resolver:
         ends = [None if end is None else self.exact(end) for end in (lower, upper)]
         if None in ends:
             return
-        if not _literals(self.units).ordered('gt', lower, upper, *ends, floor=floor):
+        if not _literals(self.units).ordered('gt', *ends, floor=floor):
             return
         shown = [
             _written(end) if isinstance(end, Const) else written_as(text)
@@ -4787,10 +4785,10 @@ class Resolver:
         if isinstance(found.type, Num) and found.type != value.type:
             # In the input's own unit, so that two equal values are one value of a configuration; a
             # decimal is converted as written (`0.1 days` is 2.4 h).
-            number = _converted(found.value, self.scale(found.type), self.scale(value.type))
-            exact = (
-                None if found.exact is None else found.exact * self.scale(found.type) / self.scale(value.type)
-            )
+            exact = self.exact(found) / self.scale(value.type)
+            number = float(exact) if isinstance(found.value, float) else exact
+            if exact.denominator == 1:
+                number = int(exact)
             found = Const(number, value.type, exact)
         return found
 

@@ -35,7 +35,7 @@ from .errors import ExpressionError
 
 @dataclass(frozen=True)
 class Unit:
-    dimensions: tuple[tuple[str, float], ...] = ()
+    dimensions: tuple[tuple[str, int | Fraction], ...] = ()
     scale: float = 1.0
     kind: str = 'number'
 
@@ -52,8 +52,9 @@ class Unit:
     def power(self, exponent: float) -> Unit:
         if self.kind != 'number':
             raise ExpressionError('Powers require numeric quantities')
+        power = dimension_power(exponent)
         return Unit(
-            tuple((key, value * exponent) for key, value in self.dimensions if value * exponent),
+            tuple((key, value * power) for key, value in self.dimensions if value * power),
             self.scale**exponent,
         )
 
@@ -79,6 +80,14 @@ def rational(number):
     if isinstance(number, int | Decimal):
         return Fraction(number)
     return Fraction(float.__repr__(float(number)))
+
+
+def dimension_power(number):
+    """A dimension exponent in its authored, exact rational form."""
+    if isinstance(number, int):
+        return number
+    value = rational(number)
+    return value.numerator if value.denominator == 1 else value
 
 
 def scale_of(number):
@@ -177,11 +186,12 @@ class UnitRegistry:
                 if (
                     not isinstance(key, str)
                     or isinstance(value, bool)
-                    or not isinstance(value, (int, float))
+                    or not isinstance(value, (int, float, Decimal, Fraction))
                     or not math.isfinite(value)
                 ):
                     raise ExpressionError(f'Invalid dimension in unit {name!r}')
-            self._units[name] = Unit(tuple(sorted((k, v) for k, v in dimensions.items() if v)), float(scale))
+            powers = tuple(sorted((k, dimension_power(v)) for k, v in dimensions.items() if v))
+            self._units[name] = Unit(powers, float(scale))
             self._exact[name] = scale_of(scale)
         self._units = MappingProxyType(self._units)
 

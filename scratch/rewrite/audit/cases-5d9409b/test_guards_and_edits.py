@@ -36,7 +36,7 @@ import pytest
 
 
 @pytest.mark.parametrize(('gap', 'outcome'), [
-    ('(0.100000024 h + 0 day) - 0.1 h', False),
+    ('(0.100000024 h + 0 day) - 0.1 h', True),
     ('1000000000.00000005 h - 1000000000 h', True),
 ])
 def test_naming_a_formula_preserves_the_guard(gap, outcome):

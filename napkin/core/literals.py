@@ -8,12 +8,10 @@ are shared, including on the closed edge of a comparison band.
 from __future__ import annotations
 
 import math
-import operator
-from decimal import Decimal
 from fractions import Fraction
 
 from . import expr
-from .comparisons import against, composed_floor
+from .comparisons import against
 
 
 class Literals:
@@ -21,19 +19,31 @@ class Literals:
         self.parts, self.scale, self.factor = parts, scale, factor
 
     def value(self, node):
-        return self._walk(self._value(node))
-
-    def _walk(self, gen):
-        """A lowered operand can have thousands of terms. Follow just the branches it reads
-        on an explicit stack, the same way for its value and for its comparison floor."""
-        stack, value = [gen], None
+        """Evaluate selected operands once. Named formula graphs can share a
+        subtree many times, or contain a read cycle that the engine diagnoses."""
+        known = {}
+        stack = [(node, self._value(node))]
+        active = {id(node)}
+        value = None
         while stack:
+            current, compute = stack[-1]
             try:
-                stack.append(stack[-1].send(value))
-                value = None
+                child = compute.send(value)
             except StopIteration as done:
                 value = done.value
+                known[id(current)] = current, value
+                active.remove(id(current))
                 stack.pop()
+                continue
+            key = id(child)
+            if key in known:
+                value = known[key][1]
+            elif key in active:
+                value = None
+            else:
+                active.add(key)
+                stack.append((child, self._value(child)))
+                value = None
         return value
 
     def _value(self, node):
@@ -47,25 +57,25 @@ class Literals:
         if op == 'literal':
             return data
         if op == 'if':
-            test = yield self._value(args[0])
-            return (yield self._value(args[1] if test else args[2])) if isinstance(test, bool) else None
+            test = yield args[0]
+            return (yield (args[1] if test else args[2])) if isinstance(test, bool) else None
         if op in ('and', 'or'):
             decides = op == 'or'
             for arg in args:
-                value = yield self._value(arg)
+                value = yield arg
                 if not isinstance(value, bool):
                     return None
                 if value == decides:
                     return decides
             return not decides
         if op == 'compare':
-            left = yield self._value(args[0])
-            for symbol, first, second in zip(data, args, args[1:]):
-                right = yield self._value(second)
+            left = yield args[0]
+            for symbol, second in zip(data, args[1:]):
+                right = yield second
                 if left is None or right is None:
                     return None
                 if isinstance(left, Fraction) and isinstance(right, Fraction):
-                    holds = yield self._ordered(symbol, first, second, left, right)
+                    holds = self.ordered(symbol, left, right)
                 elif symbol in ('eq', 'ne'):
                     holds = (left == right) == (symbol == 'eq')
                 else:
@@ -76,7 +86,7 @@ class Literals:
             return True
         values = []
         for arg in args:
-            value = yield self._value(arg)
+            value = yield arg
             if value is None:
                 return None
             values.append(value)
@@ -89,41 +99,19 @@ class Literals:
         if op == 'q':
             return values[0] * self.scale(data)
         if op == 'within':
-            x, lo, hi = args
             value, low, high = values
-            if (yield self._ordered('gt', lo, hi, low, high)):
+            if self.ordered('gt', low, high):
                 return None
-            return (yield self._ordered('le', lo, x, low, value)) and (
-                yield self._ordered('le', x, hi, value, high)
-            )
+            return self.ordered('le', low, value) and self.ordered('le', value, high)
         return _EXACT[op](*values) if op in _EXACT else None
 
-    def _floor(self, node):
-        op, args, data = self.parts(node)
-        if op == 'number':
-            return self.scale(data[1]) if data[1] else Fraction(1)
-        if op == 'q':
-            return (yield self._floor(args[0])) * self.scale(data)
-        if op == 'if':
-            test = yield self._value(args[0])
-            return (yield self._floor(args[1] if test else args[2]))
-        exponent = (yield self._value(args[1])) if op == 'pow' else None
-        sizes = []
-        for arg in args[:1] if op == 'pow' else args:
-            sizes.append((yield self._floor(arg)))
-        return composed_floor(op, sizes, exponent, _scale_math)
+    def gap_band(self, a, b, floor=0):
+        """An authored literal adds no comparison floor, in any unit. A range can
+        supply the declared scale of the quantity to which it belongs."""
+        return a - b, Fraction(str(self.factor)) * max(floor or 0, abs(a), abs(b))
 
-    def _ordered(self, op, left, right, a, b):
-        floor = max((yield self._floor(left)), (yield self._floor(right)))
-        return against(op, *self.gap_band(left, right, a, b, floor))
-
-    def gap_band(self, left, right, a, b, floor=None):
-        if floor is None:
-            floor = max(self._walk(self._floor(left)), self._walk(self._floor(right)))
-        return a - b, Fraction(str(self.factor)) * max(floor, abs(a), abs(b))
-
-    def ordered(self, op, left, right, a, b, floor=None):
-        return against(op, *self.gap_band(left, right, a, b, floor))
+    def ordered(self, op, a, b, floor=0):
+        return against(op, *self.gap_band(a, b, floor))
 
 
 def node_parts(node):
@@ -144,21 +132,6 @@ def node_parts(node):
             return 'q', node.args[:1], node.args[1].value
         return node.function, node.args, None
     return 'unknown', (), None
-
-
-def _scale_math(operation, a, b):
-    if operation is operator.pow:
-        exact = _power(a, Fraction(b))
-        if exact is not None:
-            return exact
-        # A rational value can have an irrational scale, e.g. sqrt(0) in square units of scale 2.
-        return Fraction(_decimal(a) ** _decimal(b))
-    return operation(a, b)
-
-
-def _decimal(number):
-    number = Fraction(number)
-    return Decimal(number.numerator) / Decimal(number.denominator)
 
 
 def _power(base, exponent):

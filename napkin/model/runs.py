@@ -41,6 +41,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
+from decimal import Decimal
+from fractions import Fraction
 
 from ..program.config import InputValue, Quantity
 from ..program.refs import EnumValue
@@ -265,12 +267,17 @@ def _value(declared, found, value):
         return s.Const(value, s.BOOL)
     if isinstance(value, bool):
         raise s.Refused('value', f'{found.name} is {found.type}: it takes no true or false')
-    if isinstance(value, (int, float)):
+    if isinstance(value, (int, float, Decimal)):
         if not math.isfinite(value) or not isinstance(found.type, s.Num):
             raise s.Refused(
                 'value', f'{found.name} is {found.type}: a finite number is in its unit, not {value!r}'
             )
-        node = n.Number(abs(value))
+        if isinstance(value, Decimal):
+            exact = Fraction(value)
+            number = int(exact) if exact.denominator == 1 else float(exact)
+            node = n.Number(abs(number), exact=abs(exact))
+        else:
+            node = n.Number(abs(value))
         return s.constant(found, n.Unary('-', node) if value < 0 else node, declared.units)
     if found.type == s.TEXT:
         return s.Const(value, s.TEXT)

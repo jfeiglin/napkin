@@ -44,7 +44,7 @@ class Unit:
     of one of it in the canonical unit of that dimension (`kW` is 1000 of `W`; `min` is 1/60 h)."""
 
     name: str
-    dimension: tuple[tuple[str, int], ...]
+    dimension: tuple[tuple[str, int | Fraction], ...]
     scale: Fraction
 
     def compatible(self, other):
