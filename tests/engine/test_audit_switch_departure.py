@@ -145,6 +145,30 @@ def test_a_tangent_condition_does_not_turn_the_pump_off_for_a_segment(split):
     )
 
 
+@pytest.mark.parametrize('power', [2, 3])
+def test_two_initially_stationary_operands_compare_on_the_same_trajectory(power):
+    """Water=t^p and the threshold is 0.9*t^p. At t=0 both derivatives vanish.
+    On their outgoing side water exceeds the threshold for the whole hour."""
+    b = Builder(UNITS)
+    clock = t / q(1, 'h')
+    b.entity(
+        'plant',
+        value('water', 'L', 0),
+        value('delivery', 'L', 0),
+        flow('fill', SOURCE, this.water, request=formula(power * clock ** (power - 1) * q(1, 'L/h'))),
+        flow(
+            'pump',
+            SOURCE,
+            this.delivery,
+            request=formula(ifelse(this.water > 0.9 * clock**power * q(1, 'L'), 1, 0) * q(1, 'L/h')),
+        ),
+    )
+    program = b.finish()
+    record = run(program, Configuration(Request(1)))
+    assert record.failure is None
+    assert read(record, program, ['plant.delivery'], [0.5, 1])[0].values == pytest.approx((0.5, 1), abs=1e-8)
+
+
 @pytest.mark.parametrize(
     'seed', [*range(8), *[pytest.param(k, marks=pytest.mark.deep) for k in range(8, 64)]]
 )

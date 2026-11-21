@@ -6,7 +6,7 @@ import math
 from typing import NamedTuple
 
 import numpy as np
-from scipy.integrate import OdeSolution, Radau
+from scipy.integrate import OdeSolution, Radau, solve_ivp
 from scipy.optimize import OptimizeResult, brentq
 
 from ...core import expr as nodes
@@ -727,16 +727,25 @@ def branch_sides(surfaces, side):
 
 
 def curved_motion(t, y, h, drift, rates, side_at, place):
-    """Operand displacements on a one-sided midpoint step when the tangent gives no side."""
-    midpoint = y + (h / 2) * drift
-    # One correction propagates a change in velocity across one more store in a
-    # chain. A stationary field needs just one evaluation, regardless of its size.
-    for _ in range(len(y) + 1):
-        displacement = h * rates(t + h / 2, midpoint)
-        corrected = y + displacement / 2
-        if np.array_equal(corrected, midpoint):
-            break
-        midpoint = corrected
+    """Read displacements along one short outgoing trial shared by all curved comparisons."""
+    displacement = h * drift
+    middle = h * rates(t + h / 2, y + displacement / 2)
+    if not np.array_equal(middle, displacement):
+        # Integrate increments, not the full inventory: a large starting level
+        # must not set the accuracy of a small relative movement between operands.
+        scale = np.maximum(abs(middle), abs(displacement))
+        trial = solve_ivp(
+            lambda s, increment: h * rates(t + s * h, y + increment),
+            (0, 1),
+            np.zeros_like(y),
+            method='DOP853',
+            first_step=1,
+            rtol=Numerics.rtol,
+            atol=np.maximum(np.finfo(float).tiny, Numerics.rtol * scale),
+        )
+        if not trial.success:
+            raise SimulationError(f'cannot resolve the departing switch at {t:g} h: {trial.message}')
+        displacement = trial.y[:, -1]
     following = side_at(t + h, y + displacement)
 
     def motion(node, initial):
@@ -748,7 +757,7 @@ def curved_motion(t, y, h, drift, rates, side_at, place):
     return motion
 
 
-def departing_branches(surfaces, t, y, side_at, rates, place, contacted=(), comparisons=None):
+def departing_branches(surfaces, t, y, side_at, rates, place, moving, contacted=(), comparisons=None):
     """Select the sides a segment leaves on, including comparisons between two moving expressions.
     At a contact their equal values alone cannot pick a side. Compare their values along the
     outgoing trajectory; arithmetic outside the condition continues to read the actual state."""
@@ -771,13 +780,21 @@ def departing_branches(surfaces, t, y, side_at, rates, place, contacted=(), comp
         probe = y + h * drift
         following = side_at(t + h, probe)
         motion = None
+
+        def directed(node, other):
+            return (
+                isinstance(node, nodes.Ref)
+                and (node.name == 't' or (node.name in place and drift[place[node.name]] != 0))
+                and not moving(other)
+            )
+
         for a, b in signs.keys() & (ties | near):
             try:
                 left, right = side(a), side(b)
                 if comparisons is not None and comparisons.ordered('ne', a, b, left, right, side):
                     continue  # an edit can move the operands away from the located contact
                 change = (following(a) - left) - (following(b) - right)
-                if change == 0:
+                if change == 0 or not (directed(a, b) or directed(b, a)):
                     if motion is None:
                         motion = curved_motion(t, y, h, drift, rates, side_at, place)
                     change = motion(a, left) - motion(b, right)
@@ -1105,7 +1122,7 @@ def far_sides(
             departure[i] = beyond
     reached = set(contacted) | clock_branches.keys()
     reached.update(pair for pair, sign in branch_sides(surfaces, side).items() if not sign)
-    signs = departing_branches(surfaces, at, departure, side_at, rates, place, reached, comparisons)
+    signs = departing_branches(surfaces, at, departure, side_at, rates, place, moving, reached, comparisons)
     choose(signs)
     return tuple(switches), clock, signs
 
