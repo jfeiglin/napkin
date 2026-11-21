@@ -1071,7 +1071,7 @@ class DeclaredWay(Way):
         f = self.net.of[self.leg_rows[name]]
         return rows.get(former.cols[former._flow_name(int(f))], ())
 
-    def placement_relation(self, changes, t, *, rates=False):
+    def placement_relation(self, changes, t, *, rates=False, interval=None):
         """Check the proposed physical incidence against the declared hard rows. An
         equality permits only changes in its null space. Inequalities have the slack
         of the accepted interval; a moving row is checked on its incoming allocation."""
@@ -1110,7 +1110,14 @@ class DeclaredWay(Way):
                 source = dict(self.declared.constraints)[origin]
                 dependency = self.plan.field_inputs(self.plan.expansion(source))
                 if dependency.time or not dependency.leaves.isdisjoint(self.place):
-                    if not self._moving_relation(key, source, columns, terms, t):
+                    start = self.amounts.through
+                    if not self._moving_relation(key, source, columns, terms, start, t):
+                        return origin
+                    if (
+                        interval is not None
+                        and interval.start > start
+                        and not self._moving_relation(key, source, columns, terms, interval.start, t)
+                    ):
                         return origin
                     continue
             delta = sum(rational(coef) * columns[j] for j, coef in terms.items() if j in columns)
@@ -1121,41 +1128,41 @@ class DeclaredWay(Way):
             if (delta < 0 and not math.isfinite(lower)) or (delta > 0 and not math.isfinite(upper)):
                 continue
             arrays = former.problem_.arrays()
-            duration = 1 if rates else rational(t) - rational(self.t0)
-            value = 0
-            for j, coefficient in terms.items():
-                kind, name = arrays.keys[j][:2]
-                if kind == 'flow':
-                    f = self.row[name]
-                    if rates:
-                        amount = rational(self.value[f]) * duration
-                    elif net.kinds[f] == LEGS:
-                        # A served fraction is dimensionless. Only the held relation
-                        # supports multiplying it by a definite elapsed time.
-                        amount = rational(self.value[f]) * duration
+            starts = [self.t0]
+            if interval is not None and interval.start > self.t0:
+                starts.append(interval.start)
+            for start in starts:
+                duration = 1 if rates else rational(t) - rational(start)
+                value = 0
+                for j, coefficient in terms.items():
+                    kind, name = arrays.keys[j][:2]
+                    if kind == 'flow':
+                        f = self.row[name]
+                        if rates or net.kinds[f] == LEGS:
+                            amount = rational(self.value[f]) * duration
+                        else:
+                            amount = 0
+                            for c in net.conns.of(f):
+                                flow_name = net.connections[c]
+                                gross = self.raw_transferred(flow_name, t)
+                                if start != self.t0:
+                                    gross -= self.raw_transferred(flow_name, start)
+                                amount += gross * (-1 if net.roles[c] == BACKWARD else 1)
+                    elif kind == 'value' and name in self.results:
+                        amount = rational(self.results[name]) * duration
                     else:
-                        legs = net.conns.of(f)
-                        amount = sum(
-                            self.raw_transferred(net.connections[c], t)
-                            * (-1 if net.roles[c] == BACKWARD else 1)
-                            for c in legs
-                        )
-                elif kind == 'value' and name in self.results:
-                    amount = rational(self.results[name]) * duration
-                else:
+                        return key[1]
+                    value += rational(coefficient) * amount
+                if (delta > 0 and value + delta > rational(upper) * duration) or (
+                    delta < 0 and value + delta < rational(lower) * duration
+                ):
                     return key[1]
-                value += rational(coefficient) * amount
-            if (delta > 0 and value + delta > rational(upper) * duration) or (
-                delta < 0 and value + delta < rational(lower) * duration
-            ):
-                return key[1]
         return None
 
-    def _moving_relation(self, key, node, changes, terms, end):
+    def _moving_relation(self, key, node, changes, terms, start, end):
         """Integrate a hard row over the same accepted interval as the proposed leg
         posting. Solve the row for an affected flow and integrate its actual limit.
         A second changed flow contributes its mean adjustment over that prefix."""
-        start = self.amounts.through
         if start >= end:
             return False
         changed = [j for j in terms if changes.get(j)]
@@ -1483,6 +1490,15 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         dependencies = self.plan.field_inputs(
             self.plan.expansion_of({name for node in sources for name in nodes.names(node)})
         )
+        ceilings = []
+        for _, constraint in self.declared.constraints:
+            if isinstance(constraint, nodes.Compare) and len(constraint.operands) == 2:
+                for subject, threshold in (constraint.operands, constraint.operands[::-1]):
+                    if isinstance(subject, nodes.Ref) and subject.name.endswith('.actual_rate'):
+                        flow = self.plan.flows.get(subject.name.removesuffix('.actual_rate'))
+                        if flow is not None and flow.kind == 'directed':
+                            ceilings.append((flow.request, threshold))
+        self.cap_turns = self.capacity_turns(ceilings) if dependencies.time else ()
         self.held_problem = not (
             dependencies.time
             or dependencies.stepped
@@ -1914,7 +1930,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
         if self.snapped:
             return math.inf
         if self.pending is None:
-            until = self.run.limit
+            until = self.smooth_until(self.time, self.run.limit)
             if self.time >= until:
                 return math.inf
             self.pending = self._next(until)

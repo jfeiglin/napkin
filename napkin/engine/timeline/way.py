@@ -1,8 +1,10 @@
 """What an installed set publishes and reports when the timeline reaches a moment."""
 
+from bisect import bisect_right
+
 from ...core import expr as nodes
 from ...core.units import rational
-from ..continuous.transfers import ClockLeg, HeldAmounts, certified_amount, held_elapsed
+from ..continuous.transfers import ClockLeg, HeldAmounts, certified_amount, clock_primitive, held_elapsed
 from .stocks import RestingAmounts, RestingRates
 
 
@@ -13,6 +15,53 @@ class MovingTransfers:
     def held_settings(plan, names):
         """Captured settings are fixed for the whole installation, including a capped pipe."""
         return all(plan.values[name].kind == 'capture' for name in names)
+
+    def capacity_turns(self, relations=()):
+        """The times when an affine-clock request meets an individual hard limit.
+        Even a continuous allocation can have a kink. Ending Radau's smooth step
+        there prevents its later, clipped samples from changing the incoming curve."""
+        plan = self.run.plan
+        limits = list(relations)
+        for name in self.leg_rows:
+            flow = plan.flows.get(name)
+            if flow is None or flow.kind != 'directed':
+                continue
+            if flow.capacity is not None:
+                limits.append((flow.request, nodes.ref(flow.capacity)))
+            for key in ((flow.source, 'outflow'), (flow.sink, 'inflow')):
+                end = plan.ends.get(key)
+                if end and end.capacity is not None and len(plan.incident(*key)) == 1:
+                    limits.append((flow.request, nodes.ref(end.capacity)))
+
+        def affine(node, expansion):
+            if isinstance(node, nodes.Ref) and node.name in self.run.env and not expansion.time:
+                value = plan.values[node.name]
+                if value.kind == 'capture':
+                    return rational(self.run.env[node.name]), 0
+            if expansion.leaves or expansion.stepped:
+                return None
+            integral = clock_primitive(node, plan, expansion)
+            if integral is not None and len(integral) <= 3:
+                return integral[1], 2 * integral[2] if len(integral) == 3 else 0
+            return None
+
+        roots = set()
+        for request, capacity in limits:
+            req = nodes.ref(request)
+            left, right = plan.expansion(req), plan.expansion(capacity)
+            if not (left.time or right.time):
+                continue
+            a, b = affine(req, left), affine(capacity, right)
+            if a is not None and b is not None and a[1] != b[1]:
+                roots.add(float((a[0] - b[0]) / (b[1] - a[1])))
+        return sorted(roots)
+
+    def smooth_until(self, start, end):
+        if self.cap_turns:
+            after = bisect_right(self.cap_turns, start)
+            if after < len(self.cap_turns):
+                return min(end, self.cap_turns[after])
+        return end
 
     def _pending_end(self):
         return self.pending.end
@@ -125,7 +174,7 @@ class Way:
         if self.resting is not None:
             self.resting.invalidate()
 
-    def watch_leg(self, name, start):
+    def watch_leg(self, name, start, *, label=None):
         """Integrate the actual directed rate for a boundary-sensitive stock. Separate an exact
         rectangle or clock primitive from a measured contribution to its physical allowance."""
         run, plan = self.run, self.run.plan
@@ -159,7 +208,10 @@ class Way:
             if b == a:
                 return 0, 0
             return 0, certified_amount(
-                lambda t: abs(run.value(rate, t)), a, b, f'{name}: cannot certify the frozen transfer'
+                lambda t: abs(run.value(rate, t)),
+                a,
+                b,
+                label or f'{name}: cannot certify the frozen transfer',
             )
 
         return measured

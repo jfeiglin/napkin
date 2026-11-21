@@ -223,6 +223,7 @@ def compare(seed, edit=False):
         oracle, failed = run_of(program, configuration, [(LOOK, None, [change])] if edit else [])
     except NotCovered:
         return
+    expected = {}
     paths = ('edited in place', 'edited from a checkpoint') if edit else ('straight through',)
     for path, record in zip(paths, engine_records(program, configuration, change if edit else None)):
         message = None if record.failure is None else record.failure.detail('message')
@@ -239,12 +240,13 @@ def compare(seed, edit=False):
             assert message is None, (seed, message)
             horizon = Fraction(HORIZON)
         times = [time for time in TIMES if time < horizon]
-        for key in keys:
-            found = read(record, program, [key], [float(time) for time in times])[0].values
-            for time, number in zip(times, found):
-                expected = float(value_at(oracle, program, key, time))
+        readings = read(record, program, keys, list(map(float, times)))
+        for key, row in zip(keys, readings, strict=True):
+            if key not in expected:
+                expected[key] = [float(value_at(oracle, program, key, time)) for time in times]
+            for time, number, target in zip(times, row.values, expected[key], strict=True):
                 # The sets whose rates move run on Radau: the values agree to its accuracy.
-                assert number == pytest.approx(expected, rel=1e-7, abs=1e-7), (
+                assert number == pytest.approx(target, rel=1e-7, abs=1e-7), (
                     seed,
                     path,
                     str(key),

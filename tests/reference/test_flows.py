@@ -21,6 +21,7 @@ from tests.reference.model import (
     flow,
     formula,
     fsum,
+    if_,
     leg,
     legs,
     lit,
@@ -92,6 +93,84 @@ def test_a_grouped_empty_contact_uses_the_lower_face_and_keeps_the_exact_residua
         assert run.read(N.a.stock, end) == crumb == F(1, 10**10)
         assert run.read(N.b.stock, end) == 9 - F(3, 2) * (end - at)
         assert run.read(N.plant.pipe.actual_rate, end) == 0
+    assert run.conservation()['balanced']
+
+
+@pytest.mark.parametrize('direction', [-1, 1], ids=['drain', 'fill'])
+@pytest.mark.parametrize('scale,spare', [(1, F(1, 9)), (1000, F(1, 99))], ids=['stock-edge', 'clock-edge'])
+@pytest.mark.parametrize('short', [0, F(1, 10**30)], ids=['exact-room', 'short'])
+def test_hard_rate_room_at_the_exact_incoming_contact_edge(direction, scale, spare, short):
+    # At 1 h the books are 1e-10 from the threshold. The stock with 1-unit scale
+    # entered its band 9e-10 h ago. With scale 1000 the clock admits only 9.9e-9 h.
+    crumb = F(1, 10**10)
+    m = Model()
+    stock = N.yard.water
+    source, destination = (SOURCE, stock) if direction > 0 else (stock, SINK)
+    wait = until(stock >= 1) if direction > 0 else until(stock <= -1)
+    m.entity(
+        'yard',
+        fields=[value('water', -direction * crumb, scale=lit(scale))],
+        flows=[flow('pipe', source, destination, request=1, capacity=1 + spare - short)],
+        events=[event('watch', steps=[wait]), event('clock', steps=[after(1)])],
+    )
+    m.setup += [start(N.yard.watch), start(N.yard.clock)]
+    run = Run(m, horizon=1).run()
+    expected = direction * (1 - crumb if short else 1)
+    assert run.read(stock, 1) == expected
+    assert run.conservation()['balanced']
+    assert bool([e for e in run.trace if e.kind == 'near-tie']) == bool(short)
+
+
+@pytest.mark.parametrize('cap', [F('1.02'), F(2)])
+def test_a_quadratic_stock_certifies_both_sides_of_its_irrational_admission_edge(cap):
+    raw = 1 + F(1, 10**10)
+    target = raw + raw**2
+    m = Model()
+    m.entity(
+        'yard',
+        fields=[value('water', 0)],
+        flows=[
+            flow('held', SOURCE, N.yard.water, request=1, capacity=cap),
+            flow('ramp', SOURCE, N.yard.water, request=formula(2 * t)),
+        ],
+        events=[event('watch', steps=[until(N.yard.water >= target)]), event('clock', steps=[after(1)])],
+    )
+    m.setup += [start(N.yard.watch), start(N.yard.clock)]
+    run = Run(m, horizon=1).run()
+    # Water is t + t². At 1 h roughly 0.57 ns of its physical band was available.
+    # The held pipe's 1/(1+2*raw) share of the correction is about 1e-10.
+    assert run.read(N.yard.water, 1) == (2 if cap < 2 else target)
+    assert run.conservation()['balanced']
+
+
+@pytest.mark.parametrize('cap,places', [(F(5, 4), False), (F(3, 2), True)])
+def test_a_quadratic_may_use_only_the_terminal_stretch_inside_its_contact_band(cap, places):
+    # Water follows (t-1)²-9/4 and first reaches zero at 5/2 h. It is on
+    # the -5/4 L edge at setup, leaves, and re-enters at 2 h. Even though the
+    # entire trajectory lies in the clock window, only [2, 9/4] supplies room.
+    m = Model()
+    stock = N.yard.water
+    m.entity(
+        'yard',
+        fields=[value('water', -F(5, 4), scale=lit(F(25, 2)))],
+        flows=[
+            flow('held', SOURCE, stock, request=1, capacity=cap),
+            flow('ramp', SOURCE, stock, request=formula(2 * t)),
+            flow('drain', stock, SINK, request=3),
+            flow('signal', SOURCE, SINK, request=formula(if_(stock < 0, 1, 2))),
+        ],
+    )
+    end = F(9, 4)
+    run = Run(m, horizon=end, crossing=F(5, 2), rtol=F(1, 10)).run()
+    assert [run.read(stock, at) for at in (0, 1, 2)] == [-F(5, 4), -F(9, 4), -F(5, 4)]
+    # The held and ramp rates approaching zero are 1 and 5. The held pipe
+    # supplies 1/6 of 11/16 L, which fits only the 3/2 L/h cap on that suffix.
+    correction = F(11, 96) if places else 0
+    assert run.read(stock, end) == (0 if places else -F(11, 16))
+    amounts = {row[3]: row[6] for row in run.ledger if row[0] == 'flow'}
+    assert amounts['yard.held'] == end + correction
+    assert amounts['yard.ramp'] == end**2 + 5 * correction
+    assert amounts['yard.drain'] == 3 * end
     assert run.conservation()['balanced']
 
 

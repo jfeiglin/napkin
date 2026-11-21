@@ -71,7 +71,7 @@ from ..errors import SimulationError
 from .chance import Chance
 from .checkpoints import Breaks, Stopped
 from .collections import dynamic_value, index_of, kept, looked_up, reduced
-from .contacts import Placements, bound_values
+from .contacts import Placements
 from .moment import Clock, Defined, Moment, quantity, span
 from .occurrences import Occurrences
 from .plan import (
@@ -1099,7 +1099,7 @@ class Run:
                 apart = min(instance.separate_contacts(at, through), default=math.inf)
                 if apart <= through:
                     through = math.nextafter(apart, -math.inf)
-                faces = Placements(bound_values(self.bounds, instance.contacts_at(at, through)))
+                faces = Placements.from_bounds(self.bounds, instance.contacts_at(at, through))
                 faces.include(levels)
                 if faces:
                     levels = self.stock_state.place(faces, at)
@@ -1156,8 +1156,9 @@ class Run:
                 )
             )
             self.ways.opening(moment)
-            self.bound_at = bound_values(self.bounds, self.contacts)
-            levels = self.triggers.levels_at(moment, Placements(self.bound_at))
+            faces = Placements.from_bounds(self.bounds, self.contacts)
+            self.bound_at = dict(faces)
+            levels = self.triggers.levels_at(moment, faces)
             if self.consumed:
                 self.consumed = {pair: times for pair, times in self.consumed.items() if max(times) >= moment}
             if self.contacts or not independent:

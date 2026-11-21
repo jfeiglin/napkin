@@ -758,14 +758,22 @@ def test_two_outside_switch_locations_on_one_pipe_are_reported_at_their_moment()
     ]
 
 
-@pytest.mark.parametrize('kind', ['held', 'moving', 'key'])
-def test_an_outside_pipe_keeps_the_shared_side_until_a_later_contact(kind):
-    """The clock groups 2 h with the stage 5 billionths of an hour earlier. The next stage reads its side."""
+@pytest.mark.parametrize(
+    ('kind', 'scale'),
+    [('held', None), ('moving', None), ('key', 1), ('key', 10)],
+    ids=['held', 'moving', 'key', 'key-within-band'],
+)
+def test_an_outside_pipe_keeps_the_shared_side_until_a_later_contact(kind, scale):
+    """The 2 h clock groups with the early stage. A moving stock key must also be in its own band."""
     b = Builder(UNITS)
     at = F(2) - F(5, 10**9)
     delay = F(1, 10**9)
     if kind == 'key':
-        b.entity('gauge', value('level', 'L', 0, lower=0), flow('fill', SOURCE, this.level, request=rate(1)))
+        b.entity(
+            'gauge',
+            value('level', 'L', 0, lower=0, scale=scale),
+            flow('fill', SOURCE, this.level, request=rate(1)),
+        )
         rows = b.template('Reading', input_('level', 'L', 0), input_('give', 'L/h', 0))
         b.table('readings', rows, ({'level': 0, 'give': 4}, {'level': 2, 'give': 1}))
         ask = rows.instances.by('level').at(named('gauge').level).give
@@ -791,13 +799,29 @@ def test_an_outside_pipe_keeps_the_shared_side_until_a_later_contact(kind):
     live = Run(Plan.of(p, config), (Breakpoint('tap.copy.step[1]'),))
     paused = live.run()
     assert isinstance(paused, Checkpoint)
+    shared = 4 if scale == 1 else 1
+    later = F('1.01') if kind == 'moving' else shared
+    probes = [
+        ('tap.first', at, 4),
+        ('tap.shared', at, shared),
+        ('tap.later', at + delay, later),
+        ('tap.pipe.actual_rate', at + delay, later),
+    ]
+    if kind == 'key':
+        # At scale 1 L, the two early stages are 5e-9 and 4e-9 L short of the 2 L
+        # key, both outside its 2e-9 L band. The 10 L scale admits that same crossing.
+        probes += [('tap.pipe.actual_rate', F(2), 1)]
+        oracle, problem = run_of(p, config)
+        assert problem is None
+        for path, when, expected in probes:
+            assert value_at(oracle, p, key(path), when) == expected, (path, when)
     for result in (run(p, config), live.resume(), resume(p, loads(dumps(paused)))):
         assert result.failure is None
-        assert result.value(key('tap.first'), float(at)) == 4
-        assert result.value(key('tap.shared'), float(at)) == pytest.approx(1)
-        expected = 1.01 if kind == 'moving' else 1
-        for path in ('tap.later', 'tap.pipe.actual_rate'):
-            assert result.value(key(path), float(at + delay)) == pytest.approx(expected, abs=1e-7), path
+        for path, when, expected in probes:
+            assert result.value(key(path), float(when)) == pytest.approx(float(expected), abs=1e-7), (
+                path,
+                when,
+            )
 
 
 def test_a_new_switched_request_keeps_its_moving_arithmetic_in_the_record():

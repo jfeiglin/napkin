@@ -777,7 +777,14 @@ class Run:
                     )
                     if amount:
                         corrections[name] = amount
-                error = self._placement_rule(tau, moving, corrections, problems)
+                admission = []
+                for i in group:
+                    cell = cells[i]
+                    if cell in self.contact_levels:
+                        target, root = self.contact_levels[cell]
+                        if root != tau:
+                            admission.append(self._admission_edge(cell, target, root, tau))
+                error = self._placement_rule(tau, moving, corrections, problems, admission)
                 if error is None:
                     accepted.update(corrections)
                     continue
@@ -812,7 +819,48 @@ class Run:
             raise conflict
         return accepted
 
-    def _placement_rule(self, tau, moving, corrections, problems):
+    def _admission_edge(self, cell, target, root, tau):
+        """Enclose the start of the connected incoming time/stock band containing this moment.
+
+        An independent observation just before that edge can keep its own physical books.
+        A correction may therefore use only the hard-rate room accumulated after it.
+        """
+        start = max(Fraction(0), root - self.config.crossing)
+        level = self.view.levels[cell]
+        points = [start, tau]
+        if len(level.c) == 3:
+            turn = -level.c[1] / (2 * level.c[2])
+            if start < turn < tau:
+                points.insert(1, turn)
+        for i in range(len(points) - 2, -1, -1):
+            lo, hi = points[i : i + 2]
+            if self.on_stock_target(cell, level(lo), target):
+                continue
+            # On this monotone piece the first admissible stock value is a rational
+            # threshold even if the time when a quadratic reaches it is irrational.
+            tolerance = max(self.config.rtol, self.config.atol_factor)
+            scale = max(self.own_scales[cell], abs(target))
+            sign = 1 if level(lo) > target else -1
+            boundary = target + sign * tolerance * scale
+            if abs(boundary) > scale and tolerance < 1:
+                boundary = target / (1 - tolerance)
+            if level(hi) == boundary:
+                return hi, hi
+            time = (level(Poly([lo, 1])) - boundary).first_root()
+            if isinstance(time, Fraction):
+                return lo + time, lo + time
+            # An irrational edge is never rounded into a decision. The hard-row check
+            # must give the same answer at both enclosing rational times.
+            for _ in range(100):
+                mid = (lo + hi) / 2
+                if self.on_stock_target(cell, level(mid), target):
+                    hi = mid
+                else:
+                    lo = mid
+            return lo, hi
+        return start, start
+
+    def _placement_rule(self, tau, moving, corrections, problems, admission):
         """A preferred landing is legal only if its actual transfers obey all hard rules."""
         view = self.view
         changes = Counter()
@@ -832,6 +880,15 @@ class Run:
                     f'outside its range [{lower}, {upper}]'
                 )
         failure = network.check_placement(self, problems, tau, moving, corrections)
+        if failure is None and admission:
+            outside, inside = map(max, zip(*admission, strict=True))
+            failure = network.check_placement(self, problems, tau, moving, corrections, start=inside)
+            if (
+                failure is not None
+                and outside != inside
+                and network.check_placement(self, problems, tau, moving, corrections, start=outside) is None
+            ):
+                raise NotCovered('hard-rate room cannot be decided at the irrational stock-band edge')
         return failure or self._frozen_placement(tau, moving, corrections, post=False)
 
     def _frozen_placement(self, tau, moving, corrections, *, post):

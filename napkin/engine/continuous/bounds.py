@@ -72,6 +72,8 @@ def check_bounds(system, state, *, at=None, targets=None, solution=None):
         raise SimulationError(f'Material state-bound violation for {s.state_ids[i]}')
     if outside.any():
         violations = [s.state_ids[i] for i in np.flatnonzero(outside)]
+        if at is not None:
+            raise SimulationError(f'Material state-bound violation for {", ".join(violations)}')
         raise SimulationError(f'State bounds violated: {violations}')
 
 

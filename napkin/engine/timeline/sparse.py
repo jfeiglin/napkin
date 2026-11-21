@@ -693,6 +693,7 @@ class Sparse(MovingTransfers, Way):
         self.held_rates = set()
         self.selected = False
 
+        self.cap_turns = self.capacity_turns() if self.capped or configured_ends else ()
         self.setting_names = tuple(names)
         self.settings = vector.compiled(names)
         self.size = len(names)
@@ -1337,7 +1338,7 @@ class Sparse(MovingTransfers, Way):
         reaches a bound, or leaves the bound that holds it, ends it there."""
         if self.pending is not None:
             return self.pending[1]
-        until = self.run.limit
+        until = self.smooth_until(self.t, self.run.limit)
         if self.t >= until:
             return math.inf
         if not self.stores:

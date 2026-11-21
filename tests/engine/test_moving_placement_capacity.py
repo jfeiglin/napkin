@@ -1,11 +1,16 @@
 """A hard ceiling limits the integral over the accepted prefix at a grouped threshold."""
 
+import math
 from dataclasses import replace
 from fractions import Fraction
+from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
+from napkin.engine.continuous import dense
 from napkin.engine.timeline import Plan, Run
+from napkin.engine.timeline.stocks import ContactInterval
 from napkin.model.compile import compile_text
 from napkin.program.checkpoint import Breakpoint, Checkpoint, dumps, loads
 
@@ -30,7 +35,7 @@ UNITS = {'L': {'volume': 1}, 'h': {'time': 1}}
 def test_a_grouped_placement_uses_the_moving_capacity_over_its_accepted_prefix(
     kind, method, rises, cut, monkeypatch
 ):
-    cap = 't / (1 h) * (1 L/h)' if rises else '(2 - t / (1 h)) * (1 L/h)'
+    cap = 't / (1 h) * (1 L/h)' if rises else '(3 - t / (1 h)) * (1 L/h)'
     target = '0.5000000001' if rises else '1.0000000001'
     stock_cap = f'\n        inflow.capacity = formula({cap})' if kind == 'inflow' else ''
     donor_cap = f'\n        outflow.capacity = formula({cap})' if kind == 'outflow' else ''
@@ -133,3 +138,27 @@ yard.clock.start()
     assert float(run.stock_balance('yard.tank', 1)) == pytest.approx(1, abs=5e-15, rel=0)
     assert [entry.t for entry in record.entries('fire')] == [1]
     assert any('yard.fill.capacity' in str(entry.detail('reason')) for entry in record.entries('settle'))
+
+
+@pytest.mark.parametrize('knots', [(), (0.5,)])
+def test_a_grouped_stock_can_leave_its_band_and_return_without_crossing_its_target(knots):
+    # This is a quadratic in Radau's cubic dense-output form. At both ends
+    # of [0, 1] it lies inside [-1, 1], but at the turn it is -2.5 L.
+    output = SimpleNamespace(t_old=0, h=1, y_old=np.array([-0.5]), Q=np.array([[-8.0, 8.0, 0.0]]))
+    way = SimpleNamespace(
+        amounts=SimpleNamespace(through=0),
+        linear=lambda name: None,
+        incoming_level=lambda name, at: -0.5 - 8 * at * (1 - at),
+        breaks=lambda start, end: knots,
+        motion=lambda weights, a, b: dense.of_step(output, [0], np.array([1.0]), a, b),
+    )
+    run = SimpleNamespace(
+        ways=SimpleNamespace(instance_of=lambda name: way),
+        clock=SimpleNamespace(crossing=2),
+        comparison_band=lambda name, actual, target: 1,
+    )
+    located = (1 + math.sqrt(1.25)) / 2  # true zero, just after the moment
+    interval = ContactInterval(run, 1.0, [('tank', 0.0, {located})])
+    entered = (1 + math.sqrt(0.75)) / 2  # incoming root of level -1
+    assert abs(interval.start - entered) <= math.ulp(entered)
+    assert way.incoming_level('tank', interval.start) >= -1

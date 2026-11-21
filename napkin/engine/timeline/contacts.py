@@ -9,8 +9,11 @@ class Placements(dict):
     def __init__(self, levels=()):
         super().__init__(levels)
         self.others = {}
+        self.located = {}
 
-    def add(self, name, target):
+    def add(self, name, target, *, at=None):
+        if at is not None:
+            self.located.setdefault(name, set()).add(at)
         if name not in self:
             self[name] = target
         elif self[name] != target:
@@ -19,10 +22,20 @@ class Placements(dict):
                 others.append(target)
 
     def include(self, levels):
+        for name, times in levels.located.items():
+            self.located.setdefault(name, set()).update(times)
         for name, target in levels.items():
             self.add(name, target)
             for other in levels.others.get(name, ()):
                 self.add(name, other)
+
+    @classmethod
+    def from_bounds(cls, bounds, events):
+        levels = cls()
+        for at, name, kind in events:
+            if kind in ('lower bound', 'upper bound'):
+                levels.add(name, bounds[name][kind == 'upper bound'], at=at)
+        return levels
 
 
 def bound_values(bounds, events):

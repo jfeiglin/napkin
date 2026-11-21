@@ -8,6 +8,7 @@ A query computes the same balance without advancing a cursor.
 
 import math
 from dataclasses import replace
+from functools import cached_property
 
 from ...core import expr as nodes
 from ...core.units import rational
@@ -22,6 +23,67 @@ from ..continuous.transfers import (
 from ..errors import SimulationError
 from .moment import quantity, span
 from .plan import DIRECT, FORMULA, LEG, name_of
+
+
+class ContactInterval:
+    """The incoming part of a time-shifted contact on which an earlier physical
+    moment would also admit all its stock targets. Earlier distinct moments keep
+    their prefixes. Compute the suffix only if a hard rate needs checking."""
+
+    def __init__(self, run, t, targets):
+        self.run, self.end, self.targets = run, t, targets
+
+    @cached_property
+    def start(self):
+        start = 0.0
+        for name, target, times in self.targets:
+            way = self.run.ways.instance_of(name)
+            # Held rows keep their last rate change. Moving rows can prove a
+            # suffix only from their available incoming solution.
+            line = way.linear(name)
+            origin = line[2] if line is not None else way.amounts.through
+            left = max(start, max(times) - self.run.clock.crossing, origin)
+            start = self._since(way, name, target, left, line is not None)
+        return start
+
+    def _since(self, way, name, target, left, linear):
+        right = self.end
+        if left >= right:
+            return right
+
+        def admitted(at):
+            value = way.incoming_level(name, at)
+            return abs(target - value) <= self.run.comparison_band(name, value, target)
+
+        smallest_band = self.run.comparison_band(name, target, target)
+
+        def whole(a, b):
+            if not admitted(a) or not admitted(b):
+                return False
+            if linear:
+                return True
+            piece = way.motion({name: 1.0}, a, b)
+            if piece.spread == 0 or abs(piece.rate) > piece.spread:
+                return True  # monotone on this smooth piece
+            return abs(piece.value - target) + piece.change <= smallest_band
+
+        knots = () if linear else way.breaks(left, right)
+        for a in reversed([left, *knots]):
+            if whole(a, right):
+                right = a
+                continue
+            # The endpoints alone cannot rule out a trip outside the band.
+            # Keep only a terminal interval whose entire dense form is admitted.
+            lo, hi = a, right
+            while True:
+                middle = lo + (hi - lo) / 2
+                if middle in (lo, hi):
+                    return hi
+                if whole(middle, right):
+                    hi = middle
+                else:
+                    lo = middle
+        return left
 
 
 class Stocks:
@@ -117,6 +179,7 @@ class Stocks:
             if name not in run.written and name in run.ways.set_of
         }
         others = getattr(levels, 'others', {})
+        located = getattr(levels, 'located', {})
         if not any(residuals.values()) and not others:
             return {}
         # Each face suggests a distribution on its incident physical legs. If both ends of one
@@ -164,7 +227,11 @@ class Stocks:
             compatible = all(n not in others and achieved[n] == residuals[n] for n in group)
             problem = None
             if compatible:
-                problem = self._feasibility(effects, t, levels, residuals)
+                targets = [(name, levels[name], located[name]) for name in group if name in located]
+                interval = (
+                    ContactInterval(run, t, targets) if any(times != {t} for _, _, times in targets) else None
+                )
+                problem = self._feasibility(effects, t, levels, residuals, interval)
                 if problem is None:
                     updates, problem = run.occurrences.placement(effects, t)
                     if problem is None:
@@ -185,7 +252,7 @@ class Stocks:
             details = dict(near=tuple(near), placements=tuple(entries))
             if problem is not None:
                 details['reason'] = str(problem)
-                for key in ('attempts', 'violations'):
+                for key in ('attempts', 'violations', 'refinement'):
                     if hasattr(problem, key):
                         details[key] = getattr(problem, key)
             refusals.append((tuple(entries), details, problem, outside))
@@ -216,7 +283,7 @@ class Stocks:
                 self.adjust(run.ways.instance_of(leg.source or leg.sink), connection, delta, t)
         return retained
 
-    def _feasibility(self, effects, t, levels, residuals):
+    def _feasibility(self, effects, t, levels, residuals, interval):
         run = self.run
         # Both ends of each proposed transfer share the same amount. Check the
         # combined change at each finite bound before any physical or gross post.
@@ -252,7 +319,33 @@ class Stocks:
                 )
                 problem.placements = ((store, float(before), float(after)),)
                 return problem
-        return self._flow_limits(effects, t)
+        problem = self._flow_limits(effects, t, interval=interval)
+        if problem is not None and interval is not None:
+            # A correction that reproduces the incoming physical rates restores a
+            # numerical integral. It requires no additional service near the root.
+            try:
+                if self._corrects_integral(effects, t):
+                    return self._flow_limits(effects, t)
+            except SimulationError as uncertainty:
+                problem.refinement = str(uncertainty)
+        return problem
+
+    def _corrects_integral(self, effects, t):
+        for name, change in effects.items():
+            if not change:
+                continue
+            flow = self.run.plan.connections[name]
+            way = self.run.ways.instance_of(flow.source or flow.sink)
+            start = getattr(way.amounts, 'through', t)
+            if start >= t:
+                return False
+            actual = way.raw_transferred(name, t) - way.raw_transferred(name, start)
+            fixed, measured = way.watch_leg(
+                name, start, label=f'{name}: cannot certify the incoming transfer'
+            )(start, t)
+            if actual + change != fixed + measured:
+                return False
+        return True
 
     def physical_face_net(self, way, row, rates):
         """A face flag can keep its allocation while hard transfers move its balance.
@@ -295,7 +388,7 @@ class Stocks:
     def admits_rates(self, way, changes, rates):
         return self._flow_limits(changes, self.run.now, installed=way, rates=rates) is None
 
-    def _flow_limits(self, effects, t, *, installed=None, rates=None):
+    def _flow_limits(self, effects, t, *, installed=None, rates=None, interval=None):
         """Use the same hard rows for an incidence-rate refinement and a located
         physical posting. A rate uses one unit of time; a posting uses accepted amounts."""
         run, plan = self.run, self.run.plan
@@ -341,7 +434,7 @@ class Stocks:
             first = plan.connections[names[0]]
             if first.role not in (DIRECT, LEG):
                 names = [leg.name for leg in plan.flows[first.name.rsplit('.', 1)[0]].connections]
-            if self._over_capacity(way, names, capacity, sum(v for _, v in changes), t, rates):
+            if self._over_capacity(way, names, capacity, sum(v for _, v in changes), t, rates, interval):
                 return SimulationError(f'the placement on {", ".join(names)} at {t:g} h exceeds {capacity}')
         for (store, side), change in ends.items():
             capacity = plan.ends[store, side].capacity
@@ -352,15 +445,16 @@ class Stocks:
                 change,
                 t,
                 rates,
+                interval,
             ):
                 return SimulationError(f'the placement at {t:g} h exceeds {capacity}')
         for way, changes in solvers.items():
-            conflict = way.placement_relation(changes, t, rates=rates is not None)
+            conflict = way.placement_relation(changes, t, rates=rates is not None, interval=interval)
             if conflict is not None:
                 return SimulationError(f'the placement at {t:g} h would violate {conflict}')
         return None
 
-    def _over_capacity(self, way, names, capacity, change, t, rates):
+    def _over_capacity(self, way, names, capacity, change, t, rates, interval):
         if change <= 0:
             return False
         if rates is not None:
@@ -368,29 +462,36 @@ class Stocks:
             return math.isfinite(limit) and sum(
                 rational(rates[way.leg_rows[n]]) for n in names
             ) + change > rational(limit)
-        if self.run.triggers.moving_reads(nodes.ref(capacity)):
-            start = way.amounts.through
-            if start >= t:
-                return True  # the already closed prefix supplies no time for another transfer
-            primitive = clock_primitive(nodes.ref(capacity), self.run.plan)
-            if primitive is None:
+        moving = self.run.triggers.moving_reads(nodes.ref(capacity))
+        primitive = clock_primitive(nodes.ref(capacity), self.run.plan) if moving else None
+        limit = None if moving else self.run.value(capacity, t)
+        if limit is not None and not math.isfinite(limit):
+            return False
+        start = way.amounts.through if moving else way.amounts.start
+        if moving and start >= t:
+            return True  # at a purely observational stop placement precedes closure
+        starts = [start]
+        if interval is not None and interval.start > start:
+            starts.append(interval.start)
+        for since in starts:
+            if limit is not None:
+                allowed = rational(limit) * held_elapsed(since, t)
+            elif primitive is not None:
+                allowed = polynomial_amount(primitive, since, t)
+            else:
                 allowed = certified_amount(
-                    lambda at: self.run.value(capacity, min(at, math.nextafter(t, start))),
-                    start,
+                    lambda at: self.run.value(capacity, min(at, math.nextafter(t, since))),
+                    since,
                     t,
                     f'{capacity}: cannot certify the accepted capacity',
                 )
+            if since == way.amounts.start:
+                carried = sum(way.raw_transferred(n, t) for n in names)
             else:
-                allowed = polynomial_amount(primitive, start, t)
-            carried = sum(way.raw_transferred(n, t) - way.raw_transferred(n, start) for n in names)
-            return carried + change > allowed
-        limit = self.run.value(capacity, t)
-        if not math.isfinite(limit):
-            return False
-        opening = way.t0 if hasattr(way, 't0') else way.amounts.start
-        return sum(way.raw_transferred(n, t) for n in names) + change > rational(limit) * held_elapsed(
-            opening, t
-        )
+                carried = sum(way.raw_transferred(n, t) - way.raw_transferred(n, since) for n in names)
+            if carried + change > allowed:
+                return True
+        return False
 
     def face_shares(self, name, bound, t, resting=False):
         run = self.run

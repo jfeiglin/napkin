@@ -405,18 +405,28 @@ def placement_problems(run, candidates):
     return problems, shared
 
 
-def check_placement(run, problems, duration, moving, corrections):
-    """Check the proposed mean leg rates against the hard rows of the incoming solve.
+def check_placement(run, problems, end, moving, corrections, *, start=0):
+    """Integrate the incoming hard rows over the whole interval or its stock-contact suffix."""
+    duration = end - start
+    accepted = {}
+    for _, _, poly, name in moving:
+        primitive = poly.integral()
+        accepted[name] = primitive(end) - primitive(start)
 
-    The exact interpreter supports held constraint coefficients. Its directed requests
-    can also move as polynomials. Their accepted integrals give the mean of each leg.
-    """
-    accepted = {name: poly.integral()(duration) for _, _, poly, name in moving}
+    def integrated(lin, values):
+        # Unknowns are integrals of the rate or served fraction. Constants accrue
+        # only over the admitted duration, including a zero-width contact at its edge.
+        return (
+            lin.k * duration
+            + sum(c * values[v] for v, c in lin.c.items())
+            + sum(max(integrated(part, values), 0) for part in lin.parts)
+        )
+
     for comp, problem, candidates in problems:
         affected = candidates & corrections.keys()
         if not affected:
             continue
-        answer = run.view.results.copy()
+        answer = {v: x * duration for v, x in run.view.results.items()}
         for flow in comp.flows:
             if flow.kind == 'legs':
                 fractions = set()
@@ -424,20 +434,21 @@ def check_placement(run, problems, duration, moving, corrections):
                     amount = accepted.get(leg.label, 0) + corrections.get(leg.label, 0)
                     request = problem['leg_request'][leg]
                     if request:
-                        fractions.add(amount / (duration * request))
+                        fractions.add(amount / request)
                     elif amount:
                         return RunFailed(f'placement would put flow through closed leg {leg.label}')
                 if len(fractions) > 1:
                     return RunFailed(f'placement would split the common served fraction of {flow.label}')
                 answer[var_of(flow)] = next(iter(fractions), Fraction(0))
             else:
-                amount = accepted.get(flow.label, 0) + corrections.get(flow.label, 0)
-                answer[var_of(flow)] = amount / duration
-        if any(not row.holds(answer) for row in problem['rows']):
-            return RunFailed(
-                f'placement at {run.view.t + duration} h would break a hard flow condition on '
-                + ', '.join(sorted(affected))
-            )
+                answer[var_of(flow)] = accepted.get(flow.label, 0) + corrections.get(flow.label, 0)
+        for row in problem['rows']:
+            residual = integrated(row.lin, answer)
+            if residual > 0 or (row.op == '==' and residual):
+                return RunFailed(
+                    f'placement at {run.view.t + end} h would break a hard flow condition on '
+                    + ', '.join(sorted(affected))
+                )
     return None
 
 

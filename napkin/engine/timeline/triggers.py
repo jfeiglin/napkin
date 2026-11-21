@@ -625,7 +625,10 @@ class Triggers:
             return None
         ways = {name: run.ways.instance_of(name) for name in moving}
         through = run.clock.apart(end)
-        if not any(any(way.contacts_at(end, through)) for way in ways.values()):
+        if not any(
+            end in getattr(way, 'cap_turns', ()) or any(way.contacts_at(end, through))
+            for way in ways.values()
+        ):
             return None
         tx = Tx('')
 
@@ -704,7 +707,7 @@ class Triggers:
             if levels is None:
                 actual = self.run.ways.instance_of(name).incoming_level(name, t)
                 return abs(value - actual) <= self.run.comparison_band(name, value, actual)
-            levels.add(name, value)
+            levels.add(name, value, at=located)
             tx.writes[name] = value
             a, b = side(left), side(right)
         gap, band = self.plan.units.comparisons.gap_band(left, right, a, b, side)
