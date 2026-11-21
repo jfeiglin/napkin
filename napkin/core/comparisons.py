@@ -336,9 +336,12 @@ class Comparisons:
         with no scale of its own. The binding cache is cleared when definitions change."""
         bound = bool(expr.names(node))
         cache = self.floors if bound else self.literal_gaps
-        key = node, self.factor
-        if key in cache:
-            return cache[key]
+        # Neighbouring outputs can traverse the same retained definition chain. Its
+        # literal and nonliteral subtrees are valid until the bindings or factor change.
+        known = cache.setdefault(('literal operands', self.factor), {})
+        cached = known.get(id(node))
+        if cached is not None:
+            return cached[1]
 
         from .literals import Literals, node_parts
 
@@ -350,9 +353,7 @@ class Comparisons:
             return node_parts(n)
 
         literals = Literals(parts, self.units.exact_scale if self.units is not None else None, self.factor)
-        found = literals.value(node)
-        cache[key] = found
-        return found
+        return literals.value(node, known)
 
     def literal_sum(self, node, rounded):
         """Round a sum or difference of authored literals once. A named formula

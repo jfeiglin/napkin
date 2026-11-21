@@ -363,3 +363,43 @@ def test_scalar_and_array_rows_make_the_same_near_band_choices_in_mixed_units():
         assert rows.tolist() == expected, (seed, expr.text(expression), hours, flags, rows, expected)
         seen.update(expected)
     assert seen == {True, False}
+
+
+@pytest.mark.parametrize('use_array', [False, True])
+def test_folding_a_chain_reuses_subtrees_until_its_named_binding_changes(use_array):
+    from napkin.core.evaluation import checked_value
+    from napkin.core.units import UnitSystem
+
+    count = 80
+    units = UnitSystem({})
+    names = [f'v{i}' for i in range(count)]
+    definitions = {
+        name: expr.binary('add', expr.ref(previous), expr.const(1))
+        for name, previous in zip(names[1:], names)
+    }
+    root = names[0]
+    reads = []
+
+    def bind(name):
+        reads.append(name)
+        return 1.0, definitions.get(name, 1.0)
+
+    units.comparisons.named = bind
+    # The last link is read first. A second lookup of any inner link should take constant work.
+    for literal_root in (None, 2):
+        if literal_root is not None:
+            definitions[root] = expr.const(literal_root)
+            units.comparisons.floors.clear()
+        reads.clear()
+        for index in reversed(range(count)):
+            node = expr.binary('sub', expr.ref(names[index]), expr.const(index))
+            initial = 2 if literal_root else 3
+            if use_array:
+                result = arrays.values(node, {names[index]: np.array([initial + index] * 2)}, units, 2)
+                assert result.tolist() == [initial, initial]
+            else:
+                result = checked_value(node, {names[index]: float(initial + index)}, units)
+                assert result == initial
+        exact = units.comparisons.literal_value(expr.ref(names[-1]))
+        assert exact == (None if literal_root is None else literal_root + count - 1)
+        assert len(reads) <= 2 * count

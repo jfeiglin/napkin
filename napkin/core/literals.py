@@ -18,10 +18,10 @@ class Literals:
     def __init__(self, parts, scale, factor):
         self.parts, self.scale, self.factor = parts, scale, factor
 
-    def value(self, node):
-        """Evaluate selected operands once. Named formula graphs can share a
-        subtree many times, or contain a read cycle that the engine diagnoses."""
-        known = {}
+    def value(self, node, known=None):
+        """Evaluate selected operands once, reusing completed subtrees for these bindings.
+        An active ancestor denotes a read cycle that the engine diagnoses."""
+        known = {} if known is None else known
         stack = [(node, self._value(node))]
         active = {id(node)}
         value = None
