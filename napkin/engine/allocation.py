@@ -31,6 +31,45 @@ from .continuous import highs
 from .errors import SimulationError
 
 
+class StockFaces:
+    """Which finite bounds participate in allocation at the stock's own comparison scale.
+
+    Held batches inspect individual touched rows. Moving methods classify their accepted
+    state vectors together. Neither operation places a stock or changes its accepted balance.
+    """
+
+    @classmethod
+    def of(cls, run, stores, lower, upper):
+        return cls(lower, upper, [run.own_scale(name) for name in stores], run.plan.units.comparisons.factor)
+
+    def __init__(self, lower, upper, scales, factor):
+        self.lower, self.upper, self.factor = lower, upper, factor
+        self.low_floor = np.where(np.isfinite(lower), np.maximum(scales, np.abs(lower)), 0.0)
+        self.high_floor = np.where(np.isfinite(upper), np.maximum(scales, np.abs(upper)), 0.0)
+
+    def at_lower(self, i, value):
+        bound = self.lower[i]
+        return value <= bound or (
+            math.isfinite(bound) and value - bound <= self.factor * max(self.low_floor[i], abs(value))
+        )
+
+    def at_upper(self, i, value):
+        bound = self.upper[i]
+        return value >= bound or (
+            math.isfinite(bound) and bound - value <= self.factor * max(self.high_floor[i], abs(value))
+        )
+
+    def flags(self, values, rows=slice(None)):
+        magnitude = np.abs(values)
+        low = np.isfinite(self.lower[rows]) & (
+            values - self.lower[rows] <= self.factor * np.maximum(self.low_floor[rows], magnitude)
+        )
+        high = np.isfinite(self.upper[rows]) & (
+            self.upper[rows] - values <= self.factor * np.maximum(self.high_floor[rows], magnitude)
+        )
+        return low, high
+
+
 def _quotient(left, right):
     """`left / right` as the arithmetic of doubles gives it: by a zero it is an infinity with its
     sign, or no number (0 / 0), where Python raises."""
@@ -178,8 +217,7 @@ class Allocation:
     def bound_arrays(self, key):
         """The arrays of the active bounds of `key`, (the active bounds, the zero faces), each a
         frozenset: their rows in order, whether each is a lower bound, whether its state is on a zero
-        face, and the edges of the floor and of the ceiling with the tolerance of the state."""
-        s = self.system
+        face."""
         found = self._bounds.get(key)
         if found is None:
             active_bounds, zero_faces = key
@@ -191,8 +229,6 @@ class Allocation:
                 rows,
                 is_min,
                 on_zero_face,
-                s.lower[rows] + s.atol[rows],
-                s.upper[rows] - s.atol[rows],
             )
         return found
 
@@ -219,11 +255,9 @@ class Allocation:
         where a bound holds a stock."""
         s = self.system
         bounds = self.bound_arrays(bound_key)
-        bound_rows, bound_is_min, bound_on_zero_face, floor_edge, ceiling_edge = bounds
-        at_bound = state[bound_rows]
-        effective = np.where(
-            bound_is_min, bound_on_zero_face | (at_bound <= floor_edge), at_bound >= ceiling_edge
-        )
+        bound_rows, bound_is_min, bound_on_zero_face = bounds
+        at_lower, at_upper = s.faces.flags(state[bound_rows], bound_rows)
+        effective = np.where(bound_is_min, bound_on_zero_face | at_lower, at_upper)
         if not effective.any():
             return requested, s.proven_face_set
         balanced_faces = set(s.proven_faces)
@@ -231,7 +265,7 @@ class Allocation:
         # A zero-stock availability constraint clips an outward requested
         # transaction to its incoming material supply. Its allocated zero
         # velocity can carry multiplication/cancellation roundoff.
-        resting = faces[(state[faces] == 0) & (base[faces] == 0)]
+        resting = faces[base[faces] == 0]
         if len(resting):
             before_allocation = base + s.flow_matrix @ requested
             balanced_faces.update(s.state_ids[i] for i in resting[before_allocation[resting] < 0])
@@ -691,7 +725,7 @@ class Allocation:
         stop. Such a residual is no rate: it is within a few units in the last place of the flows
         that make it, as at a zero face, and it goes to the same kind of leg."""
         s = self.system
-        lower, upper, index, definitions, legs = s.lower, s.upper, s.index, s.quantities, s.legs
+        index, definitions, legs = s.index, s.quantities, s.legs
         limit = 32 * np.finfo(float).eps
         # The faces in the order of the states, and the active upper bounds: each is kept, for the
         # set of the faces and for the active bounds (`key`: the active bounds as a frozenset, when
@@ -709,7 +743,7 @@ class Allocation:
         low, high, balanced_in_order = faces, (), low_in_order
         if max_rows:
             # The stocks that rest on their upper bound, exactly.
-            high = {s.state_ids[i] for i in max_rows if state[i] == upper[i]}
+            high = {s.state_ids[i] for i in max_rows if s.faces.at_upper(i, state[i])}
             if high:
                 balanced_in_order = sorted(high.union(low_in_order), key=index.__getitem__)
         for _ in range(len(balanced_in_order)):
@@ -721,7 +755,9 @@ class Allocation:
                 if residual == 0:
                     continue
                 on_low = (
-                    name in low and (i, 'min') in active_bounds and (state[i] == lower[i] or i in zero_faces)
+                    name in low
+                    and (i, 'min') in active_bounds
+                    and (s.faces.at_lower(i, state[i]) or i in zero_faces)
                 )
                 if not on_low and name not in high:
                     continue
@@ -750,7 +786,7 @@ class Allocation:
                             for j, source in ins
                             if source
                             and requested[j] > 0
-                            and state[index[source]] > lower[index[source]] + s.atol[index[source]]
+                            and not s.faces.at_lower(index[source], state[index[source]])
                         ),
                         None,
                     )

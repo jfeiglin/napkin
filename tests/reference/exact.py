@@ -43,6 +43,59 @@ def solve_affine(rows, n):
     return x0, basis
 
 
+def project_minimum(rows, dimensions, limit):
+    """Eliminate all but the final coordinate from rational inequalities, then minimize it.
+
+    Each row gives coefficients followed by a right-hand side. Pair upper and lower
+    bounds on an eliminated coordinate (Fourier–Motzkin). Parallel rows keep only
+    the tightest bound. The caller limits the work to the small oracle domain.
+    """
+
+    def compact(inequalities):
+        tightest = {}
+        for *coeffs, rhs in inequalities:
+            scale = next((abs(x) for x in coeffs if x), None)
+            if scale is None:
+                if rhs < 0:
+                    return None
+                continue
+            direction = tuple(x / scale for x in coeffs)
+            bound = rhs / scale
+            if direction not in tightest or bound < tightest[direction]:
+                tightest[direction] = bound
+        return [(*key, rhs) for key, rhs in tightest.items()]
+
+    rows = compact(rows)
+    for width in range(dimensions, 1, -1):
+        if not rows:
+            break
+
+        def pair_count(i):
+            return sum(r[i] > 0 for r in rows) * sum(r[i] < 0 for r in rows)
+
+        i = min(range(width - 1), key=pair_count)
+        if pair_count(i) > limit:
+            raise OverflowError('exact linear projection exceeds the reference work limit')
+        positive, negative, kept = [], [], []
+        for row in rows:
+            a = row[i]
+            rest = row[:i] + row[i + 1 :]
+            if a:
+                (positive if a > 0 else negative).append(tuple(x / abs(a) for x in rest))
+            else:
+                kept.append(rest)
+        rows = compact([*kept, *(tuple(x + y for x, y in zip(p, n)) for p in positive for n in negative)])
+    if rows is None:
+        return 'infeasible', None
+    lower = max((rhs / a for a, rhs in rows if a < 0), default=None)
+    upper = min((rhs / a for a, rhs in rows if a > 0), default=None)
+    if lower is not None and upper is not None and lower > upper:
+        return 'infeasible', None
+    if lower is None:
+        return 'unbounded', None
+    return 'optimal', lower
+
+
 def least_squares_on(x0, basis, weight, target):
     """The points of the affine set x0 + span(basis) that minimise sum(weight[j] * (x[j] - target[j])**2).
 

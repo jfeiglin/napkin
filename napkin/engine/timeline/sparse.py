@@ -52,6 +52,7 @@ from scipy.integrate import Radau
 from ...core import arrays
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
+from ..allocation import StockFaces
 from ..continuous import dense, integrate
 from ..continuous.transfers import (
     CollocationRates,
@@ -695,6 +696,9 @@ class Sparse(Way):
         self.size = len(names)
         if self.stores:
             self.amounts.clock_legs(self.net.connections, place, plan, run.env)
+        self.constant_requests = self.amounts.all_clock and all(
+            len(leg.polynomial) == 2 for leg in self.amounts.clocks.values()
+        )
         self.single_donor(values)
         self.identifiable = (
             self.amounts.single is None
@@ -717,6 +721,7 @@ class Sparse(Way):
         self.y = np.array([float(values[name]) for name in stores])
         self.lower = np.array([run.bounds[name][0] for name in stores])
         self.upper = np.array([run.bounds[name][1] for name in stores])
+        self.faces = StockFaces.of(run, stores, self.lower, self.upper)
         # Radau already scales its relative term with the current inventory. The absolute
         # floor belongs to the unit and must be the same when this instance is restored.
         self.atol = np.array([run.amount_tolerance(name) for name in stores])
@@ -745,6 +750,7 @@ class Sparse(Way):
             self.reads.append(sorted(mine))
         self.evaluations = 0
         self.through_stores = (self.net.counts[0] > 0) & (self.net.counts[1] > 0)
+        self.held_levels = self.y
         self.lower_flags = np.zeros(len(stores), dtype=bool)
         self.upper_flags = np.zeros(len(stores), dtype=bool)
         wanted = run.recorder.wanted
@@ -973,14 +979,14 @@ class Sparse(Way):
         return change
 
     def _held(self, t, y):
-        """The time and the state that the settings read at time t and state y: a store held on a
-        bound through the segment is on it (what its settings read of it is the bound, not the
-        roundoff of the integrator within its tolerance), and a switch that the state crosses at the
+        """The time and state that the settings read at time t and state y. A held store
+        keeps its accepted coordinate, including any remainder inside the bound's band.
+        A switch that the state crosses at the
         start of the step is read on its far side while the state is within its tolerance, as the
         time is (`_sides`)."""
         trial = np.minimum(np.maximum(y, self.lower), self.upper)
-        trial[self.lower_flags] = self.lower[self.lower_flags]
-        trial[self.upper_flags] = self.upper[self.upper_flags]
+        held = self.lower_flags | self.upper_flags
+        trial[held] = self.held_levels[held]
         for i, low, high, number in self.sides if not self.vector.branches else ():
             if low <= trial[i] <= high:
                 trial[i] = number
@@ -1082,7 +1088,7 @@ class Sparse(Way):
         self.clock, self.next_clock, _ = clocks
         self._flags()
         self._sides(clocks)
-        if self.signs and np.any((self.y <= self.lower) | (self.y >= self.upper)):
+        if self.signs and any(mask.any() for mask in self.faces.flags(self.y)):
             self._flags()  # compute bound release with the actual outgoing branches installed
         if self.outputs is not None:
             rows = self.region.selected_rows(self.run, self.signs, self._side(self.t, self.y))
@@ -1142,9 +1148,9 @@ class Sparse(Way):
     def _flags(self):
         """The flags of a new segment: a store on a bound is held there while its sharing keeps it."""
         y, lower, upper = self.y, self.lower, self.upper
-        at_lower, at_upper = y <= lower, y >= upper
-        y[at_lower] = lower[at_lower]
-        y[at_upper] = upper[at_upper]
+        at_lower, at_upper = self.faces.flags(y)
+        np.clip(y, lower, upper, out=y)
+        self.held_levels = y
         self.lower_flags, self.upper_flags = at_lower, at_upper
         for _ in range(len(y) + 1):
             change = self.field(self.t, y)
@@ -1154,9 +1160,11 @@ class Sparse(Way):
             self.lower_flags &= ~leaving
             self.upper_flags &= ~leaving
 
+        if self.constant_requests:
+            self.amounts.held_solution(self.last_carried, self.t)
         self.set_resting(
             {
-                self.stores[k]: self.lower[k] if self.lower_flags[k] else self.upper[k]
+                self.stores[k]: self.held_levels[k]
                 for k in np.flatnonzero(self.through_stores & (self.lower_flags | self.upper_flags)).tolist()
             },
             self.t,
@@ -1316,14 +1324,12 @@ class Sparse(Way):
             events.append((self._crossing(solution, start, end, k, self.lower[k]), k, 'lower bound'))
         for k in np.flatnonzero(free & (y >= self.upper) & (initial < self.upper)).tolist():
             events.append((self._crossing(solution, start, end, k, self.upper[k]), k, 'upper bound'))
-        for k in np.flatnonzero(self.lower_flags & (y > self.lower + self.atol)).tolist():
-            events.append(
-                (self._crossing(solution, start, end, k, self.lower[k] + self.atol[k]), k, 'release')
-            )
-        for k in np.flatnonzero(self.upper_flags & (y < self.upper - self.atol)).tolist():
-            events.append(
-                (self._crossing(solution, start, end, k, self.upper[k] - self.atol[k]), k, 'release')
-            )
+        low_exit = self.held_levels + self.atol
+        high_exit = self.held_levels - self.atol
+        for k in np.flatnonzero(self.lower_flags & (initial <= low_exit) & (y > low_exit)).tolist():
+            events.append((self._crossing(solution, start, end, k, low_exit[k]), k, 'release'))
+        for k in np.flatnonzero(self.upper_flags & (initial >= high_exit) & (y < high_exit)).tolist():
+            events.append((self._crossing(solution, start, end, k, high_exit[k]), k, 'release'))
         for name, select in self.switching:
             at = self._switch(solution, start, end, name, select)
             if at is not None:

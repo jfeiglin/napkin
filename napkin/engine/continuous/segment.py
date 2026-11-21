@@ -54,7 +54,7 @@ def advance(system, run, field, watcher, context, end):
     for i in departures:
         # A departing stock whose bound is still active has its release root already.
         if ('release', (i, 'min')) not in descriptors:
-            roots.append(release_root(s, i, 'min'))
+            roots.append(release_root(run, i, 'min'))
             descriptors.append(('release', (i, 'min')))
     hold_zero_faces(s, run, velocity)
     classifier = Classifier(s, run, environment)

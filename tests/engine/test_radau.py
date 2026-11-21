@@ -486,8 +486,8 @@ def roots_of_each_kind(busy=False):
     roots = [
         Root('guard', 1, (i['s.a'], read("s.b + q(1, 'person')"), 0.0)),
         Root('guard', -1, (i['s.b'], read("q(2, 'person') if s.busy else s.a / 2"), 0.5)),
-        release_root(s, i['s.a'], 'min'),
-        release_root(s, i['s.b'], 'max'),
+        release_root(component.state, i['s.a'], 'min'),
+        release_root(component.state, i['s.b'], 'max'),
         Root('bound', -1, (i['s.a'], s.lower[i['s.a']], 0.0)),
         Root('bound', 1, (i['s.b'], s.upper[i['s.b']], 0.0)),
         Root('repayment', 1, (i['s.cash'], i['s.debt'], 0.5)),

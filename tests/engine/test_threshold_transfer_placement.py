@@ -355,3 +355,43 @@ yard.clock.start()
         assert run.stock_balance('yard.' + name, 1) == expected
         assert record.history(key).at(1) == float(expected)
     assert not [entry for entry in record.entries('fire') if entry.t == 1]
+
+
+@pytest.mark.parametrize('method', ['lines', 'component', 'sparse', 'declared', 'moving_declared'])
+def test_a_resting_neighbor_keeps_room_smaller_than_a_float_at_its_ceiling(method, monkeypatch):
+    text = """scenario "A pass-through stock with a carried remainder"
+    horizon 1.25 h
+yard:
+    a: L = 1 L in [0, 1 L]
+    b: L = 4000000 L in [0, 4000000 L]
+    receipt: L = 0 L
+    flow ab: this.a -> this.b
+        request = 1 L/h
+        capacity = 1 L/h
+    flow drain: this.b -> SINK
+        request = 1 L/h
+        capacity = 1 L/h
+    collect = event():
+        after 0 h:
+            move 0.0000000001 L from this.b to this.receipt
+        after 0.9999999999 h
+yard.collect.start()
+"""
+    model = use_method(text, method, monkeypatch, 'ab')
+    at, gap = Fraction('0.9999999999'), Fraction('0.0000000001')
+    pool = 4_000_000 - gap
+    assert float(pool) == 4_000_000
+    oracle, error = run_of(model.program, model.configuration)
+    assert error is None and oracle.conservation()['balanced']
+    run = Run(Plan.of(model.program, model.configuration), (Breakpoint('yard.collect.step[1]'),))
+    stopped = run.run()
+    assert isinstance(stopped, Checkpoint) and stopped.stop.t == float(at)
+    for name, balance in [('b', pool), ('receipt', gap), ('a', gap)]:
+        assert value_at(oracle, model.program, Key('yard', (name,)), at) == balance
+    assert run.stock_balance('yard.b', float(at)) == pool
+    assert run.stock_balance('yard.receipt', float(at)) == gap
+    retained = run.stock_balance('yard.a', float(at))
+    assert float(retained) == pytest.approx(float(gap), rel=0, abs=2e-15)
+    record = run.resume()
+    assert record.failure is None and record.end == 1.25
+    assert run.stock_balance('yard.a', record.end) == retained

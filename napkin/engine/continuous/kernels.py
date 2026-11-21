@@ -165,7 +165,7 @@ class Classifier:
         self._zero = {}  # valid while dynamic_dependencies is unchanged
         self._proving = set()  # the formulas that a proof that a rate is zero is on the way through
         self._face_inputs = None
-        y, index, lower = run.y, s.index, s.lower
+        index = s.index
         # Propagate states proven stationary in the current discrete mode.
         # A state may occur in another expression yet remain constant until the
         # next event; treating every declared derivative as permanently dynamic
@@ -180,7 +180,7 @@ class Classifier:
                 connected = s.flows_of[name]
                 if all(key in blocked_flows or self.proven_zero(flow.rate) for key, flow in connected):
                     stationary.add(name)
-                elif y[index[name]] == lower[index[name]] and all(
+                elif (index[name], 'min') in run.active_bounds and all(
                     key in blocked_flows or self.proven_zero(flow.rate)
                     for key, flow in connected
                     if flow.target == name
@@ -194,7 +194,7 @@ class Classifier:
             blocked_flows.update(
                 key
                 for key, flow in s.flows.items()
-                if flow.source in stationary and y[index[flow.source]] == lower[index[flow.source]]
+                if flow.source in stationary and (index[flow.source], 'min') in run.active_bounds
             )
             while True:
                 coupled_blocked = {

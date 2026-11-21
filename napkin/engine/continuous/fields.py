@@ -30,6 +30,7 @@ class Field:
         self.run = run
         self.context = context  # the formulas, the diagnostics and the settings (`system.Context`)
         self.leg_rates = None
+        self.paired_requests = None
         self.branches = {}
         self._expressions = {}
         self._program = None
@@ -251,6 +252,8 @@ class Field:
                 capacities[j] = 0.0
         # The rates of the states, and the rates that the flows deliver, after capacities, couplings
         # and bounds.
+        if self.paired_requests is not None and run.active_bounds:
+            self.paired_requests(at, trial_state, requested, run.active_bounds)
         derivative, self.delivered = self.allocation.allocated(
             state, base, requested, capacities, run.active_bounds, run.zero_faces, bound_key
         )

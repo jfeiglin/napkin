@@ -474,9 +474,9 @@ def test_nearness_in_litres_cannot_make_a_later_switch_due(capped):
 
 
 @pytest.mark.parametrize('capped', [False, True])
-def test_nearness_in_litres_cannot_close_a_pipe_at_an_uncrossed_bound(capped):
-    """At 1 h the tank still has 2e-9 L of room, more than 1e-5 h of the new request. An
-    absolute store tolerance cannot close the pipe before a physical upper-bound contact."""
+@pytest.mark.parametrize('room,expected', [(2e-9, 0), (2e-7, 0.0002)])
+def test_reallocation_at_a_stage_uses_the_stocks_own_bound_band(capped, room, expected):
+    """At 1 h the tank holds 100.0001 L and its comparison band is about 1e-7 L."""
     builder = Builder(UNITS)
     builder.entity(
         'tank',
@@ -485,7 +485,7 @@ def test_nearness_in_litres_cannot_close_a_pipe_at_an_uncrossed_bound(capped):
             'L',
             100,
             lower=0,
-            upper=100.000100002,
+            upper=100.0001 + room,
             inflow=endpoint(capacity=rate(10)) if capped else None,
         ),
         value('want', 'L/h', 0.0001),
@@ -501,7 +501,8 @@ def test_nearness_in_litres_cannot_close_a_pipe_at_an_uncrossed_bound(capped):
     program = builder.finish()
     record = run(program, Configuration(Request(1.1)))
     assert record.failure is None
-    assert read(record, program, ['tank.again'], [1])[0].values == pytest.approx([0.0002])
+    assert read(record, program, ['tank.again'], [1])[0].values == pytest.approx([expected])
+    assert read(record, program, ['tank.water'], [1])[0].values == pytest.approx([100.0001], rel=0, abs=5e-12)
     assert not record.entries('contact')
 
 

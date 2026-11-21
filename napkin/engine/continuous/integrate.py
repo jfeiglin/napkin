@@ -611,10 +611,9 @@ def radau(
     )
 
 
-def release_root(system, i, bound):
+def release_root(run, i, bound):
     """The root at which a quantity resting on a bound leaves it by twice its tolerance."""
-    limit = system.lower[i] if bound == 'min' else system.upper[i]
-    return Root('release', 1, (i, limit, 1 if bound == 'min' else -1))
+    return Root('release', 1, (i, run.y[i], 1 if bound == 'min' else -1))
 
 
 def segment_roots(system, run, watcher, environment):
@@ -639,7 +638,7 @@ def segment_roots(system, run, watcher, environment):
         descriptors.append(('event', rid))
         run.guards[rid] = cond
     for i, bound in sorted(run.active_bounds):
-        roots.append(release_root(s, i, bound))
+        roots.append(release_root(run, i, bound))
         descriptors.append(('release', (i, bound)))
     start = run.time
     for i in range(len(run.y)):

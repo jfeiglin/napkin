@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 from napkin.engine import read, run
-from napkin.engine.allocation import Allocation
+from napkin.engine.allocation import Allocation, StockFaces
 from napkin.program.build import (
     SOURCE,
     Builder,
@@ -88,12 +88,14 @@ def one_stock(kind='cumulative'):
     """What the balance reads of a system: a stock (state 0) with the flow 0 from outside and the
     flow 1 to a tally (state 1), each with a coefficient of 1."""
     quantities = {'tank': SimpleNamespace(kind='stock'), 'used': SimpleNamespace(kind=kind)}
+    lower, upper = np.array([0.0, 0.0]), np.array([100.0, np.inf])
     return SimpleNamespace(
         state_ids=('tank', 'used'),
         index={'tank': 0, 'used': 1},
         quantities=quantities,
-        lower=np.array([0.0, 0.0]),
-        upper=np.array([100.0, np.inf]),
+        lower=lower,
+        upper=upper,
+        faces=StockFaces(lower, upper, [1.0, 1.0], 1e-9),
         atol=np.array([1e-8, 1e-8]),
         legs={'tank': ([(1, 'used')], [(0, None)], [0]), 'used': ([], [(1, 'tank')], [])},
         abs_flow_matrix=np.array([[1.0, 1.0], [0.0, 1.0]]),
@@ -126,11 +128,11 @@ def test_a_residual_of_roundoff_on_the_upper_bound_goes_to_a_leg_of_the_stock(si
 def test_a_rate_that_is_more_than_roundoff_stays_a_rate():
     """An excess that the flows can tell (one part in a million of them) is no residual: the balance
     leaves it, and the bound allocation and the checks of the state answer for it. So does a
-    residual of a tank that is not exactly on its bound, or whose bound is not active."""
+    residual outside the stock’s comparison band or on an inactive bound."""
     assert balanced(10.0) == [10.0, 1e7]
     small = 2e7 * EPS
     assert balanced(small, level=99.5) == [small, 1e7]
-    assert balanced(small, level=100.0 - 1e-9) == [small, 1e7]
+    assert balanced(small, level=100.0 - 1e-9) == [0.0, 1e7 + small]
     assert balanced(small, active=()) == [small, 1e7]
     assert balanced(small, active=((0, 'min'),)) == [small, 1e7]
 

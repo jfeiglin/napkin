@@ -54,6 +54,47 @@ def test_tank_empties_at_two_hours_forty():
     assert r.conservation()['balanced']
 
 
+@pytest.mark.parametrize('upper', [False, True], ids=['source-floor', 'destination-capacity'])
+@pytest.mark.parametrize('extra', [0, F(1, 10**12)], ids=['at-band-edge', 'outside-band'])
+def test_a_bound_band_changes_allocation_and_preserves_the_authored_balance(upper, extra):
+    # The scale of 1,000 gives this stock a comparison band of exactly 1/1,000,000.
+    distance = F(1, 10**6) + extra
+    initial = 10 - distance if upper else distance
+    m = Model()
+    m.entity('tank', fields=[value('water', initial, 0, 10, scale=lit(1000))])
+    source, destination = (SOURCE, N.tank.water) if upper else (N.tank.water, SINK)
+    m.entity('plant', flows=[flow('pipe', source, destination, request=1)])
+    r = Run(m, horizon=1).run()
+    assert r.read(N.plant.pipe.actual_rate, 0) == (1 if extra else 0)
+    assert r.read(N.tank.water, 0) == initial
+    assert r.read(N.tank.water, 1) == ((10 if upper else 0) if extra else initial)
+    assert r.conservation()['balanced']
+
+
+def test_a_grouped_empty_contact_uses_the_lower_face_and_keeps_the_exact_residual():
+    at = F('2.6666666666')  # the scheduled event groups with the exact contact at 8/3 h
+    crumb = 4 - F(3, 2) * at
+    m = Model()
+    m.entity('a', fields=[value('stock', 4, 0, 4)])
+    m.entity('b', fields=[value('stock', 9, 0, 9)])
+    m.entity(
+        'plant',
+        flows=[
+            flow('pipe', N.a.stock, N.b.stock, capacity=F(3, 2), request=F(3, 2)),
+            flow('use', N.b.stock, SINK, capacity=F(3, 2), request=F(3, 2)),
+        ],
+        events=[event('tick', steps=[after(at)])],
+    )
+    m.setup.append(start(N.plant.tick))
+    run = Run(m, horizon=4).run()
+    assert [entry.t for entry in run.trace if entry.kind == 'near-tie'] == [at]
+    for end in (at, F(3), F(4)):
+        assert run.read(N.a.stock, end) == crumb == F(1, 10**10)
+        assert run.read(N.b.stock, end) == 9 - F(3, 2) * (end - at)
+        assert run.read(N.plant.pipe.actual_rate, end) == 0
+    assert run.conservation()['balanced']
+
+
 def reversible(request):
     m = Model()
     m.entity('west', fields=[value('water', 10, 0, 100)])

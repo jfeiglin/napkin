@@ -119,6 +119,18 @@ class Asked:
     end_capacity: np.ndarray  # shape (2, stores)
 
 
+def paired_rates(inward, outward, inlet_capacity, outlet_capacity, lower, upper):
+    """One inlet and one outlet, with only their own claims and one stock between them.
+    Fulfilling one request never competes with fulfilling the other. Raise its partner
+    only as far as conservation requires, cutting both at the limiting capacity."""
+    incoming, outgoing = min(inward, inlet_capacity), min(outward, outlet_capacity)
+    if lower and outgoing > incoming:
+        incoming = outgoing = min(outgoing, inlet_capacity)
+    elif upper and incoming > outgoing:
+        incoming = outgoing = min(incoming, outlet_capacity)
+    return incoming, outgoing
+
+
 def layers(count, rankings):
     """The priority layer of each of `count` flows (the oracle's `_layers`): `rankings` holds, for
     each endpoint that ranks its flows, its classes of flows from first to last."""
@@ -880,6 +892,28 @@ class Instant:
         if (self.extra[part] > 0).any():
             return None  # a flow with a claim of its own endpoint beside its own claim
         stores = sorted({int(s) for f in part for s in (net.source[f], net.sink[f]) if s >= 0})
+        if len(part) == 2 and not any(0 < request[c] <= TINY for c in part):
+            constrained = [
+                s for s in stores if (lower[s] and net.counts[OUT][s]) or (upper[s] and net.counts[IN][s])
+            ]
+            if len(constrained) == 1 and not any(
+                net.counts[side][s] > 1
+                and (
+                    asked.end_request[side][s] > 0
+                    or math.isfinite(asked.end_capacity[side][s])
+                    or (side, s) in net.classes
+                )
+                for s in stores
+                for side in (IN, OUT)
+            ):
+                s = constrained[0]
+                ins, outs = net.ends[IN].of(s), net.ends[OUT].of(s)
+                if len(ins) == len(outs) == 1 and {ins[0], outs[0]} == set(part):
+                    inlet, outlet = int(ins[0]), int(outs[0])
+                    incoming, outgoing = paired_rates(
+                        request[inlet], request[outlet], capacity[inlet], capacity[outlet], lower[s], upper[s]
+                    )
+                    return np.array([incoming if c == inlet else outgoing for c in part])
         groups, member = [], {}
         for s in stores:
             outs, ins = net.ends[OUT].of(s), net.ends[IN].of(s)

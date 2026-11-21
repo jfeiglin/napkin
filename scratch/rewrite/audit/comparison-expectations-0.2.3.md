@@ -66,3 +66,16 @@ The earlier audit reported all 44 retained cases passing on `5d9409b`. The linke
 - `tests/program/test_artifact.py` now requires format 4 (previously 3) and language 0.2.3 (previously 0.2.2). Scoped evidence adds a field to the wire format. The language change identifies the corrected comparisons. Loading a file with either older header must produce the existing recompile diagnostic.
 - `tests/test_api.py::test_the_run_store_reads_the_same_engine_files_as_before_the_api` now includes `engine/continuous/transfers.py`. Its accepted-prefix arithmetic affects the physical record and changes to the file must invalidate a cached run.
 - The same cache-closure assertion adds `engine/timeline/stocks.py` at the accounting cutover. `store.closure()` discovers the imported authoritative stock writer. Changing a debit, credit or cutoff in that file must invalidate cached records.
+
+## Allocation at a stock bound
+
+The owner ruled that allocation treats a stock within its comparison band of a finite bound as being on that bound. Its physical inventory keeps the residual. Two assertions in `test_nearness_in_litres_cannot_close_a_pipe_at_an_uncrossed_bound` change. Both exercised the same 100.0001 L stock with 2 × 10⁻⁹ L of room when a stage raised the requested fill rate. Its comparison band is about 10⁻⁷ L.
+
+| Former case | Old rate at 1 h | Required rate at 1 h | Reason |
+|---|---:|---:|---|
+| No endpoint capacity | 0.0002 L/h | 0 L/h | Within the upper-bound band, an allocation with no outflow permits no incoming rate. |
+| Endpoint capacity 10 L/h | 0.0002 L/h | 0 L/h | The same stock bound limits the incoming rate under the explicit endpoint cap. |
+
+The renamed test retains both setups and adds both at 2 × 10⁻⁷ L of remaining room. Those outside-band cases keep the 0.0002 L/h rate. All four check the physical inventory at the stage. The adjacent guard-switch test retains its original time and rate expectations. [Reallocation and switch cases](../../../tests/engine/test_switch_segments.py)
+
+In `test_a_rate_that_is_more_than_roundoff_stays_a_rate`, the stock is 10⁻⁹ L below a 100 L upper bound, inside its 10⁻⁷ L comparison band. The old expectation kept a positive subtraction residual of 2 × 10⁷ × machine epsilon (about 4.44 × 10⁻⁹ L/h). The required stock derivative is zero on this active upper face. Controls retain the small derivative at 99.5 L and on inactive faces. [Bound-balance controls](../../../tests/engine/test_bound_balance.py)

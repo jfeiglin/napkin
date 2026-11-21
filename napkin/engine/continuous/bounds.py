@@ -133,13 +133,9 @@ def refresh_bounds(system, run, field):
     """The bounds the state rests on after a moment; an inward rate releases its bound at once."""
     s = system
     run.active_bounds.clear()
-    for i in range(len(run.y)):
-        # A store that still has room can take material. A located physical contact puts
-        # it on the bound; the error allowance on its state cannot advance that time.
-        if run.y[i] <= s.lower[i]:
-            run.active_bounds.add((i, 'min'))
-        if run.y[i] >= s.upper[i]:
-            run.active_bounds.add((i, 'max'))
+    low, high = s.faces.flags(run.y)
+    run.active_bounds.update((i, 'min') for i in np.flatnonzero(low).tolist())
+    run.active_bounds.update((i, 'max') for i in np.flatnonzero(high).tolist())
     if run.active_bounds:
         derivative = field.rates(run.time, run.y)
         for i, bound in list(run.active_bounds):

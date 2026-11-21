@@ -389,6 +389,16 @@ These override the text of this plan below, wherever the two differ. The owner's
     any misses its band, fail by name and report the conflicting targets. This extends the
     several-store comparison rule above. These are the owner's 2026-11-21 rulings.
 
+    **Owner ruling on allocation at a bound, 2026-11-21.** At an allocation decision, a
+    stock whose balance is within its own comparison band of a finite bound is on that
+    bound for sharing. At a lower bound, outgoing flows may use the incoming supply. At
+    an upper bound, incoming flows may use the room made by outgoing flows. The physical
+    balance keeps its residual. This applies to every numerical method and the reference
+    interpreter, including when a grouped contact keeps the incoming leg amounts. A drain
+    through a full stock must advance past its empty contact and retain the residual in
+    the donor's books. The rule also applies when allocating from a newly installed
+    group or a restored checkpoint.
+
     Group frozen-stock allowance violations at the first failure moment within the crossing
     tolerance. List every contributing leg by stock name, outflow before inflow, then declaration
     order. Name the first five in the text and count the rest. Retain the entire ordered list in

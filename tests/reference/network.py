@@ -61,7 +61,8 @@ class Component:
     vars: list
     flows: list
     sols: list
-    key: frozenset = None
+    key: frozenset
+    faces: frozenset  # allocation constraints at this instant; balances stay in the view
     busy: bool = False
     done: bool = False
     released: frozenset = frozenset()  # (store, 'lo' or 'hi'): a bound that its solve does not hold
@@ -173,7 +174,14 @@ def structure(run):
                 + ' and '.join(label(s[0]) for s in mine)
                 + '; one solver must own the joint decision'
             )
-        comps.append(Component(vs, flows, mine, frozenset(label(v) for v in vs)))
+        cells = {cell for flow in flows for cell in stores_of(flow)}
+        faces = frozenset(
+            (cell, which)
+            for cell in cells
+            for which, bound in zip(('lo', 'hi'), view.bounds.get(cell, (None, None)), strict=True)
+            if run.on_allocation_bound(cell, view.cells[cell], bound)
+        )
+        comps.append(Component(vs, flows, mine, frozenset(label(v) for v in vs), faces))
     comps.sort(key=lambda c: min(sorted(c.key)))
     return comps
 
@@ -269,7 +277,7 @@ def solve(run, comp):
     if answer is None:
         answer = _select(run, comp, problem)
         while True:
-            leaving = _moved(problem, answer, _one_bound(run.view, problem, comp), inward=True)
+            leaving = _moved(problem, answer, _one_bound(problem, comp), inward=True)
             if not leaving:
                 break
             before = comp.released
@@ -320,7 +328,7 @@ def _cached(run, comp, problem):
         return None
     if cached[0] == problem['signature']:
         return cached[1]
-    leaving = _moved(problem, cached[1], _one_bound(run.view, problem, comp), inward=True)
+    leaving = _moved(problem, cached[1], _one_bound(problem, comp), inward=True)
     if leaving:
         comp.released = frozenset(leaving)
         if _after(run, comp)['signature'] == cached[0]:
@@ -345,12 +353,12 @@ def _select(run, comp, problem):
         raise type(e)(f'{e} [{who}, t = {run.view.t} h]') from None
 
 
-def _one_bound(view, problem, comp):
+def _one_bound(problem, comp):
     """The bounds (store, 'lo' or 'hi') that a problem holds, of the stores held at one bound only: a
     store held at both balances, and moves neither way."""
     found = set()
     for cell in problem['nets']:
-        lo, hi = (_held(view, cell, which, comp) for which in ('lo', 'hi'))
+        lo, hi = (_held(cell, which, comp) for which in ('lo', 'hi'))
         if lo != hi:
             found.add((cell, 'lo' if lo else 'hi'))
     return found
@@ -407,25 +415,19 @@ def _layers(flows, rankings):
     return {f: of(f) for f in flows}
 
 
-def _at_bound(view, cell, which):
-    lo, hi = view.bounds.get(cell, (None, None))
-    bound = lo if which == 'lo' else hi
-    return bound is not None and view.cells[cell] == bound
+def _held(cell, which, comp):
+    """The stock is in this bound's band and the allocation has not released it."""
+    return (cell, which) in comp.faces and (cell, which) not in comp.released
 
 
-def _held(view, cell, which, comp):
-    """Whether a component's solve holds a store on its bound: it rests there, unreleased."""
-    return _at_bound(view, cell, which) and (cell, which) not in comp.released
-
-
-def _supply_depths(view, at_store, comp, shut):
+def _supply_depths(at_store, comp, shut):
     """The supply depth of a store (None is SOURCE): 0 when it can supply from what it holds, and
     for a store held at its lower bound one more than the deepest store that feeds it through a
     connection that can carry flow (not in `shut`)."""
     depth = {}
 
     def of(cell, path=()):
-        if cell is None or not _held(view, cell, 'lo', comp):
+        if cell is None or not _held(cell, 'lo', comp):
             return 0
         if cell in path:
             raise NotCovered(
@@ -440,12 +442,12 @@ def _supply_depths(view, at_store, comp, shut):
     return of
 
 
-def _full(view, cell, comp):
+def _full(cell, comp):
     """Whether a store is full: held at its upper bound and not at its lower bound."""
-    return cell is not None and _held(view, cell, 'hi', comp) and not _held(view, cell, 'lo', comp)
+    return cell is not None and _held(cell, 'hi', comp) and not _held(cell, 'lo', comp)
 
 
-def _room_depths(view, at_store, comp, shut):
+def _room_depths(at_store, comp, shut):
     """The room depth of a store (None is SINK). A full store, at its upper bound and not at its
     lower bound, passes on the room that its outflows make through connections that can carry flow
     (not in `shut`): its depth is one more than that of the deepest full store that they fill, and 0
@@ -455,7 +457,7 @@ def _room_depths(view, at_store, comp, shut):
     depth = {}
 
     def of(cell, path=()):
-        if not _full(view, cell, comp):
+        if not _full(cell, comp):
             return 0
         if cell in path:
             raise NotCovered(
@@ -463,9 +465,7 @@ def _room_depths(view, at_store, comp, shut):
                 'room against the direction of flow'
             )
         if cell not in depth:
-            fills = [
-                c.dst for c, _ in at_store[cell]['outflow'] if c not in shut and _full(view, c.dst, comp)
-            ]
+            fills = [c.dst for c, _ in at_store[cell]['outflow'] if c not in shut and _full(c.dst, comp)]
             depth[cell] = max((1 + of(d, (*path, cell)) for d in fills), default=0)
         return depth[cell]
 
@@ -579,15 +579,17 @@ def assemble(run, comp, ev, follow=None):
     for cell, sides in at_store.items():
         level = view.cells[cell]
         lo, hi = view.bounds.get(cell, (None, None))
-        if (lo is not None and level < lo) or (hi is not None and level > hi):
+        if (lo is not None and level < lo and (cell, 'lo') not in comp.faces) or (
+            hi is not None and level > hi and (cell, 'hi') not in comp.faces
+        ):
             raise RunFailed(f'{label(cell)} holds {level}, outside its range [{lo}, {hi}]')
         net = sum((signed(c, f) for c, f in sides['inflow']), Lin()) - sum(
             (signed(c, f) for c, f in sides['outflow']), Lin()
         )
         nets[cell] = net
-        if _held(view, cell, 'lo', comp):
+        if _held(cell, 'lo', comp):
             rows.append(relation(net, '>=', 0))  # at its lower bound: what leaves must also arrive
-        if _held(view, cell, 'hi', comp):
+        if _held(cell, 'hi', comp):
             rows.append(relation(net, '<=', 0))  # at its upper bound: what arrives must also leave
         owner_ev = ev.fork(run.scope_of(cell.owner))
         for side in ('outflow', 'inflow'):
@@ -686,7 +688,7 @@ def assemble(run, comp, ev, follow=None):
     # that they leave equal (the owner's rule after G2, `_places`).
     tiers = {}
     layer = _layers(comp.flows, rankings)
-    places = _places(view, at_store, comp, claims, shut, ranked, layer)
+    places = _places(at_store, comp, claims, shut, ranked, layer)
     for (_, amount, r, _, _), place in zip(claims, places):
         tiers.setdefault(place, []).append((amount, r))
     tiers = [tiers[k] for k in sorted(tiers)]
@@ -710,15 +712,15 @@ def assemble(run, comp, ev, follow=None):
     }
 
 
-def _levels(view, at_store, comp, shut):
+def _levels(at_store, comp, shut):
     """How a claim is placed in the order of local sharing: a function of the connections that
     serve it, the largest of the supply depth of the stores that they draw from and the room depth
     of the stores that they fill. A depth is found only for a claim that asks for it."""
-    supply, room = _supply_depths(view, at_store, comp, shut), _room_depths(view, at_store, comp, shut)
+    supply, room = _supply_depths(at_store, comp, shut), _room_depths(at_store, comp, shut)
     return lambda conns: max((max(supply(c.src), room(c.dst)) for c in conns), default=0)
 
 
-def _places(view, at_store, comp, claims, shut, ranked, layer):
+def _places(at_store, comp, claims, shut, ranked, layer):
     """The place of each claim in the order, as (level, layer) (the owner's rule after G2: an
     endpoint's rule ranks every claim of its flows, named or not, and the solver's own sharing acts
     only among the claims that the endpoints' rules leave equal).
@@ -732,9 +734,9 @@ def _places(view, at_store, comp, claims, shut, ranked, layer):
     sharing. The stores of a ring of the solver's connections share one level: the solver decides the
     ring together. A claim reads all this through its connections that can carry flow; one that has
     none is served nothing, and takes the first place."""
-    local = _levels(view, at_store, comp, shut)
-    supply = _supply_depths(view, at_store, comp, shut)
-    room = _room_depths(view, at_store, comp, shut)
+    local = _levels(at_store, comp, shut)
+    supply = _supply_depths(at_store, comp, shut)
+    room = _room_depths(at_store, comp, shut)
 
     def ends(node, conns):
         if isinstance(node, End):
@@ -813,7 +815,7 @@ def _places(view, at_store, comp, claims, shut, ranked, layer):
         for c, _ in at_store[cell]['outflow']:
             if c in shut:
                 continue
-            mine, step = own(c), int(_full(view, c.dst, comp))
+            mine, step = own(c), int(_full(c.dst, comp))
             if mine is None:
                 yield ('value', room(c.dst) + 1 if step else 0, 0)
             elif step:
@@ -824,8 +826,8 @@ def _places(view, at_store, comp, claims, shut, ranked, layer):
 
     if all(keeps[k] or not live[k] for k in range(len(claims))):
         return [(kept(k), layer.get(node, 1)) for k, (node, *_) in enumerate(claims)]
-    passed_supply = passing(lambda cell: cell is not None and _held(view, cell, 'lo', comp), feeds)
-    passed_room = passing(lambda cell: _full(view, cell, comp), drains)
+    passed_supply = passing(lambda cell: cell is not None and _held(cell, 'lo', comp), feeds)
+    passed_room = passing(lambda cell: _full(cell, comp), drains)
     return [
         (
             kept(k)
@@ -855,7 +857,7 @@ def _live(view, c):
     return (c.flow if isinstance(c, LegRT) else c) in view.live
 
 
-def _rises(view, f, request):
+def _rises(comp, f, request):
     """A flow at rate zero whose moving request is zero at this moment and positive just after, as
     `t * 1 L/h/h` at 0 h or `since(e) * 1 L/h/h` when e starts: it follows its request (D3) unless
     an end of it is a store held at the bound that the flow would leave, which the flow cannot
@@ -864,8 +866,8 @@ def _rises(view, f, request):
     return (
         request(0) == 0
         and request.sign_after() > 0
-        and not (f.src is not None and _at_bound(view, f.src, 'lo'))
-        and not (f.dst is not None and _at_bound(view, f.dst, 'hi'))
+        and (f.src, 'lo') not in comp.faces
+        and (f.dst, 'hi') not in comp.faces
     )
 
 
@@ -898,7 +900,9 @@ def _carried(run, follow=None):
             continue
         rate = view.results.get(('rate', f), Fraction(0))
         p = follow.get(f)
-        if p is not None and (rate != 0 or _rises(view, f, p)):  # the flow follows a moving request
+        if p is not None and (
+            rate != 0 or _rises(run.component_of[var_of(f)], f, p)
+        ):  # the flow follows a moving request
             ends = [(c, s) for c, s in ((f.src, 'outflow'), (f.dst, 'inflow')) if c is not None]
             free = (
                 not run.component_of['rate', f].sols

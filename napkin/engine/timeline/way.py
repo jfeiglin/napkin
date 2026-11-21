@@ -46,7 +46,7 @@ class Way:
         if self.resting_rates is not None:
             side = self.resting_rates.sides.get(self.place[name])
             if side is not None:
-                return self.run.bounds[name][side]
+                return float(self.y[self.place[name]])
         if self.resting is not None and name in self.resting.rows:
             bound = self.resting.rows[name][0]
             if self.accepted_level(name, t) == bound:

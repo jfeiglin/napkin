@@ -38,6 +38,7 @@ import numpy as np
 
 from ...core import arrays
 from ...core.errors import ExpressionError
+from ..allocation import StockFaces
 from ..continuous.transfers import HeldAmounts
 from ..continuous.walk import walked
 from ..errors import SimulationError
@@ -233,6 +234,7 @@ class Family(Way):
         self.slope = np.zeros(len(stores))
         self.lower = np.array([run.bounds[name][0] for name in stores])
         self.upper = np.array([run.bounds[name][1] for name in stores])
+        self.faces = StockFaces.of(run, stores, self.lower, self.upper)
         self.requests = [flow.request for flow in flows]
         self.capped = [k for k, flow in enumerate(flows) if flow.capacity is not None]
         self.capacities = [flows[k].capacity for k in self.capped]
@@ -293,8 +295,8 @@ class Family(Way):
         ends = [end for end in (source, sink) if end >= 0]
         for end in ends:
             self.y[end], self.since[end] = self._value(end, t), t
-        held = (source >= 0 and self.y[source] <= self.lower[source]) or (
-            sink >= 0 and self.y[sink] >= self.upper[sink]
+        held = (source >= 0 and self.faces.at_lower(source, self.y[source])) or (
+            sink >= 0 and self.faces.at_upper(sink, self.y[sink])
         )
         rate = 0.0 if held else float(asked)
         if t > self.t0 and rate != self.rate[k]:

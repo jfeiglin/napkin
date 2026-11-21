@@ -276,6 +276,17 @@ class Run:
         self._in_range(cell, v, admission=admission)
         return v
 
+    def on_allocation_bound(self, cell, level, bound):
+        """Classify this stock for sharing without changing its exact inventory."""
+        if bound is None:
+            return False
+        if level == bound:
+            return True
+        band = max(self.config.rtol, self.config.atol_factor) * max(
+            self.own_scales[cell], abs(level), abs(bound)
+        )
+        return abs(level - bound) <= band
+
     def _in_range(self, cell, v, *, admission=False):
         if not isinstance(v, Fraction):
             return
@@ -622,6 +633,9 @@ class Run:
             else:
                 lower, upper = self.view.bounds.get(cell, (None, None))
                 direction = -1 if target == lower else 1 if target == upper else 0
+                if not direction and cell not in self.contact_levels:
+                    # A resting neighbor keeps its accepted level, including its residual.
+                    direction = -1 if self.on_allocation_bound(cell, target, lower) else 1
             speeds = [sign * poly(root) for sign, (_, _, poly, _) in zip(signs, moving)]
             weights = [abs(speed) if speed * direction > 0 else 0 for speed in speeds]
             if not any(weights):
@@ -644,7 +658,10 @@ class Run:
                         continue
                     if other not in placements:
                         level = self.view.cells[other]
-                        if other in levels or level not in self.view.bounds.get(other, ()):
+                        if other in levels or not any(
+                            self.on_allocation_bound(other, level, edge)
+                            for edge in self.view.bounds.get(other, ())
+                        ):
                             continue
                         placements[other], residual[other] = (level, tau), 0
                     pending.append(other)

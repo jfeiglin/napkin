@@ -97,13 +97,14 @@ class Stocks:
         # leg reach a face together, solve their incidence equations before applying either
         # correction. Otherwise one rounded contact could reopen the face just closed.
         levels = dict(levels)
+        resting = set()
         columns = {}
         todo = [name for name, delta in residuals.items() if delta or name in others]
         while todo:
             name = todo.pop()
             if name in columns:
                 continue
-            shares = columns[name] = self.face_shares(name, levels[name], t)
+            shares = columns[name] = self.face_shares(name, levels[name], t, name in resting)
             for connection, _ in shares:
                 leg = run.plan.connections[connection]
                 for end in (leg.source, leg.sink):
@@ -111,10 +112,14 @@ class Stocks:
                         continue
                     if end not in residuals:
                         way = run.ways.instance_of(end)
-                        if way is None or (rest := way.resting_value(end, t)) is None:
+                        if way is None or way.resting_value(end, t) is None:
                             continue
-                        levels[end] = rest
-                        residuals[end] = rational(rest) - self.stock_balance(end, t)
+                        before = self.stock_balance(end, t)
+                        # This neighbor has no placement of its own. Even an exactly
+                        # bound-looking float can hide a remainder on its physical books.
+                        levels[end] = before
+                        residuals[end] = ZERO_AMOUNT
+                        resting.add(end)
                     if end not in columns:
                         todo.append(end)
         retained = {}
@@ -198,7 +203,7 @@ class Stocks:
                 self.adjust(run.ways.instance_of(leg.source or leg.sink), connection, delta, t)
         return retained
 
-    def face_shares(self, name, bound, t):
+    def face_shares(self, name, bound, t, resting=False):
         run = self.run
         lower, upper = run.bounds[name]
         earlier = math.nextafter(t, -math.inf) if t else t
@@ -220,9 +225,17 @@ class Stocks:
                 if run.plan.connections[leg].source != run.plan.connections[leg].sink
             ]
 
-        if bound == lower:
+        if bound == lower or (
+            resting
+            and math.isfinite(lower)
+            and bound - lower <= run.comparison_band(name, float(bound), lower)
+        ):
             side = 'outflow'
-        elif bound == upper:
+        elif bound == upper or (
+            resting
+            and math.isfinite(upper)
+            and upper - bound <= run.comparison_band(name, float(bound), upper)
+        ):
             side = 'inflow'
         else:
             # The direction comes from the incoming trajectory, even when the moment
@@ -512,7 +525,10 @@ class RestingAmounts:
             s: target - sum(sign * raw[n] for n, sign in row) for s, (_, target, row) in rows.items()
         }
         if any(residuals.values()):
-            columns = {s: way.run.stock_state.face_shares(s, bound, t) for s, (bound, _, _) in rows.items()}
+            columns = {
+                s: way.run.stock_state.face_shares(s, bound, t, resting=True)
+                for s, (bound, _, _) in rows.items()
+            }
             for n, delta in _incidence_effects(way.run.plan, columns, residuals).items():
                 self.cache[n] += delta
         return self.cache.get(name, 0)

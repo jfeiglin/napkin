@@ -9,7 +9,8 @@ The answer of a solve is chosen in four ranks:
 4. the least squared distance to the targets: the flows first, then the other unknowns.
 
 Ranks 2 and 3 are linear programs (`scipy.optimize.linprog`, HiGHS). Their optimum values come
-back as floats and are turned into exact fractions (`_snap`). Rank 4 cannot be a linear program:
+back as floats and are turned into exact fractions (`_snap`). If the resulting locks contradict
+the exact rows, the interpreter recomputes these ranks by rational projection. Rank 4 cannot be a linear program:
 it is computed here in fractions, by trying sets of active inequality rows. Which claims share a
 tier is the caller's affair (`network.assemble`): it is how local sharing differs from the fair
 sharing of a declared solver.
@@ -21,7 +22,7 @@ from itertools import combinations
 from scipy.optimize import linprog
 
 from .errors import Diagnostic, Infeasible, NotCovered
-from .exact import least_squares_on, simplest_between, solve_affine
+from .exact import least_squares_on, project_minimum, simplest_between, solve_affine
 
 SNAP = Fraction(1, 10**9)  # an optimum is the simplest fraction this near to the float answer
 TIGHT = 1e-9  # a row whose slack is never above this is an equality
@@ -161,7 +162,7 @@ def expand(rel):
 
 
 def _lp(variables, rows, cost):
-    """Minimise the affine `cost` over the rows. Returns (status, value, point as floats)."""
+    """Minimise the affine cost, returning a float optimum or reporting an unbounded or infeasible solve."""
     names = list(variables)
     for r in rows:
         for v in r.lin.c:
@@ -190,32 +191,65 @@ def _lp(variables, rows, cost):
     if res.status == 0:
         return 'optimal', res.fun + float(cost.k), res.x
     if res.status == 2:
-        return 'infeasible', None, None
+        raise Infeasible('the hard conditions of the solve have no answer')
     if res.status == 3:
         return 'unbounded', None, None
     raise NotCovered(f'the linear program did not finish: {res.message}')
 
 
+def _rational_lp(variables, rows, cost):
+    """Project the exact hard rows onto the objective when float ranks give contradictory locks."""
+    names = list(dict.fromkeys([*variables, *(v for row in rows for v in row.lin.c), *cost.c]))
+    zero, one = Fraction(0), Fraction(1)
+    equalities = [([row.lin.c.get(v, zero) for v in names], -row.lin.k) for row in rows if row.op == '==']
+    affine = solve_affine(equalities, len(names))
+    if affine is None:
+        raise Infeasible('the hard conditions of the solve have no exact answer')
+    origin, basis = affine
+
+    def coordinates(term, last):
+        coeffs = [term.c.get(v, zero) for v in names]
+
+        def dot(direction):
+            return sum(a * x for a, x in zip(coeffs, direction))
+
+        return (*(dot(direction) for direction in basis), last, -term.k - dot(origin))
+
+    inequalities = [coordinates(row.lin, zero) for row in rows if row.op == '<=']
+    # The last coordinate is the cost, including its affine offset.
+    objective = coordinates(cost, -one)
+    inequalities.extend((objective, tuple(-x for x in objective)))
+    try:
+        status, optimum = project_minimum(inequalities, len(basis) + 1, LIMIT)
+    except OverflowError as e:
+        raise NotCovered(str(e)) from None
+    if status == 'infeasible':
+        raise Infeasible('the hard conditions of the solve have no exact answer')
+    return status, optimum, None
+
+
 def _snap(value):
     """The exact number that a float optimum stands for."""
+    if isinstance(value, Fraction):
+        return value
     return simplest_between(Fraction(value) - SNAP, Fraction(value) + SNAP)
 
 
-def _minimise(variables, rows, objective, text):
+def _minimise(variables, rows, objective, text, lp):
     """Rank 2: one written objective. Returns the rows that keep its optimum."""
     extra, cost = [], Lin(objective.c, objective.k)
     for i, part in enumerate(objective.parts):
         u = Lin.var(('aux', i))
         extra += [Rel(part - u, '<='), Rel(-u, '<=')]
         cost = cost + u
-    status, value, _ = _lp(variables, rows + extra, cost)
+    status, value, _ = lp(variables, rows + extra, cost)
     if status == 'unbounded':
         raise Diagnostic(f'the objective {text} is unbounded')
     best = _snap(value)
     return expand(Rel(objective - best, '<=')), best
 
 
-def _maxmin(variables, rows, claims):
+def _maxmin(variables, rows, claims, lp):
     """Rank 3, one tier: make the smallest served fraction as large as it can be, then the next.
 
     A claim is (lin, request): its served fraction is lin / request, counted from zero up to one
@@ -234,7 +268,7 @@ def _maxmin(variables, rows, claims):
     t = Lin.var(('aux', 't'))
     while open_:
         floor = [Rel(t * r - served, '<=') for served, r in open_] + [Rel(t - 1, '<=')]
-        _, value, _ = _lp(variables, rows + floor, -t)
+        _, value, _ = lp(variables, rows + floor, -t)
         level = _snap(-value)
         if level >= 1:
             rows += [Rel(Lin(k=r) - served, '<=') for served, r in open_]
@@ -244,8 +278,9 @@ def _maxmin(variables, rows, claims):
             # The smallest fraction is zero: the claims that no answer serves are held there.
             unserved, still = [], []
             for served, r in open_:
-                status, value, _ = _lp(variables, rows, -served)
-                if status != 'unbounded' and -value <= TIGHT * max(1.0, float(r)):
+                status, value, _ = lp(variables, rows, -served)
+                zero = 0 if lp is _rational_lp else TIGHT * max(1.0, float(r))
+                if status != 'unbounded' and -value <= zero:
                     unserved.append((served, r))
                 else:
                     still.append((served, r))
@@ -257,8 +292,11 @@ def _maxmin(variables, rows, claims):
         hold = [Rel(Lin(k=level * r) - served, '<=') for served, r in open_]
         still = []
         for served, r in open_:  # can this claim alone rise above the level while the others keep it?
-            status, value, _ = _lp(variables, rows + hold, -served)
-            if status == 'unbounded' or -value > float(level * r) + TIGHT * max(1.0, float(level * r)):
+            status, value, _ = lp(variables, rows + hold, -served)
+            locked = level * r
+            if lp is not _rational_lp:
+                locked = float(locked) + TIGHT * max(1.0, float(locked))
+            if status == 'unbounded' or -value > locked:
                 still.append((served, r))
             else:
                 rows.append(Rel(served - level * r, '=='))
@@ -274,7 +312,7 @@ def _maxmin(variables, rows, claims):
 # --- rank 4: the least squared distance, in fractions ------------------------------------------------
 
 
-def least_distance(variables, rows, groups):
+def least_distance(variables, rows, groups, lp):
     """The point of the rows that is nearest to the targets, group by group.
 
     `groups` is a list of mappings unknown -> (target, scale). The first group is minimised first
@@ -298,12 +336,12 @@ def least_distance(variables, rows, groups):
     unequal = [r.lin for r in rows if r.op == '<=']
     facets = []
     for row in unequal:
-        status, low, _ = _lp(variables, rows, row)
-        if status == 'optimal' and low >= -TIGHT:
+        status, low, _ = lp(variables, rows, row)
+        if status == 'optimal' and low >= (0 if lp is _rational_lp else -TIGHT):
             equal.append(row)
             continue
-        status, high, _ = _lp(variables, rows, -row)
-        if status == 'optimal' and high >= LOOSE:
+        status, high, _ = lp(variables, rows, -row)
+        if status == 'optimal' and (high > 0 if lp is _rational_lp else high >= LOOSE):
             continue
         facets.append(row)
     weights = [
@@ -391,15 +429,25 @@ def select(variables, rows, objectives=(), tiers=(), prefs=(), groups=()):
         return fixed | select(free, constraints, goals, claims, preferred, groups)
     if not variables:
         return {}
-    if _lp(variables, rows, Lin())[0] == 'infeasible':
-        raise Infeasible('the hard conditions of the solve have no answer')
-    for objective, text in objectives:
-        kept, _ = _minimise(variables, rows, lin(objective), text)
-        rows += kept
-    for claims in tiers:
-        rows, _ = _maxmin(variables, rows, claims)
-    for carried, amount in prefs:
-        u = Lin.var(('aux', 'u'))
-        _, value, _ = _lp(variables, [*rows, Rel(u - carried, '<='), Rel(u - amount, '<=')], -u)
-        rows.append(Rel(Lin(k=_snap(-value)) - carried, '<='))
-    return least_distance(variables, rows, groups)
+    _lp(variables, rows, Lin())
+
+    def ranked(lp):
+        kept_rows = rows.copy()
+        for objective, text in objectives:
+            kept, _ = _minimise(variables, kept_rows, lin(objective), text, lp)
+            kept_rows += kept
+        for claims in tiers:
+            kept_rows, _ = _maxmin(variables, kept_rows, claims, lp)
+        for carried, amount in prefs:
+            u = Lin.var(('aux', 'u'))
+            _, value, _ = lp(variables, [*kept_rows, Rel(u - carried, '<='), Rel(u - amount, '<=')], -u)
+            kept_rows.append(Rel(Lin(k=_snap(-value)) - carried, '<='))
+        return least_distance(variables, kept_rows, groups, lp)
+
+    try:
+        return ranked(_lp)
+    except Infeasible:
+        # A nearly fulfilled request can snap to 100% and contradict a hard
+        # capacity. Recompute the ranks from the original authored constraints.
+        _rational_lp(variables, rows, Lin())
+        return ranked(_rational_lp)

@@ -40,6 +40,7 @@ import math
 
 import numpy as np
 
+from ..allocation import StockFaces
 from ..continuous.transfers import HeldAmounts
 from ..errors import SimulationError
 from .contacts import continued_lines, put_lines
@@ -78,6 +79,7 @@ class Lines(Way):
         self.slope = np.zeros(len(stores))
         self.lower = np.array([run.bounds[name][0] for name in stores])
         self.upper = np.array([run.bounds[name][1] for name in stores])
+        self.faces = StockFaces.of(run, stores, self.lower, self.upper)
         self.value = np.zeros(len(self.flows))  # what the network gives of each flow
         self.amounts = HeldAmounts(t, len(connections))
         self.rate = np.zeros(len(connections))  # the rate of each connection
@@ -155,8 +157,8 @@ class Lines(Way):
         """Set the flags of stores from their values at time t."""
         for s in stores:
             value = self._value(s, t)
-            self.instant.lower[s] = value <= self.lower[s]
-            self.instant.upper[s] = value >= self.upper[s]
+            self.instant.lower[s] = self.faces.at_lower(s, value)
+            self.instant.upper[s] = self.faces.at_upper(s, value)
 
     def _solve(self, t, seeds):
         """Solve the parts of the flows `seeds` at time t; gives the stores whose flows changed."""
@@ -217,7 +219,7 @@ class Lines(Way):
             outflow = float(self.rate[net.ends[OUT].of(s)].sum())
             slope = inflow - outflow
             value = self._value(s, t)
-            low, high = value <= self.lower[s], value >= self.upper[s]
+            low, high = self.faces.at_lower(s, value), self.faces.at_upper(s, value)
             if low or high:
                 # A store at its bound, held or released (`Instant.settle`): a rate within the
                 # roundoff of its flows holds it there.

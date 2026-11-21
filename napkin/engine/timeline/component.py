@@ -13,9 +13,9 @@ the segments of the set one after the other.
   it takes (`continuous/system.Formulas`), and nowhere else. `Network.of` gives the system of
   one run: its tolerances, its inputs and its numerical settings.
 - `Held`: the allocation of a component, which cuts a flow at a bound to what the store can pass.
-  That is local sharing (`network.py`) where each store meets one flow on each side, unless a flow
-  into a store at its lower bound, or out of a store at its upper bound, could carry more than its
-  request: local sharing would then raise it (a request is soft, D15). Where that can be, the run
+  That is local sharing (`network.py`) where each store meets one flow on each side, with the closed form for a single pass-through pair. In larger sets a flow
+  into a store at its lower bound, or out of a store at its upper bound, can carry more than its
+  request: local sharing then raises it (a request is soft, D15). Where that can be, the run
   stops with a failure that names the store, never with the other answer.
 - `Component`: the set in a run. From its start, it makes its segments one after the other, each
   from where the one before it ended: a segment ends at the horizon, where a store reaches or leaves
@@ -54,7 +54,7 @@ import numpy as np
 from ...core import expr as nodes
 from ...core.errors import ExpressionError
 from ...expressions import evaluate, names_in
-from ..allocation import Allocation
+from ..allocation import Allocation, StockFaces
 from ..continuous import dense
 from ..continuous.bounds import check_bounds, project_bound_roundoff, refresh_bounds
 from ..continuous.fields import Field
@@ -72,6 +72,7 @@ from ..continuous.walk import walked
 from ..errors import SimulationError
 from .collections import node_of
 from .contacts import put_bounds
+from .network import paired_rates
 from .way import Way
 
 
@@ -415,7 +416,7 @@ class Component:
         state.right_faces.clear()
         state.zero_faces.clear()
         starting_sides(s, state, field)
-        if field.branches and np.any((state.y <= s.lower) | (state.y >= s.upper)):
+        if field.branches and any(mask.any() for mask in s.faces.flags(state.y)):
             refresh_bounds(s, state, field)  # decide release on the outgoing field
 
     def deciding(self):
@@ -542,6 +543,7 @@ class ComponentWay(Way):
         system = network.of(
             numerics, plan.units, plan.horizon, run.cap, solver_step(numerics), atol, slack, known
         )
+        system.faces = StockFaces.of(run, stores, system.lower, system.upper)
         system.integration_atol = np.array([numerics.atol_factor * run.sizes[name] for name in stores])
         context = Context(
             stores,
@@ -559,6 +561,7 @@ class ComponentWay(Way):
         # What it read when it was built, which holds while it lasts and a checkpoint saves.
         self.captured = (known, missing, rigid)
         self.component = Component(system, context, [values[name] for name in stores], rigid)
+        self.component.field.paired_requests = self._pair(system, plan)
         self.component.state.time = float(t)
         self.component.state.contact_clocks = (
             run.consumed_in(switching_surfaces(system), t) if run.consumed else {}
@@ -579,6 +582,52 @@ class ComponentWay(Way):
         if single is None:
             self.component.field.leg_rates = lambda: self.component.field.delivered
         self._stepped(float(t))
+
+    def _pair(self, system, plan):
+        """Two directed pipes with one common stock and no other constraining face.
+        The ordinary field already clipped each request to its capacity. If the active
+        stock needs more from a soft partner, read that pipe's own cap on the same branch."""
+        if len(system.flow_ids) != 2:
+            return None
+        pairs = [
+            (system.index[name], incoming[0][0], outgoing[0][0])
+            for name, (outgoing, incoming, _) in system.legs.items()
+            if len(incoming) == len(outgoing) == 1 and incoming[0][0] != outgoing[0][0]
+        ]
+        if len(pairs) != 1:
+            return None
+        row, inlet, outlet = pairs[0]
+        caps = [plan.flows[name].capacity for name in system.flow_ids]
+        field = self.component.field
+
+        def allocate(t, state, requests, bounds):
+            if any(
+                i != row and system.legs[system.state_ids[i]][0 if side == 'min' else 1] for i, side in bounds
+            ):
+                return
+            low, high = (row, 'min') in bounds, (row, 'max') in bounds
+            incoming, outgoing = requests[inlet], requests[outlet]
+            if low and outgoing > incoming:
+                partner = inlet
+            elif high and incoming > outgoing:
+                partner = outlet
+            else:
+                return
+            limit = (
+                math.inf
+                if caps[partner] is None
+                else float(field.branch_environment(t, state)[caps[partner]])
+            )
+            requests[inlet], requests[outlet] = paired_rates(
+                incoming,
+                outgoing,
+                limit if partner == inlet else math.inf,
+                limit if partner == outlet else math.inf,
+                low,
+                high,
+            )
+
+        return allocate
 
     def _stepped(self, t):
         """The keyed reads by the time of the component at time t, in its store. One that has no
@@ -699,8 +748,8 @@ class ComponentWay(Way):
         if bounds or self.resting is not None:
             self.set_resting(
                 {
-                    self.stores[i]: self.run.bounds[self.stores[i]][side == 'max']
-                    for i, side in bounds
+                    self.stores[i]: float(self.component.state.y[i])
+                    for i, _ in bounds
                     if self.run.plan.incident(self.stores[i], 'inflow')
                     and self.run.plan.incident(self.stores[i], 'outflow')
                 },

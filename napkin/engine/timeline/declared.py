@@ -105,6 +105,7 @@ from scipy.sparse.linalg import splu
 from ...core import expr as nodes
 from ...core import ops
 from ...core.errors import ExpressionError
+from ..allocation import StockFaces
 from ..continuous import dense, integrate
 from ..continuous.transfers import HeldAmounts, MovingAmounts
 from ..continuous.walk import walked
@@ -126,6 +127,7 @@ from .network import (
     Claim,
     claim_order,
     network_of,
+    paired_rates,
 )
 from .plan import DYNAMIC, FORMULA, LOOKUP, RATE, REDUCE
 from .reads import lazily
@@ -832,6 +834,7 @@ class DeclaredWay(Way):
         self.slope = np.zeros(len(stores))
         self.lower = np.array([run.bounds[name][0] for name in stores])
         self.upper = np.array([run.bounds[name][1] for name in stores])
+        self.faces = StockFaces.of(run, stores, self.lower, self.upper)
         self.value = np.zeros(len(self.flows))
         self.results = {}
         self.version = np.zeros(len(stores), dtype=np.int64)
@@ -912,7 +915,7 @@ class DeclaredWay(Way):
     def _solve(self, t, forced):
         """Solve from the incoming levels and start the lines on the faces the solution retained."""
         values = self.y + self.slope * (t - self.since)
-        answer, low, high = self._settled(t, values <= self.lower, values >= self.upper)
+        answer, low, high = self._settled(t, *self.faces.flags(values))
         changed = self._publish(t, *answer)
         return self._lines(t, low, high, forced), changed
 
@@ -1006,7 +1009,7 @@ class DeclaredWay(Way):
             outflow = float(rate[net.ends[OUT].of(s)].sum())
             slope = inflow - outflow
             value = float(self.y[s] + self.slope[s] * (t - self.since[s]))
-            low, high = value <= self.lower[s], value >= self.upper[s]
+            low, high = self.faces.at_lower(s, value), self.faces.at_upper(s, value)
             if (low and slope < 0) or (high and slope > 0):
                 # A store at its bound: an answer within the solver's tolerance holds it there.
                 if abs(slope) > SLACK * (inflow + outflow):
@@ -1174,7 +1177,7 @@ class MovingDeclared(DeclaredWay):
                 'step, and stops here: read values that hold between moments, or split the set'
             )
         self.time = self.t0
-        self.low, self.high = self.y <= self.lower, self.y >= self.upper
+        self.low, self.high = self.faces.flags(self.y)
         self.pending = self.prefix = None
         self.snapped = False  # wait at the moment until the other ways have arrived
         self.failed = None  # the time and state of the last evaluation that failed (`_at`)
@@ -1299,12 +1302,12 @@ class MovingDeclared(DeclaredWay):
         return self._published(flows, results, requests)
 
     def _held(self, y):
-        """A state within the stores' bounds, with each store held on a bound at its bound: what the
+        """A state within the stores' bounds, preserving the accepted coordinates of held stores: what the
         problem reads at a trial state, which the integrator may put a tolerance past a bound that a
         store reaches in the step (the step then ends there, `_event`)."""
         y = np.minimum(np.maximum(np.asarray(y[: len(self.stores)], dtype=float), self.lower), self.upper)
-        y[self.low] = self.lower[self.low]
-        y[self.high] = self.upper[self.high]
+        held = self.low | self.high
+        y[held] = self.y[held]
         return y
 
     def _net(self, flows):
@@ -1366,11 +1369,14 @@ class MovingDeclared(DeclaredWay):
 
     # ---- segments ----------------------------------------------------------------------------------
 
-    def _settle(self, t, contacts=()):
+    def _settle(self, t, contacts=(), departing=()):
         """At time t: a store held on a bound whose answer moves it off is released, until the
         flags hold; then the answer there is the present (a traced solve). Where the answer with a
         released store free moves it back past its bound, no answer holds just after t: the run
         stops by name (`DeclaredWay._settled`)."""
+        self.low, self.high = self.faces.flags(self.y)
+        for name in departing:
+            self.low[self.place[name]] = self.high[self.place[name]] = False
         self._select(t, contacts)
         released = was_low = None
         for _ in range(len(self.stores) + 1):
@@ -1400,7 +1406,7 @@ class MovingDeclared(DeclaredWay):
             self.amounts.held_solution(self.physical_rates(flows), t)
         self.set_resting(
             {
-                self.stores[s]: self.lower[s] if self.low[s] else self.upper[s]
+                self.stores[s]: float(self.y[s])
                 for s in np.flatnonzero(
                     (self.low | self.high) & (self.net.counts[0] > 0) & (self.net.counts[1] > 0)
                 ).tolist()
@@ -1607,7 +1613,8 @@ class MovingDeclared(DeclaredWay):
         if segment.plain:
             return list(self.stores), sorted(set(self.recorded) | set(self.connected.results)), False
         contacted = {pair: at for at, pair, kind in segment.event or () if kind == 'switch'}
-        changed = self._settle(segment.end, contacted)
+        departing = [name for _, name, kind in segment.event or () if kind == 'release']
+        changed = self._settle(segment.end, contacted, departing)
         return list(self.stores), sorted(set(changed) | set(self.recorded)), bool(segment.event)
 
     def crossed_operands(self, t, through):
@@ -1764,11 +1771,53 @@ def published(arrays, found):
     checks and is no worse on any rank (`solve.Answer.admits`: each kept optimum and each objective
     against the answer's, each claim's served fraction against its fair level and the answer's,
     every row and bound), and a candidate that fails is dropped."""
+    pair = _paired_answer(arrays)
+    if pair is not None and found.admits(pair):
+        return pair
     for answer in (polished(arrays, found.x, found.levels), found.x):
         candidate = np.clip(answer, arrays.lower, arrays.upper)
         if found.admits(candidate):
             return candidate
     return found.x
+
+
+def _paired_answer(arrays):
+    """Recognize exactly the two individual flow claims and single store incidence of paired_rates.
+    Any further relation, objective, aggregate claim or signed unknown uses the general solver."""
+    if (
+        arrays.n != 2
+        or arrays.m != 1
+        or arrays.row_keys[0][0] != 'store'
+        or arrays.objectives
+        or arrays.positive
+        or len(arrays.request) != 2
+        or any(key[0] != 'flow' for key in arrays.keys)
+        or np.any(arrays.lower != 0)
+        or arrays.row_upper[0] != 0
+        or arrays.row_lower[0] not in (-math.inf, 0)
+    ):
+        return None
+    row = arrays.A.toarray()[0]
+    inlet, outlet = (0, 1) if row[0] < 0 else (1, 0)
+    if row[inlet] != -1 or row[outlet] != 1:
+        return None
+    claims = arrays.F.toarray()
+    for k in range(2):
+        if not any(
+            c[k] == 1 and c[1 - k] == 0 and wanted == arrays.target[k]
+            for c, wanted in zip(claims, arrays.request, strict=True)
+        ):
+            return None
+    answer = np.empty(2)
+    answer[inlet], answer[outlet] = paired_rates(
+        arrays.target[inlet],
+        arrays.target[outlet],
+        arrays.upper[inlet],
+        arrays.upper[outlet],
+        True,
+        arrays.row_lower[0] == 0,
+    )
+    return answer
 
 
 def polished(arrays, x, levels):
