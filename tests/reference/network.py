@@ -364,6 +364,12 @@ def _one_bound(problem, comp):
     return found
 
 
+def _departs(change, traffic):
+    """The owner's strict traffic-relative release, on exact values or their outgoing polynomials."""
+    difference = change * 10**12 - traffic
+    return difference.sign_after() > 0 if isinstance(difference, Poly) else difference > 0
+
+
 def _moved(problem, answer, bounds, inward):
     """The bounds of `bounds` whose store the answer moves off (`inward`) or past (not `inward`)."""
     found = set()
@@ -375,7 +381,7 @@ def _moved(problem, answer, bounds, inward):
             continue
         gross = sum(side.at(answer) for side in problem['traffic'][cell])
         # Compare the exact rational rates without an absolute rate floor.
-        if change * 10**12 > gross:
+        if _departs(change, gross):
             found.add((cell, which))
     return found
 
@@ -1004,6 +1010,22 @@ def _carried(run, follow=None):
             p = Poly([rate])
         carry(f.src, f.dst, p, f.label)
     levels = {cell: Poly([view.cells[cell]]) + p.integral() for cell, p in net.items() if p.c != (0,)}
+    # A held stock still books each physical leg. Its small net is not a
+    # departure when comparing branches. A genuinely rising curved inflow
+    # without opposing traffic, including one that is zero now, can depart.
+    held = {c for comp in run.components for c, face in comp.faces - comp.released if c in levels}
+    view.held_drifts = set()
+    if held:
+        traffic = {c: Poly([0]) for c in held}
+        for src, dst, rate, _ in moving:
+            amount = -rate if rate.sign_after() < 0 else rate
+            for c in (src, dst):
+                if c in held:
+                    traffic[c] = traffic[c] + amount
+        for c in held:
+            speed = -net[c] if net[c].sign_after() < 0 else net[c]
+            if not _departs(speed, traffic[c]):
+                view.held_drifts.add(c)
     return levels, rates, moving, follow
 
 

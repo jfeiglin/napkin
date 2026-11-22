@@ -238,6 +238,7 @@ class View:
         self.live = []  # the flows that are connected now, in creation order
         self.entered = {}  # Cell -> the time at which it took its value
         self.bounds = {}  # Cell -> (lo, hi)
+        self.held_drifts = set()  # held stocks that book a physical net below the release threshold
         self.levels = {}  # Cell -> Poly, the level of a moving store after this moment
         self.rates = {}  # var -> Poly, a rate after this moment
 
@@ -250,6 +251,7 @@ class View:
         v.occs = {k: list(o) for k, o in self.occs.items()}
         v.live, v.entered, v.bounds = list(self.live), dict(self.entered), dict(self.bounds)
         v.levels, v.rates = dict(self.levels), dict(self.rates)
+        v.held_drifts = self.held_drifts.copy()
         return v
 
 
@@ -302,6 +304,7 @@ class Ev:
             may_draw=may_draw,
             defer=defer,
             in_formula=0,
+            probing_faces=False,
             owner=owner,  # the firing of a trigger that executes this evaluation, if any (R-A2-17)
         )
 
@@ -387,7 +390,8 @@ class Ev:
         if self.shared.contact_reads is not None and c in self.run.stores:
             self.shared.contact_reads.add(c)
         if self.mode == 'germ' and c in self.view.levels:
-            return plain(self.view.levels[c])
+            level = self.view.levels[c]
+            return level(0) if self.shared.probing_faces and c in self.view.held_drifts else plain(level)
         return v
 
     def setting(self, c):
@@ -638,6 +642,20 @@ class Ev:
             self.shared.stops.append(root)
             if operands is not None:
                 self.shared.contacts.append((root, self.scope, operands, d))
+        if operands is not None and self.view.held_drifts and not self.shared.probing_faces:
+            # Locate the true root above. For the branch at a held bound, use
+            # the admissible movement of both operands while evaluating all
+            # other state and time dependencies on their actual trajectory.
+            probe = Ev(self.run, self.view, self.scope, self.mode, self.tx, self.unknowns)
+            probe.shared.probing_faces = True
+            left, right = (poly(probe.num(e)) for e in operands)
+            motion = left - right
+            if (
+                motion.c != d.c
+                and (motion.constant or not d.c[0])
+                and abs(d.c[0]) <= probe.band(*operands, left(0), right(0))
+            ):
+                return 0 if motion.constant else motion.sign_after()
         return outgoing if outgoing is not None else d.sign_after()
 
     # --- operators -------------------------------------------------------------------------------
@@ -961,9 +979,9 @@ class Ev:
                 keep = [self.deref(self.attr(m, name)) is True for _, m, _ in c.items]
             else:
                 rhs = self.val(args[2])
+                fields = (self.attr(m, name) for _, m, _ in c.items)
                 keep = [
-                    self.compare(args[1]._a[0], self.deref(self.attr(m, name)), rhs, (args[0], args[2]))
-                    for _, m, _ in c.items
+                    self.compare(args[1]._a[0], self.deref(field), rhs, (field, args[2])) for field in fields
                 ]
             return Coll((i for i, k in zip(c.items, keep) if k), c.key_field)
         if method == 'by':

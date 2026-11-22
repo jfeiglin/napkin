@@ -1058,6 +1058,10 @@ class Sparse(MovingTransfers, Way):
             for name, row in rows.items():
                 self.selection[name] = self.plan.keyed[name].names.index(row)
 
+    def _branch_rates(self, t, y):
+        """An unresolved or held face cannot choose an outgoing branch from its booked roundoff."""
+        return self.field(t, y, allocation=True)
+
     def _sides(self, clocks):
         """Select the branch of every rate at the segment start. A located contact uses its
         departing side. The vector uses these branches until the next located root (_turns)."""
@@ -1076,7 +1080,7 @@ class Sparse(MovingTransfers, Way):
             (self.lower, self.upper),
             self._side,
             self.moves,
-            self.field,
+            self._branch_rates,
             self.choose,
             self.plan.units.comparisons,
             held=lambda i: self.lower_flags[i] or self.upper_flags[i],
@@ -1151,7 +1155,7 @@ class Sparse(MovingTransfers, Way):
                 self.t,
                 self.y,
                 self._side,
-                self.field,
+                self._branch_rates,
                 self.place,
                 self.moves,
                 self.contacted,

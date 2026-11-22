@@ -1022,7 +1022,7 @@ def starting_sides(system, run, field):
         (s.lower, s.upper),
         field.operands,
         lambda node: bool(s.expanded_names(node) & moving),
-        field.rates,
+        lambda t, y: field.rates(t, y, allocation=True),
         field.choose,
         s.units.comparisons,
         held=lambda i: (i, 'min') in run.active_bounds or (i, 'max') in run.active_bounds,

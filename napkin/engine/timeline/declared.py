@@ -1577,7 +1577,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
             (self.lower, self.upper),
             self._side,
             self.run.triggers.moving_reads,
-            self._derivative,
+            self._branch_rates,
             choose,
             self.plan.units.comparisons,
             held=lambda i: self.low[i] or self.high[i],
@@ -1592,7 +1592,7 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
                 t,
                 self.y,
                 self._side,
-                self._derivative,
+                self._branch_rates,
                 self.place,
                 self.run.triggers.moving_reads,
                 contacted,
@@ -1643,6 +1643,12 @@ class MovingDeclared(MovingTransfers, DeclaredWay):
                 self._cache.clear()
             self._cache[key] = found
         return found
+
+    def _branch_rates(self, t, y):
+        """Use the solved departure decision when picking a side, preserving the physical integrals."""
+        flows, _, net, requests = self._at(t, y)
+        held = self.low | self.high
+        return self._face_rates(flows, held, requests) if held.any() else net
 
     def _derivative(self, t, y):
         flows, _, net, requests = self._at(t, y)
