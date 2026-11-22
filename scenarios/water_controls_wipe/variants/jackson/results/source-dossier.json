@@ -1,0 +1,234 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 3,
+    "claims": 4,
+    "source_access": {
+      "accessible": 3
+    },
+    "source_status": {
+      "verified": 3,
+      "partial": 0,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 3
+    },
+    "claim_status": {
+      "verified": 4,
+      "partial": 0,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 4
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 4
+    },
+    "sources_with_retrieval": 3,
+    "claims_with_quotes": 4,
+    "claim_quote_match_records": 4,
+    "claims_reachable": 4,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "jackson_jxnwater2025_q2_report",
+      "title": "The Consolidated Report of Activities for the quarter ended June 30, 2025, for the Interim Stipulated Order in Case Number 3:22-cv-00686-HTW-LGI, The United States v The City of Jackson, Mississippi",
+      "url": "https://www.epa.gov/system/files/documents/2026-03/q2-2025-water-report.pdf",
+      "original_url": "https://www.epa.gov/system/files/documents/2026-03/q2-2025-water-report.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.epa.gov/system/files/documents/2026-03/q2-2025-water-report.pdf at 2026-10-25T16:28:24Z (curl, HTTP 200, 5176867 bytes, sha256 ca20204bcf1a5103591b73d8281ffb1324f2b97055080b86bdbdb30bd6a46e7c); text by gs-10.07.1 txtwrite-pages, sha256 d58357b420a51990bf32d3522f22f1b0c5d95d1ef68766a7c68cf254918a5495.",
+      "retrieval": {
+        "requested_url": "https://www.epa.gov/system/files/documents/2026-03/q2-2025-water-report.pdf",
+        "final_url": "https://www.epa.gov/system/files/documents/2026-03/q2-2025-water-report.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:28:24Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 5176867,
+        "sha256": "ca20204bcf1a5103591b73d8281ffb1324f2b97055080b86bdbdb30bd6a46e7c",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "d58357b420a51990bf32d3522f22f1b0c5d95d1ef68766a7c68cf254918a5495"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JACKSON-JXN-METERED",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the executive summary and the production table of the extracted text.",
+          "content_sha256": "7b13715fea9b5070c6a47b9aa1ed95c771b0c15540db769e9640e570258990f9",
+          "retrieval_sha256": "ca20204bcf1a5103591b73d8281ffb1324f2b97055080b86bdbdb30bd6a46e7c",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jackson"
+          ],
+          "scenario": "water_controls_wipe:jackson"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:jackson"
+      ],
+      "scenario": "water_controls_wipe:jackson"
+    },
+    {
+      "source_id": "jackson_jxnwater2026_q2_report",
+      "title": "The Consolidated Report of Activities for the quarter ended June 30, 2026, for the Interim Stipulated Order in Case Number 3:22-cv-00686-HTW-LGI, The United States v The City of Jackson, Mississippi (water)",
+      "url": "https://jxnwater.com/wp-content/uploads/2026/08/Q2-2026-Water-Report.pdf",
+      "original_url": "https://jxnwater.com/wp-content/uploads/2026/08/Q2-2026-Water-Report.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://jxnwater.com/wp-content/uploads/2026/08/Q2-2026-Water-Report.pdf at 2026-10-25T16:31:42Z (curl, HTTP 200, 3865968 bytes, sha256 8817069c457ad2a43759ac9e0f7673cb64db448152e1893913725e3451b30532); text by gs-10.07.1 txtwrite-pages, sha256 704d2ba3279c259d0442a1dca0f79865e9273fdec9866065c9bb64dc0ecc8f3d.",
+      "retrieval": {
+        "requested_url": "https://jxnwater.com/wp-content/uploads/2026/08/Q2-2026-Water-Report.pdf",
+        "final_url": "https://jxnwater.com/wp-content/uploads/2026/08/Q2-2026-Water-Report.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:31:42Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 3865968,
+        "sha256": "8817069c457ad2a43759ac9e0f7673cb64db448152e1893913725e3451b30532",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "704d2ba3279c259d0442a1dca0f79865e9273fdec9866065c9bb64dc0ecc8f3d"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JACKSON-JXN-PRODUCTION",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the executive summary and the production table of the extracted text. The column order is Q2 2026, Q1 2026, Q4 2025, Q3 2025 and so back to Q1 2023, as the header shows. The 12-month mean is arithmetic on the printed quarterly means.",
+          "content_sha256": "13ec402792c406893b2e0d17def7bb38d867f28a523c8a60bbb7494e2aa738fe",
+          "retrieval_sha256": "8817069c457ad2a43759ac9e0f7673cb64db448152e1893913725e3451b30532",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 7,
+            "total": 7
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jackson"
+          ],
+          "scenario": "water_controls_wipe:jackson"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:jackson"
+      ],
+      "scenario": "water_controls_wipe:jackson"
+    },
+    {
+      "source_id": "jackson_msdh2021_inspection",
+      "title": "Report of Inspection of Drinking Water Supply: City of Jackson (PWS 0250008), November 2021, with the FY 2022 Capacity Assessment Form and Design Capacity Sheet",
+      "url": "https://msdh.ms.gov/msdhsite/files/JacksonWater/inspection-reports/Jackson_water_inspection_2021_Nov.pdf",
+      "original_url": "https://msdh.ms.gov/msdhsite/files/JacksonWater/inspection-reports/Jackson_water_inspection_2021_Nov.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://msdh.ms.gov/msdhsite/files/JacksonWater/inspection-reports/Jackson_water_inspection_2021_Nov.pdf at 2026-10-25T16:28:35Z (curl, HTTP 200, 100139 bytes, sha256 8cc2b73afea13978a4ae733f062286c7b7c07970d09028300b82f15f4e13529d); text by gs-10.07.1 txtwrite-pages, sha256 9a4f20bc9292d564ced9e8c0db21053357212462cd565ebe95c28182d7fbdff5.",
+      "retrieval": {
+        "requested_url": "https://msdh.ms.gov/msdhsite/files/JacksonWater/inspection-reports/Jackson_water_inspection_2021_Nov.pdf",
+        "final_url": "https://msdh.ms.gov/msdhsite/files/JacksonWater/inspection-reports/Jackson_water_inspection_2021_Nov.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:28:35Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 100139,
+        "sha256": "8cc2b73afea13978a4ae733f062286c7b7c07970d09028300b82f15f4e13529d",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "9a4f20bc9292d564ced9e8c0db21053357212462cd565ebe95c28182d7fbdff5"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JACKSON-JXN-PLANTS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the inspection report, the capacity assessment form and the design capacity sheet in the extracted text. The sums of 70 and 53.6 MGD are arithmetic on the printed figures.",
+          "content_sha256": "2d87be9309475c6d86d7b425fe1f47fbd891f24d0c14ea1eb7fc22e52da1993b",
+          "retrieval_sha256": "8cc2b73afea13978a4ae733f062286c7b7c07970d09028300b82f15f4e13529d",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jackson"
+          ],
+          "scenario": "water_controls_wipe:jackson"
+        },
+        {
+          "id": "E-SC43-JACKSON-JXN-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the storage lines of the design capacity sheet and comment 7(d) of the report in the extracted text. The totals are arithmetic on the printed figures.",
+          "content_sha256": "f999c944691811530e772780860b0c6719944266af065d2c631d7a18818d8306",
+          "retrieval_sha256": "8cc2b73afea13978a4ae733f062286c7b7c07970d09028300b82f15f4e13529d",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jackson"
+          ],
+          "scenario": "water_controls_wipe:jackson"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:jackson"
+      ],
+      "scenario": "water_controls_wipe:jackson"
+    }
+  ],
+  "scenario": "water_controls_wipe:jackson",
+  "model_hash": "eb98de0ed0dd36707a13affff6b5949b50851874635cee2aa86f900cfacf6d46"
+}

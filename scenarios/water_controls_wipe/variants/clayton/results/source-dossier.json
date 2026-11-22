@@ -1,0 +1,271 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 4,
+    "claims": 5,
+    "source_access": {
+      "accessible": 3,
+      "unavailable": 1
+    },
+    "source_status": {
+      "verified": 3,
+      "partial": 0,
+      "unverified": 1
+    },
+    "source_method": {
+      "access_attempt": 1,
+      "primary_full_text": 3
+    },
+    "claim_status": {
+      "verified": 4,
+      "partial": 0,
+      "unverified": 1
+    },
+    "claim_method": {
+      "access_attempt": 1,
+      "primary_full_text": 4
+    },
+    "claim_method_status": {
+      "access_attempt/unverified": 1,
+      "primary_full_text/verified": 4
+    },
+    "sources_with_retrieval": 3,
+    "claims_with_quotes": 4,
+    "claim_quote_match_records": 4,
+    "claims_reachable": 5,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "clayton_ccwa2025_acfr",
+      "title": "Annual Comprehensive Financial Report for Fiscal Year Ended April 30, 2025",
+      "url": "https://www.ccwa.us/DocumentCenter/View/622/ACFR-2025",
+      "original_url": "https://www.ccwa.us/DocumentCenter/View/622/ACFR-2025",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ccwa.us/DocumentCenter/View/622/ACFR-2025 at 2026-10-25T16:35:49Z (curl, HTTP 200, 10071012 bytes, sha256 c7a657eb9d4371cf7a211cb5d6ad2639d289c2eed6c65b17d4f70329c53f5e03); text by gs-10.07.1 txtwrite-pages, sha256 ffae24af237ad4d0181e51624640422676fdf183262382321ccee6af06f1095a.",
+      "retrieval": {
+        "requested_url": "https://www.ccwa.us/DocumentCenter/View/622/ACFR-2025",
+        "final_url": "https://www.ccwa.us/DocumentCenter/View/622/ACFR-2025",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:35:49Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 10071012,
+        "sha256": "c7a657eb9d4371cf7a211cb5d6ad2639d289c2eed6c65b17d4f70329c53f5e03",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "ffae24af237ad4d0181e51624640422676fdf183262382321ccee6af06f1095a"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-CLAYTON-CLAYTON-COUNTY-SYSTEM",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Introductory Section, Overview of the System and Interconnections (printed p. 11, PDF p. 18); Schedule 17 note 3 (printed p. 153, PDF p. 162)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the introductory section and the statistical section. The overview is set in three columns, so each figure is quoted on its own line. Schedule 9 (printed p. 145, PDF p. 154) and Schedule 17 are images without extracted text. Read from the rendered page, Schedule 9 gives total water produced in FY2025 of 10,029 million gallons, imported water through interconnections of 0 in FY2025 (306 in FY2023 and 30,992 in FY2024, the last larger than total production) and a daily capacity of 15 MGD for the interconnections; Schedule 17 gives College Park water revenue of $600,561 (0.86%). These figures are not quoted or used as data.",
+          "content_sha256": "61775c3e7c3e785ae79e4faddba07bba7d42d975e982dc3da10540f925b8b215",
+          "retrieval_sha256": "c7a657eb9d4371cf7a211cb5d6ad2639d289c2eed6c65b17d4f70329c53f5e03",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 10,
+            "total": 10
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:clayton"
+          ],
+          "scenario": "water_controls_wipe:clayton"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:clayton"
+      ],
+      "scenario": "water_controls_wipe:clayton"
+    },
+    {
+      "source_id": "clayton_ccwa2026_budget_fy2027",
+      "title": "Adopted Budget 2026-2027",
+      "url": "https://www.ccwa.us/DocumentCenter/View/818/2026-2027-CCWA-Budget-Document--Final",
+      "original_url": "https://www.ccwa.us/DocumentCenter/View/818/2026-2027-CCWA-Budget-Document--Final",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ccwa.us/DocumentCenter/View/818/2026-2027-CCWA-Budget-Document--Final at 2026-10-25T16:37:45Z (curl, HTTP 200, 66476414 bytes, sha256 7e73d122bf1e577b05481d3796dd71e1ad0369aec48a05bdc2c49c2cd3c21359); text by gs-10.07.1 txtwrite-pages, sha256 306e10db1838d4ee2314cf459885a47812c1421b2ec0fa46c08e894fb6bd762b.",
+      "retrieval": {
+        "requested_url": "https://www.ccwa.us/DocumentCenter/View/818/2026-2027-CCWA-Budget-Document--Final",
+        "final_url": "https://www.ccwa.us/DocumentCenter/View/818/2026-2027-CCWA-Budget-Document--Final",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:37:45Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 66476414,
+        "sha256": "7e73d122bf1e577b05481d3796dd71e1ad0369aec48a05bdc2c49c2cd3c21359",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "306e10db1838d4ee2314cf459885a47812c1421b2ec0fa46c08e894fb6bd762b"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-CLAYTON-CLAYTON-COUNTY-PLANTS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Introduction, Overview of the System (printed p. 21, PDF p. 22) and Water Operations (printed p. 23, PDF p. 24)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the introduction (printed pp. 7-25). The page text has extraction gaps inside some words (for example \"reclaimed wate r\"), so the quotes avoid those words. The sentence with the 42 MGD capacity breaks at such a gap and is not quoted; the 42 MGD is also printed in the overview and equals the sum of the three plants.",
+          "content_sha256": "74a25e291da12aecb182204e9cad66bc780c04980e67c57635051485baa6a075",
+          "retrieval_sha256": "7e73d122bf1e577b05481d3796dd71e1ad0369aec48a05bdc2c49c2cd3c21359",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 7,
+            "total": 7
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:clayton"
+          ],
+          "scenario": "water_controls_wipe:clayton"
+        },
+        {
+          "id": "E-SC43-CLAYTON-CLAYTON-COUNTY-INTERCONNECTIONS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Introduction, Interconnections (printed p. 25, PDF p. 26); Statistical Information, Ten Largest Customers, note 3 (printed p. 374, PDF p. 375)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the interconnection section and the statistical tables. The largest-customer table itself is an image; only its notes are in the extracted text.",
+          "content_sha256": "ac542fb944677da805e283b1b077c5a16e8b0f79309d6b684e3cf220e7b68826",
+          "retrieval_sha256": "7e73d122bf1e577b05481d3796dd71e1ad0369aec48a05bdc2c49c2cd3c21359",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:clayton"
+          ],
+          "scenario": "water_controls_wipe:clayton"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:clayton"
+      ],
+      "scenario": "water_controls_wipe:clayton"
+    },
+    {
+      "source_id": "clayton_collegepark2023_council_agenda",
+      "title": "City of College Park, Georgia: agenda document of November 6, 2023 (water supply interconnects)",
+      "url": "https://www.collegeparkga.gov/AgendaCenter/ViewFile/Agenda/_11062023-362",
+      "original_url": "https://www.collegeparkga.gov/AgendaCenter/ViewFile/Agenda/_11062023-362",
+      "access": "unavailable",
+      "status": "unverified",
+      "method": "access_attempt",
+      "date": "2026-10-25",
+      "notes": "The site returned HTTP 403 to the fetch tool, TinyFish reported the target unreachable, and the Internet Archive CDX lookups failed because the connection to web.archive.org closed during the exchange (repeated attempts between 17:05 and 17:38 UTC on 2026-10-25).",
+      "claims": [
+        {
+          "id": "E-SC43-CLAYTON-CLAYTON-COUNTY-COLLEGE-PARK",
+          "status": "unverified",
+          "date": "2026-10-25",
+          "method": "access_attempt",
+          "checked_fields": [],
+          "notes": "Not opened: HTTP 403 from the site, TinyFish target unreachable, Internet Archive unreachable. The College Park 2024 water quality report (https://collegepark.hosted.civiclive.com/news/what_s_new/2024_annual_drinking_water_quality_report) also returned HTTP 403 to both tools. Reverify before the value is relied on.",
+          "content_sha256": "88a5693f8fd6bf8e6ee18c4fa2f13a80162a72fc6159962cdd74a35e54a227a0",
+          "reachable_from_scenarios": [
+            "water_controls_wipe:clayton"
+          ],
+          "scenario": "water_controls_wipe:clayton"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:clayton"
+      ],
+      "scenario": "water_controls_wipe:clayton"
+    },
+    {
+      "source_id": "clayton_epa2026_sdwis_ccwa_buyers",
+      "title": "SDWIS Federal Reporting Services, WATER_SYSTEM_FACILITY: facilities with seller PWSID GA0630000",
+      "url": "https://data.epa.gov/efservice/WATER_SYSTEM_FACILITY/SELLER_PWSID/GA0630000/JSON",
+      "original_url": "https://data.epa.gov/efservice/WATER_SYSTEM_FACILITY/SELLER_PWSID/GA0630000/JSON",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://data.epa.gov/efservice/WATER_SYSTEM_FACILITY/SELLER_PWSID/GA0630000/JSON at 2026-10-25T17:31:20Z (curl, HTTP 200, 5481 bytes, sha256 7b64954bb9bb0d54fe478b031029c9015cbec9337c80b537a2e2bb915af8ad5e); text by utf8-decode-v1, sha256 7b64954bb9bb0d54fe478b031029c9015cbec9337c80b537a2e2bb915af8ad5e.",
+      "retrieval": {
+        "requested_url": "https://data.epa.gov/efservice/WATER_SYSTEM_FACILITY/SELLER_PWSID/GA0630000/JSON",
+        "final_url": "https://data.epa.gov/efservice/WATER_SYSTEM_FACILITY/SELLER_PWSID/GA0630000/JSON",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T17:31:20Z",
+        "tool": "curl",
+        "media_type": "application/json",
+        "bytes": 5481,
+        "sha256": "7b64954bb9bb0d54fe478b031029c9015cbec9337c80b537a2e2bb915af8ad5e",
+        "text": {
+          "extractor": "utf8-decode-v1",
+          "sha256": "7b64954bb9bb0d54fe478b031029c9015cbec9337c80b537a2e2bb915af8ad5e"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-CLAYTON-CLAYTON-COUNTY-BUYERS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "All eight records of the query result",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes"
+          ],
+          "notes": "Read all eight records. The names of GA1210002 (COLLEGE PARK), GA1130001 (FAYETTE COUNTY), GA1510001 (HENRY COUNTY WATER AUTHORITY), GA2550000 (GRIFFIN) and GA2550036 (SPALDING COUNTY WATER SYSTEM) were checked in the SDWIS WATER_SYSTEM table on the same day.",
+          "content_sha256": "0dcb96fb1e4678c3be2b36a6b567887142db8435d6611a574e24438507d58207",
+          "retrieval_sha256": "7b64954bb9bb0d54fe478b031029c9015cbec9337c80b537a2e2bb915af8ad5e",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:clayton"
+          ],
+          "scenario": "water_controls_wipe:clayton"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:clayton"
+      ],
+      "scenario": "water_controls_wipe:clayton"
+    }
+  ],
+  "scenario": "water_controls_wipe:clayton",
+  "model_hash": "7db20a9c5d49769446c924c037a7293bb5a72887162a1ca522f1853bde521184"
+}

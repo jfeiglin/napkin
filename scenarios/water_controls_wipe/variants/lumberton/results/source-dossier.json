@@ -1,0 +1,232 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 2,
+    "claims": 5,
+    "source_access": {
+      "accessible": 2
+    },
+    "source_status": {
+      "verified": 2,
+      "partial": 0,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 2
+    },
+    "claim_status": {
+      "verified": 5,
+      "partial": 0,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 5
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 5
+    },
+    "sources_with_retrieval": 2,
+    "claims_with_quotes": 5,
+    "claim_quote_match_records": 5,
+    "claims_reachable": 5,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "lumberton_ncdeq2018_lwsp",
+      "title": "Local Water Supply Plan: Lumberton (PWSID 03-78-010), 2018",
+      "url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=03-78-010&year=2018",
+      "original_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=03-78-010&year=2018",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=03-78-010&year=2018 at 2026-10-25T16:42:40Z (curl, HTTP 200, 37096 bytes, sha256 2fb024f4e25b2444eee91a4813fee17493dcb2cf4bc1423a770313da5e424d8b); text by html.parser-py3.14 blocks-v1, sha256 cbdcca203be0d9099102898b16803b5e6fa97ff40a46bc4b0e9fcd13be9cefc0.",
+      "retrieval": {
+        "requested_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=03-78-010&year=2018",
+        "final_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=03-78-010&year=2018",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:42:40Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 37096,
+        "sha256": "2fb024f4e25b2444eee91a4813fee17493dcb2cf4bc1423a770313da5e424d8b",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "cbdcca203be0d9099102898b16803b5e6fa97ff40a46bc4b0e9fcd13be9cefc0"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LUMBERTON-CITY-RAW-2018",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 3 'Monthly Withdrawals & Purchases' and its note; 'Water Treatment Plants'",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the retrieved page on 2026-10-25.",
+          "content_sha256": "06347acd693a63b1fb9410403a08b99adac42868b9ec6038e504dc66010b9d9c",
+          "retrieval_sha256": "2fb024f4e25b2444eee91a4813fee17493dcb2cf4bc1423a770313da5e424d8b",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lumberton"
+          ],
+          "scenario": "water_controls_wipe:lumberton"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lumberton"
+      ],
+      "scenario": "water_controls_wipe:lumberton"
+    },
+    {
+      "source_id": "lumberton_ncdeq2025_lwsp",
+      "title": "Local Water Supply Plan: Lumberton (PWSID 03-78-010), 2025",
+      "url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=03-78-010&year=2025",
+      "original_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=03-78-010&year=2025",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=03-78-010&year=2025 at 2026-10-25T16:42:02Z (curl, HTTP 200, 34535 bytes, sha256 d9a3375977e3b12b1d1011e8bdb4c82c2f2d1b4a039e2f17b8f6505a65b29348); text by html.parser-py3.14 blocks-v1, sha256 b90bf9cc38eb86b971e39e18d83cd1c8a44a15fc28242e9ef9b3c34309f0074d.",
+      "retrieval": {
+        "requested_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=03-78-010&year=2025",
+        "final_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=03-78-010&year=2025",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:42:02Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 34535,
+        "sha256": "d9a3375977e3b12b1d1011e8bdb4c82c2f2d1b4a039e2f17b8f6505a65b29348",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "b90bf9cc38eb86b971e39e18d83cd1c8a44a15fc28242e9ef9b3c34309f0074d"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LUMBERTON-CITY-USE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 2 'Water Use by Type'; Section 3 'Monthly Withdrawals & Purchases'; Section 5 'Projections' and 'Demand v/s Percent of Supply', 2025 column",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the retrieved page on 2026-10-25; table cells are separate text blocks, so each quote is one row. Ratio and metered sum derived.",
+          "content_sha256": "c97dc5ec29fe96ed7cf6f311b4dfadbe816101ffa343701f18365c2254a9adb5",
+          "retrieval_sha256": "d9a3375977e3b12b1d1011e8bdb4c82c2f2d1b4a039e2f17b8f6505a65b29348",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 8,
+            "total": 8
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lumberton"
+          ],
+          "scenario": "water_controls_wipe:lumberton"
+        },
+        {
+          "id": "E-SC43-LUMBERTON-CITY-CAPACITY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 3 'Ground Water Sources', 'Surface Water Sources' and 'Water Treatment Plants'; Section 5 'Demand v/s Percent of Supply'",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the retrieved page on 2026-10-25.",
+          "content_sha256": "5ac5a6370d4247ee34c24d65c071ba0915e5b2969514dc12260d1d884c262a71",
+          "retrieval_sha256": "d9a3375977e3b12b1d1011e8bdb4c82c2f2d1b4a039e2f17b8f6505a65b29348",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lumberton"
+          ],
+          "scenario": "water_controls_wipe:lumberton"
+        },
+        {
+          "id": "E-SC43-LUMBERTON-CITY-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 1 'Distribution System'; Section 3 surface water questions",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the retrieved page on 2026-10-25.",
+          "content_sha256": "8af4efd9ddcb6284cc9e653a58fd1fae6886772b74c5d91c4edf5517426db1ac",
+          "retrieval_sha256": "d9a3375977e3b12b1d1011e8bdb4c82c2f2d1b4a039e2f17b8f6505a65b29348",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lumberton"
+          ],
+          "scenario": "water_controls_wipe:lumberton"
+        },
+        {
+          "id": "E-SC43-LUMBERTON-CITY-INTERCONNECT",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 1 'Water Conservation'; Section 2 'Water Sales'; Section 3 'Water Purchases From Other Systems'",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the retrieved page on 2026-10-25. The Robeson County row appears with the same values in the sales and the purchases tables.",
+          "content_sha256": "99411fd7b2ac5d6a48d161dea5e6f15a90d36d8a7a321979b09dd3f6c83cbf15",
+          "retrieval_sha256": "d9a3375977e3b12b1d1011e8bdb4c82c2f2d1b4a039e2f17b8f6505a65b29348",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lumberton"
+          ],
+          "scenario": "water_controls_wipe:lumberton"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lumberton"
+      ],
+      "scenario": "water_controls_wipe:lumberton"
+    }
+  ],
+  "scenario": "water_controls_wipe:lumberton",
+  "model_hash": "b5bc8b310390deb6a684310379c93a78be8b04db50a0b3ee818f628dc76ef667"
+}

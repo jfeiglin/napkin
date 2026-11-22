@@ -1,0 +1,759 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 11,
+    "claims": 15,
+    "source_access": {
+      "accessible": 11
+    },
+    "source_status": {
+      "verified": 11,
+      "partial": 0,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 11
+    },
+    "claim_status": {
+      "verified": 15,
+      "partial": 0,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 15
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 15
+    },
+    "sources_with_retrieval": 11,
+    "claims_with_quotes": 15,
+    "claim_quote_match_records": 15,
+    "claims_reachable": 15,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "lehigh_allentown2025_concession_2024",
+      "title": "2024 Water/Sewer Systems Concession Annual Report",
+      "url": "https://www.allentownpa.gov/Portals/0/files/Departments/Compliance/2024%20Annual%20Report%20Final%20Draft%20.pdf",
+      "original_url": "https://www.allentownpa.gov/Portals/0/files/Departments/Compliance/2024%20Annual%20Report%20Final%20Draft%20.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.allentownpa.gov/Portals/0/files/Departments/Compliance/2024%20Annual%20Report%20Final%20Draft%20.pdf at 2026-10-25T16:09:22Z (curl, HTTP 200, 1977178 bytes, sha256 2acef9c111ccb953b99bf389d7eab516ea2c9212e70369a4144345977099abaa); text by gs-10.07.1 txtwrite-pages, sha256 46abfa0ed0a12b8a854720a5791c8448dfc76a491cb3aae35ecf795e3ba2e2e5.",
+      "retrieval": {
+        "requested_url": "https://www.allentownpa.gov/Portals/0/files/Departments/Compliance/2024%20Annual%20Report%20Final%20Draft%20.pdf",
+        "final_url": "https://www.allentownpa.gov/Portals/0/files/Departments/Compliance/2024%20Annual%20Report%20Final%20Draft%20.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:09:22Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 1977178,
+        "sha256": "2acef9c111ccb953b99bf389d7eab516ea2c9212e70369a4144345977099abaa",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "46abfa0ed0a12b8a854720a5791c8448dfc76a491cb3aae35ecf795e3ba2e2e5"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-LCA-CAPACITY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 'Drinking Water Treatment and Production', printed pp. 12-13",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25; single-column prose.",
+          "content_sha256": "b92caf1db2c9ca048c4ce88dc7dc3d2de76cecfa80ed73460f943807a25e5f83",
+          "retrieval_sha256": "2acef9c111ccb953b99bf389d7eab516ea2c9212e70369a4144345977099abaa",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        },
+        {
+          "id": "E-SC43-LEHIGH-LCA-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 'Drinking Water Distribution System', printed p. 15",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25; a bulleted list in single-column prose.",
+          "content_sha256": "7cc974bb3311bc8b3bda778c85c642f2e67a877b36cd1c13567c6feb88c3dea0",
+          "retrieval_sha256": "2acef9c111ccb953b99bf389d7eab516ea2c9212e70369a4144345977099abaa",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        },
+        {
+          "id": "E-SC43-LEHIGH-LCA-BULK",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 'Drinking Water Treatment and Production', printed p. 13; 'Primary Flow Meters', printed p. 15",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25; single-column prose.",
+          "content_sha256": "f3f845274c5e97fdc195776c524a8d4500ef854d1a4eeb170234e035c56e5640",
+          "retrieval_sha256": "2acef9c111ccb953b99bf389d7eab516ea2c9212e70369a4144345977099abaa",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    },
+    {
+      "source_id": "lehigh_eww2017_master_plan_presentation",
+      "title": "Water System Master Plan: Presentation to the CIP Committee",
+      "url": "https://www.eriewater.org/wp-content/uploads/2017/02/2017-EWW-Master-Plan-Presentation-to-the-CIP-Committee-2.14.17.pdf",
+      "original_url": "https://www.eriewater.org/wp-content/uploads/2017/02/2017-EWW-Master-Plan-Presentation-to-the-CIP-Committee-2.14.17.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.eriewater.org/wp-content/uploads/2017/02/2017-EWW-Master-Plan-Presentation-to-the-CIP-Committee-2.14.17.pdf at 2026-10-25T16:11:09Z (curl, HTTP 200, 4130025 bytes, sha256 4da67b774e6b41158af886ce9ab9cc6a7573183c53a90cf3738eab1e7256ddbd); text by gs-10.07.1 txtwrite-pages, sha256 e77fe9ccceb9f86effe43e22c29e0e6256da933c901f56f3ff889fd2f86e8929.",
+      "retrieval": {
+        "requested_url": "https://www.eriewater.org/wp-content/uploads/2017/02/2017-EWW-Master-Plan-Presentation-to-the-CIP-Committee-2.14.17.pdf",
+        "final_url": "https://www.eriewater.org/wp-content/uploads/2017/02/2017-EWW-Master-Plan-Presentation-to-the-CIP-Committee-2.14.17.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:11:09Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 4130025,
+        "sha256": "4da67b774e6b41158af886ce9ab9cc6a7573183c53a90cf3738eab1e7256ddbd",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "e77fe9ccceb9f86effe43e22c29e0e6256da933c901f56f3ff889fd2f86e8929"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-ERIE-RATINGS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Slides 'Source of Supply' (8), 'Treatment' (9), 'Chestnut Street WTP' (10), 'Richard S. Wasielewski WTP' (11) and 'Storage' (17)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25. Slide titles are printed with a shadow, so the text layer doubles their letters; the quotes use the body text only.",
+          "content_sha256": "a3934adb0a7a8a4921ef9045e37cf142ae2ec83b06bccf080ff5f8aaf9305a12",
+          "retrieval_sha256": "4da67b774e6b41158af886ce9ab9cc6a7573183c53a90cf3738eab1e7256ddbd",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    },
+    {
+      "source_id": "lehigh_eww2017_master_plan_summary",
+      "title": "Water System Master Plan: Executive Summary",
+      "url": "https://www.eriewater.org/wp-content/uploads/2017/02/2017-EWW-Water-System-Master-Plan-Executive-Summary.pdf",
+      "original_url": "https://www.eriewater.org/wp-content/uploads/2017/02/2017-EWW-Water-System-Master-Plan-Executive-Summary.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.eriewater.org/wp-content/uploads/2017/02/2017-EWW-Water-System-Master-Plan-Executive-Summary.pdf at 2026-10-25T16:11:02Z (curl, HTTP 200, 287030 bytes, sha256 45f6a1c1310f624e988969b6c73e1a0a2909128dff32b3a6c1405cd5c4e6816b); text by gs-10.07.1 txtwrite-pages, sha256 88cfa294737ec73e379f666750bb9ce58d74b4ad4237405300915f5c293f17d2.",
+      "retrieval": {
+        "requested_url": "https://www.eriewater.org/wp-content/uploads/2017/02/2017-EWW-Water-System-Master-Plan-Executive-Summary.pdf",
+        "final_url": "https://www.eriewater.org/wp-content/uploads/2017/02/2017-EWW-Water-System-Master-Plan-Executive-Summary.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:11:02Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 287030,
+        "sha256": "45f6a1c1310f624e988969b6c73e1a0a2909128dff32b3a6c1405cd5c4e6816b",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "88cfa294737ec73e379f666750bb9ce58d74b4ad4237405300915f5c293f17d2"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-ERIE-CAPACITY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Executive Summary, printed pp. 2-3 (PDF pp. 1-2)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25. The page footer between printed pp. 2 and 3 splits the sentence on the Wasielewski plant, so it is quoted from the start of p. 3.",
+          "content_sha256": "0ab145cdc94a814444fe4e214e6a7d28c5bc538f17e394a4b3d6f4e30ad1c49f",
+          "retrieval_sha256": "45f6a1c1310f624e988969b6c73e1a0a2909128dff32b3a6c1405cd5c4e6816b",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        },
+        {
+          "id": "E-SC43-LEHIGH-ERIE-DEMAND",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Executive Summary, printed pp. 2-3 (PDF pp. 1-2)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25; ratio derived from the printed figures.",
+          "content_sha256": "bf42e66b09d79e581e479970a3ae95fffca23f6ad26ca89886aad13fbef9e24d",
+          "retrieval_sha256": "45f6a1c1310f624e988969b6c73e1a0a2909128dff32b3a6c1405cd5c4e6816b",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    },
+    {
+      "source_id": "lehigh_eww2019_newsplash_q3",
+      "title": "NEWSPLASH: News for Customers of the Erie Water Works, Third Quarter 2019",
+      "url": "https://www.eriewater.org/wp-content/uploads/2019/07/2019-Third-Quarter-Final.pdf",
+      "original_url": "https://www.eriewater.org/wp-content/uploads/2019/07/2019-Third-Quarter-Final.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.eriewater.org/wp-content/uploads/2019/07/2019-Third-Quarter-Final.pdf at 2026-10-25T16:11:22Z (curl, HTTP 200, 688789 bytes, sha256 76a387fe12528e34d38e9a6cb3879f9fb421712a7ff5b4401fde9a633ebf58bc); text by gs-10.07.1 txtwrite-pages, sha256 3526c7b63cbd62d50a84ba9a4a37cc2a603aeea1e996ef9aca8b9825014518e8.",
+      "retrieval": {
+        "requested_url": "https://www.eriewater.org/wp-content/uploads/2019/07/2019-Third-Quarter-Final.pdf",
+        "final_url": "https://www.eriewater.org/wp-content/uploads/2019/07/2019-Third-Quarter-Final.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:11:22Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 688789,
+        "sha256": "76a387fe12528e34d38e9a6cb3879f9fb421712a7ff5b4401fde9a633ebf58bc",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "3526c7b63cbd62d50a84ba9a4a37cc2a603aeea1e996ef9aca8b9825014518e8"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-ERIE-AVERAGE-2019",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Page 1, article 'What is a Cost of Service Study?' (left column)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25. The three columns of the page run together line by line in the text layer, so the quotes are single-line fragments of the left column.",
+          "content_sha256": "1edd26ba89ff81a22593f5622e5d35c042fc5ea9c561e4b25f7db0d575ee47fc",
+          "retrieval_sha256": "76a387fe12528e34d38e9a6cb3879f9fb421712a7ff5b4401fde9a633ebf58bc",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    },
+    {
+      "source_id": "lehigh_eww2019_rate_study",
+      "title": "Water Rate Study Report",
+      "url": "https://www.eriewater.org/wp-content/uploads/2019/11/2019-October-Final-EWW-Rate-Study-Report.pdf",
+      "original_url": "https://www.eriewater.org/wp-content/uploads/2019/11/2019-October-Final-EWW-Rate-Study-Report.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.eriewater.org/wp-content/uploads/2019/11/2019-October-Final-EWW-Rate-Study-Report.pdf at 2026-10-25T16:13:47Z (curl, HTTP 200, 774237 bytes, sha256 98cc832eeacdb9c697203592d668fe973684645f1e067fac96bf032d62b09f9d); text by gs-10.07.1 txtwrite-pages, sha256 3345040f3eae7c5c7a8ff20ceff9b52c8ccc6fcfb10ec41b5ac59cd4b170be28.",
+      "retrieval": {
+        "requested_url": "https://www.eriewater.org/wp-content/uploads/2019/11/2019-October-Final-EWW-Rate-Study-Report.pdf",
+        "final_url": "https://www.eriewater.org/wp-content/uploads/2019/11/2019-October-Final-EWW-Rate-Study-Report.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:13:47Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 774237,
+        "sha256": "98cc832eeacdb9c697203592d668fe973684645f1e067fac96bf032d62b09f9d",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "3345040f3eae7c5c7a8ff20ceff9b52c8ccc6fcfb10ec41b5ac59cd4b170be28"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-ERIE-BULK",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 3.5 'Units of Service', Table 3-6 'Bulk Customer and Total Units of Service', report p. 11 (PDF p. 15); Section 3.5, report p. 10; Section 3, report p. 8",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25; the conversion to gallons and the daily figure are derived arithmetic.",
+          "content_sha256": "15bd6829a2d8da815699a61b5926c061e91cb8cedef111f7bac2dddd5dd324a5",
+          "retrieval_sha256": "98cc832eeacdb9c697203592d668fe973684645f1e067fac96bf032d62b09f9d",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    },
+    {
+      "source_id": "lehigh_eww2023_newsplash_q3",
+      "title": "NEWSPLASH: News for Customers of the Erie Water Works, Third Quarter 2023",
+      "url": "https://www.eriewater.org/wp-content/uploads/2023/06/2023-Third-Quarter-Draft-Picture-2.pdf",
+      "original_url": "https://www.eriewater.org/wp-content/uploads/2023/06/2023-Third-Quarter-Draft-Picture-2.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.eriewater.org/wp-content/uploads/2023/06/2023-Third-Quarter-Draft-Picture-2.pdf at 2026-10-25T16:11:18Z (curl, HTTP 200, 318015 bytes, sha256 c39766314c1744f7cadabd8889ef087c8a0ef51705b374c3fb258c67f0cf3a54); text by gs-10.07.1 txtwrite-pages, sha256 902bd3620b3c7b11af4766e19ba30eeec8ab33078b1ed137beafdb0242acd780.",
+      "retrieval": {
+        "requested_url": "https://www.eriewater.org/wp-content/uploads/2023/06/2023-Third-Quarter-Draft-Picture-2.pdf",
+        "final_url": "https://www.eriewater.org/wp-content/uploads/2023/06/2023-Third-Quarter-Draft-Picture-2.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:11:18Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 318015,
+        "sha256": "c39766314c1744f7cadabd8889ef087c8a0ef51705b374c3fb258c67f0cf3a54",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "902bd3620b3c7b11af4766e19ba30eeec8ab33078b1ed137beafdb0242acd780"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-ERIE-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Page 2, storage article (left column)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25. The two columns of the page run together line by line in the text layer, so the quotes are single-line fragments of the left column.",
+          "content_sha256": "06fcea825863d00ce6477fa4f29946d0b42647debd90adcefee0cb1a13230587",
+          "retrieval_sha256": "c39766314c1744f7cadabd8889ef087c8a0ef51705b374c3fb258c67f0cf3a54",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    },
+    {
+      "source_id": "lehigh_eww2026_who_we_are",
+      "title": "About Erie Water Works | Who We Are",
+      "url": "https://www.eriewater.org/who-we-are/",
+      "original_url": "https://www.eriewater.org/who-we-are/",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.eriewater.org/who-we-are/ at 2026-10-25T16:13:02Z (curl, HTTP 200, 231125 bytes, sha256 1ae12785d406b3e8633a9f64b543f351743f7b2b387ff21a82d893d96b6c2296); text by html.parser-py3.14 blocks-v1, sha256 435333c792d9e74b4064f3ab8eec27d95708aa458ce10cece522d2100cd88b0c.",
+      "retrieval": {
+        "requested_url": "https://www.eriewater.org/who-we-are/",
+        "final_url": "https://www.eriewater.org/who-we-are/",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:13:02Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 231125,
+        "sha256": "1ae12785d406b3e8633a9f64b543f351743f7b2b387ff21a82d893d96b6c2296",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "435333c792d9e74b4064f3ab8eec27d95708aa458ce10cece522d2100cd88b0c"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-ERIE-BUYERS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section 'Service Areas'",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes"
+          ],
+          "notes": "Checked against the extracted text of the retrieved page on 2026-10-25.",
+          "content_sha256": "b80ef12f30f2e7034884070db467954945e4031795566ff553924dbf72ee31a4",
+          "retrieval_sha256": "1ae12785d406b3e8633a9f64b543f351743f7b2b387ff21a82d893d96b6c2296",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 1,
+            "total": 1
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    },
+    {
+      "source_id": "lehigh_eww2026_wqr_2025",
+      "title": "2025 Water Quality Report: Erie",
+      "url": "https://www.eriewater.org/wp-content/uploads/2026/04/ERIE-2025-Water-Quality-Report.pdf",
+      "original_url": "https://www.eriewater.org/wp-content/uploads/2026/04/ERIE-2025-Water-Quality-Report.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.eriewater.org/wp-content/uploads/2026/04/ERIE-2025-Water-Quality-Report.pdf at 2026-10-25T16:12:11Z (curl, HTTP 200, 8567756 bytes, sha256 fd4c82659fff44e710570ae1dce00e8606ec8cab8d6731169a2953ce0921986d); text by gs-10.07.1 txtwrite-pages, sha256 510639bdf1c1b25b577f47260b63b649d778dffcd60786c20a723e750f641411.",
+      "retrieval": {
+        "requested_url": "https://www.eriewater.org/resources/wqr2025-erie/",
+        "final_url": "https://www.eriewater.org/wp-content/uploads/2026/04/ERIE-2025-Water-Quality-Report.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:12:11Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 8567756,
+        "sha256": "fd4c82659fff44e710570ae1dce00e8606ec8cab8d6731169a2953ce0921986d",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "510639bdf1c1b25b577f47260b63b649d778dffcd60786c20a723e750f641411"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-ERIE-PLANTS-2025",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Section on the water source ('Our water source is exclusively surface water from Lake Erie')",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25.",
+          "content_sha256": "8a42f5db3f817a149cd67890a37a2eb2f30a4a89e6113ebe170010299aa5704a",
+          "retrieval_sha256": "fd4c82659fff44e710570ae1dce00e8606ec8cab8d6731169a2953ce0921986d",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    },
+    {
+      "source_id": "lehigh_lca2020_where_water",
+      "title": "Where Does My Drinking Water Come From? How LCA Collects, Treats and Transports Your H2O",
+      "url": "https://www.lcawaterworks.org/2020/07/where-does-my-drinking-water-come-from-how-lca-collects-treats-and-transports-your-h2o/",
+      "original_url": "https://www.lcawaterworks.org/2020/07/where-does-my-drinking-water-come-from-how-lca-collects-treats-and-transports-your-h2o/",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.lcawaterworks.org/2020/07/where-does-my-drinking-water-come-from-how-lca-collects-treats-and-transports-your-h2o/ at 2026-10-25T16:08:15Z (curl, HTTP 200, 86713 bytes, sha256 0b389d98d54cbac5541fdd46b41633a9cd188ac1394b295ed1ead4f275b4b504); text by html.parser-py3.14 blocks-v1, sha256 146e7e5808c9351f91fa366463fee0ebe3ea4617aecc4c373b47124ed318f84d.",
+      "retrieval": {
+        "requested_url": "https://www.lcawaterworks.org/2020/07/where-does-my-drinking-water-come-from-how-lca-collects-treats-and-transports-your-h2o/",
+        "final_url": "https://www.lcawaterworks.org/2020/07/where-does-my-drinking-water-come-from-how-lca-collects-treats-and-transports-your-h2o/",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:08:15Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 86713,
+        "sha256": "0b389d98d54cbac5541fdd46b41633a9cd188ac1394b295ed1ead4f275b4b504",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "146e7e5808c9351f91fa366463fee0ebe3ea4617aecc4c373b47124ed318f84d"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-LCA-RESERVOIRS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Sections 'Sources' and 'Storage Solutions'",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the retrieved page on 2026-10-25.",
+          "content_sha256": "127bf91c7442237d4a8bd4077a9d7982a55fedf4f584c145ede9df53d9e043bd",
+          "retrieval_sha256": "0b389d98d54cbac5541fdd46b41633a9cd188ac1394b295ed1ead4f275b4b504",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    },
+    {
+      "source_id": "lehigh_lca2023_board_agenda_sep11",
+      "title": "Board Meeting Agenda, September 11, 2023 (with the 2022 Audit and Financial Statements)",
+      "url": "https://www.lcawaterworks.org/wp-content/uploads/2023/09/2023September11-BoardAgendaLCA.pdf",
+      "original_url": "https://www.lcawaterworks.org/wp-content/uploads/2023/09/2023September11-BoardAgendaLCA.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.lcawaterworks.org/wp-content/uploads/2023/09/2023September11-BoardAgendaLCA.pdf at 2026-10-25T17:28:57Z (curl, HTTP 200, 1787414 bytes, sha256 6a362743cef33d4f704f67c4d3abda78feeefce5e6c6a2631b517e704afac149); text by gs-10.07.1 txtwrite-pages, sha256 7d5ab412c800947de14a30a4d2bdf091f7626114afdc793bfa7f4005ab7b2748.",
+      "retrieval": {
+        "requested_url": "https://www.lcawaterworks.org/wp-content/uploads/2023/09/2023September11-BoardAgendaLCA.pdf",
+        "final_url": "https://www.lcawaterworks.org/wp-content/uploads/2023/09/2023September11-BoardAgendaLCA.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T17:28:57Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 1787414,
+        "sha256": "6a362743cef33d4f704f67c4d3abda78feeefce5e6c6a2631b517e704afac149",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "7d5ab412c800947de14a30a4d2bdf091f7626114afdc793bfa7f4005ab7b2748"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-LCA-SALES-2022",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "2022 financial statements in the board packet, Management's Discussion and Analysis, Suburban Division bullets, printed p. 13 (PDF p. 21)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25; the PDF page was found by extracting the pages one at a time.",
+          "content_sha256": "d96640a687fe233a0ab8b7924a9b7151e7cfc4fd8af083b206b8ae67a1796325",
+          "retrieval_sha256": "6a362743cef33d4f704f67c4d3abda78feeefce5e6c6a2631b517e704afac149",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    },
+    {
+      "source_id": "lehigh_lca2026_acfr_2025",
+      "title": "Annual Comprehensive Financial Report for the Years Ended December 31, 2025 and 2024",
+      "url": "https://www.lcawaterworks.org/wp-content/uploads/2026/10/LCA-ACFR-2025.pdf",
+      "original_url": "https://www.lcawaterworks.org/wp-content/uploads/2026/10/LCA-ACFR-2025.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.lcawaterworks.org/wp-content/uploads/2026/10/LCA-ACFR-2025.pdf at 2026-10-25T16:03:18Z (curl, HTTP 200, 6550060 bytes, sha256 e1e23cf767499a1924608cf7b0e523fcebaf0d9204c078f94962451ccfa7c67d); text by gs-10.07.1 txtwrite-pages, sha256 7fd3e08d6eb0ebe41de23f85f821087ccccfd83c889ccf752a8ae1c06e6eac21.",
+      "retrieval": {
+        "requested_url": "https://www.lcawaterworks.org/wp-content/uploads/2026/10/LCA-ACFR-2025.pdf",
+        "final_url": "https://www.lcawaterworks.org/wp-content/uploads/2026/10/LCA-ACFR-2025.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:03:18Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 6550060,
+        "sha256": "e1e23cf767499a1924608cf7b0e523fcebaf0d9204c078f94962451ccfa7c67d",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "7fd3e08d6eb0ebe41de23f85f821087ccccfd83c889ccf752a8ae1c06e6eac21"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LEHIGH-LCA-PEAK",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Statistical section, 'Water Supply Sources, Demand and Capacity Information (Continued)', printed p. 129 (PDF p. 147), block 'CITY DIVISION', columns 2022 and 2025",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked on 2026-10-25 against the extracted text and against a rendering of PDF pages 147 and 151 (printed pp. 129 and 133), because both tables are printed sideways and the text layer joins their columns. The column years and row names were read from the rendering; the quotes are the joined runs of the text layer. Ratios derived from the printed values.",
+          "content_sha256": "a5adefa232052c176f8730d2438527942eb98bfbdbe3cf6f8fb6196f1eab5031",
+          "retrieval_sha256": "e1e23cf767499a1924608cf7b0e523fcebaf0d9204c078f94962451ccfa7c67d",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        },
+        {
+          "id": "E-SC43-LEHIGH-LCA-SALES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Management's Discussion and Analysis, Suburban Division bullets, printed p. 25; Letter of Transmittal, printed p. 5",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text on 2026-10-25; both passages are single-column prose.",
+          "content_sha256": "70a26774fc5e18776e280c967b1b8d0583d1c807838a9df0c9a990dfb1cd45be",
+          "retrieval_sha256": "e1e23cf767499a1924608cf7b0e523fcebaf0d9204c078f94962451ccfa7c67d",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:lehigh"
+          ],
+          "scenario": "water_controls_wipe:lehigh"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:lehigh"
+      ],
+      "scenario": "water_controls_wipe:lehigh"
+    }
+  ],
+  "scenario": "water_controls_wipe:lehigh",
+  "model_hash": "8123715ffd2d66b233aaf86f95bd924f5693b5d1397fe52a289498665d329cd2"
+}

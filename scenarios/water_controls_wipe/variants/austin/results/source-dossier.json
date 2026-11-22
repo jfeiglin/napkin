@@ -1,0 +1,257 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 2,
+    "claims": 6,
+    "source_access": {
+      "accessible": 2
+    },
+    "source_status": {
+      "verified": 2,
+      "partial": 0,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 2
+    },
+    "claim_status": {
+      "verified": 6,
+      "partial": 0,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 6
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 6
+    },
+    "sources_with_retrieval": 2,
+    "claims_with_quotes": 6,
+    "claim_quote_match_records": 6,
+    "claims_reachable": 6,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "austin_austin2026_bond_statement",
+      "title": "Preliminary Official Statement: City of Austin, Texas, Water and Wastewater System Revenue Refunding and Improvement Bonds, Series 2026",
+      "url": "https://services.austintexas.gov/edims/document.cfm?id=468742",
+      "original_url": "https://services.austintexas.gov/edims/document.cfm?id=468742",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://services.austintexas.gov/edims/document.cfm?id=468742 at 2026-10-25T16:18:35Z (curl, HTTP 200, 1677045 bytes, sha256 98af6691da9f87c9a0795f99d5230c7ddb499247a4d41afca3dd9eadc5ec86f4); text by gs-10.07.1 txtwrite-pages, sha256 6ec2ab91752338c97e1a0d19858e78c630a93357152eb7bd127c473126b31020.",
+      "retrieval": {
+        "requested_url": "https://services.austintexas.gov/edims/document.cfm?id=468742",
+        "final_url": "https://services.austintexas.gov/edims/document.cfm?id=468742",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:18:35Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 1677045,
+        "sha256": "98af6691da9f87c9a0795f99d5230c7ddb499247a4d41afca3dd9eadc5ec86f4",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "6ec2ab91752338c97e1a0d19858e78c630a93357152eb7bd127c473126b31020"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-AUSTIN-AUSTIN-WATER-PEAK-DAY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Water System, Historical Water Pumpage table, printed p. 25 (p. 31 of 83 of the council backup)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Water System section (printed pp. 21 to 26) in the extracted text of the retrieved PDF on 2026-10-25. The average day and the ratio are derived. The column heads read Total Pumpage (Millions of Gallons), Percent Change and Maximum Day Pumpage (Millions of Gallons).",
+          "content_sha256": "f7f5c2ee8fa54d38cb30aeab575dd7ac51e45fda3a7c269cf436bc30661f3c6e",
+          "retrieval_sha256": "98af6691da9f87c9a0795f99d5230c7ddb499247a4d41afca3dd9eadc5ec86f4",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 12,
+            "total": 12
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:austin"
+          ],
+          "scenario": "water_controls_wipe:austin"
+        },
+        {
+          "id": "E-SC43-AUSTIN-AUSTIN-WATER-SALES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Water System, Information Concerning Water Sales table, printed p. 26 (p. 32 of 83 of the council backup)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Information Concerning Water Sales table in the extracted text of the retrieved PDF on 2026-10-25. Its columns are fiscal 2021 to 2025, and the third column is fiscal 2023. The million-gallon figure and the daily average are derived.",
+          "content_sha256": "b47c9f2140f30c9bf3650589bd24aef7d59363be3731445d550e4e0c54960091",
+          "retrieval_sha256": "98af6691da9f87c9a0795f99d5230c7ddb499247a4d41afca3dd9eadc5ec86f4",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:austin"
+          ],
+          "scenario": "water_controls_wipe:austin"
+        },
+        {
+          "id": "E-SC43-AUSTIN-AUSTIN-WATER-FACILITIES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Water System, Water Treatment Plants, printed p. 22 (p. 28 of 83 of the council backup)",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Water Treatment Plants and Water Storage and Pumping Facilities parts of the Water System section in the extracted text of the retrieved PDF on 2026-10-25.",
+          "content_sha256": "569c5e3bcd129c3f5fae3ab20c58d31594e4e83b534b2d3feea7ce50f2056c66",
+          "retrieval_sha256": "98af6691da9f87c9a0795f99d5230c7ddb499247a4d41afca3dd9eadc5ec86f4",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:austin"
+          ],
+          "scenario": "water_controls_wipe:austin"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:austin"
+      ],
+      "scenario": "water_controls_wipe:austin"
+    },
+    {
+      "source_id": "austin_austinwater2024_conservation_plan",
+      "title": "City of Austin Water Conservation Plan",
+      "url": "https://services.austintexas.gov/edims/document.cfm?id=440216",
+      "original_url": "https://services.austintexas.gov/edims/document.cfm?id=440216",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://services.austintexas.gov/edims/document.cfm?id=440216 at 2026-10-25T16:14:02Z (curl, HTTP 200, 1963473 bytes, sha256 06e1c1973f7d5580342d466f8352f1c6dd13144e31ec6ea1c3dd4d0d3ea1776f); text by gs-10.07.1 txtwrite-pages, sha256 cb5bc6095ee719fec2eab915135d5d20f92deae79bd176993c3d48275c9aee1d.",
+      "retrieval": {
+        "requested_url": "https://services.austintexas.gov/edims/document.cfm?id=440216",
+        "final_url": "https://services.austintexas.gov/edims/document.cfm?id=440216",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:14:02Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 1963473,
+        "sha256": "06e1c1973f7d5580342d466f8352f1c6dd13144e31ec6ea1c3dd4d0d3ea1776f",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "cb5bc6095ee719fec2eab915135d5d20f92deae79bd176993c3d48275c9aee1d"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-AUSTIN-AUSTIN-WATER-CAPACITY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Utility Profile, Treatment and Distribution System, table Austin Water Treatment Plants and Capacity, p. 50 of 61; Water Supply System, p. 44 of 61",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Utility Profile and System Data sections (pp. 42 to 51 of 61) in the extracted text of the retrieved PDF on 2026-10-25.",
+          "content_sha256": "4a5137eff38ce2e2c8ec07e39137026ddec9612e56d97e80d80e8d2db60e5af2",
+          "retrieval_sha256": "06e1c1973f7d5580342d466f8352f1c6dd13144e31ec6ea1c3dd4d0d3ea1776f",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:austin"
+          ],
+          "scenario": "water_controls_wipe:austin"
+        },
+        {
+          "id": "E-SC43-AUSTIN-AUSTIN-WATER-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Treatment and Distribution System, p. 50 of 61; Water Supply System, Storage capacity, p. 44 of 61",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Water Supply System part of the utility profile and the Treatment and Distribution System section in the extracted text of the retrieved PDF on 2026-10-25. The 172.1 MG sum is derived.",
+          "content_sha256": "9443c30972e88d02672248cabf3edd17609a2723dc67abbce5bfcea513ad3dbb",
+          "retrieval_sha256": "06e1c1973f7d5580342d466f8352f1c6dd13144e31ec6ea1c3dd4d0d3ea1776f",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:austin"
+          ],
+          "scenario": "water_controls_wipe:austin"
+        },
+        {
+          "id": "E-SC43-AUSTIN-AUSTIN-WATER-SUPPLY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Utility Profile, Water Supply and Demand, table System Input, p. 44 of 61; table Annual Treated Water Use for Wholesale Customers in 2023, pp. 45 to 46 of 61",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the System Input table, the wholesale customer table and the Historical Water Sales table in the extracted text of the retrieved PDF on 2026-10-25. The daily averages are derived.",
+          "content_sha256": "fca9c8639c23c7a8b8c42b1fb6fd1e13524ed3d3446078fccff6b9160a36c5f4",
+          "retrieval_sha256": "06e1c1973f7d5580342d466f8352f1c6dd13144e31ec6ea1c3dd4d0d3ea1776f",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 12,
+            "total": 12
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:austin"
+          ],
+          "scenario": "water_controls_wipe:austin"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:austin"
+      ],
+      "scenario": "water_controls_wipe:austin"
+    }
+  ],
+  "scenario": "water_controls_wipe:austin",
+  "model_hash": "77b5b977750472899b367eb477ff6a61927182c75c7538a585645bbf296fbf08"
+}

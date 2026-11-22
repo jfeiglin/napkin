@@ -1,0 +1,36 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": null,
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 0,
+    "claims": 0,
+    "source_access": {},
+    "source_status": {
+      "verified": 0,
+      "partial": 0,
+      "unverified": 0
+    },
+    "source_method": {},
+    "claim_status": {
+      "verified": 0,
+      "partial": 0,
+      "unverified": 0
+    },
+    "claim_method": {},
+    "claim_method_status": {},
+    "sources_with_retrieval": 0,
+    "claims_with_quotes": 0,
+    "claim_quote_match_records": 0,
+    "claims_reachable": 0,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [],
+  "scenario": "cyber_learning_loop",
+  "model_hash": "0d0a56e7d0539fea1b2f111135a0e12dcdd42837c7561c0476335bca7be3abea"
+}

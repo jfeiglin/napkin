@@ -1,0 +1,373 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 5,
+    "claims": 7,
+    "source_access": {
+      "accessible": 5
+    },
+    "source_status": {
+      "verified": 5,
+      "partial": 0,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 5
+    },
+    "claim_status": {
+      "verified": 7,
+      "partial": 0,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 7
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 7
+    },
+    "sources_with_retrieval": 5,
+    "claims_with_quotes": 7,
+    "claim_quote_match_records": 7,
+    "claims_reachable": 7,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "losangeles_ladwp2023_raymer_service_letter",
+      "title": "Los Angeles Department of Water and Power Water and Electricity Connection Services Request: Proposed Warehouse Project at 16201 Raymer Street",
+      "url": "https://files.ceqanet.lci.ca.gov/306874-1/attachment/bIdRYdqtDnzJmu4hd7hOM06LFgxeWZk7qsD2KrDqTlRdXqcVnL_E_JVxYf3avVyV1xnRPHL2VRPuFrcZ0",
+      "original_url": "https://ceqanet.lci.ca.gov/2024100131/1/Attachment/bIdRYd",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://files.ceqanet.lci.ca.gov/306874-1/attachment/bIdRYdqtDnzJmu4hd7hOM06LFgxeWZk7qsD2KrDqTlRdXqcVnL_E_JVxYf3avVyV1xnRPHL2VRPuFrcZ0 at 2026-10-25T16:32:57Z (curl, HTTP 200, 404663 bytes, sha256 f082a279eee28b2de108583b1dac80bd8fae0f4cc61dac0dd52c259daeb672c2); text by gs-10.07.1 txtwrite-pages, sha256 198a1a6220a7178b60046d60d0c291e3504698f0dfa987a6ded077dd66e6d736.",
+      "retrieval": {
+        "requested_url": "https://ceqanet.lci.ca.gov/2024100131/1/Attachment/bIdRYd",
+        "final_url": "https://files.ceqanet.lci.ca.gov/306874-1/attachment/bIdRYdqtDnzJmu4hd7hOM06LFgxeWZk7qsD2KrDqTlRdXqcVnL_E_JVxYf3avVyV1xnRPHL2VRPuFrcZ0",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:32:57Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 404663,
+        "sha256": "f082a279eee28b2de108583b1dac80bd8fae0f4cc61dac0dd52c259daeb672c2",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "198a1a6220a7178b60046d60d0c291e3504698f0dfa987a6ded077dd66e6d736"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LOSANGELES-LADWP-CAPACITY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Letter of October 11, 2023, answer to question 3, page 3",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the PDF retrieved on 2026-10-25. Both data values are printed. The DOE Better Buildings page gives the same 600 MGD capacity; it was read only through a third-party tool and is not used.",
+          "content_sha256": "9514dcbc505b49c40249ba37402fe13cbda5964fd0668796e6d79c9d48676d2d",
+          "retrieval_sha256": "f082a279eee28b2de108583b1dac80bd8fae0f4cc61dac0dd52c259daeb672c2",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:los_angeles"
+          ],
+          "scenario": "water_controls_wipe:los_angeles"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:los_angeles"
+      ],
+      "scenario": "water_controls_wipe:los_angeles"
+    },
+    {
+      "source_id": "losangeles_ladwp2025_briefing_book",
+      "title": "2024-25 LADWP Briefing Book",
+      "url": "https://www.ladwp.com/sites/default/files/2025-10/2024_25_BB_FullBook_Rev11_Digital.pdf",
+      "original_url": "https://www.ladwp.com/sites/default/files/2025-10/2024_25_BB_FullBook_Rev11_Digital.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ladwp.com/sites/default/files/2025-10/2024_25_BB_FullBook_Rev11_Digital.pdf at 2026-10-25T16:24:19Z (curl, HTTP 200, 13426657 bytes, sha256 b7a99b81dbffdfc0bd03399c5e2bd60208f2fe8ebaa6a52e947831137b81f266); text by gs-10.07.1 txtwrite-pages, sha256 c2cb7efcdeefb261d133a0cd44131b41407085385007f86a6fdef133aaaf9c4e.",
+      "retrieval": {
+        "requested_url": "https://www.ladwp.com/sites/default/files/2025-10/2024_25_BB_FullBook_Rev11_Digital.pdf",
+        "final_url": "https://www.ladwp.com/sites/default/files/2025-10/2024_25_BB_FullBook_Rev11_Digital.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:24:19Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 13426657,
+        "sha256": "b7a99b81dbffdfc0bd03399c5e2bd60208f2fe8ebaa6a52e947831137b81f266",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "c2cb7efcdeefb261d133a0cd44131b41407085385007f86a6fdef133aaaf9c4e"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LOSANGELES-LADWP-FY2024",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Water for L.A., printed p. 8; Water Facts, printed p. 11",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes"
+          ],
+          "notes": "Checked against the extracted text of the PDF retrieved on 2026-10-25. Nothing is derived. The Water Facts page is a graphic whose labels extract in pieces; the supply shares (50, 41, 7, 2) and the 114 MGD were read from the extracted labels, and the quotes keep only contiguous labels.",
+          "content_sha256": "296bf26fc2310e65e2f22f14e39533b930821e78328090892dc55bf0b3f49ddd",
+          "retrieval_sha256": "b7a99b81dbffdfc0bd03399c5e2bd60208f2fe8ebaa6a52e947831137b81f266",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:los_angeles"
+          ],
+          "scenario": "water_controls_wipe:los_angeles"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:los_angeles"
+      ],
+      "scenario": "water_controls_wipe:los_angeles"
+    },
+    {
+      "source_id": "losangeles_ladwp2025_pos_water_bonds",
+      "title": "Preliminary Official Statement: Department of Water and Power of the City of Los Angeles Water System Revenue Bonds, 2025 Series A and 2025 Series B",
+      "url": "https://www.ladwp.com/sites/default/files/2025-08/POS%20-%20Water%202025%20B.pdf",
+      "original_url": "https://www.ladwp.com/sites/default/files/2025-08/POS%20-%20Water%202025%20B.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ladwp.com/sites/default/files/2025-08/POS%20-%20Water%202025%20B.pdf at 2026-10-25T16:23:46Z (curl, HTTP 200, 2775440 bytes, sha256 a3dbdf360f6325fff5fbac386101950e810f5f38c2a8a344853c993fcb7a2372); text by gs-10.07.1 txtwrite-pages, sha256 f6073cc4a1fbddf9a6c9ca193d35bb3d7bc25a745220f72fc14c20baae0f9c9a.",
+      "retrieval": {
+        "requested_url": "https://www.ladwp.com/sites/default/files/2025-08/POS%20-%20Water%202025%20B.pdf",
+        "final_url": "https://www.ladwp.com/sites/default/files/2025-08/POS%20-%20Water%202025%20B.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:23:46Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 2775440,
+        "sha256": "a3dbdf360f6325fff5fbac386101950e810f5f38c2a8a344853c993fcb7a2372",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "f6073cc4a1fbddf9a6c9ca193d35bb3d7bc25a745220f72fc14c20baae0f9c9a"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LOSANGELES-LADWP-DEMAND",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Water Supply, 'Sources of Water Supply', table 'Water Supply and Demand (In Acre-Feet)', printed p. 40; Los Angeles Aqueduct, printed p. 36",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the PDF retrieved on 2026-10-25. The five-year means and the potable demand are derived from the printed yearly figures; the MGD equivalent uses a 365-day year. The table's footnote markers print as '1' and '2' after the row names; the quotes keep them.",
+          "content_sha256": "10cf6d531daafd37f5ba772c05f36dd1b4032e4c7b1ad8c9315e8198b084a7b3",
+          "retrieval_sha256": "a3dbdf360f6325fff5fbac386101950e810f5f38c2a8a344853c993fcb7a2372",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 8,
+            "total": 8
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:los_angeles"
+          ],
+          "scenario": "water_controls_wipe:los_angeles"
+        },
+        {
+          "id": "E-SC43-LOSANGELES-LADWP-MWD",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Water Supply, 'The Metropolitan Water District of Southern California - General', printed p. 43; table 'Water Supply and Demand', printed p. 40",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the PDF retrieved on 2026-10-25. The data value is printed; the mean of the five printed yearly values is 239,173.4 acre-feet. The MGD figure is derived with a 365-day year.",
+          "content_sha256": "2866e627b13fd9c7042fec979df23ef333bbdf11a971b1b74fadec445c76b762",
+          "retrieval_sha256": "a3dbdf360f6325fff5fbac386101950e810f5f38c2a8a344853c993fcb7a2372",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:los_angeles"
+          ],
+          "scenario": "water_controls_wipe:los_angeles"
+        },
+        {
+          "id": "E-SC43-LOSANGELES-LADWP-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "The Water System, 'Storage', printed p. 37, and table 'Current Storage Capacity', printed p. 38; 'Water Treatment Facilities - Disinfection', printed p. 39",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the PDF retrieved on 2026-10-25. The data value is printed. The sum of the printed million-gallon column (4,255), the share of Los Angeles Reservoir and the total without it are derived. The statement prints 'Department\u2019' without the final s; the quote keeps it.",
+          "content_sha256": "7c93c615f2945d06ec39b0d1203dbbfa384b56d9acff5a13bf3b2e83ebe7dab9",
+          "retrieval_sha256": "a3dbdf360f6325fff5fbac386101950e810f5f38c2a8a344853c993fcb7a2372",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 9,
+            "total": 9
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:los_angeles"
+          ],
+          "scenario": "water_controls_wipe:los_angeles"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:los_angeles"
+      ],
+      "scenario": "water_controls_wipe:los_angeles"
+    },
+    {
+      "source_id": "losangeles_ladwp2026_uwmp_draft",
+      "title": "2025 Urban Water Management Plan (February 2026 Draft)",
+      "url": "https://www.ladwp.com/sites/default/files/2026-02/LADWP%202025%20Urban%20Water%20Management%20Plan_Public%20Review%20Draft_Final_Web.pdf",
+      "original_url": "https://www.ladwp.com/sites/default/files/2026-02/LADWP%202025%20Urban%20Water%20Management%20Plan_Public%20Review%20Draft_Final_Web.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ladwp.com/sites/default/files/2026-02/LADWP%202025%20Urban%20Water%20Management%20Plan_Public%20Review%20Draft_Final_Web.pdf at 2026-10-25T16:29:35Z (curl, HTTP 200, 22082322 bytes, sha256 f87e50731d9b2be2c6ff65c4f0b3fcab43e94cd3c38dfafb7ba17ae05fb06c9d); text by gs-10.07.1 txtwrite-pages, sha256 19b86e29469725d6e93ac6f7c7e9c5d94f265708215df35433e3df446ee61ce4.",
+      "retrieval": {
+        "requested_url": "https://www.ladwp.com/sites/default/files/2026-02/LADWP%202025%20Urban%20Water%20Management%20Plan_Public%20Review%20Draft_Final_Web.pdf",
+        "final_url": "https://www.ladwp.com/sites/default/files/2026-02/LADWP%202025%20Urban%20Water%20Management%20Plan_Public%20Review%20Draft_Final_Web.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:29:35Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 22082322,
+        "sha256": "f87e50731d9b2be2c6ff65c4f0b3fcab43e94cd3c38dfafb7ba17ae05fb06c9d",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "19b86e29469725d6e93ac6f7c7e9c5d94f265708215df35433e3df446ee61ce4"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LOSANGELES-LADWP-UNTREATED",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Chapter 8 Metropolitan Water District, printed p. 8-5; Section 9.5 Energy Intensity, 'MWD Energy Intensity', printed p. 9-9",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes"
+          ],
+          "notes": "Checked against the extracted text of the PDF retrieved on 2026-10-25. Nothing is derived.",
+          "content_sha256": "e6e264944830304e28a133f87596ce1a69a3272b3c745dbe67a3a27e6a0e14c9",
+          "retrieval_sha256": "f87e50731d9b2be2c6ff65c4f0b3fcab43e94cd3c38dfafb7ba17ae05fb06c9d",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:los_angeles"
+          ],
+          "scenario": "water_controls_wipe:los_angeles"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:los_angeles"
+      ],
+      "scenario": "water_controls_wipe:los_angeles"
+    },
+    {
+      "source_id": "losangeles_mwd2024_biennial_budget",
+      "title": "Fiscal Years 2024/25 and 2025/26 Biennial Budget",
+      "url": "https://d1q0afiq12ywwq.cloudfront.net/media/oxvp4gb3/fy-2024_25-fy2025_26-biennial-budget-book-final-approved.pdf",
+      "original_url": "https://mwdh2o.com/media/oxvp4gb3/fy-2024_25-fy2025_26-biennial-budget-book-final-approved.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://d1q0afiq12ywwq.cloudfront.net/media/oxvp4gb3/fy-2024_25-fy2025_26-biennial-budget-book-final-approved.pdf at 2026-10-25T16:26:05Z (curl, HTTP 200, 17805181 bytes, sha256 61c24248a061fd1e4c84df2a62eed1438d7bcf2a9f8aa9301839a609e61a465b); text by gs-10.07.1 txtwrite-pages, sha256 e31f154f8b1494dcc374f08e4a6f6fc4d66bbc786e1c59c7caa6226dce646858.",
+      "retrieval": {
+        "requested_url": "https://mwdh2o.com/media/oxvp4gb3/fy-2024_25-fy2025_26-biennial-budget-book-final-approved.pdf",
+        "final_url": "https://d1q0afiq12ywwq.cloudfront.net/media/oxvp4gb3/fy-2024_25-fy2025_26-biennial-budget-book-final-approved.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:26:05Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 17805181,
+        "sha256": "61c24248a061fd1e4c84df2a62eed1438d7bcf2a9f8aa9301839a609e61a465b",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "e31f154f8b1494dcc374f08e4a6f6fc4d66bbc786e1c59c7caa6226dce646858"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-LOSANGELES-LADWP-MWD-PEAK",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "locator_checked": "Resolutions and Ordinances, Resolution 9355, Table 1 'Calendar Year 2025 Capacity Charge', printed p. 453",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Checked against the extracted text of the PDF retrieved on 2026-10-25. The data value is printed; the MGD equivalent is derived (1 cfs = 0.6463 MGD).",
+          "content_sha256": "5a32145e8e5f7482c9a2a1fb526cd13874f4d8d784b36a0bb416678dafa2b053",
+          "retrieval_sha256": "61c24248a061fd1e4c84df2a62eed1438d7bcf2a9f8aa9301839a609e61a465b",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 8,
+            "total": 8
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:los_angeles"
+          ],
+          "scenario": "water_controls_wipe:los_angeles"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:los_angeles"
+      ],
+      "scenario": "water_controls_wipe:los_angeles"
+    }
+  ],
+  "scenario": "water_controls_wipe:los_angeles",
+  "model_hash": "ecebc0523837d12d80aeed66389acac40fb3f3574ccc19d4857fd31807878a27"
+}

@@ -1,0 +1,468 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 5,
+    "claims": 11,
+    "source_access": {
+      "accessible": 3,
+      "third_party_primary_retrieval": 2
+    },
+    "source_status": {
+      "verified": 3,
+      "partial": 2,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 3,
+      "third_party_primary_retrieval": 2
+    },
+    "claim_status": {
+      "verified": 8,
+      "partial": 3,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 8,
+      "third_party_primary_retrieval": 3
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 8,
+      "third_party_primary_retrieval/partial": 3
+    },
+    "sources_with_retrieval": 5,
+    "claims_with_quotes": 11,
+    "claim_quote_match_records": 11,
+    "claims_reachable": 11,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "eldorado_edlafco2020_eid_msr",
+      "title": "Municipal Service Review Update & Sphere of Influence Update: El Dorado Irrigation District (Final)",
+      "url": "https://www.edlafco.us/files/d81195120/20+December+2_Final+EID+MSR.pdf",
+      "original_url": "https://www.edlafco.us/files/d81195120/20+December+2_Final+EID+MSR.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.edlafco.us/files/d81195120/20+December+2_Final+EID+MSR.pdf at 2026-10-25T16:11:10Z (curl, HTTP 200, 50927462 bytes, sha256 3ed6e041d22e75d9df643ceaaa06a7bfb020c9d02a645c03771d56277665543a); text by gs-10.07.1 txtwrite-pages, sha256 6cfeac31657a156d92d2da529d1d272d90a56b4807fced91beae142a0ad9d577.",
+      "retrieval": {
+        "requested_url": "https://www.edlafco.us/files/d81195120/20+December+2_Final+EID+MSR.pdf",
+        "final_url": "https://www.edlafco.us/files/d81195120/20+December+2_Final+EID+MSR.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:11:10Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 50927462,
+        "sha256": "3ed6e041d22e75d9df643ceaaa06a7bfb020c9d02a645c03771d56277665543a",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "6cfeac31657a156d92d2da529d1d272d90a56b4807fced91beae142a0ad9d577"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-ELDORADO-EID-MAXDAY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Chapter 7 (water supply and treatment) of the extracted text; the table rows and the total were checked against the page text.",
+          "content_sha256": "fcdcc209472f8e7edda7dce6c2bfb692015c248b99ff60e09913c07a4239b2b6",
+          "retrieval_sha256": "3ed6e041d22e75d9df643ceaaa06a7bfb020c9d02a645c03771d56277665543a",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        },
+        {
+          "id": "E-SC43-ELDORADO-EID-PLANTS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the treatment sections of Chapter 7 in the extracted text. The 87.5 MGD is arithmetic on the printed figures.",
+          "content_sha256": "1d5cf32a2901b52c189277018af05a316abebef1769cefc97543e226e604dc8d",
+          "retrieval_sha256": "3ed6e041d22e75d9df643ceaaa06a7bfb020c9d02a645c03771d56277665543a",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        },
+        {
+          "id": "E-SC43-ELDORADO-EID-STORAGE2013",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the storage section and both parts of Table 7-8 in the extracted text and counted 33 rows.",
+          "content_sha256": "86a98ea82dc6487896c967df4eb0c167e220f772cf664970ac3e92d08cd33b05",
+          "retrieval_sha256": "3ed6e041d22e75d9df643ceaaa06a7bfb020c9d02a645c03771d56277665543a",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:el_dorado"
+      ],
+      "scenario": "water_controls_wipe:el_dorado"
+    },
+    {
+      "source_id": "eldorado_edlafco2022_small_water_msr",
+      "title": "Municipal Service Review and Sphere of Influence Update: Small to Medium Water Purveyors in El Dorado County (Public Review Draft)",
+      "url": "https://www.edlafco.us/files/bfdb01603/22+Aug+24_Item+8+Draft+Small+Water+District+MSR.pdf",
+      "original_url": "https://www.edlafco.us/files/bfdb01603/22+Aug+24_Item+8+Draft+Small+Water+District+MSR.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.edlafco.us/files/bfdb01603/22+Aug+24_Item+8+Draft+Small+Water+District+MSR.pdf at 2026-10-25T16:12:09Z (curl, HTTP 200, 5696388 bytes, sha256 6faaffedbd386abd3e65ed05b919c3ba284409808504aeb77c6f7897a8efcb28); text by gs-10.07.1 txtwrite-pages, sha256 18234e75d21fe1d228d56a4c9a499797f815b727d6eddeaf762ac6b821c87595.",
+      "retrieval": {
+        "requested_url": "https://www.edlafco.us/files/bfdb01603/22+Aug+24_Item+8+Draft+Small+Water+District+MSR.pdf",
+        "final_url": "https://www.edlafco.us/files/bfdb01603/22+Aug+24_Item+8+Draft+Small+Water+District+MSR.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:12:09Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 5696388,
+        "sha256": "6faaffedbd386abd3e65ed05b919c3ba284409808504aeb77c6f7897a8efcb28",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "18234e75d21fe1d228d56a4c9a499797f815b727d6eddeaf762ac6b821c87595"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-ELDORADO-GDPUD-MAXDAY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Georgetown Divide PUD section of the extracted text, with its footnotes (footnote 20 names the 2019 State Water Board inspection as the source of the maximum day).",
+          "content_sha256": "6d808612e0eb62e2dec4818a4f473dfbb3ac142f69538d69ef44cff416f34ab8",
+          "retrieval_sha256": "6faaffedbd386abd3e65ed05b919c3ba284409808504aeb77c6f7897a8efcb28",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        },
+        {
+          "id": "E-SC43-ELDORADO-GDPUD-PLANTS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Treatment section and the determinations for Georgetown Divide PUD in the extracted text.",
+          "content_sha256": "9a28a54bd3e3756b2b4f0160ec76249ebc5d335b864cf4391845508413e48ff7",
+          "retrieval_sha256": "6faaffedbd386abd3e65ed05b919c3ba284409808504aeb77c6f7897a8efcb28",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        },
+        {
+          "id": "E-SC43-ELDORADO-GDPUD-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Table 3 and the storage text in the extracted text; the ten tank volumes sum to 2.824 MG.",
+          "content_sha256": "ee7aecc12053e8e1f13081ad8a821e1436f09dd2f9538c99b1309f93bb6dd537",
+          "retrieval_sha256": "6faaffedbd386abd3e65ed05b919c3ba284409808504aeb77c6f7897a8efcb28",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:el_dorado"
+      ],
+      "scenario": "water_controls_wipe:el_dorado"
+    },
+    {
+      "source_id": "eldorado_eid2026_edhwtp_page",
+      "title": "El Dorado Hills Water Treatment Plant Improvements Project",
+      "url": "https://www.eid.org/about-us/project-updates/el-dorado-hills-water-treatment-plant-improvements",
+      "original_url": "https://www.eid.org/about-us/project-updates/el-dorado-hills-water-treatment-plant-improvements",
+      "access": "third_party_primary_retrieval",
+      "status": "partial",
+      "method": "third_party_primary_retrieval",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.eid.org/about-us/project-updates/el-dorado-hills-water-treatment-plant-improvements at 2026-10-25T16:23:52Z (tinyfish, HTTP None, 2820 bytes, sha256 a1a20bafdae4995492bd2931548e22667ca70597ec827fe4adf798b3fd7501ca); text by utf8-decode-v1, sha256 a1a20bafdae4995492bd2931548e22667ca70597ec827fe4adf798b3fd7501ca. Access failed: https://www.eid.org/about-us/project-updates/el-dorado-hills-water-treatment-plant-improvements via curl (HTTP 403): curl returned HTTP 403 (2026-10-25T16:23:50Z). Access failed: https://web.archive.org/ via archive (HTTP None): web.archive.org reset the TLS connection on every attempt (curl exit 35, connection reset by peer); no capture could be looked up or fetched..",
+      "retrieval": {
+        "requested_url": "https://www.eid.org/about-us/project-updates/el-dorado-hills-water-treatment-plant-improvements",
+        "final_url": "https://www.eid.org/about-us/project-updates/el-dorado-hills-water-treatment-plant-improvements",
+        "http_status": null,
+        "retrieved_at": "2026-10-25T16:23:52Z",
+        "tool": "tinyfish",
+        "media_type": "text/plain; charset=utf-8",
+        "bytes": 2820,
+        "sha256": "a1a20bafdae4995492bd2931548e22667ca70597ec827fe4adf798b3fd7501ca",
+        "text": {
+          "extractor": "utf8-decode-v1",
+          "sha256": "a1a20bafdae4995492bd2931548e22667ca70597ec827fe4adf798b3fd7501ca"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-ELDORADO-EID-EDHWTP",
+          "status": "partial",
+          "date": "2026-10-25",
+          "method": "third_party_primary_retrieval",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read through a TinyFish rendering because eid.org refuses direct downloads (HTTP 403) and the Internet Archive host reset every connection from this environment. Read the whole rendered page. Integration: partial because method third_party_primary_retrieval.",
+          "content_sha256": "d4ee8e1e08993bcbb8a961979f9806f0c64764f6859f20bd6388217f052a85be",
+          "retrieval_sha256": "a1a20bafdae4995492bd2931548e22667ca70597ec827fe4adf798b3fd7501ca",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:el_dorado"
+      ],
+      "scenario": "water_controls_wipe:el_dorado"
+    },
+    {
+      "source_id": "eldorado_eid2026_uwmp2025",
+      "title": "2025 Urban Water Management Plan",
+      "url": "https://www.eid.org/home/showpublisheddocument/18950/639177385722200000",
+      "original_url": "https://www.eid.org/home/showpublisheddocument/18950/639177385722200000",
+      "access": "third_party_primary_retrieval",
+      "status": "partial",
+      "method": "third_party_primary_retrieval",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.eid.org/home/showpublisheddocument/18950/639177385722200000 at 2026-10-25T16:22:08Z (tinyfish, HTTP None, 306477 bytes, sha256 534cf2dd52da343bed32b66a523d2dec8b5a410d2f17894945836e80cbfbbf6e); text by utf8-decode-v1, sha256 534cf2dd52da343bed32b66a523d2dec8b5a410d2f17894945836e80cbfbbf6e. Access failed: https://www.eid.org/home/showpublisheddocument/18950/639177385722200000 via curl (HTTP 403): curl: (22) The requested URL returned error: 403 (2026-10-25T16:17:11Z). Access failed: https://web.archive.org/cdx/search/cdx?url=eid.org/home/showpublisheddocument/18950* via archive (HTTP None): web.archive.org reset the TLS connection on every attempt (curl exit 35, connection reset by peer); no capture could be looked up or fetched..",
+      "retrieval": {
+        "requested_url": "https://www.eid.org/home/showpublisheddocument/18950/639177385722200000",
+        "final_url": "https://www.eid.org/home/showpublisheddocument/18950/639177385722200000",
+        "http_status": null,
+        "retrieved_at": "2026-10-25T16:22:08Z",
+        "tool": "tinyfish",
+        "media_type": "text/plain; charset=utf-8",
+        "bytes": 306477,
+        "sha256": "534cf2dd52da343bed32b66a523d2dec8b5a410d2f17894945836e80cbfbbf6e",
+        "text": {
+          "extractor": "utf8-decode-v1",
+          "sha256": "534cf2dd52da343bed32b66a523d2dec8b5a410d2f17894945836e80cbfbbf6e"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-ELDORADO-EID-USE",
+          "status": "partial",
+          "date": "2026-10-25",
+          "method": "third_party_primary_retrieval",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read through a TinyFish rendering because eid.org refuses direct downloads (HTTP 403) and the Internet Archive host reset every connection from this environment. Read Chapter 4 and Appendix B of the rendered text. The conversions to MGD are arithmetic (1 acre-foot = 325,851 gallons, a year = 365 days). Integration: partial because method third_party_primary_retrieval.",
+          "content_sha256": "06ea69b7533dad5461b0ba0e4cba9fe073f4f1e686d7212d545eb0966553c5cd",
+          "retrieval_sha256": "534cf2dd52da343bed32b66a523d2dec8b5a410d2f17894945836e80cbfbbf6e",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        },
+        {
+          "id": "E-SC43-ELDORADO-EID-STORAGE",
+          "status": "partial",
+          "date": "2026-10-25",
+          "method": "third_party_primary_retrieval",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read through a TinyFish rendering because eid.org refuses direct downloads (HTTP 403) and the Internet Archive host reset every connection from this environment. Read Section 2.3.1 of the rendered text. Integration: partial because method third_party_primary_retrieval.",
+          "content_sha256": "69390b9316fd83dd2402da7bd66b17bd6558a9e13504f4f6202f9a2a6bc0e167",
+          "retrieval_sha256": "534cf2dd52da343bed32b66a523d2dec8b5a410d2f17894945836e80cbfbbf6e",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 1,
+            "total": 1
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:el_dorado"
+      ],
+      "scenario": "water_controls_wipe:el_dorado"
+    },
+    {
+      "source_id": "eldorado_gdpud2026_uwmp2025_draft",
+      "title": "2025 Urban Water Management Plan (Public Review Draft)",
+      "url": "https://www.gd-pud.org/files/fd9b40076/2025+UWMP+GPUD_Public+Review+Draft.pdf",
+      "original_url": "https://www.gd-pud.org/files/fd9b40076/2025+UWMP+GPUD_Public+Review+Draft.pdf",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.gd-pud.org/files/fd9b40076/2025+UWMP+GPUD_Public+Review+Draft.pdf at 2026-10-25T16:12:42Z (curl, HTTP 200, 31423802 bytes, sha256 06a54302a400877eccdca85ad638a84a53f2f6d65c4c7d540cca6cf325f346b9); text by gs-10.07.1 txtwrite-pages, sha256 aa3087646e27e7a3ef62bfa9501b31d6ced1ebaac0643c92948bafe1a0ca5a1d.",
+      "retrieval": {
+        "requested_url": "https://www.gd-pud.org/files/fd9b40076/2025+UWMP+GPUD_Public+Review+Draft.pdf",
+        "final_url": "https://www.gd-pud.org/files/fd9b40076/2025+UWMP+GPUD_Public+Review+Draft.pdf",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:12:42Z",
+        "tool": "curl",
+        "media_type": "application/pdf",
+        "bytes": 31423802,
+        "sha256": "06a54302a400877eccdca85ad638a84a53f2f6d65c4c7d540cca6cf325f346b9",
+        "text": {
+          "extractor": "gs-10.07.1 txtwrite-pages",
+          "sha256": "aa3087646e27e7a3ef62bfa9501b31d6ced1ebaac0643c92948bafe1a0ca5a1d"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-ELDORADO-GDPUD-USE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Chapter 4 of the extracted text. The conversion to MGD is arithmetic (1 acre-foot = 325,851 gallons, a year = 365 days).",
+          "content_sha256": "8416e2ab767d7f63b40c2f079c48cf25d7e6d5d5dd1bf9e691c9db0eb8a3bae3",
+          "retrieval_sha256": "06a54302a400877eccdca85ad638a84a53f2f6d65c4c7d540cca6cf325f346b9",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        },
+        {
+          "id": "E-SC43-ELDORADO-GDPUD-SYSTEM",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Sections 2.4, 3.2.5 and 3.2.6 of the extracted text.",
+          "content_sha256": "ccd51d09f409ec20073fe6fcd896ecda6a9313258e06dcea36d7bf46c1430c10",
+          "retrieval_sha256": "06a54302a400877eccdca85ad638a84a53f2f6d65c4c7d540cca6cf325f346b9",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:el_dorado"
+          ],
+          "scenario": "water_controls_wipe:el_dorado"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:el_dorado"
+      ],
+      "scenario": "water_controls_wipe:el_dorado"
+    }
+  ],
+  "scenario": "water_controls_wipe:el_dorado",
+  "model_hash": "b7a650fc013d40e0bb9c6376f0c687941c4dad9a90822fb711b5b5cac47dd5ad"
+}

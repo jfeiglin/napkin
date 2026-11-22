@@ -1,16 +1,16 @@
 # water_controls_wipe:washington_dc
 
-[Historical scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
+[Recovery readings](results/readings.md) · [Historical scenario brief](results/brief.md) · [Model](model.scn) · [Historical methods](results/methods.md) ·
 [The `water_controls_wipe` package](../../README.md)
 
-This variant follows water service and recovery in Washington, DC. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The checked-in results describe the historical study at legacy revision `8488047`.
+This variant follows water service and recovery in Washington, DC. The initial controls outage is an incident input. The model computes storage, deliveries, crew queues and advisory clearance over time. The recovery readings come from this model. The historical brief and methods describe revision `8488047`.
 
 ## The place
 
 Washington, DC is in the family because of a study of the cost of a loss of the region's water supply. Five
 systems serve the place. The Washington Aqueduct treats Potomac water and sells all of it to DC Water, Arlington
 and Fairfax Water, and Fairfax Water also has its own plants. WSSC Water has its own plants and no connection to
-the others in the model. The run "The Aqueduct only" follows a first move that reaches the Aqueduct alone.
+the others in the model. In the `delayed_aqueduct` run, only the Aqueduct experiences the initial outage. Its buyers then receive less water.
 
 ## Evidence and checks
 

@@ -1,0 +1,450 @@
+{
+  "schema_version": "0.0.1",
+  "generated_by": "tools.publish (dossier); edit the owned evidence records, never this file",
+  "review_date": "2026-10-25",
+  "reviewer": "Recorded machine primary-source review.",
+  "method": "Source entries preserve acquired bytes, extraction records and inspected source fields. Claim entries preserve substantive verification and supporting excerpts. Claims that rest on primary indexed extracts carry partial field coverage. Complete source reproduction (fresh byte, extraction and excerpt checks) is the evidence step of the release check.",
+  "review_metadata": {},
+  "quote_match_count_scope": "Claims with a retained verification record storing a complete excerpt match.",
+  "reachability": "model.evidence.dependencies over the entry file of each owner (tools.catalogue.entries): basis links, the records that the notes cite, assumption supports and recursive related claims.",
+  "summary": {
+    "sources": 3,
+    "claims": 13,
+    "source_access": {
+      "accessible": 3
+    },
+    "source_status": {
+      "verified": 3,
+      "partial": 0,
+      "unverified": 0
+    },
+    "source_method": {
+      "primary_full_text": 3
+    },
+    "claim_status": {
+      "verified": 13,
+      "partial": 0,
+      "unverified": 0
+    },
+    "claim_method": {
+      "primary_full_text": 13
+    },
+    "claim_method_status": {
+      "primary_full_text/verified": 13
+    },
+    "sources_with_retrieval": 3,
+    "claims_with_quotes": 13,
+    "claim_quote_match_records": 13,
+    "claims_reachable": 13,
+    "claims_reachable_from_no_scenario": []
+  },
+  "sources": [
+    {
+      "source_id": "jamestown_ncdeq2025_greensboro_lwsp",
+      "title": "Local Water Supply Plan: Greensboro (PWSID 02-41-010), 2025",
+      "url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-010&year=2025",
+      "original_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-010&year=2025",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-010&year=2025 at 2026-10-25T16:02:54Z (curl, HTTP 200, 40832 bytes, sha256 57f75a244622b03522f0bad0028bd99e79b9f4f282732de0f8675de483e24629); text by html.parser-py3.14 blocks-v1, sha256 ddfb07908168366a530ad4fddb378fe253e62edc3c41e0f6b0a5e2baddd868b3.",
+      "retrieval": {
+        "requested_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-010&year=2025",
+        "final_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-010&year=2025",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:02:54Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 40832,
+        "sha256": "57f75a244622b03522f0bad0028bd99e79b9f4f282732de0f8675de483e24629",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "ddfb07908168366a530ad4fddb378fe253e62edc3c41e0f6b0a5e2baddd868b3"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JAMESTOWN-GREENSBORO-MAXDAY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole extracted page and compared the twelve monthly max day values; January is the highest. The ratio is arithmetic on the printed figures.",
+          "content_sha256": "cd58e1bfd65730dc7d78db721252e5aa72d9b36cd5162690a56a9752f46aae9d",
+          "retrieval_sha256": "57f75a244622b03522f0bad0028bd99e79b9f4f282732de0f8675de483e24629",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        },
+        {
+          "id": "E-SC43-JAMESTOWN-GREENSBORO-PLANTS",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Water Treatment Plants table and the surface water source table of the extracted page.",
+          "content_sha256": "d5dd1c4ad44ad99199d7d762a48d5725b54a313079163e697316836da84b2962",
+          "retrieval_sha256": "57f75a244622b03522f0bad0028bd99e79b9f4f282732de0f8675de483e24629",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 3,
+            "total": 3
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        },
+        {
+          "id": "E-SC43-JAMESTOWN-GREENSBORO-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 1 of the extracted page.",
+          "content_sha256": "aef4f15b1ab78675dd9823cd4e9624e09883da4e257adddc3163750b0807a34a",
+          "retrieval_sha256": "57f75a244622b03522f0bad0028bd99e79b9f4f282732de0f8675de483e24629",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 1,
+            "total": 1
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        },
+        {
+          "id": "E-SC43-JAMESTOWN-GREENSBORO-SALES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Water Sales table and its notes in the extracted page. The annual mean of the Burlington sale is arithmetic on the printed figures.",
+          "content_sha256": "2de8f6d9517f18571d7466231a13e693221b7c30ca323244b814081cbc493f04",
+          "retrieval_sha256": "57f75a244622b03522f0bad0028bd99e79b9f4f282732de0f8675de483e24629",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        },
+        {
+          "id": "E-SC43-JAMESTOWN-GREENSBORO-PURCHASES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the purchase table of the extracted page; the total is arithmetic on the printed rows.",
+          "content_sha256": "03466621f7174be214d231d519982ea77c9ec4cf0104586d6d99f82bc4323bc9",
+          "retrieval_sha256": "57f75a244622b03522f0bad0028bd99e79b9f4f282732de0f8675de483e24629",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:jamestown"
+      ],
+      "scenario": "water_controls_wipe:jamestown"
+    },
+    {
+      "source_id": "jamestown_ncdeq2025_highpoint_lwsp",
+      "title": "Local Water Supply Plan: High Point (PWSID 02-41-020), 2025",
+      "url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-020&year=2025",
+      "original_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-020&year=2025",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-020&year=2025 at 2026-10-25T16:02:56Z (curl, HTTP 200, 36257 bytes, sha256 8214fc11a6b55fd6853fb564d65f65b094f07fe013884e2700e6760728543978); text by html.parser-py3.14 blocks-v1, sha256 d50eb7f723339be0a361dc87a7715a423d114fe76126036f0c0d1ed074d98ac4.",
+      "retrieval": {
+        "requested_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-020&year=2025",
+        "final_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-020&year=2025",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:02:56Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 36257,
+        "sha256": "8214fc11a6b55fd6853fb564d65f65b094f07fe013884e2700e6760728543978",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "d50eb7f723339be0a361dc87a7715a423d114fe76126036f0c0d1ed074d98ac4"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JAMESTOWN-HIGHPOINT-MAXDAY",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole extracted page and compared the twelve monthly max day values; October is the highest. The ratio is arithmetic on the printed figures.",
+          "content_sha256": "1cab0cb997d99e572d61b1c1cce9e4a6e017a6f9b6d9b183c9c575ed45a4018d",
+          "retrieval_sha256": "8214fc11a6b55fd6853fb564d65f65b094f07fe013884e2700e6760728543978",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        },
+        {
+          "id": "E-SC43-JAMESTOWN-HIGHPOINT-PLANT",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Water Treatment Plants table and the surface water source table of the extracted page.",
+          "content_sha256": "be8d263bfb4b79f20f40dc75362307886c5d815d6edda49bda97f54e797e9fe1",
+          "retrieval_sha256": "8214fc11a6b55fd6853fb564d65f65b094f07fe013884e2700e6760728543978",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 2,
+            "total": 2
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        },
+        {
+          "id": "E-SC43-JAMESTOWN-HIGHPOINT-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 1 of the extracted page.",
+          "content_sha256": "707b5eb5fc64f72f6710c5a3f97ce38b8e1b2372aee51a82699d9ca68a8feec3",
+          "retrieval_sha256": "8214fc11a6b55fd6853fb564d65f65b094f07fe013884e2700e6760728543978",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 1,
+            "total": 1
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        },
+        {
+          "id": "E-SC43-JAMESTOWN-HIGHPOINT-SALES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the Water Sales table and its notes in the extracted page.",
+          "content_sha256": "20b9837b592b979326e2cbe5eca45c6a54eb80de55b5ada6ae56f7e09fc9ddb8",
+          "retrieval_sha256": "8214fc11a6b55fd6853fb564d65f65b094f07fe013884e2700e6760728543978",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        },
+        {
+          "id": "E-SC43-JAMESTOWN-HIGHPOINT-PURCHASES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the purchase table and the sales notes of the extracted page; the total is arithmetic on the printed rows.",
+          "content_sha256": "dffc07081067da3b4c09f96b6a3e3bbdff58c4b75d37c3ebcee57376fe5a8589",
+          "retrieval_sha256": "8214fc11a6b55fd6853fb564d65f65b094f07fe013884e2700e6760728543978",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 4,
+            "total": 4
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:jamestown"
+      ],
+      "scenario": "water_controls_wipe:jamestown"
+    },
+    {
+      "source_id": "jamestown_ncdeq2025_jamestown_lwsp",
+      "title": "Local Water Supply Plan: Jamestown (PWSID 02-41-030), 2025",
+      "url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-030&year=2025",
+      "original_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-030&year=2025",
+      "access": "accessible",
+      "status": "verified",
+      "method": "primary_full_text",
+      "date": "2026-10-25",
+      "notes": "Retrieved https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-030&year=2025 at 2026-10-25T16:02:47Z (curl, HTTP 200, 31727 bytes, sha256 6f986b92985e288df3bba07d26f738718a9994025e80904825d76451cef688f7); text by html.parser-py3.14 blocks-v1, sha256 e9f37accd27ab2cdd1e72e4fd68b1858e1696b493bf641ff47ed3ba20dedcbd4.",
+      "retrieval": {
+        "requested_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-030&year=2025",
+        "final_url": "https://www.ncwater.org/WUDC/app/LWSP/report.php?pwsid=02-41-030&year=2025",
+        "http_status": 200,
+        "retrieved_at": "2026-10-25T16:02:47Z",
+        "tool": "curl",
+        "media_type": "text/html; charset=UTF-8",
+        "bytes": 31727,
+        "sha256": "6f986b92985e288df3bba07d26f738718a9994025e80904825d76451cef688f7",
+        "text": {
+          "extractor": "html.parser-py3.14 blocks-v1",
+          "sha256": "e9f37accd27ab2cdd1e72e4fd68b1858e1696b493bf641ff47ed3ba20dedcbd4"
+        }
+      },
+      "claims": [
+        {
+          "id": "E-SC43-JAMESTOWN-TOWN-USE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read the whole extracted page. The max day use cells of the monthly table are empty for all twelve months; the figures and the empty column were checked against the page text.",
+          "content_sha256": "19bd40c3d1172b8c4187af3e4ada03370e1ea86645dc598706e05a1141b2f506",
+          "retrieval_sha256": "6f986b92985e288df3bba07d26f738718a9994025e80904825d76451cef688f7",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 5,
+            "total": 5
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        },
+        {
+          "id": "E-SC43-JAMESTOWN-TOWN-STORAGE",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 1 of the extracted page; the 2024 figure is from the 2024 plan that the family folder already cites.",
+          "content_sha256": "380802ca54cbdc04e44944daa12b5d5327b4037c6823f405e4e7018cffce9155",
+          "retrieval_sha256": "6f986b92985e288df3bba07d26f738718a9994025e80904825d76451cef688f7",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 1,
+            "total": 1
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        },
+        {
+          "id": "E-SC43-JAMESTOWN-TOWN-PURCHASES",
+          "status": "verified",
+          "date": "2026-10-25",
+          "method": "primary_full_text",
+          "checked_fields": [
+            "shows",
+            "limits",
+            "quotes",
+            "data"
+          ],
+          "notes": "Read Section 3 and Section 5 of the extracted page. The page lists no water treatment plant and no surface or ground water source for the town. The total of the average purchases is arithmetic on the printed rows.",
+          "content_sha256": "da622efa7211f5c20bc51186bd9d239398ab163a577b2cd1b7279e8a2e045e25",
+          "retrieval_sha256": "6f986b92985e288df3bba07d26f738718a9994025e80904825d76451cef688f7",
+          "quote_match": {
+            "normalization": "nfkc-lig-v2",
+            "matched": 6,
+            "total": 6
+          },
+          "reachable_from_scenarios": [
+            "water_controls_wipe:jamestown"
+          ],
+          "scenario": "water_controls_wipe:jamestown"
+        }
+      ],
+      "reachable_from_scenarios": [
+        "water_controls_wipe:jamestown"
+      ],
+      "scenario": "water_controls_wipe:jamestown"
+    }
+  ],
+  "scenario": "water_controls_wipe:jamestown",
+  "model_hash": "5687b5554153d99d720a0c427d9a9e8271fd04722a83de194337fd20a388ef98"
+}
