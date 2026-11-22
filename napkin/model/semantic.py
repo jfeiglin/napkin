@@ -52,7 +52,7 @@ gives the part as its `origin` (`tank.water`, `Place.level`, `close` at the top 
   field comes from the member and the right expression from the enclosing scope. The operations
   include `by(field)` (the key) and `.at(x)` (one member, `x` in the
   key's unit). A key fixed when the model compiles selects its entry there: over the instances or a
-  literal of members it is that member, read by its id (`chosen`), and `Order` reads the entry of
+  literal of members it is that member, read by its id (`MemberOrder.select`), and `Order` reads the entry of
   each member's own collection (`Order.chosen`), so what reads the entry depends on it alone. A
   step from a collection is a projection, which only a reduction reads: `sum` and
   `min`/`max` of numbers, `count` of members or of yes/no values, `any` and `all` of yes/no values.
@@ -183,7 +183,7 @@ from ..core.comparisons import DEFAULT_FACTOR, outside_authored_range
 from ..core.expr import DEEPEST
 from ..core.literals import Literals
 from ..core.units import authored_decimal, dimension_power, rational, scale_of, support_fits
-from ..program.refs import numeric_support
+from ..program.refs import MemberOrder, numeric_support
 from .language import nodes as n
 from .language import tables
 from .language.format import expression as written_as
@@ -2403,39 +2403,26 @@ class Resolver:
             if not _zero(found):
                 self.fail('unit', f'.at(...) reads a key in {key}, not {found.type}', node)
             found = Const(found.value, key)
-        chosen = self.chosen(source, found)
-        if chosen is not None:
-            # The member that the fixed key selects, read by its id: what depends on the read depends
-            # on that member alone, in the declared model and in the program.
-            return Read(('named', chosen), (), of, True)
+        if not source.steps and isinstance(of, Ent):
+            # A fixed member may also be required before lowering, e.g. for a link initializer.
+            members = None
+            if source.start[0] == 'literal' and all(
+                each.start[0] == 'named' and not each.steps for each in source.start[1]
+            ):
+                members = (each.start[1] for each in source.start[1])
+            if source.start[0] == 'instances' or members is not None:
+                at = self.exact(found)
+                if at is not None:
+                    chosen = self.member_order(of.template).select(at, members)
+                    if chosen is not None:
+                        return Read(('named', chosen), (), of, True)
         return Read(('lookup', source, found), (), of, source.fixed and fixed(found))
 
-    def chosen(self, source, key):
-        """The id of the member that `source.at(key)` reads when the model fixes it when it compiles:
-        the key is fixed then (`exact`), and so are the members with their natural keys, their
-        creation numbers (`created`), the same for every member that reads them: the instances of a
-        template, or a literal of named members (`<leaf, top>`). Of them, the one with the greatest key
-        at or below the key (`select`); None for any other read, and below the first key, which a run
-        refuses when it reads it."""
-        at = self.exact(key)
-        if at is None or _own(source) or source.steps or not isinstance(source.type.of, Ent):
-            return None
-        numbers = self.created(source.type.of.template)
-        if source.start[0] == 'instances':
-            # The creation numbers of the instances are 0, 1, 2, ... in their order: the greatest at
-            # or below the key is its floor, and the last member's beyond the last.
-            if at < 0 or not numbers:
-                return None
-            return list(numbers)[min(math.floor(at), len(numbers) - 1)]
-        if source.start[0] != 'literal' or not all(
-            item.start[0] == 'named' and not item.steps for item in source.start[1]
-        ):
-            return None
-        named = sorted((item.start[1] for item in source.start[1]), key=numbers.get)
-        return select({member: numbers[member] for member in named}, at)
-
     def created(self, template):
-        """{id: creation number} of a template's members in their order of creation, the natural keys
+        return self.member_order(template).numbers
+
+    def member_order(self, template):
+        """The order of creation of a template's members, the natural keys
         that number them from 0 as the program orders them (`napkin.program.build.Builder`): an entity
         written once is its one member; a template's members are its members written by hand and the
         rows of its tables in the order of the text, the rows of a table with ids in the order of
@@ -2454,7 +2441,7 @@ class Resolver:
                     ids += [f'{item.name}[{k}]' for k in range(len(self.data[item.name].rows))]
                 else:
                     ids += [f'{item.name}.{id}' for id in sorted(rows)]
-        self.creation[template] = found = {id: number for number, id in enumerate(ids)}
+        self.creation[template] = found = MemberOrder(ids)
         return found
 
     def ends_alike(self, left, right, node, op):

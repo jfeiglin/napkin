@@ -85,6 +85,7 @@ from .refs import (
     Literal,
     Local,
     Lookup,
+    MemberOrder,
     Named,
     Path,
     Reduce,
@@ -249,9 +250,12 @@ class Resolver:
                 self.fail('unknown_name', where, f'`by({start.key})`: no such field of a member')
             return source
         if isinstance(start, Lookup):
-            self.check_expr(start.key, scope, where, retained)
+            self.lookup_key(start, source, scope, where, retained)
             return dataclasses.replace(source, many=False)
         raise TypeError(f'no start: {type(start).__name__}')
+
+    def lookup_key(self, lookup, source, scope, where, retained):
+        self.check_expr(lookup.key, scope, where, retained)
 
     def collection(self, path, scope, where, retained):
         """What a path names, which must be a collection: a collection or a projection over one, or
@@ -515,7 +519,8 @@ class Resolver:
 class _Checker(Resolver):
     """The checks of `check`, over every part of one program, with the writers of each value."""
 
-    def __init__(self, program):
+    def __init__(self, program, selected=None):
+        self.selected = selected
         self.diagnostics = []
         super().__init__(
             program, lambda code, part, message: self.diagnostics.append(Diagnostic(code, part, message))
@@ -1124,15 +1129,64 @@ class _Checker(Resolver):
                 )
         return None  # the ordinary path check diagnoses this read
 
+    def expression_domain(self, expr, scope):
+        names = {name: self.read_domain(read, scope) for name, read in expr.reads}
+        if any(kind is None for kind in names.values()):
+            return None
+        actual, _ = units.unit_of(expr.node, names, self.argument_units)
+        return actual
+
+    @cached_property
+    def member_orders(self):
+        return {t.name: MemberOrder(m.id for m in t.members) for t in self.program.templates}
+
+    def lookup_key(self, lookup, source, scope, where, retained):
+        """A fixed, natural key can name its selected member directly after validation. A filter,
+        projection, occurrence, or explicit rekey keeps its lookup for the run."""
+        super().lookup_key(lookup, source, scope, where, retained)
+        path = lookup.source
+        if source.kind != 'member' or source.part is None or path.steps:
+            return
+        if not isinstance(path.start, (Instances, Literal)):
+            return
+        try:
+            domain = self.expression_domain(lookup.key, scope)
+        except KeyError:
+            return  # an unknown unit or field has its own diagnostic
+        except (units.ExpressionError, ArithmeticError) as error:
+            self.fail('type', where, f'a member creation number must be numeric: {error}')
+            return
+        if domain is None:
+            return
+        if not (domain.compatible(units.NUMBER) or domain == units.ZERO):
+            self.fail(
+                'unit' if domain.kind == 'number' else 'type',
+                where,
+                'a member creation number must be dimensionless',
+            )
+            return
+        if self.selected is None:
+            return
+        subset = None
+        if isinstance(path.start, Literal):
+            if not all(_named(each) for each in path.start.items):
+                return
+            subset = (each.start.id for each in path.start.items)
+        at = self.literals.value(lookup.key.node)
+        if not isinstance(at, Fraction):
+            return
+        member = self.member_orders[source.part.name].select(at, subset)
+        if member is not None:
+            self.selected[lookup] = Named(member)
+
     def argument(self, arg, parameter, scope, where):
         """A start supplies a value of the declared parameter's type in the caller's scope."""
         if not isinstance(arg, Expr):
             return
         try:
-            names = {name: self.read_domain(read, scope) for name, read in arg.reads}
-            if any(kind is None for kind in names.values()):
+            actual = self.expression_domain(arg, scope)
+            if actual is None:
                 return
-            actual, _ = units.unit_of(arg.node, names, self.argument_units)
             expected = self.domain(parameter.type)
         except KeyError:
             return  # an unknown unit or field has its own diagnostic
@@ -1424,9 +1478,33 @@ def _locals_read(expression):
     return found
 
 
-def check(program):
-    """The diagnostics of a program: each invariant that it breaks, with its code and its part."""
-    return _Checker(program).run()
+def check(program, *, selected=None):
+    """The diagnostics of a program. If supplied, `selected` collects fixed member reads for the
+    builder to specialize once all parts have passed."""
+    return _Checker(program, selected).run()
+
+
+def fixed_links(program, pending):
+    """Bind pending builder link paths with the same validated member selection as a formula.
+    An invalid or dynamic target leaves the link unset for the ordinary checker to diagnose."""
+    selected = {}
+    checker = _Checker(program, selected)
+    targets = {}
+    for (owner, member, name), path in pending.items():
+        template = checker.templates[owner]
+        prior = len(checker.diagnostics)
+        found = checker.resolve(path, Scope(template), member + '.' + name)
+        chosen = selected.get(path.start)
+        if (
+            chosen is not None
+            and len(checker.diagnostics) == prior
+            and found is not None
+            and found.kind == 'member'
+            and not path.steps
+            and found.part.name == template.part(name).type.template
+        ):
+            targets.setdefault(member, {})[name] = checker.member_orders[found.part.name].numbers[chosen.id]
+    return targets
 
 
 # ---- the setup's reports ------------------------------------------------------------------------------

@@ -104,6 +104,22 @@ class Instances:
     template: str
 
 
+class MemberOrder:
+    """The immutable creation numbers used by natural keys in a template or a literal of its members."""
+
+    def __init__(self, ids):
+        self.ids = tuple(ids)
+        self.numbers = {name: row for row, name in enumerate(self.ids)}
+
+    def select(self, at, subset=None):
+        if not isinstance(at, Fraction) or at < 0 or not self.ids:
+            return None
+        if subset is None:
+            return self.ids[min(int(at), len(self.ids) - 1)]
+        eligible = (member for member in subset if member in self.numbers and self.numbers[member] <= at)
+        return max(eligible, key=self.numbers.__getitem__, default=None)
+
+
 @dataclass(frozen=True)
 class Literal:
     """`<a, b>`: the members that the paths name, each once, of one template."""

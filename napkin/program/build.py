@@ -997,7 +997,8 @@ class Builder:
     def program(self):
         """The program, unchecked: for a test of the checker."""
         templates = [self._template(name, parts) for name, parts in self._templates.items()]
-        templates = self._members_of(templates)
+        pending = {}
+        templates = self._members_of(templates, pending)
         root_values = tuple(part for part in self._root if isinstance(part, p.Value))
         root_asserts = tuple(part for part in self._root if isinstance(part, p.Assert))
         draft = p.Program(
@@ -1007,22 +1008,37 @@ class Builder:
         draft = replace(
             draft, templates=tuple(_flow_units(resolver, template) for template in draft.templates)
         )
-        placed = replace(
-            draft,
-            templates=tuple(_placed(template, template.name) for template in draft.templates),
-            root=tuple(_placed(each, each.name) for each in draft.root),
-            setup=tuple(_placed(each, f'setup[{index}]') for index, each in enumerate(draft.setup)),
-            asserts=tuple(_placed(each, f'assert[{index}]') for index, each in enumerate(draft.asserts)),
-        )
+        placed = _placed_program(draft)
         enums = tuple(p.Enum(handle.name, handle.members) for handle in self._enums.values())
-        return replace(placed, units=self._units(placed), enums=enums)
+        program = replace(placed, units=self._units((placed, tuple(pending.values()))), enums=enums)
+        if pending:
+            targets = checking.fixed_links(program, pending)
+            templates = []
+            for template in program.templates:
+                members = []
+                for member, (_, given) in zip(template.members, self._members[template.name], strict=True):
+                    bound = targets.get(member.id)
+                    if bound is None:
+                        members.append(member)
+                        continue
+                    rows = dict(member.links) | bound
+                    links = tuple((key, rows[key]) for key in given if key in rows)
+                    members.append(replace(member, links=links))
+                templates.append(replace(template, members=tuple(members)))
+            program = replace(program, templates=tuple(templates))
+            program = replace(program, units=self._units(program))
+        return program
 
     def finish(self):
         """The program, checked: `ProgramError` with each refusal of `check.check`."""
         program = self.program()
-        found = checking.check(program)
+        selected = {}
+        found = checking.check(program, selected=selected)
         if found:
             raise checking.ProgramError(found)
+        if selected:
+            program = _placed_program(program, selected)
+            program = replace(program, units=self._units(program))
         return program
 
     def _template(self, name, parts):
@@ -1045,7 +1061,7 @@ class Builder:
                 raise TypeError(f'{name}: no part of a template: {part!r}')
         return p.Template(name, status=status, **{key: tuple(items) for key, items in groups.items()})
 
-    def _members_of(self, templates):
+    def _members_of(self, templates, pending):
         """The templates with their members: each value as a record, each link as a row."""
         rows = {}
         for name, members in self._members.items():
@@ -1059,6 +1075,13 @@ class Builder:
                 for name, init in given_values.items():
                     part = template.part(name)
                     if isinstance(part, p.Value) and part.kind == p.LINK:
+                        if (
+                            isinstance(init, X)
+                            and init._path is not None
+                            and isinstance(init._path.start, Lookup)
+                        ):
+                            pending[template.name, id, name] = init._path
+                            continue
                         found = rows.get(_member_id(init))
                         if found is not None and found[0] == part.type.template:
                             links.append((name, found[1]))
@@ -1186,33 +1209,45 @@ def _has_origin(record):
     return is_dataclass(record) and any(item.name == 'origin' for item in fields(record))
 
 
-def _placed_items(items, field, origin):
+def _placed_program(program, selected=None):
+    return replace(
+        program,
+        templates=tuple(_placed(each, each.name, selected) for each in program.templates),
+        root=tuple(_placed(each, each.name, selected) for each in program.root),
+        setup=tuple(_placed(each, f'setup[{index}]', selected) for index, each in enumerate(program.setup)),
+        asserts=tuple(
+            _placed(each, f'assert[{index}]', selected) for index, each in enumerate(program.asserts)
+        ),
+    )
+
+
+def _placed_items(items, field, origin, selected):
     """The parts of a tuple, each with its origin: by its name, its member, or its place."""
     label = _LABELS.get(field, field)
     placed = []
     for index, each in enumerate(items):
         if isinstance(each, p.Case):
-            placed.append(_placed(each, f'{origin}.{each.member}'))
+            placed.append(_placed(each, f'{origin}.{each.member}', selected))
         elif getattr(each, 'name', None):
-            placed.append(_placed(each, f'{origin}.{each.name}'))
+            placed.append(_placed(each, f'{origin}.{each.name}', selected))
         else:
-            placed.append(_placed(each, f'{origin}.{label}[{index}]'))
+            placed.append(_placed(each, f'{origin}.{label}[{index}]', selected))
     return tuple(placed)
 
 
-def _placed(record, origin):
+def _placed(record, origin, selected):
     """A record with its origin and its parts', its expressions with their names spelled, and the
     sites of its draws numbered in the order in which they are written."""
-    counter = {'draw': 0}
+    counter = {'draw': 0, 'selected': selected}
     changes = {'origin': origin} if _has_origin(record) else {}
     for item in fields(record):
         if item.name == 'origin':
             continue
         value = getattr(record, item.name)
         if isinstance(value, tuple) and any(_has_origin(each) for each in value):
-            changes[item.name] = _placed_items(value, item.name, origin)
+            changes[item.name] = _placed_items(value, item.name, origin, selected)
         elif _has_origin(value):
-            changes[item.name] = _placed(value, f'{origin}.{item.name}')
+            changes[item.name] = _placed(value, f'{origin}.{item.name}', selected)
         else:
             changes[item.name] = _inner(value, origin, counter)
     return replace(record, **changes)
@@ -1231,7 +1266,10 @@ def _inner(value, origin, counter):
     if isinstance(value, p.Reset):
         return p.Reset(value.kind, _spelled_expr(value.expr, origin, counter))
     if isinstance(value, p.Member):
-        values = tuple((name, _inner(init, f'{value.id}.{name}', {'draw': 0})) for name, init in value.values)
+        values = tuple(
+            (name, _inner(init, f'{value.id}.{name}', {'draw': 0, 'selected': counter['selected']}))
+            for name, init in value.values
+        )
         return replace(value, values=values)
     if isinstance(value, tuple):
         return tuple(_inner(each, origin, counter) for each in value)
@@ -1245,6 +1283,9 @@ def _placed_path(path, origin, counter):
     elif isinstance(start, By):
         start = By(_placed_path(start.source, origin, counter), start.key)
     elif isinstance(start, Lookup):
+        selected = counter['selected']
+        if selected and start in selected:
+            return Path(selected[start], path.steps)
         start = Lookup(_placed_path(start.source, origin, counter), _spelled_expr(start.key, origin, counter))
     elif isinstance(start, Literal):
         start = Literal(tuple(_placed_path(each, origin, counter) for each in start.items))
