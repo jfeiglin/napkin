@@ -1145,11 +1145,12 @@ def far_sides(
                     if band_edges is None:
                         band_edges = {}
                     band_edges[a, b] = i, gap, 1 if here_node == a else -1
-            if here != limit and (a, b) not in contacted:
-                continue
+            # At the switch means within its band, as every comparison reads it. An exact float
+            # test here let a ledger balance one place short of the threshold choose the
+            # incoming side by its raw sign.
             gap, band = comparisons.gap_band(here_node, other, here, limit, side)
             if not against('eq', gap, band):
-                continue  # an edit replaced the stock or its threshold before the re-share
+                continue  # away from the switch, or an edit replaced the stock or its threshold
             if held(i):
                 continue  # sharing keeps the store on its bound throughout the segment
             velocity = 0.0
