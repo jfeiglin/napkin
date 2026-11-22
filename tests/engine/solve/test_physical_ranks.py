@@ -76,3 +76,15 @@ def test_only_the_distance_uses_the_declared_metric(scales, expected):
     problem.equal('total', {x: 1, y: 1}, 10)
     # On x+y=10, the zero-target minimizer has x:y = scale_x^2:scale_y^2.
     assert Solver().solve(problem).x == pytest.approx(expected)
+
+
+@pytest.mark.parametrize('metric', [1.0, 1e-12])
+def test_a_narrow_physical_interval_still_has_two_distinct_ends(metric):
+    problem = Problem()
+    x = problem.unknown('x', 0, 1e-12, OTHER, scale=metric)
+    problem.maximize({x: 1})
+    problem.minimize({x: 1})
+    answer = Solver().solve(problem)
+    # Both ranks optimize a coordinate already fixed by the first objective.
+    assert answer.x[0] == 1e-12
+    assert answer.optima == (-1e-12, 1e-12)
