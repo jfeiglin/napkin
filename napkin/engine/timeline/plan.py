@@ -124,6 +124,7 @@ from __future__ import annotations
 
 import functools
 import math
+from bisect import bisect_right
 from dataclasses import dataclass, replace
 
 from ...core import expr as nodes
@@ -165,6 +166,7 @@ from .collections import (
     Entries,
     Keyed,
     MemberFilter,
+    OccurrenceHistory,
     Reduction,
     aggregate_node,
     guarded_reduction,
@@ -570,9 +572,10 @@ class Plan:
         self._occurrence_settings = _occurrence_settings(program)
         self.dynamic = {}  # engine name -> `Dynamic`: a read of a collection that changes in a run
         self.events = {}  # (member id, event name) -> (template, row, member, Event)
-        self.occurrences = {}  # (member id, event name) -> the ids of its occurrences, in order
+        self.occurrences = {}  # (member id, event name) -> points indexed by start time
         self.frames = {}  # occurrence id -> its scope (template, row, member, Frame)
         self.end_flows = {}  # (store, side) -> the connections present at a dynamic endpoint
+        self._end_points = {}  # (store, side) -> current member points, until membership changes
         self.end_history = {}  # (store, side) -> every connection that was ever present there
         self.solvers = {}  # the id of each declared solver -> its `Declared`
         self.results = {}  # a value of kind RESULT -> the id of the solver that determines it
@@ -597,7 +600,7 @@ class Plan:
         for template, row, member in members:
             for event in template.events:
                 self.events[(member.id, event.name)] = (template, row, member, event)
-                self.occurrences[(member.id, event.name)] = []
+                self.occurrences[(member.id, event.name)] = OccurrenceHistory()
         for value in program.root:
             self._declare(value, None)
         for scope in members:
@@ -660,9 +663,9 @@ class Plan:
                 projection = self.dynamic[name]
                 if projection.key is None and projection.keep is None and projection.by is None:
                     members = self.occurrences[projection.source[1:]]
-                    owner = latest(members) if latest is not None else members[-1] if members else None
-                    if owner is not None:
-                        selected_node = nodes.ref(self.project(('occurrence', owner), projection.steps))
+                    point = latest(members) if latest is not None else members[-1] if members else None
+                    if point is not None:
+                        selected_node = nodes.ref(self.project(point, projection.steps))
                         return Binding(unit, selected_node, selected_node)
 
                 def choose(read):
@@ -1822,7 +1825,7 @@ class Plan:
                 continue
             for setting in self._flow_settings(name):
                 (formulas if self.values[setting].kind == FORMULA else initial).append(setting)
-        self.occurrences[(member, event_name)].append(occ)
+        self.occurrences[(member, event_name)].append(occ, started)
         flows = tuple(name for name in flows if name in self.flows)
         return Occurrence(
             occ,
@@ -1850,9 +1853,8 @@ class Plan:
             if source[0] != 'dynamic' or source[1][0] != 'occurrences' or source[2]:
                 raise Outside(f'{origin}: {value.name} refers to no occurrence of an event at the time t')
             _, member, event = source[1]
-            made = [('occurrence', item) for item in self.occurrences[(member, event)]]
-            if occ.rpartition('#')[0] == f'{member}.{event}':
-                made.append(('occurrence', occ))
+            made = self.occurrences[member, event]
+            entering = ('occurrence', occ) if occ.rpartition('#')[0] == f'{member}.{event}' else None
             timed = timed and source[4] is None
             selector = None if timed else self.node(key, scope, origin)
             if value.name in references:
@@ -1869,6 +1871,7 @@ class Plan:
                     spelled(path),
                     self,
                     *source[3:],
+                    entering=entering,
                 )
             except ExpressionError as problem:
                 raise SimulationError(f'{origin}: {problem}') from problem
@@ -2643,19 +2646,24 @@ class Plan:
             return None
         return f'{head}#{rest.split(".", 1)[0]}'
 
-    def members_at(self, source, value):
+    def members_at(self, source, value, t=None):
         """The points of the members of a dynamic collection at the time at which `value` reads: the
         occurrences that have started, or the connections of members and of active occurrences.
         `value(name)` raises LookupError for a value that does not exist yet."""
-        found = []
         if source[0] == 'occurrences':
-            for point in self.members(source):
+            history = self.members(source)
+            if t is not None:
+                return history.through(t)
+
+            def future(point):
                 try:
                     value(f'{point[1]}.started')
                 except LookupError:
-                    break  # the later ones started later
-                found.append(point)
-            return found
+                    return True
+                return False
+
+            return history.prefix(bisect_right(history, False, key=future))
+        found = []
         for point in self.members_ever(source):
             owner = self.occurrence_of(point[1])
             if owner is not None:
@@ -2796,8 +2804,11 @@ class Plan:
         """The points of the members of a dynamic collection now: every occurrence of an event that
         has started, or the connections present at an endpoint."""
         if source[0] == 'occurrences':
-            return [('occurrence', occ) for occ in self.occurrences[(source[1], source[2])]]
-        return [('flow', connection) for connection in self.end_flows.get((source[1], source[2]), ())]
+            return self.occurrences[source[1:]]
+        endpoint = source[1:]
+        if endpoint not in self._end_points:
+            self._end_points[endpoint] = tuple(('flow', c) for c in self.end_flows.get(endpoint, ()))
+        return self._end_points[endpoint]
 
     def settings_reads(self, flow):
         """What the settings of a flow read (`Expanded`), through the members of their dynamic reads

@@ -907,7 +907,7 @@ class Recorder:
                     raise LookupError(f'the record holds no value of {read}')
                 return known(readers[read](t))
 
-            members = plan.members_at(dynamic.source, value)
+            members = plan.members_at(dynamic.source, value, t)
             return dynamic_value(dynamic, members, plan, value, t, plan.units)
 
         return self.formula(name, histories, end, sorted(plan.dynamic_reads(name)), point=point)
@@ -1715,8 +1715,8 @@ class Reader:
 
     def _comparison_quantity(self, name):
         def latest(members):
-            place = bisect_right(members, self.comparison_time, key=self.starts.__getitem__)
-            return members[place - 1] if place else None
+            visible = members.through(self.comparison_time)
+            return visible[-1] if visible else None
 
         binding = self.plan.comparison_quantity(
             name, self.comparison_scales, self._comparison_value, latest=latest, units=self.units
@@ -1819,9 +1819,19 @@ class Reader:
         the fields that say when each is a member are found first."""
         plan = self.plan
         dynamic = plan.dynamic[name]
-        self._ready(sorted(plan.dynamic_reads(name)), t)
         try:
-            members = plan.members_at(dynamic.source, read)
+            if dynamic.source[0] == 'occurrences':
+                members = plan.members_at(dynamic.source, read, t)
+                # A natural lookup reads just the chosen member. A reduction consults the
+                # visible members, including the latest start as evidence of their membership.
+                if dynamic.op != 'at' or dynamic.by is not None or dynamic.keep is not None:
+                    projected = (plan.project(m, dynamic.steps) for m in members if dynamic.steps)
+                    self._ready((*dynamic.controls(members, plan), *projected), t)
+                if members and not dynamic.steps:
+                    read(f'{members[-1][1]}.started')
+            else:
+                self._ready(sorted(plan.dynamic_reads(name)), t)
+                members = plan.members_at(dynamic.source, read, t)
             return dynamic_value(dynamic, members, plan, read, t, self.units)
         except FAILURES as problem:
             return Unavailable(str(problem))

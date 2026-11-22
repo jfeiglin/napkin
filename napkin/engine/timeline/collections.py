@@ -35,8 +35,10 @@ count or a least value of values that hold between moments is followed by an int
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from bisect import bisect_right
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from itertools import islice
 
 import numpy as np
 
@@ -133,6 +135,38 @@ class MemberFilter:
         return found
 
 
+@dataclass
+class OccurrenceHistory(Sequence):
+    """Occurrence points and their immutable start times, in creation order. A historical
+    selection shares both arrays and limits its visible prefix."""
+
+    points: list = field(default_factory=list)
+    starts: list = field(default_factory=list)
+    stop: int | None = None
+
+    def __len__(self):
+        return len(self.points) if self.stop is None else self.stop
+
+    def __getitem__(self, index):
+        places = range(len(self))[index]
+        if isinstance(places, range):
+            return [self.points[i] for i in places]
+        return self.points[places]
+
+    def __iter__(self):
+        return islice(self.points, len(self))
+
+    def append(self, owner, started):
+        self.points.append(('occurrence', owner))
+        self.starts.append(started)
+
+    def prefix(self, count):
+        return OccurrenceHistory(self.points, self.starts, count)
+
+    def through(self, time):
+        return self.prefix(bisect_right(self.starts, time, 0, len(self)))
+
+
 @dataclass(frozen=True)
 class Dynamic:
     """A reduction, lookup or latest start over event occurrences or active endpoint flows.
@@ -170,18 +204,29 @@ class Dynamic:
         return members if self.keep is None else [m for m in members if self.keep.keeps(m, value, units, t)]
 
 
-def member_at(members, source, key, read, units, t, spelled, plan, keep=None, by=None):
+def member_at(members, source, key, read, units, t, spelled, plan, keep=None, by=None, entering=None):
     """Greatest eligible key, with later creation winning a tie, across active flows or occurrences."""
+    if entering is not None and (keep is not None or by is not None):
+        members = [*members, entering]
+        entering = None
     if keep is not None:
         members = [member for member in members if keep.keeps(member, read, units, t)]
     if source[0] == 'occurrences' and by is None:
+        if key is None and entering is not None:
+            return entering
         if key is None and len(members):
             return members[-1]
         if key is not None:
             limit = lazily(key, read, units, t)
-            for member in reversed(members):
-                if known(read(f'{member[1]}.started')) <= limit:
-                    return member
+            if entering is not None and t <= limit:
+                return entering
+            if isinstance(members, OccurrenceHistory):
+                place = bisect_right(members.starts, limit, 0, len(members))
+            else:
+                # Filtering preserves start order, including creation order for equal starts.
+                place = bisect_right(members, limit, key=lambda m: known(read(f'{m[1]}.started')))
+            if place:
+                return members[place - 1]
         raise ExpressionError(f'{spelled}: no occurrence has started at or before the requested time')
     limit = lazily(key, read, units, t)
     keys = [known(read(plan.project(m, (by,)))) if by is not None else plan.number(m[1]) for m in members]

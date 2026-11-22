@@ -888,6 +888,7 @@ class Run:
                     plan.end_history.setdefault((store, side), []).append(connection.name)
                 else:
                     present.remove(connection.name)
+                plan._end_points.pop((store, side), None)
                 end = plan.ends.get((store, side))
                 if end is not None:
                     plan.ends[(store, side)] = replace(end, flows=tuple(present))

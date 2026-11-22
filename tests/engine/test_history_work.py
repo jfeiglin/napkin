@@ -161,7 +161,7 @@ def test_draw_collection_does_not_copy_completed_prefixes(n):
 
     def samples():
         nonlocal copies
-        previous = None
+        previous = ()
         for i in range(n):
             draws = [('daily', 'yard', first if i == 0 else i), ('choice', 'yard', bool(i % 2))]
             if i != 2:
@@ -175,9 +175,9 @@ def test_draw_collection_does_not_copy_completed_prefixes(n):
                 for s in gc.get_referrers(first)
                 if isinstance(s, list) and len(s) == i + 1 and s[0] is first
             ]
-            if lists and lists[0] is not previous:
+            if lists and not any(series is old for series in lists for old in previous):
                 copies += i
-                previous = lists[0]
+            previous = lists
 
     series = _drawn(samples())
     assert series == {('daily', 'yard'): list(range(n)), ('choice', 'yard'): [bool(i % 2) for i in range(n)]}

@@ -27,6 +27,7 @@ the run at a breakpoint and edits it (`checkpoint.py`).
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, fields
 
 from .parts import Unit
@@ -155,7 +156,7 @@ class Configuration:
             raise ConfigurationError('a sampled run needs a whole-number seed')
         if self.mode == MEDIAN and self.seed is not None:
             raise ConfigurationError('a median run has no seed')
-        keys = [(item.member, item.name) for item in self.inputs]
-        twice = sorted({str(key) for key in keys if keys.count(key) > 1})
+        counts = Counter((item.member, item.name) for item in self.inputs)
+        twice = sorted(str(key) for key, count in counts.items() if count > 1)
         if twice:
             raise ConfigurationError(f'an input is given twice: {", ".join(twice)}')

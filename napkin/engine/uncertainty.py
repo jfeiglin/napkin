@@ -197,7 +197,10 @@ def _drawn(samples):
         if found is None:
             found = {draw: [value] for draw, value in once.items()}
         else:
-            found = {draw: [*values, once[draw]] for draw, values in found.items() if draw in once}
+            for draw in found.keys() - once.keys():
+                del found[draw]
+            for draw, values in found.items():
+                values.append(once[draw])
     return found or {}
 
 
