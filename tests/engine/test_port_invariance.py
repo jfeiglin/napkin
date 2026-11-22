@@ -23,6 +23,8 @@ from tests.engine.cross_rate_cases import check_cross_rate
 from tests.engine.port_cases import HORIZON, Case, Spelling, builder_program, text_program
 from tests.engine.reversible_bound_cases import check_reversible_bounds
 from tests.engine.simultaneous_bound_cases import check_simultaneous_bounds
+from tests.engine.solver_flow_scale_cases import check_solver_flow_scale
+from tests.engine.solver_scale_cases import check_solver_scale
 from tests.engine.stage_broadcast_cases import check_broadcast_stage
 from tests.engine.stage_read_cases import check_scalar_stage
 from tests.engine.stock_balance_cases import check_stock_balance
@@ -35,11 +37,13 @@ from tests.reference.from_program import run_of, scale_at, value_at, values_at
 CONFIG = Configuration(Request(HORIZON))
 # `roundoff` moves every ledger read that a decision makes two places each way
 # (`stocks.LEDGER_PROBE`): a decision that changes under it depends on the platform.
-COLLECTION_CHECKS = {
+OWNER_CHECKS = {
     'collection_scope': check_collection_scope,
     'authoring_parity': check_authoring_parity,
     'collection_kind': check_collection_kind,
     'filter_history': check_filter_history,
+    'solver_scale': check_solver_scale,
+    'solver_flow_scale': check_solver_flow_scale,
 }
 TRANSFORMS = (
     'empty_event',
@@ -69,7 +73,7 @@ TRANSFORMS = (
     'reversible_bounds',
     'simultaneous_bounds',
     'cross_rate',
-    *COLLECTION_CHECKS,
+    *OWNER_CHECKS,
 )
 GUARD = 'plant.observe.step[0]'
 
@@ -331,8 +335,8 @@ def plant_baseline(seed):
 
 
 def check_transform(seed, name, record_property):
-    if name in COLLECTION_CHECKS:
-        COLLECTION_CHECKS[name](seed)
+    if name in OWNER_CHECKS:
+        OWNER_CHECKS[name](seed)
         return
     if name == 'cross_rate':
         check_cross_rate(seed)

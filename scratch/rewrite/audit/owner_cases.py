@@ -18,6 +18,8 @@ from tests.engine import (
     cross_rate_cases,
     reversible_bound_cases,
     simultaneous_bound_cases,
+    solver_flow_scale_cases,
+    solver_scale_cases,
     stage_broadcast_cases,
     stage_read_cases,
     stock_balance_cases,
@@ -49,6 +51,8 @@ FAMILIES = {
     's5/authoring': authoring_parity_cases.check_authoring_parity,
     's5/kinds': collection_kind_cases.check_collection_kind,
     's5/filter': collection_kind_cases.check_filter_history,
+    's7/objective': solver_scale_cases.check_solver_scale,
+    's7/flow': solver_flow_scale_cases.check_solver_flow_scale,
 }
 
 
@@ -92,6 +96,8 @@ def run_cases(ids, destination):
         's5/authoring': authoring_parity_cases,
         's5/kinds': collection_kind_cases,
         's5/filter': collection_kind_cases,
+        's7/objective': solver_scale_cases,
+        's7/flow': solver_flow_scale_cases,
     }
     sources_by_module = {
         module: {module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()}
